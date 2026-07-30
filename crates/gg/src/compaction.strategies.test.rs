@@ -209,6 +209,40 @@ fn the_handoff_model_is_read_only_for_a_handoff_strategy() {
     assert_eq!(handoff_model_id(disabled.root()), None);
 }
 
+/// A handoff still deferring its model to a slot reached gg unbound — the launcher was supposed to
+/// fill it in. gg cannot resolve it here (the slot table lives on the launch form), so it is
+/// reported rather than resolved, and the run condenses on the agent's own model.
+#[test]
+fn an_unbound_model_slot_is_reported_rather_than_resolved() {
+    let deferred = set_with(
+        Some("handoff-summarization"),
+        json!({ "modelSlot": "summarizer" }),
+        false,
+    );
+    assert_eq!(
+        unbound_handoff_slot(deferred.root()),
+        Some("summarizer".to_string())
+    );
+    assert_eq!(
+        handoff_model_id(deferred.root()),
+        None,
+        "an unbound slot names no model, so the agent condenses on its own"
+    );
+
+    // A slot that *was* bound leaves only the model behind, which is the ordinary case.
+    let bound = set_with(
+        Some("handoff-summarization"),
+        json!({ "model": "openrouter/cheap" }),
+        false,
+    );
+    assert_eq!(unbound_handoff_slot(bound.root()), None);
+
+    // A non-handoff strategy resolves no second model at all, so a stale slot on one is not
+    // something the run is doing anything with.
+    let self_summarizing = set_with(None, json!({ "modelSlot": "summarizer" }), false);
+    assert_eq!(unbound_handoff_slot(self_summarizing.root()), None);
+}
+
 // ---------------------------------------------------------------------------
 // What each pending compaction admits, and what it says
 // ---------------------------------------------------------------------------

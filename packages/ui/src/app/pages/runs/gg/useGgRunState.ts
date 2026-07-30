@@ -491,11 +491,16 @@ export interface GgRunState {
 
   // --- The run's clock -----------------------------------------------------
   // The span the stream covers: its first and last envelope timestamps. Null before the
-  // first event arrives. A live view measures the run's wall clock from `firstTimestamp` to
-  // the ticking present (the newest event always lags it); a finished one measures to
-  // `lastTimestamp`. See `ggRuntime`.
+  // first event arrives. A live view measures the run's wall clock from
+  // `executionStartedAt` to the ticking present (the newest event always lags it); a
+  // finished one measures to `lastTimestamp`. See `ggRuntime`.
   firstTimestamp: string | null;
   lastTimestamp: string | null;
+  // When the run's *execution* began — setup done, the host's runtime cap now running.
+  // Null while the run is still being set up (or never got past it), which is what keeps
+  // the runtime read-out empty rather than counting the image pull against a limit that
+  // is not yet ticking.
+  executionStartedAt: string | null;
 
   // --- Per-agent slices ----------------------------------------------------
   // The same fold run over each agent's own slice of the stream, keyed by agent id
@@ -856,11 +861,13 @@ export interface DerivedGgState {
   // The capability set gg announced on `session_started`; null until it arrives.
   announcedCapabilitySet: GgCapabilitySet | null;
   // The span the stream covers: the first and last envelope timestamps in it. Null on an
-  // empty stream. This is the run's wall clock as its telemetry knows it — a live view
-  // measures against `now` instead of `lastTimestamp`, since the newest event always lags
-  // the clock (see `ggRuntime`).
+  // empty stream. A live view measures against `now` instead of `lastTimestamp`, since the
+  // newest event always lags the clock (see `ggRuntime`).
   firstTimestamp: string | null;
   lastTimestamp: string | null;
+  // When setup ended and the run began executing — the origin the wall clock is measured
+  // from, matching the host's runtime cap. Null while the run is still in setup.
+  executionStartedAt: string | null;
   // How many turns this partition took — one per `turn_started` event, which gg
   // emits once per model request/response cycle whatever the capabilities are (so it
   // is always available). Over the whole stream it is the run's total turns; over one
@@ -1200,6 +1207,17 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   // the run's wall-clock read-out is measured over (see `ggRuntime`).
   let firstTimestamp: string | null = null;
   let lastTimestamp: string | null = null;
+  // When the run stopped being *set up* and started *running* — the origin the wall clock
+  // is measured from, because that is the origin the host's runtime cap is measured from
+  // (it wraps the session drive alone; the image pull, the container start, the harness
+  // install and the test-case init each get their own budget before it). Left null while a
+  // run is still in setup, so a queued run reads "—" rather than counting up against a
+  // limit that is not yet running.
+  let executionStartedAt: string | null = null;
+  // The newest setup event seen so far. The last one before the run's first real event is
+  // the moment setup finished, which is a truer origin than that first event: gg downloads
+  // its own release inside the capped future, before it can emit anything.
+  let lastSetupTimestamp: string | null = null;
   // Each agent's stream span — the first and last event it emitted — and, separately, the
   // moment it *ended* (its `agent_returned`, or the `agent_status` that took it terminal).
   // The two are distinct: an agent's last event is not its end (a returned agent emits
@@ -1309,6 +1327,13 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     // partition uses.
     if (firstTimestamp == null) firstTimestamp = event.timestamp;
     lastTimestamp = event.timestamp;
+    // Everything the orchestrator emits before the run drives is setup; `teardown` is the
+    // one `system` stage that is not, and it only ever follows the drive.
+    if (event.type === "system" && event.stage !== "teardown") {
+      lastSetupTimestamp = event.timestamp;
+    } else if (executionStartedAt == null) {
+      executionStartedAt = lastSetupTimestamp ?? event.timestamp;
+    }
     const emitter =
       event.type === "gg" ? (event.event.agentId ?? ROOT_ID) : ROOT_ID;
     const span = agentSpans.get(emitter);
@@ -1774,6 +1799,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     announcedCapabilitySet,
     firstTimestamp,
     lastTimestamp,
+    executionStartedAt,
     turnCount,
     usage,
     slotUsage,

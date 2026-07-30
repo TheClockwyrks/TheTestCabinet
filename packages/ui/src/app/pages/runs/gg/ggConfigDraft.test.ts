@@ -18,11 +18,15 @@ import {
   type GgConfigDraft,
 } from "./ggConfigDraft";
 import {
+  CAPABILITIES,
   DEFAULT_ERROR_RATE_WINDOW,
   DEFAULT_MAX_CONSECUTIVE_ERRORS,
   DEFAULT_MAX_ERROR_RATE,
   DEFAULT_MAX_PARALLEL,
+  DEFAULT_SHELL_MAX_CHARS,
+  DEFAULT_SHELL_MAX_LINES,
   RUN_LIMIT_SPECS,
+  paramApplies,
 } from "./ggCatalog";
 
 // One agent profile with only the fields a given assertion cares about; the rest take
@@ -706,5 +710,220 @@ describe("gg run limits", () => {
     draft.limits.maxErrorRate = "0.5";
     draft.limits.errorRateWindow = "50";
     expect(runLimitsWarning(draft.limits)).toBeNull();
+  });
+});
+
+// --- A capability param that names a model -------------------------------------
+//
+// Compaction's handoff model is the one model in a configuration that is not an agent's
+// own binding, and it defers to a model slot on exactly the same terms: the launch form
+// asks for the slot, binding writes the collected id into `model`, and the set a run
+// records is fully pinned. These pin that whole path, because a slot that is declared but
+// never asked for at launch is indistinguishable from a working one until the run starts
+// compacting on the wrong model.
+
+// The compaction capability, deferring its handoff model to `summarizer`.
+function deferredCompaction(): GgCapabilityConfig {
+  return {
+    id: "compaction",
+    enabled: true,
+    implementation: "handoff-summarization",
+    params: { modelSlot: "summarizer" },
+  };
+}
+
+// One agent's compaction params out of a wire set.
+function compactionParams(set: GgCapabilitySet): Record<string, unknown> {
+  const capability = set.agents?.[0]?.capabilities?.find(
+    (c) => c.id === "compaction",
+  );
+  return (capability?.params ?? {}) as Record<string, unknown>;
+}
+
+describe("a model slot a capability param defers to", () => {
+  it("is asked for at launch even though no agent binds it", () => {
+    const configured = set({
+      agents: [agent({ capabilities: [deferredCompaction()] })],
+      modelSlots: [{ name: "summarizer", defaultModelId: "vendor/cheap" }],
+    });
+    expect(launchModelSlots(configured)).toEqual([
+      { name: "summarizer", defaultModelId: "vendor/cheap" },
+    ]);
+  });
+
+  it("is bound at launch into the param the run actually reads", () => {
+    const configured = set({
+      agents: [agent({ capabilities: [deferredCompaction()] })],
+      modelSlots: [{ name: "summarizer" }],
+    });
+    const bound = bindModelSlots(configured, { summarizer: "vendor/cheap" });
+    expect(compactionParams(bound)).toEqual({ model: "vendor/cheap" });
+    // What runs is fully pinned: nothing is left deferring to a slot that no longer
+    // exists on the set.
+    expect(bound.modelSlots).toBeUndefined();
+  });
+
+  it("binds to nothing rather than to an empty model id", () => {
+    // A slot the launcher left blank is the documented "no handoff model" arm — gg
+    // condenses on the agent's own model — not a model called "".
+    const configured = set({
+      agents: [agent({ capabilities: [deferredCompaction()] })],
+      modelSlots: [{ name: "summarizer" }],
+    });
+    expect(compactionParams(bindModelSlots(configured, {}))).toEqual({});
+  });
+
+  it("round-trips through the draft as a slot rather than a model id", () => {
+    const configured = set({
+      agents: [agent({ capabilities: [deferredCompaction()] })],
+      modelSlots: [{ name: "summarizer" }],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    const slotId = draft.modelSlots.find((s) => s.name === "summarizer")?.id;
+    expect(slotId).toBeTruthy();
+    expect(draft.agents[0]!.capabilities.compaction?.params?.modelSlot).toBe(
+      slotId,
+    );
+    expect(compactionParams(capabilitySetFromDraft(draft, null))).toEqual({
+      modelSlot: "summarizer",
+    });
+  });
+
+  it("keeps the slot declared when only a param refers to it", () => {
+    // `capabilitySetFromDraft` saves only the slots something references. A slot used
+    // by nothing but a capability param would otherwise be dropped on the first save,
+    // silently turning a deferred model into an unbindable one.
+    const configured = set({
+      agents: [agent({ capabilities: [deferredCompaction()] })],
+      modelSlots: [{ name: "summarizer", defaultModelId: "vendor/cheap" }],
+    });
+    const saved = capabilitySetFromDraft(
+      draftFromCapabilitySet(configured),
+      null,
+    );
+    expect(saved.modelSlots).toEqual([
+      { name: "summarizer", defaultModelId: "vendor/cheap" },
+    ]);
+  });
+
+  it("survives a slot rename, which is what binding by identity buys", () => {
+    const configured = set({
+      agents: [agent({ capabilities: [deferredCompaction()] })],
+      modelSlots: [{ name: "summarizer" }],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    const renamed: GgConfigDraft = {
+      ...draft,
+      modelSlots: draft.modelSlots.map((s) => ({ ...s, name: "critic" })),
+    };
+    expect(compactionParams(capabilitySetFromDraft(renamed, null))).toEqual({
+      modelSlot: "critic",
+    });
+  });
+
+  it("leaves a pinned model alone", () => {
+    const configured = set({
+      agents: [
+        agent({
+          capabilities: [
+            {
+              id: "compaction",
+              enabled: true,
+              implementation: "handoff-summarization",
+              params: { model: "vendor/pinned" },
+            },
+          ],
+        }),
+      ],
+    });
+    expect(
+      compactionParams(bindModelSlots(configured, { summarizer: "vendor/x" })),
+    ).toEqual({ model: "vendor/pinned" });
+  });
+});
+
+// --- Params only shown where they are read -------------------------------------
+//
+// A control the selected strategy does not read can only mislead, so the catalog names
+// the implementations each param applies under. These pin the ones whose gating is not
+// obvious from the label — and the two shell ceilings, whose defaults the form seeds.
+
+describe("params gated on the selected implementation", () => {
+  const paramOf = (capId: string, key: string) => {
+    const param = CAPABILITIES.find((c) => c.id === capId)?.params?.find(
+      (p) => p.key === key,
+    );
+    if (!param) throw new Error(`no ${capId}.${key} param in the catalog`);
+    return param;
+  };
+
+  it("offers the shell ceilings under the truncating modes only", () => {
+    for (const key of ["maxLines", "maxChars"]) {
+      const param = paramOf("shell", key);
+      expect(paramApplies(param, "")).toBe(true);
+      expect(paramApplies(param, "offload")).toBe(true);
+      expect(paramApplies(param, "inline")).toBe(false);
+    }
+  });
+
+  it("seeds the shell ceilings to the defaults gg would apply anyway", () => {
+    expect(paramOf("shell", "maxLines").defaultValue).toBe(
+      String(DEFAULT_SHELL_MAX_LINES),
+    );
+    expect(paramOf("shell", "maxChars").defaultValue).toBe(
+      String(DEFAULT_SHELL_MAX_CHARS),
+    );
+  });
+
+  it("offers the read-file line cap under the capped modes only", () => {
+    const param = paramOf("read-file", "lineCap");
+    expect(paramApplies(param, "")).toBe(false);
+    expect(paramApplies(param, "hard-cap")).toBe(true);
+    expect(paramApplies(param, "default-cap")).toBe(true);
+  });
+
+  it("offers each memory limit under the strategies that read it", () => {
+    // gg ignores a limit the chosen strategy does not use (`MemoryCaps::resolve`), so
+    // each of these is a box that would change nothing where it is hidden.
+    const applies = (key: string, strategy: string) =>
+      paramApplies(paramOf("memories", key), strategy);
+    expect([applies("maxCount", ""), applies("maxCount", "keyword-search"), applies("maxCount", "markdown")])
+      .toEqual([true, true, false]);
+    expect([applies("maxTotalLen", ""), applies("maxTotalLen", "markdown")])
+      .toEqual([true, false]);
+    expect([applies("maxLenIndex", "markdown"), applies("maxLenIndex", "")])
+      .toEqual([true, false]);
+    expect([applies("maxResults", "keyword-search"), applies("maxResults", "")])
+      .toEqual([true, false]);
+    // Two apply everywhere, and say so by naming no implementations at all.
+    for (const key of ["maxLenPerMemory", "maxLenDescription"]) {
+      expect(paramOf("memories", key).showWhenImplementation).toBeUndefined();
+    }
+  });
+
+  it("keeps a hidden param's stored value through a round-trip", () => {
+    // Hiding a control must not delete what it held: one capability set is swept across
+    // every arm of a study, and switching strategy to look at another arm would
+    // otherwise silently drop the ceilings the first arm was configured with.
+    const configured = set({
+      agents: [
+        agent({
+          capabilities: [
+            {
+              id: "shell",
+              enabled: true,
+              implementation: "inline",
+              params: { maxLines: 40 },
+            },
+          ],
+        }),
+      ],
+    });
+    const saved = capabilitySetFromDraft(
+      draftFromCapabilitySet(configured),
+      null,
+    );
+    const shell = saved.agents?.[0]?.capabilities?.find((c) => c.id === "shell");
+    expect(shell?.params).toEqual({ maxLines: 40 });
   });
 });

@@ -146,6 +146,10 @@ export interface ParamSpec {
   // completion capability's validation gate takes. Its draft value is the JSON text of
   // the list, so it stays a plain string like every other control while still holding
   // structure the form can lay out.
+  // A `model` param names a model the same way an agent's own binding does: either a
+  // model slot the launch form fills in, or a model id pinned here. It renders the same
+  // two-field control the agent rows use, and writes to *two* keys — this one for a
+  // pinned id, and [slotKey] for a deferred slot.
   kind:
     | "fraction"
     | "number"
@@ -155,7 +159,13 @@ export interface ParamSpec {
     | "toggles"
     | "boolean"
     | "commands"
-    | "agent";
+    | "agent"
+    | "model";
+  // The companion param key a `model` param defers through: the name of the model slot
+  // the launcher must fill in. Binding rewrites it into [key] and drops it, so a set that
+  // reaches gg carries one only when the slot went unbound. Required on a `model` param
+  // and meaningless on any other.
+  slotKey?: string;
   hint?: string;
   placeholder?: string;
   // The value gg falls back to when this param is left unset, seeded into the field
@@ -273,24 +283,37 @@ export const READ_MODE_OPTIONS = [
 export const READ_MODE_HINT =
   "Unlimited returns the whole file in one call. Hard cap never returns more than the line cap per call. Default cap returns the line cap unless the model asks for more.";
 
+// The read modes that enforce the line cap — everything except `unlimited`, which
+// returns the whole file and never reads it.
+export const CAPPED_READ_MODES = ["hard-cap", "default-cap"] as const;
+
 // The line cap gg falls back to when a capped read mode names none.
 export const DEFAULT_READ_LINE_CAP = 250;
 
 // Where a `shell` command's output goes — the shell capability's implementation. The
-// values are gg's implementation ids (`crates/gg/src/tools/shell.rs`); the empty value
-// is the default (inline), which is what gg has always done. Offloading writes every
-// command's stdout and stderr to a file pair under `/tmp/gg/shell` and returns only the
-// configured tail, so a chatty build cannot spend a large slice of the window in one
-// call.
+// values are gg's implementation ids (`crates/core/src/gg.rs`); the empty value is the
+// default (adaptive). Both truncating modes write every command's stdout and stderr to a
+// file pair under `/tmp/gg/shell` and return only the configured tail, so a chatty build
+// cannot spend a large slice of the window in one call.
 export const SHELL_OUTPUT_OPTIONS = [
-  { value: "", label: "Inline (default)" },
+  { value: "", label: "Adaptive (default)" },
   { value: "offload", label: "Offload to files" },
+  { value: "inline", label: "Inline" },
 ] as const;
+
+// The shell output modes that truncate a command's output to the two ceilings below —
+// everything except `inline`, which returns the whole of it and reads neither param.
+export const TRUNCATING_SHELL_OUTPUT_MODES = ["", "offload"] as const;
 
 // What each output mode does — the detail lifted off the picker's option labels into
 // the field's help tooltip.
 export const SHELL_OUTPUT_HINT =
-  "Inline returns the whole output (capped at 16 KiB) and writes nothing to disk. Offload writes every command's full stdout and stderr to a file pair under /tmp/gg/shell, returns only the last N lines and/or characters, and tells the agent where to grep for the rest. Offloading needs at least one of the two ceilings below; with neither, gg warns at launch and runs inline.";
+  "Adaptive returns only the exit code for a command that succeeded, and the tail for one that failed. Offload returns the tail for every command. Both write the full stdout and stderr to a file pair under /tmp/gg/shell and tell the agent where to grep for the rest. Inline returns the whole output (capped at 16 KiB) and writes nothing to disk.";
+
+// The two ceilings gg falls back to when a truncating shell output mode names neither
+// (`DEFAULT_MAX_LINES`/`DEFAULT_MAX_CHARS` in `crates/gg/src/tools/shell.rs`).
+export const DEFAULT_SHELL_MAX_LINES = 250;
+export const DEFAULT_SHELL_MAX_CHARS = 4096;
 
 // Whether the autoload-specifications capability **locks** the injected specs into the
 // window. The values are gg's implementation ids (`crates/core/src/gg.rs`); the empty
@@ -394,6 +417,21 @@ export const MEMORY_STRATEGY_OPTIONS = [
   { value: "markdown", label: "Markdown + index" },
   { value: "keyword-search", label: "Keyword search" },
 ] as const;
+
+// The memory strategies that bound the store by a **count** of notes: the scratchpad
+// (whose notes live in the window) and keyword search. A markdown run is bounded by its
+// index instead, since every memory needs a line in it.
+export const COUNTED_MEMORY_STRATEGIES = ["", "keyword-search"] as const;
+
+// The scratchpad strategy alone — the only one whose notes are carried in the window, and
+// so the only one with a total-length budget.
+export const SCRATCHPAD_MEMORY_STRATEGY = [""] as const;
+
+// The strategy that keeps a pinned markdown index — the only one with an index to bound.
+export const INDEXED_MEMORY_STRATEGY = ["markdown"] as const;
+
+// The strategy that offers `search_memories` — the only one with results to bound.
+export const SEARCHING_MEMORY_STRATEGY = ["keyword-search"] as const;
 
 // What each memory strategy does — the detail lifted off the picker's option labels
 // into the field's help tooltip.
@@ -501,15 +539,17 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "maxLines",
         label: "Max lines",
         kind: "number",
-        placeholder: "e.g. 200",
-        hint: "Trailing lines returned inline when output is offloaded; ignored under the inline mode. Set this, Max characters, or both.",
+        defaultValue: String(DEFAULT_SHELL_MAX_LINES),
+        showWhenImplementation: TRUNCATING_SHELL_OUTPUT_MODES,
+        hint: "Trailing lines of a truncated command's output returned inline. Clear it for no line ceiling.",
       },
       {
         key: "maxChars",
         label: "Max characters",
         kind: "number",
-        placeholder: "e.g. 8000",
-        hint: "Trailing characters returned inline when output is offloaded; ignored under the inline mode. With both set, the tighter one decides.",
+        defaultValue: String(DEFAULT_SHELL_MAX_CHARS),
+        showWhenImplementation: TRUNCATING_SHELL_OUTPUT_MODES,
+        hint: "Trailing characters of a truncated command's output returned inline. With both ceilings set, the tighter one decides; clear both and gg uses its defaults.",
       },
     ],
     tools: ["shell"],
@@ -535,7 +575,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Line cap",
         kind: "number",
         defaultValue: String(DEFAULT_READ_LINE_CAP),
-        hint: "Lines per call under either capped mode; ignored when the mode is unlimited.",
+        showWhenImplementation: CAPPED_READ_MODES,
+        hint: "Lines per call under either capped mode.",
       },
     ],
     tools: ["read_file"],
@@ -649,13 +690,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       {
         key: "model",
         label: "Compaction model",
-        kind: "text",
+        kind: "model",
+        slotKey: "modelSlot",
         placeholder: "e.g. openai/gpt-4.1-mini",
         // Only the handoff strategies condense on another model at all, so the field
         // is offered only under them rather than sitting inert beside every other
         // strategy.
         showWhenImplementation: HANDOFF_SUMMARIZERS,
-        hint: "The model that condenses the thread instead of the agent. Leave blank (or name a model that will not resolve) and gg condenses on the agent's own model rather than skipping the compaction.",
+        hint: "The model that condenses the thread instead of the agent. Take it from a model slot to pick it when the run is launched, or pin one here. Leave it unset (or name a model that will not resolve) and gg condenses on the agent's own model rather than skipping the compaction.",
       },
     ],
     tools: ["compact"],
@@ -705,17 +747,19 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     implementationLabel: "Memory strategy",
     implementationOptions: MEMORY_STRATEGY_OPTIONS,
     implementationHint: MEMORY_STRATEGY_HINT,
-    // Every limit is offered under every strategy: gg ignores the ones the chosen
-    // strategy does not use rather than rejecting them, so one saved capability set
-    // can be swept across all three arms without editing its params each time. Zero
-    // means unlimited everywhere.
+    // Each limit is offered only under the strategies that read it — gg ignores the rest,
+    // and a box that changes nothing can only mislead. A value stored for a limit the
+    // current strategy hides is still kept and re-saved, so one capability set can still
+    // be swept across all three arms without retyping its params. Zero means unlimited
+    // everywhere.
     params: [
       {
         key: "maxCount",
         label: "Max memories",
         kind: "number",
         defaultValue: String(DEFAULT_MEMORY_MAX_COUNT),
-        hint: "How many notes the model may keep at once. Scratchpad and keyword-search only — a markdown run is bounded by its index instead, since every memory needs a line in it. 0 for unlimited.",
+        showWhenImplementation: COUNTED_MEMORY_STRATEGIES,
+        hint: "How many notes the model may keep at once. 0 for unlimited.",
       },
       {
         key: "maxLenPerMemory",
@@ -729,14 +773,16 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Max length total (chars)",
         kind: "number",
         defaultValue: String(DEFAULT_MEMORY_MAX_TOTAL_LEN),
-        hint: "Character ceiling across all note bodies together. Scratchpad only — it is the budget for what the window carries. 0 for unlimited.",
+        showWhenImplementation: SCRATCHPAD_MEMORY_STRATEGY,
+        hint: "Character ceiling across all note bodies together — the budget for what the window carries. 0 for unlimited.",
       },
       {
         key: "maxLenIndex",
         label: "Max index length (chars)",
         kind: "number",
         defaultValue: String(DEFAULT_MEMORY_MAX_LEN_INDEX),
-        hint: "Character ceiling on the pinned index. Markdown only, where it is the real budget: a create whose entry would not fit is refused, which is what bounds how many memories the run can hold. 0 for unlimited.",
+        showWhenImplementation: INDEXED_MEMORY_STRATEGY,
+        hint: "Character ceiling on the pinned index — the real budget here: a create whose entry would not fit is refused, which is what bounds how many memories the run can hold. 0 for unlimited.",
       },
       {
         key: "maxLenDescription",
@@ -750,7 +796,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Max search results",
         kind: "number",
         defaultValue: String(DEFAULT_MEMORY_MAX_RESULTS),
-        hint: "How many memories one `search_memories` call reports. Keyword-search only. 0 for unlimited.",
+        showWhenImplementation: SEARCHING_MEMORY_STRATEGY,
+        hint: "How many memories one `search_memories` call reports. 0 for unlimited.",
       },
     ],
     tools: [

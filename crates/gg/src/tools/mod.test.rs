@@ -6,7 +6,7 @@ use tempfile::TempDir;
 use test_cabinet_core::gg::{
     CAPABILITY_EDIT_FILE, CAPABILITY_FILESYSTEM, CAPABILITY_LIST_DIR, CAPABILITY_READ_FILE,
     CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_WRITE_FILE, FILESYSTEM_TOOL_CAPABILITIES,
-    GgAgentConfig, GgCapabilityConfig,
+    GgAgentConfig, GgCapabilityConfig, SHELL_OUTPUT_OFFLOAD,
 };
 
 use crate::model::ToolCall;
@@ -227,12 +227,12 @@ fn shell_offload_comes_from_the_shell_capability() {
         (Some(120), Some(9_000))
     );
 
-    // An unconfigured capability keeps the historical whole-output result.
+    // An unconfigured capability gets the default mode at its default ceilings.
     assert_eq!(
         shell_offload(&set_with(vec![GgCapabilityConfig::enabled(
             CAPABILITY_SHELL
         )])),
-        OffloadPolicy::Inline
+        OffloadPolicy::default()
     );
 
     // A *disabled* shell capability resolves to inline whatever it declares: offloading is a

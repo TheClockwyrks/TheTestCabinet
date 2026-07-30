@@ -56,6 +56,7 @@ export interface ShellOutput {
   /**
    * Merged stdout-then-stderr, tail-truncated at 16 KiB — or, when the run offloads shell output,
    * at the configured line/character ceiling, with a note naming the files holding the whole of it.
+   * Under the default `adaptive` mode a command that succeeded returns just that note.
    */
   output: string;
   /** Whether the cap cut `output`, dropping the head and keeping the tail. */

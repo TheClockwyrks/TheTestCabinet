@@ -17,6 +17,7 @@
 
 use super::*;
 use crate::model::Role;
+use test_cabinet_core::gg::SHELL_OUTPUT_OFFLOAD;
 
 /// A client that answers the first turn with `program` — its whole reply, exactly as this protocol
 /// asks — and then ends the session by calling `finish`.

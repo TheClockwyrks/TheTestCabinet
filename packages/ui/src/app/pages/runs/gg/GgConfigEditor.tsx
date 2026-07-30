@@ -14,6 +14,7 @@ import {
   SUBAGENT_SCOPES,
   paramApplies,
   type CapGroup,
+  type ParamSpec,
   type RunLimitSpec,
 } from "./ggCatalog";
 import {
@@ -101,6 +102,102 @@ function Switch({
       />
       <span className={gg.switchTrack} aria-hidden="true" />
     </span>
+  );
+}
+
+/**
+ * A [`model` param](ParamSpec)'s control: the same two-field binding an agent's own model
+ * uses, so "which model condenses the thread" is picked the way every other model in the
+ * configuration is — from a slot the launch form fills in, or pinned here.
+ *
+ * The param defers to a slot exactly while its [slot key](ParamSpec.slotKey) is *present*
+ * in the draft, empty or not: an operator who has chosen to defer but not yet picked a
+ * slot is a real state the form has to hold (and flag), not one it should silently
+ * collapse back into a pinned model.
+ */
+function ModelParamField({
+  param,
+  slotKey,
+  params,
+  modelSlots,
+  models,
+  readOnly,
+  onSet,
+  onClear,
+}: {
+  param: ParamSpec;
+  slotKey: string;
+  params: Record<string, string>;
+  modelSlots: ReadonlyArray<GgModelSlotDraft>;
+  models: Model[];
+  readOnly?: boolean;
+  onSet: (key: string, value: string) => void;
+  onClear: (key: string) => void;
+}) {
+  const deferred = slotKey in params;
+  const slotId = params[slotKey] ?? "";
+  const boundSlot = modelSlots.find((s) => s.id === slotId);
+  return (
+    <div className={`${gg.capParamField} ${gg.modelParamField}`}>
+      <FieldLabel label={param.label} hint={param.hint} />
+      <div className={gg.slotFields}>
+        <label className={`${runExec.field} ${gg.slotSourceField}`}>
+          <span className={runExec.fieldLabel}>Model from</span>
+          <select
+            className={runExec.select}
+            value={deferred ? "model-slot" : "model"}
+            disabled={readOnly}
+            onChange={(e) => {
+              if (e.target.value === "model-slot") {
+                onSet(slotKey, modelSlots[0]?.id ?? "");
+              } else {
+                onClear(slotKey);
+              }
+            }}
+          >
+            <option value="model-slot">a model slot (at launch)</option>
+            <option value="model">a specific model (fixed here)</option>
+          </select>
+        </label>
+        {deferred ? (
+          <label className={`${runExec.field} ${gg.slotModelField}`}>
+            <span className={runExec.fieldLabel}>Model slot</span>
+            <select
+              className={runExec.select}
+              value={slotId}
+              disabled={readOnly}
+              onChange={(e) => onSet(slotKey, e.target.value)}
+            >
+              {!boundSlot && <option value={slotId}>(none)</option>}
+              {modelSlots.map((slot) => (
+                <option key={slot.id} value={slot.id}>
+                  {slot.name.trim() || "(unnamed slot)"}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className={`${runExec.field} ${gg.slotModelField}`}>
+            <span className={runExec.fieldLabel}>Model</span>
+            <ModelCombobox
+              value={params[param.key] ?? ""}
+              onChange={(v) => onSet(param.key, v)}
+              models={models}
+              harnessFamily={GG_MODEL_FAMILY}
+              inputClassName={runExec.input}
+              disabled={readOnly}
+              placeholder={param.placeholder}
+            />
+          </label>
+        )}
+      </div>
+      {deferred && !boundSlot && (
+        <p className={gg.fieldError}>
+          This defers to no model slot, so a run would never fill it in. Pick one
+          of the configuration&rsquo;s slots, or name a model outright.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -495,6 +592,15 @@ export function GgConfigEditor({
   const setParam = (id: string, key: string, param: string) => {
     const base = agent.capabilities[id] ?? blankCapabilityDraft();
     updateCap(id, { params: { ...(base.params ?? {}), [key]: param } });
+  };
+  // Drop a param key entirely, which is a different state from setting it empty: a
+  // `model` param defers to a slot exactly while its slot key is *present*, so "pin a
+  // model instead" has to remove the key rather than blank it.
+  const clearParam = (id: string, key: string) => {
+    const base = agent.capabilities[id] ?? blankCapabilityDraft();
+    const params = { ...(base.params ?? {}) };
+    delete params[key];
+    updateCap(id, { params });
   };
   const setToolAblation = (tools: ReadonlyArray<string>, on: boolean) =>
     patchAgent({
@@ -970,6 +1076,25 @@ export function GgConfigEditor({
                                         )}
                                       </div>
                                     </div>
+                                  );
+                                }
+                                if (p.kind === "model" && p.slotKey) {
+                                  return (
+                                    <ModelParamField
+                                      key={p.key}
+                                      param={p}
+                                      slotKey={p.slotKey}
+                                      params={draft.params ?? {}}
+                                      modelSlots={value.modelSlots}
+                                      models={models}
+                                      readOnly={readOnly}
+                                      onSet={(key, next) =>
+                                        setParam(cap.id, key, next)
+                                      }
+                                      onClear={(key) =>
+                                        clearParam(cap.id, key)
+                                      }
+                                    />
                                   );
                                 }
                                 return (

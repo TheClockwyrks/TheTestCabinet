@@ -65,10 +65,10 @@ use async_trait::async_trait;
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_MEMORIES, COMPACTION_PARAM_MODEL,
-    COMPACTION_STRATEGY_HANDOFF_COMPACTION, COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION,
-    COMPACTION_STRATEGY_MEMORY, COMPACTION_STRATEGY_SELF_COMPACTION,
-    COMPACTION_STRATEGY_SELF_SUMMARIZATION, GgAgentConfig, GgCapabilitySet, GgContextSource,
-    GgRetainedState, GgTelemetryKind,
+    COMPACTION_PARAM_MODEL_SLOT, COMPACTION_STRATEGY_HANDOFF_COMPACTION,
+    COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION, COMPACTION_STRATEGY_MEMORY,
+    COMPACTION_STRATEGY_SELF_COMPACTION, COMPACTION_STRATEGY_SELF_SUMMARIZATION, GgAgentConfig,
+    GgCapabilitySet, GgContextSource, GgRetainedState, GgTelemetryKind,
 };
 
 use crate::context::{ContextModel, Retention, code_heading};
@@ -824,6 +824,34 @@ pub fn handoff_model_id(set: &GgAgentConfig) -> Option<String> {
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|model| !model.is_empty())
+        .map(str::to_string)
+}
+
+/// The [model slot](COMPACTION_PARAM_MODEL_SLOT) a handoff compaction is still deferring to — a
+/// slot the launcher was supposed to fill in and did not, so the handoff model is unset and the
+/// agent will condense on its own model instead.
+///
+/// `None` for every set that launched normally: binding writes the collected model to
+/// [`model`](COMPACTION_PARAM_MODEL) and drops the slot key. Reported at launch rather than
+/// resolved here, because gg has no slot table to resolve it against — the models were bound before
+/// the run started.
+pub fn unbound_handoff_slot(set: &GgAgentConfig) -> Option<String> {
+    let capability = set
+        .capability(CAPABILITY_COMPACTION)
+        .filter(|cap| cap.enabled)?;
+    let strategy = CompactionStrategy::resolve(
+        capability.implementation.as_deref(),
+        set.is_enabled(CAPABILITY_MEMORIES),
+    );
+    if !strategy.is_handoff() {
+        return None;
+    }
+    capability
+        .params
+        .get(COMPACTION_PARAM_MODEL_SLOT)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|slot| !slot.is_empty())
         .map(str::to_string)
 }
 

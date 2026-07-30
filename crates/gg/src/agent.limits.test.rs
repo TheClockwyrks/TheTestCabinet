@@ -892,14 +892,13 @@ async fn unusable_limit_declarations_warn_on_the_root_stream_and_launch_anyway()
     assert!(summary.limits.max_consecutive_errors.is_none());
 }
 
-/// **An `offload` mode with no ceiling warns on the root stream and launches anyway.**
+/// **An unrecognized shell output mode warns on the root stream and launches anyway.**
 ///
-/// Offloading is defined by the ceiling it truncates past, so a shell capability that names the mode
-/// without naming `maxLines` or `maxChars` runs the *control* arm — full output, inline — under the
-/// treatment arm's name. That is the same silent wrong-experiment failure a stale `maxTurns` is, and
+/// A mode gg does not recognize reads as the default one, so a typo runs the *default* arm under
+/// another arm's name. That is the same silent wrong-experiment failure a stale `maxTurns` is, and
 /// it is reported on the same terms: loudly, once, before the first turn, without failing the launch.
 #[tokio::test]
-async fn an_offload_mode_without_a_ceiling_warns_and_launches_anyway() {
+async fn an_unknown_shell_output_mode_warns_and_launches_anyway() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-offload".to_string()), Box::new(sink.clone()));
@@ -909,7 +908,7 @@ async fn an_offload_mode_without_a_ceiling_warns_and_launches_anyway() {
         .iter_mut()
         .find(|capability| capability.id == CAPABILITY_SHELL)
         .expect("the minimal set enables shell");
-    shell.implementation = Some(SHELL_OUTPUT_OFFLOAD.to_string());
+    shell.implementation = Some("offlaod".to_string());
 
     assert_eq!(
         run(&invocation(dir.path(), set), &emitter).await,
@@ -918,7 +917,66 @@ async fn an_offload_mode_without_a_ceiling_warns_and_launches_anyway() {
 
     let warned = warn_messages(&sink.events()).join("\n");
     assert!(
-        warned.contains("maxLines") && warned.contains("maxChars"),
-        "the warning names the two params that would arm it:\n{warned}"
+        warned.contains("offlaod") && warned.contains(SHELL_OUTPUT_ADAPTIVE),
+        "the warning names the unreadable mode and the one gg ran instead:\n{warned}"
     );
+}
+
+/// **An unbound compaction model slot warns on the root stream and launches anyway.**
+///
+/// Binding the slots is the launcher's job; a set that reaches gg still deferring one has a
+/// compaction that will silently run on the agent's own model — a different experiment from the one
+/// the configuration describes, and one whose only other trace is the cost split.
+#[tokio::test]
+async fn an_unbound_compaction_model_slot_warns_and_launches_anyway() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-compaction".to_string()), Box::new(sink.clone()));
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents[0].capabilities.push(GgCapabilityConfig {
+        id: CAPABILITY_COMPACTION.to_string(),
+        enabled: true,
+        implementation: Some("handoff-summarization".to_string()),
+        params: serde_json::json!({ "modelSlot": "summarizer" }),
+    });
+
+    assert_eq!(
+        run(&invocation(dir.path(), set), &emitter).await,
+        SessionOutcome::Ran
+    );
+
+    let warned = warn_messages(&sink.events()).join("\n");
+    assert!(
+        warned.contains("summarizer") && warned.contains("own model"),
+        "the warning names the slot and what gg did instead:\n{warned}"
+    );
+}
+
+/// **A recognized mode does not warn.** The check is a typo detector, not a nag: each of the three
+/// modes — including the two an operator has to type — launches silently.
+#[tokio::test]
+async fn every_recognized_shell_output_mode_launches_without_a_warning() {
+    for mode in SHELL_OUTPUT_MODES {
+        let dir = TempDir::new().unwrap();
+        let sink = CollectingSink::new();
+        let emitter = Emitter::with_sink(Some("run-offload".to_string()), Box::new(sink.clone()));
+        let mut set = GgCapabilitySet::minimal("mock/echo");
+        let shell = set.agents[0]
+            .capabilities
+            .iter_mut()
+            .find(|capability| capability.id == CAPABILITY_SHELL)
+            .expect("the minimal set enables shell");
+        shell.implementation = Some(mode.to_string());
+
+        assert_eq!(
+            run(&invocation(dir.path(), set), &emitter).await,
+            SessionOutcome::Ran
+        );
+
+        let warned = warn_messages(&sink.events()).join("\n");
+        assert!(
+            !warned.contains("output mode"),
+            "`{mode}` is a mode gg offers:\n{warned}"
+        );
+    }
 }

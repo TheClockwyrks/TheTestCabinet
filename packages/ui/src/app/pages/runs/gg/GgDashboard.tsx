@@ -531,7 +531,7 @@ function ThroughputCard({
 // stop the run at.
 //
 // Two figures rather than one because either alone misleads (see `ggRuntime`): the wall clock
-// is what the operator waits and what the timeout is measured against, while the sum is the
+// is measured over exactly the span the timeout is (setup excluded), while the sum is the
 // work the run actually got done in that time — a run that fans four agents out spends four
 // minutes of agent time per wall minute, and the gap between the figures is the parallelism
 // the configuration bought. The wall clock counts up live, so the card is a clock rather than
@@ -574,7 +574,7 @@ function RuntimeCard({
         {wallMs == null ? "—" : formatRuntime(wallMs)}
       </span>
       <span className={styles.metricUnit}>
-        {wallMs == null ? "no telemetry yet" : "wall clock"}
+        {wallMs == null ? "not running yet" : "wall clock"}
       </span>
       {/* The sum reads as lines under the headline rather than as its own tile: it is the
           same clock counted per agent, so it belongs under the figure it decomposes.
@@ -657,7 +657,7 @@ function ConfigurationCard({ set }: { set: GgCapabilitySet }) {
             <div className={styles.slots}>
               <span className={styles.slot}>
                 <span className={styles.slotName}>{agent.name}</span>
-                {agent.modelId}
+                <span className={styles.slotModel}>{agent.modelId}</span>
               </span>
             </div>
             <div className={styles.capabilities}>

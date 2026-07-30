@@ -88,6 +88,21 @@ instead and says so in a `warn`: a misconfiguration is not a reason to stop
 compacting, and a run that stopped compacting would overflow its window a few turns
 later.
 
+#### Picking the model at launch
+
+The compaction model can be **deferred to a [model slot](/gg/configurations/)** instead
+of pinned in the configuration, exactly the way an agent's own binding is: the editor's
+*Model from* selector offers "a model slot (at launch)" beside "a specific model (fixed
+here)", and the launch form then asks for that slot along with every other one the
+configuration declares. Deferring writes a `modelSlot` param beside `model`; launching
+fills the slot in, writes the collected id to `model`, and drops `modelSlot` — so the set
+a run records is fully pinned, and one configuration can sweep the summarizer across
+models without being edited.
+
+A set that reaches gg still carrying `modelSlot` named a slot nobody bound. gg warns on
+the root stream and treats the handoff model as unset, which is the ordinary fallback:
+the agent condenses on its own model.
+
 ### Common to all five
 
 Every strategy carries the pinned state forward verbatim (below); they differ only in

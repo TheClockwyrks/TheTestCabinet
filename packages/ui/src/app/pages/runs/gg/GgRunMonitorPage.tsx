@@ -44,7 +44,7 @@ export function GgRunMonitorPage() {
   // it (see `ggRuntime`).
   const runtime = useGgRuntime(
     state.agentForest,
-    state.firstTimestamp,
+    state.executionStartedAt,
     state.lastTimestamp,
     live,
   );

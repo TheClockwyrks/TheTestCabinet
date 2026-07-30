@@ -583,11 +583,31 @@
   word-break: break-word;
 }
 
+// One agent's binding: its name on the left, the model it ran on hard against the right
+// edge. Right-aligning the model is what makes a multi-agent configuration scannable — the
+// ids are long and share prefixes, so left-aligned after names of differing length they
+// never line up with each other.
+.slot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
 .slotName {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: t.$color-text-muted;
-  margin-right: t.$space-xs;
+  flex: 0 0 auto;
+}
+
+// The model id: it takes the row's spare width and wraps within it rather than pushing
+// the card wider, since an OpenRouter slug can be longer than the column.
+.slotModel {
+  min-width: 0;
+  text-align: right;
+  word-break: break-word;
 }
 
 // The enabled capabilities as chips: the run's independent variable, legible at a

@@ -92,14 +92,15 @@ use std::time::Instant;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{
     AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AUTOLOAD_SPECS,
-    CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
-    GgAgentConfig, GgAgentStatus, GgCandidateShape, GgCapabilitySet, GgContextAction,
-    GgContextSource, GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach, GgLimitKind,
-    GgNotAProgram, GgPlanPhase, GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding,
-    GgSpeculationPhase, GgSubagentScope, GgTelemetryKind, GgWorkflowPhase,
-    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_MEMORIES,
+    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE,
+    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
+    CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, GgAgentConfig, GgAgentStatus, GgCandidateShape,
+    GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy, GgIssueReviewPhase,
+    GgLimitBreach, GgLimitKind, GgNotAProgram, GgPlanPhase, GgResponseHealing, GgReviewer,
+    GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgSubagentScope, GgTelemetryKind,
+    GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE,
+    SHELL_OUTPUT_MODES,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -157,15 +158,14 @@ use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL, ENTER_PLAN_MODE_TOOL,
-    EVICT_FILE_VIEW_TOOL, OffloadPolicy, PARAM_MAX_CHARS, PARAM_MAX_LINES, READ_FILE_TOOL,
-    READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet,
-    SEND_MESSAGE_TOOL, SHELL_OUTPUT_OFFLOAD, SHELL_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL,
-    SUBMIT_PLAN_TOOL, SpeculationData, SubagentHandleData, SubagentResultData, Tool, ToolContext,
-    ToolData, ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
-    WorkflowData, handled_by_loop, is_board_tool, is_context_reclaim_tool, is_fsm_tool,
-    is_memory_tool, is_planning_tool, is_subagent_tool, is_task_tool, offload_misconfigured,
-    parse_archive_ranges, parse_compact_request, parse_evict_path, plan_mode_offers, read_policy,
-    saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
+    EVICT_FILE_VIEW_TOOL, OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL,
+    ReadFileTool, ReadPolicy, ReclaimData, RuntimeSet, SEND_MESSAGE_TOOL, SHELL_TOOL,
+    SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SUBMIT_PLAN_TOOL, SpeculationData, SubagentHandleData,
+    SubagentResultData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, ToolRegistry,
+    WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop, is_board_tool,
+    is_context_reclaim_tool, is_fsm_tool, is_memory_tool, is_planning_tool, is_subagent_tool,
+    is_task_tool, parse_archive_ranges, parse_compact_request, parse_evict_path, plan_mode_offers,
+    read_policy, saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
 };
 use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
@@ -1093,25 +1093,42 @@ impl Orchestrator {
                 HealingStrategy::ALL.map(HealingStrategy::id).join(", ")
             ));
         }
-        // A `shell` capability that asks for output offloading without naming a ceiling for it to
-        // truncate past runs the *control* arm under the treatment arm's name — the same silent
-        // wrong-experiment failure a stale ceiling is, so it is reported on the same terms.
+        // A `shell` output mode gg does not recognize is read as the default rather than as an
+        // instruction, which would run the default arm under another arm's name — the same silent
+        // wrong-experiment failure a mistyped healing key is, so it is reported on the same terms.
         for agent in &set.agents {
-            let Some(shell) = agent
+            let Some(mode) = agent
                 .capability(CAPABILITY_SHELL)
                 .filter(|capability| capability.enabled)
+                .and_then(|capability| capability.implementation.as_deref())
+                .map(str::trim)
+                .filter(|mode| !mode.is_empty() && !SHELL_OUTPUT_MODES.contains(mode))
             else {
                 continue;
             };
-            if offload_misconfigured(shell.implementation.as_deref(), &shell.params) {
-                warnings.push(format!(
-                    "agent `{}`: the `{CAPABILITY_SHELL}` capability's `{SHELL_OUTPUT_OFFLOAD}` \
-                     mode names neither `{PARAM_MAX_LINES}` nor `{PARAM_MAX_CHARS}`, so there is no \
-                     ceiling to offload past; command output is returned inline. Set at least one \
-                     of them.",
-                    agent.name,
-                ));
-            }
+            warnings.push(format!(
+                "agent `{}`: the `{CAPABILITY_SHELL}` capability names the output mode `{mode}`, \
+                 which gg does not recognize; it runs the default `{SHELL_OUTPUT_ADAPTIVE}` mode \
+                 instead. The modes are {}.",
+                agent.name,
+                SHELL_OUTPUT_MODES.join(", "),
+            ));
+        }
+        // A compaction still deferring its handoff model to a model slot reached gg with that slot
+        // unfilled — the launcher was supposed to bind it. gg cannot resolve it here (the slot table
+        // lives on the launch form, not in the container), so the run condenses on the agent's own
+        // model; that is a different experiment from the one the configuration describes, so it is
+        // said out loud rather than left to be inferred from the cost split.
+        for agent in &set.agents {
+            let Some(slot) = compaction::unbound_handoff_slot(agent) else {
+                continue;
+            };
+            warnings.push(format!(
+                "agent `{}`: the `{CAPABILITY_COMPACTION}` capability defers its handoff model to \
+                 the `{slot}` model slot, which this run never bound; compaction runs on the \
+                 agent's own model. Bind the slot at launch, or name a model outright.",
+                agent.name,
+            ));
         }
         // The `assistantMessages` mode is read literally and reported on mismatch for the same reason
         // healing keys are: a typo would otherwise pick a mode the study did not ask for, silently.

@@ -695,9 +695,22 @@ function agentDraftFromConfig(
     // in the (non-editable) `extraParams` passthrough so nothing is lost on a
     // round-trip.
     const dedicated = new Map((cap.params ?? []).map((p) => [p.key, p]));
+    // A `model` param's deferred half is stored under its own key, which is not a
+    // catalog param of its own — it is loaded here (as a local slot id, the way an
+    // agent's binding is) rather than falling through to the passthrough.
+    const slotKeys = new Set(
+      (cap.params ?? []).flatMap((p) =>
+        p.kind === "model" && p.slotKey ? [p.slotKey] : [],
+      ),
+    );
     const params: Record<string, string> = {};
     const extraParams: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(from.params ?? {})) {
+      if (slotKeys.has(key)) {
+        const name = String(value).trim();
+        params[key] = slotIdByName.get(name) ?? "";
+        continue;
+      }
       const spec = dedicated.get(key);
       if (!spec) {
         extraParams[key] = value;
@@ -825,12 +838,21 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
     name: s.name,
     defaultModelId: s.defaultModelId ?? "",
   }));
-  // An agent may name a slot the set never declared; declare it here so the binding has
-  // something real to point at rather than opening as an unexplained blank.
+  // An agent — or one of its [`model` params](MODEL_PARAMS) — may name a slot the set
+  // never declared; declare it here so the binding has something real to point at rather
+  // than opening as an unexplained blank.
+  const declare = (name: string | undefined) => {
+    const trimmed = name?.trim();
+    if (trimmed && !modelSlots.some((m) => m.name === trimmed)) {
+      modelSlots.push({ id: localId("slot"), name: trimmed, defaultModelId: "" });
+    }
+  };
   for (const agent of stored) {
-    const name = agent.modelSlot?.trim();
-    if (name && !modelSlots.some((m) => m.name === name)) {
-      modelSlots.push({ id: localId("slot"), name, defaultModelId: "" });
+    declare(agent.modelSlot);
+    for (const { capId, slotKey } of MODEL_PARAMS) {
+      const capability = agent.capabilities?.find((c) => c.id === capId);
+      const value = capability?.params?.[slotKey];
+      if (typeof value === "string") declare(value);
     }
   }
   const slotIdByName = new Map(modelSlots.map((s) => [s.name, s.id] as const));
@@ -883,13 +905,28 @@ export function capabilityParams(
   cap: CapSpec,
   draft: GgCapabilityDraft,
   agentName?: (agentId: string) => string,
+  slotName?: (slotId: string) => string,
 ): ParamsParse {
   const out: Record<string, unknown> = { ...(draft.extraParams ?? {}) };
   for (const p of cap.params ?? []) {
+    // A `model` param writes one of two keys, and the deferred one is held under
+    // [ParamSpec.slotKey] rather than under the param's own key — so it is read before
+    // the shared "an empty draft value writes nothing" guard below.
+    if (p.kind === "model" && p.slotKey) {
+      const slotId = (draft.params?.[p.slotKey] ?? "").trim();
+      if (slotId) {
+        out[p.slotKey] = slotName ? slotName(slotId) : slotId;
+        continue;
+      }
+    }
     const raw = (draft.params?.[p.key] ?? "").trim();
     if (!raw) continue;
     if (p.kind === "agent") {
       out[p.key] = agentName ? agentName(raw) : raw;
+      continue;
+    }
+    if (p.kind === "model") {
+      out[p.key] = raw;
       continue;
     }
     if (p.kind === "select" || p.kind === "text") {
@@ -1033,17 +1070,42 @@ export function agentParamErrors(
 }
 
 /**
- * The [ids](GgModelSlotDraft.id) of the model slots at least one agent actually defers
- * to. A declared-but-unreferenced slot feeds nothing, so it is never asked about at
- * launch (and the editor flags it).
+ * Every `model` param in the catalog, with the capability it belongs to — the one place
+ * that knows a capability param can name a model slot, so the load, save, launch and
+ * bind paths all read the same list rather than each hardcoding "compaction's `model`".
+ */
+export const MODEL_PARAMS: ReadonlyArray<{
+  capId: string;
+  key: string;
+  slotKey: string;
+}> = CAPABILITIES.flatMap((cap) =>
+  (cap.params ?? []).flatMap((p) =>
+    p.kind === "model" && p.slotKey
+      ? [{ capId: cap.id, key: p.key, slotKey: p.slotKey }]
+      : [],
+  ),
+);
+
+/**
+ * The [ids](GgModelSlotDraft.id) of the model slots something in the configuration
+ * actually defers to — an agent's own binding, or a [`model` param](MODEL_PARAMS). A
+ * declared-but-unreferenced slot feeds nothing, so it is never asked about at launch (and
+ * the editor flags it).
  */
 export function referencedModelSlots(draft: GgConfigDraft): Set<string> {
-  return new Set(
+  const out = new Set(
     draft.agents
       .filter((a) => a.modelSource === "model-slot")
       .map((a) => a.modelSlotId)
       .filter(Boolean),
   );
+  for (const agent of draft.agents) {
+    for (const { capId, slotKey } of MODEL_PARAMS) {
+      const slotId = agent.capabilities[capId]?.params?.[slotKey];
+      if (slotId) out.add(slotId);
+    }
+  }
+  return out;
 }
 
 /**
@@ -1161,7 +1223,7 @@ function agentConfigFromDraft(
 ): GgAgentConfig {
   const capabilities: GgCapabilityConfig[] = CAPABILITIES.map((cap) => {
     const capDraft = agent.capabilities[cap.id] ?? blankCapabilityDraft();
-    const parsed = capabilityParams(cap, capDraft, agentName);
+    const parsed = capabilityParams(cap, capDraft, agentName, slotName);
     const impl = (capDraft.implementation ?? "").trim();
     return {
       id: cap.id,
@@ -1242,8 +1304,28 @@ export function capabilitySetFromDraft(
 }
 
 /**
+ * The model-slot names a stored set defers to: each agent's own binding, plus every
+ * [`model` param](MODEL_PARAMS) that named a slot instead of pinning a model.
+ */
+function deferredSlotNames(set: GgCapabilitySet): Set<string> {
+  const out = new Set<string>();
+  for (const agent of set.agents ?? []) {
+    const own = agent.modelSlot?.trim();
+    if (own) out.add(own);
+    for (const { capId, slotKey } of MODEL_PARAMS) {
+      const value = agent.capabilities?.find((c) => c.id === capId)?.params?.[
+        slotKey
+      ];
+      const name = typeof value === "string" ? value.trim() : "";
+      if (name) out.add(name);
+    }
+  }
+  return out;
+}
+
+/**
  * The launch inputs a configuration is still waiting on: the model slots it declares
- * that at least one agent defers to, in declaration order.
+ * that something in it defers to, in declaration order.
  *
  * This is what the New run page asks for, and it is deliberately *only* this — an
  * agent the configuration pinned to a model outright was decided when the
@@ -1251,10 +1333,7 @@ export function capabilitySetFromDraft(
  */
 export function launchModelSlots(set: GgCapabilitySet): GgModelSlot[] {
   const declared = set.modelSlots ?? [];
-  const agents = set.agents ?? [];
-  const deferred = new Set(
-    agents.map((a) => a.modelSlot).filter((s): s is string => Boolean(s)),
-  );
+  const deferred = deferredSlotNames(set);
   const out: GgModelSlot[] = [];
   const push = (slot: GgModelSlot) => {
     if (!out.some((s) => s.name === slot.name)) out.push(slot);
@@ -1262,7 +1341,7 @@ export function launchModelSlots(set: GgCapabilitySet): GgModelSlot[] {
   for (const declaration of declared) {
     if (deferred.has(declaration.name)) push(declaration);
   }
-  // An agent that names a slot the set never declared still needs a model at launch.
+  // A binding that names a slot the set never declared still needs a model at launch.
   for (const name of deferred) {
     push({ name });
   }
@@ -1270,23 +1349,41 @@ export function launchModelSlots(set: GgCapabilitySet): GgModelSlot[] {
 }
 
 /**
- * The capability set to launch a run with: every [deferred](launchModelSlots) agent
- * binding resolved to the model the launcher collected for its slot (keyed by
- * model-slot name), and the declarations dropped — what runs is a fully pinned set.
+ * The capability set to launch a run with: every [deferred](launchModelSlots) binding —
+ * an agent's own, and every [`model` param](MODEL_PARAMS)'s — resolved to the model the
+ * launcher collected for its slot (keyed by model-slot name), and the declarations
+ * dropped. What runs is a fully pinned set.
  *
- * An agent the configuration pinned itself is untouched.
+ * A binding the configuration pinned itself is untouched.
  */
 export function bindModelSlots(
   set: GgCapabilitySet,
   models: Record<string, string>,
 ): GgCapabilitySet {
   const agents: GgAgentConfig[] = (set.agents ?? []).map((agent) => {
-    if (!agent.modelSlot) return agent;
-    const { modelSlot: _slot, ...rest } = agent;
-    return {
-      ...rest,
-      modelId: (models[agent.modelSlot] ?? "").trim(),
-    };
+    const capabilities = (agent.capabilities ?? []).map((capability) => {
+      const specs = MODEL_PARAMS.filter((m) => m.capId === capability.id);
+      if (!specs.length) return capability;
+      const params = { ...(capability.params ?? {}) };
+      let bound = false;
+      for (const { key, slotKey } of specs) {
+        const slot = params[slotKey];
+        if (typeof slot !== "string" || !slot.trim()) continue;
+        const model = (models[slot.trim()] ?? "").trim();
+        delete params[slotKey];
+        // An empty binding pins nothing: the param goes back to being unset, which is
+        // the arm gg already documents (condense on the agent's own model) rather than
+        // a model id of "".
+        if (model) params[key] = model;
+        else delete params[key];
+        bound = true;
+      }
+      return bound ? { ...capability, params } : capability;
+    });
+    const next = agent.capabilities ? { ...agent, capabilities } : agent;
+    if (!next.modelSlot) return next;
+    const { modelSlot: _slot, ...rest } = next;
+    return { ...rest, modelId: (models[next.modelSlot] ?? "").trim() };
   });
   const { modelSlots: _declarations, ...rest } = set;
   return { ...rest, agents };

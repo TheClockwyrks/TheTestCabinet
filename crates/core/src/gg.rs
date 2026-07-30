@@ -34,13 +34,34 @@ pub const PRIMARY_SLOT: &str = "primary";
 /// commands in the run container (the `shell` tool).
 ///
 /// Its [implementation](GgCapabilityConfig::implementation) selects where a command's
-/// output goes — *inline* (the whole of it, byte-capped, as gg has always returned it) or
-/// *offload* ([the last `maxLines`/`maxChars` of it](https://docs.testcabinet.ai/gg/shell/),
-/// with every command's full stdout and stderr written to a file pair the agent can grep).
-/// A chatty build is one of the few things that can spend a large slice of a context window
-/// in a single call, so how much of one an agent is shown is configured rather than
-/// hardcoded.
+/// output goes — [`adaptive`](SHELL_OUTPUT_ADAPTIVE), [`inline`](SHELL_OUTPUT_INLINE), or
+/// [`offload`](SHELL_OUTPUT_OFFLOAD) — and its `maxLines`/`maxChars` params set the ceiling
+/// the two truncating modes leave the agent. A chatty build is one of the few things that
+/// can spend a large slice of a context window in a single call, so how much of one an agent
+/// is shown is configured rather than hardcoded. The modes are documented at
+/// <https://docs.testcabinet.ai/gg/shell/>.
 pub const CAPABILITY_SHELL: &str = "shell";
+
+/// The [shell](CAPABILITY_SHELL) output mode returning the whole (byte-capped) output in the
+/// tool result and writing nothing to disk — gg's original behavior, and the control arm.
+pub const SHELL_OUTPUT_INLINE: &str = "inline";
+
+/// The [shell](CAPABILITY_SHELL) output mode writing every command's stdout and stderr to a
+/// file pair the agent can grep, and returning only the configured tail inline.
+pub const SHELL_OUTPUT_OFFLOAD: &str = "offload";
+
+/// The [shell](CAPABILITY_SHELL) output mode — the **default** — that offloads selectively:
+/// a command that failed comes back as it would under [`offload`](SHELL_OUTPUT_OFFLOAD), and
+/// a command that succeeded comes back as its exit code and the paths its output went to.
+pub const SHELL_OUTPUT_ADAPTIVE: &str = "adaptive";
+
+/// Every [shell](CAPABILITY_SHELL) output mode, for the launch-time check that a set names one
+/// gg recognizes. The [default](SHELL_OUTPUT_ADAPTIVE) is first.
+pub const SHELL_OUTPUT_MODES: [&str; 3] = [
+    SHELL_OUTPUT_ADAPTIVE,
+    SHELL_OUTPUT_INLINE,
+    SHELL_OUTPUT_OFFLOAD,
+];
 
 /// The stable id of the **legacy** umbrella filesystem capability: one switch for the
 /// agent's whole ability to read and write files in the run workspace.
@@ -306,6 +327,17 @@ pub const COMPACTION_STRATEGY_MEMORY: &str = "memory-compaction";
 /// factory every agent's model is. Absent (or unresolvable) falls back to the agent's own model,
 /// so a handoff strategy always has a model to call.
 pub const COMPACTION_PARAM_MODEL: &str = "model";
+
+/// The [compaction](CAPABILITY_COMPACTION) capability param **deferring** the handoff model to
+/// one of the set's [model slots](GgModelSlot), the way an agent's own binding does with
+/// [`model_slot`](GgAgentConfig::model_slot) — so which model condenses the thread can be picked
+/// at launch rather than written into the configuration.
+///
+/// Launching resolves it: the launcher fills the slot in, writes the model it collected to
+/// [`model`](COMPACTION_PARAM_MODEL), and drops this key — so a set a run *records* never carries
+/// one. A set that reaches gg still carrying it named a slot nobody bound, which gg reports at
+/// launch and then treats as an unset handoff model (the agent condenses on its own model).
+pub const COMPACTION_PARAM_MODEL_SLOT: &str = "modelSlot";
 
 /// The stable id of the Phase 2 [agent-managed context] capability: the model-facing
 /// complement to [compaction](CAPABILITY_COMPACTION) that gives the agent agency over

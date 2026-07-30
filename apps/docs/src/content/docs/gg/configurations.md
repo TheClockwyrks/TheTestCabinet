@@ -108,12 +108,16 @@ carries:
 
 A configuration is meant to be reusable across models, so the models its agents run
 on are not all baked into it. It declares run-level named **model slots** —
-launch-time model parameters — and each agent's model either:
+launch-time model parameters — and each model binding either:
 
 - **pins a model** outright, an _internal_ binding that is identical on every run of
   the configuration and is never asked about again; or
 - **defers to a model slot**, leaving the model to be supplied when a run is
   launched.
+
+An agent's own model is one such binding, and so is every capability param that names a
+model — today, [compaction](/gg/compaction/)'s handoff model. Both offer the same
+_Model from_ selector, and both are resolved by the same launch step.
 
 A model slot may carry a **default**, which the launch form pre-fills. Model slots are
 named separately from the agents they feed precisely so two agents can share one: "run
@@ -134,8 +138,8 @@ deferred to it deferring to nothing — which the save gate names, rather than s
 re-pointing them at another model.
 
 Declaring a slot is an authoring-time concern only. **Launching resolves every
-deferred binding to a concrete model**, so the capability set a run carries — and
-records — is fully pinned, which is what keeps
+deferred binding to a concrete model** — an agent's, and a capability param's — so the
+capability set a run carries — and records — is fully pinned, which is what keeps
 [result aggregation](/gg/result-aggregation/) sliceable by "which model ran this
 agent". The backend rejects a launch that leaves one unresolved, naming the agent.
 
@@ -188,8 +192,9 @@ gg is launched from the **ordinary New run page**, not a separate form. Picking
 - The per-row **Harness** column becomes a **gg configuration** column, offering
   the built-ins and the account's own configurations.
 - The row grows one **model picker per model slot** the chosen configuration
-  declares, labelled with the slot's name and pre-filled with its default. A role
-  the configuration pinned itself is already decided, so it never appears here.
+  declares and something in it defers to, labelled with the slot's name and pre-filled
+  with its default. A binding the configuration pinned itself is already decided, so it
+  never appears here.
 - The submission goes to gg's own enqueue endpoint (`POST /gg/runs`) with the
   resolved capability set, rather than the flat launch body.
 

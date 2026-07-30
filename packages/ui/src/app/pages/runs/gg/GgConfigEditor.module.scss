@@ -286,6 +286,15 @@
   flex: 1 1 100%;
 }
 
+// A `model` param (compaction's handoff model) is two controls — where the model comes
+// from, and which one — laid out exactly like an agent's own binding. It takes a whole
+// row of the param grid for the same reason the agent binding takes its own row: a model
+// id is long, and a slot picker beside it in a 12rem column would be unreadable.
+.modelParamField {
+  flex: 1 1 100%;
+  gap: t.$space-xs;
+}
+
 // The members of a toggles param, stacked: each label is a sentence, so laying them
 // out in columns like the tool checkboxes would make them hard to scan.
 .toggleList {

@@ -51,7 +51,7 @@ function RunGgBody({ run }: { run: RunRecord }) {
   // nothing is still arriving.
   const runtime = useGgRuntime(
     derived.agentForest,
-    derived.firstTimestamp,
+    derived.executionStartedAt,
     derived.lastTimestamp,
     false,
   );

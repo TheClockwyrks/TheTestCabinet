@@ -26,19 +26,44 @@ a mode rather than a fixed behavior.
 
 | Mode | `shell` returns | Written to disk |
 | --- | --- | --- |
-| `inline` *(default)* | The whole merged output, tail-truncated at gg's 16 KiB cap. | Nothing. |
+| `adaptive` *(default)* | For a command that **succeeded**: its exit code and the paths, nothing else. For one that **failed**: the same tail `offload` returns. | **Every** command's stdout and stderr, as a file pair. |
 | `offload` | Only the last `maxLines` lines and/or `maxChars` characters, plus a note naming the files. | **Every** command's stdout and stderr, as a file pair. |
+| `inline` | The whole merged output, tail-truncated at gg's 16 KiB cap. | Nothing. |
 
-Under `offload`, each command's two streams are written to their own file under
-`/tmp/gg/shell` — outside the workspace, because these are gg's bookkeeping and a run's
-diff should not fill up with build logs. The pair is written for *every* command, not only
-a chatty one: "the full output is on disk" is only useful if it is true unconditionally,
-since an agent that has to guess whether this command's log exists is back to re-running
-the command to find out.
+Under either truncating mode, each command's two streams are written to their own file
+under `/tmp/gg/shell` — outside the workspace, because these are gg's bookkeeping and a
+run's diff should not fill up with build logs. The pair is written for *every* command, not
+only a chatty one: "the full output is on disk" is only useful if it is true
+unconditionally, since an agent that has to guess whether this command's log exists is back
+to re-running the command to find out.
+
+### Adaptive: the default
+
+`adaptive` splits the decision on the one signal that predicts whether the output will be
+read — the exit code. A successful command's output is the bulk of what a run's shell calls
+produce and the part an agent least often needs: `cargo build` printing forty lines of
+`Compiling` says nothing the exit code did not. A failed command is the opposite. So a
+success comes back as
+
+```
+exit code: 0
+[The command succeeded, so its output is not shown. The full stdout and stderr were written to:
+  stdout: /tmp/gg/shell/cmd-41-0003.stdout
+  stderr: /tmp/gg/shell/cmd-41-0003.stderr
+Read or grep those files if you need them.]
+```
+
+and a failure comes back exactly as it would under `offload`. A command that printed
+nothing and succeeded reads `(no output)` — there is nothing worth pointing at. A command
+killed by its timeout did not succeed, so its partial output is *not* withheld.
+
+The output is withheld, never discarded: if gg cannot write the file pair there is nowhere
+to withhold it *to*, so the whole output is handed over instead (with a note saying why the
+promised files are missing).
 
 ### The two ceilings
 
-`offload` needs at least one of them, and honors both when both are set:
+Both truncating modes read them, and honor both when both are set:
 
 - **`maxLines`** — the most trailing lines that come back inline. A trailing newline
   terminates the last line rather than starting a new one, so the count matches what
@@ -50,11 +75,14 @@ With both set the **tighter** one decides, because the result has to satisfy bot
 16 KiB byte cap still applies behind them, so a `maxLines` generous enough to admit a
 megabyte cannot defeat the thing offloading is for.
 
-An `offload` mode that names **neither** ceiling has nothing to truncate past, so gg logs
-a warning on the root agent's stream before the first turn and runs the command inline.
-Nothing fails the launch — a sweep's one shared configuration document has to stay
-interpretable by every arm — but the warning is what stops a control run from quietly
-wearing the treatment arm's name.
+Either ceiling alone is a complete instruction, and leaves the axis it omits uncapped. A
+mode that names **neither** takes gg's defaults — **250 lines and 4096 characters** — rather
+than quietly becoming `inline` under another name.
+
+A mode gg does not recognize is a misconfiguration rather than an instruction: it runs as
+`adaptive`, and gg logs a warning on the root agent's stream before the first turn. Nothing
+fails the launch — a sweep's one shared configuration document has to stay interpretable by
+every arm — but the warning is what stops one arm from quietly wearing another's name.
 
 ### What the agent sees
 
@@ -71,10 +99,10 @@ Read or grep those files if you need more than what is shown above.]
 
 The note is part of the command's **output** rather than prose gg wraps around it, so a
 [responses-as-code](/gg/responses-as-code/) program that prints a `ShellOutput.output` sees
-the paths exactly as a tool-calling agent does. The system prompt states the ceiling and
-the directory up front as well, because a model that first meets the rule in a truncated
-build log will assume the missing output is *gone* and re-run the command with a narrower
-filter, rather than grepping the file it was just handed.
+the paths exactly as a tool-calling agent does. The `shell` tool's own description states
+the rule up front as well, because a model that first meets it in a truncated build log
+will assume the missing output is *gone* and re-run the command with a narrower filter,
+rather than grepping the file it was just handed.
 
 If gg cannot write the pair (a full disk, an unwritable `/tmp`), it does **not** truncate
 to a tail whose remainder now exists nowhere: it falls back to the inline behavior, and the
@@ -87,9 +115,9 @@ tool call and a program's `system.shell(…)` identically, and it also covers th
 [completion validation](/gg/configurations/) commands gg runs on the agent's behalf — a
 failing test suite is exactly the kind of output that arrives by the megabyte.
 
-It is read only from a capability that is **enabled**. Offloading is a bargain — you see
-less of the output, and you get the rest back by grepping — and an agent that was not
-offered the `shell` tool cannot hold up its end.
+It is read only from a capability that is **enabled**; an absent or disabled one resolves
+to `inline`. Offloading is a bargain — you see less of the output, and you get the rest back
+by grepping — and an agent that was not offered the `shell` tool cannot hold up its end.
 
 ### Example
 

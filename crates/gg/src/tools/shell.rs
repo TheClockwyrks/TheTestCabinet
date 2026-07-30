@@ -11,13 +11,16 @@
 //! # Output offloading
 //!
 //! How much of a command's output comes back inline is the shell capability's swappable
-//! implementation ([`OffloadPolicy`]). Under the default — [inline](OffloadPolicy::Inline) — a
-//! command's merged output is returned as gg has always returned it, tail-truncated at
-//! [`MAX_OUTPUT_BYTES`]. Under [offload](OffloadPolicy::Offload) every command's stdout and stderr
-//! are additionally written to a **pair of files** in a gg-managed directory, and only the tail
-//! permitted by the configured [line/character ceilings](OffloadLimits) comes back — followed by a
-//! note naming the two files, so an agent that needs more can `grep` them instead of being handed
-//! a build log it did not ask for.
+//! implementation ([`OffloadPolicy`]). Under [inline](OffloadPolicy::Inline) a command's merged
+//! output is returned as gg has always returned it, tail-truncated at [`MAX_OUTPUT_BYTES`]. Under
+//! [offload](OffloadPolicy::Offload) every command's stdout and stderr are additionally written to a
+//! **pair of files** in a gg-managed directory, and only the tail permitted by the configured
+//! [line/character ceilings](OffloadLimits) comes back — followed by a note naming the two files, so
+//! an agent that needs more can `grep` them instead of being handed a build log it did not ask for.
+//! Under [adaptive](OffloadPolicy::Adaptive) — the default — offloading applies only to the commands
+//! whose output an agent actually reads: a command that **succeeded** comes back as its exit code
+//! and the paths its output went to, and one that **failed** comes back exactly as it would under
+//! offloading.
 //!
 //! Both execution modes go through [`run_command`], so the policy governs a JSON tool call and a
 //! [responses-as-code](crate::sandbox) program's `system.shell(…)` identically.
@@ -29,6 +32,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use test_cabinet_core::gg::{SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
@@ -51,23 +55,27 @@ const MAX_OUTPUT_BYTES: usize = 16 * 1024;
 /// already captured before giving up (a forked grandchild may hold the pipe open).
 const OUTPUT_GRACE: Duration = Duration::from_millis(250);
 
-/// The [implementation](test_cabinet_core::gg::GgCapabilityConfig::implementation) id selecting the
-/// inline output mode: the whole (byte-capped) output comes back in the tool result and nothing is
-/// written to disk. The default, so a capability set that says nothing about output behaves as gg
-/// always has.
-pub const SHELL_OUTPUT_INLINE: &str = "inline";
-
-/// The implementation id selecting the [offloaded](OffloadPolicy::Offload) output mode: every
-/// command's streams are written to a file pair and only the configured tail comes back inline.
-pub const SHELL_OUTPUT_OFFLOAD: &str = "offload";
-
 /// The shell capability's `maxLines` param: how many trailing **lines** of a command's output come
-/// back inline under [offloading](SHELL_OUTPUT_OFFLOAD).
+/// back inline under [offloading](SHELL_OUTPUT_OFFLOAD) — and, for a failed command, under
+/// [adaptive](SHELL_OUTPUT_ADAPTIVE).
 pub const PARAM_MAX_LINES: &str = "maxLines";
 
 /// The shell capability's `maxChars` param: how many trailing **characters** of a command's output
-/// come back inline under [offloading](SHELL_OUTPUT_OFFLOAD).
+/// come back inline under [offloading](SHELL_OUTPUT_OFFLOAD) — and, for a failed command, under
+/// [adaptive](SHELL_OUTPUT_ADAPTIVE).
 pub const PARAM_MAX_CHARS: &str = "maxChars";
+
+/// The [line ceiling](PARAM_MAX_LINES) applied when a truncating mode names **neither** ceiling.
+///
+/// The truncating modes are defined by the ceiling they truncate past, so "offload with no ceiling"
+/// is not a mode — it is a config that forgot to finish the sentence. Rather than quietly running
+/// the control arm under the treatment arm's name, an unspecified ceiling takes this default, which
+/// is also what the console pre-fills the two inputs with.
+pub const DEFAULT_MAX_LINES: usize = 250;
+
+/// The [character ceiling](PARAM_MAX_CHARS) applied when a truncating mode names **neither**
+/// ceiling. See [`DEFAULT_MAX_LINES`].
+pub const DEFAULT_MAX_CHARS: usize = 4096;
 
 /// The gg-managed directory offloaded output is written to. Outside the workspace on purpose: these
 /// files are gg's bookkeeping, not the agent's work product, and a run's diff should not fill up
@@ -89,44 +97,46 @@ static OFFLOAD_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 /// context window in a single call, on text it usually needed three lines of. Offloading makes that
 /// an experimental variable: the tail the agent is shown is bounded, the full output stays
 /// addressable on disk, and the agent gets it back with `grep` when it actually needs it.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OffloadPolicy {
     /// Return the merged output inline (tail-truncated at [`MAX_OUTPUT_BYTES`]) and write nothing to
     /// disk — gg's original behavior, and the control arm.
-    #[default]
     Inline,
     /// Write every command's stdout and stderr to a file pair, and return only the tail the
     /// [limits](OffloadLimits) permit, followed by a note naming the two files.
     Offload(OffloadLimits),
+    /// Offloading, decided per command by whether it worked: a command that **failed** comes back
+    /// exactly as it would under [`Offload`](Self::Offload), and a command that **succeeded** comes
+    /// back as its exit code alone, with a note naming the file pair its output went to.
+    ///
+    /// The default. A successful command's output is the bulk of what a run's shell calls produce
+    /// and the part an agent least often reads — `cargo build` printing forty lines of `Compiling`
+    /// says nothing that the exit code did not. A failed one is the opposite: it is read closely, and
+    /// the tail is where the error is.
+    Adaptive(OffloadLimits),
+}
+
+impl Default for OffloadPolicy {
+    fn default() -> Self {
+        Self::Adaptive(OffloadLimits::default())
+    }
 }
 
 impl OffloadPolicy {
     /// Resolve the policy from the shell capability's `implementation` and `params`.
     ///
-    /// An absent or unrecognized implementation resolves to [`Inline`](Self::Inline), the historical
-    /// behavior — as does an `offload` that names **neither** [`maxLines`](PARAM_MAX_LINES) nor
-    /// [`maxChars`](PARAM_MAX_CHARS): offloading is defined by the ceiling it truncates past, so a
-    /// mode with no ceiling has nothing to do. That misconfiguration is reported at launch by
-    /// [`offload_misconfigured`], rather than left to be discovered from a run that behaved like the
-    /// arm it was not.
+    /// An absent implementation resolves to [`Adaptive`](Self::Adaptive), the default — as does an
+    /// unrecognized one, which is a misconfiguration rather than an instruction and so falls back to
+    /// the same mode a config that said nothing would have got. `inline` and `offload` are the two
+    /// explicit alternatives.
     pub fn resolve(implementation: Option<&str>, params: &Value) -> Self {
         match implementation.map(str::trim) {
-            Some(SHELL_OUTPUT_OFFLOAD) => {}
-            // `inline` is the explicit spelling of the default. An unrecognized mode is a
-            // misconfiguration rather than an instruction, and falls back to that same default
-            // rather than enforcing a ceiling nobody asked for.
-            Some(SHELL_OUTPUT_INLINE) | Some(_) | None => return Self::Inline,
+            Some(SHELL_OUTPUT_INLINE) => Self::Inline,
+            Some(SHELL_OUTPUT_OFFLOAD) => Self::Offload(OffloadLimits::from_params(params)),
+            Some(SHELL_OUTPUT_ADAPTIVE) | Some(_) | None => {
+                Self::Adaptive(OffloadLimits::from_params(params))
+            }
         }
-        let max_lines = positive_param(params, PARAM_MAX_LINES);
-        let max_chars = positive_param(params, PARAM_MAX_CHARS);
-        if max_lines.is_none() && max_chars.is_none() {
-            return Self::Inline;
-        }
-        Self::Offload(OffloadLimits {
-            max_lines,
-            max_chars,
-            dir: PathBuf::from(OFFLOAD_DIR),
-        })
     }
 
     /// The limits in force, or `None` under [`Inline`](Self::Inline). Read by the tool itself and by
@@ -135,14 +145,20 @@ impl OffloadPolicy {
     pub fn limits(&self) -> Option<&OffloadLimits> {
         match self {
             Self::Inline => None,
-            Self::Offload(limits) => Some(limits),
+            Self::Offload(limits) | Self::Adaptive(limits) => Some(limits),
         }
+    }
+
+    /// Whether a **successful** command's output is withheld entirely — true only under
+    /// [`Adaptive`](Self::Adaptive).
+    pub fn withholds_on_success(&self) -> bool {
+        matches!(self, Self::Adaptive(_))
     }
 }
 
 /// How much of an offloaded command's output comes back inline, and where the whole of it is
-/// written. At least one of the two ceilings is always set — a policy that resolved neither is
-/// [`Inline`](OffloadPolicy::Inline) — and when both are, the output satisfies **both**.
+/// written. At least one of the two ceilings is always set — a config that names neither takes the
+/// [defaults](DEFAULT_MAX_LINES) — and when both are, the output satisfies **both**.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OffloadLimits {
     /// The most trailing lines that come back inline, or `None` for no line ceiling.
@@ -154,14 +170,36 @@ pub struct OffloadLimits {
     pub dir: PathBuf,
 }
 
-/// Whether a shell capability asks for [offloading](SHELL_OUTPUT_OFFLOAD) but names no ceiling for
-/// it to truncate past — the one misconfiguration that silently runs the control arm under the
-/// treatment arm's name, and so is warned about at launch.
-pub fn offload_misconfigured(implementation: Option<&str>, params: &Value) -> bool {
-    implementation.map(str::trim) == Some(SHELL_OUTPUT_OFFLOAD)
-        && OffloadPolicy::resolve(implementation, params)
-            .limits()
-            .is_none()
+impl Default for OffloadLimits {
+    fn default() -> Self {
+        Self {
+            max_lines: Some(DEFAULT_MAX_LINES),
+            max_chars: Some(DEFAULT_MAX_CHARS),
+            dir: PathBuf::from(OFFLOAD_DIR),
+        }
+    }
+}
+
+impl OffloadLimits {
+    /// Read both ceilings out of the shell capability's `params`.
+    ///
+    /// Either one alone is a complete instruction — "the last 200 lines, however long they are" is a
+    /// thing to ask for — so a config that names one and omits the other gets exactly that, with no
+    /// ceiling on the axis it left out. Only a config that names **neither** takes the
+    /// [defaults](DEFAULT_MAX_LINES), since a truncating mode with nothing to truncate past would
+    /// silently be the inline mode wearing another name.
+    fn from_params(params: &Value) -> Self {
+        let max_lines = positive_param(params, PARAM_MAX_LINES);
+        let max_chars = positive_param(params, PARAM_MAX_CHARS);
+        match (max_lines, max_chars) {
+            (None, None) => Self::default(),
+            _ => Self {
+                max_lines,
+                max_chars,
+                dir: PathBuf::from(OFFLOAD_DIR),
+            },
+        }
+    }
 }
 
 /// One `params` entry read as a positive count, or `None` when it is absent, non-numeric, or zero
@@ -206,13 +244,24 @@ impl Tool for ShellTool {
             // The ceiling is stated on the tool itself as well as in the system prompt: a model
             // reading the definition of the tool it is about to call should not have to remember a
             // paragraph from the top of the session to know that what comes back is a tail.
-            description.push_str(&format!(
-                " Only the {} of the output is returned; the full stdout and stderr of every \
-                 command are written to a file pair under `{}`, named in the result, which you can \
-                 `grep` when you need more than the tail.",
-                limits.describe(),
-                limits.dir.display(),
-            ));
+            if self.offload.withholds_on_success() {
+                description.push_str(&format!(
+                    " A command that succeeds returns only its exit code — none of its output. A \
+                     command that fails returns the {} of its output. Either way the full stdout \
+                     and stderr of every command are written to a file pair under `{}`, named in \
+                     the result, which you can `grep` when you need more than what came back.",
+                    limits.describe(),
+                    limits.dir.display(),
+                ));
+            } else {
+                description.push_str(&format!(
+                    " Only the {} of the output is returned; the full stdout and stderr of every \
+                     command are written to a file pair under `{}`, named in the result, which you \
+                     can `grep` when you need more than the tail.",
+                    limits.describe(),
+                    limits.dir.display(),
+                ));
+            }
         }
         ToolDefinition::new(
             SHELL_TOOL,
@@ -349,6 +398,10 @@ pub(crate) async fn run_command(
     } else {
         collect.await
     };
+    // Whether the command worked, which the [adaptive](OffloadPolicy::Adaptive) policy decides on.
+    // A timeout kill and a failed `wait()` both count as "did not succeed": in either case the
+    // agent is about to be told something went wrong, and the output is the part that says what.
+    let succeeded = matches!(&waited, Ok(Ok(status)) if status.success());
     // What comes back inline, under whichever output policy is in force. Computed before the
     // timeout branch so a killed command's partial output is offloaded on the same terms a
     // completed one's is — a command that hung after printing a hundred megabytes is exactly the
@@ -357,7 +410,7 @@ pub(crate) async fn run_command(
         body,
         truncated,
         explained,
-    } = capture_output(&stdout, &stderr, offload).await;
+    } = capture_output(&stdout, &stderr, offload, succeeded).await;
 
     if timed_out {
         let mut output = format!(
@@ -496,14 +549,20 @@ struct OffloadPaths {
 }
 
 /// Apply `offload` to a finished command's streams: merge them, keep whatever the policy permits
-/// inline, and — under [offloading](OffloadPolicy::Offload) — write the whole of both streams to a
-/// file pair first.
+/// inline, and — under a [truncating](OffloadPolicy::Offload) policy — write the whole of both
+/// streams to a file pair first. `succeeded` is whether the command exited cleanly, which the
+/// [adaptive](OffloadPolicy::Adaptive) policy decides on.
 ///
 /// The pair is written for **every** command, not only a chatty one, because "the full output is on
 /// disk" is only useful if it is true unconditionally: an agent that has to guess whether this
 /// command's log exists is back to re-running the command to find out. The note that names the pair
 /// is added only when something was actually dropped, so a two-line command costs no context.
-async fn capture_output(stdout: &str, stderr: &str, offload: &OffloadPolicy) -> Captured {
+async fn capture_output(
+    stdout: &str,
+    stderr: &str,
+    offload: &OffloadPolicy,
+    succeeded: bool,
+) -> Captured {
     let merged = merge_output(stdout, stderr);
     let Some(limits) = offload.limits() else {
         let (body, truncated) = truncate(&merged, MAX_OUTPUT_BYTES);
@@ -513,6 +572,17 @@ async fn capture_output(stdout: &str, stderr: &str, offload: &OffloadPolicy) -> 
             explained: false,
         };
     };
+    // Under the adaptive policy a command that worked is reported by its exit code alone. A command
+    // that printed nothing is left as the empty body the caller renders as "(no output)": there is
+    // nothing on disk worth pointing at, and the note would be the only thing the agent read.
+    let withhold = succeeded && offload.withholds_on_success();
+    if withhold && merged.is_empty() {
+        return Captured {
+            body: String::new(),
+            truncated: false,
+            explained: false,
+        };
+    }
 
     let paths = match write_offload_pair(stdout, stderr, limits).await {
         Ok(paths) => paths,
@@ -540,6 +610,23 @@ async fn capture_output(stdout: &str, stderr: &str, offload: &OffloadPolicy) -> 
             };
         }
     };
+
+    if withhold {
+        // "Only the exit code" as far as the command's own output goes — but the paths come with it.
+        // Withholding output the agent has no way to ask for again would not be offloading, it would
+        // be discarding, and the agent would be left re-running the command to see what it printed.
+        return Captured {
+            body: format!(
+                "[The command succeeded, so its output is not shown. The full stdout and stderr \
+                 were written to:\n  stdout: {}\n  stderr: {}\nRead or grep those files if you \
+                 need them.]",
+                paths.stdout.display(),
+                paths.stderr.display(),
+            ),
+            truncated: true,
+            explained: true,
+        };
+    }
 
     let (tail, cut) = limits.tail(&merged);
     // gg's byte cap still applies behind the configured ceiling: a `maxLines` generous enough to

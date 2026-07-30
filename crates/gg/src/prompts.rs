@@ -531,11 +531,11 @@ pub struct ReadFileView {
 /// How much of a command's output one `shell` call returns — the
 /// [output policy](crate::tools::OffloadPolicy) as the prompt describes it.
 ///
-/// The default policy renders **nothing**: an agent whose commands come back whole has no rule to
-/// learn. Only [offloading](crate::tools::OffloadPolicy::Offload) has something to say, and it has
-/// to be said up front — a model that discovers the ceiling from a truncated build log will assume
-/// the missing output is gone, and re-run the command with a narrower filter instead of grepping
-/// the file it was handed.
+/// The [inline](crate::tools::OffloadPolicy::Inline) policy renders **nothing**: an agent whose
+/// commands come back whole has no rule to learn. A truncating policy has something to say, and it
+/// has to be said up front — a model that discovers the ceiling from a truncated build log will
+/// assume the missing output is gone, and re-run the command with a narrower filter instead of
+/// grepping the file it was handed.
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShellView {

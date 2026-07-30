@@ -111,10 +111,7 @@ pub use memories::{
 };
 pub use planning::{ENTER_PLAN_MODE_TOOL, SUBMIT_PLAN_TOOL, is_planning_tool};
 pub(crate) use shell::run_command;
-pub use shell::{
-    OffloadPolicy, PARAM_MAX_CHARS, PARAM_MAX_LINES, SHELL_OUTPUT_OFFLOAD, SHELL_TOOL,
-    offload_misconfigured,
-};
+pub use shell::{OffloadPolicy, SHELL_TOOL};
 pub use skills::{READ_SKILL_TOOL, ReadSkillTool};
 pub(crate) use subagents::handled_by_loop;
 pub use subagents::{
@@ -238,6 +235,10 @@ pub fn read_policy(capabilities: &GgAgentConfig) -> ReadPolicy {
 /// Resolved both here (to build the tool) and by the [loop](crate::agent), which states the
 /// resulting ceiling in the [system prompt](crate::prompts) — one resolution, so what the prompt
 /// promises and what the tool enforces cannot drift apart.
+///
+/// An absent or disabled capability resolves to [inline](OffloadPolicy::Inline) rather than to the
+/// [default](OffloadPolicy::default) mode: the default is a bargain struck with an agent that has
+/// the `shell` tool, and there is nobody here to strike it with.
 pub fn shell_offload(capabilities: &GgAgentConfig) -> OffloadPolicy {
     capabilities
         .capability(CAPABILITY_SHELL)
@@ -245,7 +246,7 @@ pub fn shell_offload(capabilities: &GgAgentConfig) -> OffloadPolicy {
         .map(|capability| {
             OffloadPolicy::resolve(capability.implementation.as_deref(), &capability.params)
         })
-        .unwrap_or_default()
+        .unwrap_or(OffloadPolicy::Inline)
 }
 
 /// The tool names that are **read-only** — they inspect the workspace or gg's own state but

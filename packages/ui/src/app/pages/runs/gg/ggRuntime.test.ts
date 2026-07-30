@@ -80,9 +80,25 @@ function runtimeOf(events: HarnessEvent[], nowSeconds: number): GgRuntime {
   const derived = reduceGgEvents(events);
   return deriveGgRuntime(
     derived.agentForest,
-    derived.firstTimestamp,
+    derived.executionStartedAt,
     Date.parse(T0) + nowSeconds * 1000,
   );
+}
+
+// One orchestrator setup/teardown row — what the run's container lifecycle emits around the
+// harness, before gg exists to say anything.
+function system(
+  seconds: number,
+  stage: "pull_image" | "start_container" | "init_test_case" | "teardown",
+  status: "started" | "completed",
+): HarnessEvent {
+  return {
+    type: "system",
+    timestamp: new Date(Date.parse(T0) + seconds * 1000).toISOString(),
+    stage,
+    status,
+    message: `${stage} ${status}`,
+  } as HarnessEvent;
 }
 
 describe("a gg run's runtime", () => {
@@ -283,5 +299,68 @@ describe("runtime formatting", () => {
     expect(formatLimit(4 * 3600)).toBe("4h");
     expect(formatLimit(5400)).toBe("1h 30m");
     expect(formatLimit(1800)).toBe("30m");
+  });
+});
+
+describe("the wall clock's origin", () => {
+  // The host's runtime cap wraps the session drive alone — the image pull, the container
+  // start, the harness install and the test-case init each get their own budget before it.
+  // A read-out measured from the first event would therefore race a limit that was not yet
+  // running, and an operator watching a slow image pull would see minutes burned against a
+  // ceiling nothing had started counting against.
+  it("starts when setup ends, not when the job was picked up", () => {
+    const runtime = runtimeOf(
+      [
+        system(0, "pull_image", "started"),
+        system(40, "start_container", "completed"),
+        system(50, "init_test_case", "completed"),
+        at(55, "root", { type: "session_started" } as GgTelemetryKind),
+        at(55, "root", spawn("Root", 0)),
+      ],
+      110,
+    );
+    // 110s of stream, 50s of it setup: the run has been executing for a minute.
+    expect(runtime.wallMs).toBe(60_000);
+  });
+
+  // A run still being set up has no runtime yet. Counting one would be a clock that starts
+  // before the thing it measures.
+  it("reads empty while the run is still in setup", () => {
+    const runtime = runtimeOf(
+      [system(0, "pull_image", "started"), system(20, "pull_image", "completed")],
+      40,
+    );
+    expect(runtime.wallMs).toBeNull();
+    expect(runtime.parallelism).toBeNull();
+  });
+
+  // Teardown is the one `system` stage that follows the drive rather than preceding it, so
+  // it must not be mistaken for setup and push the origin to the end of the run.
+  it("is not moved by the teardown that follows the run", () => {
+    const runtime = runtimeOf(
+      [
+        system(0, "pull_image", "started"),
+        system(10, "init_test_case", "completed"),
+        at(15, "root", { type: "session_started" } as GgTelemetryKind),
+        at(15, "root", spawn("Root", 0)),
+        at(70, "root", ended()),
+        system(75, "teardown", "completed"),
+      ],
+      80,
+    );
+    expect(runtime.wallMs).toBe(70_000);
+  });
+
+  // A recorded stream that carries no setup rows at all (an events feed filtered to gg's
+  // own telemetry) still has to produce a clock rather than an empty card.
+  it("falls back to the first event when a stream carries no setup rows", () => {
+    const runtime = runtimeOf(
+      [
+        at(5, "root", { type: "session_started" } as GgTelemetryKind),
+        at(5, "root", spawn("Root", 0)),
+      ],
+      65,
+    );
+    expect(runtime.wallMs).toBe(60_000);
   });
 });

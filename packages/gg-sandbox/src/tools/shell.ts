@@ -17,9 +17,11 @@ import type { ShellOutput } from "../types.js";
  * launched, or one the timeout killed, throws. `timeoutSecs` defaults to 120 and is clamped to
  * whatever is left of the run's wall-clock budget.
  *
- * When this run **offloads** shell output (the system prompt says so, and states the ceiling),
- * `output` holds only the tail that fits and ends with a note naming the two files the command's
- * full stdout and stderr were written to — grep those instead of re-running the command.
+ * This run may **offload** shell output — the `shell` tool's own description says which mode is in
+ * force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two
+ * files the command's full stdout and stderr were written to. Under `adaptive` (the default), a
+ * command that **succeeded** returns no output at all, only that note; one that **failed** returns
+ * the tail. Grep the named files instead of re-running the command.
  */
 export function shell(command: string, options?: { timeoutSecs?: number }): ShellOutput {
   const o = opts<{ timeoutSecs?: number }>("shell", options);

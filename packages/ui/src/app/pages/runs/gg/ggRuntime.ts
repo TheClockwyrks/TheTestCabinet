@@ -1,8 +1,11 @@
 // How long a gg run has been going, and how much agent-time that bought.
 //
 // A gg run has two clocks, and reading only one of them misleads. **Wall clock** is the
-// span the run occupies — what the operator waits, and what the host's timeout is measured
-// against. **Total agent time** is every agent's own runtime summed: a run that fans four
+// span the run spends *executing* — which is what the host's timeout is measured against,
+// and so is measured from the same origin: the moment setup (image pull, container start,
+// harness install, test-case init) finished and the run began, not the moment the job was
+// picked up. A run still being set up has no wall clock yet, and reads empty rather than
+// counting up against a limit that is not yet running. **Total agent time** is every agent's own runtime summed: a run that fans four
 // reviewers out for ten minutes each spends forty minutes of agent time inside ten minutes
 // of wall clock, and the gap between the two figures *is* the parallelism the configuration
 // bought. Stating only the wall clock hides that a run was concurrent; stating only the sum
@@ -20,7 +23,7 @@
 // configuration, not a figure to hide.
 //
 // Everything is derived from the envelope timestamps the fold already stamps (see
-// `AgentNode.startedAt`/`endedAt` and `DerivedGgState.firstTimestamp`), so it is
+// `AgentNode.startedAt`/`endedAt` and `DerivedGgState.executionStartedAt`), so it is
 // available on the live monitor and on a finished run's gg tab alike — the same reduction of
 // the same stream. An agent with no recorded end is still running, so it counts up to the
 // clock the caller passes rather than contributing nothing — and so does a wait that has
@@ -32,9 +35,9 @@ import type { AgentTreeNode } from "./useGgRunState";
 /** A gg run's two clocks, plus what their ratio says about it. */
 export interface GgRuntime {
   /**
-   * Wall-clock milliseconds the run's telemetry spans — its first event to `now` while the
-   * stream is live, or to its last event once it is not. Null before any event has arrived,
-   * so a card reads empty rather than claiming a run of zero length.
+   * Wall-clock milliseconds the run has been executing — from `executionStartedAt` to
+   * `now` while the stream is live, or to its last event once it is not. Null until the run
+   * gets past setup, so a card reads empty rather than counting the image pull as runtime.
    */
   wallMs: number | null;
   /**
@@ -84,7 +87,7 @@ function msOf(timestamp: string | null | undefined): number | null {
  */
 export function deriveGgRuntime(
   agentForest: readonly AgentTreeNode[],
-  firstTimestamp: string | null,
+  executionStartedAt: string | null,
   nowMs: number,
 ): GgRuntime {
   let agentMs = 0;
@@ -117,7 +120,7 @@ export function deriveGgRuntime(
   };
   agentForest.forEach(walk);
 
-  const startMs = msOf(firstTimestamp);
+  const startMs = msOf(executionStartedAt);
   const wallMs = startMs == null ? null : Math.max(nowMs - startMs, 0);
   return {
     wallMs,
@@ -136,7 +139,7 @@ export function deriveGgRuntime(
  */
 export function useGgRuntime(
   agentForest: readonly AgentTreeNode[],
-  firstTimestamp: string | null,
+  executionStartedAt: string | null,
   lastTimestamp: string | null,
   live: boolean,
 ): GgRuntime {
@@ -145,7 +148,7 @@ export function useGgRuntime(
   // Deliberately not memoized on `nowMs`: it changes every tick while live, so a memo would
   // recompute every time anyway while adding a dependency array to keep honest. The fold is
   // a walk of the agent forest — tens of nodes — not work worth caching.
-  return deriveGgRuntime(agentForest, firstTimestamp, nowMs);
+  return deriveGgRuntime(agentForest, executionStartedAt, nowMs);
 }
 
 // The present, re-read once a second while `active`. A one-second cadence is what a clock
