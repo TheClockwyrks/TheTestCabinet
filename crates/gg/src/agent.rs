@@ -564,8 +564,8 @@ pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome
     // Production resolves every agent's client through the default factory (the
     // `TCAB_GG_FAKE_MODEL`/`mock` rules, else live OpenRouter). Tests inject a scripted factory so
     // a parent and its subagents run distinct offline scripts. The factory carries the run's
-    // session id as the shared `prompt_cache_key`, so every agent's requests route to one provider
-    // backend and reuse each other's — and their own turns' — cached prompt prefix.
+    // session id as the shared sticky-session key, so every agent's requests route to one provider
+    // endpoint and reuse each other's — and their own turns' — cached prompt prefix.
     let factory = Arc::new(DefaultClientFactory::new(Some(
         invocation.session_id.clone(),
     )));

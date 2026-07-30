@@ -138,11 +138,17 @@ asks for one on every request.
 
 Two separate things have to be true for a cached read to happen, and gg does both:
 
-- **The request has to reach the backend that holds the cache.** Every client in a
-  run stamps the same `prompt_cache_key` — the run's session id, shared by the root
+- **The request has to reach the endpoint that holds the cache.** Every client in a
+  run stamps the same **`session_id`** — the run's session id, shared by the root
   agent and every [subagent](/gg/subagents/) — so a run's turns stay on one
-  provider backend, and agents that open on the same prefix reuse each other's
-  warmed cache rather than each paying to warm their own.
+  provider endpoint, and agents that open on the same prefix reuse each other's
+  warmed cache rather than each paying to warm their own. `session_id` is
+  OpenRouter's sticky-routing key; gg sends the same value as `prompt_cache_key`
+  too, for the providers that read the OpenAI-style field instead. Sending only
+  `prompt_cache_key` is not enough — OpenRouter treats it as a fallback, and
+  without a sticky key it is free to balance byte-identical requests across
+  endpoints, which reads as a 0% cache rate turn after turn even when the provider
+  *name* never changes.
 - **The request has to say what to cache.** OpenAI and Gemini cache long prefixes
   implicitly, but Anthropic caches _only_ what a request explicitly marks with
   `cache_control`. Marking nothing means caching nothing — an Anthropic run is
@@ -159,8 +165,16 @@ message indices so that they name the same prefix from one turn to the next; a
 marker at a shifting offset would describe a prefix no earlier turn ever wrote,
 and so would never be a cache hit.
 
-The markers go to every provider, not just Anthropic — a provider that caches
-implicitly ignores them.
+The markers go **only** to the Anthropic family, which is the family that caches
+nothing without them. Every other provider gg reaches caches long prefixes
+implicitly, and for those the markers are worse than useless: `cache_control` has to
+ride a content block, so marking a text-only message promotes it from a bare string
+to a one-element array — and because the rolling breakpoints move every turn, the
+same message then goes out as a string on one turn and as an array on the next.
+Anthropic normalizes both to content blocks and never notices. A provider matching
+the forwarded OpenAI-shaped payload sees the prefix change underneath it and re-bills
+the request in full, which is why gg marked requests read 0% on turns that read 98%
+unmarked.
 
 This is also why [compaction](/gg/compaction/) and
 [agent-managed context](/gg/agent-managed-context/) go to such lengths to keep the

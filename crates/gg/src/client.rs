@@ -83,6 +83,9 @@ const GG_X_TITLE: &str = "The Test Cabinet gg";
 /// `HTTP-Referer` sent to OpenRouter — an app-identity hint used for its rankings,
 /// not a navigational URL.
 const GG_HTTP_REFERER: &str = "https://github.com/the-test-cabinet/gg";
+/// The header form of the [session key](build_request_body), which OpenRouter accepts
+/// interchangeably with the `session_id` body field.
+const SESSION_ID_HEADER: &str = "x-session-id";
 /// Maximum length of a provider error body copied into a [`ModelError`].
 const ERROR_BODY_CAP: usize = 2000;
 
@@ -101,6 +104,11 @@ const MAX_CACHE_BREAKPOINTS: usize = 4;
 /// fixed stride fixes that — index 16 is the same prefix on every turn of an append-only window —
 /// while the stride keeps the un-cached remainder small.
 const CACHE_BREAKPOINT_STRIDE: usize = 8;
+
+/// The longest [session key](build_request_body) OpenRouter accepts (it documents a 256-character
+/// cap). A run's session id is a UUID and nowhere near it, but the key is caller-supplied, and a
+/// key silently rejected for length would take the whole run's cache with it.
+const MAX_SESSION_KEY_CHARS: usize = 256;
 
 /// The skill name the [default mock script](MockClient::with_default_script) reads, so an
 /// offline run can seed `.gg/skills/<name>.md` and demonstrate the skills capability.
@@ -217,18 +225,20 @@ pub struct OpenRouterClient {
     model_id: String,
     api_key: String,
     retry: RetryPolicy,
-    /// The session-wide [prompt-cache key](build_request_body) sent as `prompt_cache_key` — the
-    /// run's session id, the same value on every agent's client. It steers the whole run's
-    /// requests to one provider backend, so an agent's successive turns reuse the prefix the last
-    /// turn cached and sibling agents that open on the same prefix reuse each other's. `None`
-    /// leaves the key off the wire (the field is simply absent).
-    cache_key: Option<String>,
+    /// The session-wide [sticky-session key](build_request_body) — the run's session id, the same
+    /// value on every agent's client. It pins the whole run's requests to one provider endpoint,
+    /// so an agent's successive turns reuse the prefix the last turn cached and sibling agents
+    /// that open on the same prefix reuse each other's. Sent both as the `session_id` body field
+    /// and as the `x-session-id` header (OpenRouter accepts either; sending both means no
+    /// intermediary that filters one of them can quietly cost the run its cache). `None` leaves
+    /// the key off the wire entirely.
+    session_key: Option<String>,
 }
 
 impl OpenRouterClient {
     /// Construct a client from its parts. `base_url` is the API root (no trailing
     /// `/chat/completions`); pass an injected `http` and a test `base_url` to exercise
-    /// it offline. `cache_key` is the stable [`prompt_cache_key`](build_request_body) this
+    /// it offline. `session_key` is the stable [sticky-session key](build_request_body) this
     /// client stamps on every request; `None` sends none.
     pub fn new(
         base_url: impl Into<String>,
@@ -236,7 +246,7 @@ impl OpenRouterClient {
         model_id: impl Into<String>,
         api_key: impl Into<String>,
         retry: RetryPolicy,
-        cache_key: Option<String>,
+        session_key: Option<String>,
     ) -> Self {
         Self {
             http,
@@ -244,7 +254,7 @@ impl OpenRouterClient {
             model_id: model_id.into(),
             api_key: api_key.into(),
             retry,
-            cache_key,
+            session_key,
         }
     }
 
@@ -252,15 +262,15 @@ impl OpenRouterClient {
     /// environment. Returns [`ModelError::MissingApiKey`] when the credential is
     /// absent or empty.
     ///
-    /// `cache_key` is the session-wide [`prompt_cache_key`](build_request_body) stamped on every
+    /// `session_key` is the session-wide [sticky-session key](build_request_body) stamped on every
     /// request — the whole run's session id, shared by the root and every subagent. Sharing it is
     /// deliberate: agents that open on the same prefix (same calling convention, the same
-    /// autoloaded specs) then route to the same provider backend and reuse one another's cached
-    /// prefix, and an agent's own successive turns stay on that backend so each turn reads the
+    /// autoloaded specs) then route to the same provider endpoint and reuse one another's cached
+    /// prefix, and an agent's own successive turns stay on that endpoint so each turn reads the
     /// prefix the last one cached. `None` sends no key.
     pub fn from_binding(
         binding: &GgSlotBinding,
-        cache_key: Option<&str>,
+        session_key: Option<&str>,
     ) -> Result<Self, ModelError> {
         let api_key = std::env::var(API_KEY_ENV)
             .ok()
@@ -272,7 +282,7 @@ impl OpenRouterClient {
             binding.model_id.clone(),
             api_key,
             RetryPolicy::default(),
-            cache_key.map(str::to_string),
+            session_key.map(str::to_string),
         ))
     }
 
@@ -289,7 +299,7 @@ impl ModelClient for OpenRouterClient {
         messages: &[Message],
         tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
-        let body = build_request_body(&self.model_id, messages, tools, self.cache_key.as_deref());
+        let body = build_request_body(&self.model_id, messages, tools, self.session_key.as_deref());
         self.send(body, messages).await
     }
 
@@ -305,7 +315,7 @@ impl ModelClient for OpenRouterClient {
             &self.model_id,
             messages,
             tool,
-            self.cache_key.as_deref(),
+            self.session_key.as_deref(),
         );
         self.send(body, messages).await
     }
@@ -332,7 +342,7 @@ impl OpenRouterClient {
         let carries_images = messages.iter().any(|message| !message.images.is_empty());
 
         for attempt in 1..=self.retry.max_attempts {
-            let sent = self
+            let mut request = self
                 .http
                 .post(&url)
                 .header(
@@ -340,10 +350,12 @@ impl OpenRouterClient {
                     format!("Bearer {}", self.api_key),
                 )
                 .header("HTTP-Referer", GG_HTTP_REFERER)
-                .header("X-Title", GG_X_TITLE)
-                .json(&body)
-                .send()
-                .await;
+                .header("X-Title", GG_X_TITLE);
+            // The header form of the `session_id` the body already carries — see `session_key`.
+            if let Some(key) = self.session_key.as_deref().filter(|key| !key.is_empty()) {
+                request = request.header(SESSION_ID_HEADER, session_key_on_the_wire(key));
+            }
+            let sent = request.json(&body).send().await;
 
             match sent {
                 // Transport-level failure (connect/timeout/etc.): always retryable.
@@ -452,23 +464,36 @@ fn truncate(body: &str) -> String {
 /// client serializes exactly this. `tool_choice` is set to `"auto"` only when tools
 /// are offered; `usage: { include: true }` asks OpenRouter to return cost.
 ///
-/// When `cache_key` is `Some` (and non-empty) it is sent as `prompt_cache_key`, the
-/// caller-supplied hint a provider uses to keep a conversation's requests on one backend so
-/// each turn reuses the prefix the previous turn cached. A run's turns share one key (see
-/// [`OpenRouterClient::from_binding`]); dropping it lets two prefix-identical requests land on
-/// different backends, and the second is billed fully uncached even though nothing changed.
-/// `None` (or an empty key) omits the field entirely.
+/// When `session_key` is `Some` (and non-empty) it is sent as **`session_id`** — OpenRouter's
+/// sticky-routing key, the field that keeps a conversation's requests on one provider *endpoint*
+/// so each turn reuses the prefix the previous turn cached. A run's turns share one key (see
+/// [`OpenRouterClient::from_binding`]); without a sticky key OpenRouter is free to balance
+/// prefix-identical requests across endpoints, and every request that lands somewhere new is
+/// billed fully uncached even though nothing about the prompt changed.
 ///
-/// The messages the [breakpoint policy](cache_breakpoints) selects are additionally stamped with
-/// an explicit `cache_control` marker, which is what actually *enables* the prompt cache on
-/// providers that do not cache implicitly — see that function for why the key alone is not enough.
+/// The same value also rides as `prompt_cache_key`. That field is the *OpenAI-style* key:
+/// OpenRouter consults it for sticky routing only as a fallback when no `session_id` (or
+/// `x-session-id` header) is present, and OpenAI-native endpoints use it to scope their own cache
+/// lookups. Sending only `prompt_cache_key` — which is what gg did — left routing on that fallback
+/// path and produced runs whose requests hit a fresh endpoint, and so a 0% cache rate, turn after
+/// turn even when the provider *name* on the dashboard never changed. `None` (or an empty key)
+/// omits both fields entirely.
+///
+/// On a model that [needs them](requires_cache_markers), the messages the
+/// [breakpoint policy](cache_breakpoints) selects are additionally stamped with an explicit
+/// `cache_control` marker, which is what actually *enables* the prompt cache on a provider that
+/// does not cache implicitly — see that function for why the key alone is not enough.
 pub fn build_request_body(
     model_id: &str,
     messages: &[Message],
     tools: &[ToolDefinition],
-    cache_key: Option<&str>,
+    session_key: Option<&str>,
 ) -> Value {
-    let breakpoints = cache_breakpoints(messages);
+    let breakpoints = if requires_cache_markers(model_id) {
+        cache_breakpoints(messages)
+    } else {
+        Vec::new()
+    };
     let messages: Vec<Value> = messages
         .iter()
         .enumerate()
@@ -480,7 +505,11 @@ pub fn build_request_body(
         "usage": { "include": true },
     });
 
-    if let Some(key) = cache_key.filter(|key| !key.is_empty()) {
+    if let Some(key) = session_key.filter(|key| !key.is_empty()) {
+        let key = session_key_on_the_wire(key);
+        // The sticky-routing key, and the OpenAI-style fallback for the providers that read that
+        // one instead. Same value: they name the same conversation.
+        body["session_id"] = json!(key);
         body["prompt_cache_key"] = json!(key);
     }
 
@@ -515,9 +544,9 @@ pub fn build_required_tool_request_body(
     model_id: &str,
     messages: &[Message],
     tool: &ToolDefinition,
-    cache_key: Option<&str>,
+    session_key: Option<&str>,
 ) -> Value {
-    let mut body = build_request_body(model_id, messages, std::slice::from_ref(tool), cache_key);
+    let mut body = build_request_body(model_id, messages, std::slice::from_ref(tool), session_key);
     body["tool_choice"] = json!({
         "type": "function",
         "function": { "name": tool.name },
@@ -525,10 +554,48 @@ pub fn build_required_tool_request_body(
     body
 }
 
+/// The [session key](build_request_body) as it goes on the wire: truncated to
+/// [`MAX_SESSION_KEY_CHARS`] on a character boundary.
+///
+/// Truncation rather than rejection is deliberate — the leading characters of an over-long key are
+/// still a *stable* key, which is the only property sticky routing needs, whereas dropping the
+/// field would cost the run its cache.
+fn session_key_on_the_wire(key: &str) -> &str {
+    match key.char_indices().nth(MAX_SESSION_KEY_CHARS) {
+        Some((cut, _)) => &key[..cut],
+        None => key,
+    }
+}
+
+/// Whether `model_id` names a model that caches **only** what a request explicitly marks, and so
+/// must be sent [`cache_control` breakpoints](cache_breakpoints).
+///
+/// This is the Anthropic family, and marking it is not optional: an unmarked request to a Claude
+/// model is billed at the full input rate every turn, however byte-identical it is to the last one.
+///
+/// Every *other* provider gg reaches caches long prefixes implicitly, and for those the markers are
+/// worse than useless. `cache_control` has to ride a content block, so marking a text-only message
+/// promotes it from a bare string to a one-element array (see [`wire_message`]) — and because the
+/// rolling breakpoints move every turn, the *same* message is then sent as a string on one turn and
+/// as an array on the next. Anthropic normalizes both to content blocks and never notices; a
+/// provider that caches implicitly off the forwarded OpenAI-shaped payload sees the prefix change
+/// underneath it and re-bills the request in full. Measured against one such provider, marking cost
+/// both the hit (0% where an unmarked request read 98%) and ~170 tokens of extra prompt on the
+/// marked turns.
+///
+/// So the choice is not "sniff the model id or mark everything": marking everything *loses* caching
+/// on everything that is not Anthropic. The match is deliberately loose — any id mentioning Claude,
+/// whatever vendor prefix routes it — because the failure mode of not matching a Claude model is the
+/// expensive one, and gg has already been through it once.
+pub fn requires_cache_markers(model_id: &str) -> bool {
+    let model_id = model_id.to_ascii_lowercase();
+    model_id.starts_with("anthropic/") || model_id.contains("claude")
+}
+
 /// Choose which messages carry an explicit `cache_control` breakpoint — the markers that turn a
 /// provider's prompt cache **on**.
 ///
-/// A [`prompt_cache_key`](build_request_body) only decides *which backend* a request lands on. It
+/// A [session key](build_request_body) only decides *which backend* a request lands on. It
 /// does not ask for anything to be cached. Some providers (OpenAI, Gemini) cache long prefixes
 /// implicitly and need nothing more, but Anthropic caches **only** what a request explicitly marks:
 /// an unmarked request is billed at full input rate every turn no matter how much of it is
@@ -555,10 +622,8 @@ pub fn build_required_tool_request_body(
 /// is deduplicated — so the count never exceeds [`MAX_CACHE_BREAKPOINTS`], which is Anthropic's
 /// hard cap and a request-rejecting error to exceed.
 ///
-/// Markers are sent to every provider, not just Anthropic: a provider that caches implicitly
-/// ignores them (verified against OpenAI and Gemini, which accept the marked shape and keep
-/// caching as before), and sniffing the model id would only mean gg silently stops caching the
-/// day OpenRouter routes a Claude model under some other prefix.
+/// Which requests carry these markers at all is [the model's](requires_cache_markers) business, not
+/// this function's: it decides *where* a marker goes, and is called only for a model that needs one.
 ///
 /// Pure, so the placement is unit tested without network.
 pub fn cache_breakpoints(messages: &[Message]) -> Vec<usize> {
@@ -2506,17 +2571,18 @@ pub fn provider_for(binding: &GgSlotBinding) -> ProviderKind {
 /// Build the [`ModelClient`] a slot binds to, per the [selection rule](self). Returns
 /// [`ModelError::MissingApiKey`] for a live OpenRouter binding with no credential.
 ///
-/// `cache_key` is the session-wide [`prompt_cache_key`](build_request_body) a live client stamps
+/// `session_key` is the session-wide [sticky-session key](build_request_body) a live client stamps
 /// on every request (the mock client ignores it). It is the run's session id, so every agent's
 /// client carries the same value — see [`OpenRouterClient::from_binding`].
 pub fn client_for_slot(
     binding: &GgSlotBinding,
-    cache_key: Option<&str>,
+    session_key: Option<&str>,
 ) -> Result<Box<dyn ModelClient>, ModelError> {
     match provider_for(binding) {
         ProviderKind::Mock => Ok(Box::new(mock_client_for(&binding.model_id))),
         ProviderKind::OpenRouter => Ok(Box::new(OpenRouterClient::from_binding(
-            binding, cache_key,
+            binding,
+            session_key,
         )?)),
     }
 }
@@ -2601,25 +2667,25 @@ pub trait ClientFactory: Send + Sync {
 /// The production [`ClientFactory`]: resolves each binding through [`client_for_slot`], honoring
 /// the `TCAB_GG_FAKE_MODEL` / `mock` selection rules.
 ///
-/// It carries the run's session-wide [`prompt_cache_key`](build_request_body) (the session id) and
+/// It carries the run's session-wide [sticky-session key](build_request_body) (the session id) and
 /// stamps it on every live client it builds, so all of a run's agents — the root and every
 /// subagent the factory resolves — share one key. That is what lets a subagent reuse the cached
 /// opening prefix a sibling already warmed, instead of each agent paying for it uncached.
 pub struct DefaultClientFactory {
-    cache_key: Option<String>,
+    session_key: Option<String>,
 }
 
 impl DefaultClientFactory {
-    /// A factory that stamps `cache_key` (the run's session id) on every live client it builds.
-    /// `None` builds clients that send no `prompt_cache_key` (the pre-caching behavior).
-    pub fn new(cache_key: Option<String>) -> Self {
-        Self { cache_key }
+    /// A factory that stamps `session_key` (the run's session id) on every live client it builds.
+    /// `None` builds clients that send no session key at all (the pre-caching behavior).
+    pub fn new(session_key: Option<String>) -> Self {
+        Self { session_key }
     }
 }
 
 impl ClientFactory for DefaultClientFactory {
     fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
-        client_for_slot(binding, self.cache_key.as_deref())
+        client_for_slot(binding, self.session_key.as_deref())
     }
 }
 

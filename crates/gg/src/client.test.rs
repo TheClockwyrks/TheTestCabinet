@@ -73,9 +73,9 @@ fn build_request_body_encodes_tool_call_arguments_as_string() {
     let tool_msg = &body["messages"][1];
     assert_eq!(tool_msg["role"], json!("tool"));
     assert_eq!(tool_msg["tool_call_id"], json!("call_1"));
-    // The tail message is a cache breakpoint, so its text rides a content part rather than a
-    // bare string (see `cache_breakpoints`); the text itself is unchanged.
-    assert_eq!(tool_msg["content"][0]["text"], json!("wrote 13 bytes"));
+    // `m` is not a model gg marks (see `requires_cache_markers`), so every message keeps the
+    // bare-string content shape and only the tool-call encoding above is under test here.
+    assert_eq!(tool_msg["content"], json!("wrote 13 bytes"));
 }
 
 /// With no tools offered, neither `tools` nor `tool_choice` is present.
@@ -86,22 +86,44 @@ fn build_request_body_omits_tools_when_none() {
     assert!(body.get("tool_choice").is_none());
 }
 
-/// A supplied cache key rides the request as `prompt_cache_key` — the hint that keeps a run's
-/// requests on one backend so each turn (and each sibling agent) reuses a warmed prefix.
+/// A supplied session key rides the request as **`session_id`** — OpenRouter's sticky-routing
+/// field, which is what actually keeps a run's requests on one provider *endpoint* so each turn
+/// (and each sibling agent) reuses a warmed prefix. It also rides as `prompt_cache_key` for the
+/// providers that read the OpenAI-style field instead. Sending only the latter — which gg did —
+/// left routing on a fallback path and cost whole runs their cache.
 #[test]
-fn build_request_body_sends_prompt_cache_key_when_supplied() {
+fn build_request_body_sends_the_session_key_as_both_fields() {
     let body = build_request_body("m", &[Message::user("hi")], &[], Some("session-42"));
+    assert_eq!(body["session_id"], json!("session-42"));
     assert_eq!(body["prompt_cache_key"], json!("session-42"));
 }
 
-/// No key (or an empty one) leaves `prompt_cache_key` off the wire entirely, so a caller that
+/// No key (or an empty one) leaves both fields off the wire entirely, so a caller that
 /// has no key to offer sends exactly what gg always did.
 #[test]
-fn build_request_body_omits_prompt_cache_key_without_one() {
-    let none = build_request_body("m", &[Message::user("hi")], &[], None);
-    assert!(none.get("prompt_cache_key").is_none());
-    let empty = build_request_body("m", &[Message::user("hi")], &[], Some(""));
-    assert!(empty.get("prompt_cache_key").is_none());
+fn build_request_body_omits_the_session_key_without_one() {
+    for body in [
+        build_request_body("m", &[Message::user("hi")], &[], None),
+        build_request_body("m", &[Message::user("hi")], &[], Some("")),
+    ] {
+        assert!(body.get("session_id").is_none());
+        assert!(body.get("prompt_cache_key").is_none());
+    }
+}
+
+/// An over-long key is truncated to the documented cap rather than dropped: the leading characters
+/// are still a *stable* key, which is all sticky routing needs, whereas omitting the field would
+/// cost the run its cache — the very failure the key exists to prevent.
+#[test]
+fn build_request_body_truncates_an_over_long_session_key() {
+    // A multi-byte character straddling the cap would panic a naive byte slice.
+    let key = "sesh-".to_string() + &"é".repeat(MAX_SESSION_KEY_CHARS);
+    let body = build_request_body("m", &[Message::user("hi")], &[], Some(&key));
+
+    let sent = body["session_id"].as_str().expect("a session id");
+    assert_eq!(sent.chars().count(), MAX_SESSION_KEY_CHARS);
+    assert!(key.starts_with(sent));
+    assert_eq!(body["prompt_cache_key"], body["session_id"]);
 }
 
 // ---------------------------------------------------------------------------
@@ -146,12 +168,75 @@ fn build_request_body_keeps_plain_content_without_images() {
         Message::assistant(Some("on it".to_string()), vec![]),
         Message::user("carry on"),
     ];
-    let body = build_request_body("m", &messages, &[], None);
+    let body = build_request_body("anthropic/claude-haiku-4.5", &messages, &[], None);
 
     // The anchor (index 1) and the tail (index 3) are breakpoints; the untouched middle keeps
     // the bare-string shape.
     assert_eq!(body["messages"][0]["content"], json!("sys"));
     assert_eq!(body["messages"][2]["content"], json!("on it"));
+}
+
+/// A model that caches **implicitly** is sent no markers at all — and therefore the same bytes for
+/// the same message on every turn.
+///
+/// This is the property implicit caching runs on, and marking is what broke it: `cache_control`
+/// needs a content block, so a marked text-only message is promoted from a bare string to a
+/// one-element array, and the rolling markers move every turn. The same message would go out as a
+/// string on one turn and an array on the next, changing the prefix underneath a provider that was
+/// matching it — measured as a 0% read on a turn that read 98% unmarked.
+#[test]
+fn build_request_body_sends_no_markers_to_an_implicitly_caching_model() {
+    let mut messages = vec![
+        Message::system("a long system prompt"),
+        Message::user("build it"),
+    ];
+    let mut shapes: Vec<Vec<serde_json::Value>> = Vec::new();
+    for turn in 0..24 {
+        messages.push(Message::assistant(Some(format!("turn {turn}")), vec![]));
+        let body = build_request_body("deepseek/deepseek-chat", &messages, &[], None);
+        assert!(
+            markers(&body).is_empty(),
+            "turn {turn} marked an implicitly-caching model: {:?}",
+            markers(&body)
+        );
+        shapes.push(body["messages"].as_array().expect("messages").clone());
+    }
+
+    // Every turn's prompt extends the last one rather than rewriting any part of it: each earlier
+    // turn's messages are a byte-identical prefix of the next turn's.
+    for pair in shapes.windows(2) {
+        assert_eq!(
+            pair[0].as_slice(),
+            &pair[1][..pair[0].len()],
+            "a turn rewrote an already-sent message instead of appending"
+        );
+    }
+}
+
+/// Which models are marked: the Anthropic family (which caches nothing without markers), whatever
+/// vendor prefix routes them, and nothing else.
+#[test]
+fn requires_cache_markers_matches_the_anthropic_family_only() {
+    for marked in [
+        "anthropic/claude-sonnet-4.5",
+        "anthropic/claude-opus-4.1:thinking",
+        "ANTHROPIC/Claude-Haiku-4.5",
+        "bedrock/anthropic.claude-sonnet-4.5-v1:0",
+    ] {
+        assert!(requires_cache_markers(marked), "{marked} must be marked");
+    }
+    for unmarked in [
+        "openai/gpt-5",
+        "google/gemini-2.5-pro",
+        "deepseek/deepseek-chat",
+        "moonshotai/kimi-k2",
+        "mock/primary",
+    ] {
+        assert!(
+            !requires_cache_markers(unmarked),
+            "{unmarked} must not be marked"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +365,12 @@ fn cache_breakpoints_never_exceed_the_provider_cap() {
 fn build_request_body_marks_the_last_part_of_an_image_message() {
     let read = Message::tool_result("call_1", "`ref.png` — PNG image, 12 bytes.")
         .with_images(vec![ImageContent::new("image/png", "QUJD", 3)]);
-    let body = build_request_body("m", &[Message::user("look at ref.png"), read], &[], None);
+    let body = build_request_body(
+        "anthropic/claude-haiku-4.5",
+        &[Message::user("look at ref.png"), read],
+        &[],
+        None,
+    );
 
     let parts = body["messages"][1]["content"]
         .as_array()
@@ -295,6 +385,23 @@ fn build_request_body_marks_the_last_part_of_an_image_message() {
 #[test]
 fn cache_breakpoints_handle_an_empty_request() {
     assert!(cache_breakpoints(&[]).is_empty());
+}
+
+/// The `cache_control` marker on each message of a built body, by index.
+fn markers(body: &serde_json::Value) -> Vec<(usize, serde_json::Value)> {
+    body["messages"]
+        .as_array()
+        .expect("messages array")
+        .iter()
+        .enumerate()
+        .filter_map(|(index, message)| {
+            message["content"]
+                .as_array()?
+                .iter()
+                .find_map(|part| part.get("cache_control"))
+                .map(|marker| (index, marker.clone()))
+        })
+        .collect()
 }
 
 /// OpenRouter's own refusal — a `404` whose body says no endpoint supports image input —
