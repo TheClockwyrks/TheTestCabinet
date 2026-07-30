@@ -1,5 +1,6 @@
 //! The model-catalog endpoints: the merged catalog read plus the operator-driven
-//! config CRUD, seed-from-run helper, and svgl.app logo fetch.
+//! config CRUD, seed-from-run helper, OpenRouter fill-in lookup, and svgl.app
+//! logo fetch.
 //!
 //! The catalog is composed on the fly from three sources: the operator-curated
 //! `model` configs (display name, provider, logo, prose, aliases), the observed
@@ -8,8 +9,9 @@
 //! shows up without a release. Curated config is layered on by alias; an
 //! uncurated model is shown, derived, under its canonical id.
 //!
-//! Reads are open (the private-network model); the config mutations, the seed
-//! helper, and the logo fetch require a bearer token (see [`AuthUser`]). The same
+//! Reads are open (the private-network model); the config mutations, the
+//! OpenRouter lookup, and the logo fetch require a bearer token (see
+//! [`AuthUser`]) — the last two because they reach a third party. The same
 //! [`compose_catalog`] the read uses also builds the public snapshot's catalog, so
 //! the two never disagree.
 
@@ -168,6 +170,25 @@ pub struct ModelSeedOut {
     pub aliases: Vec<AliasOut>,
     /// The canonical id as an OpenRouter slug, when it looks like one.
     pub openrouter_slug: Option<String>,
+}
+
+/// The `GET /models/openrouter` response: the descriptive facts OpenRouter
+/// publishes about a model, for the config form to fill itself in with.
+///
+/// Only the fields a curator would otherwise retype are here. Prices, the context
+/// window, and the modalities are deliberately absent: the backend records those
+/// itself from the same catalog (on save, on launch, and on the 24-hour refresh),
+/// so they are never form state to begin with.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct ModelListingOut {
+    /// The display name, with OpenRouter's `Provider: ` prefix stripped.
+    pub name: String,
+    /// The provider's presentational name (`Anthropic`), from that same prefix.
+    pub provider: String,
+    /// OpenRouter's prose description, or null when it publishes none.
+    pub description: Option<String>,
 }
 
 /// The `POST /models/logo` request/response.
@@ -393,6 +414,44 @@ pub async fn seed(
         provider: guess_provider(&canonical),
         aliases,
         openrouter_slug: canonical.contains('/').then(|| canonical.clone()),
+    }))
+}
+
+/// The `GET /models/openrouter` query.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenRouterLookupQuery {
+    /// The OpenRouter slug to look up, e.g. `anthropic/claude-opus-4.8`.
+    pub slug: String,
+}
+
+/// `GET /models/openrouter?slug=` — the descriptive facts OpenRouter publishes
+/// about a model, so the config form can fill itself in instead of the operator
+/// retyping what OpenRouter already knows. Requires a bearer token.
+///
+/// Bearer-gated like the logo fetch, and for the same reason: both make the
+/// backend reach out to a third party on the caller's behalf, so both are limited
+/// to signed-in operators rather than open like the catalog read.
+///
+/// A slug OpenRouter does not list is a `404` — the operator mistyped it, or the
+/// model is not on OpenRouter at all, and either way the form should say so rather
+/// than silently fill nothing in.
+#[tracing::instrument(name = "models.openrouter", skip(state, _user), fields(model.openrouter_slug = %query.slug), err(Debug))]
+pub async fn openrouter(
+    State(state): State<AppState>,
+    _user: AuthUser,
+    Query(query): Query<OpenRouterLookupQuery>,
+) -> Result<Json<ModelListingOut>, ApiError> {
+    let slug = lookup_slug(&query.slug)
+        .ok_or_else(|| ApiError::unprocessable("slug must be non-empty"))?;
+    let listing =
+        state.prices.model_listing(slug).await.map_err(|err| {
+            ApiError::not_found(format!("looking up `{slug}` on OpenRouter: {err}"))
+        })?;
+    Ok(Json(ModelListingOut {
+        name: listing.name,
+        provider: listing.provider,
+        description: listing.description,
     }))
 }
 
@@ -654,6 +713,18 @@ fn normalize_aliases(aliases: &[AliasInput]) -> Vec<AliasEntry> {
         }
     }
     out
+}
+
+/// The OpenRouter slug to look a listing up under: trimmed, with the
+/// `openrouter/` routing prefix dropped, or `None` when nothing is left.
+///
+/// The prefix is stripped for the same reason an alias write strips it — it is
+/// how some harnesses spell a routed id, and OpenRouter's own catalog does not
+/// carry it — so a slug pasted straight out of a run resolves rather than 404s.
+fn lookup_slug(raw: &str) -> Option<&str> {
+    let trimmed = raw.trim();
+    let base = trimmed.strip_prefix("openrouter/").unwrap_or(trimmed);
+    (!base.is_empty()).then_some(base)
 }
 
 /// `https://openrouter.ai/<slug>` for a model slug.

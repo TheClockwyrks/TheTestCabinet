@@ -53,7 +53,7 @@ pub use jobs::{
 };
 pub use models::{
     AliasInput, AliasOut, LogoFetchInput, LogoFetchOut, ModelCatalogResponse, ModelConfigInput,
-    ModelOut, ModelPricesOut, ModelSeedOut, PriceObservationOut, compose_catalog,
+    ModelListingOut, ModelOut, ModelPricesOut, ModelSeedOut, PriceObservationOut, compose_catalog,
 };
 pub use test_cases::{CatalogCase, CatalogResponse, VersionResponse, VersionsResponse};
 
@@ -115,12 +115,14 @@ pub fn router(state: AppState) -> Router {
         .route("/ingest", post(ingest_api::ingest))
         // The model catalog: a merged read (curated config ⋃ models derived from
         // runs, with price history) plus operator-driven config CRUD, a
-        // seed-from-run authoring helper, and the svgl.app logo fetch. Reads are
-        // open; the mutations, the seed, and the logo fetch require a token.
-        // `/models/seed` and `/models/logo` are static, so they outrank the
-        // `/models/{slug}` dynamic route regardless of registration order.
+        // seed-from-run authoring helper, the OpenRouter fill-in lookup, and the
+        // svgl.app logo fetch. Reads are open; the mutations, the seed, the lookup,
+        // and the logo fetch require a token. `/models/seed`, `/models/logo`, and
+        // `/models/openrouter` are static, so they outrank the `/models/{slug}`
+        // dynamic route regardless of registration order.
         .route("/models", get(models::list).post(models::create))
         .route("/models/seed", get(models::seed))
+        .route("/models/openrouter", get(models::openrouter))
         .route("/models/logo", post(models::logo))
         .route(
             "/models/{slug}",

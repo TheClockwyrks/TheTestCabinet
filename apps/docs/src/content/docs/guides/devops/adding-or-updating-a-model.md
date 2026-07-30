@@ -90,10 +90,48 @@ the one curated entry; the family additionally lets the **New Run** and
 model dropdown filters to the slugs in the selected harness's family. See
 [Harnesses](/components/core/harnesses/) for the reporting details.
 
+## Filling the form in from OpenRouter
+
+The form's first field is the OpenRouter slug, and next to it is **Fill from
+OpenRouter**. Pressing it looks the slug up in OpenRouter's catalog and fills in
+the three fields OpenRouter already knows:
+
+- **Display name** and **Provider**, split out of OpenRouter's own
+  `Provider: Model` name — so `Anthropic: Claude Sonnet 4.5` becomes the name
+  *Claude Sonnet 4.5* under the provider *Anthropic*, with the provider's
+  presentational spelling rather than the slug's lowercase one. A model whose name
+  carries no such prefix falls back to the slug's author segment.
+- **Description**, as OpenRouter publishes it. Note that OpenRouter truncates long
+  blurbs itself (with a trailing `...`); what lands in the field is what it serves.
+
+If the id list is still untouched, the fill also claims the slug as the entry's
+first alias under **Others (OpenRouter)** — the row you would otherwise fill with
+the text you just typed. A list you have already put an id into is left alone,
+since one of those may be this slug under a family you chose deliberately.
+
+Two things it deliberately does **not** touch:
+
+- **The provider logo**, which comes from [svgl.app](https://svgl.app) rather than
+  OpenRouter and is still picked by hand.
+- **Prices, the context window, and the input modalities**, which are not form
+  state at all — the backend records them itself from the same catalog (see
+  below).
+
+Fill **replaces** those three fields rather than filling only the blanks: it runs
+only on an explicit press, and "replace what's here from OpenRouter" is the one
+reading of that press that never leaves you guessing which fields it decided to
+skip. Nothing is persisted until **Save**, so a fill you didn't want is discarded
+by leaving the page. On a model whose description you have already written
+yourself, that makes Fill a deliberate choice rather than a routine one.
+
+A slug OpenRouter does not list — a typo, or a model that simply isn't on
+OpenRouter — reports inline and changes nothing; fill the fields in by hand.
+
 ## Two ways to add a model
 
 1. **Blank form.** In the Models section, click **Add model** and fill the form
-   from scratch.
+   from scratch — usually by entering the OpenRouter slug and pressing **Fill
+   from OpenRouter** (above), then adjusting.
 2. **Seed from a run.** When a run of an unknown (derived) model appears, open it
    and click **Add this model**: the form is pre-seeded from that run's model id
    as a starting alias, already tagged with the family of the harness that ran it

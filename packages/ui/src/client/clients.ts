@@ -17,6 +17,7 @@ import type {
   LogoFetchResult,
   Model,
   ModelInput,
+  ModelListing,
   ModelSeed,
   MyReviewsPage,
   ProgressCallback,
@@ -155,6 +156,9 @@ export interface BackendClient {
   fetchModelLogo?(url: string, token: string): Promise<LogoFetchResult>;
   /** A blank-form seed derived from a run of an unknown model (`GET /models/seed`). */
   seedModelFromRun?(runId: string): Promise<ModelSeed>;
+  /** What OpenRouter publishes about a model, so the config form can fill itself
+   * in rather than have the operator retype it (`GET /models/openrouter`, Bearer). */
+  lookupOpenrouterModel?(slug: string, token: string): Promise<ModelListing>;
 
   // Per-harness configuration (`GET /harness-config` open; the setter Bearer). The
   // list enumerates every harness with its current knobs (today: max parallelism);

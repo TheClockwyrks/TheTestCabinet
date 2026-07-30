@@ -54,6 +54,31 @@ pub struct ModelLaunchFacts {
     pub input_modalities: Vec<String>,
 }
 
+/// The descriptive facts OpenRouter publishes about one model — the display name,
+/// the provider behind it, and the prose blurb — as the model form's
+/// auto-populate reads them.
+///
+/// These are the *curated* fields of a catalog entry, the ones an operator would
+/// otherwise retype by hand. They are deliberately separate from
+/// [`ModelDetails`] (prices and machine facts, recorded automatically) because
+/// nothing but the form wants them: the catalog stores a curator's wording, and
+/// this is only ever a starting point for it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModelListing {
+    /// The display name with the provider prefix stripped — `Claude Sonnet 4.5`
+    /// from OpenRouter's `Anthropic: Claude Sonnet 4.5`. The whole name when it
+    /// carries no prefix.
+    pub name: String,
+    /// The provider, read from that same prefix (`Anthropic`), falling back to the
+    /// slug's author segment (`anthropic/claude-...` → `anthropic`) when the name
+    /// is unprefixed.
+    pub provider: String,
+    /// OpenRouter's prose description, or `None` when it publishes none. Note that
+    /// OpenRouter truncates long descriptions itself (with a trailing `...`); this
+    /// reports exactly what it serves.
+    pub description: Option<String>,
+}
+
 impl ModelLaunchFacts {
     /// Whether the model is known to accept image input.
     ///
@@ -153,6 +178,37 @@ impl OpenRouterPrices {
     /// lists the model but reports no context length for any route; an unlisted model is
     /// an `Err`.
     pub async fn model_launch_facts(&self, model_id: &str) -> Result<ModelLaunchFacts> {
+        let data = self.fetch_endpoints(model_id).await?;
+        Ok(ModelLaunchFacts {
+            context_window: data
+                .endpoints
+                .iter()
+                .filter_map(|endpoint| endpoint.context_length)
+                .max(),
+            input_modalities: modalities_of(data.architecture.as_ref()),
+        })
+    }
+
+    /// Look up **one** model's [descriptive facts](ModelListing) — its display name,
+    /// provider, and prose description — fetching only that model.
+    ///
+    /// This backs the model form's "fill from OpenRouter" control, so it reads the
+    /// same cheap per-model endpoint
+    /// [`model_launch_facts`](Self::model_launch_facts) does rather than the
+    /// half-megabyte listing: the two facts a curator wants are on the response
+    /// already, and a form control must not pay for the whole catalog to get them.
+    /// The listing's description is identical to this one — OpenRouter truncates it
+    /// at the source — so nothing is lost by taking the smaller read.
+    ///
+    /// An unlisted model is an `Err`; a listed model missing a description is
+    /// simply a `None` description, since a model with no blurb is ordinary.
+    pub async fn model_listing(&self, model_id: &str) -> Result<ModelListing> {
+        Ok(listing_of(model_id, self.fetch_endpoints(model_id).await?))
+    }
+
+    /// Fetch one model's `/models/{id}/endpoints` body — the cheap per-model read
+    /// (a few KB) shared by the launch-facts and listing lookups.
+    async fn fetch_endpoints(&self, model_id: &str) -> Result<ModelEndpoints> {
         let url = format!("{}/{model_id}/endpoints", self.endpoint);
         let response = reqwest::get(&url).await.map_err(|err| {
             Error::Validation(format!(
@@ -170,15 +226,7 @@ impl OpenRouterPrices {
                 "parsing the OpenRouter catalog facts for `{model_id}`: {err}"
             ))
         })?;
-        Ok(ModelLaunchFacts {
-            context_window: body
-                .data
-                .endpoints
-                .iter()
-                .filter_map(|endpoint| endpoint.context_length)
-                .max(),
-            input_modalities: modalities_of(body.data.architecture.as_ref()),
-        })
+        Ok(body.data)
     }
 
     /// Fetch OpenRouter's full model catalog.
@@ -205,6 +253,37 @@ impl OpenRouterPrices {
                     "model `{model_id}` not found in OpenRouter catalog"
                 ))
             })
+    }
+}
+
+/// Map one model's endpoints response onto the [`ModelListing`] the config form
+/// fills itself in from.
+///
+/// OpenRouter writes the display name as `Provider: Model`, which is the only
+/// place a provider's *presentational* spelling appears (`Anthropic`, not the
+/// slug's `anthropic`), so that prefix is preferred as the provider. A name with
+/// no prefix falls back to the slug's author segment (`anthropic/claude-...` →
+/// `anthropic`, empty when the slug has no segment) and keeps the whole name as
+/// the display name. A blank description is normalized to `None` so the form sees
+/// "nothing published" rather than an empty field it must trim itself.
+fn listing_of(model_id: &str, data: ModelEndpoints) -> ModelListing {
+    let (provider, name) = match data.name.split_once(": ") {
+        Some((provider, name)) => (provider.trim().to_string(), name.trim().to_string()),
+        None => (
+            match model_id.split_once('/') {
+                Some((author, _)) => author.to_string(),
+                None => String::new(),
+            },
+            data.name.trim().to_string(),
+        ),
+    };
+    ModelListing {
+        name,
+        provider,
+        description: data
+            .description
+            .map(|text| text.trim().to_string())
+            .filter(|text| !text.is_empty()),
     }
 }
 
@@ -316,12 +395,19 @@ struct ModelEndpointsResponse {
     data: ModelEndpoints,
 }
 
-/// One model's `architecture` block and its provider routes. The context lengths and
-/// the input modalities are read here; the endpoint carries per-route pricing too, but
-/// prices are recorded from the listing (whose top-level block is the headline the
-/// catalog stores), so reading them here would invite two sources disagreeing.
+/// One model's descriptive block, its `architecture` block, and its provider routes.
+/// The context lengths and the input modalities are read here, as are the name and
+/// description the model form offers a curator; the endpoint carries per-route
+/// pricing too, but prices are recorded from the listing (whose top-level block is
+/// the headline the catalog stores), so reading them here would invite two sources
+/// disagreeing.
 #[derive(Debug, Deserialize)]
 struct ModelEndpoints {
+    /// The display name, written `Provider: Model`.
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
     #[serde(default)]
     architecture: Option<Architecture>,
     #[serde(default)]
@@ -343,3 +429,7 @@ struct Pricing {
     #[serde(default)]
     input_cache_read: Option<String>,
 }
+
+#[cfg(test)]
+#[path = "pricing.test.rs"]
+mod tests;

@@ -179,6 +179,30 @@ fn normalize_aliases_strips_prefix_and_dedups() {
     );
 }
 
+/// The form's OpenRouter fill-in normalizes its slug the way an alias write does,
+/// so an id pasted straight out of a run — routing prefix, stray whitespace and
+/// all — resolves against OpenRouter's catalog instead of 404ing.
+#[test]
+fn lookup_slug_trims_and_strips_the_routing_prefix() {
+    assert_eq!(
+        lookup_slug("  anthropic/claude-opus-4.8  "),
+        Some("anthropic/claude-opus-4.8")
+    );
+    assert_eq!(
+        lookup_slug("openrouter/anthropic/claude-opus-4.8"),
+        Some("anthropic/claude-opus-4.8")
+    );
+}
+
+/// A blank slug (or one that is nothing *but* a routing prefix) is no lookup at
+/// all — the handler rejects it rather than asking OpenRouter about "".
+#[test]
+fn lookup_slug_rejects_an_empty_slug() {
+    assert_eq!(lookup_slug(""), None);
+    assert_eq!(lookup_slug("   "), None);
+    assert_eq!(lookup_slug("openrouter/"), None);
+}
+
 // ---------------------------------------------------------------------------
 // The context-window lookup (the single store gg is told its window from)
 // ---------------------------------------------------------------------------

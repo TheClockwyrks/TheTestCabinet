@@ -275,7 +275,8 @@ fn main() -> Result<()> {
                 bapi::VersionsResponse,
                 bapi::ModelCatalogResponse, bapi::AliasOut, bapi::ModelOut, bapi::ModelPricesOut,
                 bapi::PriceObservationOut, bapi::AliasInput, bapi::ModelConfigInput,
-                bapi::ModelSeedOut, bapi::LogoFetchInput, bapi::LogoFetchOut,
+                bapi::ModelSeedOut, bapi::ModelListingOut, bapi::LogoFetchInput,
+                bapi::LogoFetchOut,
             ],
         },
         // The backend's run-queue control plane (the `/jobs` namespace) — what

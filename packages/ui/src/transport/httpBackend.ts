@@ -29,6 +29,7 @@ import type {
   LogoFetchResult,
   Model,
   ModelInput,
+  ModelListing,
   ModelSeed,
   MyReviewsPage,
   ProgressCallback,
@@ -529,6 +530,17 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return getJson<ModelSeed>(
         baseUrl,
         `/models/seed?runId=${encodeURIComponent(runId)}`,
+      );
+    },
+
+    async lookupOpenrouterModel(
+      slug: string,
+      token: string,
+    ): Promise<ModelListing> {
+      return getJson<ModelListing>(
+        baseUrl,
+        `/models/openrouter?slug=${encodeURIComponent(slug)}`,
+        token,
       );
     },
 

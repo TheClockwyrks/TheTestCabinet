@@ -89,6 +89,9 @@ export function ModelConfigPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [seedError, setSeedError] = useState<string | null>(null);
+  // The OpenRouter fill-in: in flight, and the failure from the last attempt.
+  const [filling, setFilling] = useState(false);
+  const [fillError, setFillError] = useState<string | null>(null);
 
   // Prefill the form from the existing model once it resolves from the catalog.
   // Guarded so it runs a single time and never clobbers the user's edits on a
@@ -188,6 +191,43 @@ export function ModelConfigPage() {
       prev.length > 1 ? prev.filter((_, i) => i !== index) : prev,
     );
 
+  // Fill the curated fields in from what OpenRouter publishes for the entered
+  // slug, so an operator adding a model doesn't retype a name, a provider, and a
+  // blurb that OpenRouter already has. Everything else — the prices, the context
+  // window, the modalities — the backend records for itself, which is why this
+  // fills exactly these three.
+  //
+  // It replaces rather than merges: it runs only on an explicit press, and
+  // "replace what's here from OpenRouter" is the one reading of that press that
+  // doesn't leave the operator wondering which fields it decided to skip. Nothing
+  // is persisted until Save, so a fill that wasn't wanted is discarded by leaving.
+  const onFill = async () => {
+    const slug = openrouterSlug.trim();
+    if (!slug) return;
+    setFilling(true);
+    setFillError(null);
+    try {
+      const listing = await config.lookupOpenrouter(slug);
+      setName(listing.name);
+      setProvider(listing.provider);
+      if (listing.description) setDescription(listing.description);
+      // The OpenRouter slug is itself a canonical model id for the OpenRouter
+      // family, so an untouched alias list is worth claiming it — the row the
+      // operator would otherwise fill with the exact text they just typed above.
+      // A list with any id in it is left alone: those are the operator's, and one
+      // of them may already be this slug under a family they chose deliberately.
+      setAliases((prev) =>
+        prev.some((entry) => entry.slug.trim())
+          ? prev
+          : [{ slug, harnessFamily: "openrouter" }],
+      );
+    } catch (e) {
+      setFillError(String(e));
+    } finally {
+      setFilling(false);
+    }
+  };
+
   const onSave = async () => {
     const cleanAliases = aliases
       .map((a) => ({ ...a, slug: a.slug.trim() }))
@@ -263,6 +303,46 @@ export function ModelConfigPage() {
       )}
 
       <div className={styles.form}>
+        {/* The OpenRouter slug leads the form: it is what prices the model, and
+          the one field that can fill the rest of them in. */}
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>
+            OpenRouter slug (for pricing)
+          </span>
+          <div className={styles.fillRow}>
+            <input
+              className={styles.input}
+              value={openrouterSlug}
+              onChange={(e) => setOpenrouterSlug(e.target.value)}
+              placeholder="e.g. anthropic/claude-opus-4.8"
+              aria-label="OpenRouter slug"
+            />
+            <button
+              type="button"
+              className={styles.fill}
+              onClick={onFill}
+              disabled={!openrouterSlug.trim() || filling}
+              title={
+                openrouterSlug.trim()
+                  ? "Replace the name, provider, and description with what OpenRouter publishes for this slug"
+                  : "Enter an OpenRouter slug to fill the form from"
+              }
+            >
+              {filling ? "Filling…" : "Fill from OpenRouter"}
+            </button>
+          </div>
+          <span className={styles.fieldHint}>
+            Fill replaces the name, provider, and description below with what
+            OpenRouter publishes. Prices, the context window, and the input
+            modalities are recorded automatically — they are never edited here.
+          </span>
+          {fillError && (
+            <span className={styles.fillError} role="alert">
+              {fillError}
+            </span>
+          )}
+        </div>
+
         <div className={styles.fields}>
           <label className={styles.field}>
             <span className={styles.fieldLabel}>Name</span>
@@ -281,18 +361,6 @@ export function ModelConfigPage() {
               value={provider}
               onChange={(e) => setProvider(e.target.value)}
               placeholder="e.g. Anthropic"
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span className={styles.fieldLabel}>
-              OpenRouter slug (for pricing)
-            </span>
-            <input
-              className={styles.input}
-              value={openrouterSlug}
-              onChange={(e) => setOpenrouterSlug(e.target.value)}
-              placeholder="e.g. anthropic/claude-opus-4.8"
             />
           </label>
         </div>

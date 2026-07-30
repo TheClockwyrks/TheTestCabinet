@@ -208,6 +208,30 @@ export type ModelSeedOut = {
 };
 
 /**
+ * The `GET /models/openrouter` response: the descriptive facts OpenRouter
+ * publishes about a model, for the config form to fill itself in with.
+ *
+ * Only the fields a curator would otherwise retype are here. Prices, the context
+ * window, and the modalities are deliberately absent: the backend records those
+ * itself from the same catalog (on save, on launch, and on the 24-hour refresh),
+ * so they are never form state to begin with.
+ */
+export type ModelListingOut = {
+  /**
+   * The display name, with OpenRouter's `Provider: ` prefix stripped.
+   */
+  name: string;
+  /**
+   * The provider's presentational name (`Anthropic`), from that same prefix.
+   */
+  provider: string;
+  /**
+   * OpenRouter's prose description, or null when it publishes none.
+   */
+  description: string | null;
+};
+
+/**
  * The `POST /models/logo` request/response.
  */
 export type LogoFetchInput = { url: string };

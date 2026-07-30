@@ -27,14 +27,19 @@ Updating a Model](/guides/devops/adding-or-updating-a-model/).
 2. Click **Add model** for a blank form, or — if the model already has runs but
    isn't curated yet — open it from its derived entry and click **Add this
    model** to seed the form from that run.
-3. Fill in the **display name** (required — it is never auto-generated), one or
-   more **aliases** (the run-record model ids this entry should cover), each
-   **paired with the harness family it works with** — Claude Code, Codex,
-   Antigravity, or Others (OpenRouter) — the **provider**, the **svgl logo URL**, a
-   markdown **description**, and the **OpenRouter slug** (used only for pricing).
-   Pairing each id with a family lets the run form offer a harness only the slugs
-   it can actually launch.
-4. Click **Save**.
+3. Enter the **OpenRouter slug** at the top of the form and click **Fill from
+   OpenRouter**. The display name, provider, and description fill themselves in
+   from OpenRouter's catalog, and an empty id list claims the slug under Others
+   (OpenRouter). Skip this for a model OpenRouter does not list, and fill the
+   fields in by hand.
+4. Check what it filled in and adjust anything you'd rather word yourself — the
+   fields are yours from here, and nothing is saved until you press Save.
+   Required: a **display name**, and one or more **aliases** (the run-record model
+   ids this entry should cover), each **paired with the harness family it works
+   with** — Claude Code, Codex, Antigravity, or Others (OpenRouter). Pairing each
+   id with a family lets the run form offer a harness only the slugs it can
+   actually launch. Optionally add the **svgl logo URL**.
+5. Click **Save**.
 
 That's it — the change is live immediately, with no build or release.
 
@@ -43,6 +48,11 @@ That's it — the change is live immediately, with no build or release.
 Open the model in the **Models** section, click **Edit**, change the display
 name, aliases (and their harness families), provider, logo, description, or
 OpenRouter slug, and **Save**.
+
+**Fill from OpenRouter** works here too, but note that it *replaces* the name,
+provider, and description rather than filling only the blanks — so on a model
+whose description you have already written yourself, reach for it only when you
+actually want OpenRouter's wording back.
 
 Prices are not edited here: the backend records each model's OpenRouter price
 automatically — first when you save the model (or when a run that uses it is

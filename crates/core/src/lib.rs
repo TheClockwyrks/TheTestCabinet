@@ -121,7 +121,7 @@ pub use playable::{
     serve_build_file, serve_proof_file, serve_validation_file,
 };
 pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
-pub use pricing::{MODALITY_IMAGE, ModelDetails, ModelLaunchFacts, OpenRouterPrices};
+pub use pricing::{MODALITY_IMAGE, ModelDetails, ModelLaunchFacts, ModelListing, OpenRouterPrices};
 pub use prompt::{render_prompt, render_prompt_from_template, render_spec_from_template};
 pub use publish::{
     BackendPublisher, CommandOutput, CommandRunner, PublishConfig, Publisher, ReleaseRequest,

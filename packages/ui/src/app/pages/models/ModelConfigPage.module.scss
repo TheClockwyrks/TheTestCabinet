@@ -74,6 +74,56 @@
   min-height: 9rem;
 }
 
+// --- OpenRouter fill-in --------------------------------------------------------
+
+// The slug input and its fill action on one line, wrapping when cramped — the
+// same shape as the logo picker's URL + fetch row.
+.fillRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+
+  .input {
+    flex: 1 1 20rem;
+    min-width: 0;
+  }
+}
+
+// An outlined secondary action matching the logo picker's fetch button, so the
+// form's two "go get this for me" controls read as the same affordance.
+.fill {
+  flex: 0 0 auto;
+  padding: t.$space-sm t.$space-md;
+  font-family: var(--ttc-font);
+  font-size: t.$font-sm;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(:disabled),
+  &:focus-visible:not(:disabled) {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+.fillError {
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+  @include h.halo;
+}
+
 // --- Aliases: a repeatable id list --------------------------------------------
 
 .aliasBlock {

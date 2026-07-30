@@ -121,6 +121,16 @@ export interface LogoFetchResult {
   logoSvg: string;
 }
 
+/** What OpenRouter publishes about a model (`GET /models/openrouter?slug=`), for
+ * the config form to fill itself in with. Only the curated fields are here —
+ * prices, the context window, and the modalities are recorded by the backend
+ * itself and are never form state. */
+export interface ModelListing {
+  name: string;
+  provider: string;
+  description: string | null;
+}
+
 export interface TestCase {
   slug: string;
   versions: string[];
