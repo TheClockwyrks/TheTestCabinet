@@ -136,4 +136,55 @@ describe("RequestMetricsGraphs", () => {
     ].map((el) => el.textContent);
     expect(chips).toContain("90%");
   });
+
+  it("heads the rate with the scope's own rate, not the last request's", () => {
+    render(
+      <RequestMetricsGraphs
+        prompts={[
+          // Four working turns generating 1,000 tokens in 10s each — 100 tok/s — and then
+          // the short reply that ends the session: 50 tokens in 2s, which reads as 25 tok/s
+          // because a tiny call pays the same round-trip as a large one. The scope generated
+          // 4,050 tokens over 42s of model time, so it ran at ~96 tok/s; heading the card
+          // with the last point would claim a rate a quarter of that, and contradict the
+          // agent's Overview.
+          ...[0, 1, 2, 3].map((turn) =>
+            prompt(turn, { output: 1_000 }, { durationMs: 10_000 }),
+          ),
+          prompt(4, { output: 50 }, { durationMs: 2_000 }),
+        ]}
+      />,
+    );
+    const chips = [
+      ...document.querySelectorAll('[class*="metricCardLatest"]'),
+    ].map((el) => el.textContent);
+    expect(chips).toContain("96 tok/s");
+    expect(chips).not.toContain("25 tok/s");
+  });
+
+  it("counts only the timed requests in the rate, as the graph plots only those", () => {
+    render(
+      <RequestMetricsGraphs
+        prompts={[
+          prompt(0, { output: 800, reasoning: 200 }, { durationMs: 10_000 }),
+          // No timing, so no point and no place in the rate — folding its tokens in with no
+          // time to charge them against would inflate the rate rather than measure it.
+          prompt(1, { output: 5_000 }),
+        ]}
+      />,
+    );
+    const chips = [
+      ...document.querySelectorAll('[class*="metricCardLatest"]'),
+    ].map((el) => el.textContent);
+    expect(chips).toContain("100 tok/s");
+  });
+
+  it("leaves the rate's chip empty when no request was timed", () => {
+    render(<RequestMetricsGraphs prompts={[prompt(0, { output: 500 })]} />);
+    // The card is still drawn (with its own empty state); it simply states no rate.
+    expect(screen.getByText("Tokens / s")).toBeInTheDocument();
+    const chips = [
+      ...document.querySelectorAll('[class*="metricCardLatest"]'),
+    ].map((el) => el.textContent);
+    expect(chips.some((chip) => chip?.includes("tok/s"))).toBe(false);
+  });
 });

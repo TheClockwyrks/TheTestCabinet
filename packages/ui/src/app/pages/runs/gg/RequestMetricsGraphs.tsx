@@ -48,10 +48,13 @@ export interface MetricDef {
   // The metric's value for one request, or null when that request has no datum for
   // it — skipped rather than plotted as a misleading zero.
   value: (p: PromptTurn) => number | null;
-  // The header chip's value, given every request. The share metrics use this to show
-  // the run-level aggregate (matching the Overview) rather than the last request's
-  // value — a per-request share swings call to call, so the final point can read 0%
-  // on a run that was 8% overall. Omit to fall back to the latest plotted point.
+  // The header chip's value, given every request. A metric whose headline is a property
+  // of the *scope* rather than of one call supplies this so the chip reads the aggregate
+  // (matching the Overview) rather than the last request's value: a per-request share
+  // swings call to call, so the final point can read 0% on a run that was 8% overall, and
+  // a rate read off one short reply reads nothing like the rate the scope generated at.
+  // Omit — as the genuinely per-request cost does — to fall back to the latest plotted
+  // point.
   summary?: (prompts: readonly PromptTurn[]) => number | null;
   // The value chip's formatting (a fraction for the percentage metrics).
   formatValue: (v: number) => string;
@@ -76,6 +79,29 @@ function generatedTokens(p: PromptTurn): number {
 // of the request's input cost and the denominator of its cache-read share.
 function inputTokens(p: PromptTurn): number {
   return (p.tokens.cachedInput ?? 0) + (p.tokens.uncachedInput ?? 0);
+}
+
+// The scope's generation rate over every request it timed: everything it generated over
+// the time it spent inside its model calls. This is the same accounting the agent's
+// Overview and the Dashboard's Tokens / s card state (`agentThroughput` /
+// `deriveGgThroughput`) — the two read the rate off `turn_timing`'s `requestMs`, which is
+// the same figure per turn as the `prompt`'s `durationMs` this sums — so the chip agrees
+// with them instead of contradicting them.
+//
+// It has to be the aggregate rather than the last plotted point: a rate is a ratio of two
+// sums, and the *last* request of a run is characteristically the least representative one
+// — a two-line `finish` reply pays the same fixed round-trip as a working turn and so reads
+// several times slower than the run ever generated. Untimed requests are skipped, exactly
+// as the graph skips them, so the chip summarizes the points that are actually drawn.
+function overallThroughput(prompts: readonly PromptTurn[]): number | null {
+  let generated = 0;
+  let ms = 0;
+  for (const p of prompts) {
+    if (p.durationMs == null || p.durationMs <= 0) continue;
+    generated += generatedTokens(p);
+    ms += p.durationMs;
+  }
+  return ms > 0 ? generated / (ms / 1000) : null;
 }
 
 // Reasoning tokens as a share of all generated output over the whole run — the same
@@ -130,6 +156,10 @@ export const METRICS: readonly MetricDef[] = [
       p.durationMs != null && p.durationMs > 0
         ? generatedTokens(p) / (p.durationMs / 1000)
         : null,
+    // The chip is the scope's own rate — its whole generation over its whole model time,
+    // the figure the Overview's tok/s states — not the last request's, which is a rate the
+    // scope never ran at (see `overallThroughput`).
+    summary: overallThroughput,
     // The same rate the Dashboard's Tokens / s card states for the whole run, spelled the
     // same way — this graph is that figure per request.
     formatValue: formatThroughput,
@@ -281,8 +311,8 @@ function MetricCard({
     return out;
   }, [metric, prompts]);
 
-  // The header chip: the run-level aggregate for a share metric (so it agrees with
-  // the Overview), else the latest plotted point.
+  // The header chip: the scope-level aggregate for a metric that has one — the rate and
+  // the two shares, so each agrees with the Overview — else the latest plotted point.
   const chip = metric.summary
     ? metric.summary(prompts)
     : points.length

@@ -223,6 +223,16 @@ The turn leads every tooltip because it is what ties the point to the same turn 
 Time-per-turn and Context graphs, which is the path from *this request was slow* to
 *why*.
 
+Each card is **headed by the agent's figure, not the last request's**, wherever the
+metric is a property of the agent rather than of one call: throughput heads with the
+agent's whole generation over its whole model time, the same tok/s its Overview states,
+and the two shares head with their summed numerator over their summed denominator. Only
+*cost per request*, which is per-request by definition, heads with the latest point.
+This matters most for throughput: the last request of a session is characteristically
+its least representative one — a two-line sign-off pays the same fixed round-trip as a
+working turn, so it reads several times slower than the agent ever generated — and a
+card headed by it would contradict the Overview beside it.
+
 ## Two events every run may end on
 
 Beyond the per-turn model, tool and context events, two carry outcomes a study reads
