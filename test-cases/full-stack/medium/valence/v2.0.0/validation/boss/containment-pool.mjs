@@ -61,6 +61,14 @@ export default function item() {
       );
       exposed = unitById(r.snap, bossId);
 
+      // A build whose towers never break the pool — or which removes the boss when they do —
+      // leaves nothing to put an energy tower over, which is the failure the assertions above
+      // report. Stop here rather than dereference it: an unguarded read threw out of `act`, and
+      // the runtime reports a throw as a BROKEN DEBUG API, so a build that simply cannot crack
+      // the boss was recorded as non-conformant instrumentation instead of as failing this
+      // requirement. The remaining assertions all tolerate the missing nucleus.
+      if (exposed == null) return;
+
       // Strip the board and put an ENERGY tower on the exposed nucleus: energy does
       // nothing to a heavy, so a nucleus that had wrongly become a free atom would give
       // itself away here.
@@ -100,38 +108,48 @@ export default function item() {
         BOSS_NUCLEUS,
       );
 
+      // A build that REMOVES the boss when its pool breaks (rather than exposing the nucleus)
+      // leaves nothing to read back — which is itself the failure this item is about, so every
+      // read below is guarded. Dereferencing a missing unit threw out of the item, and the
+      // runtime reports a throw as a broken debug API rather than as the failed requirement.
       check.expectOk(
         "the containment pool was broken through",
         r.hit && exposed != null,
       );
       check.expectEq(
         "the same unit carries on past the break",
-        exposed.id,
+        exposed ? exposed.id : null,
         bossId,
       );
       check.expectEq(
         "breaking the pool exposes the nucleus (no longer bonded)",
-        exposed.traits.bonded,
+        exposed ? exposed.traits.bonded : null,
         false,
       );
       check.expectEq(
         "the exposed nucleus is still heavy",
-        exposed.traits.heavy,
+        exposed ? exposed.traits.heavy : null,
         true,
       );
-      check.expectEq(
-        "it is still the boss, not a free atom",
-        exposed.type,
-        "macromass",
+      // specs/matter.md: "Breaking the containment pool exposes the nucleus, which carries
+      // on as the isotope it already is." What the exposed unit is NOT is the point — it is
+      // not the free atom an ordinary cluster becomes — and the spec leaves the label open
+      // between the two readings: the unit is still the Macromass, and it is also now
+      // travelling on as a bare heavy isotope. Both are conformant, so both are accepted;
+      // `electrons` and the untouched nucleus below are what actually pin it down.
+      check.expectOk(
+        "it is still the boss's heavy nucleus, not a free atom",
+        exposed != null &&
+          (exposed.type === "macromass" || exposed.type === "isotope"),
       );
       check.expectEq(
         "it has no electron count — it is not an atom",
-        exposed.electrons,
+        exposed ? exposed.electrons : 0,
         null,
       );
       check.expectEq(
         "the nucleus behind the pool is untouched by the break",
-        exposed.hp,
+        exposed ? exposed.hp : 0,
         BOSS_NUCLEUS,
       );
 
@@ -145,7 +163,7 @@ export default function item() {
       );
       check.expectEq(
         "an energy tower cannot damage the exposed nucleus",
-        still.hp,
+        still ? still.hp : 0,
         hpBefore,
       );
       check.expectOk(

@@ -6,7 +6,13 @@
 // `fx.strip` uses — and the sim runs on until the tower's shot is in flight. The audio
 // log must grow across the shot.
 
-import { coverAndSpawn, armAudio, audioCount, TICK } from "../_helpers.mjs";
+import {
+  coverAndSpawn,
+  armAudio,
+  audioCount,
+  audioCountAbove,
+  TICK,
+} from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -28,7 +34,7 @@ export default function item() {
         max: 180,
         poll: TICK,
       });
-      after = await audioCount(api);
+      after = await audioCountAbove(api, before);
       fired = r.hit;
       await api.advance(30); // a short tail so the clip shows the shot
     },

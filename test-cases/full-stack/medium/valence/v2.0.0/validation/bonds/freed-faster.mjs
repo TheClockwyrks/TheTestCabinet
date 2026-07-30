@@ -14,6 +14,8 @@ import {
   MAP,
 } from "../_helpers.mjs";
 
+const TAIL_TICKS = 120; // 2 s, long enough for the freed atom to visibly pull ahead
+
 export default function item() {
   let id;
   let clusterSpeed;
@@ -43,14 +45,24 @@ export default function item() {
           poll: 3,
         },
       );
+      // ...then run on, which is the only way the item's claim is VISIBLE. A fragment is
+      // born at its parent's own position (specs/board.md), so on the frame it appears the
+      // two are superimposed and no clip of that instant can show one outrunning the other.
+      // The gap the extra speed opens is the evidence; the verdict is read from `baseSpeed`
+      // either way, so nothing here decides it.
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {
       check.expectOk("the cluster shed a free atom", r.hit);
-      const freed = r.snap.matter.find((u) => u.type === "atom" && u.id !== id);
+      // A build that never sheds one is the failure this item is looking for, so the read is
+      // guarded: dereferencing a missing atom threw out of the item, and the runtime reports
+      // a throw as a broken debug API rather than as the failed requirement it is.
+      const freed =
+        r.snap.matter.find((u) => u.type === "atom" && u.id !== id) ?? null;
       check.expectGt(
         "a freed atom moves faster than its parent cluster (baseSpeed)",
-        freed.baseSpeed,
+        freed ? freed.baseSpeed : 0,
         clusterSpeed,
       );
     },

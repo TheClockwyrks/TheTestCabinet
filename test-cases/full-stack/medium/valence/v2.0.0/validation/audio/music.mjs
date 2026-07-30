@@ -7,7 +7,13 @@
 // which is also what starts the looped bed (`audio.ts`'s `resume` → `startMusic`) —
 // then runs a little gameplay forward while it plays.
 
-import { startRun, armAudio, audioCount, MAP } from "../_helpers.mjs";
+import {
+  startRun,
+  armAudio,
+  audioCount,
+  audioCountAbove,
+  MAP,
+} from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -24,7 +30,11 @@ export default function item() {
       before = await audioCount(api); // nothing has played yet — no gesture so far
       await armAudio(api); // the real gesture that unlocks audio and starts the bed
       await api.advance(60); // ~1 s of gameplay underway while the bed loops
-      after = await audioCount(api);
+      // Wait for the bed rather than reading once: a build may defer it until its clip has
+      // decoded or start it off a short timer after the unlocking gesture, both of which are
+      // invisible to a player. Nothing else on this board can make a sound, so a source
+      // appearing here is the bed.
+      after = await audioCountAbove(api, before);
     },
 
     async assert(api, check) {

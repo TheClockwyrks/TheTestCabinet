@@ -10,6 +10,12 @@ import { unitById } from "../_helpers.mjs";
 import { bossUnderFire } from "./_boss.mjs";
 
 const MAX_CRACK_TICKS = 7200; // 7200 ticks = the old 120 s cap — generous game time, not wall clock
+// The sweep stops the moment BOTH an alpha and a beta have been sighted, which on a boss
+// that fountains its chain is the first couple of decay steps — and a clip that cuts there
+// shows two fragments piled on the nucleus they came off (fragments are born at their
+// parent's own position, specs/board.md) rather than the fountain the item is named for.
+// Running on lets the fragments separate and further steps land.
+const TAIL_TICKS = 120;
 
 export default function item() {
   let bossId;
@@ -45,6 +51,8 @@ export default function item() {
         },
         { max: MAX_CRACK_TICKS, poll: 3 },
       );
+      // Run on so the fountain reads as a fountain rather than a pile.
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {

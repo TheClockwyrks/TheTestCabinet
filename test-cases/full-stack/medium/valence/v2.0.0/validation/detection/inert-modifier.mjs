@@ -114,7 +114,10 @@ export default function item() {
           poll: TICK,
         },
       );
-      const bondAtReveal = unitById(revealHit.snap, shielded.id).bond;
+      // Guarded: if the Dimer never got revealed (or is gone), the assertions below report
+      // that; an unguarded read would throw and be reported as a broken debug API.
+      const atReveal = unitById(revealHit.snap, shielded.id);
+      const bondAtReveal = atReveal ? atReveal.bond : 0;
       // 480 ticks = the old 8 s cap, polled every TICK for the first chip.
       chipped = await api.until(
         (s) => {
