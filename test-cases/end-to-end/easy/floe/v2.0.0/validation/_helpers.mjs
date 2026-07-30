@@ -195,6 +195,47 @@ export async function actClimbByPress(
   return api.snapshot();
 }
 
+// ---- Death (read as the life the spec says it costs) ------------------------
+
+/**
+ * ACT half of every death check: advance until the critter has died, and return the
+ * same `{ snap, hit, spent }` as `api.until`. `livesBefore` is the life count read
+ * before the act began (instantly, from `arrange` or the top of `act`).
+ *
+ * A DEATH IS READ AS THE LIFE IT COSTS, NOT AS A `dying` PHASE. The tempting sweep is
+ * `until((s) => s.phase === "dying")`, and it is wrong. Nothing in the specs says when
+ * `phase` is `dying`: specs/instrumentation.md lists it among the values `phase` can
+ * take and stops there, and specs/gameplay.md defines a death only by what it COSTS —
+ * "the current crossing ends, the bear is removed, and a fresh critter respawns on the
+ * near shore with the timer reset". The one pause it mandates is the spawn-in pause
+ * before the BEAR re-emerges, not a window in which the game holds the dead critter on
+ * screen. A build that resolves the death the instant it happens — decrement, reset the
+ * crossing, carry on — meets every word of that and simply never reports `dying`. Sweep
+ * for the phase against such a build and the sweep spends its whole budget looking for a
+ * state that came and went inside one tick (or never existed), so a death that plainly
+ * happened reads as no death at all, and it does it to a build that plays correctly.
+ *
+ * `lives` decrementing is the fact the spec actually mandates, it is in the snapshot
+ * contract, and it means the same thing whatever a build does with its sub-phases. The
+ * `gameover` clause covers the last life — at zero the run ends (specs/gameplay.md) and
+ * a build may report that rather than a decrement — so this reads "the critter died",
+ * not "the critter died and lived".
+ *
+ * The tell that a check has this backwards is a verdict where the `dying` assertion
+ * fails and the `lives` assertion beside it passes: the death happened, the reading
+ * of it did not.
+ */
+export async function actUntilDeath(
+  api,
+  livesBefore,
+  { max = 240, poll = TICK } = {},
+) {
+  return api.until((s) => s.lives < livesBefore || s.screen === "gameover", {
+    max,
+    poll,
+  });
+}
+
 // ---- Controls assertions (record into the item's `check`) ------------------
 
 /**

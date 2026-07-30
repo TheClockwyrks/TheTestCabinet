@@ -6,12 +6,19 @@
 // the fresh-run default so the death respawns rather than ending the run, isolating the
 // crush cue.
 
-import { startCrossing, armAudio, audioCount, ICE_TOP } from "../_helpers.mjs";
+import {
+  actUntilDeath,
+  startCrossing,
+  armAudio,
+  audioCount,
+  ICE_TOP,
+} from "../_helpers.mjs";
 
 export default function item() {
   let before;
   let after;
   let crushed;
+  let livesBefore;
 
   return {
     id: "audio.crush",
@@ -22,15 +29,13 @@ export default function item() {
       await api.call("setLane", row, { cols: [] }); // clear it first
       await api.call("placeCritter", 20, row); // stand on the empty ice tile
       await api.call("setLane", row, { cols: [20], speed: 0 }); // drop a vehicle onto it
+      livesBefore = (await api.snapshot()).lives; // the fresh-run default, read instantly
       await armAudio(api);
     },
 
     async act(api) {
       before = await audioCount(api);
-      const r = await api.until((s) => s.phase !== "crossing", {
-        max: 30,
-        poll: 1,
-      });
+      const r = await actUntilDeath(api, livesBefore, { max: 30 });
       after = await audioCount(api);
       crushed = r.hit;
       await api.advance(30); // a short tail so the clip shows the crush
