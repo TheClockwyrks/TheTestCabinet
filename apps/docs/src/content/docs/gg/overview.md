@@ -128,6 +128,46 @@ not a bespoke plugin interface per capability. The agent loop is the only
 coarse-grained plug point. Treating the toolset itself as an experimental variable
 is [toolset ablation](/gg/toolset-ablation/).
 
+## Prompt caching
+
+An agent loop re-sends its whole conversation every turn, so most of what a run
+pays for is the same tokens over and over: the system prompt, the tool schemas,
+the build prompt, any [autoloaded specifications](/gg/autoload-specifications/),
+and the thread so far. Provider prompt caches exist to make that cheap, and gg
+asks for one on every request.
+
+Two separate things have to be true for a cached read to happen, and gg does both:
+
+- **The request has to reach the backend that holds the cache.** Every client in a
+  run stamps the same `prompt_cache_key` — the run's session id, shared by the root
+  agent and every [subagent](/gg/subagents/) — so a run's turns stay on one
+  provider backend, and agents that open on the same prefix reuse each other's
+  warmed cache rather than each paying to warm their own.
+- **The request has to say what to cache.** OpenAI and Gemini cache long prefixes
+  implicitly, but Anthropic caches _only_ what a request explicitly marks with
+  `cache_control`. Marking nothing means caching nothing — an Anthropic run is
+  billed at the full input rate on every turn no matter how much of the request is
+  byte-identical to the last one.
+
+gg marks up to four breakpoints per request (Anthropic's cap): one **anchor** at
+the end of the opening context — everything before the first assistant turn, which
+covers the tool schemas, the system prompt and the autoloaded specs, and never
+moves for the life of the agent — up to two **rolling** points over the
+accumulating thread, and one at the **tail**, which writes this turn's prefix so
+the next turn can read it. The rolling points are snapped to a fixed grid of
+message indices so that they name the same prefix from one turn to the next; a
+marker at a shifting offset would describe a prefix no earlier turn ever wrote,
+and so would never be a cache hit.
+
+The markers go to every provider, not just Anthropic — a provider that caches
+implicitly ignores them.
+
+This is also why [compaction](/gg/compaction/) and
+[agent-managed context](/gg/agent-managed-context/) go to such lengths to keep the
+window **append-only**: a cache is read by matching a prefix, so rewriting anything
+already sent — even a single line in the middle of the prompt — discards the cached
+prefix from that point on and re-bills the rest of the request in full.
+
 ## Installation & distribution
 
 gg is installed by context. **Locally**, it runs with **no external resources** — a

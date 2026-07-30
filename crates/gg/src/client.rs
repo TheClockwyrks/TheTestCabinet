@@ -86,6 +86,22 @@ const GG_HTTP_REFERER: &str = "https://github.com/the-test-cabinet/gg";
 /// Maximum length of a provider error body copied into a [`ModelError`].
 const ERROR_BODY_CAP: usize = 2000;
 
+/// The most [`cache_control` breakpoints](cache_breakpoints) one request may carry.
+///
+/// Anthropic — the provider that requires explicit markers — caps a request at four, and that is
+/// the binding limit for every provider gg reaches through OpenRouter.
+const MAX_CACHE_BREAKPOINTS: usize = 4;
+
+/// The spacing, in messages, of the **stable grid** the rolling
+/// [breakpoints](cache_breakpoints) snap to.
+///
+/// A breakpoint is only worth placing where it will still be a breakpoint next turn: a cache is
+/// read by matching the prefix that *ends at* a marker, so a marker that lands on a different
+/// message each turn describes a prefix no earlier turn ever wrote. Snapping to multiples of a
+/// fixed stride fixes that — index 16 is the same prefix on every turn of an append-only window —
+/// while the stride keeps the un-cached remainder small.
+const CACHE_BREAKPOINT_STRIDE: usize = 8;
+
 /// The skill name the [default mock script](MockClient::with_default_script) reads, so an
 /// offline run can seed `.gg/skills/<name>.md` and demonstrate the skills capability.
 pub const DEFAULT_MOCK_SKILL: &str = "getting-started";
@@ -442,13 +458,22 @@ fn truncate(body: &str) -> String {
 /// [`OpenRouterClient::from_binding`]); dropping it lets two prefix-identical requests land on
 /// different backends, and the second is billed fully uncached even though nothing changed.
 /// `None` (or an empty key) omits the field entirely.
+///
+/// The messages the [breakpoint policy](cache_breakpoints) selects are additionally stamped with
+/// an explicit `cache_control` marker, which is what actually *enables* the prompt cache on
+/// providers that do not cache implicitly — see that function for why the key alone is not enough.
 pub fn build_request_body(
     model_id: &str,
     messages: &[Message],
     tools: &[ToolDefinition],
     cache_key: Option<&str>,
 ) -> Value {
-    let messages: Vec<Value> = messages.iter().map(wire_message).collect();
+    let breakpoints = cache_breakpoints(messages);
+    let messages: Vec<Value> = messages
+        .iter()
+        .enumerate()
+        .map(|(index, message)| wire_message(message, breakpoints.contains(&index)))
+        .collect();
     let mut body = json!({
         "model": model_id,
         "messages": messages,
@@ -500,6 +525,95 @@ pub fn build_required_tool_request_body(
     body
 }
 
+/// Choose which messages carry an explicit `cache_control` breakpoint — the markers that turn a
+/// provider's prompt cache **on**.
+///
+/// A [`prompt_cache_key`](build_request_body) only decides *which backend* a request lands on. It
+/// does not ask for anything to be cached. Some providers (OpenAI, Gemini) cache long prefixes
+/// implicitly and need nothing more, but Anthropic caches **only** what a request explicitly marks:
+/// an unmarked request is billed at full input rate every turn no matter how much of it is
+/// verbatim identical to the last one. gg sent no markers, so a run on an Anthropic model cached
+/// nothing at all — the whole system prompt, tool schemas, and autoloaded specs were re-billed on
+/// every single turn of the loop.
+///
+/// A marker caches the request prefix that *ends at* it, so where they go is the whole design:
+///
+/// - **The anchor** — the last message of the opening context, taken as everything before the
+///   first assistant turn: the system prompt, the build prompt, and any autoloaded specifications.
+///   This is the run's fixed preamble, it is the single largest static block gg sends, and because
+///   Anthropic orders a request `tools → system → messages` a marker here covers the tool schemas
+///   too. It never moves, so every turn after the first reads it.
+/// - **Up to two grid points** — the rolling breakpoints over the accumulating thread, snapped to
+///   multiples of [`CACHE_BREAKPOINT_STRIDE`] so they name the *same* prefix from one turn to the
+///   next (see that constant). Two rather than one so that the turn which crosses a fresh grid
+///   point — the one place the newest point cannot be a hit — still has an older one to read.
+/// - **The tail** — the final message, which writes this turn's full prefix so the *next* turn can
+///   read it. This is what makes the caching incremental rather than frozen at the preamble.
+///
+/// A candidate that lands on a message with no content block to hang a marker on (an assistant
+/// turn that only called tools) is walked back to the nearest message that has one, and the result
+/// is deduplicated — so the count never exceeds [`MAX_CACHE_BREAKPOINTS`], which is Anthropic's
+/// hard cap and a request-rejecting error to exceed.
+///
+/// Markers are sent to every provider, not just Anthropic: a provider that caches implicitly
+/// ignores them (verified against OpenAI and Gemini, which accept the marked shape and keep
+/// caching as before), and sniffing the model id would only mean gg silently stops caching the
+/// day OpenRouter routes a Claude model under some other prefix.
+///
+/// Pure, so the placement is unit tested without network.
+pub fn cache_breakpoints(messages: &[Message]) -> Vec<usize> {
+    let Some(tail) = messages.len().checked_sub(1) else {
+        return Vec::new();
+    };
+    // The opening context ends where the thread begins. With no assistant turn yet the whole
+    // request is still preamble, so the anchor is simply the last message.
+    let anchor = messages
+        .iter()
+        .position(|message| message.role == Role::Assistant)
+        .map_or(tail, |first_turn| first_turn.saturating_sub(1));
+
+    let mut candidates = vec![anchor];
+    // Walk the grid back from the tail, taking points that are strictly inside the (anchor, tail)
+    // span — a point at either end would only duplicate a breakpoint already placed there.
+    let mut grid = tail - (tail % CACHE_BREAKPOINT_STRIDE);
+    while candidates.len() < MAX_CACHE_BREAKPOINTS - 1 && grid > anchor {
+        if grid < tail {
+            candidates.push(grid);
+        }
+        let Some(next) = grid.checked_sub(CACHE_BREAKPOINT_STRIDE) else {
+            break;
+        };
+        grid = next;
+    }
+    candidates.push(tail);
+
+    let mut chosen: Vec<usize> = candidates
+        .into_iter()
+        .filter_map(|index| markable_at_or_before(messages, index))
+        .collect();
+    chosen.sort_unstable();
+    chosen.dedup();
+    chosen
+}
+
+/// The nearest index at or before `index` whose message can carry a marker, if any.
+fn markable_at_or_before(messages: &[Message], index: usize) -> Option<usize> {
+    (0..=index)
+        .rev()
+        .find(|&index| is_markable(&messages[index]))
+}
+
+/// Whether `message` serializes to at least one content block a `cache_control` marker can ride
+/// on. An assistant turn that only requested tool calls has none — its `tool_calls` are not
+/// content blocks — so it cannot be a breakpoint.
+fn is_markable(message: &Message) -> bool {
+    message
+        .content
+        .as_ref()
+        .is_some_and(|content| !content.is_empty())
+        || !message.images.is_empty()
+}
+
 /// Serialize one [`Message`] into the OpenAI wire shape. Assistant tool-call arguments
 /// are re-encoded as a JSON **string**, as the API expects.
 ///
@@ -511,9 +625,16 @@ pub fn build_required_tool_request_body(
 /// image parts there across providers, and keeping the picture attached to its own tool
 /// result means the read and what it returned stay one item the context model can
 /// account for, evict, and (if the provider turns out to refuse images) strip.
-fn wire_message(message: &Message) -> Value {
+///
+/// `cached` marks this message as a [prompt-cache breakpoint](cache_breakpoints). Because
+/// `cache_control` rides a *content block* and a bare string has none, a marked text-only message
+/// is promoted to the same multi-part array an image-bearing one already used. The marker goes on
+/// the **last** part so the cached prefix covers the whole message — attaching it to the leading
+/// text part of a message with pictures would leave the pictures, by far the expensive half,
+/// outside the cache.
+fn wire_message(message: &Message, cached: bool) -> Value {
     let mut obj = json!({ "role": role_str(message.role) });
-    if !message.images.is_empty() {
+    if !message.images.is_empty() || (cached && message.content.is_some()) {
         let mut parts: Vec<Value> = Vec::with_capacity(message.images.len() + 1);
         if let Some(content) = &message.content {
             parts.push(json!({ "type": "text", "text": content }));
@@ -523,6 +644,9 @@ fn wire_message(message: &Message) -> Value {
                 "type": "image_url",
                 "image_url": { "url": image.data_url() },
             }));
+        }
+        if cached && let Some(last) = parts.last_mut() {
+            last["cache_control"] = json!({ "type": "ephemeral" });
         }
         obj["content"] = Value::Array(parts);
     } else if let Some(content) = &message.content {

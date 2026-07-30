@@ -73,7 +73,9 @@ fn build_request_body_encodes_tool_call_arguments_as_string() {
     let tool_msg = &body["messages"][1];
     assert_eq!(tool_msg["role"], json!("tool"));
     assert_eq!(tool_msg["tool_call_id"], json!("call_1"));
-    assert_eq!(tool_msg["content"], json!("wrote 13 bytes"));
+    // The tail message is a cache breakpoint, so its text rides a content part rather than a
+    // bare string (see `cache_breakpoints`); the text itself is unchanged.
+    assert_eq!(tool_msg["content"][0]["text"], json!("wrote 13 bytes"));
 }
 
 /// With no tools offered, neither `tools` nor `tool_choice` is present.
@@ -134,12 +136,165 @@ fn build_request_body_sends_an_attached_image_as_a_content_part() {
     );
 }
 
-/// A message with no images keeps the plain-string content shape, so the overwhelmingly
-/// common text-only turn is byte-identical to what gg has always sent.
+/// A text-only message that is **not** a cache breakpoint keeps the plain-string content shape,
+/// so the overwhelmingly common turn is byte-identical to what gg has always sent.
 #[test]
 fn build_request_body_keeps_plain_content_without_images() {
-    let body = build_request_body("m", &[Message::user("hi")], &[], None);
-    assert_eq!(body["messages"][0]["content"], json!("hi"));
+    let messages = [
+        Message::system("sys"),
+        Message::user("build it"),
+        Message::assistant(Some("on it".to_string()), vec![]),
+        Message::user("carry on"),
+    ];
+    let body = build_request_body("m", &messages, &[], None);
+
+    // The anchor (index 1) and the tail (index 3) are breakpoints; the untouched middle keeps
+    // the bare-string shape.
+    assert_eq!(body["messages"][0]["content"], json!("sys"));
+    assert_eq!(body["messages"][2]["content"], json!("on it"));
+}
+
+// ---------------------------------------------------------------------------
+// Prompt-cache breakpoints
+// ---------------------------------------------------------------------------
+
+/// The indices `cache_breakpoints` marked, read back off a built body — the wire-level truth,
+/// so these tests assert what a provider actually receives rather than the helper's return value.
+fn marked_indices(body: &serde_json::Value) -> Vec<usize> {
+    body["messages"]
+        .as_array()
+        .expect("messages array")
+        .iter()
+        .enumerate()
+        .filter(|(_, message)| {
+            message["content"]
+                .as_array()
+                .is_some_and(|parts| parts.iter().any(|part| part.get("cache_control").is_some()))
+        })
+        .map(|(index, _)| index)
+        .collect()
+}
+
+/// A marked message carries `cache_control: {type: "ephemeral"}` on a content part. Without it
+/// Anthropic caches **nothing** — the bug this policy exists to fix — however identical two
+/// consecutive requests are.
+#[test]
+fn build_request_body_marks_the_opening_context_and_the_tail() {
+    let messages = [
+        Message::system("a long system prompt"),
+        Message::user("build it"),
+        Message::assistant(Some("starting".to_string()), vec![]),
+        Message::user("keep going"),
+    ];
+    let body = build_request_body("anthropic/claude-haiku-4.5", &messages, &[], None);
+
+    // The anchor is the last message before the first assistant turn (the fixed preamble), and
+    // the tail writes this turn's prefix for the next turn to read.
+    assert_eq!(marked_indices(&body), vec![1, 3]);
+    assert_eq!(
+        body["messages"][1]["content"][0]["cache_control"],
+        json!({ "type": "ephemeral" })
+    );
+    assert_eq!(body["messages"][1]["content"][0]["text"], json!("build it"));
+}
+
+/// With no assistant turn yet the whole request is still preamble, so the anchor and the tail are
+/// the same message and collapse to a single marker rather than being sent twice.
+#[test]
+fn cache_breakpoints_collapse_when_the_thread_has_not_started() {
+    let messages = [Message::system("sys"), Message::user("build it")];
+    assert_eq!(cache_breakpoints(&messages), vec![1]);
+}
+
+/// An assistant turn that only called tools has no content block to hang a marker on, so a
+/// candidate landing there walks back to the nearest message that does. Marking it would be a
+/// request-rejecting error, not a silent no-op.
+#[test]
+fn cache_breakpoints_skip_a_message_with_no_content_block() {
+    let call = ToolCall {
+        id: "call_1".to_string(),
+        name: "write_file".to_string(),
+        arguments: json!({ "path": "index.html" }),
+    };
+    let messages = [
+        Message::system("sys"),
+        Message::user("build it"),
+        Message::assistant(None, vec![call]),
+    ];
+
+    // The tail (index 2) is content-free, so it falls back to index 1 — which is also the
+    // anchor, leaving one marker.
+    assert_eq!(cache_breakpoints(&messages), vec![1]);
+}
+
+/// The rolling breakpoints snap to a fixed grid so they name the same prefix from one turn to the
+/// next. A marker at a shifting offset would describe a prefix no earlier turn ever wrote, and
+/// would therefore never be a cache read.
+#[test]
+fn cache_breakpoints_snap_the_rolling_markers_to_a_stable_grid() {
+    let mut messages = vec![Message::system("sys"), Message::user("build it")];
+    for turn in 0..24 {
+        messages.push(Message::assistant(Some(format!("turn {turn}")), vec![]));
+    }
+
+    // Anchor at 1, grid points at 24 and 16 (the two multiples of the stride below the tail),
+    // tail at 25 — never more than Anthropic's cap of 4.
+    let breakpoints = cache_breakpoints(&messages);
+    assert_eq!(breakpoints, vec![1, 16, 24, 25]);
+    assert!(breakpoints.len() <= MAX_CACHE_BREAKPOINTS);
+
+    // Appending more turns moves the tail but leaves the grid points exactly where they were, so
+    // the next request still reads a prefix an earlier one wrote.
+    messages.push(Message::user("another"));
+    assert_eq!(cache_breakpoints(&messages), vec![1, 16, 24, 26]);
+    messages.push(Message::user("and another"));
+    assert_eq!(cache_breakpoints(&messages), vec![1, 16, 24, 27]);
+}
+
+/// A long thread never exceeds Anthropic's four-breakpoint cap, whatever its shape — exceeding it
+/// is a hard request error, so this is a bound and not a preference.
+#[test]
+fn cache_breakpoints_never_exceed_the_provider_cap() {
+    for length in 0..200usize {
+        let messages: Vec<Message> = (0..length)
+            .map(|i| Message::user(format!("m{i}")))
+            .collect();
+        let breakpoints = cache_breakpoints(&messages);
+        assert!(
+            breakpoints.len() <= MAX_CACHE_BREAKPOINTS,
+            "{length} messages produced {} breakpoints",
+            breakpoints.len()
+        );
+        assert!(
+            breakpoints.windows(2).all(|pair| pair[0] < pair[1]),
+            "{length} messages produced unsorted/duplicated breakpoints: {breakpoints:?}"
+        );
+        assert!(breakpoints.iter().all(|&index| index < length));
+    }
+}
+
+/// On a marked message that carries a picture the marker goes on the **last** part, so the image
+/// falls inside the cached prefix. Marking the leading text part would leave the expensive half of
+/// the message re-billed every turn.
+#[test]
+fn build_request_body_marks_the_last_part_of_an_image_message() {
+    let read = Message::tool_result("call_1", "`ref.png` — PNG image, 12 bytes.")
+        .with_images(vec![ImageContent::new("image/png", "QUJD", 3)]);
+    let body = build_request_body("m", &[Message::user("look at ref.png"), read], &[], None);
+
+    let parts = body["messages"][1]["content"]
+        .as_array()
+        .expect("multi-part content");
+    assert_eq!(parts.len(), 2);
+    assert!(parts[0].get("cache_control").is_none());
+    assert_eq!(parts[1]["type"], json!("image_url"));
+    assert_eq!(parts[1]["cache_control"], json!({ "type": "ephemeral" }));
+}
+
+/// An empty request produces no breakpoints rather than panicking on the tail index.
+#[test]
+fn cache_breakpoints_handle_an_empty_request() {
+    assert!(cache_breakpoints(&[]).is_empty());
 }
 
 /// OpenRouter's own refusal — a `404` whose body says no endpoint supports image input —
