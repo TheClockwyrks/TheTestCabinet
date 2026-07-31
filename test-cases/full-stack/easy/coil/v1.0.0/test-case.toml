@@ -657,6 +657,12 @@ description = "Pressing M toggles the mute state."
 validation = { script = "validation/controls/mute-key.mjs", outputs = [
   { id = "mute", name = "The title after toggling mute", kind = "image" },
 ] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live round advances — simulation time accumulates and the snake crawls forward — without anything stepping it from outside."
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
+
 
 # --- Presentation -------------------------------------------------------------
 # Matters of craft and produced art that reading pixels cannot settle: they roll up
