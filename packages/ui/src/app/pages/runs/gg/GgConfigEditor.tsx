@@ -26,11 +26,15 @@ import {
   commandsDraftValue,
   commandsFromDraft,
   dropAgentReferences,
+  fsmStatesWarnings,
+  isFsmShell,
   referencedModelSlots,
   runLimitsError,
   runLimitsWarning,
   seedAgentParams,
   setToolBundle,
+  statesDraftValue,
+  statesFromDraft,
   togglesDraftValue,
   togglesOff,
   toolBundleOn,
@@ -41,6 +45,7 @@ import {
   type GgConfigDraft,
   type GgModelSlotDraft,
 } from "./ggConfigDraft";
+import { GgFsmStatesField } from "./GgFsmStatesField";
 import runExec from "../RunExec.module.scss";
 import gg from "./GgConfigEditor.module.scss";
 
@@ -574,7 +579,9 @@ export function GgConfigEditor({
   // one frame in between rather than crashing on the missing profile.
   if (!agent) return null;
   const isRoot = agent.id === value.rootAgentId;
-  const paramsErrors = agentParamErrors(agent);
+  // The whole configuration is passed, not this profile alone: a machine's states name
+  // *other* profiles, so whether they name anything real is a question about the set.
+  const paramsErrors = agentParamErrors(agent, value.agents);
   const boundSlot = value.modelSlots.find((s) => s.id === agent.modelSlotId);
 
   const patchAgent = (patch: Partial<GgAgentDraft>) =>
@@ -825,6 +832,10 @@ export function GgConfigEditor({
                   // the tool-ablation sliders rather than in the param grid.
                   const params = offered.filter((p) => p.kind !== "boolean");
                   const flags = offered.filter((p) => p.kind === "boolean");
+                  // A `states` control renders the capability's error itself, beside the
+                  // rows that have to change; showing it again under the whole form
+                  // would say the same thing twice, once far from the fix.
+                  const errorInline = params.some((p) => p.kind === "states");
                   const hasBody =
                     params.length ||
                     flags.length ||
@@ -1078,6 +1089,43 @@ export function GgConfigEditor({
                                     </div>
                                   );
                                 }
+                                if (p.kind === "states") {
+                                  return (
+                                    <div key={p.key} className={gg.fsmWrapper}>
+                                      <FieldLabel
+                                        label={p.label}
+                                        hint={p.hint}
+                                      />
+                                      <GgFsmStatesField
+                                        states={statesFromDraft(
+                                          draft.params?.[p.key],
+                                        )}
+                                        agents={value.agents.map((a) => ({
+                                          id: a.id,
+                                          name: a.name,
+                                          machine: isFsmShell(a),
+                                        }))}
+                                        readOnly={readOnly}
+                                        // The machine's structural fault reads here,
+                                        // beside the rows that have to change, rather
+                                        // than in the capability's shared error slot
+                                        // below the whole form.
+                                        error={error}
+                                        warnings={fsmStatesWarnings(
+                                          agent,
+                                          value.agents,
+                                        )}
+                                        onChange={(next) =>
+                                          setParam(
+                                            cap.id,
+                                            p.key,
+                                            statesDraftValue(next),
+                                          )
+                                        }
+                                      />
+                                    </div>
+                                  );
+                                }
                                 if (p.kind === "model" && p.slotKey) {
                                   return (
                                     <ModelParamField
@@ -1264,7 +1312,7 @@ export function GgConfigEditor({
                               </div>
                             </div>
                           ) : null}
-                          {error && (
+                          {error && !errorInline && (
                             <span className={gg.fieldError}>{error}</span>
                           )}
                         </div>

@@ -3,17 +3,22 @@ import type {
   GgAgentConfig,
   GgCapabilityConfig,
   GgCapabilitySet,
+  GgModuleKind,
 } from "@test-cabinet/run-record/gg";
 import { DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE } from "@test-cabinet/run-record/gg-system-prompt";
 import {
+  agentStates,
   bindModelSlots,
   blankAgentDraft,
   capabilitySetFromDraft,
   draftFromCapabilitySet,
   draftSaveError,
   emptyDraft,
+  fsmStatesWarnings,
   launchModelSlots,
+  renameStateDraft,
   runLimitsWarning,
+  statesDraftValue,
   type GgAgentDraft,
   type GgConfigDraft,
 } from "./ggConfigDraft";
@@ -925,5 +930,196 @@ describe("params gated on the selected implementation", () => {
     );
     const shell = saved.agents?.[0]?.capabilities?.find((c) => c.id === "shell");
     expect(shell?.params).toEqual({ maxLines: 40 });
+  });
+});
+
+// --- FSM agents -------------------------------------------------------------------
+//
+// A machine is the only capability param that is a *document*: an ordered list of
+// states, each naming another agent profile and the edges out of it, each edge naming
+// the modules it carries. Three things have to hold for it to be authorable at all —
+// it must survive a round-trip through the wire format (including the name↔local-id
+// translation every cross-reference in this editor goes through), a machine the form
+// cannot represent must reach the verbatim passthrough rather than being rewritten
+// into a lesser one, and the structural faults gg refuses at launch must be refused
+// here, where they can still be fixed.
+
+describe("a state machine", () => {
+  const FSM = "fsm";
+
+  // A two-agent configuration whose Root is a machine over the other two profiles.
+  function machineSet(
+    states: unknown,
+    over: Partial<GgAgentConfig> = {},
+  ): GgCapabilitySet {
+    return {
+      agents: [
+        agent({
+          name: "Feature",
+          capabilities: [{ id: FSM, enabled: true, params: { states } }],
+          ...over,
+        }),
+        agent({ name: "Explorer" }),
+        agent({ name: "Builder" }),
+      ],
+    };
+  }
+
+  const LINEAR = [
+    {
+      name: "explore",
+      agent: "Explorer",
+      transitions: [
+        {
+          to: "build",
+          transfer: ["history", "tasks"],
+          description: "when you understand the change",
+        },
+      ],
+    },
+    { name: "build", agent: "Builder", transitions: [] },
+  ];
+
+  function statesOf(s: GgCapabilitySet): unknown {
+    return s.agents?.[0]?.capabilities?.find((c) => c.id === FSM)?.params
+      ?.states;
+  }
+
+  it("round-trips through the wire format, agent references and all", () => {
+    const draft = draftFromCapabilitySet(machineSet(LINEAR));
+    // The state's agent is held as a local id in the draft — that is what makes a
+    // rename carry it — and resolves back to the profile's name on the way out.
+    const rows = agentStates(draft.agents[0]!);
+    expect(rows.map((r) => r.name)).toEqual(["explore", "build"]);
+    expect(rows[0]!.agentId).toBe(draft.agents[1]!.id);
+    expect(statesOf(capabilitySetFromDraft(draft, null))).toEqual(LINEAR);
+  });
+
+  it("follows a renamed agent profile rather than orphaning the state", () => {
+    const draft = draftFromCapabilitySet(machineSet(LINEAR));
+    const renamed: GgConfigDraft = {
+      ...draft,
+      agents: draft.agents.map((a) =>
+        a.name === "Explorer" ? { ...a, name: "Scout" } : a,
+      ),
+    };
+    const states = statesOf(capabilitySetFromDraft(renamed, null)) as Array<{
+      agent: string;
+    }>;
+    expect(states[0]!.agent).toBe("Scout");
+  });
+
+  it("carries a renamed state's inbound edges with it", () => {
+    const states = [
+      { name: "a", agentId: "agent-x", transitions: [] },
+      {
+        name: "b",
+        agentId: "agent-y",
+        transitions: [{ to: "a", transfer: [] as GgModuleKind[], description: "" }],
+      },
+    ];
+    const renamed = renameStateDraft(states, 0, "explore");
+    expect(renamed[0]!.name).toBe("explore");
+    expect(renamed[1]!.transitions[0]!.to).toBe("explore");
+  });
+
+  it("drops a transfer kind gg would not know, exactly as gg does", () => {
+    const draft = draftFromCapabilitySet(
+      machineSet([
+        {
+          name: "a",
+          agent: "Explorer",
+          transitions: [{ to: "a", transfer: ["history", "moon"] }],
+        },
+      ]),
+    );
+    expect(agentStates(draft.agents[0]!)[0]!.transitions[0]!.transfer).toEqual([
+      "history",
+    ]);
+  });
+
+  it("passes a machine the form cannot represent through verbatim", () => {
+    // A state carrying a key no control covers would be silently dropped by a
+    // round-trip through the rows, so the whole param goes to the passthrough instead
+    // and re-saves byte-identical.
+    const exotic = [{ name: "a", agent: "Explorer", retries: 3 }];
+    const round = capabilitySetFromDraft(
+      draftFromCapabilitySet(machineSet(exotic)),
+      null,
+    );
+    expect(statesOf(round)).toEqual(exotic);
+  });
+
+  it("refuses the structural faults gg refuses at launch", () => {
+    const machine = (states: unknown) =>
+      draftSaveError(draftFromCapabilitySet(machineSet(states)));
+
+    expect(machine([])).toMatch(/declares no states/);
+    expect(machine([{ name: "", agent: "Explorer" }])).toMatch(
+      /state with no name/,
+    );
+    expect(
+      machine([
+        { name: "a", agent: "Explorer" },
+        { name: "a", agent: "Builder" },
+      ]),
+    ).toMatch(/more than once/);
+    expect(machine([{ name: "a", agent: "Nobody" }])).toMatch(
+      /runs no agent this configuration declares/,
+    );
+    expect(machine([{ name: "a", agent: "Feature" }])).toMatch(
+      /itself a state machine/,
+    );
+    expect(
+      machine([
+        {
+          name: "a",
+          agent: "Explorer",
+          transitions: [{ to: "nowhere", transfer: [] }],
+        },
+      ]),
+    ).toMatch(/not a state it declares/);
+    // …and accepts the machine that is actually well-formed.
+    expect(machine(LINEAR)).toBeNull();
+  });
+
+  it("warns about what is odd rather than wrong", () => {
+    const draft = draftFromCapabilitySet(
+      machineSet(
+        [
+          ...LINEAR,
+          // Declared, correct, and unreachable — kept, because deleting an author's
+          // state to make a warning go away would be worse than saying so.
+          { name: "verify", agent: "Builder", transitions: [] },
+        ],
+        // A shell's own capabilities are never read; the author is told rather than
+        // left believing the states inherited them.
+        { capabilities: [{ id: "memories", enabled: true, params: {} }] },
+      ),
+    );
+    // `machineSet`'s `over` replaces the capability list, so put the machine back.
+    const shell: GgAgentDraft = {
+      ...draft.agents[0]!,
+      capabilities: {
+        ...draft.agents[0]!.capabilities,
+        fsm: {
+          enabled: true,
+          params: {
+            states: statesDraftValue([
+              { name: "explore", agentId: draft.agents[1]!.id, transitions: [] },
+              { name: "verify", agentId: draft.agents[2]!.id, transitions: [] },
+            ]),
+          },
+          extraParams: {},
+        },
+        memories: { enabled: true, params: {}, extraParams: {} },
+      },
+    };
+    const warnings = fsmStatesWarnings(shell, [
+      shell,
+      ...draft.agents.slice(1),
+    ]);
+    expect(warnings.join(" ")).toMatch(/unreachable from `explore`/);
+    expect(warnings.join(" ")).toMatch(/other capabilities \(Memories\)/);
   });
 });

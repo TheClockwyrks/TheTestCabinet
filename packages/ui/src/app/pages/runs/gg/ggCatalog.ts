@@ -9,6 +9,7 @@ import type {
   GgAgentConfig,
   GgCapabilitySet,
   GgHealingStrategy,
+  GgModuleKind,
   GgRunLimits,
   GgSubagentScope,
 } from "@test-cabinet/run-record/gg";
@@ -150,6 +151,11 @@ export interface ParamSpec {
   // model slot the launch form fills in, or a model id pinned here. It renders the same
   // two-field control the agent rows use, and writes to *two* keys — this one for a
   // pinned id, and [slotKey] for a deferred slot.
+  // A `states` param is a whole finite-state machine: an ordered list of states, each
+  // naming an agent profile and the transitions out of it, and each transition naming
+  // the [modules](MODULE_KINDS) it carries to the successor. It renders as its own
+  // multi-row editor (see `GgFsmStatesField`) and, like `commands`, holds its rows as
+  // the JSON text of the list so the draft stays a flat string map.
   kind:
     | "fraction"
     | "number"
@@ -160,7 +166,8 @@ export interface ParamSpec {
     | "boolean"
     | "commands"
     | "agent"
-    | "model";
+    | "model"
+    | "states";
   // The companion param key a `model` param defers through: the name of the model slot
   // the launcher must fill in. Binding rewrites it into [key] and drops it, so a set that
   // reaches gg carries one only when the slot went unbound. Required on a `model` param
@@ -387,6 +394,90 @@ export const ASSISTANT_MESSAGE_OPTIONS = [
 // labels into the field's help tooltip.
 export const ASSISTANT_MESSAGE_HINT =
   "No post-processing records the reply exactly as the model sent it (healing still runs and is disclosed, but its output is not stored). Post-response healing records the healed program gg actually ran whenever healing changed the reply, and the reply verbatim when it did not.";
+
+// --- Modules --------------------------------------------------------------------
+//
+// Every unit of per-agent state gg keeps behind a capability is a **module** (see
+// gg/modules): memories, the task list, the board, the skills read-set and the thread
+// archive, plus the conversation window itself. Two things about a module are authored
+// here — whether its holder's *prompt* carries it (`ownership`, a param on each of the
+// five module-backed capabilities), and which modules an FSM transition hands to the
+// next state (the transfer list on each edge). Both name the same closed taxonomy, so
+// it is spelled once.
+
+// The module kinds a transition may carry, in the contract's own declaration order
+// (`GgModuleKind` in `crates/core/src/gg.rs`), each with what carrying it actually
+// means for the state that receives it.
+//
+// `value` is typed as the contract's `GgModuleKind`, so a kind added to or renamed in
+// the contract is a compile error here rather than a checkbox writing a name gg drops
+// as unknown.
+export const MODULE_KINDS: ReadonlyArray<{
+  value: GgModuleKind;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "history",
+    label: "History",
+    hint: "The conversation itself. The next state opens on everything its predecessor said and was told, under its own system prompt. Without it the state starts on a blank window and reads only the handoff note.",
+  },
+  {
+    value: "memories",
+    label: "Memories",
+    hint: "The memory instance, live — the same notes, not a copy of a summary of them.",
+  },
+  {
+    value: "tasks",
+    label: "Tasks",
+    hint: "The task list in exactly the state it was left in, ticks and blocked-by edges included.",
+  },
+  {
+    value: "board",
+    label: "Board",
+    hint: "The epic/issue board. It is run-global, so this changes only whether the next state holds a handle on it, never which board it is.",
+  },
+  {
+    value: "skills",
+    label: "Skills",
+    hint: "Which skills have been read — a promise about the window, so it is only worth carrying beside the history it refers to.",
+  },
+  {
+    value: "archive",
+    label: "Archive",
+    hint: "The archived thread sections and their search index, so a successor can still search what its predecessor put away.",
+  },
+];
+
+// The capability whose `states` param *is* a machine, and the param key it reads
+// (`CAPABILITY_FSM` / `FSM_PARAM_STATES` in `crates/core/src/gg.rs`). Named constants
+// because three modules — the catalog entry, the draft's state editor, and the
+// validation that mirrors gg's launch checks — all have to spell them the same way.
+export const FSM_CAP_ID = "fsm";
+export const FSM_STATES_PARAM = "states";
+
+// Whether a module-backed capability's state is carried in its holder's **prompt**
+// (`owned` — every turn, as a pinned block and a prompt section) or is reachable only
+// through the tools it contributes (`unowned`). The empty value is the default
+// (`owned`), which is what a module has always been and what every existing
+// configuration keeps.
+export const MODULE_OWNERSHIP_OPTIONS = [
+  { value: "", label: "Owned (default)" },
+  { value: "unowned", label: "Unowned — tools only, not in the prompt" },
+] as const;
+
+// One module-backed capability's `ownership` control. The label is shared across the
+// five so the knob reads as one idea rather than five; `what` names the state at stake
+// so the hint says what an unowned arm actually costs that capability.
+function ownershipParam(what: string): ParamSpec {
+  return {
+    key: "ownership",
+    label: "Ownership",
+    kind: "select",
+    options: MODULE_OWNERSHIP_OPTIONS,
+    hint: `Whether this agent's prompt carries ${what}. Owned is what a module has always been: it is rebuilt into the window on its own schedule and described in the system prompt, so the agent is told what it holds on every turn. Unowned leaves the tools, the state and the telemetry exactly as they are and takes the block out of the prompt — the agent may look ${what} up, and stops paying for it in every request. Worth it for a store an agent works with occasionally, and for one it is holding on another agent's behalf.`,
+  };
+}
 
 // The workspace-relative directory gg reads authored skills from when a
 // configuration names none (`crates/gg/src/skills.rs`).
@@ -713,6 +804,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     group: "Context",
     purpose:
       "The agent reclaims window space itself — evicting file views and archiving (searchable) thread sections.",
+    params: [ownershipParam("what it has archived")],
     tools: ["evict_file_view", "archive_thread", "search_archive"],
     toolAblation: [
       { label: "Evict file views", tools: ["evict_file_view"] },
@@ -739,6 +831,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         defaultValue: DEFAULT_SKILLS_DIR,
         hint: "Where in the workspace gg reads authored skills from. Relative paths are joined onto the workspace; an absolute path is used as-is.",
       },
+      ownershipParam("the skills it has read"),
     ],
     tools: ["read_skill"],
   },
@@ -765,6 +858,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         options: MEMORY_SCOPE_OPTIONS,
         hint: MEMORY_SCOPE_HINT,
       },
+      ownershipParam("its memories"),
       {
         key: "maxCount",
         label: "Max memories",
@@ -853,6 +947,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         defaultValue: String(DEFAULT_MAX_TASKS),
         hint: "How many tasks the list may hold at once.",
       },
+      ownershipParam("its task list"),
     ],
     tools: [
       "add_task",
@@ -911,6 +1006,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "boolean",
         hint: "On, filing an issue requires naming one or more reviewers — from the agents this one lists with the Reviewer scope. Either way, every reviewer an issue names must approve the work before the issue is accepted and merged.",
       },
+      ownershipParam("the board"),
     ],
     tools: [
       "create_epic",
@@ -1002,6 +1098,25 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         hint: "Off leaves exec only — the agent can become something else but not work two lines at once.",
       },
     ],
+  },
+  {
+    id: FSM_CAP_ID,
+    name: "Process (state machine)",
+    group: "Delegation",
+    purpose:
+      "Make this agent a **process** rather than a worker: a named list of states, each running one of the configuration's other agent profiles, and each declaring where it may go and what it takes with it. The machine is one agent to everyone else — one instance in the tree, one slot, one return value — so it can be the run's root, a subagent, or an issue's implementer. An agent standing in a state is offered `transition_state` for exactly the edges its state declares; a state with no edges ends the machine.",
+    defaultOn: false,
+    params: [
+      {
+        key: FSM_STATES_PARAM,
+        label: "States",
+        kind: "states",
+        hint: "The machine, in order — the first state is the one it enters. Each state runs an agent profile this configuration declares (never another machine), and each transition names the state it leads to, when the model should take it, and which modules travel with it. Transfers are explicit: an edge that carries nothing is a deliberate hard reset, and a new edge is pre-filled with History so the successor at least opens on the conversation it is continuing.",
+      },
+    ],
+    tools: ["transition_state"],
+    // No ablation slider: withholding `transition_state` leaves a machine that can
+    // only ever sit in its entry state, which is not an arm anyone would run.
   },
   // --- Process & quality ------------------------------------------------------
   {

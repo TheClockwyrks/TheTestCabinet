@@ -16,8 +16,10 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { GgConfigEditor } from "./GgConfigEditor";
 import {
+  blankAgentDraft,
   blankModelSlot,
   emptyDraft,
+  statesDraftValue,
   type GgConfigDraft,
 } from "./ggConfigDraft";
 
@@ -182,5 +184,204 @@ describe("a capability param that names a model", () => {
 
     select(within(row).getByLabelText(/Summarization strategy/), "self-compaction");
     expect(within(row).queryByLabelText(/Model from/)).toBeNull();
+  });
+});
+
+// A gg **process** — a machine over the configuration's other agent profiles — is the
+// one capability whose param is a document rather than a value, and the whole reason
+// the module model exists is authored on its edges. It is also the surface where "too
+// tedious to use" and "does not exist" are the same thing: an author who has to hand-
+// write JSON to say `explore → build, carrying the conversation` will write a single
+// agent instead. So the tests here are the operator's actual moves — add a state, point
+// it at an agent, add an edge, pick what it carries, rename a state — plus the two
+// launch failures gg would otherwise report only after the run had started.
+describe("authoring a state machine", () => {
+  // A configuration whose Root is a machine over two worker profiles, seeded with
+  // `states` (the state rows name the workers by their local ids, as the draft holds
+  // every cross-reference).
+  function machineDraft(
+    states: (workers: [string, string]) => ReadonlyArray<{
+      name: string;
+      agentId: string;
+      transitions: Array<{
+        to: string;
+        transfer: Array<"history" | "tasks">;
+        description: string;
+      }>;
+    }>,
+  ): GgConfigDraft {
+    const base = emptyDraft();
+    const explorer = blankAgentDraft("Explorer");
+    const builder = blankAgentDraft("Builder");
+    const shell = {
+      ...base.agents[0]!,
+      name: "Feature",
+      capabilities: {
+        ...base.agents[0]!.capabilities,
+        fsm: {
+          enabled: true,
+          params: {
+            states: statesDraftValue([
+              ...states([explorer.id, builder.id]),
+            ]),
+          },
+          extraParams: {},
+        },
+      },
+    };
+    return { ...base, agents: [shell, explorer, builder] };
+  }
+
+  // The machine lives in the Delegation group, which opens collapsed (it is opt-in),
+  // so every one of these starts by opening it.
+  function openMachine(draft: GgConfigDraft) {
+    render(<Harness initial={draft} />);
+    fireEvent.click(screen.getByRole("button", { name: /Delegation/ }));
+    return capabilityRow("fsm");
+  }
+
+  const LINEAR = (workers: [string, string]) => [
+    {
+      name: "explore",
+      agentId: workers[0],
+      transitions: [
+        {
+          to: "build",
+          transfer: ["history" as const],
+          description: "when you understand the change",
+        },
+      ],
+    },
+    { name: "build", agentId: workers[1], transitions: [] },
+  ];
+
+  it("adds a state and points it at one of the configuration's agents", () => {
+    const row = openMachine(machineDraft(LINEAR));
+    fireEvent.click(within(row).getByRole("button", { name: "+ Add state" }));
+
+    const name = within(row).getByLabelText("State 3 name") as HTMLInputElement;
+    fireEvent.change(name, { target: { value: "verify" } });
+    expect(
+      (within(row).getByLabelText("State 3 name") as HTMLInputElement).value,
+    ).toBe("verify");
+
+    // Until it names an agent the machine will not launch, and the form says so where
+    // the fix is rather than at save time.
+    expect(within(row).getByText(/runs no agent/)).toBeInTheDocument();
+    const agent = within(row).getByLabelText("State 3 agent");
+    fireEvent.change(agent, {
+      target: {
+        value: (
+          within(row).getByLabelText("State 1 agent") as HTMLSelectElement
+        ).value,
+      },
+    });
+    expect(within(row).queryByText(/runs no agent/)).toBeNull();
+    // A state with no edges ends the machine, and is marked as such rather than
+    // reading as an unfinished row.
+    expect(within(row).getAllByText("terminal").length).toBe(2);
+  });
+
+  it("opens a new edge carrying the conversation, and records what it carries", () => {
+    const row = openMachine(machineDraft(LINEAR));
+    fireEvent.click(
+      within(row).getByRole("button", { name: /Add transition from build/ }),
+    );
+
+    const transfer = within(row).getByRole("group", {
+      name: "State 2 transition 1 transfer",
+    });
+    // Pre-filled with History — the common case, still written down in the record.
+    expect(within(transfer).getByLabelText("History")).toBeChecked();
+    expect(within(transfer).getByLabelText("Tasks")).not.toBeChecked();
+
+    fireEvent.click(within(transfer).getByLabelText("Tasks"));
+    expect(within(transfer).getByLabelText("Tasks")).toBeChecked();
+
+    // Clearing every module is a legitimate hard reset, and says so — an empty row of
+    // checkboxes otherwise reads as an unfinished edge.
+    fireEvent.click(within(transfer).getByLabelText("History"));
+    fireEvent.click(within(transfer).getByLabelText("Tasks"));
+    expect(within(row).getByText(/carries nothing/)).toBeInTheDocument();
+  });
+
+  it("carries a renamed state's inbound edges with it", () => {
+    const row = openMachine(machineDraft(LINEAR));
+    const target = within(row).getByLabelText(
+      "State 1 transition 1 target",
+    ) as HTMLSelectElement;
+    expect(target.value).toBe("build");
+
+    fireEvent.change(within(row).getByLabelText("State 2 name"), {
+      target: { value: "assemble" },
+    });
+    // The edge followed the rename; the machine is still one gg would launch.
+    expect(
+      (
+        within(row).getByLabelText(
+          "State 1 transition 1 target",
+        ) as HTMLSelectElement
+      ).value,
+    ).toBe("assemble");
+    expect(within(row).queryByText(/not a state it declares/)).toBeNull();
+  });
+
+  it("moves the entry state, which is a position rather than a flag", () => {
+    const row = openMachine(machineDraft(LINEAR));
+    expect(
+      (within(row).getByLabelText("State 1 name") as HTMLInputElement).value,
+    ).toBe("explore");
+
+    fireEvent.click(
+      within(row).getByRole("button", {
+        name: "Make state 2 the entry state",
+      }),
+    );
+    expect(
+      (within(row).getByLabelText("State 1 name") as HTMLInputElement).value,
+    ).toBe("build");
+    // …and the state that is now second is unreachable from the new entry, which is
+    // worth saying without refusing to save it.
+    expect(within(row).getByText(/unreachable from `build`/)).toBeInTheDocument();
+  });
+
+  it("refuses a state that runs another machine", () => {
+    // A shell cannot be a state — it would recurse — so the picker offers it, labelled,
+    // and the form refuses it rather than silently repointing the state somewhere else.
+    const row = openMachine(machineDraft(LINEAR));
+    const agent = within(row).getByLabelText("State 1 agent");
+    expect(
+      within(agent).getByRole("option", { name: "Feature (a machine)" }),
+    ).toBeDefined();
+    fireEvent.change(agent, {
+      target: {
+        value: (
+          within(agent).getByRole("option", {
+            name: "Feature (a machine)",
+          }) as HTMLOptionElement
+        ).value,
+      },
+    });
+    expect(
+      within(row).getByText(/itself a state machine/),
+    ).toBeInTheDocument();
+  });
+});
+
+// Whether a module's state is carried in its holder's prompt is a per-agent, per-module
+// decision now, so every module-backed capability offers the same picker — and the
+// default arm has to be the absent param, or every saved configuration would become an
+// explicit opt-in to what modules have always done.
+describe("module ownership", () => {
+  it("is offered on each module-backed capability and defaults to owned", () => {
+    render(<Harness initial={draftWith("memories", "")} />);
+    const row = capabilityRow("memories");
+    const ownership = within(row).getByLabelText(
+      /Ownership/,
+    ) as HTMLSelectElement;
+    expect(ownership.value).toBe("");
+    expect(
+      within(ownership).getByRole("option", { name: /Unowned/ }),
+    ).toBeDefined();
   });
 });

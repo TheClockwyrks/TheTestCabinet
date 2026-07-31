@@ -30,6 +30,7 @@ import type {
   GgCapabilityConfig,
   GgCapabilitySet,
   GgModelSlot,
+  GgModuleKind,
   GgPromptCacheTtl,
   GgRunLimits,
   GgSubagentRef,
@@ -40,7 +41,10 @@ import {
   CAPABILITIES,
   DEFAULT_CAP_IDS,
   FILESYSTEM_CAP_IDS,
+  FSM_CAP_ID,
+  FSM_STATES_PARAM,
   LEGACY_FILESYSTEM_CAP_ID,
+  MODULE_KINDS,
   PRIMARY_SLOT,
   ROOT_AGENT,
   RUN_LIMIT_SPECS,
@@ -656,6 +660,319 @@ function commandsToParam(
   }));
 }
 
+// --- `states` params (the FSM machine) ------------------------------------------
+//
+// A `states` param is a whole finite-state machine: an ordered list of states, the
+// first of which is the one the machine enters, each naming an agent profile to run and
+// the edges out of it. Like a `commands` param it is held as the JSON *text* of the
+// list, so the draft stays a flat `Record<string, string>` and a half-written state
+// survives a re-render — but unlike one it carries cross-references, in both
+// directions: a state names an agent profile (held as that profile's [local id](localId),
+// so a rename follows it), and a transition names a sibling *state* (held as the state's
+// name, because a state's identity in the machine IS its name — it is what the model
+// passes to `transition_state`, and what gg's own validation resolves).
+//
+// Renaming a state therefore has to carry its inbound edges, which [renameStateDraft]
+// does; nothing else in the editor may write a state's name.
+
+/** One transition out of a state, as the editor holds it. */
+export interface TransitionDraft {
+  /** The name of the state this edge leads to; empty on a freshly added row. */
+  to: string;
+  /** The module kinds the successor inherits live. */
+  transfer: GgModuleKind[];
+  /** When the model should take this edge, in the author's words. */
+  description: string;
+}
+
+/** One state of a machine, as the editor holds it. */
+export interface StateDraft {
+  name: string;
+  /**
+   * The [local id](localId) of the agent profile this state runs — or, between
+   * [statesFromParam] and [resolveAgentReferences], the *name* a stored machine spelled.
+   * Empty when the state names none, which is a save-blocking error.
+   */
+  agentId: string;
+  transitions: TransitionDraft[];
+}
+
+/**
+ * A blank state, appended by the editor's "+ Add state". Its name is left empty
+ * deliberately: a machine's states are named for the work they do, and a pre-filled
+ * `state 3` is a name an author leaves in place.
+ */
+export function blankStateDraft(): StateDraft {
+  return { name: "", agentId: "", transitions: [] };
+}
+
+/**
+ * A fresh transition to `to`, pre-filled with the one transfer that is almost always
+ * wanted: the conversation. Explicit transfers are the contract (a recorded machine has
+ * to say what it carries), and this is how the common case stays one click without a
+ * default nobody wrote down — the checkbox is right there, ticked, in the record.
+ */
+export function blankTransitionDraft(to: string): TransitionDraft {
+  return { to, transfer: ["history"], description: "" };
+}
+
+/** The kinds [MODULE_KINDS] declares, for filtering a stored transfer list. */
+const MODULE_KIND_VALUES: ReadonlyArray<string> = MODULE_KINDS.map(
+  (kind) => kind.value,
+);
+
+/**
+ * The states a `states` draft value stands for. A value that is not the JSON list this
+ * control writes yields no states rather than throwing — the draft is text a stored
+ * configuration can put anything in, and a form that crashed on it would be worse than
+ * one that shows an empty machine.
+ */
+export function statesFromDraft(
+  raw: string | undefined,
+): ReadonlyArray<StateDraft> {
+  if (!raw?.trim()) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map((entry) => {
+    const state = entry as Partial<StateDraft>;
+    return {
+      name: String(state?.name ?? ""),
+      agentId: String(state?.agentId ?? ""),
+      transitions: Array.isArray(state?.transitions)
+        ? state.transitions.map((edge) => ({
+            to: String((edge as Partial<TransitionDraft>)?.to ?? ""),
+            transfer: (Array.isArray(edge?.transfer)
+              ? edge.transfer
+              : []) as GgModuleKind[],
+            description: String(
+              (edge as Partial<TransitionDraft>)?.description ?? "",
+            ),
+          }))
+        : [],
+    };
+  });
+}
+
+/** The draft value holding exactly `states` — the inverse of [statesFromDraft]. */
+export function statesDraftValue(states: ReadonlyArray<StateDraft>): string {
+  return states.length ? JSON.stringify(states) : "";
+}
+
+/**
+ * `states` with the state at `index` renamed to `name`, carrying every edge that
+ * pointed at its old name along with it.
+ *
+ * This is the one operation on a machine that is not a field edit: a transition
+ * addresses a state by name, so a rename that did not follow its inbound edges would
+ * turn a working machine into one gg refuses at launch — and would do it silently,
+ * halfway through typing.
+ */
+export function renameStateDraft(
+  states: ReadonlyArray<StateDraft>,
+  index: number,
+  name: string,
+): StateDraft[] {
+  const from = states[index]?.name ?? "";
+  return states.map((state, i) => ({
+    ...state,
+    name: i === index ? name : state.name,
+    // An edge pointing at the old name follows it. An empty old name (a state being
+    // named for the first time) matches nothing, so a half-typed name never captures
+    // the edges of the unnamed rows beside it.
+    transitions: from
+      ? state.transitions.map((edge) =>
+          edge.to === from ? { ...edge, to: name } : edge,
+        )
+      : [...state.transitions],
+  }));
+}
+
+/**
+ * The draft value a *stored* `states` param decodes to, or `null` when the stored value
+ * is not one this control can represent (which routes it to the verbatim passthrough,
+ * so a hand-written machine carrying something the form has no field for is never
+ * silently rewritten into a lesser one).
+ *
+ * The agent references land as **names** here; [resolveAgentReferences] maps them onto
+ * local ids once every profile in the set has one.
+ */
+function statesFromParam(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+  const states: StateDraft[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      return null;
+    }
+    const { name, agent, transitions, ...rest } = entry as Record<
+      string,
+      unknown
+    >;
+    if (Object.keys(rest).length) return null;
+    if (typeof name !== "string") return null;
+    if (agent !== undefined && typeof agent !== "string") return null;
+    if (transitions !== undefined && !Array.isArray(transitions)) return null;
+    const edges: TransitionDraft[] = [];
+    for (const raw of transitions ?? []) {
+      if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+        return null;
+      }
+      const { to, transfer, description, ...extra } = raw as Record<
+        string,
+        unknown
+      >;
+      if (Object.keys(extra).length) return null;
+      if (typeof to !== "string") return null;
+      if (description !== undefined && typeof description !== "string") {
+        return null;
+      }
+      if (transfer !== undefined && !Array.isArray(transfer)) return null;
+      // A transfer entry that is not a module kind is dropped rather than refused —
+      // exactly as gg's own lenient deserializer drops it — so a machine written
+      // against a newer (or mistyped) vocabulary still opens as the machine it is.
+      const kinds = (transfer ?? []).filter(
+        (kind): kind is GgModuleKind =>
+          typeof kind === "string" && MODULE_KIND_VALUES.includes(kind),
+      );
+      edges.push({ to, transfer: kinds, description: description ?? "" });
+    }
+    states.push({ name, agentId: agent ?? "", transitions: edges });
+  }
+  return statesDraftValue(states);
+}
+
+/**
+ * The JSON a `states` draft value writes, or `undefined` when it declares no state at
+ * all (which writes no param — the arm gg refuses at launch, and which the editor
+ * refuses to save, but which is a legitimate half-built state to hold).
+ *
+ * `agentName` turns each state's [local id](localId) back into the profile name the
+ * contract carries; omit it (the validation path) to leave the ids as they are.
+ */
+function statesToParam(
+  raw: string,
+  agentName?: (agentId: string) => string,
+): Array<Record<string, unknown>> | undefined {
+  const states = statesFromDraft(raw);
+  if (!states.length) return undefined;
+  return states.map((state) => ({
+    name: state.name.trim(),
+    agent: agentName ? agentName(state.agentId) : state.agentId,
+    transitions: state.transitions.map((edge) => ({
+      to: edge.to.trim(),
+      transfer: [...edge.transfer],
+      ...(edge.description.trim()
+        ? { description: edge.description.trim() }
+        : {}),
+    })),
+  }));
+}
+
+/** Whether `agent`'s profile is an **FSM shell** — a machine rather than a worker. */
+export function isFsmShell(agent: GgAgentDraft): boolean {
+  return Boolean(agent.capabilities[FSM_CAP_ID]?.enabled);
+}
+
+/** The machine `agent` declares, empty when it declares none. */
+export function agentStates(agent: GgAgentDraft): ReadonlyArray<StateDraft> {
+  return statesFromDraft(agent.capabilities[FSM_CAP_ID]?.params?.[FSM_STATES_PARAM]);
+}
+
+/**
+ * Why `agent`'s machine could not be launched, or `null` when it is well-formed —
+ * mirroring `fsm::validate` in `crates/gg/src/fsm.rs` exactly, so a configuration the
+ * editor accepts is one gg will start. Every one of these is structural: a machine with
+ * any of them is not a differently-configured run, it is an unrunnable one.
+ *
+ * `agents` is the whole configuration, because half of these questions are about the
+ * profiles the machine names rather than about the machine itself.
+ */
+export function fsmStatesError(
+  agent: GgAgentDraft,
+  agents: ReadonlyArray<GgAgentDraft>,
+): string | null {
+  if (!isFsmShell(agent)) return null;
+  const name = agent.name.trim() || "this";
+  const states = agentStates(agent);
+  if (!states.length) {
+    return `The \`${name}\` agent is a state machine but declares no states — an FSM agent has no turns of its own, so there would be nothing to run.`;
+  }
+  const seen = new Set<string>();
+  for (const state of states) {
+    const stateName = state.name.trim();
+    if (!stateName) {
+      return `The \`${name}\` machine has a state with no name — a transition addresses a state by name, so every state needs one.`;
+    }
+    if (seen.has(stateName)) {
+      return `The \`${name}\` machine declares the \`${stateName}\` state more than once — a transition to it would have no single answer.`;
+    }
+    seen.add(stateName);
+  }
+  for (const state of states) {
+    const stateName = state.name.trim();
+    const runs = agents.find((a) => a.id === state.agentId);
+    if (!runs) {
+      return `The \`${name}\` machine's \`${stateName}\` state runs no agent this configuration declares — pick the profile it should run.`;
+    }
+    if (isFsmShell(runs)) {
+      return `The \`${name}\` machine's \`${stateName}\` state runs \`${runs.name.trim()}\`, which is itself a state machine — a machine cannot be a state of another machine. Name one of its states' agents instead.`;
+    }
+    for (const edge of state.transitions) {
+      if (!seen.has(edge.to.trim())) {
+        return `The \`${name}\` machine's \`${stateName}\` state may transition to \`${edge.to.trim() || "(nothing)"}\`, which is not a state it declares.`;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The things worth saying about a well-formed machine without refusing to save it —
+ * the console half of `fsm::launch_warnings`. A run with one of these still happens; it
+ * just will not be quite the machine that was written down.
+ */
+export function fsmStatesWarnings(
+  agent: GgAgentDraft,
+  agents: ReadonlyArray<GgAgentDraft>,
+): string[] {
+  if (!isFsmShell(agent) || fsmStatesError(agent, agents)) return [];
+  const warnings: string[] = [];
+  const states = agentStates(agent);
+  // A shell has no turns of its own, so anything else it enables is configuration that
+  // will never be read — said out loud, because the alternative is an author who
+  // believes the machine's states inherited the shell's memories.
+  const extra = CAPABILITIES.filter(
+    (cap) => cap.id !== FSM_CAP_ID && agent.capabilities[cap.id]?.enabled,
+  ).map((cap) => cap.name);
+  if (extra.length) {
+    warnings.push(
+      `A state machine has no turns of its own, so this agent's model and its other capabilities (${extra.join(", ")}) are ignored — each state runs the profile it names, with that profile's configuration.`,
+    );
+  }
+  // Reachability, walked from the entry state exactly as gg walks it.
+  const reachable = new Set<string>();
+  const queue = [states[0]!.name.trim()];
+  while (queue.length) {
+    const at = queue.shift()!;
+    if (reachable.has(at)) continue;
+    reachable.add(at);
+    const state = states.find((s) => s.name.trim() === at);
+    for (const edge of state?.transitions ?? []) queue.push(edge.to.trim());
+  }
+  for (const state of states) {
+    if (!reachable.has(state.name.trim())) {
+      warnings.push(
+        `The \`${state.name.trim()}\` state is unreachable from \`${states[0]!.name.trim()}\` — it is kept, but nothing can enter it.`,
+      );
+    }
+  }
+  return warnings;
+}
+
 // --- Agent config <-> draft -----------------------------------------------------
 
 /**
@@ -735,6 +1052,12 @@ function agentDraftFromConfig(
         else params[key] = decoded;
         continue;
       }
+      if (spec.kind === "states") {
+        const decoded = statesFromParam(value);
+        if (decoded === null) extraParams[key] = value;
+        else params[key] = decoded;
+        continue;
+      }
       params[key] = String(value);
     }
     capabilities[cap.id] = {
@@ -770,7 +1093,8 @@ function agentDraftFromConfig(
  * set at launch, and the draft has no id to point it at, so carrying it would only be a
  * broken reference the editor could not show. An `agent` param that names no declared
  * profile *is* kept verbatim, because it round-trips as itself and the form flags it as
- * missing rather than silently repointing it.
+ * missing rather than silently repointing it. A [machine](StateDraft)'s state agents are
+ * resolved the same way, for the same reason.
  */
 function resolveAgentReferences(
   draft: GgAgentDraft,
@@ -779,12 +1103,25 @@ function resolveAgentReferences(
 ): GgAgentDraft {
   const capabilities = { ...draft.capabilities };
   for (const cap of CAPABILITIES) {
-    const agentParams = (cap.params ?? []).filter((p) => p.kind === "agent");
+    const agentParams = (cap.params ?? []).filter(
+      (p) => p.kind === "agent" || p.kind === "states",
+    );
     if (!agentParams.length) continue;
     const capDraft = capabilities[cap.id];
     if (!capDraft?.params) continue;
     const params = { ...capDraft.params };
     for (const p of agentParams) {
+      if (p.kind === "states") {
+        const states = statesFromDraft(params[p.key]);
+        if (!states.length) continue;
+        params[p.key] = statesDraftValue(
+          states.map((state) => ({
+            ...state,
+            agentId: idByName.get(state.agentId) ?? state.agentId,
+          })),
+        );
+        continue;
+      }
       const name = params[p.key];
       if (name) params[p.key] = idByName.get(name) ?? name;
     }
@@ -943,6 +1280,11 @@ export function capabilityParams(
       if (commands) out[p.key] = commands;
       continue;
     }
+    if (p.kind === "states") {
+      const states = statesToParam(raw, agentName);
+      if (states) out[p.key] = states;
+      continue;
+    }
     // A feature switch records only its *on* arm; off is the absent key (`raw` empty),
     // which the guard above already skipped.
     if (p.kind === "boolean") {
@@ -1052,9 +1394,17 @@ export function runLimitsFromDraft(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-/** One agent's per-capability param errors, keyed by capability id (`null` = ok). */
+/**
+ * One agent's per-capability param errors, keyed by capability id (`null` = ok).
+ *
+ * `agents` is the configuration this profile sits in, which the cross-field checks need:
+ * a machine's states name *other* profiles, so whether they name anything real is a
+ * question about the set rather than about the capability's own params. It defaults to
+ * this agent alone, which is enough for every check that is purely local.
+ */
 export function agentParamErrors(
   agent: GgAgentDraft,
+  agents: ReadonlyArray<GgAgentDraft> = [agent],
 ): Record<string, string | null> {
   const errors: Record<string, string | null> = {};
   for (const cap of CAPABILITIES) {
@@ -1066,6 +1416,10 @@ export function agentParamErrors(
     const parsed = capabilityParams(cap, capDraft);
     errors[cap.id] = parsed.ok ? null : parsed.error;
   }
+  // The machine's own structure, checked the way gg checks it at launch — reported on
+  // the capability that declares it, so it surfaces inline beside the state rows the
+  // author has to fix rather than as a save-time surprise.
+  errors[FSM_CAP_ID] = errors[FSM_CAP_ID] ?? fsmStatesError(agent, agents);
   return errors;
 }
 
@@ -1145,7 +1499,7 @@ export function agentSaveError(
   if (draft.agents.some((a) => a.id !== agent.id && a.name.trim() === name)) {
     return `Another agent is already called \`${name}\` — agent names must be unique.`;
   }
-  const failed = Object.entries(agentParamErrors(agent)).find(
+  const failed = Object.entries(agentParamErrors(agent, draft.agents)).find(
     ([, error]) => error !== null,
   );
   return failed ? failed[1] : null;
@@ -1196,7 +1550,12 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
     ) {
       return `The \`${agent.name.trim()}\` agent can create issues but its roster lists no implementer to assign them to. Give one of its agents the Implementer scope, or switch its Issue creation feature off for read-only board access.`;
     }
-    const failed = Object.entries(agentParamErrors(agent)).find(
+    // A machine's structural faults are reported in their own words: they already name
+    // the agent, the state and what is wrong with it, and "fix the fsm params" would
+    // throw all of that away at exactly the moment it is needed.
+    const machine = fsmStatesError(agent, draft.agents);
+    if (machine) return machine;
+    const failed = Object.entries(agentParamErrors(agent, draft.agents)).find(
       ([, error]) => error !== null,
     );
     if (failed) {

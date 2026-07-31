@@ -350,6 +350,156 @@
   min-width: 0;
 }
 
+// --- The state machine (a `states` param) -----------------------------------------
+//
+// A machine is the largest control in the form by some distance — a list of states,
+// each holding a list of edges, each holding a checkbox set — so it takes the whole
+// width of the param grid and lays its rows out as cards rather than as another line
+// of fields. The nesting is carried by indentation and a leading rule, not by boxes
+// inside boxes: an edge belongs to the state above it, and one border is enough to
+// say so.
+
+.fsmWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.fsmField {
+  flex: 1 1 100%;
+  align-items: flex-start;
+  gap: t.$space-sm;
+}
+
+.fsmStates {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  width: 100%;
+}
+
+// One state: its head row (what it is called, what it runs) over its edges. The entry
+// state takes the accent rule, because which state a machine starts in is the one
+// thing about it that cannot be read off any single row.
+.fsmState {
+  padding: t.$space-sm;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+
+  &[data-entry] {
+    border-color: t.$color-accent;
+  }
+}
+
+.fsmStateHead {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+// The position marker: "entry" on the first state, the ordinal on the rest — the same
+// shape as the root agent's badge, for the same reason (a position that matters).
+.fsmStateBadge {
+  flex: 0 0 auto;
+  min-width: 1.6rem;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-accent;
+  color: t.$color-accent;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  text-align: center;
+}
+
+.fsmStateName {
+  flex: 1 1 9rem;
+  min-width: 0;
+}
+
+.fsmStateAgent {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+// The connective tissue in "explore runs Explorer": muted, so the row reads as a
+// sentence rather than as three unrelated fields.
+.fsmRuns,
+.fsmTransferLabel {
+  flex: 0 0 auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.fsmTerminal {
+  flex: 0 0 auto;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid t.$color-border;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+}
+
+// The edges out of a state, indented under it behind a single rule.
+.fsmTransitions {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  margin: t.$space-sm 0 0;
+  padding: 0 0 0 t.$space-md;
+  border-left: t.$border-hairline solid t.$color-border;
+  list-style: none;
+}
+
+.fsmTransition {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.fsmTransitionHead {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+.fsmArrow {
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+}
+
+.fsmTarget {
+  flex: 0 1 10rem;
+  min-width: 0;
+}
+
+.fsmWhen {
+  flex: 3 1 14rem;
+  min-width: 0;
+}
+
+// What the edge carries: the checkbox set, wrapped, reading as one clause after the
+// "carries" label rather than as a column of switches.
+.fsmTransfer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+  padding-left: t.$space-md;
+}
+
+// An edge that carries nothing is a deliberate hard reset — legitimate, and worth
+// saying out loud, because an empty checkbox row otherwise reads as unfinished.
+.fsmReset {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-style: italic;
+}
+
 // --- Run limits -------------------------------------------------------------------
 
 // The execution ceilings live in their own surface card rather than straight on the
