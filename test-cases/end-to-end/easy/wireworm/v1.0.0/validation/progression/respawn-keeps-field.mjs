@@ -52,10 +52,15 @@ export default function item() {
         BAND_CY,
         1,
       );
-      check.expectOk(
-        "the cursor respawns invulnerable",
-        snap.cursor.invulnerable,
-      );
+      // The spawn-in invulnerability is deliberately NOT asserted.
+      // specs/progression.md calls it "encouraged", not required — "a short spawn-in
+      // invulnerability while the cursor reappears is encouraged so you are not hit
+      // twice instantly" — so a build that omits it, or that raises the flag only
+      // once the cursor is actually back rather than during the pause before it, is
+      // conformant. Gating on `cursor.invulnerable` here failed such a build for a
+      // choice the spec left to it. The flag is still contracted to EXIST
+      // (specs/instrumentation.md); nothing in this case makes it mandatory to be
+      // set at any particular instant.
     },
   };
 }
