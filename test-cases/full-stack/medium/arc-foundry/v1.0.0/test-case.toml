@@ -437,6 +437,11 @@ title = "Folding offers a quality climb and a recipe, and nothing else"
 description = "The only two ways to fold pieces together are COMBINE (a matching same-type, same-quality pair climbs one quality tier) and COMBINE SPECIAL (a recipe multiset assembles a combination tower). No action folds a pair into a result of the same type and quality, which would spend a piece for no gain."
 validation = { script = "validation/build/combine-actions-only.mjs", outputs = [{ id = "combine", name = "A matching pair climbing a quality tier", kind = "video" }] }
 [[review.categories.items]]
+id = "explicit-set-folds-exactly"
+title = "An explicit selection folds exactly that set"
+description = "Shift-selecting the exact pieces to fold decides the fold: on a board where the same initiator could either quality-combine a matching pair or assemble a combination-tower recipe, committing the combine with the pair explicitly selected climbs that pair one tier and does not assemble the recipe."
+validation = { script = "validation/build/explicit-set-folds-exactly.mjs", outputs = [{ id = "explicit", name = "The explicitly chosen pair folding, not the recipe it could have assembled", kind = "video" }] }
+[[review.categories.items]]
 id = "downgrade-keeps-lower"
 title = "Downgrade keeps a candidate one tier lower"
 description = "DOWNGRADE harvests the selected candidate as a firing component one quality tier lower and, being the harvest, launches the wave."

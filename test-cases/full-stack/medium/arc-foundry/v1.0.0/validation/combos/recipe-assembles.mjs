@@ -7,7 +7,7 @@
 // already running and the clip shows the assembled combo standing among its hardened
 // ingredients, which is exactly what the assertions describe.
 
-import { assembleCombo, towerById, snap, SECOND } from "../_helpers.mjs";
+import { assembleCombo, towerAt, towerById, snap, SECOND } from "../_helpers.mjs";
 
 // Long enough to watch the assembled combo stand among its hardened ingredients AND take its
 // first shots at the wave the fold launched. Two seconds cut away before the Load arrived.
@@ -28,14 +28,14 @@ async function skipToFirstContact(api, comboId) {
 export default function item() {
   // The fold's outputs and the board it left behind, all read by `assert`.
   let comboId;
-  let ingredientIds;
+  let ingredients;
   let s;
 
   return {
     id: "combos.recipe-assembles",
 
     async arrange(api) {
-      ({ comboId, ingredientIds } = await assembleCombo(api, "fusecluster", { seed: 1, charge: 400, clear: false }));
+      ({ comboId, ingredients } = await assembleCombo(api, "fusecluster", { seed: 1, charge: 400, clear: false }));
       await skipToFirstContact(api, comboId);
     },
 
@@ -45,16 +45,30 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectOk("a combination tower was assembled", comboId != null);
+      // Hard: everything below reads the assembled piece, so a fold that produced none has
+      // nothing to grade. Stopping here records a clean failed verdict on the claim that was
+      // actually broken; carrying on would dereference a missing tower and report the item as
+      // a debug-API contract failure, which says the build answered the API wrongly when in
+      // fact it answered correctly and assembled nothing.
+      check.assertOk("a combination tower was assembled", comboId != null);
 
       const combo = towerById(s, comboId);
       check.expectEq("the assembled piece is a combo (single-grade, no quality tier)", combo.kind, "combo");
       check.expectEq("...of the expected recipe (Fuse Cluster)", combo.type, "fusecluster");
 
-      const consumed = ingredientIds.filter((id) => id !== comboId).map((id) => towerById(s, id));
-      check.expectOk(
+      // Read the aftermath by FOOTPRINT, not by id. The combo lands on the initiator's
+      // footprint and `specs/build.md` hardens every OTHER consumed ingredient's footprint
+      // into an inert blocker — a claim about tiles. A consumed piece is gone either way; a
+      // build may harden it in place under its old id or drop a fresh blocker on the same
+      // tiles, and no spec chooses between those. Looking the old ids up in the snapshot
+      // graded that choice instead: it read "assembled correctly, then discarded the
+      // ingredients' ids" as "the maze opened a hole", the one thing wall-neutrality forbids.
+      const consumed = ingredients.filter((g) => !(g.col === combo.col && g.row === combo.row));
+      const hardened = consumed.filter((g) => towerAt(s, g.col, g.row)?.kind === "blocker");
+      check.expectEq(
         "every consumed ingredient footprint hardened into a blocker",
-        consumed.length > 0 && consumed.every((b) => b && b.kind === "blocker"),
+        `${hardened.length} of ${consumed.length}`,
+        `${consumed.length} of ${consumed.length}`,
       );
     },
   };
