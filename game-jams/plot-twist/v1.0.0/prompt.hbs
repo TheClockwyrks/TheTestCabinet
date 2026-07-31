@@ -1,116 +1,104 @@
 # 🔀 Plot Twist
 
-That is your theme. Build one complete **narrative game** around it, a game told
-through story. The story itself, its world, its tone, and how it looks are yours to
-invent, with no specification and no reference design to match.
+The theme for this game jam is a plot twist. Build a complete narrative game, a
+game told through story. You are responsible for naming the game and you may
+not use "Plot Twist" as the name of your game.
 
-The name sets the spirit: a plot twist is the turn that makes a story worth telling, a
-reveal, a reversal, a choice that changes everything. Write something with real turns in
-it, not a flat straight line.
+Your game must meet these requirements:
 
-Two things are fixed, and your game must be built genuinely around both:
-
-- **It is a narrative game.** The core of the experience is its story, carried by its
-  writing, its characters, and the moments you author. The game *is* the story; whatever
+- It must be a narrative game.
+  The core of the experience is its story, carried by its writing, its
+  characters, and the moments you author. The game is the story; whatever
   systems you build exist to serve it, not the other way around.
-- **Meaningful choices that branch.** A story on its own is a book, not a game. What
-  makes this a game is that the player makes real choices that genuinely shape how the
-  story unfolds — steering the path, changing what happens, and leading to outcomes or
-  endings that actually differ. Choices that are purely cosmetic, or that all funnel
-  back to the same result, do not count: the player's decisions have to *matter*, and
-  the story has to visibly bend around them. This is the line between a game and a book,
-  and it is the heart of the jam.
+- Meaningful choices that branch.
+  A story on its own is a book, not a game. What makes this a game is that the
+  player makes real choices that genuinely shape how the story unfolds. The
+  player must be able to steer the path, change what happens, and reach outcomes
+  or endings that actually differ. Choices that are purely cosmetic, or that all
+  funnel back to the same result, do not count. The player's decisions have to
+  matter, and the story has to visibly bend around them.
+- Depth over length.
+  A shorter story that branches meaningfully and stays polished beats a long one
+  that runs in a straight line or falls apart.
 
-Everything else is open: the kind of story (a mystery, an adventure, a romance, a
-horror, a comedy, or something stranger), how it is presented (an illustrated visual
-novel, a text adventure, a choose-your-path, or a form of your own), the art and music
-that carry its mood, and how the branching is structured (a branching tree, a hub that
-comes back around, choices tracked as state, several endings). Aim for depth over
-length: a shorter story that branches meaningfully and stays polished beats a long one
-that runs in a straight line or falls apart.
+At the end of the game jam, your submission will be judged against the other
+contestants' submissions. Judges will be looking at the narrative quality, how
+dynamic the story is, and the overall aesthetics and polish. Your goal is to
+take first place in the jam.
 
-"Plot Twist" is the name of the jam, **not** the name of your game. Title the game
-yourself, to fit the game you build.
+## workspace
 
 Your project root is `{{workspace}}`. Build the game there.
 
+The workspace is a git repository, initialized before you started. Your finished
+implementation is published directly from this repository's commits, and any
+uncommitted work is **not** published.
+
+Create any number of commits as you go. Once the game is complete, verify that
+no unintended untracked files exist and that you have committed a README.md that
+describes your game. Your README.md should be written with a prospective player
+as the target audience.
+
 ## Your time budget
 
-You have **about {{time_limit_hours}} hours** of wall-clock time for this run. The
-session is stopped at that point, and whatever is committed by then is what gets
-published. Budget the time so you can build the assets, verify the game, and commit
-before the clock runs out. Running `date` in the container reports the current time,
-so you can see how much of the budget remains. Scope to finish comfortably rather
-than racing the deadline.
+You have {{time_limit_hours}} hours of wall-clock time for this run. Running
+`date` in the container reports the current time, so you can see how much of the
+budget remains.
 
 ## Your starting point
 
-A starter project is already in place at `{{workspace}}`: a `package.json` that pins
-Playwright as a dev dependency, with its dependencies already installed.
-`node_modules/` is populated and headless Chromium is downloaded, so you can build
-and verify right away. Build on this project: keep the `package.json`, add your
-framework, bundler, and a `build` script on top of it, and keep the lockfile in sync.
+A starter project is already in place at `{{workspace}}`: a `package.json` that
+pins Playwright as a dev dependency, with its dependencies already installed.
+`node_modules/` is populated and headless Chromium is downloaded, so you can
+build and verify right away. Build on this project: keep the `package.json`, add
+your framework, bundler, and a `build` script on top of it, and keep the
+lockfile in sync.
+
+There is no global Playwright on `PATH`. Use the project's own instance by
+importing it (`import { chromium } from "playwright"`) or by running `npx
+playwright`. This environment has no Chromium sandbox, so Chromium has to be
+launched with the `--no-sandbox` argument.
 
 ## Producing the game's assets
 
-The game ships its own art, animation, effects, and sound, and you must produce them
-for real. Placeholder rectangles, stand-ins drawn at runtime, or silence count as
-unfinished work. Six asset-generation binaries are on your `PATH` to help. Run each
-with `--help` to learn its operations:
+You must produce the art, animations, effects, and sound for your game. If you
+use placeholder rectangles, stand-ins drawn at runtime, or omit assets, your
+game will be judged extremely poorly when the game jam submissions are judged.
+
+Six asset-generation binaries are on your `PATH` to help. Run each with `--help`
+to learn its operations:
 
 - `draw`, `draw-sheet`: 2D sprites and animated sprite sheets.
 - `particle-2d`: 2D particle effects.
 - `sfx-synth`, `sfx-sample`: sound effects, synthesized or sample-based.
 - `music`: music tracks.
 
-Use them, or produce assets any other way you prefer. These binaries are on your
-`PATH` only while this run is live, not when your build is re-run to validate it, so
-asset generation is a one-time step. Generate the assets once into committed files
-and have `npm run build` bundle them; it must not invoke `draw` or any other
-generation binary.
+Use them, or produce assets any other way you prefer. These binaries are only
+available during this run and not when your submission is published. Generate
+any assets once and commit them. Do not define build commands that call into
+the asset generation binaries.
 
 ## The fixed build/serve interface
 
 The project stays a Node project built with only Node.js and npm-installed
-dependencies. Extend the provided `package.json` and commit a `package-lock.json`,
-running `npm install` after changing dependencies so the lockfile matches. `npm ci`
-followed by `npm run build`, with no other manual step, must produce the static site
-into one of `dist/`, `build/`, or `out/` at the project root, with an `index.html` at
-the root of that directory. Serving that directory as-is must run the game.
+dependencies. Extend the provided `package.json` and commit a
+`package-lock.json`, running `npm install` after changing dependencies so the
+lockfile matches. `npm ci` followed by `npm run build`, with no other manual
+step, must produce the static site into one of `dist/`, `build/`, or `out/` at
+the project root, with an `index.html` at the root of that directory. Serving
+that directory as-is must run the game.
 
 The build must also work at **any base path**. It is played back from a per-run
-sub-path, so every URL it constructs at runtime, including every produced asset, must
-be page-relative and never start with `/`. For a bundler, set a relative base such as
-`base: './'`.
+sub-path, so every URL it constructs at runtime, including every produced asset,
+must be page-relative and never start with `/`. For a bundler, set a relative
+base such as `base: './'`.
 
-You can write your game's core logic in Rust and compile it to WebAssembly if you
-prefer: this container has the Rust toolchain, the `wasm32-unknown-unknown` target,
-and `wasm-bindgen`/`wasm-pack` on `PATH`. Those tools are on `PATH` only while this
-run is live, so the compiled wasm is a build input rather than a build step. Compile
-it once during the run, commit the resulting `.wasm` and any generated JS glue, and
-have `npm run build` bundle the committed output without invoking `cargo` or
-`wasm-pack`. Plain JavaScript or TypeScript is fine too; reach for wasm only if it
-genuinely helps your game.
-
-## Verifying your work
-
-Playwright and a headless Chromium are installed in the project as dependencies, and
-the container has network access, so you can build the game, serve it, open it in a
-browser, and play it. There is no global Playwright on `PATH`; the project's own is
-reached by importing it (`import { chromium } from "playwright"`) or by running
-`npx playwright`. This container has no Chromium sandbox, so Chromium has to be
-launched with the `--no-sandbox` argument.
-
-What is judged is the static production build produced from your committed source,
-served as-is. Nothing is rebuilt, repaired, or played by anyone else between the end
-of this run and that judgement.
-
-## Commit your work
-
-Your project root is a git repository, initialized before you started. Your finished
-implementation is published directly from this repository's commits, so uncommitted
-work is **not** published. When the game is complete and verified, run `git add -A`
-then `git commit`, and confirm `git status` reports a clean working tree. A
-`.gitignore` already excludes `node_modules/` and the build output, so a clean tree
-means you have committed your source, your `package-lock.json`, a short `README.md`,
-and the produced assets the game ships.
+You can write your game's core logic in Rust and compile it to WebAssembly if
+you prefer: this container has the Rust toolchain, the `wasm32-unknown-unknown`
+target, and `wasm-bindgen`/`wasm-pack` on `PATH`. As with the asset generation
+tools, these are on `PATH` only while this run is live, so the compiled wasm is
+a build input rather than a build step. Compile it once during the run, commit
+the resulting `.wasm` and any generated JS glue, and have `npm run build` bundle
+the committed output without invoking `cargo` or `wasm-pack`. Plain JavaScript
+or TypeScript is acceptable too; reach for wasm only if it genuinely helps your
+game.

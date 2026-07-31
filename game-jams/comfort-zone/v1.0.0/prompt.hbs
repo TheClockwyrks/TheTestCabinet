@@ -1,114 +1,95 @@
 # 🏡 Comfort Zone
 
-That is your theme. Build one complete game around it. The game, its world, and how it
-plays are yours to invent, with no specification and no reference design to match. This
-theme fixes a *feeling*, and your game must deliver it.
+The theme for this game jam is a comfort zone. Build a complete cozy game. You
+are responsible for naming the game and you may not use "Comfort Zone" as the
+name of your game.
 
-The name is the cozy game's whole promise. A "comfort zone" is a warm, low-pressure
-place you are happy to stay in, and that is exactly the mood you are building: a game
-that is calm, unhurried, and charming, the kind of small world a player sinks into and
-does not want to leave.
+Your game must meet these requirements:
 
-Two things are fixed, and your game must be built genuinely around both:
+- The cozy feeling.
+  The game should feel warm, low-pressure, and unhurried — comfortable to be in.
+  No harsh stakes, no stress, no punishment; a player should be able to relax
+  into it and let their shoulders drop. If it feels tense or demanding, it has
+  missed the theme.
 
-- **The cozy feeling.** This is the heart of it. The game should feel warm,
-  low-pressure, and unhurried — comfortable to be in. No harsh stakes, no stress, no
-  punishment; a player should be able to relax into it and let their shoulders drop. If
-  it feels tense or demanding, it has missed the theme. (Games like Stardew Valley and
-  Animal Crossing are the *mood* to aim for, not a design to copy.)
-- **A small world to spend time in.** Build a little place with some life to it:
-  characters, spots, and things to tend, make, grow, gather, arrange, or discover, all
-  feeling lived-in and inviting. It does not need to be large; it needs to feel like
-  somewhere worth returning to. Its whole look and feel is yours to make, and making it
-  genuinely charming is a real part of the work.
+At the end of the game jam, your submission will be judged against the other
+contestants' submissions. Judges will be looking at how fun the game is to play,
+playtime and replayability, and overall aesthetics and polish. Your goal is to
+take first place in the jam.
 
-What the player actually *does* is yours to choose: farming, decorating, crafting,
-keeping a little shop, caring for creatures, gentle exploring, or something all your
-own. Pick a loop that is pleasant to repeat, and build a world that makes repeating it
-a quiet joy.
-
-"Comfort Zone" is the name of the jam, **not** the name of your game. Title the game
-yourself, to fit the game you build.
+## workspace
 
 Your project root is `{{workspace}}`. Build the game there.
 
+The workspace is a git repository, initialized before you started. Your finished
+implementation is published directly from this repository's commits, and any
+uncommitted work is **not** published.
+
+Create any number of commits as you go. Once the game is complete, verify that
+no unintended untracked files exist and that you have committed a README.md that
+describes your game. Your README.md should be written with a prospective player
+as the target audience.
+
 ## Your time budget
 
-You have **about {{time_limit_hours}} hours** of wall-clock time for this run. The
-session is stopped at that point, and whatever is committed by then is what gets
-published. Budget the time so you can build the assets, verify the game, and commit
-before the clock runs out. Running `date` in the container reports the current time,
-so you can see how much of the budget remains. Scope to finish comfortably rather
-than racing the deadline.
+You have {{time_limit_hours}} hours of wall-clock time for this run. Running
+`date` in the container reports the current time, so you can see how much of the
+budget remains.
 
 ## Your starting point
 
-A starter project is already in place at `{{workspace}}`: a `package.json` that pins
-Playwright as a dev dependency, with its dependencies already installed.
-`node_modules/` is populated and headless Chromium is downloaded, so you can build
-and verify right away. Build on this project: keep the `package.json`, add your
-framework, bundler, and a `build` script on top of it, and keep the lockfile in sync.
+A starter project is already in place at `{{workspace}}`: a `package.json` that
+pins Playwright as a dev dependency, with its dependencies already installed.
+`node_modules/` is populated and headless Chromium is downloaded, so you can
+build and verify right away. Build on this project: keep the `package.json`, add
+your framework, bundler, and a `build` script on top of it, and keep the
+lockfile in sync.
+
+There is no global Playwright on `PATH`. Use the project's own instance by
+importing it (`import { chromium } from "playwright"`) or by running `npx
+playwright`. This environment has no Chromium sandbox, so Chromium has to be
+launched with the `--no-sandbox` argument.
 
 ## Producing the game's assets
 
-The game ships its own art, animation, effects, and sound, and you must produce them
-for real. Placeholder rectangles, stand-ins drawn at runtime, or silence count as
-unfinished work. Six asset-generation binaries are on your `PATH` to help. Run each
-with `--help` to learn its operations:
+You must produce the art, animations, effects, and sound for your game. If you
+use placeholder rectangles, stand-ins drawn at runtime, or omit assets, your
+game will be judged extremely poorly when the game jam submissions are judged.
+
+Six asset-generation binaries are on your `PATH` to help. Run each with `--help`
+to learn its operations:
 
 - `draw`, `draw-sheet`: 2D sprites and animated sprite sheets.
 - `particle-2d`: 2D particle effects.
 - `sfx-synth`, `sfx-sample`: sound effects, synthesized or sample-based.
 - `music`: music tracks.
 
-Use them, or produce assets any other way you prefer. These binaries are on your
-`PATH` only while this run is live, not when your build is re-run to validate it, so
-asset generation is a one-time step. Generate the assets once into committed files
-and have `npm run build` bundle them; it must not invoke `draw` or any other
-generation binary.
+Use them, or produce assets any other way you prefer. These binaries are only
+available during this run and not when your submission is published. Generate
+any assets once and commit them. Do not define build commands that call into
+the asset generation binaries.
 
 ## The fixed build/serve interface
 
 The project stays a Node project built with only Node.js and npm-installed
-dependencies. Extend the provided `package.json` and commit a `package-lock.json`,
-running `npm install` after changing dependencies so the lockfile matches. `npm ci`
-followed by `npm run build`, with no other manual step, must produce the static site
-into one of `dist/`, `build/`, or `out/` at the project root, with an `index.html` at
-the root of that directory. Serving that directory as-is must run the game.
+dependencies. Extend the provided `package.json` and commit a
+`package-lock.json`, running `npm install` after changing dependencies so the
+lockfile matches. `npm ci` followed by `npm run build`, with no other manual
+step, must produce the static site into one of `dist/`, `build/`, or `out/` at
+the project root, with an `index.html` at the root of that directory. Serving
+that directory as-is must run the game.
 
 The build must also work at **any base path**. It is played back from a per-run
-sub-path, so every URL it constructs at runtime, including every produced asset, must
-be page-relative and never start with `/`. For a bundler, set a relative base such as
-`base: './'`.
+sub-path, so every URL it constructs at runtime, including every produced asset,
+must be page-relative and never start with `/`. For a bundler, set a relative
+base such as `base: './'`.
 
-You can write your game's core logic in Rust and compile it to WebAssembly if you
-prefer: this container has the Rust toolchain, the `wasm32-unknown-unknown` target,
-and `wasm-bindgen`/`wasm-pack` on `PATH`. Those tools are on `PATH` only while this
-run is live, so the compiled wasm is a build input rather than a build step. Compile
-it once during the run, commit the resulting `.wasm` and any generated JS glue, and
-have `npm run build` bundle the committed output without invoking `cargo` or
-`wasm-pack`. Plain JavaScript or TypeScript is fine too; reach for wasm only if it
-genuinely helps your game.
-
-## Verifying your work
-
-Playwright and a headless Chromium are installed in the project as dependencies, and
-the container has network access, so you can build the game, serve it, open it in a
-browser, and play it. There is no global Playwright on `PATH`; the project's own is
-reached by importing it (`import { chromium } from "playwright"`) or by running
-`npx playwright`. This container has no Chromium sandbox, so Chromium has to be
-launched with the `--no-sandbox` argument.
-
-What is judged is the static production build produced from your committed source,
-served as-is. Nothing is rebuilt, repaired, or played by anyone else between the end
-of this run and that judgement.
-
-## Commit your work
-
-Your project root is a git repository, initialized before you started. Your finished
-implementation is published directly from this repository's commits, so uncommitted
-work is **not** published. When the game is complete and verified, run `git add -A`
-then `git commit`, and confirm `git status` reports a clean working tree. A
-`.gitignore` already excludes `node_modules/` and the build output, so a clean tree
-means you have committed your source, your `package-lock.json`, a short `README.md`,
-and the produced assets the game ships.
+You can write your game's core logic in Rust and compile it to WebAssembly if
+you prefer: this container has the Rust toolchain, the `wasm32-unknown-unknown`
+target, and `wasm-bindgen`/`wasm-pack` on `PATH`. As with the asset generation
+tools, these are on `PATH` only while this run is live, so the compiled wasm is
+a build input rather than a build step. Compile it once during the run, commit
+the resulting `.wasm` and any generated JS glue, and have `npm run build` bundle
+the committed output without invoking `cargo` or `wasm-pack`. Plain JavaScript
+or TypeScript is acceptable too; reach for wasm only if it genuinely helps your
+game.
