@@ -22,6 +22,15 @@
 // because "three of four agents spent the hour waiting" is a finding about the
 // configuration, not a figure to hide.
 //
+// Nor is it the same as the span the *stream* gives it, which is why both clocks are measured
+// over the run's execution and not over the events: the fold attributes every non-gg row to
+// the root, so the root's span opens at the orchestrator's first setup row — the image pull,
+// minutes before the run begins. Summed as-is, the agent clocks would run through the whole
+// of setup beside a wall clock still reading "not running yet", and every figure derived from
+// them (the waiting, the parallelism) would carry that head start too. So each agent's span is
+// **clipped to the execution window** before it is counted, and a run that has not got past
+// setup has no agent time at all rather than one agent's worth of it.
+//
 // Alongside the two summed clocks the fold also reports two **instantaneous** counts — how
 // many agents are working, and how many are waiting, at the moment it ran. They answer a
 // different question from the sums beside them: "forty minutes of agent time" is the whole
@@ -64,9 +73,11 @@ export interface GgRuntime {
    */
   wallMs: number | null;
   /**
-   * Every agent's own runtime, summed — each agent's span **less the time it spent
-   * suspended** waiting on its subagents or on a board issue, which is time it did no work
-   * (see the module docs). Exceeds {@link wallMs} wherever agents genuinely overlapped.
+   * Every agent's own runtime, summed — each agent's span, clipped to the same execution
+   * window {@link wallMs} covers, **less the time it spent suspended** waiting on its
+   * subagents or on a board issue, which is time it did no work (see the module docs).
+   * Exceeds {@link wallMs} wherever agents genuinely overlapped, and is zero wherever
+   * {@link wallMs} is null: a run still in setup has no agents working in it.
    */
   agentMs: number;
   /**
@@ -74,7 +85,11 @@ export interface GgRuntime {
    * much of the run's agent-time went into waiting rather than working.
    */
   suspendedMs: number;
-  /** How many agents contributed a runtime — the count the sum is spread over. */
+  /**
+   * How many agents contributed a runtime — the count the sum is spread over, and so zero
+   * on a run that has not begun executing however many agents the stream has stamped a span
+   * on (which is one: the root, seeded before gg exists — see the module docs).
+   */
   agentCount: number;
   /**
    * How many agents are executing **right now** — an instant, not a total: the agents that
@@ -139,6 +154,10 @@ function msOf(timestamp: string | null | undefined): number | null {
  * parameter rather than something inferred from the stream because the stream cannot be
  * trusted to say: a run whose container was killed emits no `session_ended`, so nothing ever
  * moves its agents off `running` (see the module docs).
+ *
+ * Every figure is measured over the run's **execution** — `executionStartedAt` to `nowMs` —
+ * so a run that has not got there yet reads empty rather than reporting the setup it is
+ * sitting through as agent time.
  */
 export function deriveGgRuntime(
   agentForest: readonly AgentTreeNode[],
@@ -146,18 +165,18 @@ export function deriveGgRuntime(
   nowMs: number,
   stillRunning: boolean,
 ): GgRuntime {
+  const startMs = msOf(executionStartedAt);
+  // Nothing has run yet. The stream still has a root with a span on it — the orchestrator's
+  // setup rows are attributed there — so this is a statement about the run rather than about
+  // the forest: a run being pulled has done no agent work, whatever spans its setup stamped
+  // (see the module docs).
+  if (startMs == null) return EMPTY_GG_RUNTIME;
+
   let agentMs = 0;
   let suspendedMs = 0;
   let agentCount = 0;
   let activeAgents = 0;
   let waitingAgents = 0;
-
-  const startMs = msOf(executionStartedAt);
-  // Whether "right now" is a question this run can answer at all. The counts describe the
-  // present, so they are withheld unless the run has an execution span (it is past setup)
-  // *and* the caller says it is still executing — the two ends the agents' own statuses get
-  // wrong, spelled out in the module docs.
-  const countsThePresent = stillRunning && startMs != null;
 
   const walk = (node: AgentTreeNode) => {
     const startedAt = msOf(node.startedAt);
@@ -167,7 +186,11 @@ export function deriveGgRuntime(
       // between the host and a container), which would otherwise subtract from the sum.
       const recordedEnd = msOf(node.endedAt);
       const endedAt = recordedEnd ?? nowMs;
-      const spanMs = Math.max(endedAt - startedAt, 0);
+      // Clipped to the execution window at its opening: the root's span begins at the
+      // orchestrator's first setup row, and the stretch before the run began is not time any
+      // agent spent working (see the module docs). A subagent's spawn is inside the window
+      // already, so this only ever moves the root.
+      const spanMs = Math.max(endedAt - Math.max(startedAt, startMs), 0);
       // An agent still in a wait carries the start of it rather than a closed interval, so
       // the open one is measured against the same end the span was — the present for a live
       // agent, its own end for one the stream stopped mid-wait. Clamped to the span so a
@@ -185,8 +208,8 @@ export function deriveGgRuntime(
       // about its clock: `running` is working, `blocked` is waiting, and the two terminal
       // states are neither. Asked only of an agent whose own span is still open, and only
       // of a run that is itself executing — a recorded end is the agent's own statement
-      // that it is finished, and `countsThePresent` is the run's.
-      if (countsThePresent && recordedEnd == null) {
+      // that it is finished, and `stillRunning` is the run's.
+      if (stillRunning && recordedEnd == null) {
         if (node.status === "running") activeAgents += 1;
         else if (node.status === "blocked") waitingAgents += 1;
       }
@@ -195,7 +218,7 @@ export function deriveGgRuntime(
   };
   agentForest.forEach(walk);
 
-  const wallMs = startMs == null ? null : Math.max(nowMs - startMs, 0);
+  const wallMs = Math.max(nowMs - startMs, 0);
   return {
     wallMs,
     agentMs,
@@ -203,7 +226,7 @@ export function deriveGgRuntime(
     agentCount,
     activeAgents,
     waitingAgents,
-    parallelism: wallMs != null && wallMs > 0 ? agentMs / wallMs : null,
+    parallelism: wallMs > 0 ? agentMs / wallMs : null,
   };
 }
 

@@ -613,12 +613,11 @@ function RuntimeRow({
 
       {/* The count under the sum is how many agents are working *now*, which is emphatically
           not how many contributed to the sum — a finished run has hours of agent time and
-          nobody working, and a run still in setup has a root with a span and nobody working
-          either (`ggRuntime` withholds the count outside the run's own execution). The
-          tooltip is where that distinction is spelled out, since the tile has room for one
-          sentence and the live count is the one worth reading. It is withheld only where no
-          agent has a recorded span at all — a stream with nothing in it yet — since there is
-          then no total for the sentence to be about. */}
+          nobody working. The tooltip is where that distinction is spelled out, since the tile
+          has room for one sentence and the live count is the one worth reading. It is
+          withheld where nothing has contributed a runtime yet — a stream with nothing in it,
+          or a run still in setup, whose figures `ggRuntime` measures over an execution it has
+          not reached — since there is then no total for the sentence to be about. */}
       <div
         className={styles.card}
         title={

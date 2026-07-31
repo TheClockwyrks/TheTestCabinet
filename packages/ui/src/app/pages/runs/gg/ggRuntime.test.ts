@@ -375,10 +375,14 @@ describe("how many agents are working right now", () => {
       40,
     );
     expect(runtime.wallMs).toBeNull();
-    // The root's span is there — that is the whole trap — and nobody is working in it.
-    expect(runtime.agentCount).toBe(1);
     expect(runtime.activeAgents).toBe(0);
     expect(runtime.waitingAgents).toBe(0);
+    // And the same span the counts refuse to read is refused by the clocks: the root's
+    // span is there — that is the whole trap — and none of it is agent time, so a run
+    // being pulled reports no work and nobody to spread it over either.
+    expect(runtime.agentMs).toBe(0);
+    expect(runtime.suspendedMs).toBe(0);
+    expect(runtime.agentCount).toBe(0);
   });
 
   it("reports nobody working on a stream that stopped without a session end", () => {
@@ -474,6 +478,13 @@ describe("the wall clock's origin", () => {
     );
     // 110s of stream, 50s of it setup: the run has been executing for a minute.
     expect(runtime.wallMs).toBe(60_000);
+    // And the agent clock starts there too. The setup rows are attributed to the root, so
+    // its span opens at the image pull — counted from there it would report 110s of agent
+    // time, a sequential run reading as 1.8 agents wide and an Active tile that had been
+    // climbing for the fifty seconds the Runtime tile beside it read "not running yet".
+    expect(runtime.agentMs).toBe(60_000);
+    expect(runtime.agentCount).toBe(1);
+    expect(runtime.parallelism).toBeCloseTo(1, 5);
   });
 
   // A run still being set up has no runtime yet. Counting one would be a clock that starts
@@ -505,6 +516,33 @@ describe("the wall clock's origin", () => {
       80,
     );
     expect(runtime.wallMs).toBe(70_000);
+  });
+
+  // The clip is at the window's opening only, so everything measured *inside* it — the
+  // waiting, the children, the ratio between the clocks — is measured off the same origin
+  // the wall clock is, and the two tiles agree about how long the run has been going.
+  it("clips only the root's head start, leaving the run inside the window intact", () => {
+    const runtime = runtimeOf(
+      [
+        system(0, "pull_image", "started"),
+        system(20, "init_test_case", "completed"),
+        at(25, "root", { type: "session_started" } as GgTelemetryKind),
+        at(25, "root", spawn("Root", 0)),
+        at(30, "agent-0", spawn("Implementer", 1), "root"),
+        at(30, "root", blockedOn("subagent `agent-0`")),
+        at(60, "agent-0", returned(), "root"),
+        at(60, "root", resumed()),
+        at(90, "root", ended()),
+      ],
+      90,
+    );
+    // 70s of execution: the root works the 10s before its block and the 30s after it, and
+    // the implementer works the 30s in between. Measured from the pull instead, the root
+    // would report 60s of work for the 40s it did.
+    expect(runtime.wallMs).toBe(70_000);
+    expect(runtime.agentMs).toBe(40_000 + 30_000);
+    expect(runtime.suspendedMs).toBe(30_000);
+    expect(runtime.agentCount).toBe(2);
   });
 
   // A recorded stream that carries no setup rows at all (an events feed filtered to gg's
