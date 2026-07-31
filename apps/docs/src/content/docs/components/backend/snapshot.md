@@ -17,13 +17,20 @@ The backend regenerates the whole snapshot from its full published set on each
 everything rather than applying deltas keeps the operation idempotent.
 
 The JSON documents (the index, run summaries, per-run records, case metadata) are
-small and are rewritten every publish. A run's **media** — proof images/videos and
-an asset-generation run's produced images/logs — is not: it is immutable once a run
-is published, so it lives under a content-stable [`media/`](#run-media) prefix keyed
-by the run id (outside any single snapshot's prefix), is uploaded **once**, and is
-referenced by every later snapshot instead of being re-read and re-uploaded. This is
-what keeps a publish cheap as asset-generation runs accumulate, and it lets a publish
-keep a run's media even after the volumes the bytes were read from are gone.
+small and are rewritten every publish. **Media is not.** Two families of it live
+outside any single snapshot's prefix, are uploaded **once**, and are referenced by
+every later snapshot instead of being re-read and re-uploaded:
+
+- A run's media — proof images/videos and an asset-generation run's produced
+  images/logs — under [`media/runs/<run-id>/`](#run-media), keyed by the run id. It
+  is immutable once a run is published.
+- A case version's media — its rendered reference baselines and its committed
+  validation baselines — under [`media/cases/<slug>/<version>/`](#case-media). A
+  version with a published run is [frozen](/development/frozen-versions/), so this
+  is effectively immutable too.
+
+This is what keeps a publish cheap as runs and cases accumulate, and it lets a
+publish keep a run's media even after the volumes the bytes were read from are gone.
 
 ## Atomic swap
 
@@ -33,7 +40,8 @@ backend writes every file of a new snapshot under a content-addressed prefix
 pointer **last**. Because `index.json` is a single small object, overwriting it
 is the atomic cut-over: until that write lands, the site keeps reading the
 previous snapshot, and a new snapshot never clobbers the previous one's files.
-Old prefixes can be garbage-collected after a grace period.
+Superseded prefixes are [pruned](#pruning-superseded-generations) after a grace
+period.
 
 `<snapshotId>` is a timestamp-plus-hash, e.g. `2026-06-17T2148Z-1a7b`.
 
@@ -44,16 +52,18 @@ index.json                                                              # top-le
 snapshots/<snapshotId>/runs.json                                        # the run index — summaries (published runs only)
 snapshots/<snapshotId>/runs/<run-id>.json                               # per-run: record + reviews + links + media keys
 snapshots/<snapshotId>/cases/<slug>/<version>.json                      # per-case-version metadata
-snapshots/<snapshotId>/cases/<slug>/<version>/references/<scope>/<view>.png  # rendered reference baselines
 media/runs/<run-id>/proof/<proof-id>.<ext>                              # a run's proof media (content-stable; shared across snapshots)
 media/runs/<run-id>/asset/<file>                                        # an asset-generation run's produced media (same)
+media/cases/<slug>/<version>/references/<scope>/<digest>-<view>.png     # rendered reference baselines (content-addressed)
+media/cases/<slug>/<version>/validation-baseline/<variant>/<digest>-<file>  # committed validation baselines (same)
 ```
 
-The JSON documents and rendered baselines live under the per-snapshot
-`snapshots/<snapshotId>/` prefix and are rewritten each publish. Run **media** lives
-under the snapshot-independent `media/runs/<run-id>/` prefix (see [Run media](#run-media))
-and is written once. A per-run document references its media by these snapshot-relative
-`media/…` keys, so the atomic `index.json` swap still points a site build at a complete,
+Only the **JSON documents** live under the per-snapshot `snapshots/<snapshotId>/`
+prefix and are rewritten each publish. All media — run-scoped (see
+[Run media](#run-media)) and case-scoped (see [Case media](#case-media)) — lives
+under the snapshot-independent `media/` prefix and is written once. A per-run or
+per-case document references its media by these snapshot-relative `media/…` keys, so
+the atomic `index.json` swap still points a site build at a complete,
 self-consistent dataset.
 
 `<scope>` is `_common` for a reference shown on every variant, or a variant slug
@@ -167,7 +177,7 @@ produced images and action logs. Those keys point under `media/runs/<run-id>/`, 
 the per-snapshot prefix. A published run's media never changes, so it is keyed by the
 run id and written **once**:
 
-- On each publish the builder lists what is already under `media/runs/` and, for any
+- On each publish the builder lists what is already under `media/` and, for any
   media object that is already there, references it in the per-run document **without
   reading the source bytes or re-uploading** — so a run's media is exported exactly
   once across all snapshots, and a video is transcoded ([webm→mp4](#atomic-swap), for
@@ -184,9 +194,62 @@ store (an ephemeral volume) and the artifact service's disk. To re-seed the buck
 from a prior snapshot in that recovery case, see
 `scripts/recover-run-media-from-snapshot.sh`.
 
-The media prefix is never garbage-collected today (neither are old snapshot prefixes);
-a run's media at `media/runs/<run-id>/` is orphaned but harmless once the run is
-deleted, since no snapshot references it. Pruning it is a future cleanup.
+## Case media
+
+A case-metadata file names its media the same way: `references[]` for the rendered
+reference baselines and `validationBaselines[]` for the committed validation
+baselines. Those keys point under `media/cases/<slug>/<version>/`, **not** the
+per-snapshot prefix — the case-scoped counterpart of [run media](#run-media), and for
+the same reason: a version that has a published run is
+[frozen](/development/frozen-versions/), so re-uploading its baselines on every
+publish is pure waste.
+
+One difference from run media. A reference PNG is *rendered* from a committed mockup
+at ingest rather than committed as bytes, so a re-ingest on a different browser build
+can legitimately produce different bytes for the same view. Keying purely by
+`(slug, version, view)` would pin the gallery to whichever render landed first, so
+each object is instead **content-addressed** — its key carries a short digest of the
+source bytes:
+
+```text
+media/cases/pong/v1.0.0/references/_common/3f2a9c1b8e04d75a-gameplay.png
+```
+
+Identical bytes therefore reuse the identical key and are skipped; genuinely changed
+bytes mint a new key and are uploaded. Because the key is derived from the *source*
+bytes, the decision is made before any work happens: a video baseline already in the
+bucket costs neither an upload nor an ffmpeg transcode.
+
+Computing the digest needs a local store read, which is cheap; it is the upload and
+the transcode that the skip avoids.
+
+## Pruning superseded generations
+
+Every refresh writes a whole new `snapshots/<snapshotId>/` generation and cuts over
+by overwriting `index.json`. Nothing can reach an earlier generation afterwards, so
+after the cut-over the refresh **prunes** the ones that are done with. A generation is
+deleted only when both:
+
+1. It is **not** the one `index.json` points at. The live generation is never pruned,
+   however old it is — a bucket whose live snapshot predates the retention window
+   (nothing published in a while) must not have the site deleted out from under it.
+2. It is older than `TCAB_SNAPSHOT_RETENTION_HOURS` (default `24`). A site build that
+   already read `index.json` is still fetching that generation's files, so a
+   just-superseded generation has to outlive the build it is serving.
+
+A generation id that does not parse as a timestamp is kept rather than deleted on a
+guess. The prune is **best-effort**: it runs after the snapshot is already live, so a
+failure logs and leaves the work to the next refresh rather than failing the publish.
+
+Without this the bucket grows by a full generation per publish and never shrinks —
+which is exactly how it once reached ~7.8 GB of which 96% was unreachable. Run and
+case media under `media/` are never generation-scoped and are not touched by the
+prune; media orphaned by a *deleted* run is still a future cleanup.
+
+Superseded snapshot generations *are* [pruned](#pruning-superseded-generations), but
+the media prefix is not: a run's media at `media/runs/<run-id>/` is orphaned but
+harmless once the run is deleted, since no snapshot references it. Pruning that is a
+future cleanup.
 
 ## `cases/<slug>/<version>.json` — case metadata
 
@@ -195,9 +258,9 @@ what the gallery shows to frame a run — name, difficulty, tags,
 summary/description, variant labels, the rendered prompt, the seeded spec files
 (bodies inlined), the declared checks (without their action lists), and a
 `references` array naming each rendered reference baseline by its
-snapshot-relative key (with a `variant` of `null` for a common reference or the
-variant slug for a variant-scoped one), which the site resolves to absolute URLs
-to show baselines. The seeded specs are inlined in `commonSeededInputs` (shared by
+snapshot-relative [`media/cases/…` key](#case-media) (with a `variant` of `null` for
+a common reference or the variant slug for a variant-scoped one), which the site
+resolves to absolute URLs to show baselines. The seeded specs are inlined in `commonSeededInputs` (shared by
 every variant) and each variant's `seededInputs` (its own), in seed order, so the
 fully static site shows the same specs a run is seeded with without a live
 backend. It carries **no** mockup HTML and **no** host paths.

@@ -100,3 +100,46 @@ fn signing_chain_matches_aws_known_vector() {
     let again = client.sign("20150830", "string-to-sign").unwrap();
     assert_eq!(signature, again);
 }
+
+#[test]
+fn xml_escape_is_the_inverse_of_unescape() {
+    // A key carrying every predefined entity round-trips, which is what keeps a
+    // `DeleteObjects` body naming the same object the listing returned.
+    let key = "snapshots/a&b/<c>/\"d\"/'e'.json";
+    assert_eq!(xml_unescape(&xml_escape(key)), key);
+}
+
+#[test]
+fn xml_escape_does_not_double_escape_ampersands() {
+    // `&` must be replaced first; escaping it last would turn the `&` of `&lt;`
+    // into `&amp;lt;` and delete the wrong key.
+    assert_eq!(xml_escape("a&b"), "a&amp;b");
+    assert_eq!(xml_escape("a<b"), "a&lt;b");
+    assert_eq!(xml_escape("a&<b"), "a&amp;&lt;b");
+}
+
+#[test]
+fn delete_errors_are_none_on_a_quiet_success() {
+    // Quiet mode reports nothing when every key was deleted.
+    assert_eq!(parse_delete_errors(""), None);
+    assert_eq!(
+        parse_delete_errors(r#"<?xml version="1.0"?><DeleteResult></DeleteResult>"#),
+        None
+    );
+}
+
+#[test]
+fn delete_errors_are_counted_when_keys_fail() {
+    let xml = "<DeleteResult>\
+        <Error><Key>a</Key><Code>AccessDenied</Code></Error>\
+        <Error><Key>b</Key><Code>InternalError</Code></Error>\
+        </DeleteResult>";
+    assert_eq!(parse_delete_errors(xml), Some(2));
+}
+
+#[test]
+fn delete_batch_size_matches_the_s3_cap() {
+    // The chunking in `delete_objects` is only correct while this matches the
+    // 1000-key limit S3/R2 enforce per request.
+    assert_eq!(DELETE_BATCH, 1000);
+}

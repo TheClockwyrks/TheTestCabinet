@@ -51,6 +51,29 @@ const SCHEMA_VERSION: u32 = 1;
 /// references it without needing the source bytes at all.
 const MEDIA_PREFIX: &str = "media/runs";
 
+/// The bucket prefix a **case version's** media — its rendered reference baselines
+/// and its committed validation baselines — is stored under, likewise **outside**
+/// any single snapshot's prefix.
+///
+/// These were originally written under `snapshots/<id>/cases/…`, which meant every
+/// refresh re-uploaded (and re-transcoded) the whole corpus even though nothing
+/// about it had changed. They are the case-scoped counterpart of [`MEDIA_PREFIX`]:
+/// a version that has a published run is [frozen], so its media is effectively
+/// immutable and belongs in the shared, snapshot-independent space.
+///
+/// Unlike run media, though, a reference PNG is *rendered* from a committed mockup
+/// at ingest rather than committed as bytes, so a re-ingest on a different browser
+/// build can legitimately produce different bytes for the same view. Keying purely
+/// by `(slug, version, view)` would therefore pin the gallery to whichever render
+/// landed first. Each object is instead **content-addressed** — the key carries a
+/// short digest of the source bytes ([`content_digest`]) — so identical bytes reuse
+/// the identical key (the dedup that makes a refresh cheap) while genuinely changed
+/// bytes mint a new key and get uploaded. Hashing needs only a local store read; it
+/// is the R2 upload, and for a video the ffmpeg transcode, that the skip avoids.
+///
+/// [frozen]: https://docs.testcabinet.ai/development/frozen-versions/
+const CASE_MEDIA_PREFIX: &str = "media/cases";
+
 /// The bucket prefix a reviewer's profile picture is stored under, keyed by the
 /// reviewer's account id (`pfp/<reviewer-id>`) and — like [`MEDIA_PREFIX`] — kept
 /// **outside** any single snapshot's prefix so it is shared across snapshots and
@@ -370,9 +393,9 @@ impl SnapshotBuilder {
             if !versions_with_runs.contains(&(manifest.slug.as_str(), manifest.version.as_str())) {
                 continue;
             }
-            let (references, reference_objects) = self.case_references(manifest, &prefix);
+            let (references, reference_objects) = self.case_references(manifest);
             let (validation_baselines, baseline_objects) =
-                self.case_validation_baselines(manifest, &prefix).await;
+                self.case_validation_baselines(manifest).await;
             let variant_reference_builds = self
                 .reference_builds
                 .get(&(manifest.slug.clone(), manifest.version.clone()));
@@ -467,10 +490,14 @@ impl SnapshotBuilder {
     /// (`variant: null`); a variant's own references render under its slug scope.
     /// A declared baseline whose PNG is missing from the store is skipped rather
     /// than failing the whole snapshot.
+    ///
+    /// Each object is published under the content-stable, content-addressed
+    /// [`CASE_MEDIA_PREFIX`] rather than this snapshot's prefix, so a baseline whose
+    /// bytes have not changed is referenced by the key it already occupies instead
+    /// of being re-uploaded on every refresh.
     fn case_references(
         &self,
         manifest: &StoredManifest,
-        prefix: &str,
     ) -> (Vec<CaseReferenceOut>, Vec<SnapshotObject>) {
         let (slug, version) = (&manifest.slug, &manifest.version);
 
@@ -497,12 +524,20 @@ impl SnapshotBuilder {
             let Ok(bytes) = self.store.read_reference(slug, version, scope, &file) else {
                 continue;
             };
-            let key = format!("{prefix}/cases/{slug}/{version}/references/{scope}/{file}");
-            objects.push(SnapshotObject {
-                key: key.clone(),
-                bytes,
-                content_type: media_content_type(&reference.extension).to_string(),
-            });
+            let key = format!(
+                "{CASE_MEDIA_PREFIX}/{slug}/{version}/references/{scope}/{}-{file}",
+                content_digest(&bytes)
+            );
+            // Already in the bucket under this exact content key: reference it and
+            // skip the upload. The digest is over these same bytes, so a hit means
+            // the object there is byte-identical to what we would have written.
+            if !self.existing_media.contains(&key) {
+                objects.push(SnapshotObject {
+                    key: key.clone(),
+                    bytes,
+                    content_type: media_content_type(&reference.extension).to_string(),
+                });
+            }
             metas.push(CaseReferenceOut {
                 variant: variant.map(str::to_string),
                 view: view.to_string(),
@@ -706,17 +741,20 @@ impl SnapshotBuilder {
     /// The baseline is a fixed property of the case *version* — synthesized once at
     /// `tcab publish-reference` time from the reference implementation and committed
     /// under `validation-baseline/<variant>/`, copied verbatim into the store at
-    /// ingest — so it is published case-scoped (keyed under the case prefix), the
-    /// invariant counterpart to the run-scoped *actual* media. Every committed file is
-    /// enumerated per variant ([`crate::store::DefinitionStore::list_validation_baseline`]);
-    /// a **video** baseline (`.webm`) is transcoded to `.mp4` for the public gallery,
-    /// with `file` kept as the requested `.webm` so the gallery's flat lookup resolves
-    /// (mirrors [`Self::run_validation_media`]). A transcode failure publishes the raw
-    /// webm.
+    /// ingest — so it is published case-scoped, the invariant counterpart to the
+    /// run-scoped *actual* media. Every committed file is enumerated per variant
+    /// ([`crate::store::DefinitionStore::list_validation_baseline`]); a **video**
+    /// baseline (`.webm`) is transcoded to `.mp4` for the public gallery, with `file`
+    /// kept as the requested `.webm` so the gallery's flat lookup resolves (mirrors
+    /// [`Self::run_validation_media`]). A transcode failure publishes the raw webm.
+    ///
+    /// Published under the content-stable [`CASE_MEDIA_PREFIX`], keyed by a digest of
+    /// the **source** bytes. Because the key is decided before the transcode, a
+    /// baseline already in the bucket costs neither an upload nor an ffmpeg run — the
+    /// dominant cost of a refresh over a corpus of video baselines.
     async fn case_validation_baselines(
         &self,
         manifest: &StoredManifest,
-        prefix: &str,
     ) -> (Vec<CaseValidationBaselineOut>, Vec<SnapshotObject>) {
         let (slug, version) = (&manifest.slug, &manifest.version);
         let mut metas = Vec::new();
@@ -737,13 +775,36 @@ impl SnapshotBuilder {
                 ) else {
                     continue;
                 };
+                // The published name is decided from the requested one, so the whole
+                // key — digest included — is known before any transcoding happens.
                 let is_video = requested_file.to_ascii_lowercase().ends_with(".webm");
+                let digest = content_digest(&raw);
+                let published_name = if is_video {
+                    format!(
+                        "{}.mp4",
+                        &requested_file[..requested_file.len() - ".webm".len()]
+                    )
+                } else {
+                    requested_file.clone()
+                };
+                let key = format!(
+                    "{CASE_MEDIA_PREFIX}/{slug}/{version}/validation-baseline/{}/{digest}-{published_name}",
+                    variant.slug
+                );
+                // Already published from byte-identical source: reference it without
+                // re-uploading, and — the expensive half — without re-transcoding.
+                if self.existing_media.contains(&key) {
+                    metas.push(CaseValidationBaselineOut {
+                        variant: variant.slug.clone(),
+                        file: requested_file,
+                        key,
+                    });
+                    continue;
+                }
+
                 let (published_file, extension, bytes) = if is_video {
-                    // `<verdict>__<output>.webm` → `<verdict>__<output>.mp4`.
-                    let stem = &requested_file[..requested_file.len() - ".webm".len()];
-                    let published = format!("{stem}.mp4");
                     match transcode_webm_to_mp4(&raw).await {
-                        Some(mp4) => (published, "mp4".to_string(), mp4),
+                        Some(mp4) => (published_name, "mp4".to_string(), mp4),
                         None => {
                             tracing::warn!(
                                 slug = %slug,
@@ -763,8 +824,13 @@ impl SnapshotBuilder {
                         .to_string();
                     (requested_file.clone(), ext, raw)
                 };
+                // Re-derive the key from what was actually produced. It matches the
+                // probe key above on the happy path; on the transcode-failure path it
+                // deliberately differs, so the raw webm never occupies the `.mp4` key
+                // and a later refresh that *can* transcode still publishes the mp4
+                // instead of skipping over a webm sitting under an mp4 name.
                 let key = format!(
-                    "{prefix}/cases/{slug}/{version}/validation-baseline/{}/{published_file}",
+                    "{CASE_MEDIA_PREFIX}/{slug}/{version}/validation-baseline/{}/{digest}-{published_file}",
                     variant.slug
                 );
                 objects.push(SnapshotObject {
@@ -1046,6 +1112,92 @@ async fn transcode_webm_to_mp4(webm: &[u8]) -> Option<Vec<u8>> {
     // Best-effort cleanup regardless of outcome.
     let _ = tokio::fs::remove_dir_all(&dir).await;
     result
+}
+
+/// The top-level prefix every snapshot generation is written under.
+pub const SNAPSHOT_PREFIX: &str = "snapshots/";
+
+/// Select the bucket keys belonging to snapshot generations that are safe to prune.
+///
+/// Every refresh writes a whole new `snapshots/<id>/` generation and cuts over by
+/// overwriting `index.json`. Nothing ever reaches an earlier generation again, so
+/// without this the bucket grows by a full generation per publish forever.
+///
+/// A generation is pruned only when **both** hold:
+///
+/// 1. It is not the one `index.json` currently points at. That generation is the
+///    live public dataset and is never touched, however old it is — a bucket whose
+///    live snapshot predates the retention window (nothing published in a while) must
+///    not have the site deleted out from under it.
+/// 2. It is older than `retention`. A site build that already read `index.json` is
+///    still fetching that generation's files, so a just-superseded generation has to
+///    outlive the build it is serving. The window is the grace period.
+///
+/// A generation id that does not parse as a timestamp is **kept**: an id shape this
+/// does not recognize is not something to delete on a guess.
+///
+/// The returned keys are exactly the input keys that belong to a pruned generation,
+/// so a caller can hand them straight to
+/// [`R2Client::delete_objects`](test_cabinet_core::r2::R2Client::delete_objects).
+/// Keys outside [`SNAPSHOT_PREFIX`] are ignored entirely — run media, case media and
+/// `index.json` are never candidates.
+pub fn stale_generation_keys(
+    keys: &[String],
+    live_snapshot_id: &str,
+    now: OffsetDateTime,
+    retention: std::time::Duration,
+) -> Vec<String> {
+    let cutoff = now - time::Duration::seconds(retention.as_secs() as i64);
+    keys.iter()
+        .filter(|key| {
+            let Some(id) = generation_id(key) else {
+                return false;
+            };
+            if id == live_snapshot_id {
+                return false;
+            }
+            generation_timestamp(id).is_some_and(|stamp| stamp < cutoff)
+        })
+        .cloned()
+        .collect()
+}
+
+/// The `<id>` of `snapshots/<id>/…`, or `None` for a key outside that prefix (or a
+/// bare `snapshots/<id>` with no trailing path, which no generation ever writes).
+fn generation_id(key: &str) -> Option<&str> {
+    let rest = key.strip_prefix(SNAPSHOT_PREFIX)?;
+    let (id, _) = rest.split_once('/')?;
+    (!id.is_empty()).then_some(id)
+}
+
+/// Recover the generation time from a snapshot id (`<compact-rfc3339>-<short-hash>`,
+/// e.g. `2026-07-27T0437Z-6898b393`), the inverse of
+/// [`SnapshotBuilder::snapshot_id`]. `None` when the id is not in that shape.
+///
+/// Reading the time out of the id rather than from each object's `LastModified`
+/// keeps the decision to a single parse per generation and, more importantly, dates
+/// a generation by when it was *built* rather than when its last object happened to
+/// finish uploading.
+fn generation_timestamp(id: &str) -> Option<OffsetDateTime> {
+    // Split at the last `-`: the timestamp itself contains `-` separators.
+    let (stamp, hash) = id.rsplit_once('-')?;
+    if hash.is_empty() || !hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let format = format_description!("[year]-[month]-[day]T[hour][minute]Z");
+    time::PrimitiveDateTime::parse(stamp, &format)
+        .ok()
+        .map(|dt| dt.assume_utc())
+}
+
+/// The short content digest a [`CASE_MEDIA_PREFIX`] key carries: the first 16 hex
+/// characters (64 bits) of the SHA-256 of the object's source bytes.
+///
+/// Long enough that a collision across a corpus of a few thousand baselines is not a
+/// practical concern, short enough to keep keys readable. Identical bytes always
+/// produce the identical key, which is what lets a refresh skip re-uploading them.
+fn content_digest(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))[..16].to_string()
 }
 
 /// A best-effort content type for reference/proof/asset media from its extension.

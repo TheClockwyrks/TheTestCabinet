@@ -91,7 +91,12 @@ async fn dev_publisher() -> (TempDir, Publisher, Arc<Db>) {
         Arc::new(test_cabinet_core::AccountsClient::new(
             "http://auth.invalid",
         )),
-        Duration::from_millis(10),
+        PublisherTiming {
+            coalesce: Duration::from_millis(10),
+            // Retention is irrelevant to the dev publisher: with no R2 there is no
+            // bucket to prune.
+            snapshot_retention: Duration::from_secs(24 * 3600),
+        },
     );
     (dir, publisher, db)
 }
