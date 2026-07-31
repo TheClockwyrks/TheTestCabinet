@@ -3,7 +3,9 @@
 // (BellIcon, TrashIcon, DownloadIcon, …) so size and color come from CSS. They
 // replace the ad-hoc Unicode glyphs the tree used to scan by: a disclosure caret, a
 // folder per agent (open when expanded), and a distinct mark per monitor-view "file"
-// so overview / activity / context / board / tasks / knowledge read at a glance.
+// so overview / activity / context / requests / metrics read at a glance — plus one
+// per module kind (history / memories / tasks / board / skills / archive), since an
+// agent's `modules` folder is a row per module instance it holds.
 
 interface IconProps {
   className?: string;
@@ -195,12 +197,76 @@ export function TasksIcon({ className }: IconProps) {
   );
 }
 
-// Knowledge — an open book (skills and memories).
+// Knowledge — an open book. It marks the **skills** module: the catalog an agent reads
+// from. (Memories, which used to share this mark inside a joint Knowledge file, have
+// their own — see MemoriesIcon — now that the two are separate modules with entirely
+// different sharing semantics.)
 export function KnowledgeIcon({ className }: IconProps) {
   return (
     <Icon className={className}>
       <path d="M12 7a3 3 0 0 0-3-3H2v13h7a3 3 0 0 1 3 3" />
       <path d="M12 7a3 3 0 0 1 3-3h7v13h-7a3 3 0 0 0-3 3" />
+    </Icon>
+  );
+}
+
+// Modules — stacked blocks: the folder holding the module instances one agent
+// instance holds. Deliberately not a plain folder glyph, which the `subagents`
+// grouping folder already uses: the two sit side by side under every agent, and the
+// whole point of the modules folder is that what it holds is a different *kind* of
+// thing from what its sibling holds.
+export function ModulesIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M12 2 3 7l9 5 9-5-9-5Z" />
+      <path d="M3 12l9 5 9-5" />
+    </Icon>
+  );
+}
+
+// Memories — a bookmarked note: the model's own curated notes, which it writes,
+// revises and deletes. Distinct from the skills book, which it only reads.
+export function MemoriesIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M6 3h11a2 2 0 0 1 2 2v16l-4-3-4 3V3" />
+      <path d="M11 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5" />
+    </Icon>
+  );
+}
+
+// History — a clock with a rewind arrow: the conversation window, which is the thread
+// of everything the agent has said and been told, in order.
+export function HistoryIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <path d="M3 4v4h4" />
+      <path d="M12 8v4l3 2" />
+    </Icon>
+  );
+}
+
+// Archive — a lidded box: the thread archive, what `archive_thread` put out of the
+// window and `search_archive` can recover.
+export function ArchiveIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <rect x="3" y="4" width="18" height="4" rx="1" />
+      <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
+      <path d="M10 12h4" />
+    </Icon>
+  );
+}
+
+// Link — two chain links: the badge a module row carries when more than one agent
+// instance holds the same backing store. It is the one fact about a module that is
+// worth reading without opening anything, so it is drawn in the tree.
+export function LinkIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M10 13a5 5 0 0 0 7.5.5l2-2A5 5 0 0 0 12.4 4.4l-1.1 1.1" />
+      <path d="M14 11a5 5 0 0 0-7.5-.5l-2 2A5 5 0 0 0 11.6 19.6l1.1-1.1" />
     </Icon>
   );
 }

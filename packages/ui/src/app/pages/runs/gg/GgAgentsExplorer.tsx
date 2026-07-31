@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState, type ComponentType } from "react";
-import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type {
+  GgCapabilitySet,
+  GgModuleKind,
+} from "@test-cabinet/run-record/gg";
 import { FeedView, type FeedLine } from "../../../components/FeedView";
 import { useAppSettings } from "../../../store/appSettings";
 import runExec from "../RunExec.module.scss";
@@ -14,6 +17,7 @@ import type {
   FeedRow,
   FsmVisit,
   GgToolBreakdown,
+  ModuleSnapshot,
   SpeculationState,
   Workflow,
 } from "./useGgRunState";
@@ -24,8 +28,20 @@ import {
   shortTokens,
   toolCallsPerResponse,
 } from "./useGgRunState";
-import { agentCapabilityOn } from "./ggCatalog";
 import { cx, fsGuide, fsIndent } from "./ggFsTree";
+import type { GgModuleIndex, GgModuleInstance } from "./ggModules";
+import { isShared, moduleKindLabel, useGgModules } from "./ggModules";
+import type { AgentEntry, AgentFileKind } from "./ggAgentEntries";
+import {
+  FILE_ICONS,
+  FILE_LABELS,
+  MODULE_ICONS,
+  OVERVIEW_ENTRY,
+  entriesFor,
+  filesFor,
+  sameEntry,
+} from "./ggAgentEntries";
+import { GgModuleHeader, ModuleContents } from "./GgModuleViews";
 import { agentPricedSlots, useGgCostBreakdown } from "./ggCost";
 import { agentThroughput } from "./ggThroughput";
 import {
@@ -50,22 +66,12 @@ import { PromptView } from "./PromptView";
 import { RequestsView } from "./RequestsView";
 import { RequestMetricsGraphs } from "./RequestMetricsGraphs";
 import { CompactionView } from "./CompactionView";
-import { TaskDagView } from "./TaskDagView";
-import { SkillsList } from "./SkillsList";
-import { MemoriesList } from "./MemoriesList";
 import {
-  ActivityIcon,
   ChevronIcon,
-  CompactionIcon,
-  ContextIcon,
   FolderIcon,
   FolderOpenIcon,
-  KnowledgeIcon,
-  MetricsIcon,
-  OverviewIcon,
-  PromptIcon,
-  RequestsIcon,
-  TasksIcon,
+  LinkIcon,
+  ModulesIcon,
 } from "./ggIcons";
 
 // The Instances explorer: a gg run read agent by agent, laid out like a filesystem.
@@ -74,12 +80,21 @@ import {
 // *whose* context filled, *whose* task list this is, or what one subagent did in
 // isolation — those are per-agent facts (see gg/subagents.md). The explorer makes
 // each agent a folder whose "files" are the things a run lets you monitor about it
-// (its activity, its context-window fill, its tasks, its knowledge), and
-// nests every agent an agent spawned under a `subagents` folder, so
-// the delegation tree *is* the directory tree. The top-level folder is the main
-// (root) agent. Selecting a file opens that view for that agent in the content pane
-// — the same rich panels a gg run has always been read through, now scoped to one
-// agent rather than blurred across all of them.
+// (its activity, its context-window fill, what it spent), and nests every agent an
+// agent spawned under a `subagents` folder, so the delegation tree *is* the directory
+// tree. The top-level folder is the main (root) agent. Selecting a file opens that view
+// for that agent in the content pane — the same rich panels a gg run has always been
+// read through, now scoped to one agent rather than blurred across all of them.
+//
+// Beside those files each agent carries a `modules` folder: one entry per module
+// instance it holds (see gg/modules). That folder exists because the state gg used to
+// think of as an agent's — its memories, its task list, its handle on the board — is no
+// longer the agent's at all. A module instance can be held by several agents at once,
+// carried whole to a successor across an `exec`, or copied when its holder forks, so
+// "root's tasks" was a name for something that might be shared with four other
+// instances and could not say so. A module file therefore leads with the store's
+// identity — who else holds it, how this holder came by it, whether it reaches the
+// prompt, what it costs the windows it is in — and only then shows the contents.
 
 // One gg telemetry row as a shared feed line. The tone doubles as the palette key
 // (the stylesheet maps gg's tones onto the same `--ttc-event-*` tokens the harness
@@ -96,122 +111,6 @@ function ggFeedLine(row: FeedRow): FeedLine {
   return line;
 }
 
-// The "files" an agent folder can contain — the things a gg run lets you monitor
-// about one agent.
-export type AgentFileKind =
-  | "overview"
-  | "prompt"
-  | "activity"
-  | "context"
-  | "requests"
-  | "metrics"
-  | "compaction"
-  | "tasks"
-  | "knowledge";
-
-// The order files list in a folder. Prompt sits right after Overview — reading an
-// agent starts with what it *is* and then what it was *told* (for a subagent, the
-// brief its parent handed it). Requests sits beside Context — it is the itemized,
-// message-level companion to the stacked Context graph — then Metrics, the
-// per-request over-time graphs (throughput, cost, cache-read and reasoning share)
-// that are the value-per-call companion to that same graph; Compaction follows, the
-// detail behind the Context graph's compaction markers.
-const FILE_ORDER: ReadonlyArray<AgentFileKind> = [
-  "overview",
-  "prompt",
-  "activity",
-  "context",
-  "requests",
-  "metrics",
-  "compaction",
-  "tasks",
-  "knowledge",
-];
-
-// Which capabilities a file needs before it is worth offering — a file is shown
-// when *any* of its capabilities is on (Knowledge covers skills and memories
-// independently). An empty list is unconditional: overview and activity read gg's
-// own account of any run, and Context is always offered because every run has a
-// window that fills. This mirrors the run's [capability set], so the folder shows a
-// file for a capability the run *has* even before that capability has produced
-// anything — the file then shows its own "nothing yet" state rather than being
-// absent — and hides a file only for a capability the run does not have at all.
-const FILE_CAPABILITIES: Record<AgentFileKind, ReadonlyArray<string>> = {
-  overview: [],
-  // Unconditional: a subagent's brief rides on the (always-present) spawn event, and
-  // the root's opening prompt is a first-class thing to read. An older run that recorded
-  // no rendered prompt shows the brief or says so rather than being absent — the same
-  // "offered, may be empty" contract as overview and activity.
-  prompt: [],
-  activity: [],
-  context: [],
-  // The message log and the breakdown graph are context visibility, which is intrinsic —
-  // every run emits both — so the file is always offered.
-  requests: [],
-  // The per-request metric graphs ride on the same intrinsic `prompt` stream the
-  // Requests file does — every run makes model calls carrying tokens/cost — so the
-  // file is always offered (its own graphs show an empty state until a metric has data).
-  metrics: [],
-  // The Compaction file rides on the compaction capability itself: with the backstop
-  // off, a run never compacts, so the file is hidden rather than shown perpetually
-  // empty. Its own record travels on the compaction event, so it needs nothing else.
-  compaction: ["compaction"],
-  tasks: ["tasks"],
-  knowledge: ["skills", "memories"],
-};
-
-const FILE_LABELS: Record<AgentFileKind, string> = {
-  overview: "overview",
-  prompt: "prompt",
-  activity: "activity",
-  context: "context",
-  requests: "requests",
-  metrics: "metrics",
-  compaction: "compaction",
-  tasks: "tasks",
-  knowledge: "knowledge",
-};
-
-// A leading icon per file kind, drawn from the shared line-art set (see ggIcons)
-// so the tree scans like a real file browser rather than by ad-hoc glyphs.
-const FILE_ICONS: Record<
-  AgentFileKind,
-  ComponentType<{ className?: string }>
-> = {
-  overview: OverviewIcon,
-  prompt: PromptIcon,
-  activity: ActivityIcon,
-  context: ContextIcon,
-  requests: RequestsIcon,
-  metrics: MetricsIcon,
-  compaction: CompactionIcon,
-  tasks: TasksIcon,
-  knowledge: KnowledgeIcon,
-};
-
-// Which files ONE agent's folder offers, given the run's configuration and which
-// profile that agent runs under. A file is offered when that agent's *own*
-// capabilities justify it — so a file for a capability it has is always present
-// (showing its own empty state until data arrives) and a file for a capability it
-// does not have is never shown. Before gg announces the set (set == null), only the
-// unconditional files are offered.
-//
-// Per-agent rather than per-run because gg's capabilities are per-agent: a run
-// routinely gives an issue's implementer a task list its Root has no use for, and
-// reading the Root's configuration for every folder in the tree hides exactly the
-// file the agent that has the capability should be showing.
-function filesFor(
-  set: GgCapabilitySet | null,
-  agent: string | null | undefined,
-): AgentFileKind[] {
-  return FILE_ORDER.filter((file) => {
-    const needed = FILE_CAPABILITIES[file];
-    if (needed.length === 0) return true;
-    if (!set) return false;
-    return needed.some((id) => agentCapabilityOn(set, agent, id));
-  });
-}
-
 interface GgAgentsExplorerProps {
   // The delegation forest (from the globally-merged fold), drawn as the directory
   // tree. Led by the main agent, with any board-dispatched issue agents as further
@@ -221,6 +120,10 @@ interface GgAgentsExplorerProps {
   perAgent: Map<string, DerivedGgState>;
   // The run's configuration — decides which context bands are worth listing.
   capabilitySet: GgCapabilitySet | null;
+  // The latest contents of every module instance the run mentioned, keyed by module id.
+  // Cross-agent by construction (a store two agents share has ONE content), so it comes
+  // off the whole-run reduction rather than out of any one agent's slice.
+  moduleSnapshots: Map<string, ModuleSnapshot>;
   // Run-level delegation structure, shown on the root agent's Overview: declared
   // workflows and best-of-K speculations. (Per-slot spend is a whole-run cost fact,
   // so it reads inside the Dashboard's Cost widget, not here.) Empty when the run had
@@ -240,12 +143,17 @@ interface GgAgentsExplorerProps {
   // once (the user is free to navigate away afterwards). Null/undefined most of the
   // time — this is a one-shot request, not a controlled selection.
   focusAgent?: string | null;
+  // Which of that agent's entries to land on, when the caller has one in mind — a
+  // module instance's holder chip on some other surface means "this store, read from
+  // that instance", and landing on the Overview instead would drop the half of the
+  // request that made it worth clicking. Defaults to the Overview.
+  focusEntry?: AgentEntry | null;
   onFocusHandled?: () => void;
 }
 
 interface Selection {
   agentId: string;
-  file: AgentFileKind;
+  entry: AgentEntry;
 }
 
 /**
@@ -257,12 +165,14 @@ export function GgAgentsExplorer({
   forest,
   perAgent,
   capabilitySet,
+  moduleSnapshots,
   workflows,
   fsmPath,
   transitions,
   speculations,
   live,
   focusAgent,
+  focusEntry,
   onFocusHandled,
 }: GgAgentsExplorerProps) {
   // A flat id → tree-node index, so the content pane can resolve the selected agent
@@ -291,11 +201,24 @@ export function GgAgentsExplorer({
   // delegated to.
   const arrivals = useMemo(() => classifyArrivals(transitions), [transitions]);
 
+  // The run read by module instance: which store each agent is a holder of, who else
+  // holds it, and what happened to it. Folded once here and read by every module row
+  // and every module file, so the tree's "4 holders" badge and the file's holder list
+  // can never be two different answers.
+  const modules = useGgModules(
+    capabilitySet,
+    forest,
+    perAgent,
+    transitions,
+    moduleSnapshots,
+  );
+
   // The open/closed state of the tree's folders, keyed `folder:<id>` (an agent
-  // folder) and `sub:<id>` (an agent's subagents folder). Only the *overrides* are
-  // held: a folder the reader has not touched reads its default (see `folderOpen`),
-  // which is what keeps a fleet's worth of agents arriving mid-run collapsed as they
-  // appear rather than each one springing open the moment it spawns.
+  // folder), `sub:<id>` (an agent's subagents folder) and `mod:<id>` (an agent's
+  // modules folder). Only the *overrides* are held: a folder the reader has not
+  // touched reads its default (see `folderOpen`), which is what keeps a fleet's worth
+  // of agents arriving mid-run collapsed as they appear rather than each one springing
+  // open the moment it spawns.
   const [openOverrides, setOpenOverrides] = useState<
     ReadonlyMap<string, boolean>
   >(() => new Map());
@@ -310,52 +233,69 @@ export function GgAgentsExplorer({
 
   const [selection, setSelection] = useState<Selection>({
     agentId: ROOT_ID,
-    file: "overview",
+    entry: OVERVIEW_ENTRY,
   });
 
+  // Select one entry and make sure it can be *seen*: every folder on the path down to
+  // the agent is forced open, as is the agent's own modules folder when the entry is a
+  // module. Forced rather than cleared back to the default, because a subagent folder
+  // and a modules folder both default to *closed* — clearing them would leave the thing
+  // the reader just asked for hidden behind two carets.
+  const reveal = useCallback(
+    (agentId: string, entry: AgentEntry) => {
+      setSelection({ agentId, entry });
+      setOpenOverrides((prev) => {
+        const next = new Map(prev);
+        let cur: string | null = agentId;
+        while (cur != null) {
+          next.set(`folder:${cur}`, true);
+          next.set(`sub:${cur}`, true);
+          cur = nodeById.get(cur)?.parentId ?? null;
+        }
+        if (entry.kind === "module") next.set(`mod:${agentId}`, true);
+        return next;
+      });
+    },
+    [nodeById],
+  );
+
   // Keep the selection valid as the live stream grows and reshapes: if the selected
-  // agent is gone (a stream re-read) or the selected file is no longer offered by
-  // *that agent's* profile (the announced configuration justifies a different set),
-  // fall back to the root's overview — which is unconditional, so it is always a
-  // valid landing.
+  // agent is gone (a stream re-read), the selected file is no longer offered by *that
+  // agent's* profile (the announced configuration justifies a different set), or the
+  // selected module is no longer one it holds (a succession dropped it), fall back to
+  // the root's overview — which is unconditional, so it is always a valid landing.
   useEffect(() => {
     const selected = nodeById.get(selection.agentId);
     if (
       selected &&
-      filesFor(capabilitySet, selected.slot).includes(selection.file)
+      entriesFor(
+        capabilitySet,
+        selected.slot,
+        modules.byAgent.get(selected.id) ?? [],
+      ).some((entry) => sameEntry(entry, selection.entry))
     )
       return;
-    setSelection({ agentId: ROOT_ID, file: "overview" });
-  }, [nodeById, capabilitySet, selection]);
+    setSelection({ agentId: ROOT_ID, entry: OVERVIEW_ENTRY });
+  }, [nodeById, capabilitySet, modules, selection]);
 
-  // Honor a jump-to-agent request from the Dashboard's overview: select the agent's
-  // Overview and open every folder on the path down to it so it is visible in the
-  // tree, then tell the parent the request was consumed. Guarded on the agent being
-  // known, so a request that races ahead of the agent's spawn is simply ignored.
+  // Honor a jump-to-agent request from elsewhere in the panels — the Dashboard's agent
+  // overview, an instance chip, a module's holder list: select the requested entry
+  // (its Overview when none was named), reveal it, then tell the parent the request was
+  // consumed. Guarded on the agent being known, so a request that races ahead of the
+  // agent's spawn is simply ignored.
   useEffect(() => {
     if (focusAgent == null || !nodeById.has(focusAgent)) return;
-    setSelection({ agentId: focusAgent, file: "overview" });
-    setOpenOverrides((prev) => {
-      // Force every folder on the path open, rather than clearing its override back to
-      // the default — a subagent folder's default is *closed*, so clearing it would
-      // leave the agent the reader just asked for hidden.
-      const next = new Map(prev);
-      let cur: string | null = focusAgent;
-      while (cur != null) {
-        next.set(`folder:${cur}`, true);
-        next.set(`sub:${cur}`, true);
-        cur = nodeById.get(cur)?.parentId ?? null;
-      }
-      return next;
-    });
+    reveal(focusAgent, focusEntry ?? OVERVIEW_ENTRY);
     onFocusHandled?.();
-  }, [focusAgent, nodeById, onFocusHandled]);
+  }, [focusAgent, focusEntry, nodeById, reveal, onFocusHandled]);
 
   const selectedState = perAgent.get(selection.agentId);
   const selectedNode = nodeById.get(selection.agentId);
+  const selectedEntry = selection.entry;
 
   const ctx: ExplorerCtx = {
     capabilitySet,
+    modules,
     roles,
     arrivals,
     isOpen,
@@ -375,19 +315,43 @@ export function GgAgentsExplorer({
       </nav>
       <div className={panels.explorerContent}>
         {selectedState && selectedNode ? (
-          <FileContent
-            node={selectedNode}
-            state={selectedState}
-            file={selection.file}
-            role={roles.get(selectedNode.id)}
-            arrival={arrivals.get(selectedNode.id)}
-            capabilitySet={capabilitySet}
-            workflows={workflows}
-            fsmPath={fsmPath}
-            transitions={transitions}
-            speculations={speculations}
-            live={live}
-          />
+          selectedEntry.kind === "module" ? (
+            <ModuleFile
+              agentId={selectedNode.id}
+              kind={selectedEntry.module}
+              modules={modules}
+              state={selectedState}
+              // A co-holder chip opens the same store read from the other instance —
+              // the same module file, one folder over — so it stays inside the explorer
+              // rather than routing through the panels' one-shot focus channel.
+              onOpenHolder={(agentId) =>
+                reveal(agentId, {
+                  kind: "module",
+                  module: selectedEntry.module,
+                })
+              }
+              onOpenFile={(file) =>
+                setSelection({
+                  agentId: selectedNode.id,
+                  entry: { kind: "file", file },
+                })
+              }
+            />
+          ) : (
+            <FileContent
+              node={selectedNode}
+              state={selectedState}
+              file={selectedEntry.file}
+              role={roles.get(selectedNode.id)}
+              arrival={arrivals.get(selectedNode.id)}
+              capabilitySet={capabilitySet}
+              workflows={workflows}
+              fsmPath={fsmPath}
+              transitions={transitions}
+              speculations={speculations}
+              live={live}
+            />
+          )
         ) : (
           <p className={panels.empty}>No agent selected.</p>
         )}
@@ -400,6 +364,8 @@ export function GgAgentsExplorer({
 
 interface ExplorerCtx {
   capabilitySet: GgCapabilitySet | null;
+  /** The run read by module instance — what each agent holds, and with whom. */
+  modules: GgModuleIndex;
   roles: Map<string, SpeculationRole>;
   /** How each instance arrived, for the ones that arrived by a succession. */
   arrivals: Map<string, AgentTransition>;
@@ -410,9 +376,13 @@ interface ExplorerCtx {
   onSelect: (selection: Selection) => void;
 }
 
-// One agent's folder: its files, then — when it handed off — the instance it continued
-// as, then — when it spawned any — a `subagents` folder holding their folders
-// (recursively). The main agent is the depth-0 folder.
+// One agent's folder: its own files, then a `modules` folder holding what it holds,
+// then — when it handed off — the instance it continued as, then — when it spawned any
+// — a `subagents` folder holding their folders (recursively). The main agent is the
+// depth-0 folder.
+//
+// That order is the order an instance is read in: what it *is*, then what it *holds*,
+// then what it *became* and whom it *put to work*.
 function FolderNode({
   node,
   depth,
@@ -422,8 +392,10 @@ function FolderNode({
   depth: number;
   ctx: ExplorerCtx;
 }) {
-  // This agent's own files — read off the profile it runs under, not the run's Root.
+  // This agent's own files — read off the profile it runs under, not the run's Root —
+  // and the module instances it holds, in the contract's kind order.
   const files = filesFor(ctx.capabilitySet, node.slot);
+  const held = ctx.modules.byAgent.get(node.id) ?? [];
   // A succession's successor is parented to its predecessor (a fresh id, the same
   // depth) — so it arrives here as a child, and would otherwise read as something this
   // agent delegated to. It is the same agent, so it hangs directly off this folder as
@@ -512,7 +484,8 @@ function FolderNode({
         <ul className={panels.fsChildren} style={fsGuide(depth)}>
           {files.map((file) => {
             const selected =
-              ctx.selection.agentId === node.id && ctx.selection.file === file;
+              ctx.selection.agentId === node.id &&
+              sameEntry(ctx.selection.entry, { kind: "file", file });
             const FileIcon = FILE_ICONS[file];
             return (
               <li key={file}>
@@ -529,7 +502,12 @@ function FolderNode({
                   // to infer which folder an "activity" row belongs to.
                   aria-label={`${label} ${FILE_LABELS[file]}`}
                   aria-current={selected ? "true" : undefined}
-                  onClick={() => ctx.onSelect({ agentId: node.id, file })}
+                  onClick={() =>
+                    ctx.onSelect({
+                      agentId: node.id,
+                      entry: { kind: "file", file },
+                    })
+                  }
                 >
                   <FileIcon className={panels.fsIcon} />
                   <span className={panels.fsName}>{FILE_LABELS[file]}</span>
@@ -537,6 +515,19 @@ function FolderNode({
               </li>
             );
           })}
+          {/* What this instance holds. Guarded rather than unconditional: every
+              instance has a window, so in practice the folder always has at least the
+              `history` row — but an instance the module index has not caught up with
+              yet would otherwise draw an empty folder. */}
+          {held.length > 0 && (
+            <ModulesFolder
+              agentId={node.id}
+              label={label}
+              held={held}
+              depth={depth + 1}
+              ctx={ctx}
+            />
+          )}
           {/* The next incarnation of this same agent, in line with its own files —
               not nested under `subagents`, which it is not one of. */}
           {successors.map((successor) => (
@@ -550,6 +541,7 @@ function FolderNode({
           {spawned.length > 0 && (
             <SubagentsFolder
               node={node}
+              label={label}
               spawned={spawned}
               depth={depth + 1}
               ctx={ctx}
@@ -569,11 +561,14 @@ function FolderNode({
 // work, so it hangs off the folder itself (see [FolderNode]) rather than in here.
 function SubagentsFolder({
   node,
+  label,
   spawned,
   depth,
   ctx,
 }: {
   node: AgentTreeNode;
+  /** How the agent this folder hangs under is named in the tree ("root", an id). */
+  label: string;
   spawned: AgentTreeNode[];
   depth: number;
   ctx: ExplorerCtx;
@@ -589,6 +584,10 @@ function SubagentsFolder({
         className={panels.fsRow}
         style={fsIndent(depth)}
         aria-expanded={open}
+        // Named for the agent it hangs under, like every other row in the tree: there
+        // is one of these per instance that delegated, so a bare "subagents" is
+        // ambiguous the moment a run has two.
+        aria-label={`${label} subagents`}
         onClick={() => ctx.toggle(subKey, true)}
       >
         <span className={panels.fsCaret} aria-hidden="true">
@@ -618,7 +617,169 @@ function SubagentsFolder({
   );
 }
 
-// --- Content pane (the selected file's view) ---------------------------------
+// The `modules` folder under every agent: one row per module instance it holds, in the
+// contract's kind order (history, memories, tasks, board, skills, archive), so a reader
+// who has seen a succession's transfer list reads the folder in the same order.
+//
+// Closed by default, unlike `subagents`. That grouping folder opens because closing it
+// would hide the *list* of agents you then have to open one of; this one is up to six
+// rows per instance across a fleet of dozens, and the same fleet-scannability rationale
+// that keeps agent folders closed governs here.
+//
+// Sharing is marked in the tree rather than only inside the files, because "is this
+// store shared, and with how many?" is the one thing about a module worth knowing before
+// you have decided to read it.
+function ModulesFolder({
+  agentId,
+  label,
+  held,
+  depth,
+  ctx,
+}: {
+  agentId: string;
+  /** How the agent this folder hangs under is named in the tree ("root", an id). */
+  label: string;
+  held: readonly GgModuleInstance[];
+  depth: number;
+  ctx: ExplorerCtx;
+}) {
+  const modKey = `mod:${agentId}`;
+  const open = ctx.isOpen(modKey, false);
+  return (
+    <li className={panels.fsNode}>
+      <button
+        type="button"
+        className={panels.fsRow}
+        style={fsIndent(depth)}
+        aria-expanded={open}
+        // Named for its agent, for the same reason its rows are: there is one modules
+        // folder per instance, so an unlabelled "modules" is ambiguous in every run.
+        aria-label={`${label} modules`}
+        onClick={() => ctx.toggle(modKey, false)}
+      >
+        <span className={panels.fsCaret} aria-hidden="true">
+          <ChevronIcon className={open ? panels.fsCaretOpen : undefined} />
+        </span>
+        <ModulesIcon className={panels.fsIcon} />
+        <span className={panels.fsName}>modules</span>
+        <span className={panels.fsMeta}>{held.length}</span>
+      </button>
+      {open && (
+        <ul className={panels.fsChildren} style={fsGuide(depth)}>
+          {held.map((module) => {
+            const selected =
+              ctx.selection.agentId === agentId &&
+              sameEntry(ctx.selection.entry, {
+                kind: "module",
+                module: module.kind,
+              });
+            const ModuleIcon = MODULE_ICONS[module.kind];
+            const shared = isShared(module);
+            return (
+              <li key={module.kind}>
+                <button
+                  type="button"
+                  className={cx(
+                    panels.fsRow,
+                    panels.fsFile,
+                    selected && panels.fsRowActive,
+                  )}
+                  style={fsIndent(depth + 1)}
+                  aria-label={`${label} modules ${module.kind}`}
+                  aria-current={selected ? "true" : undefined}
+                  onClick={() =>
+                    ctx.onSelect({
+                      agentId,
+                      entry: { kind: "module", module: module.kind },
+                    })
+                  }
+                >
+                  <ModuleIcon className={panels.fsIcon} />
+                  <span className={panels.fsName}>{module.kind}</span>
+                  {shared && (
+                    <>
+                      <LinkIcon className={panels.fsShared} />
+                      {/* The count reads at a glance and the title names the store and
+                          the holders, because "shared with whom?" is the next question
+                          and the file that answers it in full is one click further. */}
+                      <span
+                        className={cx(panels.fsMeta, panels.fsMetaTrailing)}
+                        title={`${module.id} — held by ${module.holders
+                          .map((holder) => holder.agentId)
+                          .join(", ")}`}
+                      >
+                        {module.holders.length} holders
+                      </span>
+                    </>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+// --- Content pane (the selected entry's view) --------------------------------
+
+// One module instance, read from one of its holders: the shared identity strip (who
+// else holds it, how this one came by it, whether its prompt carries it, what it costs)
+// over the contents in the shape that kind is read in.
+//
+// The contents come from the module's own snapshot rather than this agent's slice —
+// a shared store has one content — while the per-holder facts come from the roster this
+// instance reported. See {@link GgModuleHeader}.
+function ModuleFile({
+  agentId,
+  kind,
+  modules,
+  state,
+  onOpenHolder,
+  onOpenFile,
+}: {
+  agentId: string;
+  kind: GgModuleKind;
+  modules: GgModuleIndex;
+  state: DerivedGgState;
+  onOpenHolder: (agentId: string) => void;
+  onOpenFile: (file: AgentFileKind) => void;
+}) {
+  const module = (modules.byAgent.get(agentId) ?? []).find(
+    (held) => held.kind === kind,
+  );
+  if (!module) {
+    return (
+      <div className={panels.panelBody}>
+        <p className={panels.empty}>
+          This instance is not holding a {moduleKindLabel(kind).toLowerCase()}{" "}
+          module — a succession may have dropped it, or its profile may never
+          have enabled one.
+        </p>
+      </div>
+    );
+  }
+  const holder =
+    module.holders.find((entry) => entry.agentId === agentId) ?? null;
+  return (
+    <div className={panels.panelBody}>
+      <div className={panels.moduleFile}>
+        <GgModuleHeader
+          module={module}
+          holder={holder}
+          onOpenHolder={onOpenHolder}
+        />
+        <ModuleContents
+          module={module}
+          holder={holder}
+          state={state}
+          onOpenFile={onOpenFile}
+        />
+      </div>
+    </div>
+  );
+}
 
 function FileContent({
   node,
@@ -720,50 +881,6 @@ function FileContent({
           <CompactionView compactions={state.compactions} />
         </div>
       );
-    case "tasks":
-      return (
-        <>
-          <RetainedNote count={state.compactions.length} what="task list" />
-          <div className={panels.panelBody}>
-            <TaskDagView tasks={state.tasks} />
-          </div>
-        </>
-      );
-    case "knowledge": {
-      // Each half is shown when this agent's own capability is on (its list carries
-      // its own empty state until entries arrive), so a memories-only agent reads as
-      // a memories panel rather than a half-empty split.
-      const showSkills = agentCapabilityOn(capabilitySet, node.slot, "skills");
-      const showMemories = agentCapabilityOn(
-        capabilitySet,
-        node.slot,
-        "memories",
-      );
-      return (
-        <>
-          <RetainedNote
-            count={state.compactions.length}
-            what={knowledgeLabel(showSkills, showMemories)}
-          />
-          <div className={panels.panelBody}>
-            <div className={panels.knowledgeSplit}>
-              {showSkills && (
-                <div className={panels.subPanel}>
-                  <span className={panels.subPanelLabel}>Skills</span>
-                  <SkillsList skills={state.skills} />
-                </div>
-              )}
-              {showMemories && (
-                <div className={panels.subPanel}>
-                  <span className={panels.subPanelLabel}>Memories</span>
-                  <MemoriesList memory={state.memory} />
-                </div>
-              )}
-            </div>
-          </div>
-        </>
-      );
-    }
   }
 }
 
@@ -982,26 +1099,5 @@ function AgentToolsPanel({
         })}
       </ul>
     </section>
-  );
-}
-
-// What the Knowledge file's retention note calls what it kept, named for the halves
-// this agent actually has.
-function knowledgeLabel(skills: boolean, memories: boolean): string {
-  if (skills && memories) return "skills and memories";
-  return skills ? "skills" : "memories";
-}
-
-// A reassurance line shown on the Board / Tasks / Knowledge files once this
-// agent has crossed a compaction boundary: the retention contract kept this state
-// verbatim, so it never blanked out when the window was summarized. Renders nothing
-// before any compaction.
-function RetainedNote({ count, what }: { count: number; what: string }) {
-  if (count === 0) return null;
-  return (
-    <p className={panels.retainedNote}>
-      Retained verbatim across {count} compaction{count === 1 ? "" : "s"} — the{" "}
-      {what} carried over.
-    </p>
   );
 }

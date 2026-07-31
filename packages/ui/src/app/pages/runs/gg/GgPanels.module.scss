@@ -1742,15 +1742,267 @@ $spec-winner-hue: #f5c451;
   white-space: nowrap;
 }
 
-// --- Panels grid + tab bar (used by the monitor page) ------------------------
+// --- Module instances (the `modules` folder's files) -------------------------
+//
+// One module instance read from one of its holders: the identity strip — which store
+// this is, who else holds it, how this holder came by it, whether its prompt carries it,
+// what it costs the windows it is in — over the contents in the shape that kind is read
+// in. The strip is deliberately dense and unboxed: it is a *header*, and framing it as a
+// card would set it up as a peer of the contents below rather than as their preamble.
 
-// The two-column arrangement the Knowledge tab uses (skills beside memories),
-// collapsing to one column when cramped.
-.knowledgeSplit {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-  gap: t.$space-lg;
+// The whole file: the strip, then the contents, with the strip's own rule separating them.
+.moduleFile {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  min-width: 0;
 }
+
+.moduleHead {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  padding-bottom: t.$space-sm;
+  border-bottom: t.$border-hairline solid t.$color-border;
+  min-width: 0;
+}
+
+// The identity line: the store's id and kind, then the badges that change how everything
+// under them reads (owned/unowned, shared, dropped).
+.moduleIdentity {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.moduleIcon {
+  flex: 0 0 auto;
+  width: 1.1rem;
+  height: 1.1rem;
+  color: t.$color-text-muted;
+}
+
+// The id reads as the identifier it is — monospaced, so `memories-2` and `memories-12`
+// line up when a reader is comparing two files.
+.moduleId {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  color: t.$color-text;
+}
+
+.moduleKind {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.moduleBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-2xs;
+  padding: 0 t.$space-2xs;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  color: t.$color-text-muted;
+
+  // An unowned module never reaches the model's window — the one capability setting
+  // whose effect is otherwise invisible — so it is the badge that is tinted, not the
+  // default.
+  &[data-ownership="unowned"] {
+    border-color: t.$color-warning;
+    color: t.$color-warning;
+  }
+  &[data-shared] {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+  &[data-dropped] {
+    border-color: t.$color-negative;
+    color: t.$color-negative;
+  }
+}
+
+.moduleBadgeIcon {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.moduleLine,
+.moduleLifetime,
+.moduleCost,
+.moduleNote {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The unowned explanation, set apart by the same left rule the retention note uses: it
+// is a statement about how the run is configured, not part of the module's own read-out.
+.moduleNote {
+  margin-top: t.$space-2xs;
+  border-left: 2px solid t.$color-warning;
+  padding-left: t.$space-sm;
+}
+
+// The store's life, oldest first. The verbs are tinted by what happened: a copy made a
+// second store, a link did not, and a drop ended one.
+.moduleLifetime {
+  [data-lifetime="copied"],
+  [data-lifetime="linked"] {
+    color: t.$color-accent;
+  }
+  [data-lifetime="dropped"] {
+    color: t.$color-negative;
+  }
+}
+
+.moduleCost strong {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+.moduleSep {
+  color: t.$color-border;
+}
+
+// Who else is in this store. Chips rather than a list: the answer is usually two or
+// three ids, and a list of three one-word rows wastes the height the contents need.
+.moduleHolders {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  margin-top: t.$space-2xs;
+}
+
+.moduleHoldersLabel {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: t.$color-text-muted;
+}
+
+.moduleHolderChip {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-2xs;
+  padding: 0 t.$space-xs;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  background: transparent;
+  font: inherit;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  cursor: pointer;
+
+  &:hover {
+    border-color: t.$color-accent;
+    color: t.$color-accent;
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 1px;
+  }
+}
+
+// The holder's own lifecycle, on its chip: "who is reading this right now" is half the
+// question a shared store raises, and it is one dot away.
+.moduleHolderDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: t.$color-text-muted;
+
+  &[data-status="running"] {
+    background: t.$color-accent;
+  }
+  &[data-status="blocked"] {
+    background: t.$color-accent-2;
+  }
+  &[data-status="done"] {
+    background: t.$color-positive;
+  }
+  &[data-status="failed"] {
+    background: t.$color-negative;
+  }
+}
+
+.moduleHolderSelf {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// A module file's contents when they are a stack of prose, meters and links rather than
+// one of the rich lists (memories, tasks, skills) that bring their own layout.
+.moduleStack {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.moduleLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+}
+
+// The archive's entries: what left the window, newest ordinal last. Metadata and a
+// bounded preview only — the archive exists so this material is *out* of the request,
+// and a second copy of the thread would serve nobody.
+.archiveList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.archiveRow {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  background: t.$color-surface-2;
+  min-width: 0;
+}
+
+.archiveSeq {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.archiveTags {
+  display: inline-flex;
+  gap: t.$space-2xs;
+}
+
+.archivePreview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.archiveLen {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// --- Panels grid + tab bar (used by the monitor page) ------------------------
 
 .subPanel {
   display: flex;
@@ -2203,6 +2455,18 @@ $fs-caret-glyph: 0.75rem;
   color: var(--ttc-event-orchestration);
   font-size: 0.72rem;
   white-space: nowrap;
+}
+
+// The link glyph a module row carries when more than one agent instance holds the same
+// backing store. It is drawn in the tree, not only inside the file, because "is this
+// shared?" is the one thing about a module worth knowing before deciding to open it —
+// and a row that is shared reads differently from the first glance on.
+.fsShared {
+  flex: 0 0 auto;
+  margin-left: t.$space-2xs;
+  width: 0.8rem;
+  height: 0.8rem;
+  color: t.$color-accent;
 }
 
 // The chosen best-of-K attempt, starred on its folder.

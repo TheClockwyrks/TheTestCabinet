@@ -270,9 +270,9 @@ export function moduleOriginLabel(
         : "inherited from its spawner";
     }
     case "profile":
-      return `bound the ${module.profile ?? holder.profile} instance`;
+      return `bound the store every ${module.profile ?? holder.profile} instance shares`;
     case "run":
-      return "bound the run's instance";
+      return "bound the run's one instance";
     case "transferred": {
       const carried = module.lifetime.find(
         (event) =>
@@ -380,6 +380,41 @@ function rosterFor(
   }));
 }
 
+// One holder's own view of what its module holds, as a snapshot.
+//
+// The per-module snapshots are the right source — a shared store has one content — but a
+// record written before module identity existed carries none of them: its state events
+// name no module, so `moduleSnapshots` is keyed by ids that record's synthesized
+// instances do not have. The holder's own reduced slice is exactly what that record's
+// per-agent panels showed, so falling back to it is what keeps an old run readable
+// instead of blank.
+function agentContent(
+  kind: GgModuleKind,
+  state: DerivedGgState | undefined,
+): ModuleSnapshot | null {
+  if (!state) return null;
+  switch (kind) {
+    case "memories":
+      return state.memory ? { kind: "memories", memory: state.memory } : null;
+    case "tasks":
+      return state.tasks.length > 0
+        ? { kind: "tasks", tasks: state.tasks }
+        : null;
+    case "board":
+      return state.board ? { kind: "board", board: state.board } : null;
+    case "skills":
+      return state.skills.length > 0
+        ? { kind: "skills", skills: state.skills }
+        : null;
+    case "archive":
+      return state.archive ? { kind: "archive", archive: state.archive } : null;
+    // A window reports itself as a context breakdown, per turn, per agent — never as a
+    // module snapshot.
+    case "history":
+      return null;
+  }
+}
+
 // The transitions in stream order, deduplicated. A transition is emitted once, on the
 // outgoing instance's stream, so the global list is already the run's — but the per-agent
 // slices carry the same events, and folding both would double every lifetime row.
@@ -449,6 +484,10 @@ export function deriveGgModules(
         };
         byId.set(entry.moduleId, module);
       }
+      // A store whose own snapshot never arrived falls back to whichever of its holders
+      // reported one of its own — which for a pre-identity record is the only content
+      // there is, and for a live one is the holder that has emitted first.
+      module.content ??= agentContent(entry.kind, state);
       const holder: GgModuleHolder = {
         agentId: node.id,
         profile,

@@ -1064,6 +1064,62 @@ its co-holder chip navigates to the other instance's same file; an `unowned`
 module says so. `sessionStartedWith` must be widened to accept per-capability
 params (it hardcodes `params: {}` today) — required from here on.
 
+### Stage 5 as built — deviations from §3
+
+**LANDED** as `feat(ui): a modules folder on the Instances tab`. All of §3 shipped: the
+`AgentEntry` selection model, the `modules` folder, six module files, the shared
+`GgModuleHeader`, Tasks re-homed, Knowledge split and deleted, the `fsMeta` holder count
+and `LinkIcon` badge, the widened focus channel, and the `GgPanels.module.scss`
+additions. Eight things are shaped differently from §3; **stage 6 should build on this
+list.**
+
+1. **The entry model lives in a new `ggAgentEntries.ts`, not in `GgAgentsExplorer.tsx`.**
+   `AgentEntry` is referenced by `GgExplorerNav` (whose `openAgent` now takes one) and by
+   `GgModuleViews` (`onOpenFile`), and both are imported *by* the explorer — so leaving the
+   type in the explorer would have made two import cycles. The module also carries
+   `AgentFileKind`, `FILE_ORDER`/`FILE_CAPABILITIES`/`FILE_LABELS`/`FILE_ICONS`,
+   `MODULE_ICONS`, `filesFor`, `entriesFor`, `sameEntry` and `OVERVIEW_ENTRY`, which is a
+   real separation rather than a dumping ground: it is "what an agent folder offers and how
+   one of those things is named and selected", and none of it is rendering.
+2. **`entriesFor(set, agent, modules)`** takes the agent's already-derived
+   `GgModuleInstance[]` rather than §3.1's raw roster. `ggModules` has *already* decided what
+   an instance holds — from its reported roster where the run had one and from its profile's
+   capabilities where it did not — so re-deriving that here would be a second, divergent
+   answer to a question that has one. §3.2's `MODULE_CAPABILITY_IDS` legacy fallback is
+   therefore reached through `ggModules.rosterFor`, exactly once, as stage 4 built it.
+3. **The per-kind content views live in a new `GgModuleViews.tsx`** alongside
+   `GgModuleHeader`, and `RetainedNote` moved there with them. §3.4 only promised the header
+   would be shared; the contents have to be too, because §4.3's Contents section is the same
+   read-out from the same `module.content`. `ModuleContents` takes an optional `holder` and an
+   optional `state`, so the Modules tab can render it with neither.
+4. **`GgExplorerNav` gained `openProject()`, not §3.5's `openModule`/`openProfile`.** The
+   board module file has to hand the reader through to the Project tab *now*, and it is one
+   line to implement. `openModule`/`openProfile` have no target until the Modules and Agents
+   tabs exist, and an unused nav method is a worse seam than a late one — the same call stage
+   4 made for the icons. Stage 6 adds `openModule`; stage 7 adds `openProfile`.
+5. **Co-holder chips do not route through the nav at all.** A co-holder is the same module
+   file one folder over *in the same explorer*, so the chip calls a local `reveal(agentId,
+   entry)` — which is also what the focus effect now calls. `GgModuleHeader` therefore takes
+   an `onOpenHolder` callback rather than reading the context, and stage 6 passes
+   `nav.openAgent(id, { kind: "module", module })` into the same prop.
+6. **The memories view is handed the *holder's* scope and write access**, overriding what
+   the snapshot carries. A shared store's snapshot reports the scope and access of whichever
+   holder last emitted it, which is not necessarily the one being read; the roster is
+   authoritative per holder, and `MemoriesList` already knows how to badge both.
+7. **`ggModules` gained a content fallback to the holder's own slice** when a module id has
+   no snapshot in `moduleSnapshots`. §2.4 says a legacy record's content comes "from that
+   agent's own snapshot" and stage 4 did not wire it, so every module file on a pre-identity
+   record would have rendered empty — which is most of `runs/`.
+8. **No empty-state row for a module-less instance.** `history` is always enabled and has no
+   capability behind it, so an instance's folder always has at least one row; the folder is
+   guarded on `held.length > 0` (for an instance the index has not caught up with) and the
+   *reachable* version of that requirement — a shell-only profile — is tested as "one
+   `history` row and nothing else". The content pane does carry a real empty state, for a
+   module a succession dropped out from under a live selection.
+
+**Also in passing:** the `subagents` folder gained the `aria-label` §3.2 asks for, and
+`.knowledgeSplit` was deleted with the file that used it.
+
 ### Stage 6 — `feat(ui): the Modules tab`
 
 New `GgModulesExplorer.tsx`, the tab registration and gate in `GgRunPanels.tsx`,

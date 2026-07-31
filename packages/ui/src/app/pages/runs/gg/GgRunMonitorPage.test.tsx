@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  GgAgentModule,
   GgContextSource,
   GgContextSourceUsage,
   GgModuleKind,
@@ -165,10 +166,16 @@ function sessionStarted(
 // no task list; an implementer that keeps one but files nothing). Every per-agent
 // surface has to read the profile the agent it is showing runs under, so these streams
 // are the ones that catch a surface reading the Root's configuration for everybody.
+//
+// A capability is named either bare (`"tasks"`, taking the capability's defaults) or as
+// `[id, params]` — the params are how a configuration says what it *asked* for
+// (`{ ownership: "unowned" }`, `{ scope: "shared" }`), which the module surfaces read as
+// the declared half of every question they answer about what it actually got.
+type CapabilitySpec = string | [string, Record<string, unknown>];
 function sessionStartedWith(
   profiles: ReadonlyArray<{
     name: string;
-    capabilities: ReadonlyArray<string>;
+    capabilities: ReadonlyArray<CapabilitySpec>;
   }>,
 ): HarnessEvent {
   return gg({
@@ -176,15 +183,48 @@ function sessionStartedWith(
     capabilitySet: {
       agents: profiles.map(({ name, capabilities }) => ({
         name,
-        capabilities: capabilities.map((id) => ({
-          id,
-          enabled: true,
-          params: {},
-        })),
+        capabilities: capabilities.map((capability) => {
+          const [id, params] = Array.isArray(capability)
+            ? capability
+            : [capability, {}];
+          return { id, enabled: true, params };
+        }),
         modelId: "mock/scripted-builder",
       })),
     },
   });
+}
+
+// One row of an agent instance's module roster (`agent_modules`) — the event every
+// incarnation emits as it opens, naming the backing store it is a holder of. Everything
+// not named takes the value an ordinary private, owned, writable module has.
+function held(
+  kind: GgModuleKind,
+  moduleId: string,
+  overrides: Partial<GgAgentModule> = {},
+): GgAgentModule {
+  return {
+    kind,
+    moduleId,
+    enabled: true,
+    ownership: "owned",
+    origin: "created",
+    writable: true,
+    ...overrides,
+  };
+}
+
+// The roster one instance reports. Two instances reporting the same module id are
+// holding ONE store — which is the whole mechanism the module surfaces read.
+function roster(
+  agentId: string,
+  modules: GgAgentModule[],
+  parentAgentId?: string,
+): HarnessEvent {
+  return ggFrom(agentId, parentAgentId, {
+    type: "agent_modules",
+    modules,
+  } as GgTelemetryKind);
 }
 
 // A small but representative Phase-1 stream: a session, one agent message, two
@@ -550,14 +590,37 @@ describe("GgRunMonitorPage", () => {
       "root overview",
       "root activity",
       "root context",
-      "root tasks",
-      "root knowledge",
+      "root requests",
+      "root metrics",
     ]) {
       expect(screen.getByRole("button", { name: file })).toBeInTheDocument();
     }
-    // The board is no longer a per-agent file — it reads on the run-global Project
-    // tab instead.
-    expect(screen.queryByRole("button", { name: "root board" })).toBeNull();
+    // The state the agent *holds* is not among its files: a module instance can be
+    // shared with other instances, carried to a successor or copied by a fork, so it is
+    // read as a store with holders rather than as a property of one agent. It lives one
+    // folder down, closed by default.
+    const folder = screen.getByRole("button", { name: "root modules" });
+    expect(folder).toHaveAttribute("aria-expanded", "false");
+    for (const file of ["root tasks", "root knowledge", "root board"]) {
+      expect(screen.queryByRole("button", { name: file })).toBeNull();
+    }
+    // Opened, it lists one row per module this instance holds, in the contract's kind
+    // order — every instance has a window, and this run's configuration gives it the
+    // rest.
+    fireEvent.click(folder);
+    for (const module of [
+      "root modules history",
+      "root modules memories",
+      "root modules tasks",
+      "root modules board",
+      "root modules skills",
+    ]) {
+      expect(screen.getByRole("button", { name: module })).toBeInTheDocument();
+    }
+    // Agent-managed context is off for this run, so it holds no archive.
+    expect(
+      screen.queryByRole("button", { name: "root modules archive" }),
+    ).toBeNull();
   });
 
   it("opens the run's root instance and no other, so a fleet stays scannable", () => {
@@ -671,10 +734,11 @@ describe("GgRunMonitorPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders the task DAG on an agent's tasks file", () => {
+  it("renders the task DAG on an agent's tasks module", () => {
     renderMonitor();
     openTab("Instances");
-    openFile("root tasks");
+    openFolder("root modules");
+    openFile("root modules tasks");
     expect(screen.getByText("Scaffold the project")).toBeInTheDocument();
     expect(screen.getByText("Add the win condition")).toBeInTheDocument();
     expect(screen.getByText("Blocked")).toBeInTheDocument();
@@ -725,12 +789,20 @@ describe("GgRunMonitorPage", () => {
     expect(padding(overview)).toBeGreaterThan(padding(issue));
   });
 
-  it("renders skills and memories on an agent's knowledge file", () => {
+  it("splits skills and memories into two module files", () => {
+    // They used to share one Knowledge file, which was a forced join: they are gated
+    // independently and shared on entirely different terms — a fork copies the skills
+    // read set with the window, while memories can be linked across agents — so one
+    // file could never say whose either of them was.
     renderMonitor();
     openTab("Instances");
-    openFile("root knowledge");
+    openFolder("root modules");
+    openFile("root modules skills");
     expect(screen.getByText("gg-render")).toBeInTheDocument();
     expect(screen.getByText("1 of 2 read")).toBeInTheDocument();
+    // The memories are their own file, and reading it does not carry the skills along.
+    openFile("root modules memories");
+    expect(screen.queryByText("gg-render")).toBeNull();
     // A live memory is named twice — once as a treemap tile, once as a record row.
     expect(screen.getAllByText("controls").length).toBeGreaterThan(0);
     // The record covers memories the snapshot cannot: `palette` was written and then
@@ -744,50 +816,90 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("Characters")).toBeInTheDocument();
     expect(screen.getByText("peak 300")).toBeInTheDocument();
     expect(screen.getByText("peak 9")).toBeInTheDocument();
-    // The retention note says the knowledge survived the compaction verbatim.
+    // The retention note says this module's contents survived the compaction verbatim —
+    // now named for the one module the file is about rather than for both halves.
     expect(
       screen.getByText(
-        "Retained verbatim across 1 compaction — the skills and memories carried over.",
+        "Retained verbatim across 1 compaction — the memories carried over.",
       ),
     ).toBeInTheDocument();
   });
 
-  it("offers a file for every enabled capability, even before it has data", () => {
+  it("offers a file and a module for every enabled capability, even before it has data", () => {
     // A narrow run: tasks + memories on, and NO tasks/memory events have arrived
-    // yet. The files a capability justifies are offered up front — a file is gated
-    // by the run's configuration, not by whether data has streamed — so `tasks` and
-    // `knowledge` are present (showing their own empty state), Context is
-    // unconditional, and the capability the run lacks (compaction) offers no file
-    // at all.
+    // yet. What an agent's folder offers is gated by the run's configuration, not by
+    // whether data has streamed — so the `tasks` and `memories` modules are present
+    // (showing their own empty state), Context is unconditional, and the capabilities
+    // the run lacks (compaction, project management) offer nothing at all.
     renderMonitor([
       sessionStarted(["shell", "tasks", "memories"]),
       gg({ type: "assistant_message", text: "Working." }),
     ]);
     openTab("Instances");
-    for (const file of [
-      "root overview",
-      "root activity",
-      "root context",
-      "root tasks",
-      "root knowledge",
-    ]) {
+    for (const file of ["root overview", "root activity", "root context"]) {
       expect(screen.getByRole("button", { name: file })).toBeInTheDocument();
     }
-    for (const file of ["root compaction", "root board"]) {
-      expect(screen.queryByRole("button", { name: file })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "root compaction" }),
+    ).toBeNull();
+    openFolder("root modules");
+    for (const module of [
+      "root modules history",
+      "root modules tasks",
+      "root modules memories",
+    ]) {
+      expect(screen.getByRole("button", { name: module })).toBeInTheDocument();
+    }
+    for (const module of [
+      "root modules board",
+      "root modules skills",
+      "root modules archive",
+    ]) {
+      expect(screen.queryByRole("button", { name: module })).toBeNull();
     }
     // With project-management off there is also no Project tab.
     expect(screen.queryByRole("radio", { name: "Project" })).toBeNull();
-    // An enabled-but-empty file is present and shows its own "nothing yet" state,
+    // An enabled-but-empty module is present and shows its own "nothing yet" state,
     // rather than being hidden until data arrives.
-    openFile("root tasks");
+    openFile("root modules tasks");
     expect(screen.getByText(/No tasks yet/)).toBeInTheDocument();
   });
 
-  it("offers each agent the files its own profile justifies, not the Root's", () => {
+  it("gives an instance whose profile holds no capability its window and nothing else", () => {
+    // Every agent has a conversation window, always — it has no capability behind it and
+    // cannot be turned off — so the modules folder is never empty. A shell-only agent's
+    // folder is the floor: one `history` row, and none of the stores it was never given.
+    renderMonitor([
+      sessionStarted(["shell", "filesystem"]),
+      gg({ type: "assistant_message", text: "Working." }),
+    ]);
+    openTab("Instances");
+    openFolder("root modules");
+    expect(
+      screen.getByRole("button", { name: "root modules history" }),
+    ).toBeInTheDocument();
+    for (const module of [
+      "root modules memories",
+      "root modules tasks",
+      "root modules board",
+      "root modules skills",
+      "root modules archive",
+    ]) {
+      expect(screen.queryByRole("button", { name: module })).toBeNull();
+    }
+    // And the window's own file says what a window is and points at the two files that
+    // answer how full it got, rather than drawing a second fill graph here.
+    openFile("root modules history");
+    expect(
+      screen.getByRole("button", { name: "What filled it" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Turns")).toBeInTheDocument();
+  });
+
+  it("offers each agent the modules its own profile justifies, not the Root's", () => {
     // The ordinary shape of a board run: the Root files work and keeps no task list;
     // the `Coder` profile an issue dispatches under keeps one and files nothing.
-    // Reading the Root's configuration for every folder hid the task file on exactly
+    // Reading the Root's configuration for every folder hid the task list on exactly
     // the agent that had the capability.
     renderMonitor([
       sessionStartedWith([
@@ -816,13 +928,181 @@ describe("GgRunMonitorPage", () => {
     ]);
     openTab("Instances");
     openFolder("agent agent-0");
+    openFolder("agent-0 modules");
     expect(
-      screen.getByRole("button", { name: "agent-0 tasks" }),
+      screen.getByRole("button", { name: "agent-0 modules tasks" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "root tasks" })).toBeNull();
+    // The Root holds a board and no task list; its folder says so.
+    openFolder("root modules");
+    expect(
+      screen.queryByRole("button", { name: "root modules tasks" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "root modules board" }),
+    ).toBeInTheDocument();
     // And the file reads that agent's own list.
-    openFile("agent-0 tasks");
+    openFile("agent-0 modules tasks");
     expect(screen.getByText("Draw the widget")).toBeInTheDocument();
+  });
+
+  it("marks a shared module in the tree and walks between its holders", () => {
+    // The distinction the whole modules folder exists for: two instances of one profile
+    // curating ONE notebook, against two instances that happen to have written the same
+    // notes. They are indistinguishable in every per-agent view — same panel, same
+    // entries — and the difference is the difference between "the shared-memory arm is
+    // working" and "it silently fell back to private notebooks". So the store's identity
+    // is what the folder is keyed on: both reviewers report `memories-1`.
+    renderMonitor([
+      sessionStartedWith([
+        { name: "Root", capabilities: ["shell", "subagents", "memories"] },
+        {
+          name: "Reviewer",
+          capabilities: [["memories", { scope: "shared" }]],
+        },
+      ]),
+      roster("root", [
+        held("history", "history-0"),
+        held("memories", "memories-0"),
+      ]),
+      ggFrom("agent-0", "root", {
+        type: "agent_spawned",
+        slot: "Reviewer",
+        modelId: "mock/scripted-builder",
+        depth: 1,
+      }),
+      roster(
+        "agent-0",
+        [
+          held("history", "history-1"),
+          held("memories", "memories-1", {
+            scope: "shared",
+            origin: "profile",
+          }),
+        ],
+        "root",
+      ),
+      ggFrom("agent-1", "root", {
+        type: "agent_spawned",
+        slot: "Reviewer",
+        modelId: "mock/scripted-builder",
+        depth: 1,
+      }),
+      roster(
+        "agent-1",
+        [
+          held("history", "history-2"),
+          held("memories", "memories-1", {
+            scope: "shared",
+            origin: "profile",
+          }),
+        ],
+        "root",
+      ),
+      // One store, so one content — written by whichever holder happened to write it.
+      ggFrom("agent-0", "root", {
+        type: "memory_state",
+        moduleId: "memories-1",
+        strategy: "scratchpad",
+        memories: [
+          {
+            name: "review-standards",
+            description: "What we reject for.",
+            len: 40,
+            lines: 2,
+          },
+        ],
+        count: 1,
+        totalLen: 40,
+        totalLines: 2,
+        peak: { count: 1, totalLen: 40, totalLines: 2 },
+        caps: {
+          maxCount: null,
+          maxLenPerMemory: null,
+          maxTotalLen: null,
+          maxLenIndex: null,
+          maxLenDescription: null,
+          maxResults: null,
+        },
+        scope: "shared",
+        writable: true,
+      }),
+    ]);
+    openTab("Instances");
+    openFolder("agent agent-0");
+    openFolder("agent-0 modules");
+    // Sharing is marked in the tree, so it reads without opening anything.
+    const row = screen.getByRole("button", {
+      name: "agent-0 modules memories",
+    });
+    expect(within(row).getByText("2 holders")).toBeInTheDocument();
+    // The root's own notebook is a different store, and says so.
+    openFolder("root modules");
+    expect(
+      within(
+        screen.getByRole("button", { name: "root modules memories" }),
+      ).queryByText(/holders/),
+    ).toBeNull();
+
+    // The file names the store, states how it is shared, and offers its co-holder.
+    openFile("agent-0 modules memories");
+    expect(screen.getByText("memories-1")).toBeInTheDocument();
+    expect(
+      screen.getByText("shared by 2 holders of Reviewer", { exact: false }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("review-standards").length).toBeGreaterThan(0);
+
+    // And the co-holder chip walks to the same store read from the other instance: its
+    // own folder is opened on the way, its module file is selected, and the contents are
+    // the same because the store is the same one.
+    fireEvent.click(screen.getByRole("button", { name: "agent-1" }));
+    expect(
+      screen.getByRole("button", { name: "agent-1 modules memories" }),
+    ).toHaveAttribute("aria-current", "true");
+    expect(screen.getAllByText("review-standards").length).toBeGreaterThan(0);
+    // From there the chip points back the other way.
+    expect(screen.getByRole("button", { name: "agent-0" })).toBeInTheDocument();
+  });
+
+  it("says when a module is held but kept out of the prompt", () => {
+    // `unowned` is the one capability setting whose effect is invisible everywhere else:
+    // the tools are offered, the store is read and written, the telemetry arrives — the
+    // module just never reaches the model's window. So the module file states it as a
+    // sentence rather than leaving a badge to be interpreted.
+    renderMonitor([
+      sessionStartedWith([
+        {
+          name: "Root",
+          capabilities: ["shell", ["tasks", { ownership: "unowned" }]],
+        },
+      ]),
+      roster("root", [
+        held("history", "history-0"),
+        held("tasks", "tasks-0", { ownership: "unowned" }),
+      ]),
+    ]);
+    openTab("Instances");
+    openFolder("root modules");
+    openFile("root modules tasks");
+    expect(screen.getByText("unowned")).toBeInTheDocument();
+    expect(
+      screen.getByText(/its prompt does not carry it/),
+    ).toBeInTheDocument();
+  });
+
+  it("links an agent's board module through to the board itself", () => {
+    // The board is one thing the whole run shares, so a per-agent board file would be a
+    // second rendering of it. What the module file adds is the part the Project tab
+    // cannot say — that this agent holds a handle on it — and it hands the reader on.
+    renderMonitor();
+    openTab("Instances");
+    openFolder("root modules");
+    openFile("root modules board");
+    // The decomposition tallied in the board's own vocabulary, not redrawn.
+    expect(screen.getByText("1 Approved")).toBeInTheDocument();
+    expect(screen.queryByText("Set up the canvas")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open the board" }));
+    expect(screen.getByRole("radio", { name: "Project" })).toBeChecked();
+    expect(screen.getByText("i1: Set up the canvas")).toBeInTheDocument();
   });
 
   it("names a board-dispatched issue agent by its issue, never “root”", () => {

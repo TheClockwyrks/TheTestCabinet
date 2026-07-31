@@ -13,6 +13,7 @@ import { GgAgentsExplorer } from "./GgAgentsExplorer";
 import { GgAgentsSummary } from "./GgAgentsSummary";
 import { ProjectExplorer } from "./ProjectExplorer";
 import { anyAgentCapabilityOn } from "./ggCatalog";
+import type { AgentEntry } from "./ggAgentEntries";
 import { GgExplorerNavContext, type GgExplorerNav } from "./GgExplorerNav";
 
 // The surfaces a gg run is read through. gg is headless, so these are the only
@@ -29,12 +30,15 @@ import { GgExplorerNavContext, type GgExplorerNav } from "./GgExplorerNav";
 //   arm of the experiment, not twelve), and it is the only view that answers it. See
 //   {@link GgAgentsSummary}.
 // - Instances is the same run read one running agent at a time. The rich per-instance
-//   views (the prompt it was given, activity, context, plan, tasks, knowledge) are
-//   inherently *per instance* — whose window filled, whose task list this is — so they
-//   cannot be shown as one global panel; instead they live inside an explorer that lays
-//   the run out as a filesystem (an instance is a folder, the things you can monitor
-//   about it are its files, and a subagent is a folder under its spawner). See
-//   {@link GgAgentsExplorer}.
+//   views (the prompt it was given, its activity, its context window, what it spent) are
+//   inherently *per instance* — whose window filled, who was told what — so they cannot
+//   be shown as one global panel; instead they live inside an explorer that lays the run
+//   out as a filesystem (an instance is a folder, the things you can monitor about it are
+//   its files, and a subagent is a folder under its spawner). Each instance also carries a
+//   `modules` folder holding the module instances it holds — its memories, its task list,
+//   its handle on the board — which are no longer per-agent things at all: a store can be
+//   shared, carried or copied between instances, so it is read as a store with holders
+//   rather than as a property of one agent. See {@link GgAgentsExplorer}.
 // - Project is the run-global epic/issue board, offered only when the
 //   project-management capability is on. The board is shared run-wide (issues
 //   auto-dispatch to top-level agents), so it is one whole-run surface rather than a
@@ -130,6 +134,7 @@ export function GgRunPanels({
     perAgent,
     board,
     issueReviews,
+    moduleSnapshots,
   } = state;
 
   const hasDashboard = dashboard != null;
@@ -143,21 +148,28 @@ export function GgRunPanels({
     if (!tabs.some((t) => t.value === tab)) setTab(tabs[0]?.value ?? "agents");
   }, [tabs, tab]);
 
-  // The instance to focus when an agent link jumps to one — the Dashboard's overview, or an
-  // instance chip on the Agents panel: switching to the Instances tab and handing the
-  // explorer the id to select. A one-shot request the explorer clears once it has revealed
-  // the instance.
+  // The instance to focus when an agent link jumps to one — the Dashboard's overview, an
+  // instance chip on the Agents panel, an issue's assigned agent: switching to the
+  // Instances tab and handing the explorer the id to select, plus the entry to land on
+  // when the caller named one. A one-shot request the explorer clears once it has
+  // revealed the instance.
   const [focusAgent, setFocusAgent] = useState<string | null>(null);
+  const [focusEntry, setFocusEntry] = useState<AgentEntry | null>(null);
   const nav: GgExplorerNav = useMemo(
     () => ({
-      openAgent: (agentId) => {
+      openAgent: (agentId, entry) => {
         setTab("instances");
         setFocusAgent(agentId);
+        setFocusEntry(entry ?? null);
       },
+      openProject: () => setTab("project"),
     }),
     [],
   );
-  const onFocusHandled = useCallback(() => setFocusAgent(null), []);
+  const onFocusHandled = useCallback(() => {
+    setFocusAgent(null);
+    setFocusEntry(null);
+  }, []);
 
   return (
     <GgExplorerNavContext.Provider value={nav}>
@@ -197,12 +209,14 @@ export function GgRunPanels({
             forest={agentForest}
             perAgent={perAgent}
             capabilitySet={capabilitySet}
+            moduleSnapshots={moduleSnapshots}
             workflows={workflows}
             fsmPath={fsmPath}
             transitions={transitions}
             speculations={speculations}
             live={live}
             focusAgent={focusAgent}
+            focusEntry={focusEntry}
             onFocusHandled={onFocusHandled}
           />
         )}

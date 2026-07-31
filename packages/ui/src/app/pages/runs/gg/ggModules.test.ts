@@ -337,7 +337,7 @@ describe("deriveGgModules", () => {
     expect(board.profile).toBeNull();
     expect(moduleScopeLabel(board)).toBe("shared by 2 holders across the run");
     expect(moduleOriginLabel(board, board.holders[1]!)).toBe(
-      "bound the run's instance",
+      "bound the run's one instance",
     );
     // At the profile grain that reads as "shared beyond this agent".
     expect(
@@ -762,6 +762,14 @@ describe("deriveGgModules", () => {
     expect(modules.byId.get("legacy:root:memories")!.holders[0]!.scope).toBe(
       "shared",
     );
+    // And it still has CONTENTS to show. A pre-identity record's state events name no
+    // module, so the per-module snapshots are keyed by ids these synthesized instances do
+    // not have; falling back to the holder's own reduced slice is what keeps an old run's
+    // module files readable instead of blank.
+    expect(modules.byId.get("legacy:root:memories")!.content).toEqual({
+      kind: "memories",
+      memory: expect.objectContaining({ scope: "shared" }),
+    });
   });
 
   it("marks a run that reported rosters as identified", () => {
