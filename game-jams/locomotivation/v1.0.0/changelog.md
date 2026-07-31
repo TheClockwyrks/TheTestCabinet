@@ -1,2 +1,2 @@
-Introduced. The first game jam: theme **Dead Man's Switch**, judged on the generic
+Introduced. The first game jam: theme **Locomotivation**, judged on the generic
 graded review checklist.

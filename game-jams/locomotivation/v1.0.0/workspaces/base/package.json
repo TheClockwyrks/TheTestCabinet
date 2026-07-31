@@ -1,8 +1,8 @@
 {
-  "name": "dead-mans-switch",
+  "name": "locomotivation",
   "version": "0.1.0",
   "private": true,
-  "description": "A Dead Man's Switch game-jam entry that runs entirely in the browser.",
+  "description": "A Locomotivation game-jam entry that runs entirely in the browser.",
   "devDependencies": {
     "playwright": "1.61.0"
   }
