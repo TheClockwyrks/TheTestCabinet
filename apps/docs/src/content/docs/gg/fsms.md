@@ -164,6 +164,19 @@ each module did — transferred, dropped, or initialized fresh.
 Together they are what lets the console render a succession as a lineage rather than as
 N unrelated agents that happened to appear in order.
 
+## The same handoff, chosen by the model
+
+A transition is one of three [successions](/gg/fork-and-exec/) gg performs, and all three
+are the same operation over [modules](/gg/modules/). What a machine adds is that the
+*order* is declared: a state's agent may move only where the table says, carrying only what
+the edge names. An [`exec`](/gg/fork-and-exec/) is the same handoff with the model choosing
+both, which is why an agent standing in a state is not offered one — inside a process the
+next move belongs to the process. `fork` is unaffected: a copy of a state's agent is a
+second worker, not a second driver of the machine.
+
+An `exec` may also name an FSM shell, which enters that machine at its entry state. That is
+how an ordinary agent hands its work to a declared process.
+
 ## The built-in machines are gone
 
 gg's first FSM engine shipped a small library of **harness-authored** machines — `tdd`

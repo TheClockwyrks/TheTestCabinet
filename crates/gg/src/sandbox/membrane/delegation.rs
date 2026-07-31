@@ -31,9 +31,9 @@ use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
 use crate::sandbox::WorkflowStageInput;
 use crate::tools::{
-    AgentStatusData, RUN_WORKFLOW_TOOL, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL,
-    SpeculationData, SubagentHandleData, SubagentResultData, TRANSITION_STATE_TOOL, ToolData,
-    WAIT_FOR_SUBAGENTS_TOOL, WorkflowData,
+    AgentStatusData, EXEC_TOOL, FORK_TOOL, RUN_WORKFLOW_TOOL, SEND_MESSAGE_TOOL,
+    SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SpeculationData, SubagentHandleData, SubagentResultData,
+    TRANSITION_STATE_TOOL, ToolData, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData,
 };
 
 /// How many attempts a `speculate` with no count makes — the loop's own default, restated because
@@ -166,6 +166,32 @@ impl<A: ToolApi> DelegationHost for MembraneState<A> {
             api.transition_state(state, note)
         })?;
         Ok(())
+    }
+
+    /// Declare that this session continues as another agent.
+    ///
+    /// The same shape as `transition_state` above, because it is the same succession: nothing
+    /// happens here beyond the check, and the loop performs it once the program has ended. Success
+    /// carries no payload — what the successor received is told to *it*, in the note it opens on,
+    /// and this program will not be running by the time there is anything to report.
+    fn exec(&mut self, agent: String, prompt: Option<String>) -> Result<(), ToolError> {
+        self.call(EXEC_TOOL, |api| api.exec(agent, prompt))?;
+        Ok(())
+    }
+
+    /// Register a copy of this agent and hand back its handle.
+    ///
+    /// It reads back the very sidecar `spawn_subagent` produces, and deliberately so: a copy is an
+    /// ordinary child from the moment it starts, and a program that has one should be able to name
+    /// it, wait on it and message it with the code it already has for children.
+    fn fork(&mut self, prompt: String) -> Result<SubagentHandle, ToolError> {
+        let outcome = self.call(FORK_TOOL, |api| api.fork(prompt))?;
+        match outcome.data {
+            Some(ToolData::SubagentSpawned(SubagentHandleData { id, slot, model_id })) => {
+                Ok(SubagentHandle { id, slot, model_id })
+            }
+            other => Err(self.missing_data(FORK_TOOL, other.as_ref())),
+        }
     }
 }
 

@@ -64,11 +64,11 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE,
-    CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE,
-    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, CAPABILITY_WRITE_FILE,
-    GgAgentConfig,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AGENT_TRANSITIONS, CAPABILITY_COMPACTION,
+    CAPABILITY_EDIT_FILE, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
+    CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
+    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
+    CAPABILITY_WRITE_FILE, GgAgentConfig,
 };
 
 use crate::board::IssuePolicy;
@@ -117,7 +117,7 @@ pub(crate) use tasks::OwnedStructured;
 pub use tasks::{
     AddTaskTool, CompleteTaskTool, RemoveTaskTool, SetBlockedByTool, UpdateTaskTool, is_task_tool,
 };
-pub use transitions::TRANSITION_STATE_TOOL;
+pub use transitions::{EXEC_TOOL, FORK_TOOL, TRANSITION_STATE_TOOL};
 
 /// Every tool name gg can offer, across **all** capabilities — the canonical vocabulary a per-tool
 /// [override](GgAgentConfig::disabled_tools) is validated against.
@@ -164,6 +164,8 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "run_workflow",
     "speculate",
     TRANSITION_STATE_TOOL,
+    EXEC_TOOL,
+    FORK_TOOL,
 ];
 
 /// What a toolset needs to know about the agent it is being assembled for, beyond its
@@ -708,6 +710,30 @@ impl ToolRegistry {
             tools.push(Box::new(transitions::TransitionStateTool::new(
                 position.clone(),
             )));
+        }
+
+        // The two [agent-transition](CAPABILITY_AGENT_TRANSITIONS) calls: becoming another agent,
+        // and running a copy of yourself. Both are the same succession machinery a machine
+        // transition uses, with the model choosing when rather than a declared table.
+        if capabilities.is_enabled(CAPABILITY_AGENT_TRANSITIONS) {
+            // `exec` needs somewhere to go — the roster it is validated against is the same one
+            // spawning uses — and is withheld from an agent standing in a machine state, where the
+            // run's next move is the machine's decision and `transition_state` is how it is made.
+            // Offering both would let a state walk out of its own process with nothing recording
+            // that it had.
+            if can_delegate && facts.fsm.is_none() {
+                tools.push(Box::new(transitions::ExecTool::new(spawnable.clone())));
+            }
+            // `fork` needs the delegation machinery rather than a roster: the copy is a child, and
+            // an agent that cannot `wait_for_subagents` on it or `send_message` to it has produced
+            // a leak rather than a second worker. It is gated on this agent's *own* profile
+            // carrying one of the two delegating capabilities, which is also what gets it the
+            // collection tools to go with the copy.
+            if capabilities.is_enabled(CAPABILITY_SUBAGENTS)
+                || capabilities.is_enabled(CAPABILITY_WORKFLOWS)
+            {
+                tools.push(Box::new(transitions::ForkTool));
+            }
         }
 
         // Apply the per-tool ablation overrides last: an individually

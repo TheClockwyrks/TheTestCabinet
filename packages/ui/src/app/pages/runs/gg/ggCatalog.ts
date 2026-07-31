@@ -982,6 +982,27 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "Declared, ordered subagent fan-outs (stages feeding the next) driven by the same scheduler.",
     tools: ["run_workflow"],
   },
+  {
+    id: "agent-transitions",
+    name: "Fork & exec",
+    group: "Delegation",
+    purpose:
+      "Let this agent become another agent (`exec` — it is replaced, and its successor keeps everything both profiles have, the conversation above all) or run a copy of itself (`fork` — a child that opens already knowing what this agent knows). `exec` needs agents in this one's roster; `fork` needs subagents or workflows, so the copy can be waited on. An agent inside a process is never offered `exec` — there, `transition_state` is the move.",
+    defaultOn: false,
+    tools: ["exec", "fork"],
+    toolAblation: [
+      {
+        label: "Become another agent",
+        tools: ["exec"],
+        hint: "Off leaves forking only — the agent can duplicate itself but not hand its session to a different profile.",
+      },
+      {
+        label: "Run a copy of yourself",
+        tools: ["fork"],
+        hint: "Off leaves exec only — the agent can become something else but not work two lines at once.",
+      },
+    ],
+  },
   // --- Process & quality ------------------------------------------------------
   {
     id: "completion",

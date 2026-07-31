@@ -1672,6 +1672,73 @@ not rebound to the registry entry for its own profile (§2.2's last table row, a
 a state agent learns the machine entirely from the `transition_state` tool description and its
 opening note, which is the same way it learns its roster.
 
+### 7.4 Stage 6 as built — `fork`/`exec` landed on top of the FSM machinery
+
+**LANDED** as `feat(gg): fork and exec`. §4's succession machinery had already landed with the FSM
+stage (§7.3), so this stage added a capability, two tools, two capture sites and the fork dispatch
+path — plus one genuine deviation from §4.4 that the design did not foresee. Nine things differ from
+§4; later stages should build on **this** list.
+
+1. **`fork` is turn-final, not immediate.** §4.5 and decision 15 say a fork dispatches immediately,
+   "exactly as `spawn_subagent` does". It cannot: on the **tool-calling** path a fork is dispatched
+   from the middle of the turn's tool-call loop, so the window it would deep-copy ends with an
+   assistant `tool_calls` message whose answering `tool` messages have not been written yet — a
+   conversation an OpenAI-shaped provider rejects outright, handed to a child that would open on it.
+   (`clear_ephemeral` re-frames a retained `tool` item for exactly this reason, `context.rs:1051`.)
+   So a `fork` **mints its id at the call** — the tool result and the `SubagentSpawned` sidecar are
+   real and immediate, which is the half that mattered — and the loop dispatches the child once
+   every tool result of the turn is recorded, at the same point a handoff is applied and *before*
+   the ending return, so a turn that forks and finishes still gets its copy. The one visible cost is
+   stated in both tool descriptions and in the WIT: a fork cannot be waited on in the turn that
+   created it. This also removed the need for the `ForkSource` plumbing the code path would
+   otherwise have needed to reach `CapabilityModules` from inside a running program.
+2. **`exec` may name an FSM shell, and entering one is supported.** §4.1 validates the target
+   against the roster and says nothing about shells; a successor running a shell profile literally
+   would have run the shell's own (ignored) capabilities. Rather than filtering shells out of the
+   target list — which would have needed the shell table in both `AgentFacts` and `DriveSetup` —
+   `run_agent` resolves a shell handoff to the machine's **entry state** before the transfer: the
+   successor runs that state's agent and stands in the entry position. It is the more capable
+   answer (a plain agent can hand its work to a declared process) and the smaller one.
+3. **`exec` is withheld from an agent standing in a machine state**, at the registry (via
+   `AgentFacts.fsm`) and defensively in `handle_exec`. §4 does not discuss the interaction; allowing
+   it would let a state walk out of its own process with nothing in the record saying it had.
+   `fork` is unaffected — a copy of a state's agent is a second worker, not a second driver.
+4. **A fork's `turn_base` is its forker's turn count.** §4.4 says the window's `turn` is not reset
+   but does not say what the copy's *loop* numbers from. Numbering from 0 would have made the copy's
+   first turn collide with a turn already in the window it inherited, silently repointing any later
+   `archive_thread`. The consequence is that a copy shares the turn ceiling its forker had spent,
+   which is the same rule a succession already follows.
+5. **`Handoff`, `HandoffReason`, `Opening`, `Succession`, `PendingFork`, `handle_transition`,
+   `handle_exec`, `handle_fork`, `dispatch_forks`, `succession_note`, `fork_note`, `describe_kinds`,
+   `kind_names` and the succession launch warnings moved into `crates/gg/src/agent.transitions.rs`**,
+   a `#[path]` child module of `agent` (like `agent.code.rs`), with
+   `agent.transitions.test.rs` declared from `agent.test.rs` so it can reach the `ScriptedFactory`
+   test harness. `agent.rs` shrank by ~250 lines; nothing became more public than `pub(super)`.
+6. **`dispatch_child` takes a `ChildSpec`** (`profile`, `brief`, `issue_id`, `worktree`, `ending`,
+   `id`, `seed`) instead of seven positional arguments — it was already at clippy's ceiling and a
+   fork needed two more. `AgentRole::Sub` gained `seed: Option<Box<Succession>>`, which `run_agent`
+   takes out of the role before anything else reads it; a seeded child skips `ModuleSet::resolve`
+   entirely and opens through `Opening::Carried`, which is the same path an exec'd successor takes.
+7. **`LoopToolApi::transition_requested` became `handoff_requested`** (an `exec` and a transition
+   are one succession declared two ways, and they share the slot as well as the handler), and
+   `CodeTurnState` gained `forks_requested: Vec<PendingFork>`. `CodeTurn` gained
+   `exec_roster: &[GgSubagentRef]`, which is all `handle_exec` needs of the profile.
+8. **`resolve_delegation_target` was generalized to `transitions::resolve_roster_target(roster,
+   args, verb)`**, so the delegation family and the succession family share one allowlist check and
+   one refusal shape without either borrowing the other's vocabulary.
+9. **`ggCatalog.ts` gained the `agent-transitions` entry now**, not in the console stage, on stage
+   3's precedent that a config surface nobody can author is a feature that may as well not exist.
+   It carries no params and two `toolAblation` rows (`exec`, `fork`).
+
+Also fixed in passing: the four `handle_transition` refusal strings landed in the FSM stage with
+runs of literal spaces in them (a missing `\` line continuation), so a model was reading
+`"the states you                      may move to"`. They are `\`-continued now.
+
+**Artifacts:** `packages/gg-sandbox/build.sh` ran cleanly in the devcontainer, so
+`crates/gg/src/sandbox/gg-sandbox.component.wasm` (~13.8 MB) and `signatures.json` (37 tools) are
+committed refreshed. `ALL_TOOL_NAMES` is 37. The WIT `delegation` interface gained `exec` and
+`fork`.
+
 ### Stage 5 — `feat(gg): user-defined FSM agents`
 
 `fsm.rs` rewritten: `FsmSpec`, `FsmStateSpec`, `FsmTransitionSpec`,

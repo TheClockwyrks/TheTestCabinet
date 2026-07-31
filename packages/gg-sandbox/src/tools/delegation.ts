@@ -180,3 +180,33 @@ export function speculate(
 export function transitionState(state: string, note?: string): void {
   call(() => raw.transitionState(state, note));
 }
+
+/**
+ * Continue this session as a different agent: the named agent takes over from your next turn with
+ * its own model, tools and instructions, keeping every capability the two of you both have — your
+ * whole conversation above all, so it needs no catching up. `prompt` is its opening message.
+ *
+ * Registered rather than performed, exactly as `transitionState` is and for the same reason: your
+ * window would otherwise be pulled out from under the program still composing into it. A session
+ * makes one succession per turn, so an `exec` after a `transitionState` — or a second `exec` —
+ * throws `refused`. Bound only when your agent may make agent transitions and has agents it may
+ * become, and never while a state machine is driving you. Throws `invalid-argument` for an agent
+ * you may not become.
+ */
+export function exec(agent: string, prompt?: string): void {
+  call(() => raw.exec(agent, prompt));
+}
+
+/**
+ * Run a copy of yourself, in parallel, on something you will not do yourself. The copy has your
+ * model, your tools and a private copy of your whole conversation, so `prompt` is the *difference*
+ * rather than a briefing — everything you have worked out is already there.
+ *
+ * Its handle comes back immediately, but the copy itself starts once this turn's tool results are
+ * recorded (the conversation it inherits has to be a complete one), so `waitForSubagents` can only
+ * collect it on a later turn — do not wait on it in the program that made it. Throws
+ * `limit-exceeded` at the delegation depth cap.
+ */
+export function fork(prompt: string): SubagentHandle {
+  return call(() => raw.fork(prompt));
+}

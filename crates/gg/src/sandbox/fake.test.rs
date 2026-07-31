@@ -330,6 +330,12 @@ impl ToolApi for FakeToolApi {
     fn transition_state(&mut self, state: String, note: Option<String>) -> ToolOutcome {
         self.call("transition_state", json!({ "state": state, "note": note }))
     }
+    fn exec(&mut self, agent: String, prompt: Option<String>) -> ToolOutcome {
+        self.call("exec", json!({ "agent": agent, "prompt": prompt }))
+    }
+    fn fork(&mut self, prompt: String) -> ToolOutcome {
+        self.call("fork", json!({ "prompt": prompt }))
+    }
     fn spawn_subagent(
         &mut self,
         agent: String,
@@ -502,6 +508,19 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
         // state's agent up once the program has ended, so a successful call reports only that it
         // was accepted.
         "transition_state" => ToolOutcome::ok("moving on once this turn ends", "transition"),
+        // An `exec` is the same registered succession a transition is, declared by the model
+        // instead of by a machine, so it reports the same way.
+        "exec" => ToolOutcome::ok("continuing as another agent once this turn ends", "exec"),
+        // A fork's dispatch waits for the end of the turn, but its handle does not: the id is
+        // minted at the call so the program can name the copy, which is why this carries the same
+        // sidecar a spawn does.
+        "fork" => ToolOutcome::ok("forked", "forked").with_data(ToolData::SubagentSpawned(
+            SubagentHandleData {
+                id: "agent-2".to_string(),
+                slot: "primary".to_string(),
+                model_id: "test/model".to_string(),
+            },
+        )),
         "search_archive" => ToolOutcome::ok("1 hit", "searched").with_data(
             ToolData::ArchiveSearch(ArchiveSearchData {
                 archive_empty: false,

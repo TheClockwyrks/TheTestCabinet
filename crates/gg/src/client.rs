@@ -160,6 +160,29 @@ pub const MOCK_FSM_UNDECLARED_STATE: &str = "ship";
 /// is the whole machine's return value.
 pub const MOCK_FSM_RETURN: &str = "The machine ran to its terminal state.";
 
+/// The title of the task the [exec predecessor script](MockClient::with_exec_before_script) adds
+/// before it becomes somebody else — the state a successor whose profile has no task list must be
+/// visibly **without**.
+pub const MOCK_EXEC_TASK: &str = "Map the failing case";
+
+/// The opening message the [exec predecessor script](MockClient::with_exec_before_script) hands the
+/// agent it becomes, so a test can assert it reached the successor's window.
+pub const MOCK_EXEC_PROMPT: &str = "the failing case is in the loader, not the parser";
+
+/// The final message the [exec successor script](MockClient::with_exec_after_script) ends with —
+/// the whole session's return value, produced by an agent that did not start it.
+pub const MOCK_EXEC_RETURN: &str = "The session finished as the agent it became.";
+
+/// The title of the task the [fork script](MockClient::with_fork_script) adds **before** it forks,
+/// so a test can assert the copy opened holding it without ever having written it.
+pub const MOCK_FORK_TASK: &str = "Reproduce the crash";
+
+/// The instructions the [fork script](MockClient::with_fork_script) gives its copy.
+pub const MOCK_FORK_PROMPT: &str = "try the other fix while I finish this one";
+
+/// The final message the [fork script](MockClient::with_fork_script) ends with.
+pub const MOCK_FORK_RETURN: &str = "Forked the alternative and carried on.";
+
 /// The id of the first task the [default mock script](MockClient::with_default_script) adds,
 /// which the second task is blocked by (and which the script later completes to unblock it).
 pub const DEFAULT_MOCK_TASK_SCAFFOLD: &str = "scaffold";
@@ -2055,6 +2078,119 @@ impl MockClient {
         )
     }
 
+    /// The **predecessor** of the offline `exec` e2e: a script that builds some state and then
+    /// becomes a different agent.
+    ///
+    /// 1. `add_task` — state that only survives if the successor's own profile keeps a task list;
+    /// 2. `exec` into `After`, with an opening message for it.
+    ///
+    /// It never calls `finish`: the session ends in the agent it became, which is the whole point.
+    /// Selected in production by a mock `model_id` naming `exec-before` (see [`mock_client_for`]),
+    /// so a succession is drivable **offline through the real binary**.
+    pub fn with_exec_before_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let plan = ModelResponse {
+            text: Some("Writing down what to look at.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_exec_task".to_string(),
+                name: "add_task".to_string(),
+                arguments: json!({ "id": "t1", "title": MOCK_EXEC_TASK }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(600, 30),
+            cost: None,
+        };
+        let succeed = ModelResponse {
+            text: Some("This needs the other agent's toolset.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_exec".to_string(),
+                name: "exec".to_string(),
+                arguments: json!({ "agent": "After", "prompt": MOCK_EXEC_PROMPT }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(700, 40),
+            cost: None,
+        };
+        Self::new(model_id, vec![plan, succeed])
+    }
+
+    /// The **successor** of the offline `exec` e2e: a script that finishes, which is how a
+    /// succession ends. Selected in production by a mock `model_id` naming `exec-after` (see
+    /// [`mock_client_for`]).
+    pub fn with_exec_after_script(model_id: impl Into<String>) -> Self {
+        Self::new(
+            model_id,
+            vec![ModelResponse {
+                usage: TokenCounts {
+                    uncached_input: Some(500),
+                    cached_input: None,
+                    output: Some(40),
+                    reasoning: None,
+                },
+                ..done_turn(MOCK_EXEC_RETURN)
+            }],
+        )
+    }
+
+    /// The offline `fork` e2e: a script that builds a little state, forks a copy of itself onto a
+    /// second line of work, and finishes.
+    ///
+    /// 1. `add_task` — the state the copy must open **already holding**, having never written it;
+    /// 2. `fork` — the copy, with instructions rather than a briefing;
+    /// 3. `finish`.
+    ///
+    /// A copy runs its forker's own profile, so it replays *this same script*: its `add_task`
+    /// duplicates an id it already has and its `fork` is refused at the depth cap, and it then
+    /// finishes. That is deliberate — it is the honest shape of forking, and it makes the depth cap
+    /// part of what the e2e covers. Selected in production by a mock `model_id` naming `fork` (see
+    /// [`mock_client_for`]).
+    pub fn with_fork_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let plan = ModelResponse {
+            text: Some("Noting what to reproduce.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_fork_task".to_string(),
+                name: "add_task".to_string(),
+                arguments: json!({ "id": "t1", "title": MOCK_FORK_TASK }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(600, 30),
+            cost: None,
+        };
+        let split = ModelResponse {
+            text: Some("Trying both fixes at once.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_fork".to_string(),
+                name: "fork".to_string(),
+                arguments: json!({ "prompt": MOCK_FORK_PROMPT }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(700, 40),
+            cost: None,
+        };
+        Self::new(
+            model_id,
+            vec![
+                plan,
+                split,
+                ModelResponse {
+                    usage: usage(800, 40),
+                    ..done_turn(MOCK_FORK_RETURN)
+                },
+            ],
+        )
+    }
+
     /// The **child** side of the offline [subagents](crate::subagents) e2e: a script that does a
     /// bit of work then returns a distinctive value.
     ///
@@ -2817,7 +2953,13 @@ pub fn client_for_slot(
 /// no runaway recursion. This keys purely on the (offline) `model_id`, matching how
 /// [`resolve_provider_kind`] already selects the mock provider by `model_id`.
 fn mock_client_for(model_id: &str) -> MockClient {
-    if model_id.contains("fsm-explore") {
+    if model_id.contains("exec-before") {
+        MockClient::with_exec_before_script(model_id)
+    } else if model_id.contains("exec-after") {
+        MockClient::with_exec_after_script(model_id)
+    } else if model_id.contains("fork") {
+        MockClient::with_fork_script(model_id)
+    } else if model_id.contains("fsm-explore") {
         MockClient::with_fsm_explore_script(model_id)
     } else if model_id.contains("fsm-build") {
         MockClient::with_fsm_build_script(model_id)

@@ -1,0 +1,727 @@
+//! **Succession**: how one agent instance becomes another — the shared half of a machine
+//! [transition](crate::fsm), an `exec`, and a `fork`.
+//!
+//! All three are the same operation over [modules](crate::modules) — carry these, drop those,
+//! initialize the rest — and they differ in exactly two things: who chose the successor, and what
+//! happens to the predecessor.
+//!
+//! | | Chosen by | The predecessor | The successor |
+//! | --- | --- | --- | --- |
+//! | [transition](handle_transition) | the machine's declared edge | ends | the same agent, in the next state |
+//! | [`exec`](handle_exec) | the model, from its own roster | ends | the same agent, under another profile |
+//! | [`fork`](handle_fork) | the model | **keeps running** | a *child*, one level deeper |
+//!
+//! So a transition and an `exec` both produce a [`Handoff`], which [`run_agent`](super::run_agent)'s
+//! incarnation loop applies: it drains the outgoing instance's modules,
+//! [transfers](crate::modules::transfer) what the plan carries, mints the successor, and drives it
+//! on the very same scheduler slot. A `fork` produces a [`PendingFork`] instead, which the loop
+//! turns into an ordinary spawned child whose modules are [clones](crate::modules::fork_modules) of
+//! the forker's rather than a fresh set.
+//!
+//! # Every one of them is turn-final
+//!
+//! A call here **declares**; the loop **applies**, once every tool result of the turn has been
+//! recorded. That is not a convenience: a window rewritten (or copied) mid-turn would carry an
+//! assistant `tool_calls` message whose answering `tool` messages had not been written yet, which
+//! an OpenAI-shaped provider rejects outright — and under
+//! [responses-as-code](crate::sandbox) it would pull the very window a running program is composing
+//! into out from under it. Deferring costs nothing the model can perceive beyond one sentence in
+//! each tool's description, and it is what makes the thread a successor inherits a valid one.
+//!
+//! The consequence worth knowing is that a fork cannot be waited on in the turn that created it:
+//! its id is real (it is minted at the call, so the tool result can name it), but it is not a child
+//! until the turn ends. Both tool descriptions say so.
+//!
+//! # First declaration wins
+//!
+//! A turn that declares two successions keeps the first and refuses the second, and an ending beats
+//! both. Unlike a [compaction](crate::compaction) — which is idempotent, so a second `compact`
+//! harmlessly replaces the first — a silently replaced successor identity is a change the model
+//! cannot see, and an agent that said its work was done has nothing left to hand on. Forks are the
+//! exception: they are additive (each is a separate child), so a turn may declare several.
+
+use super::*;
+
+use std::collections::BTreeSet;
+
+use test_cabinet_core::gg::{
+    CAPABILITY_AGENT_TRANSITIONS, GgSubagentRef, GgSubagentScope, GgTelemetryKind,
+};
+
+use crate::tools::{EXEC_TOOL, FORK_TOOL};
+
+// ---------------------------------------------------------------------------
+// What a succession is
+// ---------------------------------------------------------------------------
+
+/// A **succession**: one agent instance ending so another may continue in its place.
+///
+/// It is what a [`transition_state`](TRANSITION_STATE_TOOL) call and an [`exec`](EXEC_TOOL) call
+/// both turn into — deliberately one value rather than two, because the two features differ only in
+/// the [plan](TransferPlan) they carry and in whether a machine position travels with them.
+///
+/// The loop that applies it is in [`run_agent`](super::run_agent).
+pub(super) struct Handoff {
+    /// The [agent profile](GgAgentConfig) the successor runs under.
+    ///
+    /// It may name an [FSM shell](crate::fsm::is_shell), which is how a plain agent hands its work
+    /// to a declared process: the loop enters the machine at its entry state and the successor runs
+    /// *that state's* agent. A machine transition never names one — a shell cannot be a state.
+    pub(super) profile: String,
+    /// What the successor inherits.
+    pub(super) plan: TransferPlan,
+    /// The successor's opening message — what the predecessor wanted it to know. Folded into the
+    /// note gg writes about the handoff itself, so a successor is never left inferring what it
+    /// received from an empty task list.
+    pub(super) message: Option<String>,
+    /// Why the succession happened, which is what the console renders it as.
+    pub(super) reason: HandoffReason,
+    /// The machine position the successor occupies. `Some` for a machine transition; `None` for an
+    /// `exec`, which the loop replaces with a machine's entry position when the target turns out to
+    /// be a shell.
+    pub(super) fsm: Option<FsmPosition>,
+}
+
+/// Why one agent instance handed off to another — the gg-side half of
+/// [`GgAgentTransitionKind`](test_cabinet_core::gg::GgAgentTransitionKind).
+pub(super) enum HandoffReason {
+    /// A [machine](crate::fsm) moved from one state to the next.
+    Fsm {
+        /// The state the machine left, for the transition telemetry and the successor's note.
+        from: String,
+    },
+    /// The agent replaced itself with another profile of its own choosing.
+    Exec {
+        /// The [profile](GgAgentConfig) the predecessor was running, for the successor's note. The
+        /// predecessor's *id* is already on the successor as its `parent_id`; what the note needs
+        /// is the name of the agent whose conversation it is reading.
+        from: String,
+    },
+}
+
+impl Handoff {
+    /// How this handoff names its destination in a refusal: the machine state when it has one, and
+    /// the successor's profile otherwise.
+    fn profile_state(&self) -> &str {
+        match self.fsm.as_ref() {
+            Some(position) => position.state(),
+            None => &self.profile,
+        }
+    }
+}
+
+impl HandoffReason {
+    /// How this succession is reported on the wire.
+    pub(super) fn kind(&self) -> GgAgentTransitionKind {
+        match self {
+            HandoffReason::Fsm { .. } => GgAgentTransitionKind::Fsm,
+            HandoffReason::Exec { .. } => GgAgentTransitionKind::Exec,
+        }
+    }
+
+    /// The [machine](crate::fsm) state the predecessor stood in, for the successor's own
+    /// [`FsmState`](GgTelemetryKind::FsmState) event. `None` outside a machine — including for an
+    /// `exec` that *enters* one, whose successor is standing in an entry state and came from
+    /// nowhere within it.
+    pub(super) fn departed_state(&self) -> Option<String> {
+        match self {
+            HandoffReason::Fsm { from } => Some(from.clone()),
+            HandoffReason::Exec { .. } => None,
+        }
+    }
+}
+
+/// What one incarnation of an agent hands to the next — and what a [fork](handle_fork) is handed at
+/// its own first turn, which is the same thing from the other side of the boundary.
+///
+/// It is the whole of what crosses a succession: the modules (which are built on the *outgoing*
+/// side of the boundary, while its stream is still live to report what was carried), the note the
+/// successor opens on, the state it came from, and how many turns the thread it is holding has
+/// already spent.
+pub(super) struct Succession {
+    /// The successor's modules, already [transferred](crate::modules::transfer) — or, for a fork,
+    /// [cloned](crate::modules::fork_modules) — and re-resolved against its own profile.
+    pub(super) modules: ModuleSet,
+    /// The successor's [opening note](Opening::Carried).
+    pub(super) note: String,
+    /// The [machine](crate::fsm) state the predecessor was in, for the successor's own
+    /// [`FsmState`](GgTelemetryKind::FsmState) event. `None` for a succession outside a machine.
+    pub(super) from_state: Option<String>,
+    /// How many turns the thread in [`modules`](Self::modules) has already spent.
+    ///
+    /// It numbers the successor's turns continuously (a carried `Turn #37` still means turn 37, so
+    /// an `archive_thread` naming it still resolves) and makes a succession spend **one** turn
+    /// ceiling across its incarnations rather than one each. A fork inherits its forker's count for
+    /// the first reason and accepts the second: it is holding a thread somebody already paid for.
+    pub(super) turn_base: usize,
+}
+
+/// How an incarnation's window is opened: fresh, or carried over from the instance it succeeds.
+///
+/// The distinction is only about the first few items of the window and the two things that seed it.
+/// A [fresh](Self::Fresh) opening is what every agent has always had — the system prompt, the build
+/// prompt, any autoloaded specifications, any file views a persistent profile left open. A
+/// [carried](Self::Carried) one already *has* a thread: its system prompt is
+/// [rebased](ContextModel::rebase) to this profile's (item 0 is the one thing a successor must not
+/// inherit — it states someone else's toolset, roster and ending calls), its build prompt is left
+/// alone, and the seeding is skipped because the window it would seed into is not empty.
+pub(super) enum Opening {
+    /// A window with nothing in it yet.
+    Fresh,
+    /// A window transferred (or cloned) from another instance, with `note` appended at the tail:
+    /// what this instance received, what it did not, and whatever the instance it came from wanted
+    /// to tell it.
+    Carried {
+        /// The successor's opening note.
+        note: String,
+    },
+}
+
+/// A [`fork`](FORK_TOOL) the current turn declared: the child's already-minted id and what it is
+/// being told to do.
+///
+/// The id is minted at the **call** rather than at the dispatch so the tool result can name the
+/// copy — a spawn that returns no handle is a spawn the model cannot address — while the dispatch
+/// itself waits for the turn to end, so the window the copy inherits is a valid conversation rather
+/// than one stopped between an assistant's tool calls and their results.
+pub(super) struct PendingFork {
+    /// The copy's agent id, already minted from the run's counter and already returned to the
+    /// forker.
+    pub(super) id: String,
+    /// What the copy should do that its forker will not — its opening instructions, on top of the
+    /// conversation it inherits.
+    pub(super) prompt: String,
+}
+
+// ---------------------------------------------------------------------------
+// Judging a declared succession
+// ---------------------------------------------------------------------------
+
+/// The two gates every succession passes once its target is known, or `None` when it may proceed.
+///
+/// Both are refusals in the vocabulary the model can act on, and both are shared by
+/// [`transition_state`](handle_transition) and [`exec`](handle_exec) so a turn is judged the same
+/// way whichever call it reached for — and, because both execution paths route through these two
+/// functions, the same way whether it was a native tool call or a line of a program.
+fn succession_gates(
+    declared_ending: &Option<Ending>,
+    declared: &Option<Handoff>,
+    target: &str,
+) -> Option<ToolOutcome> {
+    if declared_ending.is_some() {
+        return Some(ToolOutcome::failed(
+            ToolFailure::Refused,
+            format!(
+                "you already ended your session this turn, so there is nothing left to hand to \
+                 `{target}`; the ending stands."
+            ),
+        ));
+    }
+    if let Some(taken) = declared.as_ref() {
+        return Some(ToolOutcome::failed(
+            ToolFailure::Refused,
+            format!(
+                "you already handed this session to `{}` this turn; a turn makes one succession, \
+                 and the first one stands.",
+                taken.profile_state(),
+            ),
+        ));
+    }
+    None
+}
+
+/// Turn a [`transition_state`](TRANSITION_STATE_TOOL) call into a captured [`Handoff`], or into the
+/// model-facing refusal that says why it was not taken.
+///
+/// Three things can go wrong, and each is answered in the vocabulary the model can act on. A target
+/// the current state does not declare is refused with the [legal ones](FsmPosition::legal_targets)
+/// listed. A **second** succession in one turn is refused because the first already stands. And a
+/// transition in a turn that has already declared an ending is refused because the ending wins.
+///
+/// Shared by both execution paths — the tool-calling dispatch and the program membrane's deferred
+/// declaration — so a transition is judged by exactly the same rules whichever way it was asked for.
+pub(super) fn handle_transition(
+    position: &FsmPosition,
+    declared_ending: &Option<Ending>,
+    declared: &mut Option<Handoff>,
+    call: &ToolCall,
+) -> ToolOutcome {
+    let state = match call.arguments.get("state").and_then(Value::as_str) {
+        Some(state) if !state.trim().is_empty() => state,
+        _ => {
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                format!(
+                    "`{TRANSITION_STATE_TOOL}`: missing required argument `state`. The states you \
+                     may move to: {}.",
+                    position.legal_targets()
+                ),
+            );
+        }
+    };
+    if let Some(refusal) = succession_gates(declared_ending, declared, state) {
+        return refusal;
+    }
+    let transition = match position.transition_to(state) {
+        Ok(transition) => transition,
+        Err(refusal) => return ToolOutcome::failed(ToolFailure::InvalidArgument, refusal),
+    };
+    let next = position.moved_to(transition);
+    let target = next.state().to_string();
+    let agent = next.agent().to_string();
+    *declared = Some(Handoff {
+        profile: agent.clone(),
+        plan: TransferPlan::Explicit(transition.transfer.clone()),
+        message: succession_message(call, "note"),
+        reason: HandoffReason::Fsm {
+            from: position.state().to_string(),
+        },
+        fsm: Some(next),
+    });
+    ToolOutcome::ok(
+        format!(
+            "Moving to `{target}` once this turn's tool results are recorded; the `{agent}` agent \
+             continues from there."
+        ),
+        format!("transition to {target} accepted"),
+    )
+}
+
+/// Turn an [`exec`](EXEC_TOOL) call into a captured [`Handoff`], or into the model-facing refusal
+/// that says why this agent is not becoming anything.
+///
+/// The target is validated against the agent's own [roster](GgSubagentRef) with the
+/// [subagent](GgSubagentScope::Subagent) scope — the very allowlist a spawn is checked against,
+/// because putting a profile to work is putting a profile to work and a fourth scope for "may be
+/// exec'd into" would be contract surface earning nothing. Naming **yourself** is legal when your
+/// roster admits you: it re-initializes the capabilities you both have, which is a deliberate
+/// self-reset rather than a mistake.
+///
+/// An agent standing in a [machine](crate::fsm) state is refused outright, and is not offered the
+/// tool in the first place: inside a process the next move is the process's decision, and an agent
+/// that could walk out of its own machine would leave a run whose record says it was still in one.
+pub(super) fn handle_exec(
+    roster: &[GgSubagentRef],
+    spawner: &Agent,
+    declared_ending: &Option<Ending>,
+    declared: &mut Option<Handoff>,
+    call: &ToolCall,
+) -> ToolOutcome {
+    if let Some(position) = spawner.fsm.as_ref() {
+        return ToolOutcome::failed(
+            ToolFailure::Unavailable,
+            format!(
+                "`{EXEC_TOOL}` is not available inside a process: you are running the `{state}` \
+                 state of the `{fsm}` process, and where it goes next is the process's decision. \
+                 Use `{TRANSITION_STATE_TOOL}` to move it on.",
+                state = position.state(),
+                fsm = position.fsm(),
+            ),
+        );
+    }
+    let target = match resolve_roster_target(roster, &call.arguments, "continue as") {
+        Ok(target) => target,
+        Err(refusal) => return refusal,
+    };
+    if let Some(refusal) = succession_gates(declared_ending, declared, &target) {
+        return refusal;
+    }
+    *declared = Some(Handoff {
+        profile: target.clone(),
+        // Everything both profiles have. This is what makes the successor open on its
+        // predecessor's whole conversation: history is a module every set holds.
+        plan: TransferPlan::Intersection,
+        message: succession_message(call, "prompt"),
+        reason: HandoffReason::Exec {
+            from: spawner.slot.clone(),
+        },
+        fsm: None,
+    });
+    ToolOutcome::ok(
+        format!(
+            "Continuing as `{target}` once this turn's tool results are recorded. It picks up this \
+             conversation, and its opening message says what else it received and what it did not."
+        ),
+        format!("exec into {target} accepted"),
+    )
+}
+
+/// Register a [`fork`](FORK_TOOL) for the loop to dispatch when the turn ends, and hand the forker
+/// the copy's id.
+///
+/// Everything that can refuse a fork is checked **here**, at the call, rather than at the dispatch:
+/// the delegation runtime, the depth cap, and the model binding. A tool result that says a copy was
+/// made has to be true, and the dispatch itself happens after the turn is over, where there is no
+/// longer a tool result to answer with.
+pub(super) fn handle_fork(
+    sub: &mut SubagentContext,
+    spawner: &Agent,
+    declared: &mut Vec<PendingFork>,
+    call: &ToolCall,
+) -> ToolOutcome {
+    let prompt = match call.arguments.get("prompt").and_then(Value::as_str) {
+        Some(prompt) if !prompt.trim().is_empty() => prompt.trim().to_string(),
+        _ => {
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                format!(
+                    "`{FORK_TOOL}` needs a non-empty `prompt` — what the copy of you should do that \
+                     you will not. It inherits your whole conversation, so this is the difference \
+                     rather than a briefing."
+                ),
+            );
+        }
+    };
+    let orch = &sub.orch;
+    // The depth cap, on exactly the terms `dispatch_child` applies it: a fork is a child. A
+    // *ceiling*, so `limit-exceeded` rather than `refused` — the request was well-formed, the run
+    // simply has no room left below this agent.
+    if spawner.depth >= orch.config.max_depth {
+        return ToolOutcome::failed(
+            ToolFailure::LimitExceeded,
+            format!(
+                "cannot fork: you are at the maximum delegation depth ({}), so this work has to be \
+                 done in this session rather than in a copy of it.",
+                orch.config.max_depth
+            ),
+        );
+    }
+    // The copy runs the forker's own profile, so its binding is the forker's — resolved here purely
+    // to fail *now* rather than after the turn, and to name the model in the answer.
+    let model_id = match profile_binding(&orch.caps, &spawner.slot)
+        .map_err(|err| err.to_string())
+        .and_then(|binding| {
+            orch.factory
+                .client_for(&binding)
+                .map(|client| client.model_id().to_string())
+                .map_err(|err| err.to_string())
+        }) {
+        Ok(model_id) => model_id,
+        Err(err) => {
+            return ToolOutcome::failed(
+                ToolFailure::IoError,
+                format!("cannot fork: your own agent profile could not be resolved again ({err})."),
+            );
+        }
+    };
+    let id = orch.next_agent_id();
+    declared.push(PendingFork {
+        id: id.clone(),
+        prompt,
+    });
+    ToolOutcome::ok(
+        format!(
+            "Forked into `{id}`, running as agent `{slot}` (model `{model_id}`) with a private copy \
+             of this conversation. It starts once this turn's tool results are recorded, so collect \
+             it with `wait_for_subagents` (or guide it with `send_message`) on a later turn, not \
+             this one.",
+            slot = spawner.slot,
+        ),
+        format!("forked into `{id}`"),
+        )
+    // The structured half of the same facts, and the same sidecar `spawn_subagent` produces — so a
+    // program's `fork()` reads the copy's handle back exactly as its `spawnSubagent` does, and the
+    // console's existing spawn affordances light up with no new case.
+    .with_data(ToolData::SubagentSpawned(SubagentHandleData {
+        id,
+        slot: spawner.slot.clone(),
+        model_id,
+    }))
+}
+
+/// Start every [fork](handle_fork) this turn declared, now that the turn's tool results are all
+/// recorded and the window they are copying is a complete conversation again.
+///
+/// The copies are dispatched as ordinary children — same scheduler, same depth cap, same
+/// [`ChildHandle`] the spawner waits on and messages through — differing only in that their modules
+/// arrive [cloned](crate::modules::fork_modules) from the forker instead of resolved from a
+/// profile, so they open on their forker's thread rather than on a brief.
+///
+/// A dispatch that fails here is logged rather than returned: the forker was told at the call that
+/// the copy was made, and the two failure modes left by then (a model that stopped resolving
+/// mid-turn, a scheduler that would not take the task) have no tool result to answer. Everything
+/// that *can* be refused was refused at the call, which is why this is a warning rather than a
+/// routine outcome.
+pub(super) fn dispatch_forks(
+    sub: &mut SubagentContext,
+    spawner: &Agent,
+    context: &ContextModel,
+    caps: &CapabilityModules,
+    emitter: &Emitter,
+    forks: Vec<PendingFork>,
+    turns_taken: usize,
+) {
+    for fork in forks {
+        let (modules, cloned) = crate::modules::fork_modules(context, caps, &fork.id);
+        let seed = Succession {
+            note: fork_note(spawner, &fork.prompt, turns_taken),
+            modules,
+            // A copy is not standing anywhere in a machine: it is a second worker for the agent
+            // that made it, not a second driver of the process that agent is in.
+            from_state: None,
+            // The copy continues its forker's turn numbering, because it is holding the very turns
+            // that numbering refers to.
+            turn_base: turns_taken,
+        };
+        let spec =
+            ChildSpec::new(spawner.slot.clone(), fork.prompt.clone()).forked(fork.id.clone(), seed);
+        match dispatch_child(sub, spawner, spec) {
+            Ok(child) => emitter.emit(GgTelemetryKind::AgentTransition {
+                kind: GgAgentTransitionKind::Fork,
+                to_agent_id: child.id,
+                agent: spawner.slot.clone(),
+                // A fork is not a machine move, so there is no state to report.
+                state: None,
+                // Everything a fork carries, it carries: nothing is dropped, and nothing has to be
+                // started empty, because the copy runs the very profile the original does.
+                transferred: kind_names(&cloned),
+                dropped: Vec::new(),
+                initialized: Vec::new(),
+            }),
+            Err(err) => emitter.emit(log(
+                "warn",
+                format!(
+                    "the copy `{}` this agent forked could not be started ({err}); the agent has \
+                     already been told it exists, so it may wait for a child that never runs.",
+                    fork.id
+                ),
+            )),
+        }
+    }
+}
+
+/// Resolve and validate the target agent of a succession call against `roster`, returning the
+/// profile name or the model-facing refusal that names the agents this one may reach.
+///
+/// `verb` is how the refusal describes the act ("continue as", "spawn"), so one resolver serves the
+/// delegation family and the succession family without either borrowing the other's vocabulary.
+// The `Err` is a `ToolOutcome` — the model-facing refusal — which is deliberately the same large
+// enum every tool returns; boxing it here alone would just add an unwrap at each call site.
+#[allow(clippy::result_large_err)]
+pub(super) fn resolve_roster_target(
+    roster: &[GgSubagentRef],
+    args: &Value,
+    verb: &str,
+) -> Result<String, ToolOutcome> {
+    let allowed = || {
+        let names: Vec<String> = roster
+            .iter()
+            .filter(|reference| reference.has_scope(GgSubagentScope::Subagent))
+            .map(|reference| format!("`{}`", reference.agent))
+            .collect();
+        if names.is_empty() {
+            "none".to_string()
+        } else {
+            names.join(", ")
+        }
+    };
+    match args
+        .get("agent")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|agent| !agent.is_empty())
+    {
+        Some(agent)
+            if roster
+                .iter()
+                .any(|r| r.agent == agent && r.has_scope(GgSubagentScope::Subagent)) =>
+        {
+            Ok(agent.to_string())
+        }
+        Some(agent) => Err(ToolOutcome::failed(
+            ToolFailure::InvalidArgument,
+            format!(
+                "cannot {verb} `{agent}`: it is not one of the agents you may use. Pass one of: {}.",
+                allowed()
+            ),
+        )),
+        None => Err(ToolOutcome::failed(
+            ToolFailure::InvalidArgument,
+            format!(
+                "this call needs an `agent` — the name of the agent to {verb}. You may use: {}.",
+                allowed()
+            ),
+        )),
+    }
+}
+
+/// The optional free-text message a succession call carries for the instance it creates, trimmed
+/// and normalized to `None` when it is blank.
+fn succession_message(call: &ToolCall, key: &str) -> Option<String> {
+    call.arguments
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|note| !note.is_empty())
+        .map(str::to_string)
+}
+
+// ---------------------------------------------------------------------------
+// The notes an arriving instance opens on
+// ---------------------------------------------------------------------------
+
+/// The [module kinds](ModuleKind) in a [transfer report](crate::modules::TransferReport) as the
+/// wire spells them.
+pub(super) fn kind_names(kinds: &[ModuleKind]) -> Vec<String> {
+    kinds.iter().map(|kind| kind.to_string()).collect()
+}
+
+/// The note a successor opens on: who it is now, what it received, what it did not, and whatever its
+/// predecessor wanted it to know.
+///
+/// It exists because the alternative is a model inferring its inheritance from absences. An agent
+/// handed a thread but no task list would otherwise discover that by calling `add_task` and finding
+/// the list empty — a discovery that costs a turn and looks, from inside the conversation, exactly
+/// like a bug. Saying it outright costs a few dozen tokens once.
+///
+/// `fsm` is the position the successor actually occupies, which is not always the one the handoff
+/// named: an `exec` that targets an [FSM shell](crate::fsm::is_shell) enters that machine, and the
+/// note has to say so or the successor is left wondering where its transition call came from.
+pub(super) fn succession_note(
+    handoff: &Handoff,
+    report: &TransferReport,
+    profile: &str,
+    fsm: Option<&FsmPosition>,
+) -> String {
+    let mut note = match (&handoff.reason, fsm) {
+        (HandoffReason::Fsm { from }, position) => format!(
+            "This process has moved from `{from}` to `{}`. You are now running as the `{profile}` \
+             agent, continuing the same session.",
+            position.map(FsmPosition::state).unwrap_or(profile),
+        ),
+        (HandoffReason::Exec { from }, Some(position)) => format!(
+            "The `{from}` agent has handed this session to the `{}` process, which starts in its \
+             `{}` state. You are now running as the `{profile}` agent, continuing the same session.",
+            position.fsm(),
+            position.state(),
+        ),
+        (HandoffReason::Exec { from }, None) => format!(
+            "The `{from}` agent has continued this session as you. You are now running as the \
+             `{profile}` agent — its conversation above is yours."
+        ),
+    };
+    let carried = describe_kinds(&report.transferred);
+    let dropped = describe_kinds(&report.dropped);
+    let fresh = describe_kinds(&report.initialized);
+    note.push_str(&match (carried, dropped.or(fresh)) {
+        (Some(carried), Some(other)) => format!(" You carry over {carried}; {other} did not."),
+        (Some(carried), None) => format!(" You carry over {carried}."),
+        (None, Some(other)) => format!(" Nothing was carried over: {other} did not."),
+        (None, None) => String::new(),
+    });
+    for reason in &report.notes {
+        note.push(' ');
+        note.push_str(reason);
+    }
+    if let Some(message) = &handoff.message {
+        note.push_str("\n\n");
+        note.push_str(message);
+    }
+    note
+}
+
+/// The note a [fork](handle_fork) opens on: where the conversation above it came from, that its
+/// original is still running one of its own, and what this copy is for.
+///
+/// It names the turn because that is the number every item in the inherited window is stamped with:
+/// a copy that later archives "turns 1–20" is naming the same twenty turns its forker would.
+pub(super) fn fork_note(forker: &Agent, prompt: &str, turn: usize) -> String {
+    format!(
+        "You were forked from agent `{id}` (the `{slot}` agent) at turn {turn}. Everything above is \
+         that agent's conversation up to the moment it forked you — it is yours now, and it is \
+         still running its own copy of it in parallel with you, so do not assume anything you do \
+         here is visible to it. Your instructions from here:\n\n{prompt}",
+        id = forker.id,
+        slot = forker.slot,
+    )
+}
+
+/// A list of [module kinds](ModuleKind) as a noun phrase — `the conversation, the task list and the
+/// memories` — or `None` when there are none.
+fn describe_kinds(kinds: &[ModuleKind]) -> Option<String> {
+    let described: Vec<&str> = kinds
+        .iter()
+        .map(|kind| match kind {
+            ModuleKind::History => "the conversation",
+            ModuleKind::Memories => "the memories",
+            ModuleKind::Tasks => "the task list",
+            ModuleKind::Board => "the board",
+            ModuleKind::Skills => "the skills already read",
+            ModuleKind::Archive => "the thread archive",
+        })
+        .collect();
+    match described.split_last() {
+        None => None,
+        Some((last, [])) => Some((*last).to_string()),
+        Some((last, rest)) => Some(format!("{} and {last}", rest.join(", "))),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Launch diagnostics
+// ---------------------------------------------------------------------------
+
+/// The launch **warnings** a capability set's [agent-transitions](CAPABILITY_AGENT_TRANSITIONS)
+/// configuration produces: the configurations that enable the capability and get less of it than
+/// they asked for.
+///
+/// All warnings rather than failures, on the same terms as every other configuration gg can still
+/// run: none of them makes the run unrunnable, and each is a tool that will simply not be there.
+/// Reported once per profile, before the first turn, because "why did the model never call `exec`?"
+/// is otherwise a question only a reading of the toolset can answer.
+///
+/// Collected by [`Orchestrator::build`](super::Orchestrator) alongside the rest of the launch
+/// diagnostics.
+pub(super) fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
+    let mut warnings = Vec::new();
+    // Every profile a declared machine runs as one of its states. Such a profile keeps `fork` but
+    // is never offered `exec`, which is worth saying to whoever enabled the capability on it.
+    let state_agents: BTreeSet<String> = crate::fsm::machines(set)
+        .into_iter()
+        .flatten()
+        .flat_map(|(_, spec)| {
+            spec.states
+                .values()
+                .map(|state| state.agent.clone())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    for profile in &set.agents {
+        if !profile.is_enabled(CAPABILITY_AGENT_TRANSITIONS) {
+            continue;
+        }
+        if crate::fsm::is_shell(profile) {
+            // A shell has no turns of its own; `fsm::launch_warnings` already says its other
+            // capabilities are ignored, and repeating it per capability would be noise.
+            continue;
+        }
+        if profile
+            .agents_in_scope(GgSubagentScope::Subagent)
+            .is_empty()
+        {
+            warnings.push(format!(
+                "agent `{}`: it enables `{CAPABILITY_AGENT_TRANSITIONS}` but lists no agents it \
+                 may use, so there is nothing for `{EXEC_TOOL}` to become and the call is not \
+                 offered. Add the agents it may continue as to its roster.",
+                profile.name,
+            ));
+        }
+        if !profile.is_enabled(CAPABILITY_SUBAGENTS) && !profile.is_enabled(CAPABILITY_WORKFLOWS) {
+            warnings.push(format!(
+                "agent `{}`: it enables `{CAPABILITY_AGENT_TRANSITIONS}` but neither \
+                 `{CAPABILITY_SUBAGENTS}` nor `{CAPABILITY_WORKFLOWS}`, so a copy of it could \
+                 never be waited on or messaged and `{FORK_TOOL}` is not offered.",
+                profile.name,
+            ));
+        }
+        if state_agents.contains(profile.name.trim()) {
+            warnings.push(format!(
+                "agent `{}`: it enables `{CAPABILITY_AGENT_TRANSITIONS}` and is run as the state \
+                 of a process, so it is not offered `{EXEC_TOOL}` — inside a machine the next move \
+                 is `{TRANSITION_STATE_TOOL}`'s. `{FORK_TOOL}` is unaffected.",
+                profile.name,
+            ));
+        }
+    }
+    warnings
+}

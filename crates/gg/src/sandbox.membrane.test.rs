@@ -258,6 +258,16 @@ fn crossings() -> Vec<Crossing> {
             program: "agents.transitionState(\"verify\", \"the build is green\");",
             expected: || json!({ "state": "verify", "note": "the build is green" }),
         },
+        Crossing {
+            tool: "exec",
+            program: "agents.exec(\"Builder\", \"pick it up from here\");",
+            expected: || json!({ "agent": "Builder", "prompt": "pick it up from here" }),
+        },
+        Crossing {
+            tool: "fork",
+            program: "agents.fork(\"try the other fix\");",
+            expected: || json!({ "prompt": "try the other fix" }),
+        },
     ]
 }
 

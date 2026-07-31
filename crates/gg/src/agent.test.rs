@@ -8546,3 +8546,13 @@ mod persistence_tests;
 /// the edge named.
 #[path = "agent.fsm.test.rs"]
 mod fsm_tests;
+
+/// **`fork` and `exec` through the live loop**: an agent replacing itself with another and an agent
+/// running a copy of itself, both driven offline through the real binary.
+///
+/// Separate from `modules.test.rs` (the transfer primitive and the clone, with no loop behind them)
+/// for the same reason `agent.fsm.test.rs` is separate from `fsm.test.rs`: what these guard is that
+/// a succession really replaces the running agent on its own slot with its thread intact, and that
+/// a copy really opens holding state it never wrote.
+#[path = "agent.transitions.test.rs"]
+mod transition_tests;

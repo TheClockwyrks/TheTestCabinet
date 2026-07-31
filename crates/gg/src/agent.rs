@@ -161,14 +161,14 @@ use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, AgentFacts, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL,
-    EVICT_FILE_VIEW_TOOL, OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL,
-    ReadFileTool, ReadPolicy, ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL, SPAWN_SUBAGENT_TOOL,
-    SPECULATE_TOOL, SpeculationData, SubagentHandleData, SubagentResultData, TRANSITION_STATE_TOOL,
-    Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL,
-    WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop, is_board_tool, is_context_reclaim_tool,
-    is_memory_tool, is_subagent_tool, is_task_tool, parse_archive_ranges, parse_compact_request,
-    parse_evict_path, read_policy, saturating_u32, saturating_u64, shell_offload,
-    unknown_disabled_tools,
+    EVICT_FILE_VIEW_TOOL, EXEC_TOOL, FORK_TOOL, OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL,
+    RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy, ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL,
+    SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SpeculationData, SubagentHandleData, SubagentResultData,
+    TRANSITION_STATE_TOOL, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, ToolRegistry,
+    WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop, is_board_tool,
+    is_context_reclaim_tool, is_memory_tool, is_subagent_tool, is_task_tool, parse_archive_ranges,
+    parse_compact_request, parse_evict_path, read_policy, saturating_u32, saturating_u64,
+    shell_offload, unknown_disabled_tools,
 };
 use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
@@ -1220,6 +1220,11 @@ impl Orchestrator {
         // from a spawner organizing memories differently — would otherwise run as an entirely
         // different experiment from the one it describes.
         warnings.extend(crate::memories::launch_warnings(set));
+        // Succession is checked here rather than at the call for a reason peculiar to it: every one
+        // of its diagnostics is a *tool that will not be offered*, and an absent tool is the one
+        // misconfiguration a model can never report — it simply never makes the call, and the run
+        // reads as one where the agent chose not to.
+        warnings.extend(transitions::launch_warnings(set));
         let deadline = limits.max_runtime.map(|budget| Instant::now() + budget);
         // The Root agent's code setup: responses-as-code is per-agent, but the Root's is what the
         // run-level launch log and the sandbox warm-up decision key on.
@@ -2080,6 +2085,15 @@ enum AgentRole {
         /// detached agent (a reviewer, a judge, a merge agent), which answers to no spawner's
         /// notebook.
         inherited: InheritedModules,
+        /// The modules and opening note a [fork](crate::tools::FORK_TOOL) was built with, when this
+        /// subagent *is* one: everything its forker held, [cloned](crate::modules::fork_modules) on
+        /// the forker's side of the boundary while its window was whole.
+        ///
+        /// `None` for every ordinary child, which builds its own set from its profile. A child that
+        /// carries one skips resolution entirely and opens on the thread it was handed — the same
+        /// path an [exec'd](Opening::Carried) successor takes, because it is the same thing seen
+        /// from the far side.
+        seed: Option<Box<Succession>>,
         /// The spawner's wait condition the subagent signals on completion.
         parent_wait: Arc<ParentWait>,
         /// The channel the subagent's [return value](AgentReturn) is delivered on.
@@ -2166,10 +2180,18 @@ struct ProjectContext {
 async fn run_agent(
     orch: Arc<Orchestrator>,
     agent: Agent,
-    role: AgentRole,
+    mut role: AgentRole,
     client: Box<dyn ModelClient>,
     inbox_rx: mpsc::UnboundedReceiver<String>,
 ) -> LoopEnd {
+    // What this agent was **handed at birth**, when it is a [fork](crate::tools::FORK_TOOL): a copy
+    // of everything its forker held. Taken out of the role here, before anything else reads the
+    // role, so the rest of this function sees an ordinary subagent.
+    let seed = match &mut role {
+        AgentRole::Sub { seed, .. } => seed.take().map(|seed| *seed),
+        AgentRole::Issue { .. } | AgentRole::Root => None,
+    };
+
     // An [FSM shell](crate::fsm::is_shell) has no turns of its own: an agent about to run one
     // *becomes* the machine's entry state instead of spawning a child to do it. This is what keeps a
     // machine indistinguishable from an ordinary agent to whoever put it to work — one id in the
@@ -2267,15 +2289,22 @@ async fn run_agent(
         entered_machine.is_none().then_some(client);
     // What the previous incarnation handed over: its modules (already transferred), the opening note
     // gg wrote about the handoff, and the state it came from.
-    let mut succession: Option<Succession> = None;
+    //
+    // A [fork](crate::tools::FORK_TOOL) arrives holding one *before its first* incarnation: a copy
+    // of an agent is a successor whose predecessor is still running, so it opens on a carried
+    // window by the same path an exec'd successor does rather than by one of its own.
+    let mut succession: Option<Succession> = seed;
     // This agent's delegation context, built once and kept: it owns the inbox its parent messages it
     // through and the children it has spawned, neither of which a succession may drop.
     let mut subagent_context: Option<SubagentContext> = None;
     let mut inbox_rx = Some(inbox_rx);
     // How many turns this agent has taken in total. A succession spends **one** turn ceiling between
     // its incarnations and numbers its turns continuously across them, which is what keeps a
-    // transferred thread's `Turn #37` meaning turn 37.
-    let mut turns_taken = 0usize;
+    // transferred thread's `Turn #37` meaning turn 37. A fork starts from its forker's count for
+    // exactly that reason: the window it was handed already has those turns in it.
+    let mut turns_taken = succession
+        .as_ref()
+        .map_or(0, |succession| succession.turn_base);
 
     let (end, agent_emitter) = loop {
         // Scope this incarnation's stream to its own node in the tree (and to the issue it was
@@ -2708,36 +2737,49 @@ async fn run_agent(
             emitter.emit(agent_status(GgAgentStatus::Done));
         }
 
-        let successor_profile = orch.profile_or_root(&handoff.profile).clone();
+        // A handoff may name an **FSM shell**, which an `exec` is allowed to do and a machine
+        // transition never is. A shell has no turns of its own, so the successor *enters* the
+        // machine instead: it runs the entry state's agent profile and stands in the entry
+        // position, exactly as an agent dispatched onto a shell does. This is the one place the
+        // profile a handoff named and the profile its successor actually runs can differ, so every
+        // line below reads the resolved pair rather than the handoff.
+        let (successor_slot, successor_fsm) = match orch.machine(&handoff.profile) {
+            Some(machine) => {
+                let position = machine.entry_position();
+                (position.agent().to_string(), Some(position))
+            }
+            None => (handoff.profile.clone(), handoff.fsm.clone()),
+        };
+        let successor_profile = orch.profile_or_root(&successor_slot).clone();
         // The successor's window limit and execution mode, which its modules are re-resolved
         // against: an agent moving from a million-token window onto a 32k one is over its window the
         // instant it arrives, and its first turn's compaction check is what has to see that.
-        let successor_client =
-            match profile_binding(&orch.caps, &handoff.profile).and_then(|binding| {
+        let successor_client = match profile_binding(&orch.caps, &successor_slot).and_then(
+            |binding| {
                 orch.factory
                     .client_for(&binding)
                     .map_err(|err| err.to_string())
-            }) {
-                Ok(client) => client,
-                Err(err) => {
-                    emitter.emit(log(
+            },
+        ) {
+            Ok(client) => client,
+            Err(err) => {
+                emitter.emit(log(
                     "error",
                     format!(
-                        "the `{}` agent could not be resolved to a model ({err}); the session ends \
-                         here rather than continuing as its predecessor.",
-                        handoff.profile
+                        "the `{successor_slot}` agent could not be resolved to a model ({err}); the \
+                         session ends here rather than continuing as its predecessor."
                     ),
                 ));
-                    break (
-                        LoopEnd {
-                            status: STATUS_MODEL_ERROR,
-                            handoff: None,
-                            ..end
-                        },
-                        agent_emitter,
-                    );
-                }
-            };
+                break (
+                    LoopEnd {
+                        status: STATUS_MODEL_ERROR,
+                        handoff: None,
+                        ..end
+                    },
+                    agent_emitter,
+                );
+            }
+        };
         let successor_code = orch.code_setup(&successor_profile);
         let successor_id = orch.next_agent_id();
         let successor_history = HistorySetup {
@@ -2762,9 +2804,8 @@ async fn run_agent(
         emitter.emit(GgTelemetryKind::AgentTransition {
             kind: handoff.reason.kind(),
             to_agent_id: successor_id.clone(),
-            agent: handoff.profile.clone(),
-            state: handoff
-                .fsm
+            agent: successor_slot.clone(),
+            state: successor_fsm
                 .as_ref()
                 .map(|position| position.state().to_string()),
             transferred: kind_names(&report.transferred),
@@ -2775,22 +2816,25 @@ async fn run_agent(
         // The exclusivity key follows the profile, so a succession into a persistent profile
         // contends for it exactly as a fresh instance would — without giving up the running slot it
         // already holds, unless the key is held by somebody else.
-        let successor_exclusive = orch.exclusive_key(&handoff.profile);
+        let successor_exclusive = orch.exclusive_key(&successor_slot);
         orch.scheduler
             .rekey(exclusive.as_deref(), successor_exclusive.as_deref())
             .await;
         exclusive = successor_exclusive;
 
-        let from_state = match &handoff.reason {
-            HandoffReason::Fsm { from } => Some(from.clone()),
-        };
         succession = Some(Succession {
-            note: succession_note(&handoff, &report, &successor_profile.name),
+            note: succession_note(
+                &handoff,
+                &report,
+                &successor_profile.name,
+                successor_fsm.as_ref(),
+            ),
             modules: successor_modules,
-            from_state,
+            from_state: handoff.reason.departed_state(),
+            turn_base: turns_taken,
         });
         pending_client = Some(successor_client);
-        agent = agent.succeeding(successor_id, handoff.profile, handoff.fsm);
+        agent = agent.succeeding(successor_id, successor_slot, successor_fsm);
     };
     let emitter = &agent_emitter;
 
@@ -2863,88 +2907,6 @@ async fn run_agent(
         }
     }
     end
-}
-
-/// What one incarnation of an agent hands to the next.
-///
-/// It is the whole of what crosses a [succession](Handoff): the modules the transfer produced (which
-/// are built on the *outgoing* side of the boundary, while its stream is still live to report what
-/// was carried), the note the successor opens on, and the state it came from.
-struct Succession {
-    /// The successor's modules, already [transferred](crate::modules::transfer) and re-resolved
-    /// against its own profile.
-    modules: ModuleSet,
-    /// The successor's [opening note](Opening::Carried).
-    note: String,
-    /// The [machine](crate::fsm) state the predecessor was in, for the successor's own
-    /// [`FsmState`](GgTelemetryKind::FsmState) event. `None` for a succession outside a machine.
-    from_state: Option<String>,
-}
-
-/// The [module kinds](ModuleKind) in a [transfer report](crate::modules::TransferReport) as the
-/// wire spells them.
-fn kind_names(kinds: &[ModuleKind]) -> Vec<String> {
-    kinds.iter().map(|kind| kind.to_string()).collect()
-}
-
-/// The note a successor opens on: who it is now, what it received, what it did not, and whatever its
-/// predecessor wanted it to know.
-///
-/// It exists because the alternative is a model inferring its inheritance from absences. An agent
-/// handed a thread but no task list would otherwise discover that by calling `add_task` and finding
-/// the list empty — a discovery that costs a turn and looks, from inside the conversation, exactly
-/// like a bug. Saying it outright costs a few dozen tokens once.
-fn succession_note(handoff: &Handoff, report: &TransferReport, profile: &str) -> String {
-    let mut note = match &handoff.reason {
-        HandoffReason::Fsm { from } => format!(
-            "This process has moved from `{from}` to `{}`. You are now running as the `{profile}` \
-             agent, continuing the same session.",
-            handoff
-                .fsm
-                .as_ref()
-                .map(FsmPosition::state)
-                .unwrap_or(profile),
-        ),
-    };
-    let carried = describe_kinds(&report.transferred);
-    let dropped = describe_kinds(&report.dropped);
-    let fresh = describe_kinds(&report.initialized);
-    note.push_str(&match (carried, dropped.or(fresh)) {
-        (Some(carried), Some(other)) => format!(" You carry over {carried}; {other} did not."),
-        (Some(carried), None) => format!(" You carry over {carried}."),
-        (None, Some(other)) => format!(" Nothing was carried over: {other} did not."),
-        (None, None) => String::new(),
-    });
-    for reason in &report.notes {
-        note.push(' ');
-        note.push_str(reason);
-    }
-    if let Some(message) = &handoff.message {
-        note.push_str("\n\n");
-        note.push_str(message);
-    }
-    note
-}
-
-/// A list of [module kinds](ModuleKind) as a noun phrase — `the conversation, the task list and the
-/// memories` — or `None` when there are none.
-fn describe_kinds(kinds: &[ModuleKind]) -> Option<String> {
-    let described: Vec<&str> = kinds
-        .iter()
-        .map(|kind| match kind {
-            ModuleKind::History => "the conversation",
-            ModuleKind::Memories => "the memories",
-            ModuleKind::Tasks => "the task list",
-            ModuleKind::Board => "the board",
-            ModuleKind::Skills => "the skills already read",
-            ModuleKind::Archive => "the thread archive",
-        })
-        .collect();
-    match described.split_last() {
-        None => None,
-        Some((last, [])) => Some((*last).to_string()),
-        Some((last, rest)) => Some(format!("{} and {last}", rest.join(", "))),
-    }
 }
 
 /// Announce the run's enabled capabilities once (on the root's stream) so the console shows the
@@ -3146,15 +3108,7 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
     // Ad-hoc subagents carry no board issue (issues auto-dispatch to their own top-level agents)
     // and share the spawner's tree — isolation belongs to issues and speculations, which own the
     // worktree's whole lifecycle.
-    match dispatch_child(
-        sub,
-        spawner,
-        brief,
-        None,
-        &profile,
-        None,
-        EndingRole::Standard,
-    ) {
+    match dispatch_child(sub, spawner, ChildSpec::new(&profile, brief)) {
         Ok(child) => {
             ToolOutcome::ok(
                 format!(
@@ -3291,13 +3245,18 @@ fn resolve_delegation_target(
 fn dispatch_child(
     sub: &mut SubagentContext,
     spawner: &Agent,
-    brief: String,
-    issue_id: Option<String>,
-    profile_name: &str,
-    worktree: Option<Worktree>,
-    ending: EndingRole,
+    spec: ChildSpec,
 ) -> Result<DispatchedChild, DispatchError> {
     let orch = &sub.orch;
+    let ChildSpec {
+        profile: slot,
+        brief,
+        issue_id,
+        worktree,
+        ending,
+        id,
+        seed,
+    } = spec;
 
     // Depth cap: a structural refusal, not a queue. An agent at the max depth cannot delegate
     // deeper — it must do the work itself. A *ceiling*, so `limit-exceeded` rather than `refused`:
@@ -3315,7 +3274,6 @@ fn dispatch_child(
 
     // The child runs under the named agent profile. A profile this run does not declare (or one
     // with no model) is a bad *argument*, which is what tells a program to pass a different one.
-    let slot = profile_name.to_string();
     let binding = profile_binding(&orch.caps, &slot).map_err(|err| {
         DispatchError::new(
             ToolFailure::InvalidArgument,
@@ -3336,8 +3294,10 @@ fn dispatch_child(
     let model_id = client.model_id().to_string();
 
     // Build the child's identity, wiring, and role, then schedule it. The child clones the
-    // spawner's `ParentWait` so it can signal completion back up.
-    let child_id = orch.next_agent_id();
+    // spawner's `ParentWait` so it can signal completion back up. A fork's id was minted at the
+    // call that declared it — the forker was handed it a moment ago, in the tool result — so it is
+    // reused here rather than drawn again.
+    let child_id = id.unwrap_or_else(|| orch.next_agent_id());
 
     let (inbox_tx, inbox_rx) = mpsc::unbounded_channel();
     let (result_tx, result_rx) = oneshot::channel();
@@ -3348,8 +3308,9 @@ fn dispatch_child(
         depth: spawner.depth + 1,
         slot: slot.clone(),
         // A child is not standing in its spawner's machine: it was given a job by the agent in that
-        // state, not the state itself. Its own profile may of course be an FSM shell, which
-        // `run_agent` enters for it.
+        // state, not the state itself. That holds for a fork too — a copy of a state's agent is a
+        // second worker, not a second driver of the process. Its own profile may of course be an
+        // FSM shell, which `run_agent` enters for it.
         fsm: None,
     };
     let role = AgentRole::Sub {
@@ -3360,6 +3321,7 @@ fn dispatch_child(
         // What the spawner holds, offered to the child. Whether the child takes it is its own
         // profile's decision — see `MemoriesRuntime::resolve`.
         inherited: sub.inherited.offer(),
+        seed,
         parent_wait: Arc::clone(&sub.ctx.wait),
         result: result_tx,
         finished: Arc::clone(&finished),
@@ -3382,6 +3344,75 @@ fn dispatch_child(
         slot,
         model_id,
     })
+}
+
+/// What one [dispatch](dispatch_child) is asked for: which profile to run, what to tell it, and the
+/// four things only some dispatchers set.
+///
+/// It is a struct rather than a parameter list because the list had already reached clippy's
+/// argument ceiling before `fork` needed two more, and because most dispatchers care about two of
+/// the seven fields: a `spawn_subagent` is a profile and a brief, and everything else is a default
+/// it should not have to spell.
+struct ChildSpec {
+    /// The [agent profile](GgAgentConfig) the child runs under.
+    profile: String,
+    /// The brief that drives the child — its build prompt, and what its
+    /// [`AgentSpawned`](GgTelemetryKind::AgentSpawned) reports it was dispatched with. A
+    /// [seeded](Self::seed) child opens on a carried window instead, so for a fork this is the
+    /// instruction rather than the whole context.
+    brief: String,
+    /// The board issue the child is dispatched against, when any — it scopes the child's telemetry.
+    issue_id: Option<String>,
+    /// The isolated [worktree](Worktree) the child's tools are rooted in, when it gets one.
+    worktree: Option<Worktree>,
+    /// Which [ending calls](EndingRole) the child is dispatched with.
+    ending: EndingRole,
+    /// The child's agent id, when it has already been minted. Only a [fork](handle_fork) sets it:
+    /// its id was returned to the forker at the call, before the dispatch this spec drives.
+    id: Option<String>,
+    /// The modules and opening note a [fork](handle_fork) was built with.
+    seed: Option<Box<Succession>>,
+}
+
+impl ChildSpec {
+    /// An ordinary child: a profile, a brief, and every option at its default.
+    fn new(profile: impl Into<String>, brief: impl Into<String>) -> Self {
+        Self {
+            profile: profile.into(),
+            brief: brief.into(),
+            issue_id: None,
+            worktree: None,
+            ending: EndingRole::Standard,
+            id: None,
+            seed: None,
+        }
+    }
+
+    /// This child, dispatched against board issue `issue_id`.
+    fn on_issue(mut self, issue_id: Option<String>) -> Self {
+        self.issue_id = issue_id;
+        self
+    }
+
+    /// This child, rooted in an isolated `worktree` rather than the shared main tree.
+    fn in_worktree(mut self, worktree: Worktree) -> Self {
+        self.worktree = Some(worktree);
+        self
+    }
+
+    /// This child, dispatched with the ending calls of `ending` rather than the standard pair.
+    fn ending(mut self, ending: EndingRole) -> Self {
+        self.ending = ending;
+        self
+    }
+
+    /// This child as a **fork**: an id already minted and handed to its forker, and the clone of
+    /// everything the forker held for it to open on.
+    fn forked(mut self, id: String, seed: Succession) -> Self {
+        self.id = Some(id);
+        self.seed = Some(Box::new(seed));
+        self
+    }
 }
 
 /// Create a fresh isolated [worktree](Worktree) named `name`, or a model-facing error when
@@ -4162,8 +4193,10 @@ fn run_detached_agent<'a>(
             worktree,
             ending,
             // A detached agent is nobody's subagent in the sense inheritance means: it is
-            // dispatched by gg itself, not by an agent whose notebook it could reasonably continue.
+            // dispatched by gg itself, not by an agent whose notebook it could reasonably continue,
+            // and nobody forked it.
             inherited: InheritedModules::default(),
+            seed: None,
             parent_wait: Arc::new(ParentWait::new()),
             result: result_tx,
             finished: Arc::new(AtomicBool::new(false)),
@@ -4468,11 +4501,9 @@ async fn handle_speculate(
         match dispatch_child(
             sub,
             spawner,
-            brief,
-            issue_id.clone(),
-            &attempt_profile,
-            Some(worktree),
-            EndingRole::Standard,
+            ChildSpec::new(&attempt_profile, brief)
+                .on_issue(issue_id.clone())
+                .in_worktree(worktree),
         ) {
             Ok(child) => fanned.push(SpeculationAttempt {
                 id: child.id,
@@ -4738,13 +4769,11 @@ async fn dispatch_judge(
     let judge = dispatch_child(
         sub,
         spawner,
-        judge_brief,
-        issue_id,
-        judge_slot,
-        None,
-        EndingRole::Judge {
-            attempts: candidates,
-        },
+        ChildSpec::new(judge_slot, judge_brief)
+            .on_issue(issue_id)
+            .ending(EndingRole::Judge {
+                attempts: candidates,
+            }),
     )
     .map_err(|err| format!("the judge could not be dispatched: {err}"))?;
     let collected = await_children(sub, emitter, std::slice::from_ref(&judge.id)).await;
@@ -5000,15 +5029,7 @@ async fn run_workflow(
         let mut ids = Vec::with_capacity(items.len());
         for item in &items {
             let brief = render_template(&stage.prompt, item, &prior_block);
-            match dispatch_child(
-                sub,
-                spawner,
-                brief,
-                None,
-                &stage.slot,
-                None,
-                EndingRole::Standard,
-            ) {
+            match dispatch_child(sub, spawner, ChildSpec::new(&stage.slot, brief)) {
                 Ok(child) => ids.push(child.id),
                 Err(err) => {
                     // A dispatch failure aborts the workflow, but the already-dispatched agents of
@@ -5225,161 +5246,6 @@ fn workflow_stage_event(
         item_count: item_count as u64,
         phase,
     }
-}
-
-/// Turn a [`transition_state`](TRANSITION_STATE_TOOL) call into a captured [`Handoff`], or into the
-/// model-facing refusal that says why it was not taken.
-///
-/// Three things can go wrong, and each is answered in the vocabulary the model can act on. A target
-/// the current state does not declare is refused with the [legal ones](FsmPosition::legal_targets)
-/// listed. A **second** transition in one turn is refused because the first already stands — a
-/// silently replaced successor is a change the model cannot see. And a transition in a turn that has
-/// already declared an ending is refused because the ending wins: the agent said the work was done,
-/// so there is nothing to hand on.
-///
-/// Shared by both execution paths — the tool-calling dispatch above and the program membrane's
-/// deferred declaration — so a transition is judged by exactly the same rules whichever way it was
-/// asked for.
-fn handle_transition(
-    position: &FsmPosition,
-    declared_ending: &Option<Ending>,
-    declared: &mut Option<Handoff>,
-    call: &ToolCall,
-) -> ToolOutcome {
-    let state = match call.arguments.get("state").and_then(Value::as_str) {
-        Some(state) if !state.trim().is_empty() => state,
-        _ => {
-            return ToolOutcome::failed(
-                ToolFailure::InvalidArgument,
-                format!(
-                    "`{TRANSITION_STATE_TOOL}`: missing required argument `state`. The states you                      may move to: {}.",
-                    position.legal_targets()
-                ),
-            );
-        }
-    };
-    if declared_ending.is_some() {
-        return ToolOutcome::failed(
-            ToolFailure::Refused,
-            format!(
-                "you already ended your session this turn, so there is nothing left to hand to                  `{state}`; the ending stands."
-            ),
-        );
-    }
-    if let Some(taken) = declared.as_ref() {
-        return ToolOutcome::failed(
-            ToolFailure::Refused,
-            format!(
-                "you already moved to `{}` this turn; a turn makes one transition, and the first                  one stands.",
-                taken.profile_state(),
-            ),
-        );
-    }
-    let transition = match position.transition_to(state) {
-        Ok(transition) => transition,
-        Err(refusal) => return ToolOutcome::failed(ToolFailure::InvalidArgument, refusal),
-    };
-    let next = position.moved_to(transition);
-    let target = next.state().to_string();
-    let agent = next.agent().to_string();
-    *declared = Some(Handoff {
-        profile: agent.clone(),
-        plan: TransferPlan::Explicit(transition.transfer.clone()),
-        message: call
-            .arguments
-            .get("note")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|note| !note.is_empty())
-            .map(str::to_string),
-        reason: HandoffReason::Fsm {
-            from: position.state().to_string(),
-        },
-        fsm: Some(next),
-    });
-    ToolOutcome::ok(
-        format!(
-            "Moving to `{target}` once this turn's tool results are recorded; the `{agent}` agent              continues from there."
-        ),
-        format!("transition to {target} accepted"),
-    )
-}
-
-/// A **succession**: one agent instance ending so another may continue in its place.
-///
-/// It is what a [`transition_state`](crate::tools::TRANSITION_STATE_TOOL) call turns into, and it is
-/// deliberately more general than that call needs — an `exec` (an agent replacing itself with a
-/// profile of its choosing) is the same value with a different [plan](TransferPlan) and no machine
-/// position, so the two features differ by the two lines that build this rather than by two
-/// incarnation loops.
-///
-/// The loop that applies it is in [`run_agent`]: it drains the outgoing instance's modules,
-/// [transfers](crate::modules::transfer) what the plan carries, mints the successor, and drives it
-/// on the very same scheduler slot.
-struct Handoff {
-    /// The [agent profile](GgAgentConfig) the successor runs under.
-    profile: String,
-    /// What the successor inherits.
-    plan: TransferPlan,
-    /// The successor's opening message — what the predecessor wanted it to know. Folded into the
-    /// note gg writes about the handoff itself, so a successor is never left inferring what it
-    /// received from an empty task list.
-    message: Option<String>,
-    /// Why the succession happened, which is what the console renders it as.
-    reason: HandoffReason,
-    /// The machine position the successor occupies. `Some` for a machine transition; `None` for a
-    /// succession that is not inside a machine.
-    fsm: Option<FsmPosition>,
-}
-
-/// Why one agent instance handed off to another — the gg-side half of
-/// [`GgAgentTransitionKind`](test_cabinet_core::gg::GgAgentTransitionKind).
-enum HandoffReason {
-    /// A [machine](crate::fsm) moved from one state to the next.
-    Fsm {
-        /// The state the machine left, for the transition telemetry and the successor's note.
-        from: String,
-    },
-}
-
-impl Handoff {
-    /// How this handoff names its destination in a refusal: the machine state when it has one, and
-    /// the successor's profile otherwise.
-    fn profile_state(&self) -> &str {
-        match self.fsm.as_ref() {
-            Some(position) => position.state(),
-            None => &self.profile,
-        }
-    }
-}
-
-impl HandoffReason {
-    /// How this succession is reported on the wire.
-    fn kind(&self) -> GgAgentTransitionKind {
-        match self {
-            HandoffReason::Fsm { .. } => GgAgentTransitionKind::Fsm,
-        }
-    }
-}
-
-/// How an incarnation's window is opened: fresh, or carried over from the instance it succeeds.
-///
-/// The distinction is only about the first few items of the window and the two things that seed it.
-/// A [fresh](Self::Fresh) opening is what every agent has always had — the system prompt, the build
-/// prompt, any autoloaded specifications, any file views a persistent profile left open. A
-/// [carried](Self::Carried) one already *has* a thread: its system prompt is
-/// [rebased](ContextModel::rebase) to this profile's (item 0 is the one thing a successor must not
-/// inherit — it states someone else's toolset, roster and ending calls), its build prompt is left
-/// alone, and the seeding is skipped because the window it would seed into is not empty.
-enum Opening {
-    /// A window with nothing in it yet.
-    Fresh,
-    /// A window transferred from the predecessor, with `note` appended at the tail: what the
-    /// successor received, what it did not, and whatever the predecessor wanted to tell it.
-    Carried {
-        /// The successor's opening note.
-        note: String,
-    },
 }
 
 /// How a driven turn loop ended, plus the usage it accumulated.
@@ -6168,6 +6034,7 @@ impl Agent {
                     speculative_active,
                     pending_compaction,
                     ending_role,
+                    exec_roster: &profile.subagents,
                 };
                 // The per-turn state (`context`/`skills`/`docs`/`subagents`) is handed to the code
                 // turn **by value** — it is moved into the program's `LoopToolApi` so the program's
@@ -6228,6 +6095,24 @@ impl Agent {
                             persistence.record(&state.context);
                             *context = state.context;
                             *caps.skills_mut() = state.skills;
+                            *subagents = state.subagents;
+                            // A program that forked and then finished still gets its copies: it
+                            // handed that work to somebody else, and ending its own session is not
+                            // a retraction. The run joins them before it ends, exactly as it joins
+                            // a subagent spawned on the same turn.
+                            if !state.forks_requested.is_empty()
+                                && let Some(sub) = subagents.as_mut()
+                            {
+                                transitions::dispatch_forks(
+                                    sub,
+                                    self,
+                                    context,
+                                    caps,
+                                    emitter,
+                                    state.forks_requested,
+                                    turn + 1,
+                                );
+                            }
                         }
                         return LoopEnd {
                             status: STATUS_COMPLETED,
@@ -6283,7 +6168,8 @@ impl Agent {
                             subagents: turn_subagents,
                             issue_waits: turn_issue_waits,
                             compact_requested: turn_compaction,
-                            transition_requested: turn_transition,
+                            handoff_requested: turn_handoff,
+                            forks_requested: turn_forks,
                             compaction_calls: (turn_compaction_calls, turn_compaction_failures),
                         } = state.expect("a non-fatal code turn hands back its per-turn state");
                         *context = turn_context;
@@ -6301,6 +6187,24 @@ impl Agent {
                             Retention::Ephemeral,
                             Message::user(feedback).with_images(images),
                         );
+                        // The copies this program declared. Started here, with the turn's feedback
+                        // already in the window, so a copy inherits the conversation its forker is
+                        // actually holding — and before the breach return below, because a fork is
+                        // work handed to somebody else and a run stopping on a ceiling has not
+                        // withdrawn it.
+                        if !turn_forks.is_empty()
+                            && let Some(sub) = subagents.as_mut()
+                        {
+                            transitions::dispatch_forks(
+                                sub,
+                                self,
+                                context,
+                                caps,
+                                emitter,
+                                turn_forks,
+                                turn + 1,
+                            );
+                        }
                         if let Some(breach) = breach {
                             return self.stop_on_limit(
                                 emitter,
@@ -6400,7 +6304,7 @@ impl Agent {
                         // must inherit the one this turn actually produced. A program that also
                         // compacted therefore hands over the compacted window, which is the right
                         // way round: the compaction was of work already done.
-                        if let Some(handoff) = turn_transition {
+                        if let Some(handoff) = turn_handoff {
                             return LoopEnd {
                                 status: STATUS_COMPLETED,
                                 turns: turn + 1,
@@ -6504,6 +6408,12 @@ impl Agent {
             // why.
             let mut declared_handoff: Option<Handoff> = None;
 
+            // The copies this turn declared with `fork`, deferred on the same terms and for the
+            // same reason as the succession above — the window a copy inherits has to be a complete
+            // conversation, and mid-turn it is not. **Additive**, unlike a succession: each fork is
+            // a separate child, so a turn may declare several and every one of them runs.
+            let mut declared_forks: Vec<PendingFork> = Vec::new();
+
             // Dispatch each requested tool call against the workspace and feed the result
             // back so the model can proceed on its next turn.
             for call in &response.tool_calls {
@@ -6593,6 +6503,34 @@ impl Agent {
                     // against the orchestrator and the scheduler — which the tool, seeing only its
                     // arguments and a workspace path, cannot reach.
                     handle_transition(position, &declared_ending, &mut declared_handoff, call)
+                } else if call.name == EXEC_TOOL && registry.offers(EXEC_TOOL) {
+                    // Becoming another agent. Intercepted here for the same reason a transition is:
+                    // it tears this instance down and stands another up against the orchestrator and
+                    // the scheduler. Validated against this agent's own roster — the allowlist a
+                    // spawn is checked against — which is the one thing the loop has and the tool
+                    // does not.
+                    handle_exec(
+                        &profile.subagents,
+                        self,
+                        &declared_ending,
+                        &mut declared_handoff,
+                        call,
+                    )
+                } else if call.name == FORK_TOOL && registry.offers(FORK_TOOL) {
+                    // Running a copy of this agent. Intercepted here because a fork is a child: it
+                    // needs the scheduler, the depth cap and this agent's delegation context, none
+                    // of which a tool can see. The copy's id is minted now (so this call can answer
+                    // with it) and the copy itself starts once the turn's results are recorded.
+                    match subagents.as_mut() {
+                        Some(sub) => handle_fork(sub, self, &mut declared_forks, call),
+                        None => ToolOutcome::failed(
+                            ToolFailure::Unavailable,
+                            format!(
+                                "`{FORK_TOOL}` is not available: this run has no delegation \
+                                 runtime, so a copy of you could never be waited on or messaged."
+                            ),
+                        ),
+                    }
                 } else if let Some(project) = project
                     .as_ref()
                     .filter(|_| call.name == WAIT_FOR_ISSUE_TOOL)
@@ -6676,6 +6614,25 @@ impl Agent {
                 }
 
                 record_tool_result(context, caps, call, outcome, emitter);
+            }
+
+            // The copies this turn declared: every tool result is recorded, so the window they
+            // inherit is a complete conversation rather than one stopped between an assistant's
+            // tool calls and their answers. Started **before** the ending check below, because a
+            // fork is work this agent handed to somebody else and an agent that finishes in the
+            // same turn has not withdrawn it.
+            if !declared_forks.is_empty()
+                && let Some(sub) = subagents.as_mut()
+            {
+                transitions::dispatch_forks(
+                    sub,
+                    self,
+                    context,
+                    caps,
+                    emitter,
+                    std::mem::take(&mut declared_forks),
+                    turn + 1,
+                );
             }
 
             // An ending declared this turn: every tool result — including the ending call's — is
@@ -8607,6 +8564,20 @@ fn session_ended(status: impl Into<String>) -> GgTelemetryKind {
 mod code;
 
 use code::{CodeTurn, CodeTurnOutcome, CodeTurnState, run_code_turn};
+
+/// **Succession**: the vocabulary and the judging behind `transition_state`, `exec` and `fork` —
+/// how one agent instance becomes another.
+///
+/// Split out under the repo's `foo.<concern>.rs` convention for the same reason the code path is:
+/// it is one self-contained concern of some size, and this file is already the largest in the
+/// crate. Its items are `use`d back into this module so the loop names them unqualified.
+#[path = "agent.transitions.rs"]
+mod transitions;
+
+use transitions::{
+    Handoff, Opening, PendingFork, Succession, handle_exec, handle_fork, handle_transition,
+    kind_names, succession_note,
+};
 
 #[cfg(test)]
 #[path = "agent.test.rs"]

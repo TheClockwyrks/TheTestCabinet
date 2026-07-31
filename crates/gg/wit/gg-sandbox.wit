@@ -774,6 +774,31 @@ interface delegation {
     /// Bound only when a state machine is driving you and the state you are in has somewhere to go.
     /// `invalid-argument` names a state you may not move to; `unavailable` means no machine.
     transition-state: func(state: string, note: option<string>) -> result<_, tool-error>;
+
+    /// Continue this session as a different agent: it takes over from your next turn with its own
+    /// model, tools and instructions, keeping every capability the two of you both have — your
+    /// whole conversation above all. `prompt` is the opening message it sees.
+    ///
+    /// Registered exactly as `transition-state` is, and for the same reason: your window would
+    /// otherwise be pulled out from under the program still composing into it. The FIRST
+    /// declaration of a succession stands, so an `exec` after a `transition-state` (or a second
+    /// `exec`) throws `refused`.
+    ///
+    /// Bound only when your agent may make agent transitions and has agents it may become, and
+    /// never while a state machine is driving you — there, `transition-state` is the move.
+    /// `invalid-argument` names an agent you may not become.
+    exec: func(agent: string, prompt: option<string>) -> result<_, tool-error>;
+
+    /// Run a copy of yourself, in parallel, on something you will not do yourself. The copy has
+    /// your model, your tools and a private copy of your whole conversation, so `prompt` is the
+    /// difference rather than a briefing.
+    ///
+    /// Returns the copy's handle immediately, but the copy itself starts once this turn's tool
+    /// results are recorded — the conversation it inherits has to be a complete one — so
+    /// `wait-for-subagents` can only collect it on a later turn. Everything that can refuse a fork
+    /// is checked here: `limit-exceeded` at the delegation depth cap, `unavailable` with no
+    /// delegation runtime to collect the copy with.
+    fork: func(prompt: string) -> result<subagent-handle, tool-error>;
 }
 
 /// The channel the interpreter SHIM reports back to gg through.

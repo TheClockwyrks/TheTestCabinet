@@ -38,6 +38,8 @@ use std::time::Duration;
 
 use tokio::runtime::Handle;
 
+use test_cabinet_core::gg::GgSubagentRef;
+
 use crate::ending::Ending;
 use crate::sandbox::{ToolApi, WorkflowStageInput};
 use crate::tasks::TaskStatus;
@@ -198,7 +200,8 @@ pub(super) async fn run_code_turn(
                 // made a call against a pending one.
                 issue_waits: Vec::new(),
                 compact_requested: None,
-                transition_requested: None,
+                handoff_requested: None,
+                forks_requested: Vec::new(),
                 compaction_calls: (0, 0),
             }),
         );
@@ -720,6 +723,10 @@ pub(super) struct CodeTurn<'a> {
     /// Which [ending calls](EndingRole) this agent's programs are given, and what the sandbox will
     /// accept from them.
     pub(super) ending_role: EndingRole,
+    /// The agents this one may become — its own
+    /// [roster](test_cabinet_core::gg::GgAgentConfig::subagents), which is what an `exec` target is
+    /// checked against. Empty when it has none, which is also when the call is not bound.
+    pub(super) exec_roster: &'a [GgSubagentRef],
 }
 
 impl CodeTurn<'_> {
@@ -762,12 +769,19 @@ pub(super) struct CodeTurnState {
     /// in would pull it out from under the turn still using it. The **last** call stands, so a
     /// program that compacts twice compacts once, from its final summary.
     pub(super) compact_requested: Option<CompactionRequest>,
-    /// The [state transition](crate::fsm) this turn's program declared with
-    /// `agents.transitionState(…)`, deferred to the loop for a stronger version of the same reason:
-    /// a transition replaces this agent outright, so performing it mid-program would pull the
-    /// window — and every remaining call — out from under the turn still running in it. The
-    /// **first** declaration stands.
-    pub(super) transition_requested: Option<Handoff>,
+    /// The [succession](crate::agent::transitions) this turn's program declared — with
+    /// `agents.transitionState(…)` or `agents.exec(…)`, which are the same handoff — deferred to
+    /// the loop for a stronger version of the same reason a compaction is: a succession replaces
+    /// this agent outright, so performing it mid-program would pull the window, and every remaining
+    /// call, out from under the turn still running in it. The **first** declaration stands.
+    pub(super) handoff_requested: Option<Handoff>,
+    /// The copies this turn's program declared with `agents.fork(…)`, in the order it made them.
+    ///
+    /// Deferred for the same reason and **additive** rather than first-wins: each fork is a
+    /// separate child, so a program that forks three times gets three copies. Each copy's id was
+    /// minted at its call and already returned to the program; what waits for the end of the turn
+    /// is the dispatch, so the conversation each copy inherits is a complete one.
+    pub(super) forks_requested: Vec<PendingFork>,
     /// How this turn's program fared against a pending compaction: how many calls it made while one
     /// was in flight, and how many of those failed (a refused call counts as a failure, because it
     /// is one). A [memory compaction](crate::compaction::PendingCompaction::MemoryWrites) is
@@ -830,7 +844,9 @@ async fn run_code_program(
         subagents,
         issue_waits_requested: Vec::new(),
         compact_requested: None,
-        transition_requested: None,
+        handoff_requested: None,
+        forks_requested: Vec::new(),
+        exec_roster: turn.exec_roster.to_vec(),
         compaction_calls: 0,
         compaction_failures: 0,
         spawner: turn.spawner.clone(),
@@ -866,7 +882,8 @@ async fn run_code_program(
                 subagents: api.subagents,
                 issue_waits: api.issue_waits_requested,
                 compact_requested: api.compact_requested,
-                transition_requested: api.transition_requested,
+                handoff_requested: api.handoff_requested,
+                forks_requested: api.forks_requested,
                 compaction_calls: (api.compaction_calls, api.compaction_failures),
             };
             (outcome, Some(state))
@@ -1001,11 +1018,19 @@ pub(super) struct LoopToolApi {
     /// same reason an issue wait is: rewriting the window a program is running in would pull it out
     /// from under the turn still using it. A second `compact` replaces the first.
     pub(super) compact_requested: Option<CompactionRequest>,
-    /// The [state transition](crate::fsm) this program declared with `agents.transitionState(…)`,
-    /// deferred for the reason on [`CodeTurnState::transition_requested`]. A second declaration is
-    /// **refused** rather than replacing the first, because an invisibly replaced successor identity
-    /// is a change the model cannot see.
-    pub(super) transition_requested: Option<Handoff>,
+    /// The [succession](crate::agent::transitions) this program declared with
+    /// `agents.transitionState(…)` or `agents.exec(…)`, deferred for the reason on
+    /// [`CodeTurnState::handoff_requested`]. A second declaration is **refused** rather than
+    /// replacing the first, because an invisibly replaced successor identity is a change the model
+    /// cannot see.
+    pub(super) handoff_requested: Option<Handoff>,
+    /// The copies this program declared with `agents.fork(…)`, in call order — see
+    /// [`CodeTurnState::forks_requested`].
+    pub(super) forks_requested: Vec<PendingFork>,
+    /// The agents this one may become, for `exec`'s target check. Its own
+    /// [roster](test_cabinet_core::gg::GgSubagentRef), which the loop holds and the api does not
+    /// otherwise see.
+    exec_roster: Vec<GgSubagentRef>,
     /// How many calls this program made while a compaction was in flight.
     pub(super) compaction_calls: u32,
     /// How many of those failed — a refusal included, since a refusal is a call that did not run.
@@ -1675,7 +1700,7 @@ impl ToolApi for LoopToolApi {
     }
     fn transition_state(&mut self, state: String, note: Option<String>) -> ToolOutcome {
         // Deferred, not performed — the shape `compact` has, for the reason on
-        // [`transition_requested`](LoopToolApi::transition_requested). The judging is the loop's own
+        // [`handoff_requested`](LoopToolApi::handoff_requested). The judging is the loop's own
         // `handle_transition`, so a program and a native tool call are held to exactly the same
         // rules: the same legal targets, the same first-wins, the same refusal text. There is no
         // ending to lose to here — under responses-as-code an ending is declared through the session
@@ -1695,7 +1720,59 @@ impl ToolApi for LoopToolApi {
                 name: TRANSITION_STATE_TOOL.to_string(),
                 arguments: call_args,
             };
-            handle_transition(&position, &None, &mut api.transition_requested, &call)
+            handle_transition(&position, &None, &mut api.handoff_requested, &call)
+        })
+    }
+    fn exec(&mut self, agent: String, prompt: Option<String>) -> ToolOutcome {
+        // The same deferral, and the same judge, as `transition_state` above: an `exec` and a
+        // machine transition are one succession declared two ways, so they share a slot on this api
+        // as well as a handler, and the first of the two a program declares stands.
+        let args = json!({ "agent": agent, "prompt": prompt });
+        let call_args = args.clone();
+        self.serviced(EXEC_TOOL, args, move |api| {
+            let call = ToolCall {
+                id: String::new(),
+                name: EXEC_TOOL.to_string(),
+                arguments: call_args,
+            };
+            let LoopToolApi {
+                exec_roster,
+                spawner,
+                handoff_requested,
+                ..
+            } = api;
+            handle_exec(exec_roster, spawner, &None, handoff_requested, &call)
+        })
+    }
+    fn fork(&mut self, prompt: String) -> ToolOutcome {
+        // Registered rather than dispatched, unlike every other member of the delegation family:
+        // the copy's window is this program's window, and it is not a complete conversation until
+        // the turn that is running it ends. The id comes back now — a spawn a program cannot name
+        // is a spawn it cannot use — and the child starts a moment later.
+        let args = json!({ "prompt": prompt });
+        let call_args = args.clone();
+        self.serviced(FORK_TOOL, args, move |api| {
+            let call = ToolCall {
+                id: String::new(),
+                name: FORK_TOOL.to_string(),
+                arguments: call_args,
+            };
+            let LoopToolApi {
+                subagents,
+                spawner,
+                forks_requested,
+                ..
+            } = api;
+            match subagents.as_mut() {
+                Some(sub) => handle_fork(sub, spawner, forks_requested, &call),
+                None => ToolOutcome::failed(
+                    ToolFailure::Unavailable,
+                    format!(
+                        "`{FORK_TOOL}` is not available: this run has no delegation runtime, so a \
+                         copy of you could never be waited on or messaged."
+                    ),
+                ),
+            }
         })
     }
     fn spawn_subagent(

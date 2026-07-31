@@ -11,13 +11,13 @@ use serde_json::json;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_SKILLS, CAPABILITY_TASKS, GgAgentConfig, GgCapabilityConfig, GgContextSource,
-    GgTelemetryKind,
+    GgTelemetryKind, MEMORY_PARAM_SCOPE,
 };
 
 use super::*;
 use crate::board::{BoardCaps, BoardRuntime};
 use crate::context::HeuristicTokenEstimator;
-use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryRegistry, MemoryStrategy};
+use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryRegistry, MemoryScope, MemoryStrategy};
 use crate::skills::{SkillLibrary, SkillsRuntime};
 use crate::tasks::{StructuredFields, TaskMode, TasksRuntime};
 
@@ -735,4 +735,140 @@ fn a_rebased_window_keeps_the_thread_and_replaces_the_prompt() {
             .any(|m| m.content.as_deref() == Some("working on it")),
         "the thread the successor inherits is untouched"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Cloning a whole set — `fork`
+// ---------------------------------------------------------------------------
+
+/// **A copy diverges from its original the moment either writes.**
+///
+/// This is what makes a fork worth having and what makes it dangerous: the copy opens knowing
+/// everything its forker knows, and then the two stop being the same agent. The window is the case
+/// that matters — two agents cannot write one thread — so it is asserted from both directions, and
+/// the task list is asserted with it because a shared task store would have the two copies
+/// completing each other's work.
+#[test]
+fn a_forked_set_is_independent_of_the_set_it_was_cloned_from() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let skills = SkillsRuntime::new(library(dir.path()));
+    let board = BoardRuntime::new(BoardCaps::default());
+    let (registry, inherited) = plain();
+    let profile = profile_with(vec![
+        (CAPABILITY_MEMORIES, json!({})),
+        (CAPABILITY_TASKS, json!({})),
+    ]);
+    let mut original = ModuleSet::resolve(&profile, &ctx(&skills, &board, &registry, &inherited));
+    original.context_mut().push_system("the shared prefix");
+    original.context_mut().begin_turn(1);
+    original
+        .context_mut()
+        .push_assistant(Some("before the fork".to_string()), Vec::new());
+    add_task(original.caps().tasks(), "shared");
+
+    let (mut copy, cloned) = fork_modules(original.context(), original.caps(), "agent-2");
+
+    assert!(
+        cloned.contains(&ModuleKind::History) && cloned.contains(&ModuleKind::Tasks),
+        "the copy carries the window and everything else it holds: {cloned:?}"
+    );
+    assert_eq!(
+        copy.caps().tasks().count(),
+        1,
+        "the copy opens holding what its forker built"
+    );
+
+    // Now diverge, in both directions.
+    add_task(copy.caps().tasks(), "the copy's own");
+    copy.context_mut().begin_turn(2);
+    copy.context_mut()
+        .push_assistant(Some("only the copy said this".to_string()), Vec::new());
+    original
+        .context_mut()
+        .push_assistant(Some("only the original said this".to_string()), Vec::new());
+
+    assert_eq!(
+        original.caps().tasks().count(),
+        1,
+        "the copy's task never reached the original"
+    );
+    assert_eq!(copy.caps().tasks().count(), 2);
+    let original_thread: Vec<String> = original
+        .context()
+        .messages()
+        .iter()
+        .filter_map(|message| message.content.clone())
+        .collect();
+    let copy_thread: Vec<String> = copy
+        .context()
+        .messages()
+        .iter()
+        .filter_map(|message| message.content.clone())
+        .collect();
+    assert!(
+        original_thread.iter().any(|m| m == "before the fork")
+            && copy_thread.iter().any(|m| m == "before the fork"),
+        "both hold everything said before the fork"
+    );
+    assert!(
+        original_thread
+            .iter()
+            .any(|m| m == "only the original said this")
+            && !original_thread
+                .iter()
+                .any(|m| m == "only the copy said this"),
+        "the original's thread is its own: {original_thread:?}"
+    );
+    assert!(
+        copy_thread.iter().any(|m| m == "only the copy said this")
+            && !copy_thread
+                .iter()
+                .any(|m| m == "only the original said this"),
+        "and so is the copy's: {copy_thread:?}"
+    );
+}
+
+/// **A copy's memories follow the forker's scope, not the fork.**
+///
+/// An [isolated](MemoryScope::Isolated) notebook is a private one, so the copy gets its own and the
+/// two diverge. Every scope that links agents at all was already meant to have several holders, and
+/// a fork is not a reason to split what a configuration deliberately joined — so the copy binds the
+/// very same store, and each sees what the other writes.
+#[test]
+fn a_forked_memory_is_copied_when_isolated_and_linked_when_it_is_not() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let skills = SkillsRuntime::new(library(dir.path()));
+    let board = BoardRuntime::new(BoardCaps::default());
+    let (registry, inherited) = plain();
+
+    for (scope, links) in [
+        (MemoryScope::Isolated, false),
+        (MemoryScope::Shared, true),
+        (MemoryScope::Inherited, true),
+        (MemoryScope::ReadOnly, true),
+    ] {
+        let profile = profile_with(vec![(
+            CAPABILITY_MEMORIES,
+            json!({ MEMORY_PARAM_SCOPE: scope.as_str() }),
+        )]);
+        let original = ModuleSet::resolve(&profile, &ctx(&skills, &board, &registry, &inherited));
+        write_memory(original.caps().memories(), "before-the-fork");
+
+        let (copy, _) = fork_modules(original.context(), original.caps(), "agent-2");
+        assert_eq!(
+            copy.caps().memories().count(),
+            1,
+            "{scope}: the copy opens holding what its forker wrote"
+        );
+        // The copy's writes are attributed to the copy either way — the holder is a different
+        // agent, whether or not the store behind it is the same one.
+        assert_eq!(copy.caps().memories().binding().author(), "agent-2");
+
+        write_memory(copy.caps().memories(), "after-the-fork");
+        assert_eq!(
+            original.caps().memories().count(),
+            if links { 2 } else { 1 },
+            "{scope}: a linked notebook shows the copy's write and an isolated one does not"
+        );
+    }
 }

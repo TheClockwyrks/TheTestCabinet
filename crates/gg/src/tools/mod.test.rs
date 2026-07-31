@@ -792,6 +792,59 @@ fn a_terminal_state_is_offered_no_transition_tool() {
     );
 }
 
+/// The two [agent-transition](CAPABILITY_AGENT_TRANSITIONS) calls are offered on **different**
+/// conditions, and each is withheld when the thing that would make it usable is missing.
+///
+/// `exec` needs a roster (there has to be something to become) and is withheld inside a machine,
+/// where the next move is `transition_state`'s. `fork` needs the delegation machinery, because a
+/// copy nobody can wait on or message is a leak rather than a second worker. Neither is offered
+/// without the capability at all.
+#[test]
+fn the_agent_transition_tools_are_offered_on_their_own_terms() {
+    use test_cabinet_core::gg::{
+        CAPABILITY_AGENT_TRANSITIONS, CAPABILITY_SUBAGENTS, GgSubagentRef, ROOT_AGENT,
+    };
+
+    let offered = |set: &GgAgentConfig, position: Option<&crate::fsm::FsmPosition>| {
+        let registry = ToolRegistry::from_run(
+            set,
+            &CapabilityModules::inert(),
+            &AgentFacts { fsm: position },
+        );
+        (registry.offers(EXEC_TOOL), registry.offers(FORK_TOOL))
+    };
+
+    // The capability off: neither, whatever else is on.
+    let mut off = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)]);
+    off.subagents.push(GgSubagentRef::any(ROOT_AGENT));
+    assert_eq!(offered(&off, None), (false, false));
+
+    // The capability on, but nothing to become and nothing to collect a copy with.
+    let bare = set_with(vec![GgCapabilityConfig::enabled(
+        CAPABILITY_AGENT_TRANSITIONS,
+    )]);
+    assert_eq!(offered(&bare, None), (false, false));
+
+    // A roster alone buys `exec`; the delegation capability alone buys `fork`.
+    let mut with_roster = bare.clone();
+    with_roster.subagents.push(GgSubagentRef::any(ROOT_AGENT));
+    assert_eq!(offered(&with_roster, None), (true, false));
+
+    let mut with_delegation = bare.clone();
+    with_delegation
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    assert_eq!(offered(&with_delegation, None), (false, true));
+
+    // Both, and then the same profile standing in a machine: the copy is still a copy, but where
+    // the run goes next has stopped being this agent's decision.
+    let mut both = with_delegation.clone();
+    both.subagents.push(GgSubagentRef::any(ROOT_AGENT));
+    assert_eq!(offered(&both, None), (true, true));
+    let position = fsm_position();
+    assert_eq!(offered(&both, Some(&position)), (false, true));
+}
+
 /// The canonical [`ALL_TOOL_NAMES`] vocabulary stays in lockstep with what the registry can offer:
 /// a maximal capability set (every capability enabled, every store bound, a non-empty skill
 /// library) offers exactly the names in `ALL_TOOL_NAMES`. This guards the per-tool-override
@@ -802,10 +855,10 @@ fn all_tool_names_matches_a_maximal_registry() {
     use crate::memories::{MemoryCaps, MemoryStrategy};
     use std::collections::BTreeSet;
     use test_cabinet_core::gg::{
-        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_MEMORIES,
-        CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS,
-        CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, COMPACTION_STRATEGY_SELF_COMPACTION, GgSubagentRef,
-        ROOT_AGENT,
+        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AGENT_TRANSITIONS, CAPABILITY_COMPACTION,
+        CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SPECULATIVE,
+        CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
+        COMPACTION_STRATEGY_SELF_COMPACTION, GgSubagentRef, ROOT_AGENT,
     };
 
     let dir = TempDir::new().unwrap();
@@ -827,6 +880,7 @@ fn all_tool_names_matches_a_maximal_registry() {
         GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
         GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS),
         GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE),
+        GgCapabilityConfig::enabled(CAPABILITY_AGENT_TRANSITIONS),
     ]);
     // `compact` is the one tool a *strategy* rather than a capability alone contributes: compaction
     // offers it only when the working model is the one that performs the compaction.
@@ -845,6 +899,10 @@ fn all_tool_names_matches_a_maximal_registry() {
     // offering all of them: a run picks one strategy, and each offers a different set. So the
     // maximal toolset is the union over the strategies — every memory tool is offered by exactly
     // one of these registries, and none of them by none.
+    //
+    // The union is taken over the machine position as well, because `transition_state` and `exec`
+    // are deliberately **mutually exclusive**: a state's next move belongs to its machine, so no
+    // single registry can offer both and "every tool gg can offer" is the union of the two.
     let offered: BTreeSet<String> = [
         MemoryStrategy::Scratchpad,
         MemoryStrategy::Markdown,
@@ -852,23 +910,23 @@ fn all_tool_names_matches_a_maximal_registry() {
     ]
     .into_iter()
     .flat_map(|strategy| {
-        ToolRegistry::from_run(
-            &set,
-            &skills_modules(&library)
-                .with(ModuleHandle::Memories(MemoriesRuntime::new(
-                    strategy,
-                    MemoryCaps::for_strategy(strategy),
-                )))
-                .with(ModuleHandle::Tasks(TasksRuntime::new(100)))
-                .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())))
-                .with(ModuleHandle::Archive(ArchiveRuntime::new())),
-            // The transition call is offered from where an *instance* stands in a machine rather
-            // than from any capability, so a maximal toolset needs a position to stand in.
-            &AgentFacts {
-                fsm: Some(&position),
-            },
-        )
-        .tool_names()
+        let set = &set;
+        let library = &library;
+        [Some(&position), None].into_iter().flat_map(move |fsm| {
+            ToolRegistry::from_run(
+                set,
+                &skills_modules(library)
+                    .with(ModuleHandle::Memories(MemoriesRuntime::new(
+                        strategy,
+                        MemoryCaps::for_strategy(strategy),
+                    )))
+                    .with(ModuleHandle::Tasks(TasksRuntime::new(100)))
+                    .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())))
+                    .with(ModuleHandle::Archive(ArchiveRuntime::new())),
+                &AgentFacts { fsm },
+            )
+            .tool_names()
+        })
     })
     .collect();
 

@@ -111,9 +111,19 @@ Two rules about limits:
   item 0 replaced with the successor's. Everything behind it — the whole thread — is exactly
   what the successor is meant to keep, and the turn counter is never renumbered.
 
-## Who transfers
+## Who copies and who transfers
 
-A transfer happens when one agent instance hands over to another. Today that is an
-[FSM transition](/gg/fsms/): the edge names the modules the successor inherits, and
-everything else the outgoing instance held is dropped. Anything not named carries
-nothing — the list is explicit, so a recorded configuration says what it does.
+A **transfer** happens when one agent instance hands over to another, and there are two ways
+that happens:
+
+- An [FSM transition](/gg/fsms/) carries exactly the modules the edge names, and everything
+  else the outgoing instance held is dropped. The list is explicit, so a recorded
+  configuration says what it does.
+- An [`exec`](/gg/fork-and-exec/) carries every kind **both profiles have**, drops what the
+  successor's profile turns off, and starts fresh whatever only the successor has. The model
+  chooses when, and the rule is fixed rather than declared.
+
+A **fork** is the other half: [`fork`](/gg/fork-and-exec/) clones a whole set for a copy of
+the agent that made it, using the fork/share rules above per kind — an independent window and
+task list, a shared board, and memories that follow the forker's
+[scope](/gg/memories/#scoping-whose-memories-are-these).

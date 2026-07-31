@@ -182,6 +182,14 @@ holds its memories read-only is demoted to the default strategy, with a warning.
 has no call that could satisfy a memory compaction, and a run that could never
 satisfy its own compaction gate would wedge against a full window.
 
+### What a fork carries
+
+A [`fork`](/gg/fork-and-exec/) copies almost everything its agent holds, but memories
+follow the scope rather than the copy: an `isolated` notebook is copied and the two
+diverge, while every scope that links agents at all stays **linked** across the fork —
+both the original and its copy hold the one store, and each is told what the other
+writes. A fork is not a reason to split what a configuration deliberately joined.
+
 ### Inheritance needs a matching strategy
 
 A store is read by the calls its own strategy offers, so a child organizing its

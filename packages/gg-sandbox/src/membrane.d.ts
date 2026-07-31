@@ -572,6 +572,10 @@ declare module "test-cabinet:gg/delegation" {
   export function speculate(request: SpeculateRequest): SpeculationReport;
   /** Declare a move to another state of the machine driving this agent; performed after the turn. */
   export function transitionState(state: string, note: string | undefined): void;
+  /** Declare that this session continues as another agent; performed after the turn. */
+  export function exec(agent: string, prompt: string | undefined): void;
+  /** Register a copy of this agent; its handle comes back now, the copy starts after the turn. */
+  export function fork(prompt: string): SubagentHandle;
 }
 
 /**

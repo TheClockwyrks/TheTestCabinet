@@ -943,6 +943,60 @@ impl ModuleSet {
 }
 
 // ---------------------------------------------------------------------------
+// Cloning a whole set — `fork`
+// ---------------------------------------------------------------------------
+
+/// Every module an agent holds, [cloned](Module::fork) for a copy of that agent running as
+/// `agent_id` — what a [`fork`](https://docs.testcabinet.ai/gg/fork-and-exec/) hands its child.
+///
+/// It takes the window by reference rather than as a [`HistoryModule`] because the one caller that
+/// forks from inside a [code turn](crate::sandbox) is holding the live [`ContextModel`] alone: the
+/// module around it stays behind in the agent's set while a program runs.
+///
+/// Three of the six deviate from a plain `fork()`, each for a reason the [per-kind
+/// table](Module::fork) already states, and all three are visible right here rather than in prose:
+///
+/// - **memories** follow the forker's [scope](crate::memories::MemoryScope). A
+///   [linkable](MemoriesRuntime::is_linkable) one is [shared](Module::share) — the two agents were
+///   already meant to curate one notebook, and a fork is not a reason to split it — while an
+///   [isolated](crate::memories::MemoryScope::Isolated) one is copied and the two diverge. Either
+///   way the copy is re-stamped with the **copy's** agent id, so its writes are attributed to it.
+/// - **the board** is always shared: it is the run's single work queue, and a second copy of it
+///   would issue the same identifier twice.
+/// - **skills** share the loaded library (it is immutable) and copy the read set, which is a
+///   promise about *this* window — and the window is being copied with it.
+///
+/// Returns the set and the kinds it actually carries, which is what the fork's
+/// [`AgentTransition`](GgTelemetryKind::AgentTransition) reports.
+pub fn fork_modules(
+    context: &ContextModel,
+    caps: &CapabilityModules,
+    agent_id: &str,
+) -> (ModuleSet, Vec<ModuleKind>) {
+    let memories = if caps.memories.is_linkable() {
+        caps.memories.shared()
+    } else {
+        caps.memories.forked()
+    }
+    .with_agent(agent_id);
+    let set = ModuleSet {
+        history: HistoryModule::from_context(context.clone()),
+        caps: CapabilityModules {
+            memories,
+            tasks: caps.tasks.forked(),
+            board: caps.board.shared(),
+            skills: caps.skills.forked(),
+            archive: caps.archive.forked(),
+        },
+    };
+    let cloned = ModuleKind::ALL
+        .into_iter()
+        .filter(|kind| set.has(*kind))
+        .collect();
+    (set, cloned)
+}
+
+// ---------------------------------------------------------------------------
 // Transfer
 // ---------------------------------------------------------------------------
 

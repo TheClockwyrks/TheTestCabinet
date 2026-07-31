@@ -175,6 +175,19 @@ pub trait ToolApi: Send + 'static {
     /// declaration stands, because a silently replaced successor identity is a change the model
     /// cannot see.
     fn transition_state(&mut self, state: String, note: Option<String>) -> ToolOutcome;
+    /// Declare that this session continues as another agent, and return. Deferred on exactly the
+    /// terms [`transition_state`](Self::transition_state) is — the two are the same succession, one
+    /// chosen by a machine and one by the model — so the first declaration of either in a turn
+    /// stands and a second is refused.
+    fn exec(&mut self, agent: String, prompt: Option<String>) -> ToolOutcome;
+    /// Register a copy of this agent for the loop to start when the turn ends, and return the
+    /// copy's handle.
+    ///
+    /// Unlike the two above this does not replace anybody, so it is **additive**: a program may
+    /// fork several times and every copy runs. It is still deferred, because the window a copy
+    /// inherits has to be a complete conversation and mid-program it is not — which is why the
+    /// handle it returns cannot be waited on until the next turn.
+    fn fork(&mut self, prompt: String) -> ToolOutcome;
     fn spawn_subagent(
         &mut self,
         agent: String,

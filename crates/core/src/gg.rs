@@ -770,6 +770,45 @@ where
         .collect())
 }
 
+/// The stable id of the [agent transitions] capability: an agent's ability to **replace itself**
+/// (`exec`) and to **clone itself** (`fork`).
+///
+/// Both are the same operation over [modules](GgModuleKind) an [FSM](CAPABILITY_FSM) transition
+/// performs, with the *model* rather than a declared machine choosing when it happens and what it
+/// becomes:
+///
+/// - **`exec`** replaces the running instance with one running another [profile](GgAgentConfig) —
+///   named from the caller's own [delegation roster](GgAgentConfig::subagents), the same allowlist
+///   spawning is validated against. Every module both profiles have is carried live, so the
+///   successor opens on its predecessor's whole conversation; a capability the successor does not
+///   have is dropped, and one only it has starts empty. It is one agent throughout: one id in the
+///   tree per incarnation, one scheduler slot, one return value to whoever put it to work. Naming
+///   an FSM shell **enters that machine** at its entry state, which is how a plain agent hands its
+///   work to a declared process.
+/// - **`fork`** clones the running instance into a **child**: same profile, its own id, one level
+///   deeper, its own scheduler slot, and a deep copy of everything the forker holds — the window
+///   above all, so the copy opens knowing everything its parent knew. Memories are the exception,
+///   and follow the forker's [scope](GgMemoryScope): a linked one stays linked, an
+///   [isolated](GgMemoryScope::Isolated) one is copied. The copy is an ordinary subagent from
+///   there: it is waited on and messaged like any other, so it needs the delegation machinery
+///   ([subagents](CAPABILITY_SUBAGENTS) or [workflows](CAPABILITY_WORKFLOWS)) to be collectable at
+///   all, and it counts against the same depth and parallelism caps.
+///
+/// Both calls are **turn-final**: they are declared during a turn and applied once every tool
+/// result of that turn is recorded, because a window rewritten mid-turn would strand an assistant
+/// message whose results had not been written yet. A turn that declares two successions keeps the
+/// first and refuses the second — a silently replaced successor identity is a change the model
+/// cannot see. An agent standing in an [FSM](CAPABILITY_FSM) state is **not** offered `exec` at
+/// all: where the run goes next is the machine's decision there, and `transition_state` is how it
+/// is made. `fork` stays available — the copy is an ordinary child, not a second driver of the
+/// machine.
+///
+/// Opt-in, like every Phase 2+ capability, and ablatable per tool — `disabledTools: ["fork"]`
+/// leaves an agent able to become something else but not to duplicate itself.
+///
+/// [agent transitions]: https://docs.testcabinet.ai/gg/fork-and-exec/
+pub const CAPABILITY_AGENT_TRANSITIONS: &str = "agent-transitions";
+
 /// The stable id of the Phase 5 [speculative execution] capability: **best-of-K** — attempting the
 /// same piece of work several times in parallel and keeping only the best result.
 ///

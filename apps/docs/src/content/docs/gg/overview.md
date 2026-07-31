@@ -250,6 +250,9 @@ saved, launched, and analyzed in the console is
 - [Agent persistence](/gg/agent-persistence/) — make one profile a single long-lived
   worker: one instance runs at a time, and each opens on the files the last one left
   open.
+- [Fork & exec](/gg/fork-and-exec/) — let an agent become a different agent, carrying
+  its conversation with it, or run a copy of itself that starts already knowing
+  everything it knows.
 
 **Process & quality**
 

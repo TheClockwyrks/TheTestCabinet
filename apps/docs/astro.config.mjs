@@ -554,6 +554,10 @@ export default defineConfig({
                 // at a time, and the file views ride along on that.
                 "gg/agent-persistence",
                 "gg/fsms",
+                // The two model-chosen successions — becoming another agent, and
+                // running a copy of yourself — which are the same module handoff an
+                // FSM transition performs, with the model choosing when.
+                "gg/fork-and-exec",
                 // How a run decides it is finished — the completion signal and the
                 // optional validation commands that gate it. A capability like any
                 // other: an absent one is the historical default.
