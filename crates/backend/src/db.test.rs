@@ -68,6 +68,7 @@ fn record(id: &str) -> RunRecord {
             detail: None,
         },
         game_jam_readme: None,
+        game_jam_prior_entries: Vec::new(),
     }
 }
 
@@ -601,6 +602,7 @@ fn new_job(id: &str, created_at: &str) -> NewJob {
         test_case_slug: "pong".to_string(),
         test_case_version: "v1.0.0".to_string(),
         variant: "base".to_string(),
+        test_type: TestType::EndToEnd.as_str().to_string(),
         harness_slug: "claude".to_string(),
         model_id: "claude-sonnet-4-5".to_string(),
         job_token: format!("token-{id}"),
@@ -804,6 +806,156 @@ async fn claim_is_unlimited_without_a_configured_cap() {
             .unwrap()
             .id,
         "j2"
+    );
+}
+
+/// A queued **game-jam** job for a jam, harness, and model — the shape the
+/// per-model jam serialization keys off.
+fn new_jam_job(id: &str, created_at: &str, jam: &str, harness: &str, model: &str) -> NewJob {
+    NewJob {
+        test_case_slug: jam.to_string(),
+        test_type: TestType::GameJam.as_str().to_string(),
+        harness_slug: harness.to_string(),
+        model_id: model.to_string(),
+        ..new_job(id, created_at)
+    }
+}
+
+/// A model's runs of one jam go one at a time, whichever harness drives them: the
+/// second entry is held until the first finishes, because it is briefed with the
+/// first's README.
+#[tokio::test]
+async fn claim_serializes_a_models_jam_runs_across_harnesses() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Three runs of the same jam by the same model — two on claude, one on codex.
+    db.enqueue_job(new_jam_job(
+        "j1",
+        "2026-06-23T00:00:00Z",
+        "comfort-zone",
+        "claude",
+        "sonnet",
+    ))
+    .await
+    .unwrap();
+    db.enqueue_job(new_jam_job(
+        "j2",
+        "2026-06-23T00:01:00Z",
+        "comfort-zone",
+        "claude",
+        "sonnet",
+    ))
+    .await
+    .unwrap();
+    db.enqueue_job(new_jam_job(
+        "j3",
+        "2026-06-23T00:02:00Z",
+        "comfort-zone",
+        "codex",
+        "sonnet",
+    ))
+    .await
+    .unwrap();
+
+    // The first entry dispatches; the rest wait their turn, visibly held.
+    let first = db.claim_next_job("2026-06-23T00:03:00Z").await.unwrap();
+    assert_eq!(first.expect("the first entry is claimable").id, "j1");
+    assert!(
+        db.claim_next_job("2026-06-23T00:03:01Z")
+            .await
+            .unwrap()
+            .is_none(),
+        "no other entry of this jam+model may run alongside the first"
+    );
+    assert_eq!(db.get_job("j2").await.unwrap().unwrap().state, "pending");
+    assert_eq!(
+        db.get_job("j3").await.unwrap().unwrap().state,
+        "pending",
+        "the other harness's entry waits too — the model is what repeats itself"
+    );
+
+    // Once the first finishes (and so has stored its README), the next is released.
+    db.set_job_state("j1", "succeeded", "2026-06-23T01:00:00Z", None, None)
+        .await
+        .unwrap();
+    let second = db.claim_next_job("2026-06-23T01:00:01Z").await.unwrap();
+    assert_eq!(second.expect("the second entry is released").id, "j2");
+}
+
+/// The serialization is per jam **and** per model: different jams, and different
+/// models on the same jam, still dispatch in parallel — they share no history.
+#[tokio::test]
+async fn claim_runs_different_jams_and_models_in_parallel() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_jam_job(
+        "same-jam-other-model",
+        "2026-06-23T00:00:00Z",
+        "comfort-zone",
+        "claude",
+        "sonnet",
+    ))
+    .await
+    .unwrap();
+    db.enqueue_job(new_jam_job(
+        "other-jam-same-model",
+        "2026-06-23T00:01:00Z",
+        "plot-twist",
+        "claude",
+        "opus",
+    ))
+    .await
+    .unwrap();
+    db.enqueue_job(new_jam_job(
+        "same-jam-same-model",
+        "2026-06-23T00:02:00Z",
+        "comfort-zone",
+        "claude",
+        "opus",
+    ))
+    .await
+    .unwrap();
+
+    for expected in [
+        "same-jam-other-model",
+        "other-jam-same-model",
+        "same-jam-same-model",
+    ] {
+        let claimed = db.claim_next_job("2026-06-23T00:03:00Z").await.unwrap();
+        assert_eq!(
+            claimed.expect("each pair is independent").id,
+            expected,
+            "jam runs only serialize against the same jam + model"
+        );
+    }
+}
+
+/// The jam rule does not leak into the other test types: two runs of the same
+/// ordinary case by the same model still dispatch together.
+#[tokio::test]
+async fn claim_does_not_serialize_non_jam_runs_of_one_model() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.enqueue_job(new_job("j1", "2026-06-23T00:00:00Z"))
+        .await
+        .unwrap();
+    db.enqueue_job(new_job("j2", "2026-06-23T00:01:00Z"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        db.claim_next_job("2026-06-23T00:02:00Z")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "j1"
+    );
+    assert_eq!(
+        db.claim_next_job("2026-06-23T00:02:01Z")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
+        "j2",
+        "an end-to-end case has no per-run history to wait for"
     );
 }
 
@@ -2771,34 +2923,55 @@ async fn unreviewed_excludes_the_auto_graded_performance_type() {
 }
 
 /// A game-jam run record with a captured README, for the prior-readmes lookup.
-fn game_jam_record(id: &str, model: &str, readme: &str, finished_at: &str) -> RunRecord {
+fn game_jam_record(
+    id: &str,
+    harness: HarnessSlug,
+    model: &str,
+    readme: &str,
+    finished_at: &str,
+) -> RunRecord {
     let mut r = record(id);
     r.subject.test_type = test_cabinet_core::TestType::GameJam;
     r.subject.test_case_slug = "comfort-zone".to_string();
-    r.subject.harness_slug = HarnessSlug::Claude;
+    r.subject.harness_slug = harness;
     r.subject.model_id = model.to_string();
     r.finished_at = finished_at.to_string();
     r.game_jam_readme = Some(readme.to_string());
     r
 }
 
-/// The prior-readmes lookup returns only the same jam + harness + model, oldest
-/// first, and only runs that captured a README — regardless of publish state.
+/// The prior-readmes lookup returns the same jam + model oldest first — including
+/// entries built under a *different* harness, since it is the model that would
+/// otherwise retell the same idea — and only runs that captured a README, regardless
+/// of publish state.
 #[tokio::test]
-async fn game_jam_prior_readmes_matches_jam_harness_model_oldest_first() {
+async fn game_jam_prior_readmes_matches_jam_and_model_across_harnesses_oldest_first() {
     let db = Db::connect_in_memory().await.unwrap();
 
     // Two matching runs (unpublished — the lookup does not require publishing),
-    // pushed newest-first to prove the query re-orders them oldest-first.
+    // pushed newest-first to prove the query re-orders them oldest-first. The newer
+    // one ran under a different harness: same model, so it still counts.
     db.push(
-        &game_jam_record("newer", "sonnet", "# Tide Pool", "2026-02-02T00:00:00Z"),
+        &game_jam_record(
+            "newer",
+            HarnessSlug::Codex,
+            "sonnet",
+            "# Tide Pool",
+            "2026-02-02T00:00:00Z",
+        ),
         &links(),
         None,
     )
     .await
     .unwrap();
     db.push(
-        &game_jam_record("older", "sonnet", "# Space Miner", "2026-01-01T00:00:00Z"),
+        &game_jam_record(
+            "older",
+            HarnessSlug::Claude,
+            "sonnet",
+            "# Space Miner",
+            "2026-01-01T00:00:00Z",
+        ),
         &links(),
         None,
     )
@@ -2807,7 +2980,13 @@ async fn game_jam_prior_readmes_matches_jam_harness_model_oldest_first() {
 
     // A different model — excluded.
     db.push(
-        &game_jam_record("other-model", "opus", "# Other", "2026-01-15T00:00:00Z"),
+        &game_jam_record(
+            "other-model",
+            HarnessSlug::Claude,
+            "opus",
+            "# Other",
+            "2026-01-15T00:00:00Z",
+        ),
         &links(),
         None,
     )
@@ -2815,12 +2994,18 @@ async fn game_jam_prior_readmes_matches_jam_harness_model_oldest_first() {
     .unwrap();
 
     // A matching run that captured no README — excluded.
-    let mut no_readme = game_jam_record("no-readme", "sonnet", "", "2026-01-20T00:00:00Z");
+    let mut no_readme = game_jam_record(
+        "no-readme",
+        HarnessSlug::Claude,
+        "sonnet",
+        "",
+        "2026-01-20T00:00:00Z",
+    );
     no_readme.game_jam_readme = None;
     db.push(&no_readme, &links(), None).await.unwrap();
 
     let entries = db
-        .game_jam_prior_readmes("comfort-zone", HarnessSlug::Claude.as_str(), "sonnet")
+        .game_jam_prior_readmes("comfort-zone", "sonnet")
         .await
         .unwrap();
 

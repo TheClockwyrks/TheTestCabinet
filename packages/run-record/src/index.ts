@@ -1871,6 +1871,25 @@ export type RunStatus = {
 };
 
 /**
+ * A pointer to one earlier game-jam entry a run was seeded with: which run it was
+ * and when it finished, as recorded on the later run.
+ *
+ * The [`PriorGameJamEntry`] the driver fetches minus the README body — the record
+ * notes *that* a run was briefed with an entry and which run it came from, and
+ * leaves the text on the run that produced it.
+ */
+export type PriorGameJamEntryRef = {
+  /**
+   * The earlier run's id.
+   */
+  runId: string;
+  /**
+   * RFC 3339 timestamp of when the earlier run finished.
+   */
+  finishedAt: string;
+};
+
+/**
  * The complete run record emitted by every run.
  *
  * This is the contract consumed by the site and published with each run. Its
@@ -1924,11 +1943,26 @@ export type RunRecord = {
    * other test type, and for a game-jam run that shipped no README.
    *
    * This is what makes a later jam run aware of what earlier runs already built:
-   * the backend serves the prior runs' READMEs (matched on the same jam, harness,
-   * and model) back to a new run, which seeds them and is asked to build something
-   * distinct. Kept out of a run's other surfaces — it exists to brief the *next*
-   * run, not to be displayed. Defaulted and omitted when absent so records written
-   * before the field existed still deserialize and non-jam records stay slim.
+   * the backend serves the prior runs' READMEs (matched on the same jam and model,
+   * across harnesses) back to a new run, which seeds them and is asked to build
+   * something distinct. Kept out of a run's other surfaces — it exists to brief the
+   * *next* run, not to be displayed. Defaulted and omitted when absent so records
+   * written before the field existed still deserialize and non-jam records stay
+   * slim.
    */
   gameJamReadme?: string | null;
+  /**
+   * The earlier entries this **game-jam** run was seeded with and briefed to build
+   * something distinct from: the id and finish time of each prior run of the same
+   * jam by the same model whose README was placed in the run's
+   * `previous-entries/` folder, oldest first.
+   *
+   * Empty for a jam's first run by a model (and for every other test type). Unlike
+   * [`game_jam_readme`](Self::game_jam_readme) this *is* meant to be shown: it is
+   * how a reviewer — or whoever is asking why a model built the same game twice —
+   * can see what history a run actually had. The READMEs themselves are not
+   * duplicated here; each is on the run it names. Defaulted and omitted when empty
+   * so records written before the field existed still deserialize.
+   */
+  gameJamPriorEntries?: Array<PriorGameJamEntryRef>;
 };
