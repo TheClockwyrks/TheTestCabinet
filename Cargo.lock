@@ -6070,6 +6070,7 @@ dependencies = [
  "http",
  "lattice-core",
  "lattice-host",
+ "md-5",
  "png 0.17.16",
  "reqwest 0.12.28",
  "schemars 1.2.1",
