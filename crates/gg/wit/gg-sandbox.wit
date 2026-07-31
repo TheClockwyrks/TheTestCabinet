@@ -760,6 +760,20 @@ interface delegation {
     /// Attempt the same task K times in isolated worktrees, judge them, merge the winner and
     /// discard the losers. This blocks until the winner is merged.
     speculate: func(request: speculate-request) -> result<speculation-report, tool-error>;
+
+    /// Move the process you are running inside on to another of its states, naming the state the
+    /// way you name an agent to spawn. `note` is the opening message the next state's agent sees.
+    ///
+    /// Like `compact` it is **registered, not performed**: the call validates the target against
+    /// the states you may move to, returns, and your program carries on to its end; the transition
+    /// itself happens after that. Replacing the agent — and its window — while its own program is
+    /// still running would pull every remaining call out from under it. Unlike `compact`, the
+    /// FIRST declaration stands and a second is refused: a silently replaced successor is a change
+    /// you cannot see.
+    ///
+    /// Bound only when a state machine is driving you and the state you are in has somewhere to go.
+    /// `invalid-argument` names a state you may not move to; `unavailable` means no machine.
+    transition-state: func(state: string, note: option<string>) -> result<_, tool-error>;
 }
 
 /// The channel the interpreter SHIM reports back to gg through.

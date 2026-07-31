@@ -95,11 +95,11 @@ use test_cabinet_core::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
     CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, GgAgentConfig,
-    GgAgentStatus, GgCandidateShape, GgCapabilitySet, GgContextAction, GgContextSource,
-    GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgNotAProgram,
-    GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgSubagentScope,
-    GgTelemetryKind, GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE,
-    SHELL_OUTPUT_MODES,
+    GgAgentStatus, GgAgentTransitionKind, GgCandidateShape, GgCapabilitySet, GgContextAction,
+    GgContextSource, GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach, GgLimitKind,
+    GgNotAProgram, GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding, GgSpeculationPhase,
+    GgSubagentScope, GgTelemetryKind, GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -120,6 +120,7 @@ use crate::context::{
 };
 use crate::docs::DocsRuntime;
 use crate::ending::{Ending, EndingRole};
+use crate::fsm::{FsmPosition, FsmSpec};
 use crate::git;
 use crate::healing::{
     self, AssistantMessageMode, CandidateShape, Healed, HealingConfig, HealingStrategy,
@@ -134,8 +135,8 @@ use crate::model::{
     ImageContent, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
 };
 use crate::modules::{
-    CapabilityModules, HistorySetup, InheritedModules, Module, ModuleResolveCtx, ModuleSet,
-    Ownership, Refresh,
+    CapabilityModules, HistorySetup, InheritedModules, Module, ModuleKind, ModuleResolveCtx,
+    ModuleSet, Ownership, Refresh, TransferPlan, TransferReport,
 };
 use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
@@ -159,14 +160,15 @@ use crate::tasks::TasksRuntime;
 use crate::telemetry::Emitter;
 use crate::tools::VisionContext;
 use crate::tools::{
-    ARCHIVE_THREAD_TOOL, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL, EVICT_FILE_VIEW_TOOL,
-    OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy,
-    ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL,
-    SpeculationData, SubagentHandleData, SubagentResultData, Tool, ToolContext, ToolData,
-    ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
-    WorkflowData, handled_by_loop, is_board_tool, is_context_reclaim_tool, is_memory_tool,
-    is_subagent_tool, is_task_tool, parse_archive_ranges, parse_compact_request, parse_evict_path,
-    read_policy, saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
+    ARCHIVE_THREAD_TOOL, AgentFacts, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL,
+    EVICT_FILE_VIEW_TOOL, OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL, RUN_WORKFLOW_TOOL,
+    ReadFileTool, ReadPolicy, ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL, SPAWN_SUBAGENT_TOOL,
+    SPECULATE_TOOL, SpeculationData, SubagentHandleData, SubagentResultData, TRANSITION_STATE_TOOL,
+    Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL,
+    WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop, is_board_tool, is_context_reclaim_tool,
+    is_memory_tool, is_subagent_tool, is_task_tool, parse_archive_ranges, parse_compact_request,
+    parse_evict_path, read_policy, saturating_u32, saturating_u64, shell_offload,
+    unknown_disabled_tools,
 };
 use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
@@ -320,6 +322,15 @@ pub struct Agent {
     /// because it is what the [per-profile accounting](SlotAccounting) and the
     /// `AgentSpawned`/`SlotUsage` telemetry key on.
     pub slot: String,
+    /// Where this instance sits in a [machine](crate::fsm), when one is driving it — the machine
+    /// and the state, which together decide the transition call this instance is offered and the
+    /// targets that call may name.
+    ///
+    /// `None` for every ordinary agent, which is almost all of them. It is set when [`run_agent`]
+    /// enters an [FSM shell](crate::fsm::is_shell), and carried — re-pointed at the new state —
+    /// across each transition. It is deliberately *not* inherited by anything this agent spawns: a
+    /// subagent is doing a job for the state, not standing in it.
+    pub fsm: Option<FsmPosition>,
 }
 
 impl Agent {
@@ -333,6 +344,44 @@ impl Agent {
             parent_id: None,
             depth: 0,
             slot: profile.to_string(),
+            fsm: None,
+        }
+    }
+
+    /// This agent as it stands at the **entry state** of `machine`: the same instance, now running
+    /// the entry state's [agent profile](crate::fsm::FsmStateSpec::agent) and holding the position
+    /// it occupies.
+    ///
+    /// An [FSM shell](crate::fsm::is_shell) has no turns of its own, so an agent that was going to
+    /// run one *becomes* its first state rather than spawning a child to do it. That is what makes
+    /// an FSM agent indistinguishable from an ordinary one to whoever put it to work: one id in the
+    /// tree, one scheduler slot, one return value.
+    fn entering(self, machine: &Arc<FsmSpec>) -> Self {
+        let position = machine.entry_position();
+        Self {
+            slot: position.agent().to_string(),
+            fsm: Some(position),
+            ..self
+        }
+    }
+
+    /// The **successor** this instance hands off to: a fresh id, this instance as its parent, the
+    /// same depth, and the profile and machine position the [handoff](Handoff) named.
+    ///
+    /// The depth is deliberately not incremented. Succession is not delegation — the
+    /// [depth cap](SubagentConfig::max_depth) exists to bound the delegation *tree*, and a long
+    /// machine that exhausted it would be measuring the wrong thing. The id, on the other hand, is
+    /// deliberately fresh: a new id gives the successor its own
+    /// [message pool](crate::telemetry), so its stream re-states every context message it
+    /// references and is self-contained, which is exactly what the console's per-agent reduction
+    /// needs.
+    fn succeeding(&self, id: String, profile: String, fsm: Option<FsmPosition>) -> Self {
+        Self {
+            id,
+            parent_id: Some(self.id.clone()),
+            depth: self.depth,
+            slot: profile,
+            fsm,
         }
     }
 }
@@ -536,6 +585,12 @@ fn validate_agents(set: &GgCapabilitySet) -> Result<(), String> {
         }
     }
     validate_merge_agent(set)?;
+    // Every [machine](crate::fsm) the set declares, checked structurally: an FSM shell with no
+    // states, a state naming a profile nobody declared, an edge leading nowhere. These belong here
+    // rather than among the launch *warnings* for the same reason a roster reference to an
+    // undeclared profile does — a run carrying one is not a differently-configured run, it is an
+    // unrunnable one.
+    crate::fsm::validate(set)?;
     Ok(())
 }
 
@@ -1018,6 +1073,14 @@ struct Orchestrator {
     /// one notebook and are each told what the other wrote. Empty for every run that scopes
     /// nothing, which is every run that does not say otherwise.
     memory_registry: MemoryRegistry,
+    /// Every [machine](crate::fsm) this run declares, keyed by the **FSM shell**
+    /// [profile](GgAgentConfig) that declares it — parsed once at launch, then shared by every
+    /// incarnation each machine runs.
+    ///
+    /// Built here rather than per agent so a machine cannot be re-read differently mid-run: the
+    /// table a transition is checked against is the very object the entry state came from. Empty for
+    /// every run that declares no machine, which is almost all of them.
+    machines: BTreeMap<String, Arc<FsmSpec>>,
     /// The agents blocked in a [`wait_for_issue`](Self::begin_issue_wait), keyed by the issue id
     /// each awaits. Each entry is the [scheduler waiter tokens](WaiterToken) of the agents waiting
     /// on that issue; when the issue reaches a terminal state they are all
@@ -1244,6 +1307,11 @@ impl Orchestrator {
             issue_reviews: Mutex::new(HashMap::new()),
             board: resolve_board(set),
             memory_registry: MemoryRegistry::new(),
+            // Infallible here: `validate_agents` refused the launch over any machine that could not
+            // be built, before this orchestrator was constructed. A machine that somehow still fails
+            // to parse simply declares nothing and its shell runs as an ordinary agent, which the
+            // launch warnings above have already said.
+            machines: crate::fsm::machines(set).unwrap_or_default(),
             issue_waits: Mutex::new(HashMap::new()),
             git_lock: tokio::sync::Mutex::new(()),
             merge_lock: tokio::sync::Mutex::new(()),
@@ -1274,6 +1342,13 @@ impl Orchestrator {
                 .is_enabled(CAPABILITY_REPLAY)
                 .then(|| Arc::new(GgRecorder::new())),
         }
+    }
+
+    /// The [machine](crate::fsm) the profile named `profile` declares, when it is an
+    /// [FSM shell](crate::fsm::is_shell) — what turns an agent about to run that profile into the
+    /// machine's entry state instead.
+    fn machine(&self, profile: &str) -> Option<&Arc<FsmSpec>> {
+        self.machines.get(profile)
     }
 
     /// This agent's skills runtime over the shared library (a fresh read-state runtime per agent),
@@ -1709,6 +1784,7 @@ impl Orchestrator {
             parent_id: None,
             depth: 0,
             slot,
+            fsm: None,
         };
         let role = AgentRole::Issue {
             brief,
@@ -2094,14 +2170,28 @@ async fn run_agent(
     client: Box<dyn ModelClient>,
     inbox_rx: mpsc::UnboundedReceiver<String>,
 ) -> LoopEnd {
+    // An [FSM shell](crate::fsm::is_shell) has no turns of its own: an agent about to run one
+    // *becomes* the machine's entry state instead of spawning a child to do it. This is what keeps a
+    // machine indistinguishable from an ordinary agent to whoever put it to work — one id in the
+    // tree, one scheduler slot, one return value — and it is done before the slot is taken, so the
+    // slot is acquired under the state agent's own exclusivity rather than the shell's.
+    let entered_machine = orch.machine(&agent.slot).cloned();
+    let mut agent = match &entered_machine {
+        Some(machine) => agent.entering(machine),
+        None => agent,
+    };
+
     // The exclusivity key this agent holds its slot under: its profile's name when the profile is
     // [persistent](crate::persistence), so a second instance of it queues behind this one
     // instead of running beside it; `None` for every ordinary agent, which contends with nothing.
-    // Resolved before the slot is taken, and re-resolved (never carried) at each release.
-    let exclusive = orch.exclusive_key(&agent.slot);
+    // Resolved before the slot is taken, re-resolved (never carried) at each release, and
+    // [exchanged](Scheduler::rekey) — never released — when a succession changes the profile.
+    let mut exclusive = orch.exclusive_key(&agent.slot);
 
     // Acquire a running slot before doing anything: a spawned agent blocks here until the
-    // scheduler grants one (the root's is granted immediately). This is the parallelism cap.
+    // scheduler grants one (the root's is granted immediately). This is the parallelism cap. It is
+    // taken **once for the whole succession**: a transition is the continuation of work already in
+    // progress, and making it queue behind unrelated agents would stall a machine mid-stride.
     orch.scheduler.acquire_start(exclusive.as_deref()).await;
 
     let is_root = matches!(role, AgentRole::Root);
@@ -2110,26 +2200,6 @@ async fn run_agent(
         AgentRole::Issue { issue_id, .. } => Some(issue_id.clone()),
         AgentRole::Root => None,
     };
-    // Scope this agent's stream to its node in the tree (and to the issue it was dispatched for).
-    let emitter =
-        orch.base_emitter
-            .for_agent_on_issue(agent.id.clone(), agent.parent_id.clone(), issue_id);
-    let emitter = &emitter;
-
-    // This agent's profile — the source of its capabilities, model, execution mode, and prompt.
-    // A name this run does not declare falls back to the Root (a spawned child always names a
-    // declared profile; this only guards a stale internal reference).
-    let profile = orch.profile_or_root(&agent.slot).clone();
-
-    let model_id = client.model_id().to_string();
-    emitter.emit(log(
-        "info",
-        format!(
-            "agent profile `{}` resolved to model `{model_id}` ({} provider).",
-            agent.slot,
-            provider_label_for(&orch, &agent.slot),
-        ),
-    ));
 
     // Announce this agent to the tree: its slot/model, depth, the brief it was dispatched with (for
     // a subagent, or an auto-dispatched issue agent), and the isolated worktree branch it runs in
@@ -2163,59 +2233,6 @@ async fn run_agent(
         Some(wt) => wt.path.clone(),
         None => orch.workspace_dir.clone(),
     };
-    emitter.emit(GgTelemetryKind::AgentSpawned {
-        slot: agent.slot.clone(),
-        model_id: model_id.clone(),
-        depth: agent.depth as u64,
-        brief,
-        worktree: worktree_branch,
-        cwd: Some(workspace_dir.display().to_string()),
-    });
-    // The running transition is only meaningful (and only emitted) when the run is multi-agent
-    // (delegation, or project-management auto-dispatch) — it is what animates the live tree.
-    if orch.multi_agent() {
-        emitter.emit(agent_status(GgAgentStatus::Running));
-    }
-
-    // This agent's execution mode (traditional tool calling vs a code-shaped reply) and the sandbox
-    // ceilings/healing behind it come from its **own profile**, so a run can mix agents that call
-    // tools with agents that write programs. Resolved here, ahead of the modules, because the
-    // window it opens is armed by it.
-    let code = orch.code_setup(&profile);
-    let context_setup = orch.context_setup(&model_id);
-
-    // Build this agent's [modules](crate::modules) — everything it holds. The memory, task and
-    // archive modules are **per agent** (a subagent has its own scratchpad, task list and
-    // archive); the skills library and the estimator are shared through the orchestrator; and the
-    // **project-management board is shared run-wide** — every agent's board tools mutate the one
-    // [`orch.board`], the global work queue the dispatcher reads.
-    let orch_skills = orch.skills_runtime();
-    // What this agent's spawner offered it, when it had one. Only a profile scoped
-    // [`inherited`](MemoryScope::Inherited) or [`read-only`](MemoryScope::ReadOnly) binds anything
-    // from here; every other profile builds its own state and this is simply unread.
-    let no_inheritance = InheritedModules::default();
-    let inherited = match &role {
-        AgentRole::Sub { inherited, .. } => inherited,
-        AgentRole::Issue { .. } | AgentRole::Root => &no_inheritance,
-    };
-    // Scoped so the borrow of `role` this context takes ends before the role is consumed by the
-    // completion path: resolution is the only thing that needs it.
-    let mut modules = {
-        let module_ctx = ModuleResolveCtx {
-            skills: &orch_skills,
-            board: &orch.board,
-            memories: &orch.memory_registry,
-            inherited,
-            history: HistorySetup {
-                estimator: Arc::clone(&context_setup.estimator),
-                window_limit: context_setup.window_limit,
-                code_mode: code.enabled,
-            },
-            agent_id: &agent.id,
-        };
-        ModuleSet::resolve(&profile, &module_ctx)
-    };
-    let archive_store = modules.caps().archive().store();
     // The issue this agent was auto-dispatched to implement, if any. It shapes the agent's *prompt*
     // (which names the issue it is working) and its issue-wait guard, but not its toolset: an
     // implementer hands its work back by finishing, not by making a board move, so it needs no board
@@ -2224,233 +2241,558 @@ async fn run_agent(
         AgentRole::Issue { issue_id, .. } => Some(issue_id.clone()),
         _ => None,
     };
-    // This agent's toolset, model, and prompt all come from **its own profile**, so a run can give
-    // different agents different capabilities. The stores it binds are its modules'.
-    let registry = ToolRegistry::from_run(&profile, modules.caps());
-    // The agent's file/shell tools are rooted at the [directory it was announced with](workspace_dir)
-    // — its isolated worktree when it has one, so every mutation (and every command it runs without
-    // an explicit path) lands in the private copy rather than the shared main tree; otherwise the
-    // shared workspace. This is the whole of the worktree isolation at the tool layer — the loop is
-    // otherwise identical.
+    // What this agent's spawner offered it, when it had one. Only a profile scoped
+    // [`inherited`](MemoryScope::Inherited) or [`read-only`](MemoryScope::ReadOnly) binds anything
+    // from here; every other profile builds its own state and this is simply unread.
+    let no_inheritance = InheritedModules::default();
+    let inherited = match &role {
+        AgentRole::Sub { inherited, .. } => inherited,
+        AgentRole::Issue { .. } | AgentRole::Root => &no_inheritance,
+    };
+    // The shared skills library, read once for the whole succession: every incarnation forks its own
+    // read-state runtime over it.
+    let orch_skills = orch.skills_runtime();
+
+    // The **incarnation** state — what crosses from one instance of this agent to the next.
     //
-    // The tool context carries this agent's model alongside its workspace root, because
-    // one tool's answer depends on it: `read_file` attaches a picture only when the model
-    // asking can see one. The registry behind it is the run's, not this agent's.
-    let tool_ctx = ToolContext::new(workspace_dir).with_vision(&model_id, Arc::clone(&orch.vision));
+    // A [succession](Handoff) replaces the running agent with another under a different profile,
+    // and everything below is either carried across that boundary or re-resolved on the far side of
+    // it. The overwhelming majority of agents go round this loop exactly once, with all four of
+    // these at their initial values.
+    //
+    // The client is an option because the *first* incarnation's was resolved by whoever dispatched
+    // this agent — except when that dispatch named an FSM shell, whose model binding means nothing;
+    // then, as at every later incarnation, the state's own profile resolves one.
+    let mut pending_client: Option<Box<dyn ModelClient>> =
+        entered_machine.is_none().then_some(client);
+    // What the previous incarnation handed over: its modules (already transferred), the opening note
+    // gg wrote about the handoff, and the state it came from.
+    let mut succession: Option<Succession> = None;
+    // This agent's delegation context, built once and kept: it owns the inbox its parent messages it
+    // through and the children it has spawned, neither of which a succession may drop.
+    let mut subagent_context: Option<SubagentContext> = None;
+    let mut inbox_rx = Some(inbox_rx);
+    // How many turns this agent has taken in total. A succession spends **one** turn ceiling between
+    // its incarnations and numbers its turns continuously across them, which is what keeps a
+    // transferred thread's `Turn #37` meaning turn 37.
+    let mut turns_taken = 0usize;
 
-    // What gates this agent's ending, when anything does: the validation commands its own profile
-    // configures. *How* it ends is not a profile's business — that is its dispatched
-    // [role](EndingRole)'s, and it is an explicit call either way.
-    let completion = CompletionSetup::resolve(&profile);
-
-    // Announce the run's configuration once, on the root's stream, so the console shows the enabled
-    // capabilities from the start; subagents inherit the same configuration and stay quiet.
-    if is_root {
-        announce_configuration(
-            emitter,
-            &registry,
-            modules.caps(),
-            orch.speculative_active(),
-            code.enabled,
-            &completion,
+    let (end, agent_emitter) = loop {
+        // Scope this incarnation's stream to its own node in the tree (and to the issue it was
+        // dispatched for). A fresh agent id means a fresh message pool, so each incarnation's stream
+        // re-states every context message it references and is self-contained — which is exactly
+        // what the console's per-agent reduction needs, and the reason a succession mints a new id
+        // rather than reusing the old one.
+        let agent_emitter = orch.base_emitter.for_agent_on_issue(
+            agent.id.clone(),
+            agent.parent_id.clone(),
+            issue_id.clone(),
         );
-        // Record the run's effective toolset on the session summary — the exact set of tool names
-        // offered to the root agent after capability gating and per-tool overrides — so the toolset
-        // is a durable, slice-by ablation variable. Then warn (loudly but non-fatally) about any
-        // per-tool override that names a tool gg does not offer at all, so a typo is visible.
-        emitter.record_effective_tools(registry.tool_names());
-        // Record the run's execution mode (code-shaped responses vs traditional tool calling) so the
-        // "does responses-as-code help?" study is a durable, sliceable outcome dimension alongside
-        // the capabilityEnabled facet.
-        emitter.record_execution_mode(if code.enabled {
-            "responses_as_code"
-        } else {
-            "tool_calling"
+        let emitter = &agent_emitter;
+        let first_incarnation = succession.is_none();
+
+        // This agent's profile — the source of its capabilities, model, execution mode, and prompt.
+        // A name this run does not declare falls back to the Root (a spawned child always names a
+        // declared profile; this only guards a stale internal reference).
+        let profile = orch.profile_or_root(&agent.slot).clone();
+
+        // This incarnation's client. Carried in from the dispatch on the first pass; resolved from
+        // the profile the machine (or the exec) named on every later one. A model that will not
+        // resolve mid-succession ends the session rather than silently continuing as the previous
+        // agent, which would be a different run than the one the record describes.
+        let client = match pending_client.take() {
+            Some(client) => client,
+            None => match profile_binding(&orch.caps, &agent.slot).and_then(|binding| {
+                orch.factory
+                    .client_for(&binding)
+                    .map_err(|err| err.to_string())
+            }) {
+                Ok(client) => client,
+                Err(err) => {
+                    emitter.emit(log(
+                        "error",
+                        format!(
+                            "agent profile `{}` could not be resolved to a model ({err}); the \
+                             session ends here rather than continuing as its predecessor.",
+                            agent.slot
+                        ),
+                    ));
+                    break (
+                        LoopEnd {
+                            status: STATUS_MODEL_ERROR,
+                            turns: turns_taken,
+                            tokens: TokenCounts::default(),
+                            cost: None,
+                            slot: agent.slot.clone(),
+                            final_text: None,
+                            ending: None,
+                            limit: None,
+                            handoff: None,
+                        },
+                        agent_emitter,
+                    );
+                }
+            },
+        };
+
+        let model_id = client.model_id().to_string();
+        emitter.emit(log(
+            "info",
+            format!(
+                "agent profile `{}` resolved to model `{model_id}` ({} provider).",
+                agent.slot,
+                provider_label_for(&orch, &agent.slot),
+            ),
+        ));
+
+        emitter.emit(GgTelemetryKind::AgentSpawned {
+            slot: agent.slot.clone(),
+            model_id: model_id.clone(),
+            depth: agent.depth as u64,
+            brief: brief.clone(),
+            worktree: worktree_branch.clone(),
+            cwd: Some(workspace_dir.display().to_string()),
         });
-        for unknown in unknown_disabled_tools(&profile) {
+        // The state this incarnation stands in, when a machine is driving it — emitted right after
+        // the spawn, so a reader of one agent's stream learns which state it is before it sees a
+        // single turn of it. The entry state has no `from`; every later one names where it came
+        // from, which is the other half of the outgoing instance's `AgentTransition`.
+        if let Some(position) = agent.fsm.as_ref() {
+            emitter.emit(GgTelemetryKind::FsmState {
+                fsm: position.fsm().to_string(),
+                state: position.state().to_string(),
+                agent: agent.slot.clone(),
+                from: succession
+                    .as_ref()
+                    .and_then(|succession| succession.from_state.clone()),
+            });
+        }
+        // The running transition is only meaningful (and only emitted) when the run is multi-agent
+        // (delegation, or project-management auto-dispatch) — it is what animates the live tree.
+        if orch.multi_agent() {
+            emitter.emit(agent_status(GgAgentStatus::Running));
+        }
+
+        // This agent's execution mode (traditional tool calling vs a code-shaped reply) and the
+        // sandbox ceilings/healing behind it come from its **own profile**, so a run can mix agents
+        // that call tools with agents that write programs. Resolved here, ahead of the modules,
+        // because the window it opens is armed by it.
+        let code = orch.code_setup(&profile);
+        let context_setup = orch.context_setup(&model_id);
+        let history = HistorySetup {
+            estimator: Arc::clone(&context_setup.estimator),
+            window_limit: context_setup.window_limit,
+            code_mode: code.enabled,
+        };
+
+        // Build this agent's [modules](crate::modules) — everything it holds. The memory, task and
+        // archive modules are **per agent** (a subagent has its own scratchpad, task list and
+        // archive); the skills library and the estimator are shared through the orchestrator; and
+        // the **project-management board is shared run-wide** — every agent's board tools mutate the
+        // one [`orch.board`], the global work queue the dispatcher reads.
+        //
+        // A successor's set is not built here at all: it was [transferred](crate::modules::transfer)
+        // on the far side of the handoff, where the outgoing instance's stream was still live to
+        // report what it carried.
+        let (mut modules, opening) = match succession.take() {
+            Some(succession) => (
+                succession.modules,
+                Opening::Carried {
+                    note: succession.note,
+                },
+            ),
+            None => {
+                let module_ctx = ModuleResolveCtx {
+                    skills: &orch_skills,
+                    board: &orch.board,
+                    memories: &orch.memory_registry,
+                    inherited,
+                    history: history.clone(),
+                    agent_id: &agent.id,
+                };
+                (ModuleSet::resolve(&profile, &module_ctx), Opening::Fresh)
+            }
+        };
+        let archive_store = modules.caps().archive().store();
+        // A **successor**'s modules report themselves on its own stream, the moment it has one. The
+        // console reduces per agent, so a module that simply *arrived* — carrying the whole task
+        // list its predecessor built — would otherwise leave the successor's panel empty for state
+        // it very much holds. A first incarnation says nothing here: its modules are empty, and the
+        // root's opening announcement below is what introduces them.
+        if !first_incarnation {
+            for event in modules.state_events() {
+                emitter.emit(event);
+            }
+        }
+
+        // This agent's toolset, model, and prompt all come from **its own profile**, so a run can
+        // give different agents different capabilities. The stores it binds are its modules', and
+        // the transition call — if it has one — comes from where it stands in its machine.
+        let registry = ToolRegistry::from_run(
+            &profile,
+            modules.caps(),
+            &AgentFacts {
+                fsm: agent.fsm.as_ref(),
+            },
+        );
+        // The agent's file/shell tools are rooted at the [directory it was announced
+        // with](workspace_dir) — its isolated worktree when it has one, so every mutation (and every
+        // command it runs without an explicit path) lands in the private copy rather than the shared
+        // main tree; otherwise the shared workspace. This is the whole of the worktree isolation at
+        // the tool layer — the loop is otherwise identical.
+        //
+        // The tool context carries this agent's model alongside its workspace root, because
+        // one tool's answer depends on it: `read_file` attaches a picture only when the model
+        // asking can see one. The registry behind it is the run's, not this agent's.
+        let tool_ctx = ToolContext::new(workspace_dir.clone())
+            .with_vision(&model_id, Arc::clone(&orch.vision));
+
+        // What gates this agent's ending, when anything does: the validation commands its own
+        // profile configures. *How* it ends is not a profile's business — that is its dispatched
+        // [role](EndingRole)'s, and it is an explicit call either way.
+        let completion = CompletionSetup::resolve(&profile);
+
+        // Announce the run's configuration once, on the root's stream, so the console shows the
+        // enabled capabilities from the start; subagents inherit the same configuration and stay
+        // quiet. A later incarnation stays quiet too: these are the run's **durable ablation
+        // facets**, and a facet with two values is a facet nothing can be sliced by.
+        if is_root && first_incarnation {
+            announce_configuration(
+                emitter,
+                &registry,
+                modules.caps(),
+                orch.speculative_active(),
+                code.enabled,
+                &completion,
+            );
+            // Record the run's effective toolset on the session summary — the exact set of tool
+            // names offered to the root agent after capability gating and per-tool overrides — so
+            // the toolset is a durable, slice-by ablation variable. Then warn (loudly but
+            // non-fatally) about any per-tool override that names a tool gg does not offer at all,
+            // so a typo is visible.
+            emitter.record_effective_tools(registry.tool_names());
+            // Record the run's execution mode (code-shaped responses vs traditional tool calling) so
+            // the "does responses-as-code help?" study is a durable, sliceable outcome dimension
+            // alongside the capabilityEnabled facet.
+            emitter.record_execution_mode(if code.enabled {
+                "responses_as_code"
+            } else {
+                "tool_calling"
+            });
+            for unknown in unknown_disabled_tools(&profile) {
+                emitter.emit(log(
+                    "warn",
+                    format!(
+                        "capability set disables unknown tool `{unknown}`: it is not a tool gg \
+                         offers, so it withholds nothing. Check the name against the toolset."
+                    ),
+                ));
+            }
+        }
+
+        // The agent's memory access, not merely its capability: a read-only holder cannot satisfy a
+        // memory compaction, so the strategy is demoted for it rather than leaving the run to wedge
+        // against a full window it has no call to clear.
+        let memories_writable = modules.caps().memories().is_writable();
+        let mut compaction = CompactionSetup::resolve(&profile, memories_writable);
+        if !memories_writable
+            && profile
+                .capability(CAPABILITY_COMPACTION)
+                .filter(|capability| capability.enabled)
+                .and_then(|capability| capability.implementation.as_deref())
+                .map(str::trim)
+                == Some(test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY)
+        {
             emitter.emit(log(
                 "warn",
                 format!(
-                    "capability set disables unknown tool `{unknown}`: it is not a tool gg offers, \
-                     so it withholds nothing. Check the name against the toolset."
+                    "agent `{}` compacts with the `{}` strategy but holds \
+                     its memories read-only, so it has no call that could satisfy one; it condenses \
+                     with the `{}` strategy instead.",
+                    agent.slot,
+                    test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY,
+                    compaction.strategy.id(),
                 ),
             ));
         }
-    }
+        // A handoff strategy condenses on a **second** model, resolved through the same factory
+        // every agent's own model is. A named model that will not resolve is a misconfiguration, not
+        // a reason to stop compacting — a run that stopped compacting would overflow its window a
+        // few turns later — so it is reported loudly and the agent's own client stands in. This
+        // binding keeps the standard prompt-cache lifetime whatever the agent chose: a handoff is a
+        // one-shot summary request, so an extended entry would be paid for and never read.
+        if let Some(model) = compaction::handoff_model_id(&profile) {
+            let binding = GgSlotBinding::new(COMPACTION_SLOT, &model);
+            match orch.factory.client_for(&binding) {
+                Ok(client) => {
+                    compaction.handoff_client = Some(client);
+                    if is_root && first_incarnation {
+                        emitter.emit(log(
+                            "info",
+                            format!(
+                                "compaction hands off to `{model}`; the working model's thread is \
+                                 condensed by it, not by the agent."
+                            ),
+                        ));
+                    }
+                }
+                Err(err) => emitter.emit(log(
+                    "warn",
+                    format!(
+                        "compaction names the handoff model `{model}`, which could not be resolved \
+                         ({err}); compacting on this agent's own model instead."
+                    ),
+                )),
+            }
+        }
+        let amc = AmcSetup::resolve(&profile, &registry, archive_store);
+        let autoload = AutoloadSetup::resolve(&profile);
+        // This agent's persistence: whether its instances are serialized and carry their open file
+        // views, bound to the run-global record every instance of its profile shares.
+        let persistence = PersistenceSetup::resolve(&profile, Arc::clone(&orch.persistence));
+        if is_root && first_incarnation && autoload.enabled {
+            emitter.emit(log(
+                "info",
+                format!(
+                    "autoload-specifications enabled; the {} file(s) the test case provided are \
+                     seeded into the opening context{}.",
+                    orch.provided_files.len(),
+                    if autoload.locked {
+                        ", locked (kept across compaction)"
+                    } else {
+                        ""
+                    },
+                ),
+            ));
+        }
+        if is_root && first_incarnation && compaction.enabled {
+            emitter.emit(log(
+                "info",
+                format!(
+                    "compaction enabled; the thread compacts with the `{}` strategy once the window \
+                     reaches {:.0}% full.",
+                    compaction.strategy.id(),
+                    compaction.policy.trigger_fullness() * 100.0
+                ),
+            ));
+        }
+        if is_root && first_incarnation && amc.enabled {
+            emitter.emit(log(
+                "info",
+                "agent-managed context enabled; the model sees a live window-fullness signal and \
+                 can evict file views, archive thread history, and search the archive.",
+            ));
+        }
 
-    // The agent's memory access, not merely its capability: a read-only holder cannot satisfy a
-    // memory compaction, so the strategy is demoted for it rather than leaving the run to wedge
-    // against a full window it has no call to clear.
-    let memories_writable = modules.caps().memories().is_writable();
-    let mut compaction = CompactionSetup::resolve(&profile, memories_writable);
-    if !memories_writable
-        && profile
-            .capability(CAPABILITY_COMPACTION)
-            .filter(|capability| capability.enabled)
-            .and_then(|capability| capability.implementation.as_deref())
-            .map(str::trim)
-            == Some(test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY)
-    {
-        emitter.emit(log(
-            "warn",
-            format!(
-                "agent `{}` compacts with the `{}` strategy but holds \
-                 its memories read-only, so it has no call that could satisfy one; it condenses \
-                 with the `{}` strategy instead.",
-                agent.slot,
-                test_cabinet_core::gg::COMPACTION_STRATEGY_MEMORY,
-                compaction.strategy.id(),
-            ),
-        ));
-    }
-    // A handoff strategy condenses on a **second** model, resolved through the same factory every
-    // agent's own model is. A named model that will not resolve is a misconfiguration, not a reason
-    // to stop compacting — a run that stopped compacting would overflow its window a few turns
-    // later — so it is reported loudly and the agent's own client stands in. This binding keeps the
-    // standard prompt-cache lifetime whatever the agent chose: a handoff is a one-shot summary
-    // request, so an extended entry would be paid for and never read.
-    if let Some(model) = compaction::handoff_model_id(&profile) {
-        let binding = GgSlotBinding::new(COMPACTION_SLOT, &model);
-        match orch.factory.client_for(&binding) {
-            Ok(client) => {
-                compaction.handoff_client = Some(client);
-                if is_root {
-                    emitter.emit(log(
-                        "info",
-                        format!(
-                            "compaction hands off to `{model}`; the working model's thread is \
-                             condensed by it, not by the agent."
+        // When delegation is enabled (subagents or workflows), this agent gets a delegation context
+        // so its loop can spawn/wait/message and run declared workflows; off, it is a single agent
+        // with no such context (and the tools were never offered).
+        //
+        // Built once and then *updated*, never rebuilt: it owns the inbox this agent's parent
+        // messages it through and the handles of the children it has already spawned, and a
+        // succession that dropped either would orphan a running subagent and silence a live channel.
+        // What a succession does change is what this agent offers the children it spawns next, and
+        // the key it frees when it blocks.
+        if orch.delegation_enabled() {
+            match subagent_context.as_mut() {
+                Some(sub) => {
+                    sub.inherited = InheritedModules::from_spawner(modules.caps());
+                    sub.ctx.exclusive = exclusive.clone();
+                }
+                None => {
+                    subagent_context = Some(SubagentContext {
+                        orch: Arc::clone(&orch),
+                        ctx: AgentCtx::new(
+                            inbox_rx.take().expect("the inbox is taken exactly once"),
+                            exclusive.clone(),
                         ),
-                    ));
+                        // Taken from this agent's own modules, so a child that inherits binds the
+                        // very store this agent is curating rather than a snapshot of it.
+                        inherited: InheritedModules::from_spawner(modules.caps()),
+                    });
                 }
             }
-            Err(err) => emitter.emit(log(
-                "warn",
-                format!(
-                    "compaction names the handoff model `{model}`, which could not be resolved \
-                     ({err}); compacting on this agent's own model instead."
-                ),
-            )),
         }
-    }
-    let amc = AmcSetup::resolve(&profile, &registry, archive_store);
-    let autoload = AutoloadSetup::resolve(&profile);
-    // This agent's persistence: whether its instances are serialized and carry their open file views,
-    // bound to the run-global record every instance of its profile shares.
-    let persistence = PersistenceSetup::resolve(&profile, Arc::clone(&orch.persistence));
-    if is_root && autoload.enabled {
-        emitter.emit(log(
-            "info",
-            format!(
-                "autoload-specifications enabled; the {} file(s) the test case provided are \
-                 seeded into the opening context{}.",
-                orch.provided_files.len(),
-                if autoload.locked {
-                    ", locked (kept across compaction)"
-                } else {
-                    ""
+
+        // When project management is enabled, this agent gets a project context so its loop can
+        // trigger auto-dispatch after a board mutation and block in `wait_for_issue`; it also
+        // carries the issue this agent was itself dispatched to implement (if any), so the loop
+        // knows `finish` returns a result rather than ending the run. Off, the board tools were
+        // never offered.
+        let project = orch.project_management_enabled.then(|| ProjectContext {
+            orch: Arc::clone(&orch),
+            assigned_issue: assigned_issue.clone(),
+        });
+
+        // The build prompt this incarnation is driven by. A successor that was handed a window keeps
+        // the one already in it (its predecessor's), so this is only read on the first incarnation
+        // and on a successor whose transition carried no history — which is seeded like a fresh
+        // agent, from the note the transition gave it or, failing that, from the run's own prompt.
+        let prompt = match &role {
+            AgentRole::Root => orch.prompt.clone(),
+            AgentRole::Sub { brief, .. } => brief.clone(),
+            AgentRole::Issue { brief, .. } => brief.clone(),
+        };
+
+        // Replay capture: when the capability is on, wrap this agent's client so every model turn it
+        // makes — including the summarizer's compaction calls, which reuse this same client —
+        // records its request/response into the shared recorder, and thread the recorder into the
+        // loop so it records each tool result too. The wrapping is invisible to the loop (`model_id`
+        // and errors pass through); off (the default), the client is unwrapped and nothing extra is
+        // captured.
+        let client: Box<dyn ModelClient> = match &orch.replay {
+            Some(recorder) => Box::new(RecordingClient::new(
+                client,
+                Arc::clone(recorder),
+                agent.id.clone(),
+            )),
+            None => client,
+        };
+
+        let end = agent
+            .drive(
+                client.as_ref(),
+                &prompt,
+                &registry,
+                &tool_ctx,
+                emitter,
+                &mut modules,
+                DriveSetup {
+                    limits: LimitsSetup {
+                        limits: orch.limits,
+                        deadline: orch.deadline,
+                        spend: Arc::clone(&orch.spend),
+                        cancel: orch.cancel.clone(),
+                    },
+                    compaction,
+                    amc,
+                    autoload,
+                    persistence,
+                    read_policy: read_policy(&profile),
+                    shell_offload: shell_offload(&profile),
+                    speculative: orch.speculative_active(),
+                    code,
+                    completion,
+                    ending_role,
+                    opening,
+                    turn_base: turns_taken,
+                    replay: orch.replay.clone(),
                 },
-            ),
-        ));
-    }
-    if is_root && compaction.enabled {
-        emitter.emit(log(
-            "info",
-            format!(
-                "compaction enabled; the thread compacts with the `{}` strategy once the window \
-                 reaches {:.0}% full.",
-                compaction.strategy.id(),
-                compaction.policy.trigger_fullness() * 100.0
-            ),
-        ));
-    }
-    if is_root && amc.enabled {
-        emitter.emit(log(
-            "info",
-            "agent-managed context enabled; the model sees a live window-fullness signal and \
-             can evict file views, archive thread history, and search the archive.",
-        ));
-    }
+                &orch.provided_files,
+                &profile,
+                &mut subagent_context,
+                project,
+            )
+            .await;
 
-    // When delegation is enabled (subagents or workflows), this agent gets a delegation context so
-    // its loop can spawn/wait/message and run declared workflows; off, it is a single agent with no
-    // such context (and the tools were never offered).
-    let subagent_context = orch.delegation_enabled().then(|| SubagentContext {
-        orch: Arc::clone(&orch),
-        ctx: AgentCtx::new(inbox_rx, exclusive.clone()),
-        // Taken from this agent's own modules, so a child that inherits binds the very store this
-        // agent is curating rather than a snapshot of it.
-        inherited: InheritedModules::from_spawner(modules.caps()),
-    });
+        // Fold this incarnation's usage into the shared per-slot accounting. Per incarnation rather
+        // than per agent, and keyed on the profile each one ran: that is what splits a machine's
+        // cost between its states, which is the figure a study of one actually wants.
+        orch.accounting
+            .lock()
+            .expect("slot accounting lock")
+            .record(&end.slot, &model_id, end.tokens, end.cost);
+        turns_taken = end.turns;
 
-    // When project management is enabled, this agent gets a project context so its loop can trigger
-    // auto-dispatch after a board mutation and block in `wait_for_issue`; it also carries the issue
-    // this agent was itself dispatched to implement (if any), so the loop knows `finish` returns a
-    // result rather than ending the run. Off, the board tools were never offered.
-    let project = orch.project_management_enabled.then(|| ProjectContext {
-        orch: Arc::clone(&orch),
-        assigned_issue: assigned_issue.clone(),
-    });
+        let Some(handoff) = end.handoff else {
+            break (end, agent_emitter);
+        };
 
-    let prompt = match &role {
-        AgentRole::Root => orch.prompt.clone(),
-        AgentRole::Sub { brief, .. } => brief.clone(),
-        AgentRole::Issue { brief, .. } => brief.clone(),
+        // A succession. Everything from here to the `continue` happens while the **outgoing**
+        // instance's stream is still live, because that is where what it did with its state belongs:
+        // the events its modules still owed, and the record of what each module went on to do.
+        for event in modules.caps_mut().drain_events() {
+            emitter.emit(event);
+        }
+        if orch.multi_agent() {
+            emitter.emit(agent_status(GgAgentStatus::Done));
+        }
+
+        let successor_profile = orch.profile_or_root(&handoff.profile).clone();
+        // The successor's window limit and execution mode, which its modules are re-resolved
+        // against: an agent moving from a million-token window onto a 32k one is over its window the
+        // instant it arrives, and its first turn's compaction check is what has to see that.
+        let successor_client =
+            match profile_binding(&orch.caps, &handoff.profile).and_then(|binding| {
+                orch.factory
+                    .client_for(&binding)
+                    .map_err(|err| err.to_string())
+            }) {
+                Ok(client) => client,
+                Err(err) => {
+                    emitter.emit(log(
+                    "error",
+                    format!(
+                        "the `{}` agent could not be resolved to a model ({err}); the session ends \
+                         here rather than continuing as its predecessor.",
+                        handoff.profile
+                    ),
+                ));
+                    break (
+                        LoopEnd {
+                            status: STATUS_MODEL_ERROR,
+                            handoff: None,
+                            ..end
+                        },
+                        agent_emitter,
+                    );
+                }
+            };
+        let successor_code = orch.code_setup(&successor_profile);
+        let successor_id = orch.next_agent_id();
+        let successor_history = HistorySetup {
+            estimator: Arc::clone(&orch.estimator),
+            window_limit: orch.context_setup(successor_client.model_id()).window_limit,
+            code_mode: successor_code.enabled,
+        };
+        let (successor_modules, report) = {
+            let module_ctx = ModuleResolveCtx {
+                skills: &orch_skills,
+                board: &orch.board,
+                memories: &orch.memory_registry,
+                inherited,
+                history: successor_history,
+                agent_id: &successor_id,
+            };
+            crate::modules::transfer(modules, &successor_profile, &handoff.plan, &module_ctx)
+        };
+        for warning in &report.warnings {
+            emitter.emit(log("warn", warning.clone()));
+        }
+        emitter.emit(GgTelemetryKind::AgentTransition {
+            kind: handoff.reason.kind(),
+            to_agent_id: successor_id.clone(),
+            agent: handoff.profile.clone(),
+            state: handoff
+                .fsm
+                .as_ref()
+                .map(|position| position.state().to_string()),
+            transferred: kind_names(&report.transferred),
+            dropped: kind_names(&report.dropped),
+            initialized: kind_names(&report.initialized),
+        });
+
+        // The exclusivity key follows the profile, so a succession into a persistent profile
+        // contends for it exactly as a fresh instance would — without giving up the running slot it
+        // already holds, unless the key is held by somebody else.
+        let successor_exclusive = orch.exclusive_key(&handoff.profile);
+        orch.scheduler
+            .rekey(exclusive.as_deref(), successor_exclusive.as_deref())
+            .await;
+        exclusive = successor_exclusive;
+
+        let from_state = match &handoff.reason {
+            HandoffReason::Fsm { from } => Some(from.clone()),
+        };
+        succession = Some(Succession {
+            note: succession_note(&handoff, &report, &successor_profile.name),
+            modules: successor_modules,
+            from_state,
+        });
+        pending_client = Some(successor_client);
+        agent = agent.succeeding(successor_id, handoff.profile, handoff.fsm);
     };
-
-    // Replay capture: when the capability is on, wrap this agent's client so every model turn it
-    // makes — including the summarizer's compaction calls, which reuse this same client — records its
-    // request/response into the shared recorder, and thread the recorder into the loop so it records
-    // each tool result too. The wrapping is invisible to the loop (`model_id` and errors pass
-    // through); off (the default), the client is unwrapped and nothing extra is captured.
-    let client: Box<dyn ModelClient> = match &orch.replay {
-        Some(recorder) => Box::new(RecordingClient::new(
-            client,
-            Arc::clone(recorder),
-            agent.id.clone(),
-        )),
-        None => client,
-    };
-
-    let end = agent
-        .drive(
-            client.as_ref(),
-            &prompt,
-            &registry,
-            &tool_ctx,
-            emitter,
-            &mut modules,
-            DriveSetup {
-                limits: LimitsSetup {
-                    limits: orch.limits,
-                    deadline: orch.deadline,
-                    spend: Arc::clone(&orch.spend),
-                    cancel: orch.cancel.clone(),
-                },
-                compaction,
-                amc,
-                autoload,
-                persistence,
-                read_policy: read_policy(&profile),
-                shell_offload: shell_offload(&profile),
-                speculative: orch.speculative_active(),
-                code,
-                completion,
-                ending_role,
-                replay: orch.replay.clone(),
-            },
-            &orch.provided_files,
-            &profile,
-            subagent_context,
-            project,
-        )
-        .await;
-
-    // Fold this agent's usage into the shared per-slot accounting.
-    orch.accounting
-        .lock()
-        .expect("slot accounting lock")
-        .record(&end.slot, &model_id, end.tokens, end.cost);
+    let emitter = &agent_emitter;
 
     let failed = is_failure_status(end.status);
     // Whether the loop ended in a *completion* — the model signalled it was done under this agent's
@@ -2521,6 +2863,88 @@ async fn run_agent(
         }
     }
     end
+}
+
+/// What one incarnation of an agent hands to the next.
+///
+/// It is the whole of what crosses a [succession](Handoff): the modules the transfer produced (which
+/// are built on the *outgoing* side of the boundary, while its stream is still live to report what
+/// was carried), the note the successor opens on, and the state it came from.
+struct Succession {
+    /// The successor's modules, already [transferred](crate::modules::transfer) and re-resolved
+    /// against its own profile.
+    modules: ModuleSet,
+    /// The successor's [opening note](Opening::Carried).
+    note: String,
+    /// The [machine](crate::fsm) state the predecessor was in, for the successor's own
+    /// [`FsmState`](GgTelemetryKind::FsmState) event. `None` for a succession outside a machine.
+    from_state: Option<String>,
+}
+
+/// The [module kinds](ModuleKind) in a [transfer report](crate::modules::TransferReport) as the
+/// wire spells them.
+fn kind_names(kinds: &[ModuleKind]) -> Vec<String> {
+    kinds.iter().map(|kind| kind.to_string()).collect()
+}
+
+/// The note a successor opens on: who it is now, what it received, what it did not, and whatever its
+/// predecessor wanted it to know.
+///
+/// It exists because the alternative is a model inferring its inheritance from absences. An agent
+/// handed a thread but no task list would otherwise discover that by calling `add_task` and finding
+/// the list empty — a discovery that costs a turn and looks, from inside the conversation, exactly
+/// like a bug. Saying it outright costs a few dozen tokens once.
+fn succession_note(handoff: &Handoff, report: &TransferReport, profile: &str) -> String {
+    let mut note = match &handoff.reason {
+        HandoffReason::Fsm { from } => format!(
+            "This process has moved from `{from}` to `{}`. You are now running as the `{profile}` \
+             agent, continuing the same session.",
+            handoff
+                .fsm
+                .as_ref()
+                .map(FsmPosition::state)
+                .unwrap_or(profile),
+        ),
+    };
+    let carried = describe_kinds(&report.transferred);
+    let dropped = describe_kinds(&report.dropped);
+    let fresh = describe_kinds(&report.initialized);
+    note.push_str(&match (carried, dropped.or(fresh)) {
+        (Some(carried), Some(other)) => format!(" You carry over {carried}; {other} did not."),
+        (Some(carried), None) => format!(" You carry over {carried}."),
+        (None, Some(other)) => format!(" Nothing was carried over: {other} did not."),
+        (None, None) => String::new(),
+    });
+    for reason in &report.notes {
+        note.push(' ');
+        note.push_str(reason);
+    }
+    if let Some(message) = &handoff.message {
+        note.push_str("\n\n");
+        note.push_str(message);
+    }
+    note
+}
+
+/// A list of [module kinds](ModuleKind) as a noun phrase — `the conversation, the task list and the
+/// memories` — or `None` when there are none.
+fn describe_kinds(kinds: &[ModuleKind]) -> Option<String> {
+    let described: Vec<&str> = kinds
+        .iter()
+        .map(|kind| match kind {
+            ModuleKind::History => "the conversation",
+            ModuleKind::Memories => "the memories",
+            ModuleKind::Tasks => "the task list",
+            ModuleKind::Board => "the board",
+            ModuleKind::Skills => "the skills already read",
+            ModuleKind::Archive => "the thread archive",
+        })
+        .collect();
+    match described.split_last() {
+        None => None,
+        Some((last, [])) => Some((*last).to_string()),
+        Some((last, rest)) => Some(format!("{} and {last}", rest.join(", "))),
+    }
 }
 
 /// Announce the run's enabled capabilities once (on the root's stream) so the console shows the
@@ -2923,6 +3347,10 @@ fn dispatch_child(
         parent_id: Some(spawner.id.clone()),
         depth: spawner.depth + 1,
         slot: slot.clone(),
+        // A child is not standing in its spawner's machine: it was given a job by the agent in that
+        // state, not the state itself. Its own profile may of course be an FSM shell, which
+        // `run_agent` enters for it.
+        fsm: None,
     };
     let role = AgentRole::Sub {
         brief,
@@ -3726,6 +4154,7 @@ fn run_detached_agent<'a>(
             parent_id: None,
             depth: 0,
             slot: profile.to_string(),
+            fsm: None,
         };
         let role = AgentRole::Sub {
             brief,
@@ -4798,6 +5227,161 @@ fn workflow_stage_event(
     }
 }
 
+/// Turn a [`transition_state`](TRANSITION_STATE_TOOL) call into a captured [`Handoff`], or into the
+/// model-facing refusal that says why it was not taken.
+///
+/// Three things can go wrong, and each is answered in the vocabulary the model can act on. A target
+/// the current state does not declare is refused with the [legal ones](FsmPosition::legal_targets)
+/// listed. A **second** transition in one turn is refused because the first already stands — a
+/// silently replaced successor is a change the model cannot see. And a transition in a turn that has
+/// already declared an ending is refused because the ending wins: the agent said the work was done,
+/// so there is nothing to hand on.
+///
+/// Shared by both execution paths — the tool-calling dispatch above and the program membrane's
+/// deferred declaration — so a transition is judged by exactly the same rules whichever way it was
+/// asked for.
+fn handle_transition(
+    position: &FsmPosition,
+    declared_ending: &Option<Ending>,
+    declared: &mut Option<Handoff>,
+    call: &ToolCall,
+) -> ToolOutcome {
+    let state = match call.arguments.get("state").and_then(Value::as_str) {
+        Some(state) if !state.trim().is_empty() => state,
+        _ => {
+            return ToolOutcome::failed(
+                ToolFailure::InvalidArgument,
+                format!(
+                    "`{TRANSITION_STATE_TOOL}`: missing required argument `state`. The states you                      may move to: {}.",
+                    position.legal_targets()
+                ),
+            );
+        }
+    };
+    if declared_ending.is_some() {
+        return ToolOutcome::failed(
+            ToolFailure::Refused,
+            format!(
+                "you already ended your session this turn, so there is nothing left to hand to                  `{state}`; the ending stands."
+            ),
+        );
+    }
+    if let Some(taken) = declared.as_ref() {
+        return ToolOutcome::failed(
+            ToolFailure::Refused,
+            format!(
+                "you already moved to `{}` this turn; a turn makes one transition, and the first                  one stands.",
+                taken.profile_state(),
+            ),
+        );
+    }
+    let transition = match position.transition_to(state) {
+        Ok(transition) => transition,
+        Err(refusal) => return ToolOutcome::failed(ToolFailure::InvalidArgument, refusal),
+    };
+    let next = position.moved_to(transition);
+    let target = next.state().to_string();
+    let agent = next.agent().to_string();
+    *declared = Some(Handoff {
+        profile: agent.clone(),
+        plan: TransferPlan::Explicit(transition.transfer.clone()),
+        message: call
+            .arguments
+            .get("note")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|note| !note.is_empty())
+            .map(str::to_string),
+        reason: HandoffReason::Fsm {
+            from: position.state().to_string(),
+        },
+        fsm: Some(next),
+    });
+    ToolOutcome::ok(
+        format!(
+            "Moving to `{target}` once this turn's tool results are recorded; the `{agent}` agent              continues from there."
+        ),
+        format!("transition to {target} accepted"),
+    )
+}
+
+/// A **succession**: one agent instance ending so another may continue in its place.
+///
+/// It is what a [`transition_state`](crate::tools::TRANSITION_STATE_TOOL) call turns into, and it is
+/// deliberately more general than that call needs — an `exec` (an agent replacing itself with a
+/// profile of its choosing) is the same value with a different [plan](TransferPlan) and no machine
+/// position, so the two features differ by the two lines that build this rather than by two
+/// incarnation loops.
+///
+/// The loop that applies it is in [`run_agent`]: it drains the outgoing instance's modules,
+/// [transfers](crate::modules::transfer) what the plan carries, mints the successor, and drives it
+/// on the very same scheduler slot.
+struct Handoff {
+    /// The [agent profile](GgAgentConfig) the successor runs under.
+    profile: String,
+    /// What the successor inherits.
+    plan: TransferPlan,
+    /// The successor's opening message — what the predecessor wanted it to know. Folded into the
+    /// note gg writes about the handoff itself, so a successor is never left inferring what it
+    /// received from an empty task list.
+    message: Option<String>,
+    /// Why the succession happened, which is what the console renders it as.
+    reason: HandoffReason,
+    /// The machine position the successor occupies. `Some` for a machine transition; `None` for a
+    /// succession that is not inside a machine.
+    fsm: Option<FsmPosition>,
+}
+
+/// Why one agent instance handed off to another — the gg-side half of
+/// [`GgAgentTransitionKind`](test_cabinet_core::gg::GgAgentTransitionKind).
+enum HandoffReason {
+    /// A [machine](crate::fsm) moved from one state to the next.
+    Fsm {
+        /// The state the machine left, for the transition telemetry and the successor's note.
+        from: String,
+    },
+}
+
+impl Handoff {
+    /// How this handoff names its destination in a refusal: the machine state when it has one, and
+    /// the successor's profile otherwise.
+    fn profile_state(&self) -> &str {
+        match self.fsm.as_ref() {
+            Some(position) => position.state(),
+            None => &self.profile,
+        }
+    }
+}
+
+impl HandoffReason {
+    /// How this succession is reported on the wire.
+    fn kind(&self) -> GgAgentTransitionKind {
+        match self {
+            HandoffReason::Fsm { .. } => GgAgentTransitionKind::Fsm,
+        }
+    }
+}
+
+/// How an incarnation's window is opened: fresh, or carried over from the instance it succeeds.
+///
+/// The distinction is only about the first few items of the window and the two things that seed it.
+/// A [fresh](Self::Fresh) opening is what every agent has always had — the system prompt, the build
+/// prompt, any autoloaded specifications, any file views a persistent profile left open. A
+/// [carried](Self::Carried) one already *has* a thread: its system prompt is
+/// [rebased](ContextModel::rebase) to this profile's (item 0 is the one thing a successor must not
+/// inherit — it states someone else's toolset, roster and ending calls), its build prompt is left
+/// alone, and the seeding is skipped because the window it would seed into is not empty.
+enum Opening {
+    /// A window with nothing in it yet.
+    Fresh,
+    /// A window transferred from the predecessor, with `note` appended at the tail: what the
+    /// successor received, what it did not, and whatever the predecessor wanted to tell it.
+    Carried {
+        /// The successor's opening note.
+        note: String,
+    },
+}
+
 /// How a driven turn loop ended, plus the usage it accumulated.
 struct LoopEnd {
     /// The terminal [`SessionEnded`](GgTelemetryKind::SessionEnded) status.
@@ -4833,6 +5417,13 @@ struct LoopEnd {
     /// question with one answer rather than three parallel ways of inferring it from a status. The
     /// **root's** breach is what a run records as its own; a subagent's is its alone.
     limit: Option<GgLimitBreach>,
+    /// The [succession](Handoff) this incarnation declared, when it ended by handing off rather
+    /// than by finishing or being stopped.
+    ///
+    /// `Some` means this is **not** the agent's final end: [`run_agent`] folds the incarnation's
+    /// usage, builds the successor, and drives it on the same slot, so the values above describe
+    /// one incarnation while the run's own outcome is whichever incarnation finally returns `None`.
+    handoff: Option<Handoff>,
 }
 
 impl LoopEnd {
@@ -4901,7 +5492,7 @@ impl Agent {
         setup: DriveSetup,
         provided_files: &[PathBuf],
         profile: &GgAgentConfig,
-        mut subagents: Option<SubagentContext>,
+        subagents: &mut Option<SubagentContext>,
         project: Option<ProjectContext>,
     ) -> LoopEnd {
         let DriveSetup {
@@ -4916,6 +5507,8 @@ impl Agent {
             code,
             completion,
             ending_role,
+            opening,
+            turn_base,
             replay,
         } = setup;
         // The window and the capability modules, borrowed apart for the whole session: the loop
@@ -4966,7 +5559,7 @@ impl Agent {
         if amc.can_archive {
             context.enable_turn_headers();
         }
-        context.push_system(system_prompt(PromptInputs {
+        let system = system_prompt(PromptInputs {
             registry,
             skills: caps.skills(),
             memories: caps.memories(),
@@ -4991,14 +5584,31 @@ impl Agent {
                 .as_ref()
                 .and_then(|project| project.assigned_issue.as_deref()),
             fences_are_stripped: code.healing.enabled(HealingStrategy::StripFences),
-        }));
-        context.push_user_prompt(prompt);
+        });
+        // How the window opens. A **fresh** one is seeded the way every agent's has always been: the
+        // system prompt, then the build prompt, then whatever the capabilities pre-load into it. A
+        // **carried** one already holds a thread, and the only thing about it that must not be
+        // inherited is item 0 — a system prompt states the toolset, the roster and the ending calls
+        // of the agent it was rendered for — so it is rebased in place and everything behind it is
+        // left exactly where it sits. The two seeding steps below are skipped there for the same
+        // reason: they exist to fill an empty window, and this one is not.
+        let carried = match &opening {
+            Opening::Fresh => {
+                context.push_system(system);
+                context.push_user_prompt(prompt);
+                false
+            }
+            Opening::Carried { .. } => {
+                context.rebase(system, None);
+                true
+            }
+        };
 
         // Autoload the specifications: when this agent's profile enables the capability, seed the
         // test case's provided files (its specs and reference images) into the opening context as
         // though the model had already `read_file`d each — before the first turn, so the model
         // starts with the whole brief in the window. Locked pins them across compaction.
-        if autoload.enabled {
+        if autoload.enabled && !carried {
             autoload_specifications(context, provided_files, tool_ctx, autoload.locked, emitter)
                 .await;
         }
@@ -5009,7 +5619,7 @@ impl Agent {
         // serialized, so this one may have sat queued for a long while behind the instance ahead of it,
         // and the files are re-read as they stand *now* rather than as that instance last saw them.
         // After autoload, so a path the specs already seeded is not opened twice.
-        if persistence.enabled() {
+        if persistence.enabled() && !carried {
             let restored = persistence.restored();
             let reopened = crate::persistence::restore_file_views(
                 context,
@@ -5031,6 +5641,20 @@ impl Agent {
                     ),
                 },
             ));
+        }
+
+        // The successor's opening note, appended at the **tail** of the transferred thread: what
+        // arrived, what did not, and whatever its predecessor wanted it to know. Pushed after the
+        // rebase and after any pinned blocks the modules brought with them, so it is the last thing
+        // the model reads before its first turn — and ephemeral, because it is gg speaking about
+        // the handoff rather than material the agent produced, and a later compaction has by then
+        // folded everything it announced into the blocks that cross the boundary.
+        if let Opening::Carried { note } = &opening {
+            context.push(
+                GgContextSource::System,
+                Retention::Ephemeral,
+                Message::user(note.clone()),
+            );
         }
 
         let mut total_tokens = TokenCounts::default();
@@ -5062,7 +5686,12 @@ impl Agent {
         // answers anything else while one is pending) must name calls the agent actually has.
         let memory_calls = caps.memories().strategy().calls(code.enabled);
 
-        for turn in 0..turn_bound {
+        // The turn numbers this incarnation uses. `turn_base` is what this agent has already spent
+        // across its earlier incarnations, so a succession numbers its turns continuously (a
+        // transferred thread's `Turn #37` still means turn 37 afterwards) and spends **one** turn
+        // ceiling between them rather than one each. It is `0` for the overwhelming majority of
+        // agents, which have exactly one incarnation.
+        for turn in turn_base..turn_bound {
             // An operator killed the run. Checked first, and at the same boundary as the two
             // run-wide ceilings below, because a human's decision outranks every configured one —
             // and on the same terms, so a killed run winds down exactly as cleanly as a run that
@@ -5349,6 +5978,7 @@ impl Agent {
                         ),
                         ending: None,
                         limit: None,
+                        handoff: None,
                     };
                 }
             };
@@ -5553,7 +6183,7 @@ impl Agent {
                     turn_window,
                     turn_skills,
                     docs,
-                    subagents,
+                    subagents.take(),
                 )
                 .await;
                 // Completion validation gate: a program that called `finish` must pass this run's
@@ -5608,6 +6238,7 @@ impl Agent {
                             final_text: Some(ending.final_text()),
                             ending: Some(ending),
                             limit: None,
+                            handoff: None,
                         };
                     }
                     CodeTurnOutcome::Fatal { message, .. } => {
@@ -5632,6 +6263,7 @@ impl Agent {
                             ),
                             ending: None,
                             limit: None,
+                            handoff: None,
                         };
                     }
                     CodeTurnOutcome::Continue {
@@ -5651,12 +6283,13 @@ impl Agent {
                             subagents: turn_subagents,
                             issue_waits: turn_issue_waits,
                             compact_requested: turn_compaction,
+                            transition_requested: turn_transition,
                             compaction_calls: (turn_compaction_calls, turn_compaction_failures),
                         } = state.expect("a non-fatal code turn hands back its per-turn state");
                         *context = turn_context;
                         *caps.skills_mut() = turn_skills;
                         docs = turn_docs;
-                        subagents = turn_subagents;
+                        *subagents = turn_subagents;
                         last_report = Some(report);
                         // The turn's feedback is pushed **before** the breach return, so a stopped
                         // run's context still contains everything the turn produced. The program's
@@ -5761,6 +6394,25 @@ impl Agent {
                             ),
                             (None, None) => {}
                         }
+                        // The deferred half of a state transition the program declared. Applied
+                        // **last** in the turn, after the feedback, the issue waits and any
+                        // compaction are all recorded — the successor inherits this window, and it
+                        // must inherit the one this turn actually produced. A program that also
+                        // compacted therefore hands over the compacted window, which is the right
+                        // way round: the compaction was of work already done.
+                        if let Some(handoff) = turn_transition {
+                            return LoopEnd {
+                                status: STATUS_COMPLETED,
+                                turns: turn + 1,
+                                tokens: total_tokens,
+                                cost: total_cost,
+                                slot: self.slot.clone(),
+                                final_text: None,
+                                ending: None,
+                                limit: None,
+                                handoff: Some(handoff),
+                            };
+                        }
                         continue;
                     }
                 }
@@ -5844,6 +6496,14 @@ impl Agent {
             let mut compaction_calls = 0u32;
             let mut compaction_failures = 0u32;
 
+            // The state transition this turn declared, deferred on exactly the same terms as the
+            // ending above: captured during dispatch, applied once every tool result of the turn is
+            // recorded. **First wins.** Unlike a compaction — which is idempotent, so a second
+            // `compact` harmlessly replaces the first — a silently replaced successor identity is a
+            // change the model cannot see, so a second transition in one turn is refused and says
+            // why.
+            let mut declared_handoff: Option<Handoff> = None;
+
             // Dispatch each requested tool call against the workspace and feed the result
             // back so the model can proceed on its next turn.
             for call in &response.tool_calls {
@@ -5923,6 +6583,16 @@ impl Agent {
                             }
                         }
                     }
+                } else if let Some(position) = self
+                    .fsm
+                    .as_ref()
+                    .filter(|_| call.name == TRANSITION_STATE_TOOL)
+                {
+                    // A state transition. Intercepted here, like the ending calls, because applying
+                    // it means tearing this agent instance down and standing the next state's up
+                    // against the orchestrator and the scheduler — which the tool, seeing only its
+                    // arguments and a workspace path, cannot reach.
+                    handle_transition(position, &declared_ending, &mut declared_handoff, call)
                 } else if let Some(project) = project
                     .as_ref()
                     .filter(|_| call.name == WAIT_FOR_ISSUE_TOOL)
@@ -6027,6 +6697,31 @@ impl Agent {
                     final_text: Some(ending.final_text()),
                     ending: Some(ending),
                     limit: None,
+                    handoff: None,
+                };
+            }
+
+            // The state transition this turn declared: every tool result — including the
+            // transition call's — is now recorded, so the conversation is valid and the incarnation
+            // may end. It is checked **after** the ending above, which is what makes an ending win a
+            // turn that declared both: the agent said its work was done, and a successor would have
+            // nothing left to do.
+            //
+            // Recorded as a `Progressed` turn rather than a `Finished` one: the session is not over,
+            // it is continuing as somebody else, and the error-rate window this agent has built up
+            // travels no further than this incarnation anyway.
+            if let Some(handoff) = declared_handoff {
+                let _ = agent_limits.record(TurnOutcome::Progressed, &self.id);
+                return LoopEnd {
+                    status: STATUS_COMPLETED,
+                    turns: turn + 1,
+                    tokens: total_tokens,
+                    cost: total_cost,
+                    slot: self.slot.clone(),
+                    final_text: None,
+                    ending: None,
+                    limit: None,
+                    handoff: Some(handoff),
                 };
             }
 
@@ -6153,6 +6848,7 @@ impl Agent {
             final_text: ended_text(code_mode, status, last_report, last_text),
             ending: None,
             limit: Some(breach),
+            handoff: None,
         }
     }
 
@@ -6192,6 +6888,7 @@ impl Agent {
             final_text: ended_text(code_mode, STATUS_CANCELED, last_report, last_text),
             ending: None,
             limit: None,
+            handoff: None,
         }
     }
 }
@@ -6480,6 +7177,19 @@ struct DriveSetup {
     completion: CompletionSetup,
     /// Which [ending calls](EndingRole) this agent is given, from the role it was dispatched in.
     ending_role: EndingRole,
+    /// How this incarnation's window is [opened](Opening) — seeded fresh, or continued from the
+    /// instance it succeeds.
+    opening: Opening,
+    /// How many turns this agent has already taken across its earlier incarnations, and therefore
+    /// the number its next turn is the successor of.
+    ///
+    /// It is one figure serving two purposes, which is why it is a single field. It numbers the
+    /// turns the window is tagged with, so a transferred thread's `Turn #37` is still turn 37 after
+    /// the handoff and an `archive_thread` naming it still means the same span. And it is the point
+    /// the [turn ceiling](RunLimits::max_turns) counts from, so a succession spends **one** turn
+    /// budget between its incarnations rather than one each — a machine with five states is not
+    /// five times the run.
+    turn_base: usize,
     /// The [replay](crate::replay) recorder, when the capability is on.
     replay: Option<Arc<GgRecorder>>,
 }

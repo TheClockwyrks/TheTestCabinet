@@ -166,6 +166,15 @@ pub trait ToolApi: Send + 'static {
     /// call validates and records the request and the loop performs the rewrite once the program
     /// has ended.
     fn compact(&mut self, summary: String, files: Vec<String>) -> ToolOutcome;
+    /// Declare a move to another state of the [machine](crate::fsm) driving this agent, and return.
+    /// Deferred exactly as [`compact`](Self::compact) is, and for a stronger version of the same
+    /// reason: a transition replaces the agent — window and all — and doing that to a program still
+    /// running inside it would pull every one of its remaining calls out from under it. The call
+    /// validates the target against the state's declared edges, records the request, and the loop
+    /// performs the succession once the program has ended. Unlike a compaction the **first**
+    /// declaration stands, because a silently replaced successor identity is a change the model
+    /// cannot see.
+    fn transition_state(&mut self, state: String, note: Option<String>) -> ToolOutcome;
     fn spawn_subagent(
         &mut self,
         agent: String,

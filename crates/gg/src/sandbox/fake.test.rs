@@ -327,6 +327,9 @@ impl ToolApi for FakeToolApi {
     fn compact(&mut self, summary: String, files: Vec<String>) -> ToolOutcome {
         self.call("compact", json!({ "summary": summary, "files": files }))
     }
+    fn transition_state(&mut self, state: String, note: Option<String>) -> ToolOutcome {
+        self.call("transition_state", json!({ "state": state, "note": note }))
+    }
     fn spawn_subagent(
         &mut self,
         agent: String,
@@ -495,6 +498,10 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
         // A compaction is registered, not performed: the loop rewrites the window once the program
         // has ended, so there is nothing for a successful call to report back.
         "compact" => ToolOutcome::ok("compacting the context window", "compact context"),
+        // A transition is likewise registered rather than performed: the loop stands the next
+        // state's agent up once the program has ended, so a successful call reports only that it
+        // was accepted.
+        "transition_state" => ToolOutcome::ok("moving on once this turn ends", "transition"),
         "search_archive" => ToolOutcome::ok("1 hit", "searched").with_data(
             ToolData::ArchiveSearch(ArchiveSearchData {
                 archive_empty: false,

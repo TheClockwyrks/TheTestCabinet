@@ -55,6 +55,7 @@ mod shell;
 mod skills;
 mod subagents;
 mod tasks;
+mod transitions;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -72,6 +73,7 @@ use test_cabinet_core::gg::{
 
 use crate::board::IssuePolicy;
 use crate::compaction::CompactionStrategy;
+use crate::fsm::FsmPosition;
 use crate::model::{ImageContent, ToolCall, ToolDefinition};
 use crate::modules::CapabilityModules;
 use crate::vision::VisionSupport;
@@ -115,6 +117,7 @@ pub(crate) use tasks::OwnedStructured;
 pub use tasks::{
     AddTaskTool, CompleteTaskTool, RemoveTaskTool, SetBlockedByTool, UpdateTaskTool, is_task_tool,
 };
+pub use transitions::TRANSITION_STATE_TOOL;
 
 /// Every tool name gg can offer, across **all** capabilities — the canonical vocabulary a per-tool
 /// [override](GgAgentConfig::disabled_tools) is validated against.
@@ -160,7 +163,24 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "send_message",
     "run_workflow",
     "speculate",
+    TRANSITION_STATE_TOOL,
 ];
+
+/// What a toolset needs to know about the agent it is being assembled for, beyond its
+/// [profile](GgAgentConfig) and the [modules](CapabilityModules) it holds.
+///
+/// A capability is a property of a profile and a module is a property of an instance, but a tool can
+/// be a property of neither: `transition_state` is offered because of where this *instance* sits in
+/// a [machine](crate::fsm) declared on a different profile entirely. Such facts travel here rather
+/// than as a growing tail of `Option` parameters, so a second state-dependent tool is one field
+/// rather than an edit at every construction site.
+#[derive(Default)]
+pub struct AgentFacts<'a> {
+    /// Where this agent instance sits in the [machine](crate::fsm) driving it, when one is — which
+    /// decides whether the transition call is offered at all and, when it is, exactly which targets
+    /// it may name.
+    pub fsm: Option<&'a FsmPosition>,
+}
 
 /// The names in a capability set's per-tool [overrides](GgAgentConfig::disabled_tools) that are
 /// **unknown** — not a tool gg can offer at all (a typo, or a removed tool), validated against
@@ -451,7 +471,11 @@ impl ToolRegistry {
     // convenience is exercised by the toolset tests, so the non-test build sees it as unused.
     #[allow(dead_code)]
     pub fn from_capabilities(capabilities: &GgAgentConfig) -> Self {
-        Self::from_run(capabilities, &CapabilityModules::inert())
+        Self::from_run(
+            capabilities,
+            &CapabilityModules::inert(),
+            &AgentFacts::default(),
+        )
     }
 
     /// Assemble the offered toolset from the *enabled* capabilities in `capabilities`, binding the
@@ -491,7 +515,11 @@ impl ToolRegistry {
     /// [`workflows`](CAPABILITY_WORKFLOWS) capability contributes the `run_workflow` tool (likewise
     /// a declaration the loop intercepts to drive declared fan-out/sequencing over the same
     /// scheduler). A disabled or absent capability contributes nothing.
-    pub fn from_run(capabilities: &GgAgentConfig, modules: &CapabilityModules) -> Self {
+    pub fn from_run(
+        capabilities: &GgAgentConfig,
+        modules: &CapabilityModules,
+        facts: &AgentFacts<'_>,
+    ) -> Self {
         let mut tools: Vec<Box<dyn Tool>> = Vec::new();
 
         if capabilities.is_enabled(CAPABILITY_SHELL) {
@@ -665,6 +693,21 @@ impl ToolRegistry {
             // (subagents or workflows on) and worktree isolation is available; the loop refuses it
             // otherwise.
             tools.push(Box::new(subagents::SpeculateTool::new(spawnable.clone())));
+        }
+
+        // The transition call, offered from the agent's **position** in a machine rather than from
+        // any capability on its own profile: the machine is declared on the FSM shell driving it,
+        // and the state's agent is an ordinary profile that knows nothing about it. A terminal state
+        // has nowhere to go, so it is offered nothing — a tool whose every call would be refused
+        // costs a schema in every request and teaches the model a move it does not have.
+        //
+        // Offered once per incarnation and never withdrawn within one, which is what keeps the
+        // offered set — part of the prompt a provider caches — byte-identical from a state's first
+        // turn to its last.
+        if let Some(position) = facts.fsm.filter(|position| !position.outgoing().is_empty()) {
+            tools.push(Box::new(transitions::TransitionStateTool::new(
+                position.clone(),
+            )));
         }
 
         // Apply the per-tool ablation overrides last: an individually

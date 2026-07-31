@@ -58,11 +58,13 @@ async fn drive_compaction(
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;

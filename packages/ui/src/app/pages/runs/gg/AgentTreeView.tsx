@@ -14,7 +14,9 @@
 
 import type {
   AgentNode,
+  AgentTransition,
   AgentTreeNode,
+  FsmVisit,
   SpeculationState,
   Workflow,
   WorkflowStage,
@@ -243,6 +245,46 @@ export function WorkflowStrip({ workflows }: { workflows: Workflow[] }) {
           </div>
         ))}
       </div>
+    </section>
+  );
+}
+
+// The path an FSM agent walked (see gg/fsms): one chip per state entered, in order,
+// with the modules each transition carried between them. It is the run's process
+// structure the way the workflow strip is its fan-out structure — a whole-run fact,
+// so it reads on the main agent, and it is what turns N incarnations with N different
+// ids into one legible lineage.
+export function FsmPathStrip({
+  path,
+  transitions,
+}: {
+  path: FsmVisit[];
+  transitions: AgentTransition[];
+}) {
+  // What each transition carried, keyed by the successor it produced — so a state chip
+  // can say what arrived with it rather than leaving the reader to pair two streams.
+  const carried = new Map<string, string[]>();
+  for (const transition of transitions) {
+    carried.set(transition.toAgentId, transition.transferred);
+  }
+  return (
+    <section className={styles.agentSection}>
+      <span className={styles.subPanelLabel}>
+        Process{path[0] ? ` · ${path[0].fsm}` : ""}
+      </span>
+      <ol className={styles.workflowStages}>
+        {path.map((visit) => (
+          <li key={visit.agentId} className={styles.workflowStage}>
+            <span className={styles.workflowStageName}>{visit.state}</span>
+            <span className={styles.workflowStageItems}>{visit.agent}</span>
+            {(carried.get(visit.agentId)?.length ?? 0) > 0 && (
+              <span className={styles.workflowStageItems}>
+                +{carried.get(visit.agentId)!.join(" +")}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
     </section>
   );
 }

@@ -198,6 +198,7 @@ pub(super) async fn run_code_turn(
                 // made a call against a pending one.
                 issue_waits: Vec::new(),
                 compact_requested: None,
+                transition_requested: None,
                 compaction_calls: (0, 0),
             }),
         );
@@ -761,6 +762,12 @@ pub(super) struct CodeTurnState {
     /// in would pull it out from under the turn still using it. The **last** call stands, so a
     /// program that compacts twice compacts once, from its final summary.
     pub(super) compact_requested: Option<CompactionRequest>,
+    /// The [state transition](crate::fsm) this turn's program declared with
+    /// `agents.transitionState(…)`, deferred to the loop for a stronger version of the same reason:
+    /// a transition replaces this agent outright, so performing it mid-program would pull the
+    /// window — and every remaining call — out from under the turn still running in it. The
+    /// **first** declaration stands.
+    pub(super) transition_requested: Option<Handoff>,
     /// How this turn's program fared against a pending compaction: how many calls it made while one
     /// was in flight, and how many of those failed (a refused call counts as a failure, because it
     /// is one). A [memory compaction](crate::compaction::PendingCompaction::MemoryWrites) is
@@ -823,6 +830,7 @@ async fn run_code_program(
         subagents,
         issue_waits_requested: Vec::new(),
         compact_requested: None,
+        transition_requested: None,
         compaction_calls: 0,
         compaction_failures: 0,
         spawner: turn.spawner.clone(),
@@ -858,6 +866,7 @@ async fn run_code_program(
                 subagents: api.subagents,
                 issue_waits: api.issue_waits_requested,
                 compact_requested: api.compact_requested,
+                transition_requested: api.transition_requested,
                 compaction_calls: (api.compaction_calls, api.compaction_failures),
             };
             (outcome, Some(state))
@@ -992,6 +1001,11 @@ pub(super) struct LoopToolApi {
     /// same reason an issue wait is: rewriting the window a program is running in would pull it out
     /// from under the turn still using it. A second `compact` replaces the first.
     pub(super) compact_requested: Option<CompactionRequest>,
+    /// The [state transition](crate::fsm) this program declared with `agents.transitionState(…)`,
+    /// deferred for the reason on [`CodeTurnState::transition_requested`]. A second declaration is
+    /// **refused** rather than replacing the first, because an invisibly replaced successor identity
+    /// is a change the model cannot see.
+    pub(super) transition_requested: Option<Handoff>,
     /// How many calls this program made while a compaction was in flight.
     pub(super) compaction_calls: u32,
     /// How many of those failed — a refusal included, since a refusal is a call that did not run.
@@ -1658,6 +1672,31 @@ impl ToolApi for LoopToolApi {
                 outcome
             },
         )
+    }
+    fn transition_state(&mut self, state: String, note: Option<String>) -> ToolOutcome {
+        // Deferred, not performed — the shape `compact` has, for the reason on
+        // [`transition_requested`](LoopToolApi::transition_requested). The judging is the loop's own
+        // `handle_transition`, so a program and a native tool call are held to exactly the same
+        // rules: the same legal targets, the same first-wins, the same refusal text. There is no
+        // ending to lose to here — under responses-as-code an ending is declared through the session
+        // membrane rather than through this dispatch path — so the ending gate is passed `None`.
+        let args = json!({ "state": state, "note": note });
+        let call_args = args.clone();
+        self.serviced(TRANSITION_STATE_TOOL, args, move |api| {
+            let Some(position) = api.spawner.fsm.clone() else {
+                return ToolOutcome::failed(
+                    ToolFailure::Unavailable,
+                    "you are not running inside a state machine, so there is no state to \
+                     transition to.",
+                );
+            };
+            let call = ToolCall {
+                id: String::new(),
+                name: TRANSITION_STATE_TOOL.to_string(),
+                arguments: call_args,
+            };
+            handle_transition(&position, &None, &mut api.transition_requested, &call)
+        })
     }
     fn spawn_subagent(
         &mut self,

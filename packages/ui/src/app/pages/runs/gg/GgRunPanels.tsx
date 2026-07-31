@@ -78,6 +78,8 @@ export type GgPanelState = Pick<
   GgRunState,
   | "agentForest"
   | "workflows"
+  | "fsmPath"
+  | "transitions"
   | "speculations"
   | "perAgent"
   | "board"
@@ -118,6 +120,8 @@ export function GgRunPanels({
   const {
     agentForest,
     workflows,
+    fsmPath,
+    transitions,
     speculations,
     perAgent,
     board,
@@ -190,6 +194,8 @@ export function GgRunPanels({
             perAgent={perAgent}
             capabilitySet={capabilitySet}
             workflows={workflows}
+            fsmPath={fsmPath}
+            transitions={transitions}
             speculations={speculations}
             live={live}
             focusAgent={focusAgent}

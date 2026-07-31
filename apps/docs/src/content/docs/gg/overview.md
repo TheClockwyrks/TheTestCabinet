@@ -253,8 +253,9 @@ saved, launched, and analyzed in the console is
 
 **Process & quality**
 
-- [FSM-driven processes](/gg/fsms/) — a state table the agent is driven through
-  (currently inert; see the page).
+- [FSM-driven processes](/gg/fsms/) — a state table the agent is driven through, each
+  state running an agent profile of your choosing and each transition naming the
+  modules the next state inherits.
 - [Completion](/gg/completion/) — how a run decides it is finished: the completion
   signal, and the optional validation commands that gate it.
 

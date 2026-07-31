@@ -366,20 +366,20 @@ fn registry_gates_read_skill_on_capability_and_a_non_empty_library() {
     // Enabled capability + a non-empty library => read_skill is offered.
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_SKILLS)]);
     assert!(offers(
-        &ToolRegistry::from_run(&on, &skills_modules(&library)),
+        &ToolRegistry::from_run(&on, &skills_modules(&library), &AgentFacts::default()),
         "read_skill"
     ));
 
     // Enabled capability but an empty library => nothing to read, so no tool.
     assert!(!offers(
-        &ToolRegistry::from_run(&on, &skills_modules(&empty)),
+        &ToolRegistry::from_run(&on, &skills_modules(&empty), &AgentFacts::default()),
         "read_skill"
     ));
 
     // Disabled capability => no tool even with a populated library (the ablation off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_SKILLS)]);
     assert!(!offers(
-        &ToolRegistry::from_run(&off, &skills_modules(&library)),
+        &ToolRegistry::from_run(&off, &skills_modules(&library), &AgentFacts::default()),
         "read_skill"
     ));
 }
@@ -400,13 +400,13 @@ fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
 
     // Enabled capability + an enabled memories module => all three memory tools are offered.
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)]);
-    let registry = ToolRegistry::from_run(&on, &modules());
+    let registry = ToolRegistry::from_run(&on, &modules(), &AgentFacts::default());
     for name in names {
         assert!(offers(&registry, name), "expected `{name}` offered");
     }
 
     // Enabled capability but a disabled module => no memory tools (the bare convenience path).
-    let none = ToolRegistry::from_run(&on, &CapabilityModules::inert());
+    let none = ToolRegistry::from_run(&on, &CapabilityModules::inert(), &AgentFacts::default());
     for name in names {
         assert!(
             !offers(&none, name),
@@ -416,7 +416,7 @@ fn registry_gates_memory_tools_on_capability_and_a_bound_store() {
 
     // Disabled capability => no memory tools even with a bound store (the ablation off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_MEMORIES)]);
-    let registry = ToolRegistry::from_run(&off, &modules());
+    let registry = ToolRegistry::from_run(&off, &modules(), &AgentFacts::default());
     for name in names {
         assert!(
             !offers(&registry, name),
@@ -446,21 +446,33 @@ fn registry_offers_a_read_only_holder_the_read_calls_alone() {
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_MEMORIES)]);
 
     // Markdown: `read_memory` survives; nothing that writes does.
-    let registry = ToolRegistry::from_run(&on, &read_only(MemoryStrategy::Markdown));
+    let registry = ToolRegistry::from_run(
+        &on,
+        &read_only(MemoryStrategy::Markdown),
+        &AgentFacts::default(),
+    );
     assert!(offers(&registry, "read_memory"));
     for name in ["create_memory", "edit_memory", "delete_memory"] {
         assert!(!offers(&registry, name), "expected `{name}` withheld");
     }
 
     // Keyword search additionally keeps its retrieval call, which is how it finds anything at all.
-    let registry = ToolRegistry::from_run(&on, &read_only(MemoryStrategy::KeywordSearch));
+    let registry = ToolRegistry::from_run(
+        &on,
+        &read_only(MemoryStrategy::KeywordSearch),
+        &AgentFacts::default(),
+    );
     assert!(offers(&registry, "search_memories"));
     assert!(offers(&registry, "read_memory"));
     assert!(!offers(&registry, "delete_memory"));
 
     // The scratchpad has no read call — its memories *are* the pinned block — so a read-only holder
     // of one gets no memory tools at all, and reads them by having them in its window.
-    let registry = ToolRegistry::from_run(&on, &read_only(MemoryStrategy::Scratchpad));
+    let registry = ToolRegistry::from_run(
+        &on,
+        &read_only(MemoryStrategy::Scratchpad),
+        &AgentFacts::default(),
+    );
     for name in [
         "write_memory",
         "update_memory",
@@ -488,13 +500,13 @@ fn registry_gates_task_tools_on_capability_and_a_bound_store() {
 
     // Enabled capability + a bound store => all five task tools are offered.
     let on = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_TASKS)]);
-    let registry = ToolRegistry::from_run(&on, &modules());
+    let registry = ToolRegistry::from_run(&on, &modules(), &AgentFacts::default());
     for name in names {
         assert!(offers(&registry, name), "expected `{name}` offered");
     }
 
     // Enabled capability but a disabled module => no task tools (the bare convenience path).
-    let none = ToolRegistry::from_run(&on, &CapabilityModules::inert());
+    let none = ToolRegistry::from_run(&on, &CapabilityModules::inert(), &AgentFacts::default());
     for name in names {
         assert!(
             !offers(&none, name),
@@ -504,7 +516,7 @@ fn registry_gates_task_tools_on_capability_and_a_bound_store() {
 
     // Disabled capability => no task tools even with a bound store (the ablation off arm).
     let off = set_with(vec![GgCapabilityConfig::disabled(CAPABILITY_TASKS)]);
-    let registry = ToolRegistry::from_run(&off, &modules());
+    let registry = ToolRegistry::from_run(&off, &modules(), &AgentFacts::default());
     for name in names {
         assert!(
             !offers(&registry, name),
@@ -537,13 +549,13 @@ fn registry_gates_board_tools_on_capability_and_a_bound_store() {
     let on = set_with(vec![GgCapabilityConfig::enabled(
         CAPABILITY_PROJECT_MANAGEMENT,
     )]);
-    let registry = ToolRegistry::from_run(&on, &modules());
+    let registry = ToolRegistry::from_run(&on, &modules(), &AgentFacts::default());
     for name in names {
         assert!(offers(&registry, name), "expected `{name}` offered");
     }
 
     // Enabled capability but a disabled module => no board tools.
-    let none = ToolRegistry::from_run(&on, &CapabilityModules::inert());
+    let none = ToolRegistry::from_run(&on, &CapabilityModules::inert(), &AgentFacts::default());
     for name in names {
         assert!(
             !offers(&none, name),
@@ -555,7 +567,7 @@ fn registry_gates_board_tools_on_capability_and_a_bound_store() {
     let off = set_with(vec![GgCapabilityConfig::disabled(
         CAPABILITY_PROJECT_MANAGEMENT,
     )]);
-    let registry = ToolRegistry::from_run(&off, &modules());
+    let registry = ToolRegistry::from_run(&off, &modules(), &AgentFacts::default());
     for name in names {
         assert!(
             !offers(&registry, name),
@@ -582,6 +594,7 @@ fn an_assigned_issue_earns_no_board_tools_without_the_board_capability() {
         &implementer,
         &CapabilityModules::inert()
             .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default()))),
+        &AgentFacts::default(),
     );
     for name in [
         "create_epic",
@@ -692,6 +705,93 @@ fn unknown_disabled_tools_flags_only_typos() {
     );
 }
 
+/// A [position](crate::fsm::FsmPosition) in a two-state machine whose entry state has somewhere to
+/// go — the one fact that makes the transition call offerable, and therefore what a *maximal*
+/// toolset needs beyond a maximal capability set.
+fn fsm_position() -> crate::fsm::FsmPosition {
+    use test_cabinet_core::gg::{CAPABILITY_FSM, FSM_PARAM_STATES};
+    let shell = GgAgentConfig {
+        capabilities: vec![GgCapabilityConfig {
+            params: serde_json::json!({ FSM_PARAM_STATES: [
+                { "name": "build", "agent": "Builder", "transitions": [{ "to": "verify" }] },
+                { "name": "verify", "agent": "Verifier" },
+            ] }),
+            ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
+        }],
+        ..GgAgentConfig::root()
+    };
+    let spec = Arc::new(
+        crate::fsm::FsmSpec::resolve(&shell)
+            .expect("the shell declares a machine")
+            .expect("it parses"),
+    );
+    spec.entry_position()
+}
+
+/// The transition call is offered from where an instance **stands in a machine**, not from any
+/// capability on its own profile: an agent with no position is never offered it, and one in a state
+/// with somewhere to go is — with that state's targets, and no others, named in its description.
+#[test]
+fn the_transition_tool_is_offered_from_the_machine_position() {
+    let profile = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)]);
+    assert!(
+        !ToolRegistry::from_capabilities(&profile).offers(TRANSITION_STATE_TOOL),
+        "an agent outside a machine is never offered a transition"
+    );
+
+    let position = fsm_position();
+    let registry = ToolRegistry::from_run(
+        &profile,
+        &CapabilityModules::inert(),
+        &AgentFacts {
+            fsm: Some(&position),
+        },
+    );
+    let definition = registry
+        .definitions()
+        .into_iter()
+        .find(|definition| definition.name == TRANSITION_STATE_TOOL)
+        .expect("a state with an outgoing edge is offered the transition");
+    assert!(
+        definition.description.contains("`verify`"),
+        "the description names the states it may move to: {}",
+        definition.description
+    );
+    assert!(
+        definition.description.contains("build"),
+        "and the state it is standing in: {}",
+        definition.description
+    );
+}
+
+/// A **terminal** state is offered no transition at all. A tool whose every call would be refused
+/// costs a schema in every request the state makes and teaches the model a move it does not have.
+#[test]
+fn a_terminal_state_is_offered_no_transition_tool() {
+    let profile = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_SHELL)]);
+    let entry = fsm_position();
+    let terminal = entry.moved_to(
+        entry
+            .transition_to("verify")
+            .expect("the entry state may reach `verify`"),
+    );
+    assert!(
+        terminal.outgoing().is_empty(),
+        "`verify` is the machine's terminal state"
+    );
+    assert!(
+        !ToolRegistry::from_run(
+            &profile,
+            &CapabilityModules::inert(),
+            &AgentFacts {
+                fsm: Some(&terminal)
+            },
+        )
+        .offers(TRANSITION_STATE_TOOL),
+        "a terminal state is offered nothing to transition with"
+    );
+}
+
 /// The canonical [`ALL_TOOL_NAMES`] vocabulary stays in lockstep with what the registry can offer:
 /// a maximal capability set (every capability enabled, every store bound, a non-empty skill
 /// library) offers exactly the names in `ALL_TOOL_NAMES`. This guards the per-tool-override
@@ -740,6 +840,7 @@ fn all_tool_names_matches_a_maximal_registry() {
     // A maximal registry offers the delegation tools too, which requires at least one agent this
     // profile may spawn.
     set.subagents.push(GgSubagentRef::any(ROOT_AGENT));
+    let position = fsm_position();
     // The memory tools are the one family a *strategy* partitions rather than a capability alone
     // offering all of them: a run picks one strategy, and each offers a different set. So the
     // maximal toolset is the union over the strategies — every memory tool is offered by exactly
@@ -761,6 +862,11 @@ fn all_tool_names_matches_a_maximal_registry() {
                 .with(ModuleHandle::Tasks(TasksRuntime::new(100)))
                 .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default())))
                 .with(ModuleHandle::Archive(ArchiveRuntime::new())),
+            // The transition call is offered from where an *instance* stands in a machine rather
+            // than from any capability, so a maximal toolset needs a position to stand in.
+            &AgentFacts {
+                fsm: Some(&position),
+            },
         )
         .tool_names()
     })
@@ -815,6 +921,7 @@ fn each_memory_strategy_offers_its_own_tools() {
                 strategy,
                 MemoryCaps::for_strategy(strategy),
             ))),
+            &AgentFacts::default(),
         );
         let offered: BTreeSet<String> = registry
             .tool_names()

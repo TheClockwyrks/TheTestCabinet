@@ -1,0 +1,445 @@
+//! **FSM agents driven end to end** — the machine, the incarnation loop, and the transfer between
+//! states, exercised offline through the real binary.
+//!
+//! `fsm.test.rs` proves the *table*: that a machine parses, that a structurally broken one is
+//! refused at launch, that a position knows its legal targets. What it cannot reach is the half that
+//! only exists inside [`run_agent`] — that a transition actually tears one agent instance down and
+//! stands another up, on the same scheduler slot, carrying exactly the modules the edge names and
+//! nothing else. That is what these guard, and they guard it the only way it is worth guarding: by
+//! running a whole machine with scripted models and asserting on the telemetry a console would see.
+//!
+//! The task list is the observable throughout, because it is the one piece of state whose *contents*
+//! say unambiguously whether a module was carried or rebuilt: a successor holding two tasks it never
+//! wrote can only have been handed them.
+
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Arc;
+
+use serde_json::json;
+use tempfile::TempDir;
+
+use super::*;
+use crate::client::{
+    MOCK_FSM_HANDOFF_NOTE, MOCK_FSM_RETURN, MOCK_FSM_TASK_ONE, MOCK_FSM_TASK_TWO,
+    MOCK_FSM_UNDECLARED_STATE, MockClient,
+};
+use crate::model::ModelClient;
+use crate::telemetry::{CollectingSink, Emitter};
+use test_cabinet_core::gg::{
+    CAPABILITY_FSM, CAPABILITY_TASKS, FSM_PARAM_STATES, GgAgentConfig, GgAgentTransitionKind,
+    GgCapabilityConfig, GgCapabilitySet, GgSlotBinding, GgTelemetryEvent, GgTelemetryKind,
+    ROOT_AGENT,
+};
+
+use super::tests::{ScriptedFactory, invocation};
+
+/// The three state agents every machine here is built from: each bound to the mock model whose
+/// [script](MockClient::with_fsm_explore_script) drives that state, and each carrying the task
+/// capability (so a transferred task list has somewhere to land, and a *non*-transferred one is
+/// visibly empty rather than merely absent).
+fn state_agent(name: &str, script: &str) -> GgAgentConfig {
+    GgAgentConfig {
+        name: name.to_string(),
+        model_id: format!("mock/{script}"),
+        capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_TASKS)],
+        ..GgAgentConfig::root()
+    }
+}
+
+/// A capability set whose **root is an FSM shell** driving `states`, over the three state agents.
+///
+/// The shell keeps a model binding it never uses: gg reads the machine off it and runs each state's
+/// own profile, so what the shell is bound to means nothing — but every profile a set declares must
+/// resolve to *some* model, and a run is launched with its slots already bound.
+fn machine_set(states: serde_json::Value) -> GgCapabilitySet {
+    let mut set = GgCapabilitySet::minimal("mock/shell");
+    set.agents[0].capabilities = vec![GgCapabilityConfig {
+        params: json!({ FSM_PARAM_STATES: states }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
+    }];
+    set.agents.push(state_agent("Explorer", "fsm-explore"));
+    set.agents.push(state_agent("Builder", "fsm-build"));
+    set.agents.push(state_agent("Verifier", "fsm-verify"));
+    set
+}
+
+/// The three-state machine most of these tests run: `explore → build → verify`, carrying `transfer`
+/// on the first edge and the window plus the task list on the second.
+fn three_state(transfer: serde_json::Value) -> serde_json::Value {
+    json!([
+        {
+            "name": "explore",
+            "agent": "Explorer",
+            "transitions": [
+                { "to": "build", "transfer": transfer, "description": "when the plan is ready" }
+            ]
+        },
+        {
+            "name": "build",
+            "agent": "Builder",
+            "transitions": [{ "to": "verify", "transfer": ["history", "tasks"] }]
+        },
+        { "name": "verify", "agent": "Verifier" }
+    ])
+}
+
+/// Run `set` offline against the three FSM scripts, keyed by the profile each state runs.
+async fn run_machine(dir: &Path, set: GgCapabilitySet) -> (SessionOutcome, Vec<GgTelemetryEvent>) {
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-fsm".to_string()), Box::new(sink.clone()));
+    let scripted = |binding: &GgSlotBinding| -> Box<dyn ModelClient> {
+        Box::new(match binding.model_id.as_str() {
+            "mock/fsm-explore" => MockClient::with_fsm_explore_script(&binding.model_id),
+            "mock/fsm-build" => MockClient::with_fsm_build_script(&binding.model_id),
+            "mock/fsm-verify" => MockClient::with_fsm_verify_script(&binding.model_id),
+            other => MockClient::new(other.to_string(), Vec::new()),
+        })
+    };
+    let factory = ScriptedFactory::new()
+        .slot("Explorer", scripted)
+        .slot("Builder", scripted)
+        .slot("Verifier", scripted);
+    let outcome = run_with_factory(&invocation(dir, set), &emitter, Arc::new(factory)).await;
+    (outcome, sink.events())
+}
+
+/// The task titles each agent's **last** `TaskState` reports, keyed by agent id — what that
+/// incarnation was holding when it stopped, which is the whole observable of a transfer.
+fn tasks_by_agent(events: &[GgTelemetryEvent]) -> HashMap<String, Vec<String>> {
+    let mut held: HashMap<String, Vec<String>> = HashMap::new();
+    for event in events {
+        if let GgTelemetryKind::TasksState { tasks } = &event.kind {
+            held.insert(
+                event.agent_id.clone().unwrap_or_default(),
+                tasks.iter().map(|task| task.title.clone()).collect(),
+            );
+        }
+    }
+    held
+}
+
+/// Every `FsmState` event in stream order, as `(agent id, state, agent profile, from)`.
+fn fsm_states(events: &[GgTelemetryEvent]) -> Vec<(String, String, String, Option<String>)> {
+    events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::FsmState {
+                fsm,
+                state,
+                agent,
+                from,
+            } => {
+                assert_eq!(
+                    fsm, ROOT_AGENT,
+                    "every state belongs to the shell's machine"
+                );
+                Some((
+                    event.agent_id.clone().unwrap_or_default(),
+                    state.clone(),
+                    agent.clone(),
+                    from.clone(),
+                ))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Every `AgentTransition` event in stream order, as `(emitting agent, successor id, transferred)`.
+fn transitions(events: &[GgTelemetryEvent]) -> Vec<(String, String, Vec<String>, Vec<String>)> {
+    events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::AgentTransition {
+                kind,
+                to_agent_id,
+                transferred,
+                initialized,
+                ..
+            } => {
+                assert_eq!(*kind, GgAgentTransitionKind::Fsm);
+                Some((
+                    event.agent_id.clone().unwrap_or_default(),
+                    to_agent_id.clone(),
+                    transferred.clone(),
+                    initialized.clone(),
+                ))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// A three-state machine runs to its terminal state as **one agent**: three incarnations in
+/// succession, each announcing the state it stands in, the first with no predecessor and each later
+/// one naming where it came from.
+///
+/// This is the multi-hop case, and it is also the shape assertion for everything below: one
+/// `run_agent`, one scheduler slot, one return value, and a lineage the console can walk.
+#[tokio::test]
+async fn a_machine_runs_through_every_state_as_one_agent() {
+    let dir = TempDir::new().unwrap();
+    let (outcome, events) =
+        run_machine(dir.path(), machine_set(three_state(json!(["tasks"])))).await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let states = fsm_states(&events);
+    assert_eq!(
+        states,
+        vec![
+            (
+                ROOT_AGENT_ID.to_string(),
+                "explore".to_string(),
+                "Explorer".to_string(),
+                None
+            ),
+            (
+                "agent-0".to_string(),
+                "build".to_string(),
+                "Builder".to_string(),
+                Some("explore".to_string())
+            ),
+            (
+                "agent-1".to_string(),
+                "verify".to_string(),
+                "Verifier".to_string(),
+                Some("build".to_string())
+            ),
+        ],
+        "each incarnation announces its state, and names the one it came from"
+    );
+
+    // Succession is not delegation: every incarnation stands at the same depth, and each parents to
+    // the one before it so the lineage is walkable.
+    let spawned: Vec<(String, Option<String>, String, u64)> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::AgentSpawned { slot, depth, .. } => Some((
+                event.agent_id.clone().unwrap_or_default(),
+                event.parent_agent_id.clone(),
+                slot.clone(),
+                *depth,
+            )),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        spawned,
+        vec![
+            (ROOT_AGENT_ID.to_string(), None, "Explorer".to_string(), 0),
+            (
+                "agent-0".to_string(),
+                Some(ROOT_AGENT_ID.to_string()),
+                "Builder".to_string(),
+                0
+            ),
+            (
+                "agent-1".to_string(),
+                Some("agent-0".to_string()),
+                "Verifier".to_string(),
+                0
+            ),
+        ],
+        "a succession keeps its depth and parents to its predecessor"
+    );
+
+    // And the machine's ending is the machine's return value: the terminal state's `finish`.
+    let summary = events.iter().rev().find_map(|event| match &event.kind {
+        GgTelemetryKind::SessionSummary { summary } => Some(summary.clone()),
+        _ => None,
+    });
+    assert!(summary.is_some(), "the run produced a session summary");
+    assert!(
+        events.iter().any(|event| matches!(
+            &event.kind,
+            GgTelemetryKind::AssistantMessage { text } if text == MOCK_FSM_RETURN
+        )),
+        "the terminal state's ending is what the machine returns"
+    );
+}
+
+/// A transition that names `tasks` hands the successor the **task list itself**, in the state it was
+/// in — not a summary of it, and not a fresh one.
+///
+/// This is the requirement in one assertion: the builder never called `add_task`, and it is holding
+/// both of the explorer's tasks, by title, in order.
+#[tokio::test]
+async fn a_transferred_task_list_arrives_intact() {
+    let dir = TempDir::new().unwrap();
+    let (outcome, events) =
+        run_machine(dir.path(), machine_set(three_state(json!(["tasks"])))).await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let held = tasks_by_agent(&events);
+    assert_eq!(
+        held.get(ROOT_AGENT_ID),
+        Some(&vec![
+            MOCK_FSM_TASK_ONE.to_string(),
+            MOCK_FSM_TASK_TWO.to_string()
+        ]),
+        "the entry state built the list"
+    );
+    assert_eq!(
+        held.get("agent-0"),
+        Some(&vec![
+            MOCK_FSM_TASK_ONE.to_string(),
+            MOCK_FSM_TASK_TWO.to_string()
+        ]),
+        "and the successor is holding that very list, having written none of it"
+    );
+
+    // What the transfer did is on the wire, on the outgoing instance's own stream, so a console can
+    // render a handoff as a handoff rather than as an unexplained second agent.
+    let moves = transitions(&events);
+    assert_eq!(moves.len(), 2, "two transitions: {moves:?}");
+    assert_eq!(moves[0].0, ROOT_AGENT_ID, "emitted by the outgoing agent");
+    assert_eq!(moves[0].1, "agent-0", "and it names its successor");
+    assert_eq!(moves[0].2, vec!["tasks".to_string()], "carrying the tasks");
+    assert!(
+        moves[0].3.contains(&"history".to_string()),
+        "and starting the window fresh, since the edge did not name it: {:?}",
+        moves[0].3
+    );
+}
+
+/// An edge that names **nothing** carries nothing: the successor's task list is empty even though
+/// its own profile very much has one.
+///
+/// This is the deliberate hard reset the design chose over an implicit default, and it is the half
+/// of "explicit transfer" that a passing transfer test cannot demonstrate.
+#[tokio::test]
+async fn a_transition_that_carries_nothing_starts_the_successor_fresh() {
+    let dir = TempDir::new().unwrap();
+    let (outcome, events) = run_machine(dir.path(), machine_set(three_state(json!([])))).await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let held = tasks_by_agent(&events);
+    assert_eq!(
+        held.get(ROOT_AGENT_ID),
+        Some(&vec![
+            MOCK_FSM_TASK_ONE.to_string(),
+            MOCK_FSM_TASK_TWO.to_string()
+        ]),
+        "the entry state still built its list"
+    );
+    assert_eq!(
+        held.get("agent-0"),
+        Some(&Vec::<String>::new()),
+        "and the successor starts with an empty one"
+    );
+
+    let moves = transitions(&events);
+    assert!(
+        moves[0].2.is_empty(),
+        "nothing was transferred: {:?}",
+        moves[0].2
+    );
+    assert!(
+        moves[0].3.contains(&"tasks".to_string()),
+        "the successor's own task module was initialized fresh: {:?}",
+        moves[0].3
+    );
+}
+
+/// A successor that was **not** handed a window is seeded like a fresh agent — and a successor that
+/// *was* opens on a note saying what it received, what it did not, and whatever its predecessor
+/// wanted it to know.
+#[tokio::test]
+async fn a_successor_is_told_what_it_inherited() {
+    let dir = TempDir::new().unwrap();
+    let (outcome, events) = run_machine(
+        dir.path(),
+        machine_set(three_state(json!(["history", "tasks"]))),
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    // The opening note reaches the successor's window as an ordinary context message.
+    let notes: Vec<String> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::ContextMessage { content, .. } => content.clone(),
+            _ => None,
+        })
+        .filter(|text| text.contains("This process has moved from `explore` to `build`"))
+        .collect();
+    assert!(!notes.is_empty(), "the successor opens on a handoff note");
+    let note = &notes[0];
+    assert!(
+        note.contains("the conversation") && note.contains("the task list"),
+        "it names what was carried: {note}"
+    );
+    assert!(
+        note.contains(MOCK_FSM_HANDOFF_NOTE),
+        "and carries the predecessor's own message: {note}"
+    );
+}
+
+/// A target the current state does not declare is a **tool refusal**, not a stopped run: the agent
+/// stays where it is, is told the states it may actually name, and takes the legal edge on its next
+/// turn.
+#[tokio::test]
+async fn an_undeclared_target_is_refused_and_the_machine_carries_on() {
+    let dir = TempDir::new().unwrap();
+    let (outcome, events) =
+        run_machine(dir.path(), machine_set(three_state(json!(["tasks"])))).await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let refusals: Vec<String> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::ToolResult {
+                name,
+                ok: false,
+                summary,
+            } if name == TRANSITION_STATE_TOOL => summary.clone(),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(refusals.len(), 1, "exactly one refusal: {refusals:?}");
+    assert!(
+        refusals[0].contains(MOCK_FSM_UNDECLARED_STATE),
+        "the refusal names what was asked for: {}",
+        refusals[0]
+    );
+    assert!(
+        refusals[0].contains("`verify`"),
+        "and lists what may be named instead: {}",
+        refusals[0]
+    );
+
+    // The machine still reached its terminal state, on the very next turn.
+    assert_eq!(
+        fsm_states(&events).len(),
+        3,
+        "a refused move costs a turn, not the run"
+    );
+}
+
+/// A machine gg cannot build is a **launch failure**, not a run that quietly behaves like an
+/// ordinary agent — the whole reason the built-in machines' `machine` param is a hard break.
+#[tokio::test]
+async fn a_structurally_broken_machine_fails_to_launch() {
+    let dir = TempDir::new().unwrap();
+    let mut set = machine_set(three_state(json!(["tasks"])));
+    // An edge that leads nowhere.
+    set.agents[0].capabilities[0].params = json!({
+        FSM_PARAM_STATES: [
+            { "name": "explore", "agent": "Explorer", "transitions": [{ "to": "nowhere" }] }
+        ]
+    });
+    let (outcome, events) = run_machine(dir.path(), set).await;
+    assert_eq!(
+        outcome,
+        SessionOutcome::LaunchFailed,
+        "an unrunnable machine does not run"
+    );
+    assert!(
+        events.iter().any(|event| matches!(
+            &event.kind,
+            GgTelemetryKind::Log { message, .. } if message.contains("nowhere")
+        )),
+        "and says which edge it could not follow"
+    );
+}

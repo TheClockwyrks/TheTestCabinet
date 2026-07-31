@@ -659,19 +659,116 @@ pub const CAPABILITY_WORKFLOWS: &str = "workflows";
 /// model's discretion.
 ///
 /// Where a [workflow](CAPABILITY_WORKFLOWS) is a fan-out the agent assembles, an FSM is a state
-/// table the agent is *driven through*: each state binds an [agent profile](GgAgentConfig), and a
-/// transition replaces the running agent instance with the next state's, carrying the
-/// [modules](GgModuleKind) the transition names. Opt-in, like the other Phase 2+ capabilities.
+/// table the agent is *driven through*: each [state](GgFsmState) binds an
+/// [agent profile](GgAgentConfig), and a [transition](GgFsmTransition) replaces the running agent
+/// instance with the next state's, carrying exactly the [modules](GgModuleKind) the transition
+/// names. Opt-in, like the other Phase 2+ capabilities.
 ///
-/// **The capability is currently inert.** gg's earlier form of it shipped a small library of
-/// harness-authored machines (`tdd`, `plan-first`) selected by a `machine` param; those were
-/// removed along with the planning capability they reused, and the user-authored replacement — a
-/// `states` param naming agent profiles and their transitions — is not implemented yet. An enabled
-/// `fsm` capability therefore drives nothing today and is reported as a launch warning, so a
-/// configuration that still asks for a machine is loud rather than silently degraded.
+/// The machine is **entirely user-authored**: a profile that enables this capability declares a
+/// [`states`](FSM_PARAM_STATES) table over the run's *other* agent profiles and has no turns of its
+/// own — it is an **FSM shell**, and its own model binding and other capabilities are ignored. gg's
+/// earlier form of the capability shipped a small library of harness-authored machines (`tdd`,
+/// `plan-first`) selected by a `machine` param; a machine only gg can author is a machine only gg
+/// can study, so both were removed. A set that still carries the old `machine` param and no
+/// `states` **fails to launch** rather than silently running as an ordinary single agent, which
+/// would have made every number drawn from it a measurement of the wrong thing.
 ///
 /// [FSM-driven processes]: https://docs.testcabinet.ai/gg/fsms/
 pub const CAPABILITY_FSM: &str = "fsm";
+
+/// The [`params`](GgCapabilityConfig::params) key on the [FSM](CAPABILITY_FSM) capability carrying
+/// the machine itself: a non-empty ordered list of [states](GgFsmState), of which the **first** is
+/// the entry state.
+///
+/// The entry state is a position rather than a flag for the same reason the run's root agent is
+/// `agents[0]` — a document that says which one starts in two places can disagree with itself.
+///
+/// The value is read as `Vec<GgFsmState>`. A profile that enables the capability with this key
+/// absent, unparseable, or empty is a **launch failure**: an FSM shell has no turns of its own, so
+/// there would be nothing at all to run.
+pub const FSM_PARAM_STATES: &str = "states";
+
+/// One state of a user-authored [FSM](CAPABILITY_FSM): the [agent profile](GgAgentConfig) that runs
+/// while the machine sits in it, and where it may go from there.
+///
+/// A state is not itself an agent — it *binds* one. That indirection is what lets two states share a
+/// profile (a machine that returns to `explore` runs the same `Explorer` twice) and what makes the
+/// machine a document about **order** rather than a second place agents are configured.
+///
+/// A state with no [transitions](Self::transitions) is **terminal**: the agent instance it runs is
+/// offered no transition call at all, so the machine ends when that agent ends, and its ending is
+/// the FSM agent's return value to whoever put it to work.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgFsmState {
+    /// The state's name — how a [transition](GgFsmTransition::to) addresses it and how the model
+    /// names it when it moves. Must be non-empty and unique within the machine; both are launch
+    /// failures, because a transition to an ambiguous name has no answer.
+    pub name: String,
+    /// The [agent profile](GgAgentConfig) this state runs: its model, its capabilities, its system
+    /// prompt. Must name a profile the set declares, and must not name an FSM shell (a shell cannot
+    /// be a state — it would recurse).
+    ///
+    /// Defaulted rather than required so a state that omits it is refused by the machine's own
+    /// validation — which names the state and says what is missing — instead of by a serde error
+    /// about a field the author never knew to write.
+    #[serde(default)]
+    pub agent: String,
+    /// Where the agent in this state may go. Empty (the default) makes the state terminal.
+    #[serde(default)]
+    pub transitions: Vec<GgFsmTransition>,
+}
+
+/// One edge of a user-authored [FSM](CAPABILITY_FSM): a state the model may move to, and exactly
+/// what it takes with it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgFsmTransition {
+    /// The [state](GgFsmState::name) this edge leads to. Must name a state the same machine
+    /// declares; anything else is a launch failure.
+    pub to: String,
+    /// The [modules](GgModuleKind) the successor's agent instance inherits, in the state they were
+    /// in — a `tasks` transfer hands over the predecessor's task list itself, not a copy of its
+    /// summary.
+    ///
+    /// **Explicit, with no implicit history.** An absent or empty list transfers nothing, which is a
+    /// deliberate hard reset between states rather than an oversight: a recorded configuration has
+    /// to say what it does, and a default nobody wrote down is exactly the sort of decision a reader
+    /// of the record cannot see. The console's editor pre-fills `["history"]` on every transition it
+    /// creates, so the common case is still one click.
+    ///
+    /// Deserialized **leniently**: an entry that is not a module kind gg knows is dropped rather
+    /// than failing the whole machine. A mistyped module name is an unrecognized *value*, which the
+    /// harness reports as a launch warning and falls back from, and refusing to launch over one
+    /// would put it in the same class as a state that points nowhere.
+    #[serde(default, deserialize_with = "module_kinds_lenient")]
+    pub transfer: Vec<GgModuleKind>,
+    /// When the model should take this edge, in its own words — rendered into the transition tool's
+    /// description beside the target name, exactly as an agent's roster description is rendered into
+    /// `spawn_subagent`'s. Optional, and worth writing: it is the only thing that tells the model
+    /// *why* one target rather than another.
+    #[serde(default)]
+    pub description: String,
+}
+
+/// Deserialize a [transfer list](GgFsmTransition::transfer), dropping every entry that is not a
+/// [module kind](GgModuleKind) this gg knows.
+///
+/// The list is read as raw JSON and each entry re-parsed on its own, so one unknown name costs that
+/// one entry rather than the whole machine. The harness re-reads the raw param to *name* what it
+/// dropped; this is only the part that has to keep the document readable.
+fn module_kinds_lenient<'de, D>(deserializer: D) -> Result<Vec<GgModuleKind>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = Vec::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|value| serde_json::from_value::<GgModuleKind>(value).ok())
+        .collect())
+}
 
 /// The stable id of the Phase 5 [speculative execution] capability: **best-of-K** — attempting the
 /// same piece of work several times in parallel and keeping only the best result.
@@ -2543,6 +2640,26 @@ pub enum GgWorkflowPhase {
     Finished,
 }
 
+/// How one agent instance came to be replaced by (or cloned into) another — the discriminator on an
+/// [`AgentTransition`](GgTelemetryKind::AgentTransition) event.
+///
+/// All three are the *same* operation over [modules](GgModuleKind) — carry these, drop those,
+/// initialize the rest — differing only in who chose the successor and what it does to the
+/// predecessor. Naming them apart is what lets the console show a succession as a lineage rather
+/// than as N unrelated agents that happened to appear in order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgAgentTransitionKind {
+    /// The agent replaced itself with another profile, carrying every module both profiles have.
+    Exec,
+    /// The agent cloned itself into a child that continues from its conversation.
+    Fork,
+    /// An [FSM](CAPABILITY_FSM) moved into another state, carrying exactly the modules that
+    /// [transition](GgFsmTransition::transfer) declares.
+    Fsm,
+}
+
 /// The phase of an [issue review](https://docs.testcabinet.ai/gg/project-management/) an
 /// [`IssueReview`](GgTelemetryKind::IssueReview) event reports — the
 /// requested → (changes_requested)* → approved lifecycle that gates an
@@ -4005,6 +4122,60 @@ pub enum GgTelemetryKind {
         item_count: u64,
         /// Whether this event marks the stage's [start or finish](GgWorkflowPhase).
         phase: GgWorkflowPhase,
+    },
+    /// An [FSM](CAPABILITY_FSM) agent entered a state — the event that makes a machine's path
+    /// through its own state table observable.
+    ///
+    /// Emitted once per incarnation, on the **incoming** agent instance's stream: once for the
+    /// entry state (with no [`from`](Self::FsmState::from)) and once for every state the machine
+    /// moves into thereafter. Together with the [`AgentTransition`](Self::AgentTransition) that
+    /// precedes each move on the *outgoing* instance's stream, the pair says both what happened and
+    /// what it carried.
+    FsmState {
+        /// The machine: the name of the **FSM shell** [profile](GgAgentConfig) whose `states` table
+        /// is being driven. An agent may only ever be inside one, so this names the document the
+        /// state came from.
+        fsm: String,
+        /// The [state](GgFsmState::name) just entered.
+        state: String,
+        /// The [agent profile](GgFsmState::agent) that state runs — which is also this agent
+        /// instance's [`slot`](Self::AgentSpawned::slot), so a machine's cost splits per state
+        /// agent in the [per-slot rollup](Self::SlotUsage).
+        agent: String,
+        /// The state the machine came from, or `None` for the entry state.
+        #[serde(default)]
+        from: Option<String>,
+    },
+    /// One agent instance was **replaced by** (or cloned into) another: an FSM
+    /// [transition](GgFsmTransition), an `exec`, or a `fork`.
+    ///
+    /// Emitted on the **outgoing** instance's stream, immediately before the successor's
+    /// [`AgentSpawned`](Self::AgentSpawned), so a reader walking one agent's timeline sees where it
+    /// went rather than watching it stop and an unexplained second agent begin. It carries what
+    /// happened to each [module](GgModuleKind) — the whole of what a successor did and did not
+    /// inherit — because that is the difference between a handoff and a restart, and it is
+    /// otherwise invisible in the record.
+    AgentTransition {
+        /// Which of the three [kinds](GgAgentTransitionKind) of succession this was.
+        kind: GgAgentTransitionKind,
+        /// The id of the agent instance that takes over (or, for a `fork`, of the copy).
+        to_agent_id: String,
+        /// The [agent profile](GgAgentConfig) the successor runs under.
+        agent: String,
+        /// The [FSM state](GgFsmState::name) the successor enters, for a
+        /// [`fsm`](GgAgentTransitionKind::Fsm) transition. `None` for the other two kinds.
+        #[serde(default)]
+        state: Option<String>,
+        /// The [modules](GgModuleKind) the successor received **live**, contents and all, in
+        /// [kind](GgModuleKind::ALL) order.
+        transferred: Vec<String>,
+        /// The modules the outgoing instance held that the successor did not receive at all —
+        /// their backing stores are gone.
+        dropped: Vec<String>,
+        /// The modules the successor's own profile enables that it starts **fresh**: either the
+        /// plan did not carry them, or what was carried could not be read under the successor's
+        /// configuration.
+        initialized: Vec<String>,
     },
     /// An [issue review](https://docs.testcabinet.ai/gg/project-management/) lifecycle transition —
     /// the event that makes the reviewer-gated acceptance of an [issue](GgBoardIssue) observable.

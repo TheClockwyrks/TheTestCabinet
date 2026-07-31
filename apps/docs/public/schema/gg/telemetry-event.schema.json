@@ -25,6 +25,26 @@
         }
       ]
     },
+    "GgAgentTransitionKind": {
+      "description": "How one agent instance came to be replaced by (or cloned into) another — the discriminator on an\n[`AgentTransition`](GgTelemetryKind::AgentTransition) event.\n\nAll three are the *same* operation over [modules](GgModuleKind) — carry these, drop those,\ninitialize the rest — differing only in who chose the successor and what it does to the\npredecessor. Naming them apart is what lets the console show a succession as a lineage rather\nthan as N unrelated agents that happened to appear in order.",
+      "oneOf": [
+        {
+          "const": "exec",
+          "description": "The agent replaced itself with another profile, carrying every module both profiles have.",
+          "type": "string"
+        },
+        {
+          "const": "fork",
+          "description": "The agent cloned itself into a child that continues from its conversation.",
+          "type": "string"
+        },
+        {
+          "const": "fsm",
+          "description": "An [FSM](CAPABILITY_FSM) moved into another state, carrying exactly the modules that\n[transition](GgFsmTransition::transfer) declares.",
+          "type": "string"
+        }
+      ]
+    },
     "GgBoardEpic": {
       "description": "One [epic](https://docs.testcabinet.ai/gg/project-management/) on the board — a grouping of\nrelated [issues](GgBoardIssue) reported in a [`BoardState`](GgTelemetryKind::BoardState)\nevent.\n\nAn epic is organizational: it has a stable [`id`](Self::id) issues reference through their\n[`epic_id`](GgBoardIssue::epic_id), a [`title`](Self::title), and a\n[`description`](Self::description). It carries no status of its own — an epic's progress is\nread from the status of the issues grouped under it.\n\nThe id is the epic's **prefix**: an epic is created from a 3–6 letter prefix, upper-cased, and\nevery issue filed under it is numbered from it (`AUTH-1`, `AUTH-2`, …).",
       "properties": {
@@ -1470,6 +1490,91 @@
         "stageIndex",
         "itemCount",
         "phase"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "An [FSM](CAPABILITY_FSM) agent entered a state — the event that makes a machine's path\nthrough its own state table observable.\n\nEmitted once per incarnation, on the **incoming** agent instance's stream: once for the\nentry state (with no [`from`](Self::FsmState::from)) and once for every state the machine\nmoves into thereafter. Together with the [`AgentTransition`](Self::AgentTransition) that\nprecedes each move on the *outgoing* instance's stream, the pair says both what happened and\nwhat it carried.",
+      "properties": {
+        "agent": {
+          "description": "The [agent profile](GgFsmState::agent) that state runs — which is also this agent\ninstance's [`slot`](Self::AgentSpawned::slot), so a machine's cost splits per state\nagent in the [per-slot rollup](Self::SlotUsage).",
+          "type": "string"
+        },
+        "from": {
+          "default": null,
+          "description": "The state the machine came from, or `None` for the entry state.",
+          "type": ["string", "null"]
+        },
+        "fsm": {
+          "description": "The machine: the name of the **FSM shell** [profile](GgAgentConfig) whose `states` table\nis being driven. An agent may only ever be inside one, so this names the document the\nstate came from.",
+          "type": "string"
+        },
+        "state": {
+          "description": "The [state](GgFsmState::name) just entered.",
+          "type": "string"
+        },
+        "type": {
+          "const": "fsm_state",
+          "type": "string"
+        }
+      },
+      "required": ["type", "fsm", "state", "agent"],
+      "type": "object"
+    },
+    {
+      "description": "One agent instance was **replaced by** (or cloned into) another: an FSM\n[transition](GgFsmTransition), an `exec`, or a `fork`.\n\nEmitted on the **outgoing** instance's stream, immediately before the successor's\n[`AgentSpawned`](Self::AgentSpawned), so a reader walking one agent's timeline sees where it\nwent rather than watching it stop and an unexplained second agent begin. It carries what\nhappened to each [module](GgModuleKind) — the whole of what a successor did and did not\ninherit — because that is the difference between a handoff and a restart, and it is\notherwise invisible in the record.",
+      "properties": {
+        "agent": {
+          "description": "The [agent profile](GgAgentConfig) the successor runs under.",
+          "type": "string"
+        },
+        "dropped": {
+          "description": "The modules the outgoing instance held that the successor did not receive at all —\ntheir backing stores are gone.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "initialized": {
+          "description": "The modules the successor's own profile enables that it starts **fresh**: either the\nplan did not carry them, or what was carried could not be read under the successor's\nconfiguration.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/GgAgentTransitionKind",
+          "description": "Which of the three [kinds](GgAgentTransitionKind) of succession this was."
+        },
+        "state": {
+          "default": null,
+          "description": "The [FSM state](GgFsmState::name) the successor enters, for a\n[`fsm`](GgAgentTransitionKind::Fsm) transition. `None` for the other two kinds.",
+          "type": ["string", "null"]
+        },
+        "toAgentId": {
+          "description": "The id of the agent instance that takes over (or, for a `fork`, of the copy).",
+          "type": "string"
+        },
+        "transferred": {
+          "description": "The [modules](GgModuleKind) the successor received **live**, contents and all, in\n[kind](GgModuleKind::ALL) order.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": {
+          "const": "agent_transition",
+          "type": "string"
+        }
+      },
+      "required": [
+        "type",
+        "kind",
+        "toAgentId",
+        "agent",
+        "transferred",
+        "dropped",
+        "initialized"
       ],
       "type": "object"
     },

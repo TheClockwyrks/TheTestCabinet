@@ -34,6 +34,7 @@ import type {
   GgTaskEntry,
   GgTelemetryEvent,
   GgWorkflowPhase,
+  GgAgentTransitionKind,
 } from "@test-cabinet/run-record/gg";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 
@@ -197,6 +198,44 @@ export interface WorkflowStage {
 export interface Workflow {
   workflowId: string;
   stages: WorkflowStage[];
+}
+
+// --- FSM agents (Phase 5) -----------------------------------------------------
+
+// One state a machine entered — an `fsm_state` event, which each incarnation emits
+// on its own stream right after its spawn. Over the whole run these are the path the
+// machine walked, in order (see gg/fsms).
+export interface FsmVisit {
+  // The agent instance standing in the state — the node in the tree this step is.
+  agentId: string;
+  // The machine: the FSM shell profile whose state table is being driven.
+  fsm: string;
+  // The state entered.
+  state: string;
+  // The agent profile that state runs.
+  agent: string;
+  // Where it came from; null for the entry state.
+  from: string | null;
+}
+
+// One succession — an `agent_transition` event, emitted on the OUTGOING instance's
+// stream just before its successor's spawn. It carries what each module did, which
+// is the difference between a handoff and a restart and is otherwise invisible.
+export interface AgentTransition {
+  // The instance that handed off.
+  fromAgentId: string;
+  // Which kind of succession this was: an FSM transition, an exec, or a fork.
+  kind: GgAgentTransitionKind;
+  // The instance that took over.
+  toAgentId: string;
+  // The profile the successor runs under.
+  agent: string;
+  // The state it entered, for an FSM transition; null otherwise.
+  state: string | null;
+  // The module kinds carried live, dropped outright, and started fresh.
+  transferred: string[];
+  dropped: string[];
+  initialized: string[];
 }
 
 // One `context_breakdown` snapshot — a point on the stacked context-window graph.
@@ -505,6 +544,12 @@ export interface GgRunState {
   // The workflows run this session, in first-seen order, each with its stages in
   // stage order; empty when no workflow ran.
   workflows: Workflow[];
+  // --- FSM agents (Phase 5) ------------------------------------------------
+  // The states an FSM agent walked, in order, and the successions between them —
+  // the run's *process* structure the way `workflows` is its fan-out structure.
+  // Both empty for a run that drives no machine, which is almost all of them.
+  fsmPath: FsmVisit[];
+  transitions: AgentTransition[];
 
   // --- Context visibility (stacked graph over time) ------------------------
   contextSeries: ContextSnapshot[];
@@ -738,6 +783,9 @@ function ggFeedRow(
     case "worktree_merged":
     case "slot_usage":
     case "workflow_stage":
+    // The FSM kinds drive the state-path strip and the agent lineage, not the feed.
+    case "fsm_state":
+    case "agent_transition":
     // The issue-review kind is surfaced on the board (per-issue badge +
     // actionable items) and speculation on the agent tree (winner/attempts +
     // summary), not the feed, so they render no row.
@@ -802,6 +850,10 @@ export interface DerivedGgState {
   agents: Map<string, AgentNode>;
   agentForest: AgentTreeNode[];
   workflows: Workflow[];
+  // The states an FSM agent walked, in order, and the successions between them.
+  // Both empty for the overwhelming majority of runs, which drive no machine.
+  fsmPath: FsmVisit[];
+  transitions: AgentTransition[];
   sawSession: boolean;
   sessionEndStatus: string | null;
   contextSeries: ContextSnapshot[];
@@ -1166,6 +1218,11 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   // Per-workflow stages, keyed by stageIndex so a stage's "finished" updates the
   // "started" it began at; the outer map preserves first-seen workflow order.
   const workflowStages = new Map<string, Map<number, WorkflowStage>>();
+  // The states a machine entered, in stream order — over the whole run, the path it
+  // walked; over one agent's partition, the single state that agent stood in.
+  const fsmPath: FsmVisit[] = [];
+  // Every succession, in stream order, each on the outgoing instance's stream.
+  const transitions: AgentTransition[] = [];
   const contextSeries: ContextSnapshot[] = [];
   const compactions: CompactionBoundary[] = [];
   const contextActions: ContextAction[] = [];
@@ -1413,6 +1470,27 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         });
         break;
       }
+      case "fsm_state":
+        fsmPath.push({
+          agentId: event.event.agentId ?? ROOT_ID,
+          fsm: gg.fsm,
+          state: gg.state,
+          agent: gg.agent,
+          from: gg.from ?? null,
+        });
+        break;
+      case "agent_transition":
+        transitions.push({
+          fromAgentId: event.event.agentId ?? ROOT_ID,
+          kind: gg.kind,
+          toAgentId: gg.toAgentId,
+          agent: gg.agent,
+          state: gg.state ?? null,
+          transferred: gg.transferred,
+          dropped: gg.dropped,
+          initialized: gg.initialized,
+        });
+        break;
       case "context_breakdown":
         contextSeries.push({
           timestamp: event.timestamp,
@@ -1702,6 +1780,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     agents,
     agentForest: buildAgentForest(agents),
     workflows,
+    fsmPath,
+    transitions,
     sawSession,
     sessionEndStatus,
     contextSeries,

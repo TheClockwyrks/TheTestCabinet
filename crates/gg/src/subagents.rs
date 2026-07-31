@@ -483,6 +483,61 @@ impl Scheduler {
         Self::pump(&mut state);
     }
 
+    /// Exchange the [exclusivity key](ExclusiveKey) a **running** agent holds its slot under, for
+    /// the one its next incarnation needs — without ever releasing the slot itself.
+    ///
+    /// A [succession](crate::agent) — an FSM transition, or an `exec` — replaces the running agent
+    /// with one under a *different* [profile](test_cabinet_core::gg::GgAgentConfig), and the
+    /// exclusivity key is derived from the profile name. The whole succession is one running slot by
+    /// construction (a transition must not queue behind unrelated work), so the slot is kept and only
+    /// the key changes.
+    ///
+    /// The interesting case is a `new` key another running agent already holds: a persistent profile
+    /// may have exactly one running instance, and a succession is not exempt from that. This agent
+    /// then gives its slot up and re-queues as a **blocked-and-ready** waiter under the new key,
+    /// which is the same machinery a parent resuming from a `wait_for_subagents` goes through —
+    /// so it outranks every not-yet-started agent and takes the first slot the key frees up, rather
+    /// than spinning or deadlocking against the instance ahead of it.
+    pub async fn rekey(&self, old: ExclusiveKey<'_>, new: ExclusiveKey<'_>) {
+        if old == new {
+            return;
+        }
+        let rx = {
+            let mut state = self.state.lock().expect("scheduler lock");
+            state.free_key(old);
+            match new {
+                // The successor contends with nothing: the old key is freed, the slot is kept, and
+                // whoever was queued behind that key may now be granted one.
+                None => {
+                    Self::pump(&mut state);
+                    return;
+                }
+                Some(key) => {
+                    if !state.held.contains(key) {
+                        state.held.insert(key.to_string());
+                        Self::pump(&mut state);
+                        return;
+                    }
+                    // Held by somebody else. Give the slot back and queue for it under the new key,
+                    // ready from the start — this agent is not waiting on work, only on a name.
+                    let (wake, rx) = oneshot::channel();
+                    let ticket = state.take_ticket();
+                    state.waiters.push(Waiter {
+                        ticket,
+                        blocked: true,
+                        ready: true,
+                        key: Some(key.to_string()),
+                        wake,
+                    });
+                    state.running = state.running.saturating_sub(1);
+                    Self::pump(&mut state);
+                    rx
+                }
+            }
+        };
+        let _ = rx.await;
+    }
+
     /// Grant free slots to the best eligible waiters until no slot is free or no waiter is
     /// eligible. Each grant increments `running`, removes the chosen waiter, and wakes it.
     fn pump(state: &mut SchedulerState) {

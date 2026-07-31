@@ -329,3 +329,63 @@ async fn suspending_releases_the_exclusivity_key_and_resuming_re_takes_it() {
     assert!(scheduler.holds("Owner"), "the resumed parent re-takes it");
     assert_eq!(scheduler.running(), 1);
 }
+
+/// A **succession** into a persistent profile takes that profile's key without ever giving up the
+/// running slot it already holds. A machine transition is the continuation of work in progress, and
+/// making it re-queue behind unrelated agents would stall a machine mid-stride.
+#[tokio::test]
+async fn a_rekey_exchanges_the_profile_without_giving_up_the_slot() {
+    let scheduler = Scheduler::new(2);
+    scheduler.acquire_start(Some("Explorer")).await;
+    assert_eq!(scheduler.running(), 1);
+
+    scheduler.rekey(Some("Explorer"), Some("Builder")).await;
+    assert!(!scheduler.holds("Explorer"), "the old profile is freed");
+    assert!(scheduler.holds("Builder"), "and the new one taken");
+    assert_eq!(scheduler.running(), 1, "the slot never moved");
+
+    // A successor whose profile is not persistent contends with nothing and simply drops the key.
+    scheduler.rekey(Some("Builder"), None).await;
+    assert!(!scheduler.holds("Builder"));
+    assert_eq!(scheduler.running(), 1);
+}
+
+/// A succession into a profile **another running agent already holds** is not exempt from the
+/// one-instance rule: it gives its slot up and re-queues under the new key, blocked-and-ready, so it
+/// outranks every not-yet-started agent and resumes the moment the key frees.
+#[tokio::test]
+async fn a_rekey_onto_a_held_profile_queues_rather_than_deadlocking() {
+    let scheduler = Arc::new(Scheduler::new(4));
+    // Somebody else is running as `Owner`.
+    scheduler.acquire_start(Some("Owner")).await;
+    // Our agent is running as something else, and is about to become an `Owner`.
+    scheduler.acquire_start(Some("Explorer")).await;
+    assert_eq!(scheduler.running(), 2);
+
+    let moved = Arc::new(AtomicBool::new(false));
+    let handle = tokio::spawn({
+        let scheduler = Arc::clone(&scheduler);
+        let moved = Arc::clone(&moved);
+        async move {
+            scheduler.rekey(Some("Explorer"), Some("Owner")).await;
+            moved.store(true, Ordering::SeqCst);
+        }
+    });
+    tokio::task::yield_now().await;
+    assert!(
+        !moved.load(Ordering::SeqCst),
+        "the succession waits for the profile rather than running two of it"
+    );
+    assert_eq!(
+        scheduler.running(),
+        1,
+        "and gave its slot up while it waits"
+    );
+
+    // The instance ahead of it finishing hands the profile over.
+    scheduler.release(Some("Owner"));
+    handle.await.unwrap();
+    assert!(moved.load(Ordering::SeqCst));
+    assert!(scheduler.holds("Owner"));
+    assert_eq!(scheduler.running(), 1);
+}

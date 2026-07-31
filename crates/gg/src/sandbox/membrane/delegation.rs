@@ -32,8 +32,8 @@ use super::{MembraneState, ToolApi};
 use crate::sandbox::WorkflowStageInput;
 use crate::tools::{
     AgentStatusData, RUN_WORKFLOW_TOOL, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL,
-    SpeculationData, SubagentHandleData, SubagentResultData, ToolData, WAIT_FOR_SUBAGENTS_TOOL,
-    WorkflowData,
+    SpeculationData, SubagentHandleData, SubagentResultData, TRANSITION_STATE_TOOL, ToolData,
+    WAIT_FOR_SUBAGENTS_TOOL, WorkflowData,
 };
 
 /// How many attempts a `speculate` with no count makes — the loop's own default, restated because
@@ -152,6 +152,20 @@ impl<A: ToolApi> DelegationHost for MembraneState<A> {
             }),
             other => Err(self.missing_data(SPECULATE_TOOL, other.as_ref())),
         }
+    }
+
+    /// Declare a move to another state of the machine driving this agent.
+    ///
+    /// Nothing happens here beyond the check: like `compact`, the call validates the target against
+    /// the state's declared edges and records the request, and the loop performs the succession once
+    /// the program has ended. Replacing the agent — and the very window the program is composing
+    /// into — mid-execution would pull every remaining call out from under it. Success carries no
+    /// payload; what the successor received is told to *it*, in the note it opens on.
+    fn transition_state(&mut self, state: String, note: Option<String>) -> Result<(), ToolError> {
+        self.call(TRANSITION_STATE_TOOL, |api| {
+            api.transition_state(state, note)
+        })?;
+        Ok(())
     }
 }
 

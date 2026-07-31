@@ -247,11 +247,13 @@ async fn drive_root(
                 code,
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await
@@ -964,11 +966,13 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -1021,11 +1025,13 @@ async fn drive_times_out_at_a_passed_deadline() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -1079,11 +1085,13 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -1178,11 +1186,13 @@ async fn drive_completion(
                 code: no_code(),
                 completion,
                 ending_role,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await
@@ -1491,11 +1501,13 @@ async fn drive_ends_model_error_on_exhausted_retries() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -1546,11 +1558,13 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -1628,7 +1642,11 @@ fn system_prompt_states_the_configured_read_cap() {
     read_file.params = json!({ "lineCap": 42 });
 
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
+    let registry = ToolRegistry::from_run(
+        set.root(),
+        &skills_modules(&library),
+        &AgentFacts::default(),
+    );
     let runtimes = DisabledRuntimes::new();
     let capped = system_prompt(PromptInputs {
         read_policy: read_policy(set.root()),
@@ -1781,7 +1799,11 @@ fn context_has_pinned_file_view(ctx: &ContextModel) -> bool {
 fn system_prompt_states_whether_images_can_be_seen() {
     let set = GgCapabilitySet::minimal("mock/x");
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
+    let registry = ToolRegistry::from_run(
+        set.root(),
+        &skills_modules(&library),
+        &AgentFacts::default(),
+    );
 
     let seeing = DisabledRuntimes::new();
     let prompt = system_prompt(seeing.inputs(&registry));
@@ -1806,7 +1828,11 @@ fn system_prompt_omits_image_guidance_without_read_file() {
         .disabled_tools
         .push(READ_FILE_TOOL.to_string());
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
+    let registry = ToolRegistry::from_run(
+        set.root(),
+        &skills_modules(&library),
+        &AgentFacts::default(),
+    );
 
     let prompt = system_prompt(DisabledRuntimes::new().inputs(&registry));
     assert!(!prompt.contains("Reading images"), "{prompt}");
@@ -1829,6 +1855,7 @@ fn the_board_section_follows_the_agents_own_capability() {
         &runtimes.profile,
         &skills_modules(&library)
             .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default()))),
+        &AgentFacts::default(),
     );
     let prompt = system_prompt(runtimes.inputs(&registry));
     assert!(
@@ -1847,6 +1874,7 @@ fn the_board_section_follows_the_agents_own_capability() {
         &authoring.profile,
         &skills_modules(&library)
             .with(ModuleHandle::Board(BoardRuntime::new(BoardCaps::default()))),
+        &AgentFacts::default(),
     );
     let prompt = system_prompt(authoring.inputs(&registry));
     assert!(
@@ -1862,7 +1890,11 @@ fn the_assigned_issue_section_is_rendered_for_a_dispatched_agent() {
     let library = Arc::new(SkillLibrary::empty());
     let mut runtimes = DisabledRuntimes::new();
     runtimes.board = Some(BoardRuntime::new(BoardCaps::default()));
-    let registry = ToolRegistry::from_run(&runtimes.profile, &skills_modules(&library));
+    let registry = ToolRegistry::from_run(
+        &runtimes.profile,
+        &skills_modules(&library),
+        &AgentFacts::default(),
+    );
 
     let mut inputs = runtimes.inputs(&registry);
     inputs.assigned_issue = Some("feat-7");
@@ -2395,7 +2427,11 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
     assert_eq!(library.len(), 1);
 
     let set = GgCapabilitySet::minimal("mock/echo");
-    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
+    let registry = ToolRegistry::from_run(
+        set.root(),
+        &skills_modules(&library),
+        &AgentFacts::default(),
+    );
     let runtime = SkillsRuntime::new(Arc::clone(&library));
     let ctx = ToolContext::new(dir.path());
     let sink = CollectingSink::new();
@@ -2436,11 +2472,13 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -2593,6 +2631,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
     let registry = ToolRegistry::from_run(
         set.root(),
         &skills_modules(&library).with(ModuleHandle::Memories(memories.shared())),
+        &AgentFacts::default(),
     );
 
     // Write `first` (accepted), then `second` (refused — count cap), then stop.
@@ -2630,11 +2669,13 @@ async fn drive_enforces_memory_caps_end_to_end() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -2756,6 +2797,7 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
     let registry = ToolRegistry::from_run(
         set.root(),
         &skills_modules(&library).with(ModuleHandle::Memories(memories.shared())),
+        &AgentFacts::default(),
     );
     let offered = registry.tool_names();
     assert!(offered.iter().any(|name| name == "create_memory"));
@@ -2797,11 +2839,13 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -2884,11 +2928,13 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -3024,6 +3070,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
     let registry = ToolRegistry::from_run(
         set.root(),
         &skills_modules(&library).with(ModuleHandle::Tasks(tasks.shared())),
+        &AgentFacts::default(),
     );
 
     // add a, add b (blocked by a), try a blocked-by b (cycle → refused), complete a, stop.
@@ -3082,11 +3129,13 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -3162,6 +3211,7 @@ async fn drive_keeps_an_unowned_task_list_out_of_the_window() {
     let registry = ToolRegistry::from_run(
         set.root(),
         &skills_modules(&library).with(ModuleHandle::Tasks(tasks.shared())),
+        &AgentFacts::default(),
     );
     assert!(
         registry.tool_names().iter().any(|name| name == "add_task"),
@@ -3210,11 +3260,13 @@ async fn drive_keeps_an_unowned_task_list_out_of_the_window() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -3470,6 +3522,7 @@ fn compaction_runtimes(dir: &Path) -> (ToolRegistry, SkillsRuntime, MemoriesRunt
         &skills_modules(&library)
             .with(ModuleHandle::Memories(memories.shared()))
             .with(ModuleHandle::Tasks(tasks.shared())),
+        &AgentFacts::default(),
     );
     (registry, skills, memories, tasks)
 }
@@ -3514,11 +3567,13 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -3681,11 +3736,13 @@ async fn drive_never_compacts_when_capability_off() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -3744,7 +3801,8 @@ async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-board-gate".to_string()), Box::new(sink.clone()));
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(profile, &skills_modules(&library));
+    let registry =
+        ToolRegistry::from_run(profile, &skills_modules(&library), &AgentFacts::default());
     let client = MockClient::new("mock/echo", vec![finish_call("f1", "done")]);
 
     Agent::root(ROOT_AGENT)
@@ -3771,11 +3829,13 @@ async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             profile,
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -3845,6 +3905,7 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
             &skills_modules(&library).with(ModuleHandle::Archive(ArchiveRuntime::from_store(
                 Arc::clone(&archive),
             ))),
+            &AgentFacts::default(),
         );
         AmcSetup::resolve(profile, &registry, Arc::clone(&archive))
     };
@@ -3926,6 +3987,7 @@ async fn drive_manages_context_end_to_end() {
         &skills_modules(&library).with(ModuleHandle::Archive(ArchiveRuntime::from_store(
             Arc::clone(&archive),
         ))),
+        &AgentFacts::default(),
     );
 
     let client = MockClient::with_agent_managed_context_script("mock/echo");
@@ -3954,11 +4016,13 @@ async fn drive_manages_context_end_to_end() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -4110,7 +4174,11 @@ async fn drive_without_amc_offers_no_context_management() {
     // Minimal set (no agent-managed-context), and no archive bound to the registry.
     let set = GgCapabilitySet::minimal("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
-    let registry = ToolRegistry::from_run(set.root(), &skills_modules(&library));
+    let registry = ToolRegistry::from_run(
+        set.root(),
+        &skills_modules(&library),
+        &AgentFacts::default(),
+    );
     for name in ["evict_file_view", "archive_thread", "search_archive"] {
         assert!(
             !registry.definitions().iter().any(|d| d.name == name),
@@ -4144,11 +4212,13 @@ async fn drive_without_amc_offers_no_context_management() {
                 code: no_code(),
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
+                opening: Opening::Fresh,
+                turn_base: 0,
                 replay: None,
             },
             &[],
             &GgAgentConfig::root(),
-            None,
+            &mut None,
             None,
         )
         .await;
@@ -8465,3 +8535,14 @@ mod compaction_tests;
 /// the record on the completion path — which only exist here.
 #[path = "agent.persistence.test.rs"]
 mod persistence_tests;
+
+/// **FSM agents through the live loop**: a whole machine driven offline through the real binary —
+/// the incarnation loop, the transfer between states, the refusal of an undeclared target, and the
+/// telemetry a console reduces a lineage from.
+///
+/// Separate from `fsm.test.rs` (the table, the validation and the position, with no loop behind
+/// them) because what these guard is the half that only exists in [`run_agent`]: that a transition
+/// really does tear one instance down and stand another up, on the same slot, carrying exactly what
+/// the edge named.
+#[path = "agent.fsm.test.rs"]
+mod fsm_tests;

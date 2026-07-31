@@ -324,6 +324,77 @@ export type GgModuleKind =
 export type GgModuleOwnership = "owned" | "unowned";
 
 /**
+ * One state of a user-authored [FSM](CAPABILITY_FSM): the [agent profile](GgAgentConfig) that runs
+ * while the machine sits in it, and where it may go from there.
+ *
+ * A state is not itself an agent — it *binds* one. That indirection is what lets two states share a
+ * profile (a machine that returns to `explore` runs the same `Explorer` twice) and what makes the
+ * machine a document about **order** rather than a second place agents are configured.
+ *
+ * A state with no [transitions](Self::transitions) is **terminal**: the agent instance it runs is
+ * offered no transition call at all, so the machine ends when that agent ends, and its ending is
+ * the FSM agent's return value to whoever put it to work.
+ */
+export type GgFsmState = {
+  /**
+   * The state's name — how a [transition](GgFsmTransition::to) addresses it and how the model
+   * names it when it moves. Must be non-empty and unique within the machine; both are launch
+   * failures, because a transition to an ambiguous name has no answer.
+   */
+  name: string;
+  /**
+   * The [agent profile](GgAgentConfig) this state runs: its model, its capabilities, its system
+   * prompt. Must name a profile the set declares, and must not name an FSM shell (a shell cannot
+   * be a state — it would recurse).
+   *
+   * Defaulted rather than required so a state that omits it is refused by the machine's own
+   * validation — which names the state and says what is missing — instead of by a serde error
+   * about a field the author never knew to write.
+   */
+  agent: string;
+  /**
+   * Where the agent in this state may go. Empty (the default) makes the state terminal.
+   */
+  transitions: Array<GgFsmTransition>;
+};
+
+/**
+ * One edge of a user-authored [FSM](CAPABILITY_FSM): a state the model may move to, and exactly
+ * what it takes with it.
+ */
+export type GgFsmTransition = {
+  /**
+   * The [state](GgFsmState::name) this edge leads to. Must name a state the same machine
+   * declares; anything else is a launch failure.
+   */
+  to: string;
+  /**
+   * The [modules](GgModuleKind) the successor's agent instance inherits, in the state they were
+   * in — a `tasks` transfer hands over the predecessor's task list itself, not a copy of its
+   * summary.
+   *
+   * **Explicit, with no implicit history.** An absent or empty list transfers nothing, which is a
+   * deliberate hard reset between states rather than an oversight: a recorded configuration has
+   * to say what it does, and a default nobody wrote down is exactly the sort of decision a reader
+   * of the record cannot see. The console's editor pre-fills `["history"]` on every transition it
+   * creates, so the common case is still one click.
+   *
+   * Deserialized **leniently**: an entry that is not a module kind gg knows is dropped rather
+   * than failing the whole machine. A mistyped module name is an unrecognized *value*, which the
+   * harness reports as a launch warning and falls back from, and refusing to launch over one
+   * would put it in the same class as a state that points nowhere.
+   */
+  transfer: Array<GgModuleKind>;
+  /**
+   * When the model should take this edge, in its own words — rendered into the transition tool's
+   * description beside the target name, exactly as an agent's roster description is rendered into
+   * `spawn_subagent`'s. Optional, and worth writing: it is the only thing that tells the model
+   * *why* one target rather than another.
+   */
+  description: string;
+};
+
+/**
  * The **source** a context-window contribution is attributed to, for the per-source
  * accounting [context visibility] reports.
  *
@@ -919,6 +990,17 @@ export type GgAgentStatus = "running" | "blocked" | "done" | "failed";
  * events carry the detail of the agents that ran within the stage.
  */
 export type GgWorkflowPhase = "started" | "finished";
+
+/**
+ * How one agent instance came to be replaced by (or cloned into) another — the discriminator on an
+ * [`AgentTransition`](GgTelemetryKind::AgentTransition) event.
+ *
+ * All three are the *same* operation over [modules](GgModuleKind) — carry these, drop those,
+ * initialize the rest — differing only in who chose the successor and what it does to the
+ * predecessor. Naming them apart is what lets the console show a succession as a lineage rather
+ * than as N unrelated agents that happened to appear in order.
+ */
+export type GgAgentTransitionKind = "exec" | "fork" | "fsm";
 
 /**
  * The phase of an [issue review](https://docs.testcabinet.ai/gg/project-management/) an
@@ -2160,6 +2242,65 @@ export type GgTelemetryKind =
       phase: GgWorkflowPhase;
     }
   | {
+      type: "fsm_state";
+      /**
+       * The machine: the name of the **FSM shell** [profile](GgAgentConfig) whose `states` table
+       * is being driven. An agent may only ever be inside one, so this names the document the
+       * state came from.
+       */
+      fsm: string;
+      /**
+       * The [state](GgFsmState::name) just entered.
+       */
+      state: string;
+      /**
+       * The [agent profile](GgFsmState::agent) that state runs — which is also this agent
+       * instance's [`slot`](Self::AgentSpawned::slot), so a machine's cost splits per state
+       * agent in the [per-slot rollup](Self::SlotUsage).
+       */
+      agent: string;
+      /**
+       * The state the machine came from, or `None` for the entry state.
+       */
+      from?: string;
+    }
+  | {
+      type: "agent_transition";
+      /**
+       * Which of the three [kinds](GgAgentTransitionKind) of succession this was.
+       */
+      kind: GgAgentTransitionKind;
+      /**
+       * The id of the agent instance that takes over (or, for a `fork`, of the copy).
+       */
+      toAgentId: string;
+      /**
+       * The [agent profile](GgAgentConfig) the successor runs under.
+       */
+      agent: string;
+      /**
+       * The [FSM state](GgFsmState::name) the successor enters, for a
+       * [`fsm`](GgAgentTransitionKind::Fsm) transition. `None` for the other two kinds.
+       */
+      state?: string;
+      /**
+       * The [modules](GgModuleKind) the successor received **live**, contents and all, in
+       * [kind](GgModuleKind::ALL) order.
+       */
+      transferred: Array<string>;
+      /**
+       * The modules the outgoing instance held that the successor did not receive at all —
+       * their backing stores are gone.
+       */
+      dropped: Array<string>;
+      /**
+       * The modules the successor's own profile enables that it starts **fresh**: either the
+       * plan did not carry them, or what was carried could not be read under the successor's
+       * configuration.
+       */
+      initialized: Array<string>;
+    }
+  | {
       type: "issue_review";
       /**
        * Which phase of the review lifecycle this transition is.
@@ -2922,6 +3063,65 @@ export type GgTelemetryEvent = {
        * Whether this event marks the stage's [start or finish](GgWorkflowPhase).
        */
       phase: GgWorkflowPhase;
+    }
+  | {
+      type: "fsm_state";
+      /**
+       * The machine: the name of the **FSM shell** [profile](GgAgentConfig) whose `states` table
+       * is being driven. An agent may only ever be inside one, so this names the document the
+       * state came from.
+       */
+      fsm: string;
+      /**
+       * The [state](GgFsmState::name) just entered.
+       */
+      state: string;
+      /**
+       * The [agent profile](GgFsmState::agent) that state runs — which is also this agent
+       * instance's [`slot`](Self::AgentSpawned::slot), so a machine's cost splits per state
+       * agent in the [per-slot rollup](Self::SlotUsage).
+       */
+      agent: string;
+      /**
+       * The state the machine came from, or `None` for the entry state.
+       */
+      from?: string;
+    }
+  | {
+      type: "agent_transition";
+      /**
+       * Which of the three [kinds](GgAgentTransitionKind) of succession this was.
+       */
+      kind: GgAgentTransitionKind;
+      /**
+       * The id of the agent instance that takes over (or, for a `fork`, of the copy).
+       */
+      toAgentId: string;
+      /**
+       * The [agent profile](GgAgentConfig) the successor runs under.
+       */
+      agent: string;
+      /**
+       * The [FSM state](GgFsmState::name) the successor enters, for a
+       * [`fsm`](GgAgentTransitionKind::Fsm) transition. `None` for the other two kinds.
+       */
+      state?: string;
+      /**
+       * The [modules](GgModuleKind) the successor received **live**, contents and all, in
+       * [kind](GgModuleKind::ALL) order.
+       */
+      transferred: Array<string>;
+      /**
+       * The modules the outgoing instance held that the successor did not receive at all —
+       * their backing stores are gone.
+       */
+      dropped: Array<string>;
+      /**
+       * The modules the successor's own profile enables that it starts **fresh**: either the
+       * plan did not carry them, or what was carried could not be read under the successor's
+       * configuration.
+       */
+      initialized: Array<string>;
     }
   | {
       type: "issue_review";

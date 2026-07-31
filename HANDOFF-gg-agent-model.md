@@ -1594,6 +1594,84 @@ can `wait_for_subagents` on the fork; ids/depth/parent are as specified.
 `exec` from a program is deferred and applied after the turn.
 `sandbox/signatures.test.rs` — `boundTools() == ALL_TOOL_NAMES`.
 
+### 7.3 Stage 4/5 as built — FSM agents landed FIRST, and brought §4's machinery with them
+
+**LANDED** as `feat(gg): user-defined FSM agents`. The pipeline ran the FSM stage **before**
+`fork`/`exec`, which inverts §7's order. That is why §4's incarnation loop is described here: a
+transition *is* an `exec` with an explicit transfer list, so the succession machinery had to land
+with whichever of the two came first. `fork`/`exec` now add two capture sites and a capability, not
+a loop. Fourteen things differ from §3 and §4; later stages should build on **this** list.
+
+1. **`Handoff`, `HandoffReason`, `Opening`, `Succession`, the incarnation loop in `run_agent`,
+   `Scheduler::rekey`, `LoopEnd::handoff` and the `AgentTransition` telemetry all landed here.**
+   `HandoffReason` has exactly one variant, `Fsm { from }`; `exec` adds `Exec` and `fork` adds its
+   own path, and `HandoffReason::kind()` is the one place a reason becomes a
+   `GgAgentTransitionKind` (whose `exec`/`fork` variants are already on the wire, unemitted).
+2. **An FSM shell is NOT exempt from the model-binding check** (§3.2 said it would be). Exempting it
+   would have meant changing client resolution at three dispatch sites — `run_with_factory`,
+   `dispatch_child`, `run_detached_agent` — all of which resolve a client *before* `run_agent` is
+   entered, for a profile the console binds a model to anyway. Instead **each incarnation resolves
+   its own client** from the profile it actually runs, and a shell's binding is simply unused (the
+   launch warning says so). A model that will not resolve mid-succession ends the session with
+   `model_error` rather than silently continuing as the predecessor.
+3. **`GgFsmState` / `GgFsmTransition` are registered in `ts_decls!` only**, not in the
+   capability-set schema's `owns` list — §6.11 asked for both, but per §7.1's item 7 they are the
+   documented shape of a `params` key rather than a schema root, so `owns` would emit a name
+   schemars never generated. `GgAgentTransitionKind` *is* in the telemetry-event `owns` list,
+   because the event references it.
+4. **`GgFsmTransition::transfer` deserializes leniently**, through a `deserialize_with` in core that
+   drops entries that are not module kinds. A closed enum would have failed the *whole machine* on
+   one mistyped name, turning a warn-and-fall-back into a launch failure. gg re-reads the raw param
+   (`fsm::unknown_transfer_kinds`) to name what it dropped.
+5. **`GgFsmState::agent` is `#[serde(default)]`** so a state that omits it is refused by the
+   machine's own validation — which names the state — rather than by a serde error about a field
+   the author never knew to write.
+6. **`DriveSetup` gained `opening: Opening` and `turn_base: usize`.** `Opening::Carried { note }`
+   rebases the system prompt in place, skips autoload and the persistence restore (they exist to
+   fill an empty window), and pushes the successor's opening note at the tail. `turn_base` is one
+   figure serving two purposes: it numbers the window's turns continuously across a succession (so
+   a transferred `Turn #37` still means turn 37 and an `archive_thread` naming it still resolves),
+   and it is what makes a succession spend **one** turn ceiling between its incarnations rather
+   than one each.
+7. **`drive` takes `subagents: &mut Option<SubagentContext>`**, not by value. `run_agent` owns the
+   delegation context across incarnations: it holds the inbox this agent's parent messages it
+   through and the handles of the children it has already spawned, and a succession that dropped
+   either would orphan a running subagent and silence a live channel. What a succession *does*
+   change is the `inherited` offer and the exclusivity key, both updated in place.
+8. **`AgentFacts` landed** (§1.5, deferred by stage 2): `ToolRegistry::from_run(capabilities,
+   modules, facts)`, with `AgentFacts { fsm: Option<&FsmPosition> }`. `from_capabilities` passes
+   `AgentFacts::default()`. It is the seam a second state-dependent tool goes through.
+9. **`Agent` gained `fsm: Option<FsmPosition>`**, plus `Agent::entering(machine)` (a shell becomes
+   its entry state before the slot is acquired, so the slot is taken under the *state's*
+   exclusivity) and `Agent::succeeding(id, profile, fsm)`.
+10. **Module `state_events()` are re-emitted only for a successor incarnation.** A first
+    incarnation's modules are empty and the root's `announce_configuration` already introduces
+    them; emitting both would have double-reported every opening snapshot.
+11. **`handle_transition` is shared by both execution paths.** The tool-calling dispatch arm and
+    `LoopToolApi::transition_state` call the same function, so a program and a native call get the
+    same legal targets, the same first-wins, and the same refusal text. The code path passes
+    `None` for the declared ending: under responses-as-code an ending goes through the session
+    membrane rather than this dispatch path.
+12. **The WIT gained `delegation.transition-state`**, and `packages/gg-sandbox/build.sh` ran
+    cleanly in the devcontainer — `gg-sandbox.component.wasm` (~13 MB) and `signatures.json` are
+    committed refreshed, and `ALL_TOOL_NAMES` is 35.
+13. **The console reducer and a state-path strip landed here**, not in stage 7: `useGgRunState`
+    gained `fsmPath: FsmVisit[]` and `transitions: AgentTransition[]`, and `AgentTreeView` gained
+    `FsmPathStrip`, threaded through `GgRunPanels` → `GgAgentsExplorer` beside `WorkflowStrip`.
+    Stage 6 still owns `ggCatalog.ts` (the `fsm` capability entry and its `states` editor), and
+    stage 7 still owns the richer lineage rendering in `GgAgentsExplorer`.
+14. **"A terminal state is offered no transition tool" is asserted at the registry**, not end to
+    end: the `Prompt` telemetry event carries no tool list, so an offline run cannot observe the
+    offered set. `tools/mod.test.rs` asserts it directly against an `AgentFacts` holding a terminal
+    position.
+
+Two things §3 asked for that are **not** here, deliberately: an FSM agent whose state agent is
+itself persistent re-keys through `Scheduler::rekey` but a `shared`-scoped memory successor is still
+not rebound to the registry entry for its own profile (§2.2's last table row, and §7.2's item 7 —
+`Module::adopt` is where it goes); and `announce_fsm`-style prose in the system prompt is absent —
+a state agent learns the machine entirely from the `transition_state` tool description and its
+opening note, which is the same way it learns its roster.
+
 ### Stage 5 — `feat(gg): user-defined FSM agents`
 
 `fsm.rs` rewritten: `FsmSpec`, `FsmStateSpec`, `FsmTransitionSpec`,

@@ -570,6 +570,8 @@ declare module "test-cabinet:gg/delegation" {
   export function runWorkflow(stages: WorkflowStage[]): WorkflowReport;
   /** Attempt the same task K times, judge them, and merge the winner. */
   export function speculate(request: SpeculateRequest): SpeculationReport;
+  /** Declare a move to another state of the machine driving this agent; performed after the turn. */
+  export function transitionState(state: string, note: string | undefined): void;
 }
 
 /**

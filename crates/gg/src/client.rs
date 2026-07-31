@@ -140,6 +140,26 @@ pub const MOCK_MEMORY_PARENT: &str = "house-style";
 /// otherwise. That difference is the whole observable of memory scoping.
 pub const MOCK_MEMORY_CHILD: &str = "field-notes";
 
+/// The title of the first task the [FSM entry script](MockClient::with_fsm_explore_script) adds,
+/// so a test can assert that a transferring transition carried the list across **intact** rather
+/// than merely carrying a list of the right length.
+pub const MOCK_FSM_TASK_ONE: &str = "Sketch the renderer";
+
+/// The title of the second task the [FSM entry script](MockClient::with_fsm_explore_script) adds.
+pub const MOCK_FSM_TASK_TWO: &str = "Wire the input loop";
+
+/// The note the [FSM entry script](MockClient::with_fsm_explore_script) hands its successor, so a
+/// test can assert it reached the successor's window rather than being dropped at the boundary.
+pub const MOCK_FSM_HANDOFF_NOTE: &str = "the renderer sketch is the risky part";
+
+/// The state the [FSM middle script](MockClient::with_fsm_build_script) asks for and cannot have —
+/// the illegal target whose refusal a test asserts on.
+pub const MOCK_FSM_UNDECLARED_STATE: &str = "ship";
+
+/// The final message the [FSM terminal script](MockClient::with_fsm_verify_script) ends with, which
+/// is the whole machine's return value.
+pub const MOCK_FSM_RETURN: &str = "The machine ran to its terminal state.";
+
 /// The id of the first task the [default mock script](MockClient::with_default_script) adds,
 /// which the second task is blocked by (and which the script later completes to unblock it).
 pub const DEFAULT_MOCK_TASK_SCAFFOLD: &str = "scaffold";
@@ -1925,6 +1945,116 @@ impl MockClient {
         Self::new(model_id, vec![remember, finish])
     }
 
+    /// The **entry state** of the offline [FSM](crate::fsm) e2e: a script that builds a task list
+    /// and then moves the machine on, handing what it built to the next state.
+    ///
+    /// 1. `add_task` twice — the state it produces, and the thing a transferring transition has to
+    ///    carry across intact;
+    /// 2. `transition_state` to `build`, with a note for the successor.
+    ///
+    /// It never calls `finish`: the machine ends in its terminal state, not here. Selected in
+    /// production by a mock `model_id` naming `fsm-explore` (see [`mock_client_for`]), so a machine
+    /// is drivable **offline through the real binary**: declare a shell profile with a `states`
+    /// table and bind its states to `mock/…-fsm-explore`, `…-fsm-build` and `…-fsm-verify`.
+    pub fn with_fsm_explore_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let plan = |call: &str, id: &str, title: &str, tokens: u64| ModelResponse {
+            text: Some(format!("Planning: {title}.")),
+            tool_calls: vec![ToolCall {
+                id: call.to_string(),
+                name: "add_task".to_string(),
+                arguments: json!({ "id": id, "title": title }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(tokens, 30),
+            cost: None,
+        };
+        let advance = ModelResponse {
+            text: Some("The plan is ready; handing it to the builder.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_transition_build".to_string(),
+                name: "transition_state".to_string(),
+                arguments: json!({
+                    "state": "build",
+                    "note": MOCK_FSM_HANDOFF_NOTE,
+                }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(900, 40),
+            cost: None,
+        };
+        Self::new(
+            model_id,
+            vec![
+                plan("call_task_one", "t1", MOCK_FSM_TASK_ONE, 700),
+                plan("call_task_two", "t2", MOCK_FSM_TASK_TWO, 800),
+                advance,
+            ],
+        )
+    }
+
+    /// The **middle state** of the offline [FSM](crate::fsm) e2e: a script that first asks for a
+    /// state the machine does not let it reach, and then takes the edge it actually has.
+    ///
+    /// The illegal move is the point of the first turn: a machine's refusal has to be a *tool
+    /// result the model can recover from* — the agent stays where it is, is told the targets it may
+    /// name, and the run continues — rather than a launch failure or a stopped session. Selected in
+    /// production by a mock `model_id` naming `fsm-build` (see [`mock_client_for`]).
+    pub fn with_fsm_build_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let illegal = ModelResponse {
+            text: Some("Shipping it.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_transition_ship".to_string(),
+                name: "transition_state".to_string(),
+                arguments: json!({ "state": MOCK_FSM_UNDECLARED_STATE }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(600, 30),
+            cost: None,
+        };
+        let advance = ModelResponse {
+            text: Some("Handing it to the verifier instead.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_transition_verify".to_string(),
+                name: "transition_state".to_string(),
+                arguments: json!({ "state": "verify" }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(700, 40),
+            cost: None,
+        };
+        Self::new(model_id, vec![illegal, advance])
+    }
+
+    /// The **terminal state** of the offline [FSM](crate::fsm) e2e: a script that finishes, which is
+    /// how a machine ends. Selected in production by a mock `model_id` naming `fsm-verify` (see
+    /// [`mock_client_for`]).
+    pub fn with_fsm_verify_script(model_id: impl Into<String>) -> Self {
+        Self::new(
+            model_id,
+            vec![ModelResponse {
+                usage: TokenCounts {
+                    uncached_input: Some(500),
+                    cached_input: None,
+                    output: Some(40),
+                    reasoning: None,
+                },
+                ..done_turn(MOCK_FSM_RETURN)
+            }],
+        )
+    }
+
     /// The **child** side of the offline [subagents](crate::subagents) e2e: a script that does a
     /// bit of work then returns a distinctive value.
     ///
@@ -2687,7 +2817,13 @@ pub fn client_for_slot(
 /// no runaway recursion. This keys purely on the (offline) `model_id`, matching how
 /// [`resolve_provider_kind`] already selects the mock provider by `model_id`.
 fn mock_client_for(model_id: &str) -> MockClient {
-    if model_id.contains("subagent-child") {
+    if model_id.contains("fsm-explore") {
+        MockClient::with_fsm_explore_script(model_id)
+    } else if model_id.contains("fsm-build") {
+        MockClient::with_fsm_build_script(model_id)
+    } else if model_id.contains("fsm-verify") {
+        MockClient::with_fsm_verify_script(model_id)
+    } else if model_id.contains("subagent-child") {
         MockClient::with_subagent_child_script(model_id)
     } else if model_id.contains("workflow-parent") {
         MockClient::with_workflow_parent_script(model_id)

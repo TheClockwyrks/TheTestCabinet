@@ -7,10 +7,12 @@ import panels from "./GgPanels.module.scss";
 import dash from "./GgDashboard.module.scss";
 import type {
   AgentNode,
+  AgentTransition,
   AgentTreeNode,
   ContextSnapshot,
   DerivedGgState,
   FeedRow,
+  FsmVisit,
   GgToolBreakdown,
   SpeculationState,
   Workflow,
@@ -34,6 +36,7 @@ import {
 } from "./GgOverviewWidgets";
 import {
   AgentIdentity,
+  FsmPathStrip,
   SpeculationPanel,
   WorkflowStrip,
   classifySpeculationRoles,
@@ -220,6 +223,10 @@ interface GgAgentsExplorerProps {
   // so it reads inside the Dashboard's Cost widget, not here.) Empty when the run had
   // none.
   workflows: Workflow[];
+  /** The states an FSM agent walked, and the successions between them. Empty for a
+      run that drives no machine, which is almost all of them. */
+  fsmPath: FsmVisit[];
+  transitions: AgentTransition[];
   speculations: SpeculationState[];
   // Whether the stream is still arriving — a live activity feed auto-follows its
   // newest row and says it is waiting on telemetry; a finished one does neither.
@@ -248,6 +255,8 @@ export function GgAgentsExplorer({
   perAgent,
   capabilitySet,
   workflows,
+  fsmPath,
+  transitions,
   speculations,
   live,
   focusAgent,
@@ -362,6 +371,8 @@ export function GgAgentsExplorer({
             role={roles.get(selectedNode.id)}
             capabilitySet={capabilitySet}
             workflows={workflows}
+            fsmPath={fsmPath}
+            transitions={transitions}
             speculations={speculations}
             live={live}
           />
@@ -556,6 +567,8 @@ function FileContent({
   role,
   capabilitySet,
   workflows,
+  fsmPath,
+  transitions,
   speculations,
   live,
 }: {
@@ -565,6 +578,10 @@ function FileContent({
   role?: SpeculationRole;
   capabilitySet: GgCapabilitySet | null;
   workflows: Workflow[];
+  /** The states an FSM agent walked, and the successions between them. Empty for a
+      run that drives no machine, which is almost all of them. */
+  fsmPath: FsmVisit[];
+  transitions: AgentTransition[];
   speculations: SpeculationState[];
   live: boolean;
 }) {
@@ -584,6 +601,8 @@ function FileContent({
           role={role}
           isRoot={isRoot}
           workflows={workflows}
+          fsmPath={fsmPath}
+          transitions={transitions}
           speculations={speculations}
         />
       );
@@ -741,6 +760,8 @@ function OverviewFile({
   role,
   isRoot,
   workflows,
+  fsmPath,
+  transitions,
   speculations,
 }: {
   node: AgentNode;
@@ -748,6 +769,10 @@ function OverviewFile({
   role?: SpeculationRole;
   isRoot: boolean;
   workflows: Workflow[];
+  /** The states an FSM agent walked, and the successions between them. Empty for a
+      run that drives no machine, which is almost all of them. */
+  fsmPath: FsmVisit[];
+  transitions: AgentTransition[];
   speculations: SpeculationState[];
 }) {
   // Price this agent's own usage: its own per-(profile, model) tallies, summed from the
@@ -801,6 +826,9 @@ function OverviewFile({
         )}
         {/* The run's delegation structure hangs off the main agent — it is a
             whole-run fact, not one subagent's, so it reads on the root. */}
+        {isRoot && fsmPath.length > 0 && (
+          <FsmPathStrip path={fsmPath} transitions={transitions} />
+        )}
         {isRoot && workflows.length > 0 && (
           <WorkflowStrip workflows={workflows} />
         )}

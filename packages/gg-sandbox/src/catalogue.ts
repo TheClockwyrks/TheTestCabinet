@@ -114,6 +114,7 @@ export const TOOL_CATALOGUE: readonly CatalogueEntry[] = [
   { tool: "send_message", js: "sendMessage", module: "delegation" },
   { tool: "run_workflow", js: "runWorkflow", module: "delegation" },
   { tool: "speculate", js: "speculate", module: "delegation" },
+  { tool: "transition_state", js: "transitionState", module: "delegation" },
 ];
 
 /**

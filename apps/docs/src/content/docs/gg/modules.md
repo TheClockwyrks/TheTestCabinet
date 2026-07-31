@@ -110,3 +110,10 @@ Two rules about limits:
   roster and the ending calls of the agent it was rendered for, so a transferred window has
   item 0 replaced with the successor's. Everything behind it — the whole thread — is exactly
   what the successor is meant to keep, and the turn counter is never renumbered.
+
+## Who transfers
+
+A transfer happens when one agent instance hands over to another. Today that is an
+[FSM transition](/gg/fsms/): the edge names the modules the successor inherits, and
+everything else the outgoing instance held is dropped. Anything not named carries
+nothing — the list is explicit, so a recorded configuration says what it does.

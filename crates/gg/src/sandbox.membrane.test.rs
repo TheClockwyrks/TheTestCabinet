@@ -253,6 +253,11 @@ fn crossings() -> Vec<Crossing> {
                 })
             },
         },
+        Crossing {
+            tool: "transition_state",
+            program: "agents.transitionState(\"verify\", \"the build is green\");",
+            expected: || json!({ "state": "verify", "note": "the build is green" }),
+        },
     ]
 }
 

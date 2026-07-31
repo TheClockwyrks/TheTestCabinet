@@ -359,6 +359,14 @@
       "types": [
         "SpeculationReport"
       ]
+    },
+    {
+      "tool": "transition_state",
+      "js": "transitionState",
+      "object": "agents",
+      "signature": "transitionState(state: string, note?: string): void",
+      "doc": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn; `note` is the opening message the next state's agent sees. Bound only when a state machine is driving you and the state you are in has somewhere to go. Like `compact` it is registered rather than performed: the call validates the target, returns, and your program runs on to its end — the transition happens after that, because replacing your agent (and your window) mid-program would pull every remaining call out from under it. The FIRST declaration stands, and a second throws `refused`. Throws `invalid-argument` for a state you may not move to.",
+      "types": []
     }
   ],
   "helpers": [
