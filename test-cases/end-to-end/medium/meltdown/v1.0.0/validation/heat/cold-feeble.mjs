@@ -28,7 +28,10 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectOk("the emitter placed", t !== null);
+      // Hard: the reads below are off the tower, so a soft guard would let the script
+      // throw on a null and be recorded as a debug-API failure rather than as this
+      // check's own verdict.
+      check.assertOk("the emitter placed", t !== null);
       check.expectClose(
         "a cold emitter's heat multiplier (~0.35x)",
         t.heatMult,

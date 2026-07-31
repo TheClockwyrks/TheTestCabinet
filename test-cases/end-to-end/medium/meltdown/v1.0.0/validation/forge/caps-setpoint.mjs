@@ -29,11 +29,18 @@ export default function item() {
     // Forge never OVERSHOOTS the setpoint, which a single final reading could miss if
     // the heat rose past 72 and settled back. 15 ticks = the old 0.25s sample
     // interval, 40 samples = the old 10s of warming.
+    //
+    // Every sample is taken either way; only whether it is FILMED differs. The first
+    // half of the warming is skipped, because what a reviewer has to see is the heat
+    // levelling off short of the setpoint and staying there — a clip of the rise alone
+    // reads as a Forge driving a gun upward without a ceiling, which is the opposite
+    // of the finding, and the rise is the longer half.
     async act(api) {
       start = await heatOf(api, arcId);
       maxSeen = start;
       for (let i = 0; i < 40; i += 1) {
-        await api.advance(15);
+        if (i < 20) await api.skip(15);
+        else await api.advance(15);
         maxSeen = Math.max(maxSeen, await heatOf(api, arcId));
       }
       settled = await heatOf(api, arcId);

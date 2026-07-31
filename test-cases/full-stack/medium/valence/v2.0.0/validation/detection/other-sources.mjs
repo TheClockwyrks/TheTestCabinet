@@ -7,11 +7,11 @@
 // matter on its own.
 //
 // TWO runs: the Array scenario is arranged, the Beam scenario is posed inside `act` with
-// `poseRun` (no `reset`, which would freeze the recording).
+// `poseScenario` (no `reset`, which would freeze the recording).
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -63,14 +63,14 @@ export default function item() {
     id: "detection.other-sources",
 
     async arrange(api) {
-      posedArray = await poseArray(api, startRun);
+      posedArray = await poseArray(api, startScenario);
     },
 
     // Both detectors doing the thing they are here for, back to back.
     async act(api) {
       arrayHit = await seesInert(api, posedArray);
 
-      const posedBeam = await poseBeam(api, poseRun);
+      const posedBeam = await poseBeam(api, poseScenario);
       beamHit = await seesInert(api, posedBeam);
     },
 

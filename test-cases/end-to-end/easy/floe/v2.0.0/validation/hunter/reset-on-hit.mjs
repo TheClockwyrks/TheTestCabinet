@@ -36,7 +36,11 @@ export default function item() {
     async act(api) {
       await api.call("setLane", 13, { cols: [23], speed: 12, dir: -1 }); // plow sweeping into the bear
       r = await api.until((s) => !s.bears[0].present, { max: 180 }); // 1.5 s
-      r2 = await api.until((s) => s.bears[0].present, { max: 180, poll: 6 }); // 1.5 s at 0.05 s
+      // Generous, for the reason in `hunter/emerges.mjs`: specs/hunter.md fixes only
+      // that the bear re-emerges "after a short delay" and pins no number, so the
+      // window must not encode one build's choice of constant. What is under test is
+      // that the hunt RETURNS rather than the bear being gone for good.
+      r2 = await api.until((s) => s.bears[0].present, { max: 600, poll: 6 }); // 5 s at 0.05 s
     },
 
     async assert(api, check) {

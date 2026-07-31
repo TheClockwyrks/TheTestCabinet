@@ -50,6 +50,8 @@ export interface ValenceDebugApi {
   setIntegrity(amount: number): void;
   setRound(n: number): void;
   startRound(): void;
+  /** Open a live round with no wave that does not end on its own — the scenario board. */
+  startScenario(): boolean;
   spawnUnit(spec?: SpawnSpec): number;
   placeTower(type: TowerKind, x: number, y: number): { ok: boolean; id: number | null; reason: string | null };
   upgradeTower(id: number, branch?: Branch): boolean;
@@ -118,6 +120,10 @@ export function installDebugApi(game: Game, processInput: () => void): void {
 
     startRound() {
       game.startRound();
+    },
+
+    startScenario() {
+      return game.startScenario();
     },
 
     spawnUnit(spec) {

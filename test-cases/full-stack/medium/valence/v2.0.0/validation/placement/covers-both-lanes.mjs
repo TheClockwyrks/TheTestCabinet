@@ -1,37 +1,69 @@
 // Automated validation for the Placement sub-item `covers-both-lanes`.
 //
-// On a branching map a tower beside the shared/branch run reaches matter on BOTH lanes,
-// while a tower beside a single divergent lane reaches only that one. The check builds a
-// tower beside path 0's shared final run and confirms it fires on a real unit posed on
-// each lane there; then builds a tower beside path 0's divergent stretch and confirms it
-// does NOT reach a unit on the other lane's divergent stretch.
+// On a branching map a tower beside a SHARED stretch reaches matter on both lanes ("Where
+// paths overlap, one tower covers both, so those shared stretches are the premium
+// coverage", specs/board.md), while a tower beside a single divergent lane reaches only
+// that one.
+//
+// Which end of the fork is shared is the build's own choice — board.md allows a shared
+// trunk (the inlet approach) "and/or a shared final run" — so the two stretches the
+// scenario needs are DERIVED from the geometry: `sharedStretch` finds the longest run where
+// the two lanes are the same world points (and the matching arc length on each), and
+// `widestGap` finds where they are furthest apart. Hardcoding them (the shared run at 95% of
+// path 0, the divergence at 50%) describes only a fork that rejoins, and fails a conformant
+// map that shares its trunk and then diverges to its own collectors.
+//
+// If the map exposes no shared stretch at all the scenario is not constructible against
+// this build, which is inconclusive rather than a failure — `maps.branching-fork` is the
+// item that judges whether the fork has one.
 //
 // THREE runs. Only the first is arranged; the other two are posed inside `act` with
-// `poseRun`, since `api.reset` throws there. The old script opened a FOURTH run purely to
-// film one tower covering both lanes — that is what the first two scenarios already
-// demonstrate, so the extra run is gone.
+// `poseScenario`, since `api.reset` throws there.
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
+  laneGaps,
+  sharedStretch,
+  widestGap,
   placeCovering,
   spawnAt,
   unitById,
+  preconditionUnmet,
   MAP,
 } from "../_helpers.mjs";
 
-/** Pose a tower beside path 0 at `towerFrac` and a unit on `unitPathId` at `unitFrac`. */
-async function poseLaneTest(api, begin, towerFrac, unitPathId, unitFrac) {
+const SHARED_TOL = 6; // a shared segment is the same world points, not merely a near miss
+
+/** Read the fork's shared and divergent stretches off a branching map's snapshot. */
+function forkStretches(snap) {
+  const ga = pathGeom(snap.paths[0]);
+  const gb = pathGeom(snap.paths[1]);
+  const rows = laneGaps(ga, gb);
+  const shared = sharedStretch(rows, { tol: SHARED_TOL });
+  if (!shared) {
+    throw preconditionUnmet(
+      "the branching map exposes no stretch its two lanes share",
+    );
+  }
+  return { ga, gb, shared, apart: widestGap(rows) };
+}
+
+/**
+ * Pose a tower beside path 0 at arc length `towerS` and a unit on `unitPathId` at `unitS`.
+ * `begin` opens the run; `pick` chooses the two arc lengths from the derived stretches.
+ */
+async function poseLaneTest(api, begin, unitPathId, pick) {
   const snap = await begin(api, MAP.branching);
-  const g0 = pathGeom(snap.paths[0]);
-  await placeCovering(api, "emitter", g0, g0.length * towerFrac);
-  const gU = pathGeom(snap.paths[unitPathId]);
+  const f = forkStretches(snap);
+  const { towerS, unitS } = pick(f);
+  await placeCovering(api, "emitter", f.ga, towerS);
   const id = await spawnAt(api, {
     type: "atom",
     electrons: 6,
     pathId: unitPathId,
-    s: gU.length * unitFrac,
+    s: unitS,
   });
   return { id, hp0: unitById(await api.snapshot(), id).hp };
 }
@@ -50,6 +82,15 @@ async function actFiresOn(api, { id, hp0 }) {
   return u != null && u.hp < hp0;
 }
 
+// On the shared stretch the two lanes are the same conduit, so the tower goes beside it and
+// the unit is posed at that same place on whichever lane is being tested.
+const onShared = (pathId) => (f) => ({
+  towerS: f.shared.s,
+  unitS: pathId === 0 ? f.shared.s : f.shared.sOther,
+});
+// Where the lanes are furthest apart, a tower beside one cannot reach the other.
+const onDivergent = (f) => ({ towerS: f.apart.s, unitS: f.apart.sOther });
+
 export default function item() {
   let posedSharedLane0;
   let sharedLane0;
@@ -60,7 +101,7 @@ export default function item() {
     id: "placement.covers-both-lanes",
 
     async arrange(api) {
-      posedSharedLane0 = await poseLaneTest(api, startRun, 0.95, 0, 0.92);
+      posedSharedLane0 = await poseLaneTest(api, startScenario, 0, onShared(0));
     },
 
     // The shared-run tower reaching each lane in turn, then a divergent-lane tower plainly
@@ -70,17 +111,17 @@ export default function item() {
 
       sharedLane1 = await actFiresOn(
         api,
-        await poseLaneTest(api, poseRun, 0.95, 1, 0.92),
+        await poseLaneTest(api, poseScenario, 1, onShared(1)),
       );
       divergent = await actFiresOn(
         api,
-        await poseLaneTest(api, poseRun, 0.5, 1, 0.5),
+        await poseLaneTest(api, poseScenario, 1, onDivergent),
       );
     },
 
     async assert(api, check) {
-      check.expectOk("a shared-run tower reaches lane 0", sharedLane0);
-      check.expectOk("a shared-run tower reaches lane 1", sharedLane1);
+      check.expectOk("a shared-stretch tower reaches lane 0", sharedLane0);
+      check.expectOk("a shared-stretch tower reaches lane 1", sharedLane1);
       check.expectOk(
         "a divergent-lane tower does NOT reach the other lane",
         divergent === false,

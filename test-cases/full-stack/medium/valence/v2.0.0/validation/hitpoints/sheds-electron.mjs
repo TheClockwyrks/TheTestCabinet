@@ -38,11 +38,10 @@ export default function item() {
     async assert(api, check) {
       check.expectEq("the atom starts at its full electron count", e0, 5);
       check.expectOk("the atom sheds an electron under fire", r.hit);
-      check.expectLt(
-        "its electron count fell",
-        unitById(r.snap, unitId).electrons,
-        e0,
-      );
+      // Guarded: a build that removed the atom outright leaves nothing to read, which is
+      // a failure of this item rather than of the debug API.
+      const now = unitById(r.snap, unitId);
+      check.expectLt("its electron count fell", now ? now.electrons : e0, e0);
     },
   };
 }

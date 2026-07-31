@@ -42,7 +42,11 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectOk("both Hulks are on the floor", l !== null && t !== null);
+      // Hard, not soft: the two reads below are off these units, so a soft guard
+      // here lets the script throw on a null instead — which the driver records as
+      // the build failing the debug-API contract rather than as this check's own
+      // decided verdict.
+      check.assertOk("both Hulks are on the floor", l !== null && t !== null);
       check.expectLt(
         "the leading Hulk (furthest along) took damage first",
         l.hp,

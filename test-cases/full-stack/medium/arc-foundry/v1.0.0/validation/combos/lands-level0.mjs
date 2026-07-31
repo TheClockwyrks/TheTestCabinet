@@ -7,8 +7,21 @@
 
 import { assembleCombo, towerById, snap, SECOND } from "../_helpers.mjs";
 
-// Long enough for the launched wave to reach the combo and for it to fire.
-const CLIP_TICKS = 2 * SECOND;
+// Long enough to watch the combo take its first shots. The wave the fold launched has to walk
+// the corridor before it can be shot at, so that walk is skipped rather than filmed.
+const CLIP_TICKS = 3 * SECOND;
+/** Skip the launched wave's walk until one of its units is nearly in the combo's reach, so the
+ * clip opens on the tower about to work rather than on an empty corridor. Instant in both
+ * passes, so it changes no verdict. */
+async function skipToFirstContact(api, comboId) {
+  const t = towerById(await snap(api), comboId);
+  if (!t) return;
+  await api.skipUntil(
+    (s) => s.units.some((u) => Math.hypot(u.x - t.cx, u.y - t.cy) <= t.range + 40),
+    { max: 60 * SECOND, poll: 3 },
+  );
+}
+
 
 export default function item() {
   // The combo id, and the tower as it landed, read by `assert`.
@@ -19,7 +32,8 @@ export default function item() {
     id: "combos.lands-level0",
 
     async arrange(api) {
-      ({ comboId } = await assembleCombo(api, "fusecluster", { seed: 1, charge: 400 }));
+      ({ comboId } = await assembleCombo(api, "fusecluster", { seed: 1, charge: 400, clear: false }));
+      await skipToFirstContact(api, comboId);
     },
 
     async act(api) {

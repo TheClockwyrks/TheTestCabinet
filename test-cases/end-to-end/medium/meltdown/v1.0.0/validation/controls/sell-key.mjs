@@ -3,7 +3,7 @@
 // S sells the selected placed tower (specs/controls.md). We place and select a tower,
 // press S, and confirm it is removed.
 
-import { newGame, build, tower, press } from "../_helpers.mjs";
+import { newGame, build, tower, press, actTail } from "../_helpers.mjs";
 
 export default function item() {
   let id;
@@ -24,6 +24,11 @@ export default function item() {
       placed = (await tower(api, id)) !== null;
       await press(api, "KeyS");
       sold = (await tower(api, id)) === null;
+
+      // A key press and the state it leaves behind both resolve instantly, so without
+      // this the clip is a still frame of a game that never visibly does anything —
+      // three seconds of the result on screen is what makes it reviewable.
+      await actTail(api, 180);
     },
 
     async assert(api, check) {

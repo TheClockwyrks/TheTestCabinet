@@ -14,11 +14,11 @@
 // the pool alone.
 //
 // TWO runs (the exact drain and the overkill drain); the second is posed inside `act`
-// with `poseRun`, since `api.reset` throws there.
+// with `poseScenario`, since `api.reset` throws there.
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -90,7 +90,7 @@ export default function item() {
     // An Emitter strips 1 a shot, so it chips a Dimer's pool a point at a time and the
     // pool runs out exactly, with no damage wasted. That is the arranged run.
     async arrange(api) {
-      posedExact = await poseCluster(api, startRun, {
+      posedExact = await poseCluster(api, startScenario, {
         kind: "emitter",
         type: "dimer",
       });
@@ -101,7 +101,7 @@ export default function item() {
 
       // A Cleaver hits a bond pool for more than one point, so its last hit lands on a
       // pool with less left than the hit removes. The overkill must not be paid for.
-      const posedOverkill = await poseCluster(api, poseRun, {
+      const posedOverkill = await poseCluster(api, poseScenario, {
         kind: "cleaver",
         type: "polymer",
       });

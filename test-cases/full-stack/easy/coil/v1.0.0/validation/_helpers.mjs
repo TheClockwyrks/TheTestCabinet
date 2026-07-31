@@ -119,7 +119,11 @@ export function onSnake(cell, snake) {
 /** Whether a cell is inside the playable interior (clear of the wall border). */
 export function isInterior(c) {
   return (
-    c && c.col >= IN_COL0 && c.col <= IN_COL1 && c.row >= IN_ROW0 && c.row <= IN_ROW1
+    c &&
+    c.col >= IN_COL0 &&
+    c.col <= IN_COL1 &&
+    c.row >= IN_ROW0 &&
+    c.row <= IN_ROW1
   );
 }
 
@@ -141,7 +145,8 @@ export function hLane(headCol, row, len) {
  */
 export function vLaneUp(headCol, headRow, len) {
   const cells = [];
-  for (let i = 0; i < len; i += 1) cells.push({ col: headCol, row: headRow + i });
+  for (let i = 0; i < len; i += 1)
+    cells.push({ col: headCol, row: headRow + i });
   return cells;
 }
 
@@ -188,7 +193,10 @@ export async function beginRound(api, seed) {
  *
  * Pair with `actEatSequence`.
  */
-export async function arrangeEatLane(api, { startCol = 3, row = 8, len = 3 } = {}) {
+export async function arrangeEatLane(
+  api,
+  { startCol = 3, row = 8, len = 3 } = {},
+) {
   await api.call("setSnake", hLane(startCol, row, len), "right");
 }
 
@@ -209,11 +217,61 @@ export async function startWithKeys(api) {
 // ---- Timed drives (act) --------------------------------------------------------
 
 /**
+ * How many further ticks an act-side hold (`actAwait`) will wait for an outcome the
+ * preceding `advance` was supposed to produce. One covers a build whose tick phase is
+ * simply offset from the driver's wall clock; three leaves room for a slow frame
+ * without letting a build that never produces the outcome stall the whole drive.
+ */
+const MAX_TICK_LAG = 3;
+
+/**
+ * ACT-side hold: wait for the outcome the PRECEDING `advance` was supposed to
+ * produce, before doing anything that depends on it having happened.
+ *
+ * `advance` means two different things in the two passes. In the VALIDATE pass it is
+ * an exact `step` on the build's manual clock, so when it returns the tick has
+ * demonstrably run. In the RECORD pass it is a wall-clock WAIT while the build ticks
+ * itself, and nothing aligns the phase of the build's clock with that wait:
+ * `specs/instrumentation.md` fixes the tick RATE (8 Hz) and says `setAutoStep(true)`
+ * hands the clock back, but not where the next tick falls relative to the hand-over.
+ * A conformant build that restarts its fixed-step accumulator on `setAutoStep` runs
+ * its tick a frame or two AFTER a same-length wait returns, every time.
+ *
+ * That lag is invisible while a script only READS state — the record pass asserts
+ * nothing — but it is destructive the moment the next thing the script does is a
+ * CONTROL OP that invalidates the tick still pending: park the pellet before the head
+ * has reached it and the eat the clip exists to show simply never happens, so the
+ * recording depicts a snake that walks over a pellet without eating while the verdict
+ * (decided by the exact validate pass) correctly says it grew.
+ *
+ * So sequence such a drive on the OUTCOME rather than on the clock. `api.until`
+ * evaluates its predicate BEFORE advancing anything, so in the validate pass — where
+ * the exact `step` has already produced the outcome — this returns the very snapshot
+ * the script would have read anyway, spends no ticks, and cannot move a verdict. In
+ * the record pass it holds until the build's own clock catches up.
+ *
+ * Returns the snapshot the predicate accepted, or the last one read if the build never
+ * got there within `max` ticks: a build that fails to produce the outcome still fails
+ * the assertion that reads it, exactly as it would have without the hold.
+ */
+export async function actAwait(api, predicate, { max = MAX_TICK_LAG } = {}) {
+  return (await api.until(predicate, { max, poll: TICK })).snap;
+}
+
+/**
  * ACT half of a forced-eat run: eat `count` pellets in the clear lane
  * `arrangeEatLane` posed, one per tick, and report what the real eat resolved to
  * after each. Each iteration places the pellet one cell ahead of the CURRENT head
  * (a precondition) and advances one tick, so the head runs into it and the real
  * eat / combo / scoring / spawn all resolve through the tick.
+ *
+ * Each eat is then WAITED FOR before the next one is posed (`actAwait`). Growth is
+ * the eat's own signature and `snapshot` reports it in both variants, so that is what
+ * the hold watches. Without it the sequence is only correct on a build whose tick
+ * happens to fall inside the record pass's wall-clock wait: on any other, iteration
+ * i+1 reads a head that has not moved yet and re-poses the pellet on the cell the
+ * pending tick was about to eat, so half the rally is silently lost from the clip
+ * while the validate pass — exact, and therefore right — still reports every eat.
  *
  * Pair with `arrangeEatLane`. Returns `{ combos, scores, pellets, heads, snaps }` —
  * four parallel arrays of the per-eat multiplier, score, AUTO-spawned pellet (the
@@ -228,10 +286,11 @@ export async function actEatSequence(api, { count = 4 } = {}) {
   const heads = [];
   const snaps = [];
   for (let i = 0; i < count; i += 1) {
-    const head = (await api.snapshot()).snake[0];
+    const before = await api.snapshot();
+    const head = before.snake[0];
     await api.call("setPellet", { col: head.col + 1, row: head.row });
     await api.advance(1); // 1 tick = the old step(TICK_DT); the head enters the pellet cell
-    const s = await api.snapshot();
+    const s = await actAwait(api, (snap) => snap.length > before.length);
     combos.push(s.combo);
     scores.push(s.score);
     pellets.push(s.pellet);
@@ -352,7 +411,12 @@ export async function buildFillSnake(api) {
   const H = { col: IN_COL1 - 1, row: 8 }; // (27, 8) — the head, adjacent to E
   const isEorH = (c) => sameCell(c, E) || sameCell(c, H);
   const body = free.filter((c) => !isEorH(c));
-  return { snake: [H, ...body], dir: "right", pellet: E, freeCount: free.length };
+  return {
+    snake: [H, ...body],
+    dir: "right",
+    pellet: E,
+    freeCount: free.length,
+  };
 }
 
 // ---- Color sampling (reads the rendered canvas, not a reported value) ---------
@@ -442,6 +506,33 @@ export async function arrangeColorScene(api) {
 }
 
 /**
+ * The most real time `actColorSamples` will spend, in `settleMs` slices, waiting for
+ * the build to have painted a frame at all before it samples. Generous: a build that
+ * never paints spends all of it and then fails the color assertions on the blank
+ * canvas, exactly as it would have without the wait.
+ */
+const PAINT_WAIT_MS = 1500;
+
+/**
+ * Whether the game canvas has been PAINTED — at any of the scene's sample cells.
+ *
+ * A 2D canvas that has not been drawn to yet reads back as transparent black, so
+ * `api.pixel` reports `a: 0` there; once the build paints its opaque board (the
+ * background covers the whole stage, specs/board.md) alpha is 255. So ALPHA answers
+ * "has a frame landed" while saying nothing whatsoever about COLOR, which is what
+ * makes it safe to gate the color samples on: it cannot pull a reading toward or
+ * away from any threshold the checks compare against.
+ */
+async function canvasPainted(api) {
+  for (const c of Object.values(SCENE_CELLS)) {
+    const { u, v } = cellCenterUV(c.col, c.row);
+    const p = await api.pixel(u, v);
+    if (p.a > 0) return true;
+  }
+  return false;
+}
+
+/**
  * ACT half of the color checks: let a frame paint so the sampled pixels reflect the
  * posed scene, then sample every cell of SCENE_CELLS.
  *
@@ -455,6 +546,19 @@ export async function actColorSamples(api, { settleMs = 120 } = {}) {
   // settle the sample races the repaint and can read a stale canvas, failing a
   // build that painted the scene correctly. See `api.settle` in validation.mjs.
   await api.settle(settleMs);
+
+  // ...and a FIXED settle is only a guess at how long that takes. It is a guess about
+  // the HOST, not the build: on a cold headless browser under load the first frame
+  // can land after 120 ms, and `getImageData` then returns transparent black for
+  // every cell — every sampled color identical, every distance 0 — failing a build
+  // whose scene is painted perfectly a frame later. Observed here at roughly one run
+  // in two. So wait for the paint instead of assuming it, on the same principle the
+  // tick-driven items follow: read the outcome, do not schedule around it.
+  for (let waited = settleMs; waited < PAINT_WAIT_MS; waited += settleMs) {
+    if (await canvasPainted(api)) break;
+    await api.settle(settleMs);
+  }
+
   const out = {};
   for (const [name, c] of Object.entries(SCENE_CELLS)) {
     out[name] = await sampleCell(api, c.col, c.row);
@@ -476,4 +580,31 @@ export async function actSettleShot(api, shot, { settleMs = 150 } = {}) {
   await api.settle(settleMs);
   if (shot) await api.screenshot(shot);
   return api.snapshot();
+}
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Coil's cues are the produced .wav files (specs/assets.md: sfx-synth/sfx-sample for
+// eat/combo/death, music for the bed) decoded and played back through the Web Audio
+// API, so the driver reports every source the build starts (see `api.audio`). The
+// game must not autoplay: audio.ts creates the AudioContext (and starts the music
+// bed) only on the FIRST real user interaction, so before driving an event whose
+// cue is checked, arm audio with a GENUINE browser gesture. A build may feed the
+// debug API through a purely logical input path and unlock audio only from a real
+// DOM event (a keydown OR a pointer), so arming uses both `api.userKey` and a
+// corner `api.userClick` rather than a debug `press` — a debug press would leave a
+// conformant build's AudioContext uncreated, so no cue would ever be scheduled
+// though it plays fine for a real player. `KeyZ` has no game binding (it steers
+// nothing and matches no menu or pause key) and the (4, 4) click lands in the inert
+// stage background, well clear of the board and every menu — Coil takes no pointer
+// input anywhere — so arming never disturbs game state. From there a cue is
+// confirmed by the audio log growing across the driven event.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
 }

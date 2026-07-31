@@ -1,11 +1,15 @@
 // Automated validation for the Bullets item `lifetime`: a bullet expires after a limited
-// lifetime (~1.5 s). A real bullet is placed at rest far from the star (so gravity does
-// not sweep it into the core) and the real sim is stepped: it is still alive just before
-// 1.5 s and gone just after.
+// lifetime (~1.5 s). A real bullet is placed far from the star, drifting AWAY from it (so
+// gravity never sweeps it into the core, where it would be absorbed early and look like an
+// expiry), and the real sim is stepped: it is still alive just before 1.5 s and gone just
+// after.
 //
 // Placing the bullet is instant (`arrange`); running out its lifetime is the behavior under
-// test (`act`), so the clip is exactly that — the bullet sitting where it was placed until it
-// winks out on its own, which is the whole claim.
+// test (`act`), so the clip is exactly that — the bullet crossing open field until it winks
+// out on its own, which is the whole claim. It is given that drift rather than left at rest
+// because the record pass films `act`: a bullet parked on a fixed point for a second and a
+// half reads as a frozen frame, and there is nothing in the clip to say the game was even
+// running until the moment it vanishes.
 //
 // The bullet's `life` field is reported in SECONDS (the unit the game states it in), so the
 // assertion against BULLET_LIFE stays in seconds. Only the DURATIONS advanced are ticks:
@@ -23,7 +27,9 @@ export default function item() {
 
     async arrange(api) {
       await newGame(api);
-      await api.call("addBullet", { x: 200, y: 200, vx: 0, vy: 0 });
+      // Up and to the left, away from the star at (640, 360): the pull it does feel
+      // only bleeds the drift off, and never turns the bullet back toward the core.
+      await api.call("addBullet", { x: 200, y: 200, vx: -120, vy: -60 });
     },
 
     async act(api) {

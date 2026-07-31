@@ -51,9 +51,12 @@ export default function item() {
         "an energy tower chips the bond pool (not only a bond-breaker)",
         r.hit,
       );
+      // Guarded: a build that opened or removed the cluster instead of chipping it has
+      // nothing to read back, which is a failure of this item rather than of the API.
+      const chipped = unitById(r.snap, unitId);
       check.expectLt(
         "the bond pool fell under energy fire",
-        unitById(r.snap, unitId).bond,
+        chipped && chipped.bond != null ? chipped.bond : bond0,
         bond0,
       );
     },

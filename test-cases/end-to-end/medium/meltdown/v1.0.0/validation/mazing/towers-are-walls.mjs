@@ -38,15 +38,20 @@ export default function item() {
     // does not fit the 8 s default once the round trips are counted.
     clipMs: 12000,
 
-    // The baseline route length across the empty floor.
+    // The baseline route, the wall, and the route it forces — all of it posed here.
+    //
+    // The wall used to go up in `act`, which meant the clip opened on a bare floor and
+    // spent its first moments watching twelve Arcs appear one after another. That is
+    // the scenario being ASSEMBLED, not the finding: what this item claims is that a
+    // route around towers is longer than the route without them, and the evidence for
+    // it is the two path lengths and the detour a Mote then walks. Both readings are
+    // instant snapshot reads and every placement is a control op, so the whole
+    // comparison belongs in `arrange` — and the clip now opens on a floor that already
+    // has its wall, exactly as the reference does.
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
       before = (await api.snapshot()).paths.left.length;
-    },
 
-    // Build the wall and re-read the route, then release two Motes so the clip shows
-    // what the lengthened route means in practice: units routing the long way around.
-    async act(api) {
       for (const row of WALL_A_ROWS) {
         if ((await build(api, "arc", 20, row)) !== null) built += 1;
       }
@@ -54,7 +59,12 @@ export default function item() {
         if ((await build(api, "arc", 24, row)) !== null) built += 1;
       }
       after = (await api.snapshot()).paths.left.length;
+    },
 
+    // Release two Motes so the clip shows what the lengthened route means in practice:
+    // units routing the long way around a wall that was already standing when the
+    // recording began.
+    async act(api) {
       await spawn(api, "mote", "left");
       await spawn(api, "mote", "left");
       await api.advance(450);

@@ -103,6 +103,41 @@ space of `specs/overview.md`; tile coordinates are `(col, row)` on the grid of
   action set and its geometry depend only on which structure is selected
   (`specs/controls.md`), so a caller can compare two calls across a change in game
   state and confirm the panel did not reflow. It is a pure read.
+- `menuButtons()` returns the choices of the menu screen currently showing, in the
+  order they are presented, as an array of plain objects
+  `{ action, label, x, y, w, h, disabled }` — the same shape `panelButtons()` uses.
+  `label` is the entry text as drawn, `x`/`y`/`w`/`h` are its rectangle in the
+  `1280x720` logical stage, and `disabled` reports whether it currently ignores
+  clicks. `action` names where the choice leads, using exactly these identifiers:
+
+  | `action` | The choice it reports |
+  | --- | --- |
+  | `salvage` | SALVAGE (start the campaign) on the main menu |
+  | `howto` | HOW TO PLAY on the main menu |
+  | `map-substation` | The Substation, on map select |
+  | `map-switchyard` | The Switchyard, on map select |
+  | `map-transformer` | The Transformer Yard, on map select |
+  | `difficulty-easy` | Easy, on difficulty select |
+  | `difficulty-medium` | Medium, on difficulty select |
+  | `difficulty-hard` | Hard, on difficulty select |
+  | `back` | the BACK choice that returns to the previous screen |
+  | `resume` | Resume, on the pause menu |
+  | `restart` | Restart, on the pause menu |
+  | `quit` | Quit to menu, on the pause menu |
+  | `again` | PLAY AGAIN (or TRY AGAIN), on victory or overload |
+  | `menu` | MENU, on victory or overload |
+
+  Because the layout of a menu is the build's own (`specs/ui.md` fixes each menu's
+  content and navigation, not its presentation), this is how a caller finds a
+  choice without knowing where it was drawn: read the entry, then click the middle
+  of the rectangle it reported. **A click at the center of a reported, non-disabled
+  rectangle must activate that choice** — the rectangle is the entry's real hit
+  region, not a decorative bounding box.
+
+  It returns an empty array on any screen that is not a menu (in match, whether
+  building or mid-wave, and during the in-place pause, which shows no menu). It is a
+  pure read and never changes anything — reading the entries never moves the
+  highlight or activates a choice.
 
 ### Control operations
 
@@ -173,6 +208,17 @@ Waves and the Load:
   to that wave instead of the current one. Each unit walks the real pathfinder (or
   flies, for the Filament).
 
+  A released unit is live from that moment: the next `step` moves it, fires at it,
+  and resolves its leak at the Collector, exactly as a unit of a composed wave. So
+  releasing one from the untimed build phase puts the run into a live wave — the
+  Load no longer waits, `phase` reads `"wave"` (`"finale"` for the `"overload"`
+  boss), and the floor runs — but with NO composed wave behind it: nothing else is
+  scheduled to spawn, so the released units are alone on the floor and a scenario
+  can measure them without a wave's own traffic walking through the measurement.
+  The build phase's own harvest is not consumed and no wave number is spent. This
+  is the one control op that starts the floor running, and it is what makes a
+  chosen unit runnable forward on its own.
+
 A wave otherwise begins the way normal play begins one: by committing the level's
 harvest (`keep`, `downgrade`, or a fresh-consuming `combine`).
 
@@ -220,7 +266,8 @@ feed.
   stampsLeft: <number>,              // of the 5-per-level allowance
   speed: <number>,                   // 1 | 2 | 4 | 8
   muted: <boolean>,
-  mazeLength: <number>,              // ground route length through the chain
+  mazeLength: <number>,              // ground route length through the chain, in tiles
+                                     // (diagonal step = sqrt(2); specs/board.md)
   mazeRating: <number>,              // damage tallied on the Overload Dynamo
   selected: <id> | null,
   combineSet: [<id>, ...],
@@ -228,7 +275,7 @@ feed.
   held: { active: <boolean>, col: <number>, row: <number>, legal: <boolean> } | null,
   entry: { col: <number>, row: <number> },
   collector: { col: <number>, row: <number> },
-  waypoints: [ { index: <number>, col: <number>, row: <number> } ], // ordered
+  waypoints: [ { index: <number>, col: <number>, row: <number> } ], // ordered, index 1..k
   units: [
     {
       id: <id>,
@@ -238,7 +285,7 @@ feed.
       speed: <number>,               // current speed (after any slow)
       baseSpeed: <number>,           // unmodified roster speed
       flying: <boolean>,
-      waypointIndex: <number>,       // the next waypoint it is heading to
+      waypointIndex: <number>,       // the chain node it is heading to, 1..k+1
       progress: <number>,            // scalar position along the chain
       slowFactor: <number>, slowUntil: <number>,
       burnDps: <number>, burnUntil: <number>,
@@ -288,6 +335,15 @@ feed.
   progress along the chain (the ordering the `first` target uses), and its active
   slow and burn. The Overload Dynamo reports `invincible: true`; its damage is
   tallied into `mazeRating` rather than removing HP.
+- The chain is numbered from `1`, and both fields that report a position in it use
+  that same numbering. `waypoints` is the ordered chain of the map's `k` waypoint
+  platforms, whose `index` runs `1..k` — the order number each platform is drawn with
+  on the yard (`specs/board.md`). A unit's `waypointIndex` is the chain node it is
+  currently heading to, in that same numbering: `1` while it walks from the Entry to
+  `WP1`, `k` while it walks to the last waypoint, and `k + 1` once it is past the last
+  waypoint and heading for the Collector. So it starts at `1`, never decreases, and
+  reaches `k + 1` on the final leg, whatever the map. It is not a zero-based array
+  offset, and it does not report the last waypoint the unit has already reached.
 - `qualityOdds` is the five-tier roll distribution at the current Refinement
   level, the same odds the scrap-press UI shows.
 

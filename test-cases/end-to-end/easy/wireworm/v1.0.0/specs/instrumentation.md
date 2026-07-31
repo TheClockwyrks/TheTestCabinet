@@ -65,6 +65,15 @@ directly. Cursor, foe, bolt, and arc coordinates are in the logical-pixel space 
 `specs/overview.md`; node and worm-segment positions are tile coordinates
 `(c, r)` on the grid of `specs/board.md`.
 
+Every `(x, y)` this API reports or accepts is the entity's CENTER, per the
+convention in `specs/overview.md` — never the top-left corner of its sprite. That
+holds in both directions: `setCursor(x, y)` and `spawnFoe`'s `x`/`y` place the
+entity's center there, and `snapshot()` reports the center back. A caller aiming at
+a tile therefore passes that tile's center, `(32c + 16, 80 + 32r + 16)`, and reads
+the same value back for an entity sitting on it. Reporting a sprite's corner where
+its center is asked for is off by half a tile in each axis, which silently puts an
+entity on the wrong tile.
+
 ### Core operations
 
 - `reset(options)` returns the game to its initial title state and switches to
@@ -131,10 +140,10 @@ nothing will move until you do.
   `spec.dv` (`+1` down, `-1` up) set its heading (defaulting to right and down).
   The worm then winds, charges, dives, splits, and is shot exactly like any other.
 - `spawnFoe(kind, options)` adds one foe of `kind` (`"glitch"`, `"dropper"`, or
-  `"corruptor"`) to the board. `options` may set `x` and `y` (logical-pixel
-  position), `vx` (horizontal velocity), and, for a corruptor, `row` (the grid row
-  it crawls). The foe then moves and interacts through its real behavior
-  (`specs/foes.md`) when you step.
+  `"corruptor"`) to the board. `options` may set `x` and `y` (the foe's CENTER, in
+  logical pixels), `vx` (horizontal velocity), and, for a corruptor, `row` (the grid
+  row it crawls, which places its center on that row's center line). The foe then
+  moves and interacts through its real behavior (`specs/foes.md`) when you step.
 - `fire()` fires a bolt straight up from the cursor's current position now,
   bypassing the fire cadence so a scenario can shoot on demand. The bolt travels
   and resolves its hit through the real shot code as the simulation steps.
@@ -205,6 +214,9 @@ pass) so the cursor moves or a bolt fires, then `keyUp` to release it, reading
   foes: [
     {
       kind: "glitch" | "dropper" | "corruptor",
+      // `x`/`y` are the CENTER of the foe (specs/overview.md), so the tile it is on
+      // is `floor(x / 32)`, `floor((y - 80) / 32)` — the same tile its effects (a
+      // glitch's eat, a dropper's drop, a corruptor's slam) land on.
       // `vx`/`vy` are the foe's ACTUAL current velocity in logical px/s — what its
       // position is changing by right now, including any weave or dart its movement
       // applies. A foe whose horizontal motion reverses reports a `vx` that reverses

@@ -130,8 +130,8 @@ pub use review::{
     missing_verdicts, parse_writeup, score,
 };
 pub use run_record::{
-    AuthMode, HarnessSlug, PriorGameJamEntry, RunEnvironment, RunLinks, RunRecord, RunState,
-    RunStatus, RunSubject, RunTooling,
+    AuthMode, HarnessSlug, PriorGameJamEntry, PriorGameJamEntryRef, RunEnvironment, RunLinks,
+    RunRecord, RunState, RunStatus, RunSubject, RunTooling,
 };
 pub use seeding::FsRepoSeeder;
 pub use test_case::{
@@ -1057,10 +1057,20 @@ where
                 detail: None,
             },
             // For a game jam, capture the produced gameplay README so a later run of
-            // the same jam (same harness, same model) can be briefed on what was
-            // already built and asked for something distinct. `None` for every other
-            // type, and for a jam run that shipped no README.
+            // the same jam by this model can be briefed on what was already built and
+            // asked for something distinct. `None` for every other type, and for a jam
+            // run that shipped no README.
             game_jam_readme: read_game_jam_readme(test_case.test_type, &artifacts.repo_path),
+            // …and record the earlier entries this run was itself briefed with, so the
+            // briefing is visible on the run rather than only inferable from the games.
+            game_jam_prior_entries: self
+                .prior_game_jam_entries
+                .iter()
+                .map(|entry| PriorGameJamEntryRef {
+                    run_id: entry.run_id.clone(),
+                    finished_at: entry.finished_at.clone(),
+                })
+                .collect(),
         };
 
         self.write_record(&record, &artifacts)?;
@@ -1253,8 +1263,11 @@ fn build_failed_record(
             state,
             detail: Some(detail.into()),
         },
-        // A run that failed before producing a tree has no README to capture.
+        // A run that failed before producing a tree has no README to capture, and a
+        // failure record is built without the engine that knows what it was seeded
+        // with, so it claims no prior entries.
         game_jam_readme: None,
+        game_jam_prior_entries: Vec::new(),
     }
 }
 

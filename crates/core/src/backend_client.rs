@@ -28,7 +28,7 @@ use crate::preview::AssetPreview;
 use crate::publish_job_api::{PublishProgress, PublishResult};
 use crate::reference::RenderedReference;
 use crate::review::Writeup;
-use crate::run_record::{HarnessSlug, PriorGameJamEntry, RunLinks, RunRecord};
+use crate::run_record::{PriorGameJamEntry, RunLinks, RunRecord};
 use crate::test_case::{
     AssetKind, AudioSpec, BuildCommands, CanvasSpec, Check, CheckAction, ContractSpec, Domain,
     Erratum, Instrumentation, MatchSpec, MaterialSpec, MediaKind, ModelSpec, OutputSpec,
@@ -357,13 +357,13 @@ pub trait BackendClient: Send + Sync {
     /// Read one published run by id. (`GET /runs/{id}`)
     async fn read_run(&self, id: &str) -> Result<PublishedRun>;
 
-    /// The gameplay READMEs of earlier game-jam runs of jam `slug` built with the
-    /// same `harness` and `model_id`, oldest first.
-    /// (`GET /game-jams/{slug}/prior-readmes?harness=&model=`)
+    /// The gameplay READMEs of earlier game-jam runs of jam `slug` built by
+    /// `model_id`, oldest first.
+    /// (`GET /game-jams/{slug}/prior-readmes?model=`)
     ///
     /// This is what lets a repeated jam run be briefed on what earlier runs already
-    /// built and be asked for something distinct — matched on the exact
-    /// `(jam, harness, model)` tuple, across all prior runs regardless of publish
+    /// built and be asked for something distinct — matched on the `(jam, model)`
+    /// pair across every harness, and across all prior runs regardless of publish
     /// state. Only runs that captured a README contribute.
     ///
     /// Defaults to empty so a backend client without this route (or a test stub)
@@ -371,7 +371,6 @@ pub trait BackendClient: Send + Sync {
     async fn game_jam_prior_readmes(
         &self,
         _slug: &str,
-        _harness: HarnessSlug,
         _model_id: &str,
     ) -> Result<Vec<PriorGameJamEntry>> {
         Ok(Vec::new())
@@ -1199,13 +1198,11 @@ impl BackendClient for HttpBackendClient {
     async fn game_jam_prior_readmes(
         &self,
         slug: &str,
-        harness: HarnessSlug,
         model_id: &str,
     ) -> Result<Vec<PriorGameJamEntry>> {
         let path = format!(
-            "/game-jams/{}/prior-readmes?harness={}&model={}",
+            "/game-jams/{}/prior-readmes?model={}",
             encode(slug),
-            encode(harness.as_str()),
             encode(model_id),
         );
         self.get_json(&path).await

@@ -483,6 +483,8 @@ driveable
 matchover
 seedable
 steppable
+replayability
+counterplay
 
 # Cascade (Klondike solitaire) vocabulary.
 automove

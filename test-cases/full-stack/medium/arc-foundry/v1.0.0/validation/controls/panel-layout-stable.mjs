@@ -12,15 +12,13 @@
 // clear between them are the act — and that is the right clip: it shows the panel holding still
 // across exactly the transition the player did not ask for.
 
-import { startBuild, placeCandidate, actClearWave, snap, SECOND } from "../_helpers.mjs";
+import { startBuild, placeCandidate, actClearWave, readPanel, snap, SECOND } from "../_helpers.mjs";
 
-// The panel is read from the last RENDERED frame, so let a couple of frames land first. This is
-// a real 60 ms pause in both passes — instant stepping never paints — which is precisely what
-// `settle` exists for.
-async function panel(api) {
-  await api.settle(60);
-  return api.call("panelButtons");
-}
+// The panel is read from the last RENDERED frame, and instant stepping never paints. `readPanel`
+// waits for the frame rather than for a fixed pause: a headless browser can throttle its frame
+// loop, so a tenth of a second is not a reliable promise of a repaint, and reading on a fixed
+// settle made this check come back empty-handed on some runs and not others.
+const panel = (api) => readPanel(api);
 
 // Slot geometry + action order, ignoring the enabled/disabled state that is allowed to change.
 function layoutOf(buttons) {
@@ -50,6 +48,15 @@ export default function item() {
       const cand = await placeCandidate(api, "capacitor", 1, 2, 7); // near the entry: a quick clear
       candId = cand.id;
       await api.call("keep", cand.id); // harvests it and launches Wave 1
+
+      // Put any held rock away before selecting. Placing does not clear the hand — the press
+      // re-arms another rock on the cursor (`specs/build.md`, continuous placement) — and a
+      // held rock replaces the inspector entirely, so `panelButtons()` returns an EMPTY array
+      // while one is up (`specs/instrumentation.md`). Reading the panel without putting the
+      // rock away first made this check depend on whether the harvest happened to drop the
+      // hand, which is not something a build owes and which made the reference fail
+      // intermittently.
+      await api.call("rightClick", 640, 400);
 
       // Keep the standing component selected across the wave -> build transition.
       await api.call("select", cand.id);

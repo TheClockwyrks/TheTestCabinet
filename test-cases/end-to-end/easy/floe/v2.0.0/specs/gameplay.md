@@ -49,10 +49,14 @@ surface on this core.
   crushed by a sliding hazard that slides into it (`specs/hazards.md`), falls in the
   water or is swept off the edge on a floe (`specs/water.md`), or the crossing timer
   runs out (below).
-- On losing a life: the current crossing ends, the bear is removed
-  (`specs/hunter.md`), and a fresh critter respawns on the near shore with the timer
-  reset. The filled bays stay filled (you resume the same level). A short spawn-in
-  pause before the bear re-emerges keeps you from being caught instantly.
+- On losing a life: the current crossing ends and the game holds for a brief death
+  pause of about `1 s` before a fresh critter respawns on the near shore with the
+  timer reset and the bear removed (`specs/hunter.md`). The filled bays stay filled
+  (you resume the same level). A further short spawn-in pause before the bear
+  re-emerges keeps you from being caught instantly.
+- Every death has that pause, whatever caused it — the bear, a hazard, the water, or
+  the timer. For its duration the critter is out of play: it is not on the board to be
+  moved, and nothing can kill it again, while the strait around it keeps moving.
 - Lives never regenerate during a level, but a bonus life is awarded at every
   `10,000` points of score. If lives reach 0, the game ends (the Game-over state,
   `specs/ui.md`).

@@ -97,6 +97,17 @@ All positions, sizes, speeds, and ranges in this document are given in logical
 pixels on a fixed 1280 x 720 stage (16:9). The origin `(0, 0)` is the top-left;
 `x` increases to the right and `y` increases downward.
 
+**An entity's position is its center.** Wherever a moving thing — the defrag
+cursor, a foe, a bolt — is given, taken, or reported as an `(x, y)` pair, that pair
+is the center of the entity, not the top-left corner of its sprite. A 32 x 32 foe
+at `(x, y)` therefore covers `[x - 16, x + 16]` by `[y - 16, y + 16]`, and it sits
+squarely on tile `(c, r)` exactly when `(x, y)` is that tile's center,
+`(32c + 16, 80 + 32r + 16)` (`specs/board.md`). The tile a foe occupies is the one
+containing its center, `c = floor(x / 32)` and `r = floor((y - 80) / 32)`. This is
+one convention for the whole game: it fixes where a sprite is drawn relative to the
+position that drives it, which tile a foe's effects land on, and what
+`window.__wireworm` reports and accepts (`specs/instrumentation.md`).
+
 - The stage scales uniformly to fit the browser window while preserving its 16:9
   aspect ratio, letterboxed with the background color on the remaining space. The
   game stays correct and centered at any window size.

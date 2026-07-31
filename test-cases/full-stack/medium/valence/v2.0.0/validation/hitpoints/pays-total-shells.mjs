@@ -13,13 +13,13 @@
 // reaches the collector stops paying, so the check also confirms the board was cleared.
 //
 // TWO runs are measured; only the first is arranged, and the Dimer run is posed inside
-// `act` with `poseRun` (control ops only — `api.reset` throws there). The old script
+// `act` with `poseScenario` (control ops only — `api.reset` throws there). The old script
 // opened a THIRD run purely to film an atom being paid for; `act` already films exactly
 // that, so it is gone.
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   placeCovering,
   battery,
@@ -70,7 +70,7 @@ export default function item() {
     id: "hitpoints.pays-total-shells",
 
     async arrange(api) {
-      posedAtom = await poseLoneAtom(api, startRun);
+      posedAtom = await poseLoneAtom(api, startScenario);
     },
 
     // The atom being paid for shell by shell, then the Dimer's whole cascade being paid
@@ -82,7 +82,7 @@ export default function item() {
         poll: 3,
       });
 
-      const posedDimer = await poseDimer(api, poseRun);
+      const posedDimer = await poseDimer(api, poseScenario);
       dimer = {
         before: posedDimer.before,
         r: await api.until(

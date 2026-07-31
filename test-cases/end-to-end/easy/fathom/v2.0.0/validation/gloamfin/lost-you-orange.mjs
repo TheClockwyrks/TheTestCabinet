@@ -5,11 +5,12 @@
 // is control ops, so it is `arrange`. Watching the Gloamfin swim to the empty fix and give
 // up is `act`, and is exactly what the clip shows.
 import {
-  startPlaying,
-  findSightLine,
-  findFarTile,
-  denAllExcept,
   actGloamPings,
+  denAllExcept,
+  findFarTile,
+  findSightLine,
+  quietBoard,
+  startPlaying,
   ticksFor,
 } from "../_helpers.mjs";
 
@@ -33,10 +34,10 @@ export default function item() {
         ty: line.pred.ty,
         mode: "chase",
       });
-      // Now move the forager far away, so when the Gloamfin reaches the fix it is empty.
+      // Now move the forager far away, so when the Gloamfin reaches the fix it is empty —
+      // and park it there, so it cannot drift back into hearing range mid-watch.
       const far = findFarTile(snap, line.forager, 9);
-      await api.call("setForager", { tx: far.tx, ty: far.ty });
-      await api.call("poseLastPlankton");
+      await quietBoard(api, far);
     },
 
     async act(api) {

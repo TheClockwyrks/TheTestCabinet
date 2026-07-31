@@ -22,9 +22,11 @@
 //     filmed.
 //
 // A helper that only poses state or reads it instantly (`newGame`, `restartGame`,
-// `build`, `spawn`, `tower`, `unit`, `heatOf`, `press`, `combatSetup`) is unpaired:
-// it is arrange-callable on its own, and the instant READS are callable from any
-// phase. `restartGame` is additionally act-safe — see its note.
+// `build`, `spawn`, `tower`, `unit`, `heatOf`, `press`, `combatSetup`,
+// `buildCorridorWalls`, `buildVentCorridor`, `corridorSetup`) is unpaired: it is
+// arrange-callable on its own, and the instant READS are callable from any phase.
+// `restartGame` is additionally act-safe — see its note, as are the corridor builders,
+// which place towers and nothing else.
 //
 // UNITS ARE TICKS. Meltdown is a 60 Hz fixed timestep and the debug API's `step`
 // takes whole ticks, so every duration below is a tick count (the runtime converts
@@ -184,6 +186,150 @@ export async function restartGame(
 // seconds arguments to ticks — a 10s cap is `max: 600`, the old default `FIXED`
 // chunk is `poll: TICK`, an 0.1s chunk is `poll: 6`, an 0.2s chunk is `poll: 12`.
 
+// ---- The clip tail (act) ---------------------------------------------------
+
+/**
+ * The beat an `act` runs on for AFTER the instant its verdict was decided, so the
+ * clip shows the thing happening rather than stopping on the frame before it.
+ *
+ * `api.until` returns on the first sample where its predicate holds, and `act`
+ * returning ends the record pass — Playwright finalizes the video when the context
+ * closes, so the last frame filmed is the one at the predicate's edge. For a check
+ * whose subject is an EVENT that is what a reviewer least wants to see: the sweep
+ * that waits for `hp < maxHp` cuts on the tick the shot connects, so the clip is a
+ * flyer approaching and then nothing. The verdict was right and the evidence shows
+ * everything except the moment it is evidence of.
+ *
+ * So an item that decides on an event runs on afterwards. It costs the verdict
+ * nothing — the validate pass advances instantly and has already read its outcome
+ * before the tail runs — and in the record pass it is exactly the follow-through:
+ * the impact lands, the number moves, the life is deducted, on screen, at the speed
+ * the game actually runs.
+ *
+ * 90 ticks (1.5 s) is the default because it is about the shortest beat that still
+ * reads as a beat at 60 Hz: long enough for a hit to resolve and a HUD number to be
+ * legible after it moves, short enough that adding one to every event item costs a
+ * suite run a few seconds. Pass more where what follows the event is itself the
+ * point — a payout landing after a wave clears, a countdown handing over to the next
+ * wave. The tail spends the same `clipMs` budget as everything else in `act`, so if a
+ * long approach is crowding it out, the fix is to skip the approach (see
+ * `skipToApproach` below) rather than to raise the budget.
+ *
+ * This is deliberately `advance` and not `settle`: the game should keep MOVING
+ * through the tail. `settle` is a paint pause that consumes no simulation time, and
+ * a tail made of it would film a frozen world in the validate pass and a stalled one
+ * in the record pass.
+ *
+ * WHERE IT GOES. A tail runs the real simulation, so it belongs AFTER the reads that
+ * decide the verdict and never between a pose and a read that depends on it. The
+ * distinction is easy to lose because most scenarios pose their state with control
+ * ops, which consume no time and therefore hold still; slip a tail into the middle of
+ * one and the world moves out from under it. `sealing.no-trap` is the cautionary
+ * case: its pocket is framed with one side left open, so a beat inserted between the
+ * frame going up and the placement being tried is long enough for the unit inside to
+ * walk out — after which closing that side traps nobody and is correctly allowed, and
+ * a conformant build fails an item it should pass. When in doubt, put the tail last.
+ */
+export const TAIL = 90;
+
+/** Run the sim on for a beat so the clip shows the outcome. See {@link TAIL}. */
+export async function actTail(api, ticks = TAIL) {
+  await api.advance(ticks);
+}
+
+// ---- Clip budgets ----------------------------------------------------------
+//
+// WHY SO MANY ITEMS CARRY A `clipMs` EVEN THOUGH THEY ARE SHORT.
+//
+// A budget is a CEILING on filming, not a target, and the reason to set one is not
+// the reference implementation — it is every other implementation. How long a
+// scenario takes to play out is the build's own business: unit speeds, spawn spacing,
+// and above all its pathing. A build that routes a left-vent unit up over the top of
+// the reactor and back down covers three times the distance for the same leak, and
+// every surge, economy and refund item that waits on that unit films three times as
+// long. The verdict is unaffected — those items check WHAT happened, not how long it
+// took, and a slow route is a pathing item's business, not theirs — but the clip
+// balloons, and a reviewer is handed a minute of wandering to see a two-second event.
+//
+// So each item sized its budget a little above what the scenario costs on a
+// conformant build. Past that it is padding out a defect that some other item owns,
+// and cutting there loses nothing a reviewer needed. The numbers below are per-item
+// (a Core crossing is not a Mote crossing) and each is stated at its use site with
+// what it covers.
+
+// A BUDGET IS NOT A STOPWATCH. `clipMs` is spent in SIMULATION time — `advance(n)`
+// and each `until` poll bill `n / tickHz` seconds against it — while the clip is
+// however long the record pass actually takes, and those two are not the same number.
+// Every poll also costs a snapshot round trip that the budget does not bill, so an
+// item polling one tick at a time burns 16.7 ms of budget per iteration while
+// consuming nearer 30 ms of wall clock, and its clip runs close to twice its budget.
+// A coarsely-polled item lands much nearer 1:1.
+//
+// So size a cap against what the item POLLS, not against the seconds you want to see:
+// halve it for a `poll: TICK` sweep, take it at face value for a `poll: 12` one. And
+// expect the cap to bite only on a pathological build — on a conformant one these
+// items finish well inside their budget, which is why the reference clips are shorter
+// than the numbers here suggest.
+
+/**
+ * The headroom a clip budget carries over the length the same scenario films on a
+ * conformant build: enough that ordinary variation between builds never clips a
+ * payoff, small enough that a pathological one is cut off rather than indulged.
+ */
+export const CLIP_HEADROOM_MS = 1500;
+
+// ---- Getting to the brink (arrange) ----------------------------------------
+//
+// The counterpart to the tail. Meltdown's floor is 950 logical pixels across and its
+// units walk it at 30-120 px/s, so almost every surge check spends the better part of
+// half a minute watching something cross a reactor before the moment it is about can
+// happen at all. `api.skip`/`api.skipUntil` run that approach through the real
+// simulation without filming it (see `packages/browser-driver/validation.mjs`), so an
+// item can pose its world, close the distance, and hand `act` a scenario that is
+// already at the brink. The clip then opens seconds from the payoff instead of a
+// minute before it, and the verdict is unaffected — the validate pass was always
+// instant.
+
+/**
+ * How close to its exhaust a unit has to be to count as on final approach.
+ *
+ * 120 px is a little over six tiles: about two seconds of filmed walking for a Mote,
+ * four for a Core. Enough that a reviewer sees the unit arrive under its own power
+ * rather than materialising on the edge, and short enough that the arrival is the
+ * clip rather than the epilogue of one.
+ */
+export const APPROACH_PX = 120;
+
+/**
+ * Whether `u` is on final approach to the exhaust it was assigned. A unit's exhaust is
+ * fixed at spawn (`specs/playfield.md`), and the two lie on different axes, so which
+ * coordinate to measure comes from the unit itself rather than from its vent.
+ */
+export function nearlyOut(u) {
+  return u.exhaust === "right"
+    ? u.x >= FLOOR_X1 - APPROACH_PX
+    : u.y >= FLOOR_Y1 - APPROACH_PX;
+}
+
+/**
+ * Run the real simulation, unfilmed, until the unit with `id` is on final approach to
+ * its exhaust (or has already left the floor). Returns `api.skipUntil`'s result.
+ *
+ * 3600 ticks is a 60 s ceiling: comfortably more than the ~32 s a Core — the slowest
+ * unit in the game — needs to cross the floor end to end, so no conformant build runs
+ * out of runway. Polled every 12 ticks because nothing here needs the exact instant;
+ * the sweep only has to stop somewhere on the approach.
+ */
+export async function skipToApproach(api, id, { max = 3600 } = {}) {
+  return api.skipUntil(
+    (s) => {
+      const u = s.surge.find((x) => x.id === id);
+      return !u || nearlyOut(u);
+    },
+    { max, poll: 12 },
+  );
+}
+
 // ---- Instant reads (any phase) ---------------------------------------------
 //
 // Pure `snapshot` reads. They consume no time, so they are callable from `arrange`,
@@ -201,21 +347,43 @@ export async function heatOf(api, id) {
 }
 
 /**
+ * Where `build` parks the held preview after a place — the top-left tile of a
+ * footprint in the far bottom-right of the floor, clear of every scenario any item
+ * lays out (nothing here builds past column 40 / row 34, and the columns the maze
+ * and sealing walls occupy are 20-26).
+ */
+export const PARK_COL = 46;
+export const PARK_ROW = 33;
+
+/**
  * Build a tower through the real placement code and return the placed tower's id
  * (the newest tower whose footprint top-left and type match), or null if the
  * placement was refused. Routes through canPlaceAt, so an invalid placement builds
  * nothing and returns null.
  *
- * The held placement is CANCELLED afterward. Placement legitimately stays armed
- * after a place (`specs/controls.md`, and `building.place-stays-armed` is the item
- * that checks it), but the preview then sits on the footprint just built — which is
- * now occupied, so the preview is INVALID and the build paints the invalid-footprint
- * highlight (`#ff4d4d`, `specs/controls.md`) over it. Any check that samples the
- * rendered tower afterward would read that overlay instead of the tower's own body:
- * a correct cold emitter (`#3a7bd5`) reads warm-red through it. Since this helper is
- * for LAYING OUT a floor rather than for exercising the shop, it drops the preview
- * so what the floor draws is the towers themselves. A check whose subject IS the
- * armed state drives `armTower`/`movePreview`/`place` directly instead.
+ * The held placement is MOVED OFF the scenario afterward. Placement legitimately
+ * stays armed after a place (`specs/controls.md`, and `building.place-stays-armed` is
+ * the item that checks it), but the preview then sits on the footprint just built —
+ * which is now occupied, so the preview is INVALID and the build paints the
+ * invalid-footprint highlight (`#ff4d4d`, `specs/controls.md`) over it. Any check that
+ * samples the rendered tower afterward would read that overlay instead of the tower's
+ * own body: a correct cold emitter (`#3a7bd5`) reads warm-red through it.
+ *
+ * Parked with `movePreview`, NOT cancelled with an Esc keypress, because this runs in
+ * nearly every item's arrange and so must not depend on anything but the placement
+ * ops it is already using. Esc is a THREE-WAY binding — cancel the placement, else
+ * deselect, else pause (`specs/controls.md`) — so what it does here depends on the
+ * build having left a placement armed and on its having bound the key in that order.
+ * Get either wrong and Esc pauses the game instead, in `arrange`, silently: every
+ * `advance` afterwards is then a no-op, and heat, cooling, targeting, economy and
+ * audio items all report a frozen world as if their subject were broken. Those are
+ * separate items with their own verdicts (`controls.cancel-placement` and
+ * `building.place-stays-armed` are where an Esc or arming defect belongs), and laying
+ * out a floor must not be able to fail them. `movePreview` means one thing, and is a
+ * harmless no-op on a build holding nothing.
+ *
+ * A check whose subject IS the armed state drives `armTower`/`movePreview`/`place`
+ * directly instead.
  */
 export async function build(api, type, col, row, rot = 0) {
   await api.call("placeTower", type, col, row, rot);
@@ -223,9 +391,9 @@ export async function build(api, type, col, row, rot = 0) {
     (t) => t.type === type && t.col === col && t.row === row,
   );
   if (matches.length === 0) return null;
-  // Esc cancels a held placement (`specs/controls.md`). Consumes no time, so this
-  // stays arrange-callable.
-  await api.call("press", "Escape");
+  // Park the preview off the scenario instead of cancelling it. Consumes no time,
+  // so this stays arrange-callable. See PARK_COL/PARK_ROW.
+  await api.call("movePreview", PARK_COL, PARK_ROW);
   return matches.reduce((a, b) => (b.id > a.id ? b : a)).id;
 }
 
@@ -260,64 +428,173 @@ export async function pixelAt(api, x, y) {
   return api.pixel(u, v);
 }
 
-/**
- * Sample the solid body color of a tower at an interior point offset up-and-left
- * of its center, clear of the central glyph and the bottom heat-read bar, averaged
- * over a small cluster so a stray antialiased pixel cannot swing the reading.
- */
-export async function sampleTowerBody(api, t) {
-  const s = t.size * TILE;
-  const c = fpCenter(t.col, t.row, t.size);
-  const px = c.x - s * 0.3;
-  const py = c.y - s * 0.3;
-  const offsets = [
-    [0, 0],
-    [3, 0],
-    [-3, 0],
-    [0, 3],
-    [0, -3],
-  ];
-  let r = 0;
-  let g = 0;
-  let b = 0;
-  for (const [dx, dy] of offsets) {
-    const p = await pixelAt(api, px + dx, py + dy);
-    r += p.r;
-    g += p.g;
-    b += p.b;
-  }
-  const n = offsets.length;
-  return { r: r / n, g: g / n, b: b / n };
-}
-
 export function colorDist(a, b) {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
 }
 
+function median(xs) {
+  const s = [...xs].sort((a, b) => a - b);
+  const n = s.length;
+  return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+}
+
 /**
- * ACT-phase read of a tower's painted body color: let a frame land, then sample.
+ * Bare-floor tile centers, used as the reference for "this pixel is the floor, not
+ * the tower". Sampled from THIS build rather than assumed, so the comparison is
+ * against the build's own floor color and never an absolute brightness (a build is
+ * free to paint a lighter or darker floor than the reference's `#15181d`).
+ *
+ * A clear patch in the floor's upper right: no item builds past column 40 or above
+ * row 2 there, it is well clear of the parked preview (PARK_COL/PARK_ROW) and of the
+ * top vent (columns 22-29), and tile CENTERS dodge the faint tile-grid lines.
+ */
+const FLOOR_PROBE_TILES = [
+  [42, 3],
+  [44, 6],
+  [46, 9],
+];
+
+/**
+ * How far a sampled pixel must sit from the build's own floor color to count as
+ * painted by the tower. Small — it only has to clear the floor's own tile-grid
+ * contrast — because what it separates is "floor" from "anything the tower drew",
+ * not dark from bright.
+ */
+const FLOOR_TOLERANCE = 24;
+
+/** The build's own floor color, per {@link FLOOR_PROBE_TILES}. */
+export async function sampleFloor(api) {
+  const seen = [];
+  for (const [col, row] of FLOOR_PROBE_TILES) {
+    const c = tileCenter(col, row);
+    seen.push(await pixelAt(api, c.x, c.y));
+  }
+  return {
+    r: median(seen.map((p) => p.r)),
+    g: median(seen.map((p) => p.g)),
+    b: median(seen.map((p) => p.b)),
+  };
+}
+
+/**
+ * How far a pixel must move between the two posed states to count as part of what
+ * the build repaints to express the change. Comfortably above frame-to-frame
+ * antialiasing jitter and far below any real color step on the heat ramp.
+ */
+const CHANGE_TOLERANCE = 24;
+
+// The sample grid over a tower footprint. The bottom strip is left out because the
+// on-footprint heat read lives there (`specs/heat.md`): a separate readout with its
+// own unfilled track and redline marker, so its pixels are not the tower's glow.
+const GRID_N = 8; // 8x8 = 64 points, dense enough to land on a border-drawn glow
+const GRID_INSET = 3; // clear of the footprint's outer edge and its antialiasing
+const HEAT_BAR_STRIP = 12;
+
+/**
+ * Read every point of the sample grid over a tower's footprint, plus the build's own
+ * floor color. The raw material for {@link glowBetween}; on its own it decides
+ * nothing.
+ *
+ * Returns `{ floor, points: [{ r, g, b }] }` in a fixed grid order (so two samples of
+ * the same tower are point-for-point comparable), or null if the tower is gone.
+ */
+async function sampleTowerGrid(api, t) {
+  const s = t.size * TILE;
+  const x0 = FLOOR_X0 + t.col * TILE;
+  const y0 = FLOOR_Y0 + t.row * TILE;
+  const floor = await sampleFloor(api);
+  const points = [];
+  for (let i = 0; i < GRID_N; i += 1) {
+    for (let j = 0; j < GRID_N; j += 1) {
+      const x = x0 + GRID_INSET + ((s - 2 * GRID_INSET) * i) / (GRID_N - 1);
+      const y =
+        y0 +
+        GRID_INSET +
+        ((s - GRID_INSET - HEAT_BAR_STRIP) * j) / (GRID_N - 1);
+      points.push(await pixelAt(api, x, y));
+    }
+  }
+  return { floor, points };
+}
+
+/**
+ * ACT-phase read of a tower's painted footprint: let a frame land, then sample the
+ * whole grid. Pair two of these with {@link glowBetween}.
  *
  * The settle is a REAL pause in both passes, not `advance`. These checks read the
  * pixels the build actually painted, which needs a frame to have been drawn since
  * the heat/trip state was posed — and in the validate pass `advance` is instant, so
- * it produces no frame at all. This replaces the old `await api.wait(90)` that every
- * pixel script did by hand before calling `sampleTowerBody`. See `api.settle` in
- * validation.mjs.
+ * it produces no frame at all. See `api.settle` in validation.mjs.
  *
  * The settle is generous because it is the ONLY lever a pixel check has against the
  * renderer. `getImageData` happily returns the last frame that was painted, so a
  * settle that comes up short does not fail loudly — it silently reads the canvas as it
- * was BEFORE the state this check posed, and reports a confident wrong colour. At 90 ms
+ * was BEFORE the state this check posed, and reports a confident wrong color. At 90 ms
  * that raced often enough to flake roughly one full-suite run in two; the only two
  * items that sample pixels are this one's callers, so the wider margin costs a fraction
  * of a second across the whole suite.
  *
- * Returns `{ r, g, b }` (0–255), or null if the tower is gone.
+ * Returns the sample, or null if the tower is gone.
  */
-export async function actSampleTowerBody(api, id, { settleMs = 300 } = {}) {
+export async function actSampleTower(api, id, { settleMs = 300 } = {}) {
   await api.settle(settleMs);
   const t = await tower(api, id);
-  return t ? sampleTowerBody(api, t) : null;
+  return t ? sampleTowerGrid(api, t) : null;
+}
+
+/**
+ * Given two samples of the same tower posed differently — cold and hot, or online
+ * and tripped — report the color its GLOW read in each, as `{ before, after }`.
+ *
+ * Finding the glow by asking what MOVED is the whole point. Where in a footprint the
+ * heat color is painted is the build's own presentation choice: `specs/overview.md`
+ * asks only that "an emitter's glow color tracks its heat along the ramp" and that a
+ * tripped one is unmistakable, never that the body is a solid fill. The obvious
+ * implementations both encode a guess about the rendering and both get it wrong on
+ * some conformant build:
+ *
+ *   * One interior point offset from the center bets the body is filled solid. A
+ *     build that draws the tower as a lit frame around a dark interior — an ordinary
+ *     industrial look — paints the entire ramp on its border, and the center read
+ *     returns the same dead color at every heat, failing a build that renders the
+ *     ramp perfectly.
+ *   * Summarizing the whole footprint instead bets the glow is most of what the
+ *     footprint paints. It is not, on that same framed build, once the interior is
+ *     lit rather than black: the majority color is then an inert fill that never
+ *     tracks heat, and the reading is flat again.
+ *
+ * The pixels that carry the ramp, however they are arranged, are exactly the ones
+ * that differ between the two states — so mask to those and let the build place its
+ * glow wherever it likes. Two guards keep the mask honest: a point must also read as
+ * something other than the build's own floor (sampled, never an absolute brightness,
+ * so a lighter or darker floor than the reference's is fine), and the summary is a
+ * MEDIAN, so minority features that happen to shift — the cyan radiator fins, a
+ * center glyph, a lit highlight — cannot drag the reading the way a mean would.
+ *
+ * Returns null when NOTHING in the footprint moved between the two states, which is
+ * not a measurement failure but the finding itself: a tower that paints the same
+ * whether it is cold or white-hot, or online or tripped, communicates nothing. The
+ * caller asserts on that rather than reporting a color.
+ */
+export function glowBetween(before, after) {
+  if (!before || !after) return null;
+  const moved = [];
+  for (let i = 0; i < before.points.length; i += 1) {
+    const a = before.points[i];
+    const b = after.points[i];
+    if (colorDist(a, b) <= CHANGE_TOLERANCE) continue;
+    const aIsFloor = colorDist(a, before.floor) <= FLOOR_TOLERANCE;
+    const bIsFloor = colorDist(b, after.floor) <= FLOOR_TOLERANCE;
+    if (aIsFloor && bIsFloor) continue;
+    moved.push([a, b]);
+  }
+  if (moved.length === 0) return null;
+  const summarize = (pick) => ({
+    r: median(moved.map((m) => pick(m).r)),
+    g: median(moved.map((m) => pick(m).g)),
+    b: median(moved.map((m) => pick(m).b)),
+  });
+  return { before: summarize((m) => m[0]), after: summarize((m) => m[1]) };
 }
 
 // ---- Trip scenarios --------------------------------------------------------
@@ -328,20 +605,29 @@ export async function actSampleTowerBody(api, id, { settleMs = 300 } = {}) {
 // run the real sim to the trip (and, for the cooldown check, back out of it).
 
 /**
- * ARRANGE half of a trip scenario: build `type` below the left lane, spawn a Core
- * walking through its range, and pose the emitter's heat just under the redline so
- * a few steps of real firing carry it over. Lives are posed high so a leak during
- * the drive cannot end the run out from under the check.
+ * ARRANGE half of a trip scenario: build `type` where a Core walking from the left
+ * vent will come into its range, spawn that Core, and pose the emitter's heat just
+ * under the redline so a few steps of real firing carry it over. Lives are posed high
+ * so a leak during the drive cannot end the run out from under the check.
  *
- * Pair with `actUntilTripped` / `actTripAndRecover`. Returns `{ id, coreId }`.
+ * `corridor: true` sets the emitter into a vent corridor (see `buildVentCorridor`)
+ * instead of parking it at `col,row` beside the lane a build may or may not walk, and
+ * makes `walls` part of the result for the item to assert on. An item whose subject is
+ * the trip itself wants that: engagement stops being a coincidence of the build's
+ * pathfinding. `col`/`row` are ignored when it is set — the corridor fixes the spot.
+ *
+ * Pair with `actUntilTripped` / `actTripAndRecover`. Returns `{ id, coreId }`, plus
+ * `walls` in the corridor form.
  */
 export async function arrangeNearRedline(
   api,
   type,
-  { heat = 92, col = 3, row = 20, rot = 0 } = {},
+  { heat = 92, col = 3, row = 20, rot = 0, corridor = false } = {},
 ) {
   await api.call("setLives", 100000);
-  const c = await combatSetup(api, type, col, row, rot);
+  const c = corridor
+    ? await corridorSetup(api, type, rot)
+    : await combatSetup(api, type, col, row, rot);
   await api.call("setHeat", c.id, heat);
   return c;
 }
@@ -373,11 +659,30 @@ export async function actUntilTripped(
 
 /**
  * ACT half of the trip-cooldown scenario: run the real sim to the trip, then keep
- * running until the emitter comes back online, and report both. A tripped tower is
- * meant to return COLD, so the caller reads `back.t.heat` as well as its online flag.
+ * running until the emitter comes back online, and report the trip, the LAST sample
+ * in which it was still offline, and the first in which it is back.
  *
- * Pair with `arrangeNearRedline`. Returns `{ tripped, back }`, each the shape
- * `actUntilTripped` returns.
+ * `lastTripped` is what carries the "returns cold" claim, and it is reported
+ * separately because it is the only reading of the cooldown that nothing else can
+ * touch. `specs/heat.md` has a tripped tower's "heat bleed[] off to 0 over the
+ * cooldown", and while it is tripped it "stops firing and deals no damage" — so at
+ * the far end of the cooldown, heat is the cooldown's own work and cannot be anything
+ * else.
+ *
+ * The reading at the moment it comes back cannot say the same. The sim is a 60 Hz
+ * fixed step and `back` is the first STEP on which the tower is online, not an
+ * instant inside it: if the build resolves the cooldown before it resolves firing,
+ * the tower comes back cold, acquires the target that was still in range, and takes
+ * one shot's self-heat — all within the step the sweep reads. Both reference builds
+ * bear this out, one landing on 0 and the other on a single shot's worth, from the
+ * same posed scenario. Which side of a step two systems fall on is not something
+ * `specs/heat.md` fixes, so `back.t.heat` cannot be asserted as 0 without failing a
+ * conformant build for its update order. Read `back` for the ONLINE flag, and read
+ * `lastTripped` for the heat.
+ *
+ * Pair with `arrangeNearRedline`. Returns `{ tripped, lastTripped, back }`, where
+ * `tripped` and `back` are the shape `actUntilTripped` returns and `lastTripped` is
+ * the tower as last seen offline (or null if it never was).
  */
 export async function actTripAndRecover(
   api,
@@ -386,8 +691,13 @@ export async function actTripAndRecover(
 ) {
   // 360 ticks = the old 6s trip cap; 420 ticks = the old 7s recovery cap.
   const tripped = await actUntilTripped(api, id, { max: tripMax });
+  let lastTripped = tripped.t && tripped.t.tripped ? tripped.t : null;
   const r = await api.until(
-    (s) => s.towers.some((t) => t.id === id && !t.tripped),
+    (s) => {
+      const t = s.towers.find((x) => x.id === id);
+      if (t && t.tripped) lastTripped = t;
+      return Boolean(t && !t.tripped);
+    },
     {
       max: backMax,
       poll: TICK,
@@ -395,6 +705,7 @@ export async function actTripAndRecover(
   );
   return {
     tripped,
+    lastTripped,
     back: {
       hit: r.hit,
       snap: r.snap,
@@ -415,9 +726,164 @@ export async function actTripAndRecover(
 /**
  * Place `type` at (col,row) below the left lane and spawn a Core walking through
  * its range so the emitter has a real target to fire at. Returns { id, coreId }.
+ *
+ * The default (col, row) sits below the lane and a few tiles in, which reaches a unit
+ * that crosses the floor along the rows it entered on. That is a route the spec
+ * permits but does not require — see `ventGuard` for the placement an item should use
+ * when it needs the emitter to engage WHATEVER route the build takes.
  */
 export async function combatSetup(api, type, col = 3, row = 20, rot = 0) {
   const id = await build(api, type, col, row, rot);
   const coreId = await spawn(api, "core", "left");
   return { id, coreId };
+}
+
+// ---- The vent corridor: engaging a left-vent unit on ANY route ---------------
+//
+// WHY A SCENARIO CANNOT ASSUME THE SURGE CROSSES ON THE ROWS IT ENTERED ON.
+//
+// Nearly every item here that needs an emitter to fire poses one target: a unit at the
+// left vent, walking to the right exhaust. Where to put the emitter so it engages that
+// unit looks like it has an obvious answer — beside the lane the unit walks — and it
+// does not, because the lane is not the spec's to give. `specs/playfield.md` pins the
+// two ENDS of the journey (the surge appears on tiles `(0, 16)`..`(0, 19)` and leaves
+// through the right exhaust on rows 16..19) and then says only that the surge "walks
+// the shortest available route" between them, where a diagonal step costs the same as
+// an orthogonal one.
+//
+// On an empty floor that leaves a wide family of equally shortest routes, and the
+// straight one across the entry rows is merely the one a reference happens to pick. A
+// build whose pathfinder expands its neighbours in a different order climbs to the top
+// of the floor, runs along the ceiling and comes back down for exactly the same step
+// count, and is walking a shortest route the whole way. Which of those a build takes is
+// a real property worth checking — `pathing.opposite-left` and `pathing.opposite-top`
+// are the items that own it, and they measure the deviation directly — but it must not
+// be the hidden precondition of every OTHER item. An emitter parked beside the assumed
+// lane never acquires a target on such a build, never fires, and never heats, so items
+// about tripping, baking, splash, bounty and targeting all report their own subject as
+// broken when what actually happened is that the check was aimed at empty floor.
+//
+// THE FIX IS TO BUILD THE LANE RATHER THAN ASSUME IT. Towers are walls
+// (`specs/playfield.md`) and the surge re-paths around them, so a scenario can put the
+// unit where it needs it using nothing but the game's own rules: wall the vent above
+// and below and the only way out is the corridor between, whatever the build's
+// pathfinder would have preferred. The walls are SINKS, which never fire and have no
+// heat of their own, and they are held one tile clear of the emitter on every side, so
+// they shape the route and do nothing else — a Sink cools only a TOUCHING emitter
+// (`specs/heat.md`), and a corridor that quietly drained the tower under test would
+// wreck every heat item that uses it. The emitter keeps all four faces open to the air
+// exactly as it would standing alone.
+//
+//   col   0 1 2 3 4 5 6 7 8 9
+//   r14
+//   r16   S S S S S S S S S S   <- five sinks; the leftmost covers the vent's top half
+//   r17   S S S S S S S S S S
+//   r18   . . . . . . . . . .   <- the corridor: every left-vent unit walks this
+//   r19   . . . . . . . . . .
+//   r20   S S . E E . S S S S   <- sink, gap, the emitter under test, gap, two sinks
+//   r21   S S . E E . S S S S
+//
+// The vent's own tiles stay walkable on rows 18 and 19, so nothing is sealed and the
+// never-seal rule (`specs/playfield.md`) has no reason to refuse any of it. Covering
+// the opening's top half is expressly allowed — the surge then appears only on the
+// tiles still open, which is what `sealing.partial-opening-ok` checks a build honours.
+// A unit that slips down through one of the two gaps rather than running the corridor
+// passes directly under the emitter and is in range there too, so both readings of
+// "shortest" end up in front of the gun.
+
+/** The top-left tile of the emitter under test in a vent corridor. */
+export const CORRIDOR_COL = 3;
+export const CORRIDOR_ROW = 20;
+
+/** The corridor's roof: five sinks over rows 16-17, the leftmost over the vent. */
+const CORRIDOR_ROOF_COLS = [0, 2, 4, 6, 8];
+const CORRIDOR_ROOF_ROW = 16;
+
+/**
+ * The walls that make the corridor a corridor: the roof, plus the sink below the vent
+ * that stops a unit dropping out of the opening's bottom edge instead of walking.
+ * Everything to the emitter's right is scenery on top of that.
+ */
+export const CORRIDOR_ROOF_WALLS = CORRIDOR_ROOF_COLS.length + 1;
+
+/** How many sinks a complete corridor is built from — the roof, plus three on the floor. */
+export const CORRIDOR_WALLS = CORRIDOR_ROOF_WALLS + 2;
+
+/**
+ * Build the corridor's roof and its below-vent sink, and report how many went down.
+ *
+ * Separate from {@link buildVentCorridor} because an item whose emitter comes with its
+ * own structure — `cooling.boxed-bakes` boxes one in movers on all four faces — cannot
+ * use the standard floor, but wants the same funnel above it.
+ */
+export async function buildCorridorWalls(api) {
+  let walls = 0;
+  for (const col of CORRIDOR_ROOF_COLS) {
+    if ((await build(api, "sink", col, CORRIDOR_ROOF_ROW)) !== null) walls += 1;
+  }
+  if ((await build(api, "sink", 0, CORRIDOR_ROW)) !== null) walls += 1;
+  return walls;
+}
+
+/**
+ * Build the vent corridor with a `type` emitter set into its floor, and report how
+ * many of the corridor's sinks actually went down.
+ *
+ * Returns `{ id, walls }`: the emitter's id (null if its placement was refused), and
+ * the sink count, which an item should assert is `CORRIDOR_WALLS`. A refused sink is
+ * worth failing on rather than driving through — it opens a way around the emitter,
+ * and the item would then report its own subject as broken for a hole in its scenery.
+ *
+ * The two floor sinks to the emitter's right start one column clear of its footprint,
+ * so this works for a 2x2, 3x3 or 4x4 emitter without moving the roof.
+ */
+export async function buildVentCorridor(api, type, rot = 0) {
+  let walls = await buildCorridorWalls(api);
+  const id = await build(api, type, CORRIDOR_COL, CORRIDOR_ROW, rot);
+
+  const rightOf = CORRIDOR_COL + TOWER_SIZE[type] + 1;
+  for (const col of [rightOf, rightOf + 2]) {
+    if ((await build(api, "sink", col, CORRIDOR_ROW)) !== null) walls += 1;
+  }
+  return { id, walls };
+}
+
+/**
+ * The corridor counterpart to {@link combatSetup}: a `type` emitter set into a vent
+ * corridor with a real Core walking down it. Returns `{ id, coreId, walls }`.
+ */
+export async function corridorSetup(api, type, rot = 0) {
+  const { id, walls } = await buildVentCorridor(api, type, rot);
+  const coreId = await spawn(api, "core", "left");
+  return { id, coreId, walls };
+}
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Meltdown's cues are synthesized with the Web Audio API (specs/ui.md), so the
+// driver reports every source the build starts (see `api.audio`). The game must
+// not autoplay: it creates (or resumes) its AudioContext only on the first real
+// user interaction, so before driving an event whose cue is checked, arm audio
+// with a GENUINE browser gesture. Meltdown is mouse-driven (`input.ts` fires the
+// same unlock from a mousedown as from a keydown), so a conformant build may
+// unlock audio only from a pointer rather than a key — arming uses both
+// `api.userKey` and a corner `api.userClick` rather than a debug `press`, which
+// would leave such a build's AudioContext uncreated, so no cue would ever be
+// scheduled though it plays fine for a real player. `KeyZ` has no game binding.
+// The click lands at (1100, 90): inside the build panel (`x >= PANEL_X` = 986,
+// constants.ts), in the gap between the readouts strip (y 18..62) and the shop
+// grid (y from 122, ui.ts) — no button rect covers that point on any screen. In
+// a menu-overlay state the click only tests `menuHits` (laid out around the
+// centre); in "playing" it falls through `onPanelClick` matching nothing. So
+// arming never places a tower, arms/disarms the shop, or fires a menu action,
+// regardless of what the precondition already armed or built. From there a cue
+// is confirmed by the audio log growing across the driven event.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(1100, 90);
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
 }

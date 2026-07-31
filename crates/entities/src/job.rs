@@ -26,6 +26,13 @@ pub struct Model {
     pub test_case_version: String,
     /// The variant, lifted for the active-run list.
     pub variant: String,
+    /// The test case's type (`end-to-end`, `game-jam`, …), lifted from the resolved
+    /// test case at enqueue. The queue reads it to serialize the runs that must not
+    /// overlap: a **game-jam** job waits while another run of the same jam and model
+    /// is in flight, since a repeated jam run is briefed with the earlier runs'
+    /// gameplay READMEs. Empty for rows enqueued before the column existed (treated
+    /// as a non-jam type).
+    pub test_type: String,
     /// The harness slug, lifted for the active-run list.
     pub harness_slug: String,
     /// The opaque model id, lifted for the active-run list.

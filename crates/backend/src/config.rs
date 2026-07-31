@@ -23,7 +23,18 @@ const DEFAULT_STORE: &str = "./tcab-store";
 const DEFAULT_AUTH_URL: &str = "http://127.0.0.1:8789";
 /// The default coalescing window, in milliseconds, when
 /// `TCAB_SNAPSHOT_COALESCE_MS` is unset.
-const DEFAULT_COALESCE_MS: u64 = 5000;
+///
+/// This is a **sliding** debounce: each publish restarts the window, so a batch is
+/// only regenerated once the operator stops publishing. It was 5s, which is shorter
+/// than the gap between two console publishes — a sweep of N runs therefore minted N
+/// full snapshot generations (and N site rebuilds) instead of one. A minute
+/// comfortably spans a hand-driven batch while staying far below the site build it
+/// triggers, so a single publish still reaches the gallery about as fast as before.
+const DEFAULT_COALESCE_MS: u64 = 60_000;
+/// The default retention for superseded snapshot generations, in hours, when
+/// `TCAB_SNAPSHOT_RETENTION_HOURS` is unset. Long enough that any site build already
+/// reading a just-superseded generation finishes against a complete dataset.
+const DEFAULT_SNAPSHOT_RETENTION_HOURS: u64 = 24;
 
 /// The R2 (S3-compatible) credentials and bucket the public snapshot is uploaded
 /// to.
@@ -78,6 +89,12 @@ pub struct Config {
     pub deploy_hook_url: Option<String>,
     /// The coalescing window for bursts of publishes (`TCAB_SNAPSHOT_COALESCE_MS`).
     pub coalesce: Duration,
+    /// How long a superseded snapshot generation is kept in the bucket before the
+    /// refresh prunes it (`TCAB_SNAPSHOT_RETENTION_HOURS`). The generation
+    /// `index.json` points at is never pruned regardless of this value; it bounds
+    /// only how long the ones nothing references any more are retained. `0` prunes
+    /// every superseded generation on the next refresh.
+    pub snapshot_retention: Duration,
     /// Whether **experimental** test-case versions are offered to the UI
     /// (`TCAB_BACKEND_ALLOW_EXPERIMENTAL`, truthy to enable). Defaults to `false`:
     /// an experimental version (a case still being iterated on) is hidden from the
@@ -184,6 +201,11 @@ impl Config {
             .and_then(|v| v.parse::<u64>().ok())
             .unwrap_or(DEFAULT_COALESCE_MS);
 
+        let snapshot_retention_hours = std::env::var("TCAB_SNAPSHOT_RETENTION_HOURS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(DEFAULT_SNAPSHOT_RETENTION_HOURS);
+
         let reference_browser = std::env::var("TCAB_REFERENCE_BROWSER")
             .ok()
             .filter(|v| !v.is_empty());
@@ -214,6 +236,7 @@ impl Config {
             r2,
             deploy_hook_url,
             coalesce: Duration::from_millis(coalesce_ms),
+            snapshot_retention: Duration::from_secs(snapshot_retention_hours * 3600),
             reference_browser,
             artifacts_url,
             arena_url,
