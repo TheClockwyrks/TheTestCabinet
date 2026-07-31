@@ -196,11 +196,12 @@ either: an entry's **ordinal**. Two copies that both numbered from zero would ea
 entry as `#0`, and a search result quoting one would be ambiguous about which thread it came
 out of.
 
-This capability also reads the `ownership` param every module-backed one does, and it is
-the one place the answer makes no difference: the archive is by definition *out* of the
-window, so there is no pinned block for `"ownership": "unowned"` to withhold. It is
-recorded, carried across a transfer, and changes nothing — the param exists so every
-module answers the same question, not because every module has an interesting answer.
+This capability also reads the `ownership` param every module-backed one does, and it is the
+one place the answer barely shows: the archive is by definition *out* of the window, so
+`"ownership": "unowned"` has no pinned block to withhold and takes away only the prose about
+it. It is recorded, carried across a transfer, and otherwise changes nothing — the param
+exists so every module answers the same question, not because every module has an
+interesting answer.
 
 ## Parameters
 

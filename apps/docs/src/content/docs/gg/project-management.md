@@ -58,9 +58,9 @@ Mechanically that is [module ownership](/gg/modules/#ownership) doing the work: 
 in the run holds the one board, and an agent with no project-management capability holds it
 **unowned** — live enough to be dispatched an issue from, invisible in its prompt. An agent
 that *has* the capability can be put in the same position deliberately, by setting
-`"ownership": "unowned"` on it: it keeps every board tool and its prompt section, and loses
-the per-turn cost of carrying the whole decomposition — worth having on a board large enough
-that the block is the biggest thing in the window.
+`"ownership": "unowned"` on it: it keeps every board tool and loses both the per-turn cost of
+carrying the whole decomposition and the prompt section describing it — worth having on a
+board large enough that the block is the biggest thing in the window.
 
 Forking or transferring the board never copies it. Two boards would each keep their own
 per-prefix issue counter and would both hand out `AUTH-4`, for two different pieces of

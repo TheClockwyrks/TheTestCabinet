@@ -64,12 +64,11 @@ to the prompt: **a capability that is off contributes no prompt text at all**. T
 what makes an [ablation](/gg/overview/#the-capability-set) clean — the off arm's model
 is never told about a feature it does not have.
 
-What a capability that is *on* contributes is split in two, and
-[module ownership](/gg/modules/#ownership) is the line between them. The **instructions**
-— how to use the calls, what the limits are — are rendered whenever the capability is
-enabled, because an agent offered a tool has to be told what it is for. The **state** — the
-pinned blocks below, and the skills catalog — is rendered only for an `owned` module. An
-unowned one keeps its tools and its section and stops handing over its contents every turn.
+What a capability that is *on* contributes is decided by
+[module ownership](/gg/modules/#ownership). An **owned** module contributes both halves: the
+**instructions** — how to use the calls, what the limits are — and the **state**, the pinned
+blocks below and the skills catalog. An **unowned** one contributes neither: it is reachable
+through its tools and nothing else, and what documents those tools is their own schemas.
 
 So each system template is one `{{#if}}` section per capability, over a rendering context
 that carries both _whether_ each capability is on and _how it is configured_. A run's actual
@@ -154,7 +153,8 @@ incomplete items — are computed in Rust by the store that owns the DAG. The te
 lays the result out.
 
 Which of the three an agent actually gets is decided by its [modules](/gg/modules/): a
-block belongs to a module, and an [unowned](/gg/modules/#ownership) one contributes none.
+block belongs to a module, and an [unowned](/gg/modules/#ownership) one contributes neither a
+block nor the section that would have described it.
 The same rule is what keeps the board out of an agent that has no board tools — it holds
 the run's board unowned, so it can be [dispatched an issue](/gg/project-management/) from
 a board it is never shown.

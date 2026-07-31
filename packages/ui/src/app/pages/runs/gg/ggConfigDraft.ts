@@ -455,7 +455,7 @@ export const BUILT_IN_GG_CONFIGS: ReadonlyArray<BuiltInGgConfig> = [
   ),
   builtIn(
     "full",
-    "Every capability on, with the standard subagent params.",
+    "Every capability a single agent can run on its own, with the standard subagent params.",
     PRESET_CAP_IDS,
     FULL_PARAM_DEFAULTS,
   ),

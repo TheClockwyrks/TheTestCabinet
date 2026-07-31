@@ -30,8 +30,7 @@ statement about *that agent's window*, so it travels with the window it describe
 conversation. A read set that outlived its window would promise a retained body the window
 no longer holds.
 
-Skills are also the one module where [ownership](/gg/modules/#ownership) removes something
-from the *prompt* rather than from the window: the up-front listing of descriptions is the
-module's state, so an **unowned** skills module has no menu at all. `read_skill` still reads
-any skill by name — which makes "the agent knows the catalog exists but must be told a name"
-an arm a study can actually run.
+[Ownership](/gg/modules/#ownership) is worth a note here because for skills the catalog *is*
+the state: an **unowned** skills module has no menu and no section describing one, and
+`read_skill` still reads any skill by name — which makes "the agent must be told a name" an
+arm a study can actually run.

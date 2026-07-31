@@ -58,6 +58,6 @@ scope: task ids are model-authored, so two live writers would mint the same id f
 different pieces of work and there would be no merge that could tell them apart.
 
 Like every module-backed capability, tasks read an
-[`ownership`](/gg/modules/#ownership) param. An **unowned** task list keeps its tools, its
-contents and its prompt section, and stops being pinned into the window — the agent works
-it by calling into it rather than by being handed the whole list every turn.
+[`ownership`](/gg/modules/#ownership) param. An **unowned** task list keeps its tools and its
+contents, and stops reaching the prompt at all — no pinned list, and no section describing
+one. The agent works the list by calling into it rather than by being handed it every turn.

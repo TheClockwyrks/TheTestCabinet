@@ -175,14 +175,16 @@ scopes read differently at each of the places gg starts one. This is the whole t
 | **A [subagent](/gg/subagents/)** — an ad-hoc spawn, a [workflow](/gg/workflows/) stage, a [speculation](/gg/speculative-execution/) attempt | its own | the profile's instance | its **spawner's**, read/write — or its own, if the spawner keeps no memories | its spawner's, **read-only** |
 | **A reviewer, judge or merge agent** | its own | the profile's instance | its own — gg dispatches these directly, not through a spawner | its own, and **writable** |
 | **A [`fork`](/gg/fork-and-exec/)** | an independent copy | the same instance (already one) | its forker's, read/write | its forker's, read-only |
-| **A successor** ([`exec`](/gg/fork-and-exec/) or an [FSM transition](/gg/fsms/)) | the predecessor's instance, transferred | the predecessor's instance, transferred | the predecessor's instance, transferred | transferred, with access from the **successor's** own scope |
+| **A successor** ([`exec`](/gg/fork-and-exec/) or an [FSM transition](/gg/fsms/)) | the predecessor's instance, transferred | **its own profile's** instance, re-bound | the predecessor's instance, transferred | transferred, with access from the **successor's** own scope |
 
 The last row is a [transfer](/gg/modules/#transfer) rather than a binding, so it obeys the
 transfer rules first: a successor whose profile turns memories off gets none, and one that
 organizes them under a different [strategy](#the-three-strategies) gets a fresh instance and
-is told why. One consequence is worth stating outright, because it is the one place the
-matrix does not do what the scope alone suggests: a successor scoped `shared` inherits the
-store it was handed, and does **not** rebind to the instance its own profile keeps.
+is told why. `shared` is the one scope that overrides the transfer, and it has to: `shared`
+means *bound to the profile*, so a successor running a `shared` profile re-binds that
+profile's instance instead of keeping the one it was handed. Otherwise one profile could be
+curating two notebooks at once — the store its predecessor passed it, and the store every
+other instance of it resolved — which is the exact situation the scope exists to prevent.
 
 Two more things fall out of the table that are easy to miss:
 
@@ -303,6 +305,14 @@ crosses as part of the pinned prefix.
 The consequence to know about is that a pinned index can lag: a memory created
 since the last compaction is stored and readable but is not listed there yet. The
 system prompt says so, so the model does not read a missing line as a lost memory.
+
+The one boundary that is not a compaction is an agent's **first turn**. A holder that
+binds a store somebody else filled — a subagent that inherited its spawner's, the second
+instance of a `shared` profile, a successor handed the module by a
+[transfer](/gg/modules/#transfer) — opens on memories it never made a call for, so there is
+no thread carrying that news and nothing to leave alone. gg therefore builds the block once
+as the window is opened. A store that is empty renders nothing, so an agent that starts with
+nothing, as almost every agent does, is unaffected.
 
 ## What gg records
 

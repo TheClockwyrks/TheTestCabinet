@@ -23,9 +23,18 @@ read-only **built-ins** every operator shares:
 | Built-in        | What it is                                                               |
 | --------------- | ------------------------------------------------------------------------ |
 | `minimal`       | The default capability set — the launchable baseline.                    |
-| `full`          | Every capability on, with the standard compaction and subagent params.   |
+| `full`          | Every capability a single agent can run on its own.                      |
 | `no-compaction` | Everything on except the compaction backstop — the context-overflow arm. |
 | `shell-only`    | Shell and nothing else — the ablation extreme.                           |
+
+A built-in is one agent, and it is offered as something you can launch without editing it,
+which shapes the two "everything on" ones in two ways worth knowing. They leave out any
+capability that is inert or refused without something authored beside it — today that is
+[`fsm`](/gg/fsms/), whose whole content is a state table over *other* agent profiles a
+single-agent configuration does not have. And their one agent lists **itself** in its
+roster, in every scope, because that is the only profile it can name: without it
+`spawn_subagent` and `exec` would be offered nothing to target, and an agent that may file
+issues with no implementer to assign them to is refused at launch.
 
 Creating or editing one opens the capability-set editor. At the top sit the two
 run-level fieldsets — the **Run limits** (below) and the **model slots** (below) —

@@ -73,6 +73,10 @@ greatly, configure a compaction strategy whose summarizer runs on a **separate m
 `model` / `modelSlot` handoff). That is a configuration decision, and one gg has no basis
 for guessing at.
 
+A model that compacts and hands off in the **same turn** is not a special case either: the
+compaction is applied first, on both execution paths, so what the successor inherits is the
+window the turn actually produced rather than the one it started with.
+
 ### Becoming a whole process
 
 If the named agent is an [FSM shell](/gg/fsms/), the successor **enters that machine** at
@@ -97,9 +101,14 @@ scheduler slot, the same depth and parallelism caps, `agent_spawned` telemetry, 
 same `wait_for_subagents` / `send_message` handles every other subagent has. The forker
 gets the copy's id back on the call, exactly as `spawn_subagent` returns one.
 
-Because it is a child, `fork` needs the delegation machinery: it is offered only when the
-agent's profile also carries [subagents](/gg/subagents/) or [workflows](/gg/workflows/). A
-copy nobody can wait on or message is a leak rather than a second worker.
+Because it is a child, `fork` needs a way to **collect** what it makes: it is offered only
+when the agent's profile also carries [subagents](/gg/subagents/), which is what contributes
+`wait_for_subagents` and `send_message`. A copy nobody can wait on or message is a leak
+rather than a second worker. The **roster** is not part of that test — a fork names no
+target — so an agent whose allowlist is empty can still fork itself, and gets those two
+collection calls on account of the fork even though it can spawn nobody.
+[Workflows](/gg/workflows/) do not qualify: gg drives their stages itself and the capability
+offers neither call.
 
 ### What a copy holds
 
@@ -166,8 +175,8 @@ as an agent that chose not to.
 
 - a profile enabling `agent-transitions` with an **empty roster** (nothing for `exec` to
   become);
-- a profile enabling it with neither `subagents` nor `workflows` (no way to collect a copy,
-  so `fork` is withheld);
+- a profile enabling it without `subagents` (no `wait_for_subagents` and no `send_message`,
+  so there would be no way to collect a copy and `fork` is withheld);
 - a profile enabling it that a declared machine runs as one of its **states** (`exec` is
   withheld there; `fork` is unaffected).
 

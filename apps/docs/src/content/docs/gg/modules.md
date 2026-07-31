@@ -39,20 +39,20 @@ window *is* its prompt.
   the window on that module's own schedule, and skills contribute their up-front catalog
   listing. This is how every capability behaved before ownership was configurable, so a
   configuration that says nothing keeps behaving exactly as it did.
-- **`unowned`** — none of that reaches the window. No pinned block, no catalog listing, no
-  [linked-memory notice](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote).
-  Everything else is untouched: the tools are still offered, the store is still read and
-  written through them, the telemetry still reaches the console, and the module is still
-  copied and transferred like any other. It simply costs the holder no context until it
-  asks.
+- **`unowned`** — none of that reaches the prompt. No pinned block, no catalog listing, no
+  [linked-memory notice](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote)
+  — and no system-prompt section either: the capability's own paragraphs, its limits and its
+  vocabulary are all withheld. Everything else is untouched: the tools are still offered,
+  the store is still read and written through them, the telemetry still reaches the console,
+  and the module is still copied and transferred like any other.
 
-What ownership does **not** change is the system prompt's instructions for the capability.
-An unowned module still has its tools, and a model handed `add_task` with nothing telling
-it what a task list is for would use it worse than one told nothing at all. So the prompt
-still explains the capability; what it stops doing is handing over the contents every turn.
-[Skills](/gg/skills/) are the one place the two are the same thing — the catalog *is* the
-state — so an unowned skills module has no menu in the prompt, and `read_skill` reads a
-skill by name for an agent that was never shown the list.
+An unowned module is therefore reachable through its **tools and nothing else**. What the
+model still gets is each tool's own schema and description, which is what every tool is
+documented by; what it stops getting is a section of every request explaining a store it
+may never need, plus the contents of that store on top. That is the whole of the knob, and
+it is the reason [skills](/gg/skills/) look no different from the rest here even though for
+skills the catalog *is* the state: an unowned skills module has no menu in the prompt, and
+`read_skill` reads a skill by name for an agent that was never shown the list.
 
 An unrecognized value falls back to `owned` and is reported as a launch **warning**, never
 a launch failure — the same way every other unrecognized capability *value* is treated.

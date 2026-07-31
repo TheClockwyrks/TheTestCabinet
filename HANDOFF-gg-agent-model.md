@@ -1830,6 +1830,87 @@ where the shipped behaviour and §1.2 disagree, and the docs were written to the
    rework's features, removals, breaking changes and fixes. It is titled `(unreleased)` and is
    expected to grow the rest of v0.7.0's notes before release.
 
+### 7.6 The review pass — what three reviewers found, and what changed
+
+**LANDED** as the review-remediation stage, after stage 8's gate sweep. Three independent reviews
+of the whole branch produced twenty findings (with duplicates, thirteen distinct). Every confirmed
+one is fixed with a regression test; two were refuted. The behavioural changes worth carrying
+forward:
+
+1. **`unowned` now withholds the capability's system-prompt section too**, which reverses §7.5's
+   item 1. The requirement is that an unowned module is "accessible to the agent like any other
+   resource, but NOT auto-included into the system prompt", and §1.2, the `GgModuleOwnership`
+   rustdoc, `modules.rs`'s own module doc and the launch log all said exactly that while the code
+   withheld only the pinned block. Withholding half of it satisfied nobody: an operator setting the
+   param to keep a large module out of every request still paid for its prose every turn. The
+   prompt-assembly sites now gate on `describes(module)` — enabled *and* owned — and the answer to
+   §7.5's "what does a model do with an undocumented toolset?" is that a tool is documented by its
+   own schema, which is untouched. `modules.md`, `prompts.md`, `tasks.md`, `skills.md`,
+   `project-management.md` and `agent-managed-context.md` were re-edited to match.
+2. **`ContextModel::rebase` replaces the opening items in place** rather than going through
+   `replace_source`. Superseding retags an item's *source* but not its message, so the
+   predecessor's system prompt kept `Role::System` and every request a successor made carried two
+   system prompts — its predecessor's toolset, roster and ending calls at the head, and its own at
+   the tail. Nothing is paid for the in-place edit: a rebase only happens when item 0 changes,
+   which has already invalidated the cached prefix.
+3. **A succession that did not carry `history` is seeded like a fresh agent** — the fallback §4.1
+   specified and stage 4 did not implement. `Opening::Carried` gained a `history: bool`; when it is
+   false the successor gets its system prompt, the run's build prompt, its autoloaded specs and its
+   restored file views, with the handoff note on top. (§4.1 said the handoff message becomes the
+   build prompt; the note is already appended at the tail, and the run's own prompt is the durable
+   statement of the task, so it is the one that is pinned.)
+4. **The tool-calling path applies a compaction before a handoff**, as the responses-as-code path
+   already did. The two deferred effects were applied in the opposite order, so a turn that
+   declared both returned with the handoff and never reached the compaction: the summary the model
+   paid for was dropped and the successor inherited the window its predecessor believed it had just
+   condensed.
+5. **A holder that binds a store somebody else filled opens with the block pinned.**
+   `Refresh::AtBoundary` was sound while every store started empty; `inherited`, `shared` and a
+   transferred memories module all break that premise, and a read-only `scratchpad` holder has no
+   read call to fall back on. `refresh_boundary_blocks` now also runs once as the window is opened
+   (a no-op over an empty store).
+6. **`Module::adopt` for memories** re-points both watermarks at the store's head (a successor was
+   otherwise told that "another agent" wrote the memories it had written itself one turn earlier,
+   even under `isolated`), and **re-binds a `shared`-scoped successor to the registry entry for its
+   own profile** — §2.2's last table row, deferred by stages 3, 4 and 5 and now implemented where
+   they said it belonged.
+7. **A store counts its holders instead of its `Arc`s.** `adopt` guarded its cap re-resolution on
+   `Arc::strong_count == 1`, which is never true in production because every memory tool holds an
+   `Arc` clone through its `MemoryBinding` — so the receiving profile's limits were silently never
+   applied, the exact transfer bug `modules.rs` names as the one it exists to prevent. Holders
+   register their `HolderCursors` weakly with the store; that same registration is what lets the
+   revision **log** drop the prefix every live holder has read past, which was previously retained
+   for the life of the run with every body it ever held.
+8. **`MemoriesView.linked`** is now derived from `MemoriesRuntime::is_linked` — the holder's own
+   scope *or* the run-level fact that some declared profile inherits memories, resolved once in
+   `Orchestrator::build`. Inheritance is an offer the spawner makes whatever its own scope, so an
+   `isolated` root could be handed a mid-thread "another agent added a memory" notice with nothing
+   in its prompt having warned it. `is_linkable` (the holder's own binding) survives unchanged as
+   what a **fork** asks.
+9. **`fork` is gated on `subagents` alone**, and `wait_for_subagents` / `send_message` are offered
+   to an agent that can fork even when its roster is empty. `fork` names no target, so the roster
+   was never the right test; what a copy needs is a way to be collected, and those two calls come
+   with `subagents` (not with `workflows`, which gg drives itself).
+10. **The `full` and `no-compaction` console presets are launchable again.** They were built from
+    *every* catalogue capability, which enabled `fsm` with no `states` — a hard launch failure. A
+    `CapSpec.requiresAuthoring` flag keeps such a capability out of the everything-on presets. The
+    same test found a second, older break: a single-agent preset that enables project-management
+    with an empty roster is refused for having no implementer, so a preset that needs a roster now
+    lists **itself** in every scope, which is the only profile a single-agent configuration has and
+    a shape the contract explicitly allows.
+11. **`fork_modules` dispatches through the trait.** `Module::fork`/`Module::share` were dead —
+    the one production copier matched concrete fields — so the blanket `#![allow(dead_code)]` in
+    `modules.rs` (whose stated rationale had expired three stages earlier) was hiding the fact that
+    the abstraction was unused at the one call site it was written for. A new
+    `Module::links_when_forked` puts the per-kind choice with the kind, the blanket allow is gone,
+    and what is genuinely test-only carries a targeted `allow` naming it.
+
+Two findings were about the **record** rather than the behaviour, and were fixed on that side:
+`AgentTransition.state`'s contract prose said `None` for an `exec` while the emission (correctly)
+carries the entry state of a machine an `exec` walked into, so the rustdoc now describes that case
+and the console renders it; and three console comments counted eleven, eleven and nine context
+sources for a list of ten. Nothing a reviewer reported turned out to be wrong about the code.
+
 ### Stage 9 — `test(gg): end-to-end coverage of the composed model`
 
 The integration pass the individual stages cannot give: an offline run whose root

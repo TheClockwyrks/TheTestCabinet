@@ -111,6 +111,14 @@ has to say what it does, and a default nobody wrote down is exactly the sort of 
 a reader of the record cannot see. The console's editor pre-fills `["history"]` on every
 transition it creates, so the common case is still one click.
 
+A transition that does **not** carry `history` gives the successor a genuinely empty window,
+so gg opens it exactly as it opens a new agent's: the successor's own system prompt, then the
+run's build prompt (or, for an agent that was spawned, the brief it was spawned with), then
+whatever its own capabilities pre-load — [autoloaded specifications](/gg/autoload-specifications/), a
+[persistent](/gg/agent-persistence/) profile's file views — and the handoff note at the tail
+on top of them. A state that has been reset still knows what the run is for; what it has lost
+is the conversation, which is what the empty list asked for.
+
 Per module, a transition does one of three things:
 
 | | |
