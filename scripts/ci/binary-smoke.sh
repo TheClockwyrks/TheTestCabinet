@@ -31,13 +31,20 @@ cargo test --release --locked -p test-cabinet-core -p test-cabinet-cli --doc
 log "cargo build --release (tcab)"
 cargo build --release --locked -p test-cabinet-cli
 
-# Resolve the produced binary; it carries a .exe suffix on Windows.
-bin="target/release/tcab"
+# Resolve the produced binary. Cargo writes it under the *configured* target
+# directory, which is `target/` on the CI agents but is redirected by
+# `CARGO_TARGET_DIR` in the devcontainer (a shared, cached volume outside the
+# workspace) — so hardcoding `target/` would make this gate unrunnable in the
+# very environment a developer would reach for to reproduce a CI failure.
+# `scripts/build-gg-static.sh` resolves its artifact the same way.
+# The binary carries a .exe suffix on Windows.
+target_dir="${CARGO_TARGET_DIR:-target}"
+bin="$target_dir/release/tcab"
 if [[ ! -x "$bin" && -x "$bin.exe" ]]; then
 	bin="$bin.exe"
 fi
 if [[ ! -x "$bin" ]]; then
-	echo "expected a tcab binary under target/release/ but found none" >&2
+	echo "expected a tcab binary under $target_dir/release/ but found none" >&2
 	exit 1
 fi
 
