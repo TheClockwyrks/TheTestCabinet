@@ -104,11 +104,18 @@
   &[data-event-type="compact"] {
     --event-color: var(--ttc-event-search);
   }
+  // A succession — an exec, a fork, or a move into a new machine state — is the run
+  // putting a *different* agent to work, so it reads in the orchestration hue rather
+  // than in any of the working tones.
+  &[data-event-type="handoff"] {
+    --event-color: var(--ttc-event-orchestration);
+  }
 
-  // A context reclaim is a structural moment in a run, not another agent/tool line,
-  // so it takes a faint wash of its own hue and lifts out of the stream in every
-  // layout.
-  &[data-event-type="compact"] {
+  // A context reclaim and a succession are structural moments in a run, not another
+  // agent/tool line, so each takes a faint wash of its own hue and lifts out of the
+  // stream in every layout.
+  &[data-event-type="compact"],
+  &[data-event-type="handoff"] {
     background: color-mix(in srgb, var(--event-color) 8%, transparent);
   }
 }

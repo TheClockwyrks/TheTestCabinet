@@ -39,7 +39,10 @@ import {
   FsmPathStrip,
   SpeculationPanel,
   WorkflowStrip,
+  arrivalTag,
+  classifyArrivals,
   classifySpeculationRoles,
+  isSuccession,
   type SpeculationRole,
 } from "./AgentTreeView";
 import { ContextFillGraph } from "./ContextFillGraph";
@@ -281,6 +284,13 @@ export function GgAgentsExplorer({
     [forest, speculations],
   );
 
+  // How each instance arrived, for the instances that arrived by a succession rather
+  // than by a spawn (empty for the great majority of runs). It decides both how a node
+  // is marked and *where* it hangs: a successor is the same agent continuing, so it
+  // reads as the next link of a lineage rather than as something its predecessor
+  // delegated to.
+  const arrivals = useMemo(() => classifyArrivals(transitions), [transitions]);
+
   // The open/closed state of the tree's folders, keyed `folder:<id>` (an agent
   // folder) and `sub:<id>` (an agent's subagents folder). Only the *overrides* are
   // held: a folder the reader has not touched reads its default (see `folderOpen`),
@@ -347,6 +357,7 @@ export function GgAgentsExplorer({
   const ctx: ExplorerCtx = {
     capabilitySet,
     roles,
+    arrivals,
     isOpen,
     toggle,
     selection,
@@ -369,6 +380,7 @@ export function GgAgentsExplorer({
             state={selectedState}
             file={selection.file}
             role={roles.get(selectedNode.id)}
+            arrival={arrivals.get(selectedNode.id)}
             capabilitySet={capabilitySet}
             workflows={workflows}
             fsmPath={fsmPath}
@@ -389,6 +401,8 @@ export function GgAgentsExplorer({
 interface ExplorerCtx {
   capabilitySet: GgCapabilitySet | null;
   roles: Map<string, SpeculationRole>;
+  /** How each instance arrived, for the ones that arrived by a succession. */
+  arrivals: Map<string, AgentTransition>;
   /** Whether a folder is open, given the default it takes when untouched. */
   isOpen: (key: string, byDefault: boolean) => boolean;
   toggle: (key: string, byDefault: boolean) => void;
@@ -396,8 +410,9 @@ interface ExplorerCtx {
   onSelect: (selection: Selection) => void;
 }
 
-// One agent's folder: its files, then — when it spawned any — a `subagents` folder
-// holding their folders (recursively). The main agent is the depth-0 folder.
+// One agent's folder: its files, then — when it handed off — the instance it continued
+// as, then — when it spawned any — a `subagents` folder holding their folders
+// (recursively). The main agent is the depth-0 folder.
 function FolderNode({
   node,
   depth,
@@ -409,6 +424,18 @@ function FolderNode({
 }) {
   // This agent's own files — read off the profile it runs under, not the run's Root.
   const files = filesFor(ctx.capabilitySet, node.slot);
+  // A succession's successor is parented to its predecessor (a fresh id, the same
+  // depth) — so it arrives here as a child, and would otherwise read as something this
+  // agent delegated to. It is the same agent, so it hangs directly off this folder as
+  // the next link of the lineage, and only what this agent really *spawned* goes into
+  // the subagents folder. A fork is a spawn: it is a second worker, and it belongs
+  // there with the rest.
+  const successors = node.children.filter((child) =>
+    isSuccession(ctx.arrivals.get(child.id)),
+  );
+  const spawned = node.children.filter(
+    (child) => !isSuccession(ctx.arrivals.get(child.id)),
+  );
   const folderKey = `folder:${node.id}`;
   // The main agent is the "root" folder; a board-dispatched issue agent is also
   // top-level (parentless) but reads by its own id, so key on the id rather than
@@ -422,6 +449,7 @@ function FolderNode({
   const open = ctx.isOpen(folderKey, openByDefault);
   const label = isRoot ? "root" : node.id;
   const role = ctx.roles.get(node.id);
+  const arrival = ctx.arrivals.get(node.id);
 
   return (
     <li className={panels.fsNode}>
@@ -452,6 +480,17 @@ function FolderNode({
         {role === "winner" && (
           <span className={panels.fsWinner} title="chosen best-of-K attempt">
             ★
+          </span>
+        )}
+        {/* How this instance arrived, when it arrived by a succession: the state it
+            entered, or the move that produced it. Without it a lineage is N unrelated
+            ids, which is the one thing about a machine (or an exec) nobody can infer. */}
+        {arrival && (
+          <span
+            className={panels.fsArrival}
+            title={`${arrival.kind === "fork" ? "forked from" : "continued from"} ${arrival.fromAgentId}`}
+          >
+            {arrivalTag(arrival)}
           </span>
         )}
         {/* The trailing annotation — "main agent", or the profile the agent runs
@@ -498,8 +537,23 @@ function FolderNode({
               </li>
             );
           })}
-          {node.children.length > 0 && (
-            <SubagentsFolder node={node} depth={depth + 1} ctx={ctx} />
+          {/* The next incarnation of this same agent, in line with its own files —
+              not nested under `subagents`, which it is not one of. */}
+          {successors.map((successor) => (
+            <FolderNode
+              key={successor.id}
+              node={successor}
+              depth={depth + 1}
+              ctx={ctx}
+            />
+          ))}
+          {spawned.length > 0 && (
+            <SubagentsFolder
+              node={node}
+              spawned={spawned}
+              depth={depth + 1}
+              ctx={ctx}
+            />
           )}
         </ul>
       )}
@@ -509,12 +563,18 @@ function FolderNode({
 
 // The `subagents` folder under an agent that delegated: it holds a folder per agent
 // this one spawned, so the delegation tree nests exactly like directories.
+//
+// `spawned` is the agent's children minus its successors — an `exec`'d or transitioned
+// instance is parented to its predecessor but is not something the predecessor put to
+// work, so it hangs off the folder itself (see [FolderNode]) rather than in here.
 function SubagentsFolder({
   node,
+  spawned,
   depth,
   ctx,
 }: {
   node: AgentTreeNode;
+  spawned: AgentTreeNode[];
   depth: number;
   ctx: ExplorerCtx;
 }) {
@@ -540,11 +600,11 @@ function SubagentsFolder({
           <FolderIcon className={panels.fsIcon} />
         )}
         <span className={panels.fsName}>subagents</span>
-        <span className={panels.fsMeta}>{node.children.length}</span>
+        <span className={panels.fsMeta}>{spawned.length}</span>
       </button>
       {open && (
         <ul className={panels.fsChildren} style={fsGuide(depth)}>
-          {node.children.map((child) => (
+          {spawned.map((child) => (
             <FolderNode
               key={child.id}
               node={child}
@@ -565,6 +625,7 @@ function FileContent({
   state,
   file,
   role,
+  arrival,
   capabilitySet,
   workflows,
   fsmPath,
@@ -576,6 +637,8 @@ function FileContent({
   state: DerivedGgState;
   file: AgentFileKind;
   role?: SpeculationRole;
+  /** The succession this instance arrived by, when it arrived by one. */
+  arrival?: AgentTransition;
   capabilitySet: GgCapabilitySet | null;
   workflows: Workflow[];
   /** The states an FSM agent walked, and the successions between them. Empty for a
@@ -599,6 +662,7 @@ function FileContent({
           node={node}
           state={state}
           role={role}
+          arrival={arrival}
           isRoot={isRoot}
           workflows={workflows}
           fsmPath={fsmPath}
@@ -758,6 +822,7 @@ function OverviewFile({
   node,
   state,
   role,
+  arrival,
   isRoot,
   workflows,
   fsmPath,
@@ -767,6 +832,8 @@ function OverviewFile({
   node: AgentNode;
   state: DerivedGgState;
   role?: SpeculationRole;
+  /** The succession this instance arrived by, when it arrived by one. */
+  arrival?: AgentTransition;
   isRoot: boolean;
   workflows: Workflow[];
   /** The states an FSM agent walked, and the successions between them. Empty for a
@@ -801,7 +868,12 @@ function OverviewFile({
   return (
     <div className={panels.panelBody}>
       <div className={panels.overview}>
-        <AgentIdentity node={node} role={role} turns={state.turnCount} />
+        <AgentIdentity
+          node={node}
+          role={role}
+          turns={state.turnCount}
+          arrival={arrival}
+        />
         {/* The context-window gauges on their own row: how full the window is now,
             and its peak fullness at any point in the run, side by side. */}
         {(state.latestContext || peakContext) && (

@@ -1564,6 +1564,135 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByTitle("chosen best-of-K attempt")).toBeInTheDocument();
   });
 
+  // A run whose root is a **process**: the machine walks explore → build, the build
+  // state forks a copy of itself, and the fork execs into a different profile. gg mints
+  // a fresh agent id for every one of those (a successor needs its own self-contained
+  // message pool) and parents each to the instance it came from — so without the
+  // succession telemetry the tree reads as one agent that spawned four subagents and
+  // stopped, which is the wrong story about every part of it.
+  it("reads a machine, an exec and a fork as lineage rather than as delegation", () => {
+    const events: HarnessEvent[] = [
+      sessionStartedWith([
+        { name: "Feature", capabilities: ["fsm"] },
+        { name: "Explorer", capabilities: ["memories"] },
+        { name: "Builder", capabilities: ["tasks", "memories"] },
+        { name: "Verifier", capabilities: ["tasks"] },
+      ]),
+      // The machine enters its first state on the root instance.
+      gg({
+        type: "fsm_state",
+        fsm: "Feature",
+        state: "explore",
+        agent: "Explorer",
+      }),
+      // …then transitions, carrying the conversation and the task list and dropping
+      // the board. The handoff lands on the OUTGOING stream, the state on the incoming.
+      gg({
+        type: "agent_transition",
+        kind: "fsm",
+        toAgentId: "agent-1",
+        agent: "Builder",
+        state: "build",
+        transferred: ["history", "tasks"],
+        dropped: ["board"],
+        initialized: ["memories"],
+      }),
+      ggFrom("agent-1", "root", {
+        type: "agent_spawned",
+        slot: "Builder",
+        modelId: "claude-sonnet-4-8",
+        depth: 0,
+      }),
+      ggFrom("agent-1", "root", {
+        type: "fsm_state",
+        fsm: "Feature",
+        state: "build",
+        agent: "Builder",
+        from: "explore",
+      }),
+      // The build state runs a copy of itself beside it — a fork is a child, not a
+      // succession, so it keeps its place in the subagents folder.
+      ggFrom("agent-1", "root", {
+        type: "agent_transition",
+        kind: "fork",
+        toAgentId: "agent-2",
+        agent: "Builder",
+        transferred: ["history", "tasks", "memories"],
+        dropped: [],
+        initialized: [],
+      }),
+      ggFrom("agent-2", "agent-1", {
+        type: "agent_spawned",
+        slot: "Builder",
+        modelId: "claude-sonnet-4-8",
+        depth: 1,
+        brief: "Take the renderer while I do the input.",
+      }),
+      // …and the copy then becomes a different profile outright.
+      ggFrom("agent-2", "agent-1", {
+        type: "agent_transition",
+        kind: "exec",
+        toAgentId: "agent-3",
+        agent: "Verifier",
+        transferred: ["history"],
+        dropped: ["memories"],
+        initialized: ["tasks"],
+      }),
+      ggFrom("agent-3", "agent-2", {
+        type: "agent_spawned",
+        slot: "Verifier",
+        modelId: "claude-haiku-4-8",
+        depth: 1,
+      }),
+    ];
+    renderMonitor(events);
+    openTab("Instances");
+
+    // The root's Overview carries the machine's path: the states walked, the profile
+    // each runs, and what each transition carried into it.
+    expect(screen.getByText("Process · Feature")).toBeInTheDocument();
+    expect(screen.getByText("explore")).toBeInTheDocument();
+    expect(screen.getAllByText("build").length).toBeGreaterThan(0);
+    expect(screen.getByText("+history +tasks")).toBeInTheDocument();
+
+    // The tree marks how each instance arrived. The successor of a transition hangs
+    // off the root directly — it is the same agent continuing — rather than inside a
+    // `subagents` folder it is not one of.
+    expect(screen.getByText("⇢ build")).toBeInTheDocument();
+    expect(screen.queryByText("subagents")).toBeNull();
+
+    // Opening it shows the fork, which IS a spawned agent and so keeps its place in
+    // the subagents folder.
+    openFolder("agent agent-1");
+    expect(screen.getByText("subagents")).toBeInTheDocument();
+    expect(screen.getByText("⑂ fork")).toBeInTheDocument();
+
+    // The successor's own Overview says where it came from and what came with it,
+    // which is the difference between continuing this work and starting fresh.
+    openFile("agent-1 overview");
+    expect(screen.getByText("transitioned from")).toBeInTheDocument();
+    expect(
+      screen.getByText("carried history, tasks · dropped board · fresh memories"),
+    ).toBeInTheDocument();
+
+    // The exec'd instance reads the same way, under the profile it became — and it
+    // hangs off the fork that exec'd, at the same depth, rather than under a second
+    // `subagents` folder.
+    openFolder("agent agent-2");
+    openFolder("agent agent-3");
+    openFile("agent-3 overview");
+    expect(screen.getByText("continued from")).toBeInTheDocument();
+    expect(screen.getAllByText("Verifier").length).toBeGreaterThan(0);
+
+    // And the run's activity feed carries both halves of a succession, each on the
+    // stream it actually landed on.
+    openFile("root activity");
+    expect(
+      screen.getByText(/Transitioned to `build` \(Builder\)/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Entered `explore`, running Explorer/)).toBeInTheDocument();
+  });
+
   it("shows empty states when no gg telemetry arrives", () => {
     renderMonitor([]);
     // No session_started yet ⇒ Queued on the Dashboard.

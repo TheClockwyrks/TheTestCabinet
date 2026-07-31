@@ -134,7 +134,7 @@ function MemoryRecord({
   entry,
   perMemoryCap,
 }: {
-  entry: GgMemoryHistory;
+  entry: MemoryRow;
   perMemoryCap: number | null;
 }) {
   const overLen = perMemoryCap !== null && entry.len >= perMemoryCap;
@@ -145,6 +145,17 @@ function MemoryRecord({
           {entry.name}
           {entry.live ? null : (
             <span className={styles.memoryDeletedTag}>deleted</span>
+          )}
+          {/* A memory this agent holds but did not write. It has no revision history
+              here for the same reason: gg attributes a revision to its author, and the
+              author is somebody else. */}
+          {entry.byAnother && (
+            <span
+              className={styles.memoryForeignTag}
+              title="Written by another agent holding this same memory instance — its revisions are on that agent's stream."
+            >
+              another holder
+            </span>
           )}
         </span>
         <span
@@ -198,20 +209,49 @@ function MemoryRecord({
   );
 }
 
-// The records to list: the revision history when gg reported one, and otherwise the
-// live snapshot lifted into the same shape. The fallback is what keeps this panel
-// honest on a run recorded before gg streamed revisions — such a run has no history
-// to show, but its live memories are still worth listing.
-function records(memory: GgMemoryState): GgMemoryHistory[] {
-  if (memory.history.length > 0) return memory.history;
-  return memory.memories.map((mem) => ({
-    name: mem.name,
-    revisions: [],
-    live: true,
-    description: mem.description,
-    len: mem.len,
-    lines: mem.lines,
-  }));
+// One memory as the panel lists it: its record, plus whether **this** agent is the one
+// that wrote it. On a linked instance the two are not the same question — see [records].
+interface MemoryRow extends GgMemoryHistory {
+  byAnother: boolean;
+}
+
+// Whether an agent holding this instance is holding it with somebody else. `isolated`
+// (and the empty scope of a record written before scoping existed) is a private
+// notebook, where every memory in the snapshot is necessarily this agent's own.
+function linked(scope: string): boolean {
+  return scope === "shared" || scope === "inherited" || scope === "read-only";
+}
+
+// The records to list: this agent's own revision history, plus — on a **linked**
+// instance — every memory in the live snapshot it did not write.
+//
+// The two sources are different by construction. gg attributes a `memory_revision` to
+// the agent that performed the write, so a holder's stream carries the history of its
+// own writes and nothing else, while the `memory_state` snapshot is the whole store as
+// that holder sees it. On an isolated instance those coincide; on a shared or inherited
+// one they do not, and listing only the history would report a store of six notes as
+// the two this agent happened to type. So the snapshot fills the rest in, marked as
+// another holder's — which is also the honest thing to say, since this agent's stream
+// has no revisions for them to show.
+//
+// The same fallback keeps the panel honest on a run recorded before gg streamed
+// revisions at all: nothing is marked, because on an isolated store there is nobody
+// else it could be.
+function records(memory: GgMemoryState): MemoryRow[] {
+  const own = memory.history.map((entry) => ({ ...entry, byAnother: false }));
+  const mine = new Set(own.map((entry) => entry.name));
+  const others = memory.memories
+    .filter((mem) => !mine.has(mem.name))
+    .map((mem) => ({
+      name: mem.name,
+      revisions: [],
+      live: true,
+      description: mem.description,
+      len: mem.len,
+      lines: mem.lines,
+      byAnother: linked(memory.scope),
+    }));
+  return [...own, ...others];
 }
 
 export function MemoriesList({ memory }: MemoriesListProps) {
@@ -240,6 +280,7 @@ export function MemoriesList({ memory }: MemoriesListProps) {
     value: entry.len,
     lines: entry.lines,
     live: entry.live,
+    byAnother: entry.byAnother,
   }));
   // Peaks are absent on a record written before gg reported them; the live figure is
   // the honest floor for one, and stating it as the peak is better than showing zero.

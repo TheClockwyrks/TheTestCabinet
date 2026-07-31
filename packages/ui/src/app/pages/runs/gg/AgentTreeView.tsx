@@ -21,7 +21,7 @@ import type {
   Workflow,
   WorkflowStage,
 } from "./useGgRunState";
-import { ROOT_ID } from "./useGgRunState";
+import { ROOT_ID, moduleFate } from "./useGgRunState";
 import type {
   GgAgentStatus,
   GgSpeculationPhase,
@@ -77,6 +77,67 @@ export function classifySpeculationRoles(
   return roles;
 }
 
+// --- Successions (exec / fork / FSM transitions) ------------------------------
+
+// How an agent instance came into being, when it did not simply get spawned: keyed by
+// the instance that arrived, so any surface holding an agent id can ask "how did this
+// one start?" without re-walking the transition list.
+//
+// gg mints a fresh id per incarnation (the successor needs its own self-contained
+// message pool), and a successor's parent is its predecessor — so without this map an
+// `exec` reads as an agent that spawned a subagent and then stopped, which is precisely
+// the wrong story about what happened.
+export function classifyArrivals(
+  transitions: AgentTransition[],
+): Map<string, AgentTransition> {
+  return new Map(transitions.map((t) => [t.toAgentId, t] as const));
+}
+
+// Whether an arrival is a **succession** — the same agent continuing under a new
+// profile or in a new state — rather than a fork, which really is a second agent
+// working beside the one that made it.
+export function isSuccession(arrival: AgentTransition | undefined): boolean {
+  return arrival != null && arrival.kind !== "fork";
+}
+
+// The short marker a lineage carries in the tree: which of the three kinds of
+// succession produced this node, named the way the run's configuration names it (an
+// FSM transition by the state it entered, the other two by the move itself).
+export function arrivalTag(arrival: AgentTransition): string {
+  if (arrival.kind === "fork") return "⑂ fork";
+  if (arrival.kind === "fsm") return `⇢ ${arrival.state ?? "state"}`;
+  return "⇢ exec";
+}
+
+// The lineage line on an agent's identity card: where this instance came from, and
+// what came with it. The module fate is the whole point — a successor that carried the
+// conversation and one that started on an empty window are the same two ids otherwise.
+function AgentArrival({ arrival }: { arrival: AgentTransition }) {
+  const label =
+    arrival.kind === "fork"
+      ? "forked from"
+      : arrival.kind === "fsm"
+        ? "transitioned from"
+        : "continued from";
+  const fate = moduleFate(
+    arrival.transferred,
+    arrival.dropped,
+    arrival.initialized,
+  );
+  return (
+    <p className={styles.agentArrival}>
+      <span className={styles.agentFieldLabel}>{label}</span>
+      <span className={styles.agentArrivalFrom}>{arrival.fromAgentId}</span>
+      {arrival.kind === "fsm" && arrival.state && (
+        <span className={styles.agentArrivalState}>
+          into <strong>{arrival.state}</strong>
+        </span>
+      )}
+      {fate && <span className={styles.agentArrivalModules}>{fate}</span>}
+    </p>
+  );
+}
+
 // The human label for an agent's lifecycle status. `blocked` is called out as
 // "waiting" because that is the state that matters at a glance in a multi-agent
 // run — an agent that has released its slot and is waiting on its subagents.
@@ -110,6 +171,7 @@ export function AgentIdentity({
   node,
   role,
   turns,
+  arrival,
 }: {
   node: AgentNode;
   role?: SpeculationRole;
@@ -119,6 +181,13 @@ export function AgentIdentity({
    * agent's reduced slice); omitted where only the tree node is in hand.
    */
   turns?: number;
+  /**
+   * The succession this instance arrived by — an `exec`, a `fork`, or a move into a
+   * machine state — when it arrived by one rather than being spawned. It carries what
+   * each module did, which is the difference between continuing an agent's work and
+   * starting a fresh one under a new name.
+   */
+  arrival?: AgentTransition;
 }) {
   // Only the main agent is "root" — a board-dispatched issue agent is parentless too
   // (it is its own top-level tree in the run's forest) but reads by its own
@@ -192,6 +261,9 @@ export function AgentIdentity({
           )}
         </div>
       )}
+      {/* Where this instance came from, when it did not simply get spawned — the line
+          that turns two consecutive ids into one lineage. */}
+      {arrival && <AgentArrival arrival={arrival} />}
       {/* What the agent is blocked on, while it is blocked. "waiting" alone reads the
           same as stuck; the condition is what says the run is making progress
           elsewhere and this agent is parked on it. */}

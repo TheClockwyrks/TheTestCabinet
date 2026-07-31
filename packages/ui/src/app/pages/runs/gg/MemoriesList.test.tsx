@@ -70,4 +70,64 @@ describe("MemoriesList", () => {
     expect(screen.getAllByText("controls").length).toBeGreaterThan(0);
     expect(screen.queryByText("read-only")).not.toBeInTheDocument();
   });
+
+  // gg attributes a `memory_revision` to the agent that made the write, so a linked
+  // holder's own stream carries the history of ITS writes and nothing else, while its
+  // snapshot is the whole store. Listing only the history would report a store of two
+  // notes as the one this agent happened to type; listing the snapshot unmarked would
+  // claim it wrote them all.
+  it("marks a memory it holds but did not write, on a linked instance", () => {
+    render(
+      <MemoriesList
+        memory={memory({
+          scope: "inherited",
+          memories: [
+            { name: "controls", description: "Input scheme.", len: 20, lines: 1 },
+            { name: "runbook", description: "How to roll.", len: 40, lines: 2 },
+          ],
+          count: 2,
+          history: [
+            {
+              name: "controls",
+              revisions: [
+                {
+                  revision: 1,
+                  change: "written",
+                  description: "Input scheme.",
+                  body: "WASD.",
+                  len: 20,
+                  lines: 1,
+                },
+              ],
+              live: true,
+              description: "Input scheme.",
+              len: 20,
+              lines: 1,
+            },
+          ],
+        })}
+      />,
+    );
+    // Both are listed — the store is the store, whoever wrote it…
+    expect(screen.getAllByText("controls").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("runbook").length).toBeGreaterThan(0);
+    // …and exactly the one this agent did not write is attributed, which is also why
+    // it shows no revision history.
+    expect(screen.getAllByText("another holder").length).toBe(1);
+  });
+
+  it("attributes nothing on an isolated instance, where there is nobody else", () => {
+    render(
+      <MemoriesList
+        memory={memory({
+          scope: "isolated",
+          memories: [
+            { name: "controls", description: "Input scheme.", len: 20, lines: 1 },
+          ],
+          history: [],
+        })}
+      />,
+    );
+    expect(screen.queryByText("another holder")).not.toBeInTheDocument();
+  });
 });

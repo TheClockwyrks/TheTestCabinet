@@ -59,7 +59,12 @@ export type FeedTone =
   | "ok"
   | "fail"
   | "warn"
-  | "compact";
+  | "compact"
+  // A succession: this agent became another one, cloned itself, or moved into a new
+  // state of its machine (see gg/fork-and-exec, gg/fsms). Structural, like a
+  // compaction, rather than another agent/tool line — the feed lifts it out for the
+  // same reason.
+  | "handoff";
 
 export interface FeedRow {
   key: string;
@@ -664,6 +669,23 @@ export function retainedSummary(retained: GgRetainedState): string {
   ].join(" / ");
 }
 
+// What each module did in a succession, as one line: what the successor received live,
+// what was dropped outright (its backing store gone), and what it starts fresh. This is
+// the difference between a handoff and a restart, and it is otherwise invisible — two
+// agent ids with nothing between them.
+export function moduleFate(
+  transferred: ReadonlyArray<string>,
+  dropped: ReadonlyArray<string>,
+  initialized: ReadonlyArray<string>,
+): string | undefined {
+  const parts = [
+    transferred.length ? `carried ${transferred.join(", ")}` : null,
+    dropped.length ? `dropped ${dropped.join(", ")}` : null,
+    initialized.length ? `fresh ${initialized.join(", ")}` : null,
+  ].filter((part): part is string => part !== null);
+  return parts.length ? parts.join(" · ") : undefined;
+}
+
 // The human label for an agent-managed-context action.
 function contextActionLabel(action: GgContextAction): string {
   switch (action) {
@@ -759,6 +781,32 @@ function ggFeedRow(
         detail: `Session ended: ${gg.status}.`,
         tone: gg.status === "completed" ? "ok" : "fail",
       };
+    // The two halves of a succession, which land on DIFFERENT streams: the outgoing
+    // instance reports the handoff it made, and the instance that arrives reports the
+    // state it arrived in. Each is the one line that explains why a stream stops (or
+    // starts) mid-run, so each belongs in the feed it lands in.
+    case "agent_transition":
+      return {
+        ...base,
+        label: gg.kind === "fork" ? "fork" : "handoff",
+        detail:
+          gg.kind === "fork"
+            ? `Forked a copy of this agent as ${gg.toAgentId}.`
+            : gg.kind === "fsm"
+              ? `Transitioned to \`${gg.state ?? "?"}\` (${gg.agent}) as ${gg.toAgentId}.`
+              : `Continued as \`${gg.agent}\` (${gg.toAgentId}).`,
+        args: moduleFate(gg.transferred, gg.dropped, gg.initialized),
+        tone: "handoff",
+      };
+    case "fsm_state":
+      return {
+        ...base,
+        label: "state",
+        detail: gg.from
+          ? `Entered \`${gg.state}\` from \`${gg.from}\`, running ${gg.agent}.`
+          : `Entered \`${gg.state}\`, running ${gg.agent}.`,
+        tone: "handoff",
+      };
     case "usage":
     case "context_breakdown":
     // The message log drives the per-agent Requests view, not the feed, so its two
@@ -783,9 +831,6 @@ function ggFeedRow(
     case "worktree_merged":
     case "slot_usage":
     case "workflow_stage":
-    // The FSM kinds drive the state-path strip and the agent lineage, not the feed.
-    case "fsm_state":
-    case "agent_transition":
     // The issue-review kind is surfaced on the board (per-issue badge +
     // actionable items) and speculation on the agent tree (winner/attempts +
     // summary), not the feed, so they render no row.

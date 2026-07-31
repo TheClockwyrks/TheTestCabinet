@@ -1021,6 +1021,14 @@ $context-palette: (
     stroke: color-mix(in srgb, t.$color-text-muted 55%, transparent);
   }
 
+  // A memory written by another holder of the same instance: the same size ramp (it
+  // costs the same window), a solid contrasting edge, so authorship reads at the tile's
+  // border rather than competing with the magnitude its fill encodes.
+  &[data-foreign] {
+    stroke: var(--ttc-event-orchestration);
+    stroke-width: 1.5;
+  }
+
   &[data-active] {
     stroke: t.$color-text;
     stroke-width: 1.5;
@@ -1088,6 +1096,11 @@ $context-palette: (
     border-style: dashed;
     border-color: color-mix(in srgb, t.$color-text-muted 55%, transparent);
   }
+
+  &[data-foreign]::before {
+    background: color-mix(in srgb, t.$color-accent 55%, t.$color-surface);
+    border-color: var(--ttc-event-orchestration);
+  }
 }
 
 .treemapHint {
@@ -1110,6 +1123,19 @@ $context-palette: (
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: t.$color-text-muted;
+  font-weight: 500;
+}
+
+// A memory this agent holds but did not write — only possible on a linked instance,
+// and the reason such a row carries no revision history of its own.
+.memoryForeignTag {
+  margin-left: t.$space-xs;
+  padding: 0 t.$space-2xs;
+  border: t.$border-hairline solid var(--ttc-event-orchestration);
+  border-radius: t.$radius-sm;
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--ttc-event-orchestration);
   font-weight: 500;
 }
 
@@ -1418,6 +1444,38 @@ $context-palette: (
   font-size: 0.68rem;
   color: t.$color-text-muted;
   margin-right: t.$space-xs;
+}
+
+// The lineage line on an identity card: which instance this one continued (or was
+// forked from), which state it entered, and what each module did on the way. It is the
+// difference between an agent carrying on under a new profile and a fresh agent that
+// happens to run next, which two ids alone can never say.
+.agentArrival {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.agentArrivalFrom {
+  font-family: monospace;
+  color: t.$color-text;
+}
+
+.agentArrivalState strong {
+  color: var(--ttc-event-orchestration);
+}
+
+// What the succession carried, dropped and started fresh — the module fate, in the
+// same words the feed row uses.
+.agentArrivalModules {
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 70%, transparent);
 }
 
 // What a blocked agent is waiting on. Takes the warm "waiting" cue the status pill
@@ -2127,6 +2185,24 @@ $fs-caret-glyph: 0.75rem;
 // starting at a different offset on every row.
 .fsMetaTrailing {
   margin-left: auto;
+}
+
+// How an instance arrived, when it arrived by a succession rather than by a spawn: the
+// state a machine entered, or the move (`exec`/`fork`) that produced it. Reads in the
+// orchestration hue the succession's feed row does, so the two say the same thing.
+.fsArrival {
+  flex: 0 0 auto;
+  margin-left: t.$space-2xs;
+  padding: 0 t.$space-2xs;
+  border-radius: t.$radius-sm;
+  background: color-mix(
+    in srgb,
+    var(--ttc-event-orchestration) 14%,
+    transparent
+  );
+  color: var(--ttc-event-orchestration);
+  font-size: 0.72rem;
+  white-space: nowrap;
 }
 
 // The chosen best-of-K attempt, starred on its folder.

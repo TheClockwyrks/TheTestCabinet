@@ -6,7 +6,9 @@
 // Size is a magnitude, so the fill is a SEQUENTIAL ramp: one hue (the accent),
 // stepped light-to-dark by the tile's share of the total. Deleted memories are a
 // state rather than another series, so they are neutral and dashed instead of another
-// hue, and the legend names both — identity is never carried by color alone.
+// hue, and a memory written by another holder of the same instance takes a distinct
+// edge for the same reason. The legend names all three — identity is never carried by
+// color alone.
 //
 // The layout is the standard squarified treemap (Bruls/Huizing/van Wijk): tiles are
 // packed in rows along the shorter side of the free rectangle, growing each row while
@@ -17,12 +19,16 @@ import { useState } from "react";
 import styles from "./GgPanels.module.scss";
 
 // One memory to place. `value` is what the area encodes (its body length in
-// characters); `live` distinguishes a memory still held from one since deleted.
+// characters); `live` distinguishes a memory still held from one since deleted, and
+// `byAnother` a memory this agent holds on a shared instance but did not write (see
+// gg/memories) — which is a fact about authorship rather than about size, so it is
+// carried by the tile's edge and never by its area.
 export interface MemoryTile {
   name: string;
   value: number;
   lines: number;
   live: boolean;
+  byAnother?: boolean;
 }
 
 // A placed tile: the input plus its rectangle in the map's coordinate space, and its
@@ -166,6 +172,7 @@ export function MemoryTreemap({ tiles }: { tiles: MemoryTile[] }) {
 
   const active = placed.find((t) => t.name === hovered) ?? null;
   const anyDeleted = placed.some((t) => !t.live);
+  const anyForeign = placed.some((t) => t.byAnother);
 
   return (
     <figure className={styles.treemap}>
@@ -199,12 +206,13 @@ export function MemoryTreemap({ tiles }: { tiles: MemoryTile[] }) {
                 fill={fillFor(tile, i, placed.length)}
                 className={styles.treemapTile}
                 data-deleted={tile.live ? undefined : ""}
+                data-foreign={tile.byAnother ? "" : undefined}
                 data-active={active?.name === tile.name ? "" : undefined}
               />
               <title>
                 {`${tile.name} — ${numberFmt.format(tile.value)} characters, ${numberFmt.format(tile.lines)} lines${
                   tile.live ? "" : " (deleted)"
-                }`}
+                }${tile.byAnother ? " (written by another holder)" : ""}`}
               </title>
               {labelled && (
                 <>
@@ -236,6 +244,7 @@ export function MemoryTreemap({ tiles }: { tiles: MemoryTile[] }) {
             chars · {numberFmt.format(active.lines)} lines ·{" "}
             {Math.round(active.share * 100)}% of all memory written
             {active.live ? "" : " · deleted"}
+            {active.byAnother ? " · another holder" : ""}
           </span>
         ) : (
           <span className={styles.treemapLegend}>
@@ -245,6 +254,11 @@ export function MemoryTreemap({ tiles }: { tiles: MemoryTile[] }) {
             {anyDeleted && (
               <span className={styles.treemapKey} data-deleted="">
                 Deleted
+              </span>
+            )}
+            {anyForeign && (
+              <span className={styles.treemapKey} data-foreign="">
+                Another holder
               </span>
             )}
             <span className={styles.treemapHint}>area = characters</span>
