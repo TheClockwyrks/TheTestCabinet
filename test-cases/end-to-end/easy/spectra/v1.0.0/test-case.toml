@@ -422,8 +422,10 @@ validation = { script = "validation/swarm/both-bands.mjs", outputs = [
 id = "sways"
 title = "The formation sways as one body"
 description = "The formation drifts side to side as one rigid body: its drones share the same horizontal sway, swinging about ±20 px between the peak and the trough."
-# Automated validation: read formation drones' x at the sway peak and trough and
-# confirm they move together by ~±20 px. See validation/swarm/sways.mjs.
+# Automated validation: sweep a whole sway period, reading posed formation drones'
+# absolute x, and confirm each swings the full ~40 px peak to trough, that they all
+# move together, and that the extremes sit half a period apart. See
+# validation/swarm/sways.mjs.
 validation = { script = "validation/swarm/sways.mjs", outputs = [
   { id = "sway", name = "The formation swaying side to side", kind = "video" },
 ] }
@@ -441,9 +443,11 @@ validation = { script = "validation/swarm/dive-bends-fires.mjs", outputs = [
 [[review.categories.items]]
 id = "dive-returns"
 title = "A diver returns to its slot"
-description = "A drone that survives its dive returns to its formation slot (phase returning, then formation back at its slot) rather than vanishing."
-# Automated validation: force a real dive and confirm the drone returns to its slot.
-# See validation/swarm/dive-returns.mjs.
+description = "A drone that survives its dive returns to its formation slot (phase returning, then formation back at its slot) rather than vanishing. A dive may end either way the spec allows — looping back up before the bottom, or exiting through the bottom and re-appearing from the top — so a diver that wraps is correct, not a fault. It flies the dive at about 300 px/s, and the round trip is continuous rather than a jump."
+# Automated validation: force a real dive and sample the whole round trip — confirm
+# the drone re-settles in its slot, that the diving leg travels at about the dive
+# speed, and that the path holds at most one discontinuity and only as a
+# bottom-to-top wrap. See validation/swarm/dive-returns.mjs.
 validation = { script = "validation/swarm/dive-returns.mjs", outputs = [
   { id = "return", name = "A diver looping back to its slot", kind = "video" },
 ] }

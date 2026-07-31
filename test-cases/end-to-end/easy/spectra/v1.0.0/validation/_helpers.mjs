@@ -43,6 +43,14 @@
 export const FIELD_W = 1280;
 export const FIELD_H = 720;
 
+// The play field: everything that moves lives in `y` in [64, 656] across the full
+// width, with the HUD strips above and below reserved (`specs/playfield.md`). A drone
+// may cross a strip only in transit — a dive exiting through the bottom and
+// re-appearing from the top — which is what makes these the boundaries a wrap is
+// recognised by.
+export const PLAY_TOP = 64;
+export const PLAY_BOTTOM = 656;
+
 // The simulation rate, and the finest granularity a sweep can poll at. One tick is
 // one fixed simulation step (this replaces the old `FIXED = 1/120` seconds
 // constant); pass `poll: TICK` to `api.until` when the exact instant of an event
@@ -73,10 +81,15 @@ export const RES_MAX = 100;
 export const SWAY_AMP = 20; // formation sway amplitude, px
 export const SWAY_PERIOD = 5; // formation sway period, seconds
 export const SWAY_PERIOD_TICKS = 600; // 5 s
-export const SWAY_PEAK_T = 1.25; // waveTime of the +amplitude peak
-export const SWAY_PEAK_TICKS = 150; // 1.25 s
-export const SWAY_TROUGH_T = 3.75; // waveTime of the -amplitude trough
-export const SWAY_TROUGH_TICKS = 450; // 3.75 s
+export const SWAY_SWING = 2 * SWAY_AMP; // peak to trough: +20 px down to -20 px
+//
+// There are deliberately no SWAY_PEAK / SWAY_TROUGH constants. `specs/playfield.md`
+// fixes the sway's amplitude and period and nothing else: where in the sinusoid a
+// wave STARTS is a build's own choice, so "the peak is 1.25 s into the wave" is a
+// property of one implementation rather than a spec fact, and sampling at that
+// instant reads an arbitrary point on a conformant build whose phase begins
+// elsewhere. Sweep a whole period and read the swing out of it instead
+// (`swarm/sways.mjs`).
 
 export const DIVE_SPEED = 300; // stage-1 dive speed, px/s
 export const PRISM_INVERT_Y = 640; // a diving Prism crossing this inverts the field
@@ -246,14 +259,28 @@ export async function shootFromLane(
 }
 
 /**
- * Pose a bystander drone well away from a scenario's target, purely so destroying
- * the target does not empty the field.
+ * Pose a bystander drone well away from a scenario's target, purely so the field is
+ * never empty while the scenario runs.
  *
- * Destroying the last drone on the field clears the STAGE (`specs/gameplay.md`), and
- * the record pass keeps filming for about a second after `act` returns — so an item
- * that kills its only drone spends the end of its clip, often most of it, on the
- * `STAGE n CLEARED` interstitial rather than on the field. A bystander keeps the wave
- * alive so the clip ends on the game.
+ * An empty field is a CLEARED WAVE (`specs/gameplay.md`), and the game is entitled
+ * to say so the moment it sees one — it does not ask how the field came to be empty,
+ * so `startClean`'s own `clearField` reads exactly like the player having shot the
+ * last drone. Two things follow, and both bite:
+ *
+ *   * The clip. The record pass keeps filming for about a second after `act`
+ *     returns, so an item that kills its only drone spends the end of its clip —
+ *     often most of it — on the `STAGE n CLEARED` interstitial rather than on the
+ *     field.
+ *   * The verdict. `stageCleared` is a screen of its own: the wave stops updating,
+ *     so the ship no longer answers a held movement or fire key and a keyboard
+ *     action bound to the live wave (the flip) does nothing at all. An item that
+ *     poses an empty field and then drives the controls is not testing the controls,
+ *     it is testing a build that has already left the wave — and it reads as the
+ *     binding being unwired.
+ *
+ * So a bystander is not only for scenarios that destroy something: any item that
+ * `startClean`s and then spends time WITHOUT posing a drone of its own needs one, or
+ * the wave ends underneath it on the first tick.
  *
  * It is never fired at and never read by an assertion: each check finds its own drone
  * by the id `spawnDrone` gave it. Park it off to one side of whatever column the
@@ -446,6 +473,13 @@ export async function actHoldSample(
 // Each opens with `LEAD_IN_TICKS` of the pre-state, because these are one-press
 // actions that resolve instantly and would otherwise land inside the opening the
 // record pass never films.
+//
+// Each also keeps a drone on the field for the whole hold. A controls item drives
+// the keyboard and then lets time run, and an empty field is a wave the game may
+// call cleared on the first tick — which takes the game out of the live wave, where
+// nothing answers the key under test (see `spawnBystander`). The bystander is never
+// read by an assertion; it is only what keeps the wave running long enough for the
+// binding to have somewhere to act.
 
 /**
  * A movement-binding item: hold `code` and confirm the ship travels `direction`
@@ -459,6 +493,7 @@ export function moveItem({ id, code, direction }) {
       id,
       async arrange(api) {
         await startClean(api);
+        await spawnBystander(api); // keeps the wave live; nothing here shoots at it
         await api.call("setShipX", 640);
       },
       async act(api) {
@@ -479,8 +514,9 @@ export function moveItem({ id, code, direction }) {
 
 /**
  * A fire-binding item: hold `code` briefly and confirm the real fire code spawns a
- * friendly bullet carrying the ship's current band. The field is empty so nothing
- * can consume the shot before it is counted.
+ * friendly bullet carrying the ship's current band. The ship's column is empty, so
+ * nothing can consume the shot before it is counted — the one drone on the field is
+ * the bystander that keeps the wave live, parked well off to the side.
  */
 export function fireItem({ id, code }) {
   return function item() {
@@ -489,6 +525,8 @@ export function fireItem({ id, code }) {
       id,
       async arrange(api) {
         await startClean(api);
+        await spawnBystander(api); // off the ship's column: it cannot eat the shot
+        await api.call("setShipX", 640); // ..so pin the column the shot goes up
         await api.call("setShipBand", "cyan");
       },
       async act(api) {
