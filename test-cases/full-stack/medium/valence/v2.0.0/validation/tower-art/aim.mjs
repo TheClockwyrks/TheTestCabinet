@@ -5,7 +5,7 @@
 // confirms the tower's reported heading points at the target's world position.
 
 import {
-  startRun,
+  startScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -24,7 +24,7 @@ export default function item() {
     id: "tower-art.aim",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single);
+      const snap = await startScenario(api, MAP.single);
       const g = pathGeom(snap.paths[0]);
       const s0 = g.length * 0.2;
       t = await placeCovering(api, "emitter", g, s0);

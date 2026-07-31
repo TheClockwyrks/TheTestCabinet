@@ -12,12 +12,13 @@
 // them and the pool would never finish draining.
 
 import {
-  startRun,
+  startScenario,
   pathGeom,
   placeCovering,
   spawnAt,
   unitById,
   focusOnParent,
+  poolSpent,
   MAP,
 } from "../_helpers.mjs";
 
@@ -42,7 +43,7 @@ export default function item() {
     id: "bonds.sheds-atoms",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single);
+      const snap = await startScenario(api, MAP.single);
       const g = pathGeom(snap.paths[0]);
       const s0 = g.length * 0.18;
       await placeCovering(api, "cleaver", g, s0);
@@ -62,8 +63,11 @@ export default function item() {
       r = await api.until(
         (s) => {
           collect(s);
+          // The pool being SPENT is the event, read off `bond` rather than off the
+          // `traits.bonded` flag — see `poolSpent`. Waiting on the flag left this sweep
+          // running until the cluster itself died on a build that never clears it.
           const u = unitById(s, id);
-          return u == null || u.traits.bonded === false;
+          return u == null || poolSpent(u);
         },
         { max: MAX_OPEN_TICKS, poll: 3 },
       );

@@ -50,7 +50,16 @@ lock. As the pool drains past each fragment threshold the cluster sheds a free
 atom off its leading end, a molecule becoming a spray of atoms, and when the
 pool is spent the cluster's last atom travels on free. A `k`-atom cluster sheds
 `k − 1` atoms as its bonds are chipped away and continues as the final free
-atom, so it releases `k` free atoms in all.
+atom, so it releases `k` free atoms in all — never `k + 1`. Each threshold the
+pool crosses takes one atom off the count still wrapped in it, so what is left to
+release when the pool finally breaks is only what has not already been shed.
+
+Bonded is a state, not a lineage. A unit is bonded while its pool still has
+points in it and is not bonded from the moment the pool is spent: the snapshot's
+`traits.bonded` reads `false` from then on, and its `bond` is spent (`0`, or
+`null` once the unit no longer carries a pool at all —
+`specs/instrumentation.md`). A cluster that still reports itself bonded with an
+empty pool is reporting a state it is no longer in.
 
 - Kinetic damage is best against bonds: a kinetic shot deals its damage to the
   bond pool times a bonus (base `×2`; the Cleaver deepens it). So a Cleaver
@@ -80,8 +89,14 @@ transmutes into a lighter isotope that travels on:
 
 An isotope's decay chain is a fixed sequence of these emissions (its identity);
 it sheds them one per decay step as it is cracked, and when its shells are
-finally spent it has reached a stable nucleus and is neutralized with a split
-flash (`specs/assets.md`). So a cracked heavy is not two
+finally spent it emits every step still left on its chain at once, reaches a
+stable nucleus, and is neutralized with a split flash (`specs/assets.md`). That
+last part is not a detail of the boss: a heavy always emits its WHOLE chain, so
+that its total shells are its own plus every particle it was carrying. An
+Isotope's `9` shells and its two alphas and a beta are exactly the `23` total
+shells the roster gives it. Nothing swallows a step — neither a hard hit that
+spends the nucleus in one blow, nor a chain whose last step falls where the
+shells run out. So a cracked heavy is not two
 tidy daughters but a stream of alpha and beta particles the energy strippers
 behind the kinetic/nuclear line must clean up. A Shroud (below) decays the same
 way, and the particles it emits stay inert. An Isotope carries `9` shells and a

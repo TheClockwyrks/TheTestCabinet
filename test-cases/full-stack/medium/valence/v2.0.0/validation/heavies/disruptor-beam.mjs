@@ -6,13 +6,13 @@
 // confirms only the Disruptor wears the heavy down.
 //
 // TWO runs: the plain Beam is arranged, the Disruptor is posed inside `act` with
-// `poseRun` (control ops only — `api.reset` throws there). The old script then re-posed
+// `poseScenario` (control ops only — `api.reset` throws there). The old script then re-posed
 // the Disruptor a THIRD time purely to film it; that is unnecessary now, because `act`
 // already ends on exactly that scenario.
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -56,7 +56,7 @@ export default function item() {
     id: "heavies.disruptor-beam",
 
     async arrange(api) {
-      posedPlain = await poseBeamVsHeavy(api, startRun, false);
+      posedPlain = await poseBeamVsHeavy(api, startScenario, false);
     },
 
     // The plain Beam failing to touch the heavy, then the Disruptor cracking an identical
@@ -64,7 +64,7 @@ export default function item() {
     async act(api) {
       plainCracked = await actBeamVsHeavy(api, posedPlain);
 
-      const posedDisruptor = await poseBeamVsHeavy(api, poseRun, true);
+      const posedDisruptor = await poseBeamVsHeavy(api, poseScenario, true);
       disruptorCracked = await actBeamVsHeavy(api, posedDisruptor);
     },
 

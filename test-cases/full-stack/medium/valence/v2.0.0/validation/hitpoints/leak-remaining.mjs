@@ -6,12 +6,12 @@
 // alters them mid-flight) and confirms each costs its electron count, the smaller less.
 //
 // TWO runs: the 4-electron leak is arranged, the 2-electron leak posed inside `act` with
-// `poseRun`. The old script re-posed a third run purely to film a leak; `act` already
+// `poseScenario`. The old script re-posed a third run purely to film a leak; `act` already
 // films two, so it is gone.
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   spawnAt,
   unitById,
@@ -50,14 +50,14 @@ export default function item() {
     id: "hitpoints.leak-remaining",
 
     async arrange(api) {
-      posedFull = await poseLeak(api, startRun, 4);
+      posedFull = await poseLeak(api, startScenario, 4);
     },
 
     // Both leaks, back to back: the full atom, then the more-stripped one.
     async act(api) {
       full = await actLeakCost(api, posedFull);
 
-      const posedSmall = await poseLeak(api, poseRun, 2);
+      const posedSmall = await poseLeak(api, poseScenario, 2);
       small = await actLeakCost(api, posedSmall);
     },
 

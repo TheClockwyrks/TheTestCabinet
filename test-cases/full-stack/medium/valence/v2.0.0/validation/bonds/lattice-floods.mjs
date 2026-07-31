@@ -16,12 +16,13 @@
 // drifting onto the atoms it sheds; the spray is then counted from the real matter list.
 
 import {
-  startRun,
+  startScenario,
   pathGeom,
   placeCovering,
   spawnAt,
   unitById,
   focusOnParent,
+  poolSpent,
   TICK,
   MAP,
 } from "../_helpers.mjs";
@@ -52,7 +53,7 @@ export default function item() {
     id: "bonds.lattice-floods",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single);
+      const snap = await startScenario(api, MAP.single);
       const g = pathGeom(snap.paths[0]);
       const s0 = g.length * 0.2;
       await placeCovering(api, "cleaver", g, s0);
@@ -75,8 +76,10 @@ export default function item() {
       r = await api.until(
         (s) => {
           collect(s);
+          // The pool being SPENT is the event — read off `bond`, not the `traits.bonded`
+          // flag (see `poolSpent`).
           const u = unitById(s, id);
-          return u == null || u.traits.bonded === false;
+          return u == null || poolSpent(u);
         },
         { max: MAX_OPEN_TICKS, poll: TICK },
       );

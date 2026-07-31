@@ -10,11 +10,11 @@
 // lands) so the acquired target reflects the priority alone.
 //
 // FIVE scenes, so FIVE runs. Only the first is arranged; the rest are posed inside `act`
-// with `poseRun`, since `api.reset` throws there.
+// with `poseScenario`, since `api.reset` throws there.
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -69,20 +69,29 @@ export default function item() {
     id: "targeting.modes",
 
     async arrange(api) {
-      posedLast = await poseScene(api, startRun, "last");
+      posedLast = await poseScene(api, startScenario, "last");
     },
 
     // Each priority's scene in turn — the same three atoms, a different one singled out
     // each time, which is the whole point of the item.
     async act(api) {
       last = await actPick(api, posedLast);
-      nearest = await actPick(api, await poseScene(api, poseRun, "nearest"));
-      farthest = await actPick(api, await poseScene(api, poseRun, "farthest"));
+      nearest = await actPick(
+        api,
+        await poseScene(api, poseScenario, "nearest"),
+      );
+      farthest = await actPick(
+        api,
+        await poseScene(api, poseScenario, "farthest"),
+      );
       strongest = await actPick(
         api,
-        await poseScene(api, poseRun, "strongest"),
+        await poseScene(api, poseScenario, "strongest"),
       );
-      weakest = await actPick(api, await poseScene(api, poseRun, "weakest"));
+      weakest = await actPick(
+        api,
+        await poseScene(api, poseScenario, "weakest"),
+      );
     },
 
     async assert(api, check) {

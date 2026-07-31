@@ -23,12 +23,12 @@
 // AHEAD of itself, so a tower on the default FIRST priority would abandon the pool it is
 // supposed to be chipping.
 //
-// TWO runs, so the second is opened with `poseRun` rather than `startRun`: `api.reset`
+// TWO runs, so the second is opened with `poseScenario` rather than `startScenario`: `api.reset`
 // throws inside `act`, and posing reaches the same fresh run with control ops alone.
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -36,6 +36,7 @@ import {
   towerById,
   firstInRange,
   focusOnParent,
+  poolSpent,
   TICK,
   MAP,
 } from "../_helpers.mjs";
@@ -47,8 +48,8 @@ const WINDOW_TICKS = 135;
 // (the Cleaver's REND branch deepens it to ×3, which is not taken here).
 const KINETIC_BOND_BONUS = 2;
 
-/** Pose one tower/Polymer scenario; `begin` opens the run (`startRun` or `poseRun`). */
-async function poseScenario(api, kind, begin) {
+/** Pose one tower/Polymer scenario; `begin` opens the run (`startScenario` or `poseScenario`). */
+async function poseTowerOnPolymer(api, kind, begin) {
   const snap = await begin(api, MAP.single);
   const g = pathGeom(snap.paths[0]);
   const tower = await placeCovering(api, kind, g, g.length * 0.4);
@@ -98,7 +99,9 @@ async function bondRemovedIn(api, posed) {
     landed: first.hit,
     perShot,
     removed: before.bond - left,
-    opened: after == null || after.traits.bonded === false,
+    // "Opened" is the pool being spent, read off `bond` rather than the `traits.bonded`
+    // flag (see `poolSpent`).
+    opened: after == null || poolSpent(after),
   };
 }
 
@@ -113,7 +116,7 @@ export default function item() {
     // Only the FIRST scenario can be arranged — it is the one that opens from a seeded
     // reset. The energy comparison is posed inside `act`.
     async arrange(api) {
-      posedKinetic = await poseScenario(api, "cleaver", startRun);
+      posedKinetic = await poseTowerOnPolymer(api, "cleaver", startScenario);
     },
 
     // Both measured windows, back to back: the Cleaver tearing at the pool, then the same
@@ -121,9 +124,13 @@ export default function item() {
     async act(api) {
       kinetic = await bondRemovedIn(api, posedKinetic);
 
-      // Second run, posed with control ops only (`poseRun`) — `api.reset` would take the
+      // Second run, posed with control ops only (`poseScenario`) — `api.reset` would take the
       // clock back and freeze the recording.
-      const posedEnergy = await poseScenario(api, "emitter", poseRun);
+      const posedEnergy = await poseTowerOnPolymer(
+        api,
+        "emitter",
+        poseScenario,
+      );
       energy = await bondRemovedIn(api, posedEnergy);
     },
 

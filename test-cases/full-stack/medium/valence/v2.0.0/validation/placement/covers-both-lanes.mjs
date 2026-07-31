@@ -18,11 +18,11 @@
 // item that judges whether the fork has one.
 //
 // THREE runs. Only the first is arranged; the other two are posed inside `act` with
-// `poseRun`, since `api.reset` throws there.
+// `poseScenario`, since `api.reset` throws there.
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   laneGaps,
   sharedStretch,
@@ -101,7 +101,7 @@ export default function item() {
     id: "placement.covers-both-lanes",
 
     async arrange(api) {
-      posedSharedLane0 = await poseLaneTest(api, startRun, 0, onShared(0));
+      posedSharedLane0 = await poseLaneTest(api, startScenario, 0, onShared(0));
     },
 
     // The shared-run tower reaching each lane in turn, then a divergent-lane tower plainly
@@ -111,11 +111,11 @@ export default function item() {
 
       sharedLane1 = await actFiresOn(
         api,
-        await poseLaneTest(api, poseRun, 1, onShared(1)),
+        await poseLaneTest(api, poseScenario, 1, onShared(1)),
       );
       divergent = await actFiresOn(
         api,
-        await poseLaneTest(api, poseRun, 1, onDivergent),
+        await poseLaneTest(api, poseScenario, 1, onDivergent),
       );
     },
 

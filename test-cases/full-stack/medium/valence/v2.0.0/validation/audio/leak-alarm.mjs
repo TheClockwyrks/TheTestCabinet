@@ -7,7 +7,7 @@
 // leak.
 
 import {
-  startRun,
+  startScenario,
   pathGeom,
   spawnAt,
   unitById,
@@ -27,7 +27,7 @@ export default function item() {
     id: "audio.leak-alarm",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single, { integrity: 100000 });
+      const snap = await startScenario(api, MAP.single, { integrity: 100000 });
       const g = pathGeom(snap.paths[0]);
       id = await spawnAt(api, {
         type: "atom",

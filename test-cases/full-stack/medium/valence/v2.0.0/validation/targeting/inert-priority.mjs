@@ -18,11 +18,11 @@
 // "which unit did it fire at".
 //
 // TWO runs: the detector scene is arranged, the no-detector scene posed inside `act` with
-// `poseRun` (control ops only — `api.reset` throws there).
+// `poseScenario` (control ops only — `api.reset` throws there).
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -89,7 +89,7 @@ export default function item() {
     // Detector present: a Catalyst and an Emitter over the same point, with a noble just
     // behind an ordinary atom so FIRST and inert-priority resolve to different units.
     async arrange(api) {
-      const snap = await startRun(api, MAP.single);
+      const snap = await startScenario(api, MAP.single);
       const g = pathGeom(snap.paths[0]);
       const s0 = g.length * 0.2;
       await placeCovering(api, "catalyst", g, s0);
@@ -128,7 +128,7 @@ export default function item() {
       };
 
       // No detector: inert-priority must not make an undetected inert unit targetable.
-      const snap = await poseRun(api, MAP.single);
+      const snap = await poseScenario(api, MAP.single);
       const g = pathGeom(snap.paths[0]);
       const s0 = g.length * 0.2;
       const em2 = await placeCovering(api, "emitter", g, s0);

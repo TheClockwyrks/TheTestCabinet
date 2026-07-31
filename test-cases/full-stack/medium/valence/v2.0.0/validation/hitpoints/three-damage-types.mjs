@@ -5,13 +5,13 @@
 // projectile, and reads its `damageType` — energy, kinetic, and nuclear respectively.
 //
 // THREE runs. Only the Emitter's is arranged; the Cleaver's and the Reactor's are posed
-// inside `act` with `poseRun`, since `api.reset` throws there. The old script opened a
+// inside `act` with `poseScenario`, since `api.reset` throws there. The old script opened a
 // FOURTH run purely to film a reactor blast — `act` now ends on the Reactor, so that is
 // what the clip shows anyway.
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -49,17 +49,17 @@ export default function item() {
     id: "hitpoints.three-damage-types",
 
     async arrange(api) {
-      await poseTower(api, startRun, "emitter");
+      await poseTower(api, startScenario, "emitter");
     },
 
     // Each tower's first shot in turn.
     async act(api) {
       emitter = await actProjType(api);
 
-      await poseTower(api, poseRun, "cleaver");
+      await poseTower(api, poseScenario, "cleaver");
       cleaver = await actProjType(api);
 
-      await poseTower(api, poseRun, "reactor");
+      await poseTower(api, poseScenario, "reactor");
       reactor = await actProjType(api);
     },
 

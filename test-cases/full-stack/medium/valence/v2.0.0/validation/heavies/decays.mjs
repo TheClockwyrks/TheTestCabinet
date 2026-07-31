@@ -17,13 +17,14 @@
 // (specs/board.md) and needs a moment to separate from it before the pile reads as a stream.
 
 import {
-  startRun,
+  startScenario,
   pathGeom,
   battery,
   spawnAt,
   unitById,
   towerById,
   firstInRange,
+  decayKind,
   MAP,
 } from "../_helpers.mjs";
 
@@ -41,7 +42,7 @@ export default function item() {
     id: "heavies.decays",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single);
+      const snap = await startScenario(api, MAP.single);
       const g = pathGeom(snap.paths[0]);
       const placed = await battery(
         api,
@@ -63,12 +64,17 @@ export default function item() {
 
     // The isotope walking the Cleaver line, shedding particles and transmuting down.
     async act(api) {
+      // Classify each particle by what it was BORN as (`decayKind`, off `maxHp`), never by
+      // its live `electrons`. The battery is stripping these particles as they appear, and
+      // a 6-electron alpha coming apart passes through 4 and then 2 on its way down: read
+      // live, that alpha announces itself as a beta. This check used to do exactly that and
+      // reported a build that emits no beta at all as shedding one.
       const collect = (s) => {
         for (const u of s.matter) {
-          if (u.type === "atom" && u.id !== id) {
-            if (u.electrons >= 6) sawAlpha = true;
-            if (u.electrons === 2) sawBeta = true;
-          }
+          if (u.id === id) continue;
+          const kind = decayKind(u);
+          if (kind === "alpha") sawAlpha = true;
+          if (kind === "beta") sawBeta = true;
         }
       };
       // poll 3 = the old 0.05 s chunk.
