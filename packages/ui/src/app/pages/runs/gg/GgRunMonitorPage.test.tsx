@@ -504,7 +504,9 @@ function renderMonitor(events: HarnessEvent[] = EVENTS) {
 // you read about one running agent is a "file" inside that instance's folder in the
 // Instances explorer, so reading an instance's activity, context, tasks, … starts by opening
 // the Instances tab; the shared board is read on the Project tab.
-function openTab(name: "Dashboard" | "Agents" | "Instances" | "Project") {
+function openTab(
+  name: "Dashboard" | "Agents" | "Instances" | "Modules" | "Project",
+) {
   fireEvent.click(screen.getByRole("radio", { name }));
 }
 
@@ -1103,6 +1105,292 @@ describe("GgRunMonitorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open the board" }));
     expect(screen.getByRole("radio", { name: "Project" })).toBeChecked();
     expect(screen.getByText("i1: Set up the canvas")).toBeInTheDocument();
+  });
+
+  // --- The Modules tab -------------------------------------------------------
+
+  // A run built to be read by module rather than by agent, exercising every relation a
+  // store can stand in: TWO Reviewer instances curating ONE profile-scoped notebook
+  // (`memories-1`), a Root with a private notebook of its own (`memories-0`), and a Root
+  // that then `exec`s — carrying its window and its task list to the successor and
+  // dropping its notebook on the way. Read per agent that is five unremarkable panels;
+  // read per module it is one shared store, one dropped one, and two carried ones.
+  function moduleRun(): HarnessEvent[] {
+    return [
+      sessionStartedWith([
+        {
+          name: "Root",
+          capabilities: ["shell", "subagents", "memories", "tasks"],
+        },
+        { name: "Reviewer", capabilities: [["memories", { scope: "shared" }]] },
+      ]),
+      roster("root", [
+        held("history", "history-0"),
+        held("memories", "memories-0"),
+        held("tasks", "tasks-0"),
+      ]),
+      ggFrom("agent-0", "root", {
+        type: "agent_spawned",
+        slot: "Reviewer",
+        modelId: "mock/scripted-builder",
+        depth: 1,
+      }),
+      roster(
+        "agent-0",
+        [
+          held("history", "history-1"),
+          held("memories", "memories-1", {
+            scope: "shared",
+            origin: "profile",
+          }),
+        ],
+        "root",
+      ),
+      ggFrom("agent-1", "root", {
+        type: "agent_spawned",
+        slot: "Reviewer",
+        modelId: "mock/scripted-builder",
+        depth: 1,
+      }),
+      roster(
+        "agent-1",
+        [
+          held("history", "history-2"),
+          held("memories", "memories-1", {
+            scope: "shared",
+            origin: "profile",
+          }),
+        ],
+        "root",
+      ),
+      // One store, so one content — written by whichever holder happened to write it.
+      ggFrom("agent-0", "root", {
+        type: "memory_state",
+        moduleId: "memories-1",
+        strategy: "scratchpad",
+        memories: [
+          {
+            name: "review-standards",
+            description: "What we reject for.",
+            len: 40,
+            lines: 2,
+          },
+        ],
+        count: 1,
+        totalLen: 40,
+        totalLines: 2,
+        peak: { count: 1, totalLen: 40, totalLines: 2 },
+        caps: {
+          maxCount: null,
+          maxLenPerMemory: null,
+          maxTotalLen: null,
+          maxLenIndex: null,
+          maxLenDescription: null,
+          maxResults: null,
+        },
+        scope: "shared",
+        writable: true,
+      }),
+      // What that shared block costs each window carrying it — the rent both holders pay
+      // every turn, which is the figure the whole tab exists to make addable.
+      ggFrom("agent-0", "root", {
+        type: "context_breakdown",
+        bySource: bySource({ system: 1000, memory: 800 }),
+        totalTokens: 1800,
+        windowLimit: 200000,
+        fullness: 0.009,
+      }),
+      ggFrom("agent-1", "root", {
+        type: "context_breakdown",
+        bySource: bySource({ system: 1000, memory: 600 }),
+        totalTokens: 1600,
+        windowLimit: 200000,
+        fullness: 0.008,
+      }),
+      // The Root hands off: its window and its task list travel, its notebook does not.
+      gg({
+        type: "agent_transition",
+        kind: "exec",
+        toAgentId: "agent-2",
+        agent: "Root",
+        modules: [
+          carried("history", "history-0"),
+          gone("memories", "memories-0"),
+          carried("tasks", "tasks-0"),
+        ],
+      }),
+      ggFrom("agent-2", "root", {
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      roster(
+        "agent-2",
+        [
+          held("history", "history-0", { origin: "transferred" }),
+          held("tasks", "tasks-0", { origin: "transferred" }),
+        ],
+        "root",
+      ),
+    ];
+  }
+
+  it("offers the Modules tab only for a run that holds modules", () => {
+    // A shell-and-filesystem run holds one window per instance and nothing else, and a
+    // tab that can only ever list those is worse than no tab at all.
+    renderMonitor([
+      sessionStarted(["shell", "filesystem"]),
+      gg({ type: "assistant_message", text: "Working." }),
+    ]);
+    expect(screen.queryByRole("radio", { name: "Modules" })).toBeNull();
+    expect(
+      screen.getByRole("radio", { name: "Instances" }),
+    ).toBeInTheDocument();
+  });
+
+  it("groups module instances by kind, and a shared store appears once", () => {
+    // The distinction the tab exists for. Two Reviewer instances hold ONE notebook, so
+    // it is ONE row with two holders — not a row per holder, which is exactly how every
+    // per-agent view has to show it and exactly what makes a shared store indistinguishable
+    // from two agents that happen to agree.
+    renderMonitor(moduleRun());
+    openTab("Modules");
+    // Kind folders open by default — they are grouping folders whose children are leaves…
+    expect(
+      screen.getByRole("button", { name: "memories modules" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    // …except history, which is one instance per agent by construction and so the longest
+    // and least surprising group in every run.
+    expect(
+      screen.getByRole("button", { name: "history modules" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("button", { name: "module history-1" }),
+    ).toBeNull();
+
+    // The shared store: one row, two holders, marked as shared in the tree.
+    const shared = screen.getAllByRole("button", { name: "module memories-1" });
+    expect(shared).toHaveLength(1);
+    expect(within(shared[0]!).getByText("2 holders")).toBeInTheDocument();
+    // Its trailing annotation names whose it is — the profile every instance of which
+    // binds it.
+    expect(within(shared[0]!).getByText("Reviewer")).toBeInTheDocument();
+    // The Root's own notebook is a different store, held by one instance and dropped by
+    // the succession that left it behind.
+    const priv = screen.getByRole("button", { name: "module memories-0" });
+    expect(within(priv).getByText("1 holder")).toBeInTheDocument();
+    expect(within(priv).getByText("(dropped)")).toBeInTheDocument();
+  });
+
+  it("leads each kind with a whole-run read-out of how it is being used", () => {
+    // The tab's headline question is asked one capability at a time — "is this being used
+    // the way it was configured to be, and is it earning its keep?" — and it is only
+    // answerable with every store of that kind side by side.
+    renderMonitor(moduleRun());
+    openTab("Modules");
+    // The landing is the first non-history group's Overview: two memory stores between
+    // three holds of them.
+    expect(screen.getByText("Memories")).toBeInTheDocument();
+    expect(screen.getByText("2 instances · 3 holders")).toBeInTheDocument();
+    // How widely: one of the two stores is shared, and the widest is held by two — and
+    // the other one was never written to at all, which is the other half of "is this
+    // capability being used".
+    expect(screen.getByText("widest: 2 holders")).toBeInTheDocument();
+    expect(screen.getByText("never written to")).toBeInTheDocument();
+    expect(screen.getAllByText("1 of 2")).toHaveLength(2);
+    // The rent, summed the way it is actually paid: both live holders re-send the shared
+    // block every turn, so it costs 800 + 600 — across the two windows that reported one,
+    // not across all three holds (an unreported window pays an unknown rent, not a zero).
+    expect(screen.getByText("1.4k")).toBeInTheDocument();
+    expect(screen.getByText("across 2 windows")).toBeInTheDocument();
+    // And the distribution: each store, whose it is, who holds it, and what it holds.
+    expect(screen.getByText("agent-0 · agent-1")).toBeInTheDocument();
+    expect(screen.getByText("1 memory · 40 chars")).toBeInTheDocument();
+  });
+
+  it("reads one store's holders, lifetime and cost, and links back to its holders", () => {
+    renderMonitor(moduleRun());
+    openTab("Modules");
+    fireEvent.click(screen.getByRole("button", { name: "module memories-1" }));
+
+    // Who is in it, and how each of them came by it — the section the tab exists for.
+    expect(screen.getByText("Holders · 2")).toBeInTheDocument();
+    expect(screen.getAllByText("bound Reviewer's store")).toHaveLength(2);
+    expect(screen.getAllByText("read/write").length).toBeGreaterThan(0);
+    // What it costs each of those windows, and what that adds up to across them.
+    expect(screen.getByText("800")).toBeInTheDocument();
+    expect(screen.getByText("600")).toBeInTheDocument();
+    expect(
+      screen.getByText(/tokens every turn across 2 live holders/),
+    ).toBeInTheDocument();
+    // And its contents, ONCE — from the store's own snapshot rather than from either
+    // holder's slice.
+    expect(screen.getAllByText("review-standards").length).toBeGreaterThan(0);
+
+    // A holder's id hands the reader through to that instance's own file for this
+    // module: the same store, read from inside the agent holding it.
+    fireEvent.click(screen.getByRole("button", { name: "agent-1" }));
+    expect(screen.getByRole("radio", { name: "Instances" })).toBeChecked();
+    expect(
+      screen.getByRole("button", { name: "agent-1 modules memories" }),
+    ).toHaveAttribute("aria-current", "true");
+  });
+
+  it("shows a store's whole life, oldest first", () => {
+    // A store's id alone cannot say which instance made it, which was handed it, and
+    // which merely got a link — and those are the differences between a succession, a
+    // fork and a shared binding.
+    renderMonitor(moduleRun());
+    openTab("Modules");
+    openFolder("history modules");
+    fireEvent.click(screen.getByRole("button", { name: "module history-0" }));
+    const lifetime = screen.getByRole("region", { name: "Lifetime" });
+    expect(
+      within(lifetime)
+        .getAllByRole("listitem")
+        .map((row) => row.textContent),
+    ).toEqual([
+      expect.stringContaining("created by root"),
+      expect.stringContaining("carried to agent-2 by exec"),
+    ]);
+    // The notebook that did NOT travel says so, and is badged dropped.
+    fireEvent.click(screen.getByRole("button", { name: "module memories-0" }));
+    expect(
+      screen.getByText("dropped by root on exec", { exact: false }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("dropped")).toBeInTheDocument();
+  });
+
+  it("walks between an instance's module file and the store itself", () => {
+    // The two directions of the same question: "what is this agent holding" (the
+    // Instances tab) and "who is holding this store" (here). Each hands the reader to the
+    // other in one click.
+    renderMonitor(moduleRun());
+    openTab("Instances");
+    openFolder("agent agent-0");
+    openFolder("agent-0 modules");
+    openFile("agent-0 modules memories");
+    fireEvent.click(screen.getByRole("button", { name: "Open in Modules" }));
+    expect(screen.getByRole("radio", { name: "Modules" })).toBeChecked();
+    expect(
+      screen.getByRole("button", { name: "module memories-1" }),
+    ).toHaveAttribute("aria-current", "true");
+    expect(screen.getByText("Holders · 2")).toBeInTheDocument();
+  });
+
+  it("hands a holder's profile through to the Agents tab", () => {
+    // A holder is an instance *of* something, and "is this how that arm is meant to be
+    // sharing?" is a question about the profile rather than about the instance. The row
+    // it lands on is opened, since every row on that tab starts closed.
+    renderMonitor(moduleRun());
+    openTab("Modules");
+    fireEvent.click(screen.getByRole("button", { name: "module memories-1" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Reviewer" })[0]!);
+    expect(screen.getByRole("radio", { name: "Agents" })).toBeChecked();
+    expect(
+      screen.getByRole("region", { name: "Reviewer detail" }),
+    ).toBeInTheDocument();
   });
 
   it("names a board-dispatched issue agent by its issue, never “root”", () => {

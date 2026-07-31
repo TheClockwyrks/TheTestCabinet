@@ -49,6 +49,7 @@ import {
   sameEntry,
 } from "./ggAgentEntries";
 import { GgModuleHeader, ModuleContents } from "./GgModuleViews";
+import { useGgExplorerNav } from "./GgExplorerNav";
 import { agentPricedSlots, useGgCostBreakdown } from "./ggCost";
 import { agentThroughput } from "./ggThroughput";
 import {
@@ -676,6 +677,11 @@ function ModuleFile({
   onOpenHolder: (agentId: string) => void;
   onOpenFile: (file: AgentFileKind) => void;
 }) {
+  // The way out to the store read as a store, on the Modules tab. Read from the context
+  // rather than passed down, for the same reason every other cross-tab link is: the tab
+  // selection is the panels' state, and this file is rendered several components below
+  // them.
+  const nav = useGgExplorerNav();
   const module = (modules.byAgent.get(agentId) ?? []).find(
     (held) => held.kind === kind,
   );
@@ -699,6 +705,7 @@ function ModuleFile({
           module={module}
           holder={holder}
           onOpenHolder={onOpenHolder}
+          onOpenModule={nav ? () => nav.openModule(module.id) : undefined}
         />
         <ModuleContents
           module={module}

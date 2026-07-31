@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
 import type {
   GgAgentStatus,
@@ -69,6 +69,14 @@ interface GgAgentsSummaryProps {
   agentForest: AgentTreeNode[];
   /** Each instance's own reduced slice, keyed by agent id. */
   perAgent: Map<string, DerivedGgState>;
+  /**
+   * A configured agent to open, set when another surface links here — a module holder's
+   * profile chip on the Modules tab, which asks "is this how that arm is configured?".
+   * Every row starts closed, so the request is honored by opening that one. A one-shot
+   * request the panel clears through `onFocusHandled` once it has.
+   */
+  focusProfile?: string | null;
+  onFocusHandled?: () => void;
 }
 
 /**
@@ -83,6 +91,8 @@ export function GgAgentsSummary({
   capabilitySet,
   agentForest,
   perAgent,
+  focusProfile,
+  onFocusHandled,
 }: GgAgentsSummaryProps) {
   const summaries = useGgAgentSummaries(capabilitySet, agentForest, perAgent);
   // Which rows are open, by agent name. Everything starts closed — the panel's first job is
@@ -98,6 +108,18 @@ export function GgAgentsSummary({
       else next.add(name);
       return next;
     });
+
+  // Honor a jump-to-agent request from elsewhere in the panels: open that agent's row —
+  // everything here starts closed, so arriving with the row still shut would answer the
+  // question the link was asked with a list. Guarded on the agent being one this panel
+  // knows, so a request naming a profile the run never announced is simply ignored.
+  useEffect(() => {
+    if (focusProfile == null) return;
+    if (summaries.some((agent) => agent.name === focusProfile)) {
+      setExpanded((prev) => new Set(prev).add(focusProfile));
+    }
+    onFocusHandled?.();
+  }, [focusProfile, summaries, onFocusHandled]);
 
   if (summaries.length === 0) {
     return (

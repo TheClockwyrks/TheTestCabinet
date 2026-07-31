@@ -20,6 +20,20 @@ export interface GgExplorerNav {
    */
   openAgent: (agentId: string, entry?: AgentEntry) => void;
   /**
+   * Switch to the Modules tab and open one module instance — the store read as a store:
+   * every instance that ever held it, its whole lifetime, and what it costs the run. The
+   * counterpart of {@link openAgent}: that one reads a store from an agent, this one
+   * reads it from nobody in particular.
+   */
+  openModule: (moduleId: string) => void;
+  /**
+   * Switch to the Agents tab and open one configured agent's row — the run read at the
+   * grain a configuration is actually tuned at. A module's holder is an instance *of*
+   * something, and "is this how the Reviewer profile is meant to be sharing?" is a
+   * question about the profile, not about the instance.
+   */
+  openProfile: (name: string) => void;
+  /**
    * Switch to the run-global Project tab — the board itself. A module read-out links here
    * rather than drawing a second board: the board is one thing the whole run shares, and
    * two renderings of it is exactly the duplication module identity exists to stop.

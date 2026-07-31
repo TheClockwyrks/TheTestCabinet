@@ -11,8 +11,9 @@ import panels from "./GgPanels.module.scss";
 import type { GgRunState } from "./useGgRunState";
 import { GgAgentsExplorer } from "./GgAgentsExplorer";
 import { GgAgentsSummary } from "./GgAgentsSummary";
+import { GgModulesExplorer } from "./GgModulesExplorer";
 import { ProjectExplorer } from "./ProjectExplorer";
-import { anyAgentCapabilityOn } from "./ggCatalog";
+import { MODULE_CAPABILITY_IDS, anyAgentCapabilityOn } from "./ggCatalog";
 import type { AgentEntry } from "./ggAgentEntries";
 import { GgExplorerNavContext, type GgExplorerNav } from "./GgExplorerNav";
 
@@ -39,16 +40,32 @@ import { GgExplorerNavContext, type GgExplorerNav } from "./GgExplorerNav";
 //   its handle on the board — which are no longer per-agent things at all: a store can be
 //   shared, carried or copied between instances, so it is read as a store with holders
 //   rather than as a property of one agent. See {@link GgAgentsExplorer}.
+// - Modules is the run read by the state it *holds* rather than by who holds it: every
+//   module instance the run opened, grouped by kind, each with its holders, its lifetime
+//   (created, carried, copied, linked, dropped) and what it costs the windows carrying it.
+//   It exists because a module instance is no longer in one-to-one correspondence with an
+//   agent instance — one store four reviewers share looks exactly like four stores that
+//   happen to agree in every per-agent view — and because "is this capability being used
+//   the way it was configured to be?" is a question about the store, not about any agent.
+//   See {@link GgModulesExplorer}.
 // - Project is the run-global epic/issue board, offered only when the
 //   project-management capability is on. The board is shared run-wide (issues
 //   auto-dispatch to top-level agents), so it is one whole-run surface rather than a
 //   per-agent file. See {@link ProjectExplorer}.
-export type MonitorTab = "dashboard" | "agents" | "instances" | "project";
+export type MonitorTab =
+  | "dashboard"
+  | "agents"
+  | "instances"
+  | "modules"
+  | "project";
 
+// The order the run is read in: the run, then the profiles, then the instances, then the
+// state those instances hold, then the board they share.
 const TAB_LABELS: ReadonlyArray<SegmentedOption<MonitorTab>> = [
   { value: "dashboard", label: "Dashboard" },
   { value: "agents", label: "Agents" },
   { value: "instances", label: "Instances" },
+  { value: "modules", label: "Modules" },
   { value: "project", label: "Project" },
 ];
 
@@ -60,6 +77,12 @@ const TAB_LABELS: ReadonlyArray<SegmentedOption<MonitorTab>> = [
  * project-management capability on — a run with no board has nothing to show there, but the
  * board is one shared thing, so which profile happens to author it does not decide whether
  * the run has one.
+ *
+ * Modules is offered on the same terms, over the whole set of module-backed capabilities:
+ * a run whose profiles enable none of them holds nothing but one window per instance, and
+ * a tab that can only ever list those is worse than no tab. Once the run has earned the
+ * surface the windows are shown in it too — a window's lineage across an `exec` is worth
+ * reading there.
  */
 export function ggTabsFor(
   hasDashboard: boolean,
@@ -67,6 +90,10 @@ export function ggTabsFor(
 ): ReadonlyArray<SegmentedOption<MonitorTab>> {
   return TAB_LABELS.filter(({ value }) => {
     if (value === "dashboard") return hasDashboard;
+    if (value === "modules")
+      return [...MODULE_CAPABILITY_IDS.values()].some((id) =>
+        anyAgentCapabilityOn(capabilitySet, id),
+      );
     if (value === "project")
       return anyAgentCapabilityOn(capabilitySet, "project-management");
     return true;
@@ -155,6 +182,14 @@ export function GgRunPanels({
   // revealed the instance.
   const [focusAgent, setFocusAgent] = useState<string | null>(null);
   const [focusEntry, setFocusEntry] = useState<AgentEntry | null>(null);
+  // The same one-shot channel for the other two explorers a surface can hand a reader
+  // through to: one module instance on the Modules tab (a module file's "open in Modules",
+  // which is the store read as a store rather than as this agent's hold on it) and one
+  // configured agent's row on the Agents tab (a holder's profile — "is this how that arm is
+  // configured?"). Each is cleared through its own handler, so consuming one request cannot
+  // silently drop another that arrived in the same render.
+  const [focusModule, setFocusModule] = useState<string | null>(null);
+  const [focusProfile, setFocusProfile] = useState<string | null>(null);
   const nav: GgExplorerNav = useMemo(
     () => ({
       openAgent: (agentId, entry) => {
@@ -162,14 +197,24 @@ export function GgRunPanels({
         setFocusAgent(agentId);
         setFocusEntry(entry ?? null);
       },
+      openModule: (moduleId) => {
+        setTab("modules");
+        setFocusModule(moduleId);
+      },
+      openProfile: (name) => {
+        setTab("agents");
+        setFocusProfile(name);
+      },
       openProject: () => setTab("project"),
     }),
     [],
   );
-  const onFocusHandled = useCallback(() => {
+  const onAgentFocusHandled = useCallback(() => {
     setFocusAgent(null);
     setFocusEntry(null);
   }, []);
+  const onModuleFocusHandled = useCallback(() => setFocusModule(null), []);
+  const onProfileFocusHandled = useCallback(() => setFocusProfile(null), []);
 
   return (
     <GgExplorerNavContext.Provider value={nav}>
@@ -201,6 +246,8 @@ export function GgRunPanels({
             capabilitySet={capabilitySet}
             agentForest={agentForest}
             perAgent={perAgent}
+            focusProfile={focusProfile}
+            onFocusHandled={onProfileFocusHandled}
           />
         )}
 
@@ -217,7 +264,19 @@ export function GgRunPanels({
             live={live}
             focusAgent={focusAgent}
             focusEntry={focusEntry}
-            onFocusHandled={onFocusHandled}
+            onFocusHandled={onAgentFocusHandled}
+          />
+        )}
+
+        {tab === "modules" && (
+          <GgModulesExplorer
+            capabilitySet={capabilitySet}
+            forest={agentForest}
+            perAgent={perAgent}
+            transitions={transitions}
+            moduleSnapshots={moduleSnapshots}
+            focusModule={focusModule}
+            onFocusHandled={onModuleFocusHandled}
           />
         )}
 

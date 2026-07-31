@@ -2,7 +2,11 @@ import type { GgBoardIssue } from "@test-cabinet/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import type { DerivedGgState } from "./useGgRunState";
 import { shortTokens } from "./useGgRunState";
-import type { GgModuleHolder, GgModuleInstance } from "./ggModules";
+import type {
+  GgModuleHolder,
+  GgModuleInstance,
+  GgModuleLifetimeEvent,
+} from "./ggModules";
 import {
   coHolders,
   isShared,
@@ -50,17 +54,36 @@ import { LinkIcon } from "./ggIcons";
 export function GgModuleHeader({
   module,
   holder,
+  detail = "full",
   onOpenHolder,
+  onOpenModule,
 }: {
   module: GgModuleInstance;
   /** The holder this module is being read from; null when it is read on its own. */
   holder?: GgModuleHolder | null;
+  /**
+   * How much of the store's context the strip carries itself.
+   *
+   * `full` (the default) ends it with the store's lifetime, what it costs, and its other
+   * holders as chips — which is what a surface reading the store from *inside* one holder
+   * needs, since nothing else on that page says who else is in it or how it got there.
+   * `identity` stops after the identity and the origin line, for a surface that follows
+   * the strip with sections of its own (the Modules tab's Holders, Lifetime and Cost),
+   * where carrying them here would state the same facts twice in two densities.
+   */
+  detail?: "full" | "identity";
   /**
    * Open a co-holder — the same module instance, read from another agent instance.
    * Omitted where there is nowhere to go (no explorer mounted), in which case the
    * co-holders read as plain text rather than as dead buttons.
    */
   onOpenHolder?: (agentId: string) => void;
+  /**
+   * Open the store on the Modules tab, where it is read as a store rather than as one
+   * agent's hold on it — its whole holder set, its lifetime and what it costs the run.
+   * Omitted by the Modules tab itself, which is already there.
+   */
+  onOpenModule?: () => void;
 }) {
   const Icon = MODULE_ICONS[module.kind];
   const shared = isShared(module);
@@ -123,10 +146,10 @@ export function GgModuleHeader({
         </p>
       )}
 
-      <ModuleLifetime module={module} />
-      <ModuleCost module={module} holder={holder} />
+      {detail === "full" && <ModuleLifetime module={module} />}
+      {detail === "full" && <ModuleCost module={module} holder={holder} />}
 
-      {others.length > 0 && (
+      {detail === "full" && others.length > 0 && (
         <div className={panels.moduleHolders}>
           <span className={panels.moduleHoldersLabel}>
             {holder ? "Also held by" : "Held by"}
@@ -142,6 +165,22 @@ export function GgModuleHeader({
           {holder && (
             <span className={panels.moduleHolderSelf}>this instance</span>
           )}
+        </div>
+      )}
+
+      {/* The way out to the store itself. Everything above is this holder's view of it;
+          the Modules tab is where the same store is read as a store — every holder it
+          ever had, its whole lifetime, and what it costs the run rather than this
+          window. */}
+      {onOpenModule && (
+        <div className={panels.moduleLinks}>
+          <button
+            type="button"
+            className={panels.projAgentLink}
+            onClick={onOpenModule}
+          >
+            Open in Modules
+          </button>
         </div>
       )}
     </section>
@@ -190,6 +229,70 @@ function HolderChip({
   );
 }
 
+/**
+ * One event in a module instance's life, in words — who did what to it, and by which
+ * succession.
+ *
+ * Exported so the Modules tab's vertical lifetime list and the header strip's one-line
+ * summary say it identically: they are the same fact at two densities, and two spellings
+ * of "linked into agent-4 by fork" would read as two different events.
+ */
+export function moduleLifetimeLabel(event: GgModuleLifetimeEvent): string {
+  switch (event.kind) {
+    case "created":
+      return `created by ${event.toAgentId ?? "the run"}`;
+    case "carried":
+      return `carried to ${event.toAgentId} by ${event.via ?? "a succession"}`;
+    case "copied":
+      return (
+        `copied into ${event.toAgentId} by ${event.via ?? "a fork"}` +
+        (event.copiedFromModuleId ? ` from ${event.copiedFromModuleId}` : "")
+      );
+    case "linked":
+      return `linked into ${event.toAgentId} by ${event.via ?? "a fork"}`;
+    case "dropped":
+      return `dropped by ${event.fromAgentId} on ${event.via ?? "hand-off"}`;
+  }
+}
+
+/**
+ * What a module instance holds, in one phrase — "3 memories · 1.2k chars", "5 tasks, 2
+ * done".
+ *
+ * It is what lets a *list* of module instances be compared without opening any of them,
+ * which is the Modules tab's whole job: a capability whose four stores hold nothing is
+ * being paid for and not used, and that is only visible side by side. Null where a kind
+ * reports no contents at all (a window, whose size is its cost figure instead).
+ */
+export function moduleContentSummary(module: GgModuleInstance): string | null {
+  const content = module.content;
+  if (!content) return null;
+  switch (content.kind) {
+    case "memories": {
+      const { count, totalLen } = content.memory;
+      return `${count} memor${count === 1 ? "y" : "ies"} · ${shortTokens(totalLen)} chars`;
+    }
+    case "tasks": {
+      const done = content.tasks.filter(
+        (task) => task.status === "done",
+      ).length;
+      return `${content.tasks.length} task${content.tasks.length === 1 ? "" : "s"}, ${done} done`;
+    }
+    case "board": {
+      const { epics, issues } = content.board;
+      return `${epics.length} epic${epics.length === 1 ? "" : "s"} · ${issues.length} issue${issues.length === 1 ? "" : "s"}`;
+    }
+    case "skills": {
+      const read = content.skills.filter((skill) => skill.read).length;
+      return `${content.skills.length} skill${content.skills.length === 1 ? "" : "s"}, ${read} read`;
+    }
+    case "archive": {
+      const { count, totalLen } = content.archive;
+      return `${count} entr${count === 1 ? "y" : "ies"} · ${shortTokens(totalLen)} chars`;
+    }
+  }
+}
+
 // A module instance's life as one line, oldest first: where it came from and every
 // hand-over since. Without it a shared store is a set of agent ids with nothing between
 // them — which of them made it, which was handed it, and which merely got a link are
@@ -201,21 +304,7 @@ function ModuleLifetime({ module }: { module: GgModuleInstance }) {
       {module.lifetime.map((event, index) => (
         <span key={index}>
           {index > 0 && <span className={panels.moduleSep}> · </span>}
-          <span data-lifetime={event.kind}>
-            {event.kind === "created" &&
-              `created by ${event.toAgentId ?? "the run"}`}
-            {event.kind === "carried" &&
-              `carried to ${event.toAgentId} by ${event.via ?? "a succession"}`}
-            {event.kind === "copied" &&
-              `copied into ${event.toAgentId} by ${event.via ?? "a fork"}` +
-                (event.copiedFromModuleId
-                  ? ` from ${event.copiedFromModuleId}`
-                  : "")}
-            {event.kind === "linked" &&
-              `linked into ${event.toAgentId} by ${event.via ?? "a fork"}`}
-            {event.kind === "dropped" &&
-              `dropped by ${event.fromAgentId} on ${event.via ?? "hand-off"}`}
-          </span>
+          <span data-lifetime={event.kind}>{moduleLifetimeLabel(event)}</span>
         </span>
       ))}
     </p>

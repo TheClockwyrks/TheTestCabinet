@@ -2002,6 +2002,306 @@ $spec-winner-hue: #f5c451;
   font-variant-numeric: tabular-nums;
 }
 
+// --- The Modules tab ---------------------------------------------------------
+//
+// A module instance read as a store rather than as one agent's property: a kind's
+// whole-run overview (how many stores exist, how widely they are shared, what they cost)
+// and one instance's detail (its holders, its lifetime, its cost, its contents). Both
+// reuse the module header strip and the per-kind content views above, so a store reads
+// the same here as it does inside the agent holding it — only the *questions* differ.
+
+// The kind overview's figures, in the Dashboard's own stat grid so a capability's numbers
+// read the way a run's do. `auto-fit` rather than a fixed column count: this pane is
+// narrower than the window and the same five figures have to survive being halved.
+.modStats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: t.$space-md;
+}
+
+// The distribution list: every store of one kind, side by side. It is a table in
+// everything but markup — one grid so the columns line up down the list, which is what
+// makes "one shared store or twelve private ones" readable at a glance instead of
+// assembled from twelve visits.
+.modDist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.modDistRow {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto auto;
+  align-items: center;
+  gap: t.$space-sm;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  background: t.$color-surface-2;
+  min-width: 0;
+}
+
+// The id doubles as the way in: selecting it opens that store's own detail.
+.modDistId {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 1px;
+  }
+}
+
+.modDistWhose {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-2xs;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The holders themselves, elided when there are more than the row can hold: the detail
+// pane one click away lists them in full with their origins, so the row's job is only to
+// say *how many and roughly who*.
+.modDistHolders {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.modDistContents,
+.modDistCost {
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.modDistCost {
+  color: t.$color-text-muted;
+}
+
+// The holder list on an instance's detail — who is in this store and on what terms.
+// Wraps rather than scrolls: the origin phrases are prose ("bound Reviewer's store") and
+// truncating them would lose exactly the part that answers the question.
+.modHolders {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.modHolderRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: t.$space-xs;
+  padding: t.$space-2xs t.$space-xs;
+  border-radius: t.$radius-sm;
+  background: t.$color-surface-2;
+  min-width: 0;
+}
+
+// Both names are links out, and they are deliberately tinted differently: the agent id
+// leads to that *instance* (the Instances tab) and the profile to that *arm* of the
+// configuration (the Agents tab), which are two different follow-up questions.
+.modHolderId {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: t.$font-sm;
+  color: t.$color-accent;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 1px;
+  }
+}
+
+.modHolderProfile {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  cursor: pointer;
+
+  &:hover {
+    color: t.$color-accent;
+    text-decoration: underline;
+  }
+  &:focus-visible {
+    outline: t.$border-hairline solid t.$color-accent;
+    outline-offset: 1px;
+  }
+}
+
+.modHolderOrigin {
+  min-width: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.modHolderAccess {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-2xs;
+}
+
+// Pushed to the row's far edge so the rents line up down the list and can be compared,
+// which is the only reason a per-holder cost is on the row at all.
+.modHolderCost {
+  margin-left: auto;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+// The store's life, oldest first — the same direction the activity feed runs, so the two
+// read the same way round. A vertical list rather than a horizontal chain: a lineage
+// strip reads well for four states and badly for twelve events.
+.modLifetime {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.modLifetimeRow {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.modLifetimeTime {
+  flex: 0 0 auto;
+  width: 6.5rem;
+  font-size: 0.72rem;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// A dot per event, tinted by what happened — a copy made a second store, a link did not,
+// and a drop ended one. The same three tints the header strip's one-line lifetime uses.
+.modLifetimeDot {
+  flex: 0 0 auto;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: t.$color-text-muted;
+
+  &[data-lifetime="copied"],
+  &[data-lifetime="linked"] {
+    background: t.$color-accent;
+  }
+  &[data-lifetime="dropped"] {
+    background: t.$color-negative;
+  }
+}
+
+.modLifetimeText {
+  min-width: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+
+  &[data-lifetime="dropped"] {
+    color: t.$color-negative;
+  }
+}
+
+// What the store costs each window it is in, per turn. Bars scale to the largest peak on
+// show rather than to the window: a module's band is a small share of a big window, and
+// scaling to the whole would leave every bar a sliver.
+.modCostList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+.modCostRow {
+  display: grid;
+  grid-template-columns: 7rem 1fr auto auto;
+  align-items: center;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+.modCostWho {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+.modCostBar {
+  position: relative;
+  height: 0.5rem;
+  border-radius: t.$radius-sm;
+  background: t.$color-surface-2;
+  overflow: hidden;
+}
+
+// The peak sits *behind* the current figure rather than beside it, so a store that has
+// been curated down reads as a filled bar inside a ghost of what it once was.
+.modCostBarPeak {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in srgb, t.$color-accent 25%, transparent);
+}
+
+.modCostBarFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: t.$color-accent;
+}
+
+.modCostFigure,
+.modCostShare {
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.modCostFigure {
+  color: t.$color-text;
+}
+
+.modCostShare {
+  color: t.$color-text-muted;
+}
+
 // --- Panels grid + tab bar (used by the monitor page) ------------------------
 
 .subPanel {

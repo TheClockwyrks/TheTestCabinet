@@ -1132,6 +1132,71 @@ detail lists both holders with their origins; the lifetime shows
 created/carried/dropped in order; a holder chip jumps to the Instances tab on
 that agent's module file.
 
+### Stages 3 & 6 as built — deviations from §4 and §6
+
+**LANDED** as `refactor(ui): extract the shared gg filesystem explorer` and
+`feat(ui): the Modules tab`. Stage 3 shipped first and unmodified in behaviour — all 668
+existing UI tests passed untouched, which is what §6 says makes the extraction safe — and
+the tab was then written on the primitives rather than as a third copy. Nine things are
+shaped differently from §4/§6; **stage 7 should build on this list.**
+
+1. **The extracted primitives are `useFsFolders` / `<FsExplorer>` / `<FsFolder>` /
+   `<FsFileRow>`.** §6 names `<FsFolderRow>`; what shipped merges the folder's row, its
+   `<li>` and its child `<ul>` into one `<FsFolder>`, because every one of the six call
+   sites paired them and the relation between them (`fsIndent(depth)` on the row,
+   `fsGuide(depth)` on the list it opens, children one level in) is precisely the invariant
+   worth encapsulating — split across two components each site could still get it wrong.
+   `FsFolder` takes `icon` (defaulting to the folder glyph, overridden by the agent row's
+   status dot and the module folder's stacked blocks) and `meta` (trailing counts, badges,
+   dots) as nodes.
+2. **A kind group leads with an Overview, so the selection has two arms** — `{ kind:
+   "group" }` | `{ kind: "module" }`, not §4.2's `{ moduleId }`. The user's stated purpose
+   is to *get a feel for how a capability is being used*, and that is unanswerable one
+   store at a time: "twelve private notebooks holding two notes each" versus "one store
+   four agents curate" only reads with every instance of the kind side by side. The
+   Overview carries that — instances, holders, how many are shared and how widely, the
+   summed per-turn rent, how many hold nothing at all, and a per-instance distribution list
+   — and it follows the Project explorer's epic-Overview precedent exactly (a folder whose
+   first child summarizes the folder). The landing is therefore the first non-history
+   group's Overview rather than §4.2's "first instance of the first non-history group".
+3. **`GgModuleHeader` gained `detail: "full" | "identity"`.** §4.3 reuses the strip
+   verbatim, but the strip already ends with a one-line lifetime, a cost line and the
+   holder chips — all three of which the tab's own Holders, Lifetime and Cost sections then
+   restate. `identity` stops after the identity and origin lines; the Instances tab keeps
+   `full`, where there is nothing else on the page to say those things.
+4. **`GgModuleHeader` gained `onOpenModule`** — §4.3's "cross-links in", wired from the
+   Instances tab's module file ("Open in Modules") through the nav.
+5. **`GgExplorerNav` gained *both* `openModule` and `openProfile` here**, where stage 5's
+   note deferred the latter to stage 7. The tab's holder rows link out twice — the agent id
+   to that instance (Instances) and the profile to that arm of the configuration (Agents) —
+   because they are two different follow-up questions, so both had a caller as of this
+   stage. `GgAgentsSummary` accordingly gained `focusProfile` + `onFocusHandled` and opens
+   the named row (every row there starts closed, so arriving with it shut would answer the
+   question the link was asked with a list). `GgRunPanels` now carries three one-shot focus
+   channels, each cleared through its own handler.
+6. **The kind folder's row carries a bare instance count**, the way the `subagents` folder
+   does, with the holder distribution in its `title` — not §4.2's separate instance and
+   holder columns. The sidebar is 17rem and the distribution is what the Overview is for.
+7. **`moduleContentSummary` and `moduleLifetimeLabel` are exported from
+   `GgModuleViews`**, so the distribution list's "1 memory · 40 chars" and the vertical
+   lifetime's "carried to agent-2 by exec" are the same spelling as the header strip's
+   one-liners rather than a second paraphrase.
+8. **The Overview's per-turn rent is divided by the windows that actually reported a
+   band**, not by the holder count: an instance whose window never reported a breakdown
+   pays an unknown rent, not a zero one.
+9. **`ModuleContents` is handed a holder's `state` only for `history` and `archive`** on
+   this tab. Those two are the kinds whose read-out genuinely needs an instance (a window's
+   turn count, an archive's reclaim figures) and both belong to exactly one live holder by
+   construction; every other kind's contents come wholly from the module's own snapshot,
+   which is the point of a store having one content rather than N.
+
+**Tests:** six new cases in `GgRunMonitorPage.test.tsx` over one `moduleRun()` fixture
+(two Reviewers sharing one notebook, a Root with a private one, a Root that execs and
+carries its window and task list while dropping the notebook): the tab's gate, grouping
+with `history` closed and a shared store appearing **once** with two holders, the kind
+Overview's usage read-out, one store's holders/lifetime/cost/contents, the lifetime's
+order, and both cross-link directions plus the profile hand-off to the Agents tab.
+
 ### Stage 7 — `feat(ui): agent-scoped modules on the Agents tab`
 
 `ggAgentAggregate.ts` gains `modules`; `GgAgentsSummary.tsx` gains the Modules
