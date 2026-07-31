@@ -49,13 +49,15 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_TASKS, GgAgentConfig, GgContextSource, GgTaskEntry, GgTaskStatus, GgTelemetryKind,
+    CAPABILITY_TASKS, GgAgentConfig, GgContextSource, GgModuleOrigin, GgTaskEntry, GgTaskStatus,
+    GgTelemetryKind,
 };
 
 use crate::dag::{self, DagNode};
 use crate::model::Message;
 use crate::modules::{
-    AdoptError, Module, ModuleHandle, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    detached_ids,
 };
 use crate::prompts::{self, TaskItemView, TasksBlockContext};
 
@@ -405,6 +407,7 @@ pub struct TaskStore {
 
 impl TaskStore {
     /// An empty [simple](TaskMode::Simple)-mode store holding at most `max_tasks` tasks.
+    #[allow(dead_code)] // the tests' shorthand; the runtime always resolves a mode.
     pub fn new(max_tasks: usize) -> Self {
         Self::with_mode(max_tasks, TaskMode::Simple)
     }
@@ -700,8 +703,10 @@ impl TaskStore {
             .collect()
     }
 
-    /// The [`TasksState`](GgTelemetryKind::TasksState) telemetry for the current list.
-    fn state_event(&self) -> GgTelemetryKind {
+    /// The [`TasksState`](GgTelemetryKind::TasksState) telemetry for the current list, attributed
+    /// to the [module instance](crate::modules::Module::instance_id) `module_id` — which is the
+    /// store's identity, not the holder's, so two agents holding one list report one id.
+    fn state_event(&self, module_id: &str) -> GgTelemetryKind {
         let tasks = self
             .tasks
             .iter()
@@ -716,7 +721,10 @@ impl TaskStore {
                 blocked_by: task.blocked_by.clone(),
             })
             .collect();
-        GgTelemetryKind::TasksState { tasks }
+        GgTelemetryKind::TasksState {
+            module_id: module_id.to_string(),
+            tasks,
+        }
     }
 
     /// The pinned context block rendering the whole list — each task's status, title, and
@@ -808,6 +816,14 @@ fn require_non_empty_when_present(
 pub struct TasksRuntime {
     /// Whether the tasks capability is enabled for this run.
     enabled: bool,
+    /// The [identity](crate::modules::ModuleIdMint) of the store below — what tells a reader that
+    /// a successor's list is the very one its predecessor built rather than a second list that
+    /// happens to hold the same tasks.
+    id: Arc<str>,
+    /// The mint a copy of this list takes its id from — see [`ModuleIds`].
+    ids: ModuleIds,
+    /// How this holder came by the list.
+    origin: GgModuleOrigin,
     /// Whether this holder's prompt carries the list — the pinned task block and the tasks section
     /// of the system prompt. An [unowned](crate::modules::Ownership::Unowned) holder keeps the same
     /// store and the same tools, and is not shown the list every turn.
@@ -826,12 +842,22 @@ impl TasksRuntime {
     }
 
     /// An enabled runtime with an empty store holding at most `max_tasks` tasks, in list
-    /// [mode](TaskMode) `mode`.
+    /// [mode](TaskMode) `mode`, identified out of a [detached](detached_ids) sequence — the
+    /// by-hand constructor, which in practice means the tests. A run's lists are built through
+    /// [`Self::resolve`].
     pub fn with_mode(max_tasks: usize, mode: TaskMode) -> Self {
+        Self::with_mode_in(max_tasks, mode, &detached_ids())
+    }
+
+    /// The same, identified out of the run's [mint](ModuleIds).
+    fn with_mode_in(max_tasks: usize, mode: TaskMode, ids: &ModuleIds) -> Self {
         Self {
             enabled: true,
             ownership: Ownership::Owned,
             store: Arc::new(Mutex::new(TaskStore::with_mode(max_tasks, mode))),
+            id: ids.next(ModuleKind::Tasks),
+            ids: Arc::clone(ids),
+            origin: GgModuleOrigin::Created,
         }
     }
 
@@ -840,8 +866,7 @@ impl TasksRuntime {
     pub fn disabled() -> Self {
         Self {
             enabled: false,
-            ownership: Ownership::Owned,
-            store: Arc::new(Mutex::new(TaskStore::new(DEFAULT_MAX_TASKS))),
+            ..Self::with_mode(DEFAULT_MAX_TASKS, TaskMode::Simple)
         }
     }
 
@@ -849,14 +874,14 @@ impl TasksRuntime {
     /// is enabled, an empty DAG holding at most the [count](resolve_max_tasks) its params resolve
     /// in the [mode](TaskMode) they name; otherwise a [disabled](Self::disabled) module (an
     /// ablation's off arm).
-    pub fn resolve(profile: &GgAgentConfig) -> Self {
+    pub fn resolve(profile: &GgAgentConfig, ctx: &ModuleResolveCtx<'_>) -> Self {
         if !profile.is_enabled(CAPABILITY_TASKS) {
             return Self::disabled();
         }
         let params = profile.capability(CAPABILITY_TASKS).map(|cap| &cap.params);
         let max_tasks = params.map(resolve_max_tasks).unwrap_or(DEFAULT_MAX_TASKS);
         let mode = params.map(resolve_task_mode).unwrap_or_default();
-        Self::with_mode(max_tasks, mode)
+        Self::with_mode_in(max_tasks, mode, ctx.ids)
             .with_ownership(crate::modules::resolve_ownership(profile, CAPABILITY_TASKS).0)
     }
 
@@ -875,6 +900,10 @@ impl TasksRuntime {
             store: Arc::new(Mutex::new(
                 self.store.lock().expect("task store lock").clone(),
             )),
+            // A new store, so a new id: the two lists diverge from here.
+            id: self.ids.next(ModuleKind::Tasks),
+            ids: Arc::clone(&self.ids),
+            origin: self.origin,
         }
     }
 
@@ -884,6 +913,10 @@ impl TasksRuntime {
             enabled: self.enabled,
             ownership: self.ownership,
             store: Arc::clone(&self.store),
+            // The same store, so the same id.
+            id: Arc::clone(&self.id),
+            ids: Arc::clone(&self.ids),
+            origin: self.origin,
         }
     }
 
@@ -923,7 +956,12 @@ impl TasksRuntime {
         if !self.enabled {
             return None;
         }
-        Some(self.store.lock().expect("task store lock").state_event())
+        Some(
+            self.store
+                .lock()
+                .expect("task store lock")
+                .state_event(&self.id),
+        )
     }
 
     /// The pinned context block rendering the current task list, or `None` when the
@@ -941,6 +979,18 @@ impl TasksRuntime {
 impl Module for TasksRuntime {
     fn kind(&self) -> ModuleKind {
         ModuleKind::Tasks
+    }
+
+    fn instance_id(&self) -> &str {
+        &self.id
+    }
+
+    fn origin(&self) -> GgModuleOrigin {
+        self.origin
+    }
+
+    fn set_origin(&mut self, origin: GgModuleOrigin) {
+        self.origin = origin;
     }
 
     fn enabled(&self) -> bool {
@@ -1001,7 +1051,6 @@ impl Module for TasksRuntime {
         profile: &GgAgentConfig,
         ctx: &ModuleResolveCtx<'_>,
     ) -> Result<(), AdoptError> {
-        let _ = ctx;
         if !profile.is_enabled(CAPABILITY_TASKS) {
             return Err(AdoptError::Disabled);
         }
@@ -1014,6 +1063,8 @@ impl Module for TasksRuntime {
             .reconfigure(max_tasks, mode);
         self.enabled = true;
         self.ownership = crate::modules::resolve_ownership(profile, CAPABILITY_TASKS).0;
+        self.ids = Arc::clone(ctx.ids);
+        self.origin = GgModuleOrigin::Transferred;
         Ok(())
     }
 }

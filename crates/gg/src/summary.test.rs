@@ -272,6 +272,7 @@ fn counts_distinct_issues_created_and_completed_across_board_snapshots() {
     let tracker = SessionSummaryTracker::new();
     // First snapshot: two open issues.
     tracker.observe(&GgTelemetryKind::BoardState {
+        module_id: "board-0".to_string(),
         epics: Vec::new(),
         issues: vec![
             issue("a", GgIssueStatus::Open),
@@ -280,6 +281,7 @@ fn counts_distinct_issues_created_and_completed_across_board_snapshots() {
     });
     // Later: `a` done, `b` still in progress, a new `c` open.
     tracker.observe(&GgTelemetryKind::BoardState {
+        module_id: "board-0".to_string(),
         epics: Vec::new(),
         issues: vec![
             issue("a", GgIssueStatus::Done),
@@ -289,6 +291,7 @@ fn counts_distinct_issues_created_and_completed_across_board_snapshots() {
     });
     // Later still: `a` reopened, `b` done.
     tracker.observe(&GgTelemetryKind::BoardState {
+        module_id: "board-0".to_string(),
         epics: Vec::new(),
         issues: vec![
             issue("a", GgIssueStatus::InProgress),

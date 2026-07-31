@@ -107,13 +107,14 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, GgAgentConfig, GgBoardEpic, GgBoardIssue, GgContextSource,
-    GgIssueStatus, GgSubagentScope, GgTelemetryKind,
+    GgIssueStatus, GgModuleOrigin, GgSubagentScope, GgTelemetryKind,
 };
 
 use crate::dag::{self, DagNode};
 use crate::model::Message;
 use crate::modules::{
-    AdoptError, Module, ModuleHandle, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    detached_ids,
 };
 use crate::prompts::{self, BoardBlockContext, EpicItemView, IssueBriefContext, IssueItemView};
 
@@ -1260,8 +1261,10 @@ impl BoardStore {
             .collect()
     }
 
-    /// The [`BoardState`](GgTelemetryKind::BoardState) telemetry for the current board.
-    fn state_event(&self) -> GgTelemetryKind {
+    /// The [`BoardState`](GgTelemetryKind::BoardState) telemetry for the current board, attributed
+    /// to the [module instance](crate::modules::Module::instance_id) `module_id` — which every
+    /// holder in the run reports identically, the board being run-global by construction.
+    fn state_event(&self, module_id: &str) -> GgTelemetryKind {
         let epics = self
             .epics
             .iter()
@@ -1290,7 +1293,11 @@ impl BoardStore {
                 retries: issue.retries,
             })
             .collect();
-        GgTelemetryKind::BoardState { epics, issues }
+        GgTelemetryKind::BoardState {
+            module_id: module_id.to_string(),
+            epics,
+            issues,
+        }
     }
 
     /// The pinned context block rendering the whole board — its epics, then each issue's
@@ -1479,15 +1486,35 @@ pub struct BoardRuntime {
     ownership: Ownership,
     /// The shared, mutable store — the same handle the tools mutate.
     store: Arc<Mutex<BoardStore>>,
+    /// The [identity](crate::modules::ModuleIdMint) of that store. There is exactly one per run,
+    /// minted with the run's board and carried by every holder of it — which is what makes the
+    /// board legible as one module the whole run shares rather than as one board per agent.
+    id: Arc<str>,
+    /// The mint, carried for uniformity with the other modules; nothing ever mints a second board.
+    ids: ModuleIds,
+    /// How this holder came by the board. Always [`Run`](GgModuleOrigin::Run) in practice — see
+    /// [`Module::origin_when_forked`].
+    origin: GgModuleOrigin,
 }
 
 impl BoardRuntime {
-    /// An enabled runtime with an empty board bounded by `caps`.
+    /// An enabled runtime with an empty board bounded by `caps`, identified out of a
+    /// [detached](detached_ids) sequence — the by-hand constructor, which in practice means the
+    /// tests. A run builds its one board through [`Self::new_in`].
     pub fn new(caps: BoardCaps) -> Self {
+        Self::new_in(caps, &detached_ids())
+    }
+
+    /// The run's single board, identified out of the run's [mint](ModuleIds). Built once, by the
+    /// orchestrator; every agent's handle on it is a [share](Self::shared) of this one.
+    pub fn new_in(caps: BoardCaps, ids: &ModuleIds) -> Self {
         Self {
             enabled: true,
             ownership: Ownership::Owned,
             store: Arc::new(Mutex::new(BoardStore::new(caps))),
+            id: ids.next(ModuleKind::Board),
+            ids: Arc::clone(ids),
+            origin: GgModuleOrigin::Run,
         }
     }
 
@@ -1496,8 +1523,7 @@ impl BoardRuntime {
     pub fn disabled() -> Self {
         Self {
             enabled: false,
-            ownership: Ownership::Owned,
-            store: Arc::new(Mutex::new(BoardStore::new(BoardCaps::default()))),
+            ..Self::new(BoardCaps::default())
         }
     }
 
@@ -1514,6 +1540,9 @@ impl BoardRuntime {
             enabled: self.enabled,
             ownership: self.ownership,
             store: Arc::clone(&self.store),
+            id: Arc::clone(&self.id),
+            ids: Arc::clone(&self.ids),
+            origin: self.origin,
         }
     }
 
@@ -1554,7 +1583,12 @@ impl BoardRuntime {
         if !self.enabled {
             return None;
         }
-        Some(self.store.lock().expect("board store lock").state_event())
+        Some(
+            self.store
+                .lock()
+                .expect("board store lock")
+                .state_event(&self.id),
+        )
     }
 
     /// The pinned context block rendering the current board, or `None` when the capability is
@@ -1754,6 +1788,25 @@ impl Module for BoardRuntime {
         ModuleKind::Board
     }
 
+    fn instance_id(&self) -> &str {
+        &self.id
+    }
+
+    fn origin(&self) -> GgModuleOrigin {
+        self.origin
+    }
+
+    fn set_origin(&mut self, origin: GgModuleOrigin) {
+        self.origin = origin;
+    }
+
+    /// The run's, however its holder came by it. The board is run-global by construction, so
+    /// "this copy received it when its forker was copied" would be a true statement that says
+    /// nothing: every agent in the run holds this one board.
+    fn origin_when_forked(&self) -> GgModuleOrigin {
+        GgModuleOrigin::Run
+    }
+
     fn enabled(&self) -> bool {
         self.enabled
     }
@@ -1820,7 +1873,8 @@ impl Module for BoardRuntime {
         profile: &GgAgentConfig,
         ctx: &ModuleResolveCtx<'_>,
     ) -> Result<(), AdoptError> {
-        let _ = ctx;
+        self.ids = Arc::clone(ctx.ids);
+        self.origin = GgModuleOrigin::Run;
         if profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT) {
             let caps = profile
                 .capability(CAPABILITY_PROJECT_MANAGEMENT)

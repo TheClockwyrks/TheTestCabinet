@@ -693,6 +693,7 @@ fn context_source_all_covers_every_variant_in_stable_order() {
 #[test]
 fn memory_state_serializes_entries_caps_and_totals() {
     let kind = GgTelemetryKind::MemoryState {
+        module_id: "memories-0".to_string(),
         strategy: "markdown".to_string(),
         memories: vec![GgMemoryEntry {
             name: "game-plan".to_string(),
@@ -728,6 +729,7 @@ fn memory_state_serializes_entries_caps_and_totals() {
         value,
         json!({
             "type": "memory_state",
+            "moduleId": "memories-0",
             "strategy": "markdown",
             "memories": [
                 { "name": "game-plan", "description": "the plan", "len": 42, "lines": 3 }
@@ -826,6 +828,7 @@ fn memory_revision_serializes_one_entry_of_the_record() {
 #[test]
 fn tasks_state_serializes_the_dag_with_statuses_and_edges() {
     let kind = GgTelemetryKind::TasksState {
+        module_id: "tasks-0".to_string(),
         tasks: vec![
             GgTaskEntry {
                 id: "scaffold".to_string(),
@@ -854,6 +857,7 @@ fn tasks_state_serializes_the_dag_with_statuses_and_edges() {
         value,
         json!({
             "type": "tasks_state",
+            "moduleId": "tasks-0",
             "tasks": [
                 {
                     "id": "scaffold",
@@ -1539,4 +1543,205 @@ fn message_log_events_round_trip() {
     assert!(value.get("durationMs").is_none());
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
     assert_eq!(back, prompt);
+}
+
+// --- Module instance identity ------------------------------------------------
+
+/// A roster is the only event that reports a module an agent holds but has not touched, so every
+/// field on it has to survive the wire: the id that says *which* store, the ownership that says
+/// whether it is in the prompt, the origin that says how the holder came by it, and — for the one
+/// kind that has one — the declared scope beside it.
+#[test]
+fn agent_modules_serializes_a_roster_with_ids_ownership_and_origin() {
+    let kind = GgTelemetryKind::AgentModules {
+        modules: vec![
+            GgAgentModule {
+                kind: GgModuleKind::History,
+                module_id: "history-3".to_string(),
+                enabled: true,
+                ownership: GgModuleOwnership::Owned,
+                origin: GgModuleOrigin::Transferred,
+                scope: None,
+                writable: true,
+            },
+            // A read-only inherited handle: the holder reads a store somebody else created and may
+            // not write it, which is the case that emits no snapshot of its own at all.
+            GgAgentModule {
+                kind: GgModuleKind::Memories,
+                module_id: "memories-0".to_string(),
+                enabled: true,
+                ownership: GgModuleOwnership::Unowned,
+                origin: GgModuleOrigin::Inherited,
+                scope: Some(GgMemoryScope::ReadOnly),
+                writable: false,
+            },
+            // An ablation's off arm still occupies its row, with no store to identify.
+            GgAgentModule {
+                kind: GgModuleKind::Tasks,
+                module_id: String::new(),
+                enabled: false,
+                ownership: GgModuleOwnership::Owned,
+                origin: GgModuleOrigin::Created,
+                scope: None,
+                writable: true,
+            },
+        ],
+    };
+    let value = serde_json::to_value(&kind).expect("serialize");
+    assert_eq!(value["type"], json!("agent_modules"));
+    assert_eq!(value["modules"][0]["moduleId"], json!("history-3"));
+    assert_eq!(value["modules"][0]["origin"], json!("transferred"));
+    assert_eq!(value["modules"][1]["ownership"], json!("unowned"));
+    assert_eq!(value["modules"][1]["scope"], json!("read-only"));
+    assert_eq!(value["modules"][1]["writable"], json!(false));
+    // A kind with no scope omits it rather than sending null.
+    assert!(value["modules"][0].get("scope").is_none());
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(back, kind);
+}
+
+/// The archive streams metadata and a bounded preview, never bodies — and it streams them at all,
+/// which is new: before module identity the archive emitted nothing whatsoever.
+#[test]
+fn archive_state_serializes_entries_with_previews() {
+    let kind = GgTelemetryKind::ArchiveState {
+        module_id: "archive-1".to_string(),
+        entries: vec![GgArchiveEntry {
+            seq: 4,
+            source: GgContextSource::ToolOutput,
+            role: "tool".to_string(),
+            len: 1200,
+            preview: "read_file src/main.rs".to_string(),
+        }],
+        count: 1,
+        total_len: 1200,
+    };
+    let value = serde_json::to_value(&kind).expect("serialize");
+    assert_eq!(value["type"], json!("archive_state"));
+    assert_eq!(value["moduleId"], json!("archive-1"));
+    assert_eq!(value["entries"][0]["seq"], json!(4));
+    assert_eq!(value["entries"][0]["source"], json!("tool_output"));
+    assert_eq!(value["totalLen"], json!(1200));
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(back, kind);
+}
+
+/// A transition reports the module instance on **both** sides of the boundary, which is what makes
+/// a store swap visible: a carried module reports one id twice, and a successor re-bound to its own
+/// profile's registry entry reports two.
+#[test]
+fn agent_transition_serializes_per_module_dispositions_with_both_ids() {
+    let kind = GgTelemetryKind::AgentTransition {
+        kind: GgAgentTransitionKind::Exec,
+        to_agent_id: "agent-4".to_string(),
+        agent: "Reviewer".to_string(),
+        state: None,
+        modules: vec![
+            GgTransitionModule {
+                kind: GgModuleKind::History,
+                disposition: GgModuleDisposition::Carried,
+                from_module_id: Some("history-0".to_string()),
+                to_module_id: Some("history-0".to_string()),
+            },
+            GgTransitionModule {
+                kind: GgModuleKind::Memories,
+                disposition: GgModuleDisposition::Carried,
+                from_module_id: Some("memories-0".to_string()),
+                to_module_id: Some("memories-2".to_string()),
+            },
+            GgTransitionModule {
+                kind: GgModuleKind::Board,
+                disposition: GgModuleDisposition::Linked,
+                from_module_id: Some("board-0".to_string()),
+                to_module_id: Some("board-0".to_string()),
+            },
+            GgTransitionModule {
+                kind: GgModuleKind::Skills,
+                disposition: GgModuleDisposition::Absent,
+                from_module_id: None,
+                to_module_id: None,
+            },
+        ],
+    };
+    let value = serde_json::to_value(&kind).expect("serialize");
+    assert_eq!(value["modules"][0]["disposition"], json!("carried"));
+    assert_eq!(value["modules"][0]["fromModuleId"], json!("history-0"));
+    assert_eq!(
+        value["modules"][1]["toModuleId"],
+        json!("memories-2"),
+        "a `shared`-scoped successor re-binds, and the two ids are what say so"
+    );
+    assert_eq!(value["modules"][2]["disposition"], json!("linked"));
+    // A kind neither side holds carries no ids at all rather than nulls.
+    assert!(value["modules"][3].get("fromModuleId").is_none());
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(back, kind);
+}
+
+/// Every disposition and every origin spells itself in kebab-case on the wire, because the console
+/// switches on those strings and a rename would be a silently-unmatched arm.
+#[test]
+fn module_dispositions_and_origins_serialize_kebab_case() {
+    for (disposition, wire) in [
+        (GgModuleDisposition::Carried, "carried"),
+        (GgModuleDisposition::Copied, "copied"),
+        (GgModuleDisposition::Linked, "linked"),
+        (GgModuleDisposition::Dropped, "dropped"),
+        (GgModuleDisposition::Initialized, "initialized"),
+        (GgModuleDisposition::Absent, "absent"),
+    ] {
+        assert_eq!(serde_json::to_value(disposition).unwrap(), json!(wire));
+        assert_eq!(disposition.as_str(), wire);
+    }
+    for (origin, wire) in [
+        (GgModuleOrigin::Created, "created"),
+        (GgModuleOrigin::Inherited, "inherited"),
+        (GgModuleOrigin::Profile, "profile"),
+        (GgModuleOrigin::Run, "run"),
+        (GgModuleOrigin::Transferred, "transferred"),
+        (GgModuleOrigin::Forked, "forked"),
+    ] {
+        assert_eq!(serde_json::to_value(origin).unwrap(), json!(wire));
+        assert_eq!(origin.as_str(), wire);
+    }
+}
+
+/// A record written before module identity existed still parses: `moduleId` is defaulted on every
+/// state event that gained one, so a stored run stays readable rather than failing to deserialize
+/// at the one field a console would happily render as "unknown".
+#[test]
+fn state_events_without_a_module_id_still_deserialize() {
+    let memory: GgTelemetryKind = serde_json::from_value(json!({
+        "type": "memory_state",
+        "strategy": "markdown",
+        "memories": [],
+        "count": 0,
+        "totalLen": 0,
+        "caps": { "maxCount": null, "maxLenPerMemory": null, "maxTotalLen": null,
+                  "maxLenIndex": null, "maxLenDescription": null, "maxResults": null },
+    }))
+    .expect("a pre-identity memory snapshot still parses");
+    let GgTelemetryKind::MemoryState { module_id, .. } = memory else {
+        panic!("expected a memory snapshot");
+    };
+    assert_eq!(module_id, "", "an unidentified store reads as unidentified");
+
+    for (type_name, payload) in [
+        ("tasks_state", json!({ "type": "tasks_state", "tasks": [] })),
+        (
+            "board_state",
+            json!({ "type": "board_state", "epics": [], "issues": [] }),
+        ),
+        (
+            "skills_state",
+            json!({ "type": "skills_state", "skills": [] }),
+        ),
+    ] {
+        let parsed: GgTelemetryKind = serde_json::from_value(payload)
+            .unwrap_or_else(|err| panic!("a pre-identity {type_name} still parses: {err}"));
+        assert_eq!(
+            serde_json::to_value(&parsed).unwrap()["moduleId"],
+            json!("")
+        );
+    }
 }

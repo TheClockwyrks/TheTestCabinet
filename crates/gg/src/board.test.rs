@@ -494,8 +494,8 @@ fn state_event_reports_the_whole_board() {
             None,
         ))
         .unwrap();
-    match store.state_event() {
-        GgTelemetryKind::BoardState { epics, issues } => {
+    match store.state_event("board-0") {
+        GgTelemetryKind::BoardState { epics, issues, .. } => {
             assert_eq!(epics.len(), 1);
             assert_eq!(epics[0].id, "CORE");
             assert_eq!(issues.len(), 2);

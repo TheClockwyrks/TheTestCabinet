@@ -33,12 +33,14 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use test_cabinet_core::gg::{
-    CAPABILITY_SKILLS, GgAgentConfig, GgContextSource, GgSkillState, GgTelemetryKind,
+    CAPABILITY_SKILLS, GgAgentConfig, GgContextSource, GgModuleOrigin, GgSkillState,
+    GgTelemetryKind,
 };
 
 use crate::model::Message;
 use crate::modules::{
-    AdoptError, Module, ModuleHandle, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    detached_ids,
 };
 use crate::prompts::SkillView;
 
@@ -199,6 +201,14 @@ pub struct SkillsRuntime {
     /// The names of skills the model has read this session — behind a lock so linked holders of one
     /// window agree on what is already pinned in it.
     read: Arc<Mutex<HashSet<String>>>,
+    /// The [identity](crate::modules::ModuleIdMint) of that read set. The *library* is immutable
+    /// and shared by everything, so it identifies nothing; what one holder can be said to hold, and
+    /// another to share, is the promise about a window that the read set is.
+    id: Arc<str>,
+    /// The mint a copy of this read set takes its id from — see [`ModuleIds`].
+    ids: ModuleIds,
+    /// How this holder came by the read set.
+    origin: GgModuleOrigin,
 }
 
 /// The outcome of recording a `read_skill` call against the [`SkillsRuntime`].
@@ -216,13 +226,24 @@ pub enum ReadRecord {
 }
 
 impl SkillsRuntime {
-    /// An enabled runtime over `library`, with nothing read yet.
+    /// An enabled runtime over `library`, with nothing read yet, identified out of a
+    /// [detached](detached_ids) sequence — the by-hand constructor, which in practice means the
+    /// tests. A run loads its library through [`Self::new_in`].
     pub fn new(library: Arc<SkillLibrary>) -> Self {
+        Self::new_in(library, &detached_ids())
+    }
+
+    /// The same, identified out of the run's [mint](ModuleIds). This is the orchestrator's own
+    /// runtime, over the library it loaded once; each agent takes a [fork](Self::forked) of it.
+    pub fn new_in(library: Arc<SkillLibrary>, ids: &ModuleIds) -> Self {
         Self {
             enabled: true,
             ownership: Ownership::Owned,
             library,
             read: Arc::new(Mutex::new(HashSet::new())),
+            id: ids.next(ModuleKind::Skills),
+            ids: Arc::clone(ids),
+            origin: GgModuleOrigin::Created,
         }
     }
 
@@ -231,9 +252,7 @@ impl SkillsRuntime {
     pub fn disabled() -> Self {
         Self {
             enabled: false,
-            ownership: Ownership::Owned,
-            library: Arc::new(SkillLibrary::empty()),
-            read: Arc::new(Mutex::new(HashSet::new())),
+            ..Self::new(Arc::new(SkillLibrary::empty()))
         }
     }
 
@@ -254,6 +273,10 @@ impl SkillsRuntime {
             read: Arc::new(Mutex::new(
                 self.read.lock().expect("skills read set lock").clone(),
             )),
+            // A new read set, so a new id: it is a promise about a *different* window.
+            id: self.ids.next(ModuleKind::Skills),
+            ids: Arc::clone(&self.ids),
+            origin: self.origin,
         }
     }
 
@@ -264,6 +287,9 @@ impl SkillsRuntime {
             ownership: self.ownership,
             library: Arc::clone(&self.library),
             read: Arc::clone(&self.read),
+            id: Arc::clone(&self.id),
+            ids: Arc::clone(&self.ids),
+            origin: self.origin,
         }
     }
 
@@ -329,7 +355,10 @@ impl SkillsRuntime {
                     .contains(skill.name()),
             })
             .collect();
-        Some(GgTelemetryKind::SkillsState { skills })
+        Some(GgTelemetryKind::SkillsState {
+            module_id: self.id.to_string(),
+            skills,
+        })
     }
 
     /// Record that the model read the skill named `name`, reporting whether this was the
@@ -356,6 +385,18 @@ impl SkillsRuntime {
 impl Module for SkillsRuntime {
     fn kind(&self) -> ModuleKind {
         ModuleKind::Skills
+    }
+
+    fn instance_id(&self) -> &str {
+        &self.id
+    }
+
+    fn origin(&self) -> GgModuleOrigin {
+        self.origin
+    }
+
+    fn set_origin(&mut self, origin: GgModuleOrigin) {
+        self.origin = origin;
     }
 
     fn enabled(&self) -> bool {
@@ -416,12 +457,13 @@ impl Module for SkillsRuntime {
         profile: &GgAgentConfig,
         ctx: &ModuleResolveCtx<'_>,
     ) -> Result<(), AdoptError> {
-        let _ = ctx;
         if !profile.is_enabled(CAPABILITY_SKILLS) {
             return Err(AdoptError::Disabled);
         }
         self.enabled = true;
         self.ownership = crate::modules::resolve_ownership(profile, CAPABILITY_SKILLS).0;
+        self.ids = Arc::clone(ctx.ids);
+        self.origin = GgModuleOrigin::Transferred;
         Ok(())
     }
 }

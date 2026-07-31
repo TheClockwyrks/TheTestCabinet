@@ -22,7 +22,9 @@ use test_cabinet_core::gg::{
 use super::*;
 use crate::board::BoardRuntime;
 use crate::context::HeuristicTokenEstimator;
-use crate::modules::{HistorySetup, InheritedModules, Module, ModuleResolveCtx};
+use crate::modules::{
+    HistorySetup, InheritedModules, Module, ModuleIds, ModuleResolveCtx, detached_ids,
+};
 use crate::skills::SkillsRuntime;
 
 /// Everything a resolve needs beyond the profile, owned by the caller so the borrows in
@@ -31,6 +33,9 @@ struct World {
     skills: SkillsRuntime,
     board: BoardRuntime,
     registry: MemoryRegistry,
+    /// One mint for the whole `World`, so two holders resolved through it are comparable exactly
+    /// as two holders in one run are.
+    ids: ModuleIds,
 }
 
 impl World {
@@ -39,6 +44,7 @@ impl World {
             skills: SkillsRuntime::disabled(),
             board: BoardRuntime::disabled(),
             registry: MemoryRegistry::new(),
+            ids: detached_ids(),
         }
     }
 
@@ -71,6 +77,7 @@ impl World {
                 code_mode: false,
             },
             agent_id,
+            ids: &self.ids,
         }
     }
 }

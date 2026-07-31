@@ -33,7 +33,7 @@ fn recorded(store: &MemoryStore) -> Vec<GgTelemetryKind> {
 
 /// The store's state snapshot as an ordinary, writable, unshared holder would emit it.
 fn state(store: &MemoryStore) -> GgTelemetryKind {
-    store.state_event(MemoryScope::Isolated, true)
+    store.state_event("memories-0", MemoryScope::Isolated, true)
 }
 
 /// Destructure one drained revision event, which is all these tests ever look at.

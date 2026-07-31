@@ -465,6 +465,7 @@ fn no_amc() -> AmcSetup {
     AmcSetup {
         enabled: false,
         archive: Arc::new(Mutex::new(ArchiveStore::new())),
+        archive_id: "archive-0".to_string(),
         can_evict: false,
         can_archive: false,
         top_file_views: 0,
@@ -492,6 +493,7 @@ fn amc_with(archive: Arc<Mutex<ArchiveStore>>) -> AmcSetup {
     AmcSetup {
         enabled: true,
         archive,
+        archive_id: "archive-0".to_string(),
         can_evict: true,
         can_archive: true,
         top_file_views: 5,
@@ -707,7 +709,7 @@ async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
     let read_states: Vec<_> = events
         .iter()
         .filter_map(|e| match &e.kind {
-            GgTelemetryKind::SkillsState { skills } => Some(skills),
+            GgTelemetryKind::SkillsState { skills, .. } => Some(skills),
             _ => None,
         })
         .collect();
@@ -814,7 +816,7 @@ async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
         .iter()
         .rev()
         .find_map(|e| match &e.kind {
-            GgTelemetryKind::TasksState { tasks } => Some(tasks.clone()),
+            GgTelemetryKind::TasksState { tasks, .. } => Some(tasks.clone()),
             _ => None,
         })
         .expect("a TasksState was emitted");
@@ -3209,7 +3211,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         .iter()
         .rev()
         .find_map(|e| match &e.kind {
-            GgTelemetryKind::TasksState { tasks } => Some(tasks.clone()),
+            GgTelemetryKind::TasksState { tasks, .. } => Some(tasks.clone()),
             _ => None,
         })
         .expect("a TasksState was emitted");
@@ -3337,7 +3339,7 @@ async fn drive_keeps_an_unowned_task_list_out_of_the_window() {
         .iter()
         .rev()
         .find_map(|e| match &e.kind {
-            GgTelemetryKind::TasksState { tasks } => Some(tasks.clone()),
+            GgTelemetryKind::TasksState { tasks, .. } => Some(tasks.clone()),
             _ => None,
         })
         .expect("an unowned module still reports its state");
@@ -3465,7 +3467,9 @@ async fn run_builds_a_board_end_to_end_when_epics_issues_enabled() {
         .iter()
         .rev()
         .find_map(|e| match &e.kind {
-            GgTelemetryKind::BoardState { epics, issues } => Some((epics.clone(), issues.clone())),
+            GgTelemetryKind::BoardState { epics, issues, .. } => {
+                Some((epics.clone(), issues.clone()))
+            }
             _ => None,
         })
         .expect("a BoardState was emitted");
@@ -3731,7 +3735,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
         .iter()
         .rev()
         .find_map(|e| match &e.kind {
-            GgTelemetryKind::TasksState { tasks } => Some(tasks.clone()),
+            GgTelemetryKind::TasksState { tasks, .. } => Some(tasks.clone()),
             _ => None,
         })
         .expect("a TasksState was emitted");
@@ -3740,7 +3744,7 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
         .iter()
         .rev()
         .find_map(|e| match &e.kind {
-            GgTelemetryKind::SkillsState { skills } => Some(skills.clone()),
+            GgTelemetryKind::SkillsState { skills, .. } => Some(skills.clone()),
             _ => None,
         })
         .expect("a SkillsState was emitted");
@@ -3959,7 +3963,12 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
             ))),
             &AgentFacts::default(),
         );
-        AmcSetup::resolve(profile, &registry, Arc::clone(&archive))
+        AmcSetup::resolve(
+            profile,
+            &registry,
+            Arc::clone(&archive),
+            "archive-0".to_string(),
+        )
     };
 
     // Off: no signal, no reclaim, and nothing to configure.
@@ -8675,3 +8684,13 @@ mod fsm_tests;
 /// a copy really opens holding state it never wrote.
 #[path = "agent.transitions.test.rs"]
 mod transition_tests;
+
+/// **Module identity through the live loop**: what each incarnation reports about the modules it
+/// *holds*, and the join between a holder and the store behind it.
+///
+/// Separate from `modules.test.rs` (the mint, the copy semantics and the transfer report, with no
+/// loop behind them) for the same reason the two files above are separate from their primitives:
+/// what these guard is that a roster is really emitted, really emitted before the agent has touched
+/// anything, and really reports the same id two holders of one store both report.
+#[path = "agent.modules.test.rs"]
+mod module_tests;

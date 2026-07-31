@@ -324,6 +324,165 @@ export type GgModuleKind =
 export type GgModuleOwnership = "owned" | "unowned";
 
 /**
+ * How one agent instance came to hold one module instance — the holder-side half of a module's
+ * identity, and the difference between *"this agent made this notebook"* and *"this agent was
+ * handed it"*.
+ *
+ * It is a property of the **holder**, not of the store: two holders of one store routinely report
+ * different origins, because one of them created it and the other bound, inherited or was handed
+ * it. Read beside the holder's declared [scope](GgMemoryScope) it is also the only way to see a
+ * binding that did not resolve the way its configuration asked — a holder reporting
+ * `scope: inherited` with `origin: created` is one whose inheritance silently fell back to a
+ * private instance, which is a legal outcome nothing else in the record states.
+ *
+ * It deliberately does **not** distinguish a fork's copy from a fork's link. Whether the copy got
+ * its own store is already visible, and visible more reliably, in the
+ * [id](GgAgentModule::module_id): a link reports its forker's id and a copy reports a new one.
+ */
+export type GgModuleOrigin =
+  | "created"
+  | "inherited"
+  | "profile"
+  | "run"
+  | "transferred"
+  | "forked";
+
+/**
+ * One [module](GgModuleKind) an agent instance holds — a row of an
+ * [`AgentModules`](GgTelemetryKind::AgentModules) roster.
+ *
+ * The load-bearing field is [`module_id`](Self::module_id): it identifies the **backing store**
+ * rather than the holder, so two instances reporting one id are holding one store and two ids are
+ * two stores that may merely agree. Everything a reader wants to know about sharing — which
+ * instances read one memory, whether a fork copied or linked, whether a profile's twelve instances
+ * curate one notebook or twelve — is a fold over that field across every instance's roster.
+ */
+export type GgAgentModule = {
+  /**
+   * Which module this is.
+   */
+  kind: GgModuleKind;
+  /**
+   * The **backing store** this holder is a holder of — `memories-2`, `board-0`. Two instances
+   * reporting the same id are holding one store; two ids are two stores. Empty for a disabled
+   * module, which has no store to identify.
+   */
+  moduleId: string;
+  /**
+   * Whether the capability behind the module is on for this instance. A disabled module still
+   * occupies its row, so an ablation's off arm is legible rather than absent — the same reason
+   * it still occupies its slot in gg's own module set.
+   */
+  enabled: boolean;
+  /**
+   * Whether this holder's prompt carries the module ([`owned`](GgModuleOwnership::Owned)) or it
+   * is reachable through its tools alone ([`unowned`](GgModuleOwnership::Unowned)).
+   */
+  ownership: GgModuleOwnership;
+  /**
+   * How this holder came by it.
+   */
+  origin: GgModuleOrigin;
+  /**
+   * The [scope](GgMemoryScope) this holder binds under, for the one kind that has one
+   * (memories); `None` for every other kind. It is the holder's *declared* binding rule, which
+   * the [origin](Self::origin) is the *resolved* answer to — see [`GgModuleOrigin`] for what
+   * their disagreeing means.
+   */
+  scope?: GgMemoryScope;
+  /**
+   * Whether this holder may **write** the store. `false` marks a
+   * [read-only](GgMemoryScope::ReadOnly) inherited handle; always `true` for the kinds that have
+   * no access model of their own.
+   */
+  writable: boolean;
+};
+
+/**
+ * What a succession did with one [module](GgModuleKind) — the per-kind outcome an
+ * [`AgentTransition`](GgTelemetryKind::AgentTransition) reports.
+ *
+ * The distinction that matters is [`Carried`](Self::Carried) versus [`Linked`](Self::Linked)
+ * versus [`Copied`](Self::Copied): all three leave the successor holding *something*, and only
+ * the first two leave it holding the **same store** — with `Linked` the one case where both
+ * instances hold it at once, which is what a fork of a shared notebook (or of the run's board)
+ * produces.
+ */
+export type GgModuleDisposition =
+  | "carried"
+  | "copied"
+  | "linked"
+  | "dropped"
+  | "initialized"
+  | "absent";
+
+/**
+ * What happened to one [module](GgModuleKind) across a succession — a row of an
+ * [`AgentTransition`](GgTelemetryKind::AgentTransition)'s
+ * [`modules`](GgTelemetryKind::AgentTransition::modules) list.
+ *
+ * It carries the module instance on **both** sides of the boundary, which is what makes a store
+ * swap visible: a [`Carried`](GgModuleDisposition::Carried) or
+ * [`Linked`](GgModuleDisposition::Linked) module reports the same id twice, and everything else
+ * reports two different ones (or one, where only one side held anything).
+ */
+export type GgTransitionModule = {
+  /**
+   * Which module this row is about.
+   */
+  kind: GgModuleKind;
+  /**
+   * What the successor (or the copy) received.
+   */
+  disposition: GgModuleDisposition;
+  /**
+   * The instance the outgoing agent held, when it held one.
+   */
+  fromModuleId?: string;
+  /**
+   * The instance the successor holds, when it holds one. Equal to
+   * [`from_module_id`](Self::from_module_id) for a [carried](GgModuleDisposition::Carried) or
+   * [linked](GgModuleDisposition::Linked) module and different for every other disposition.
+   */
+  toModuleId?: string;
+};
+
+/**
+ * One entry of the thread [archive](CAPABILITY_AGENT_MANAGED_CONTEXT) — a band of an
+ * [`ArchiveState`](GgTelemetryKind::ArchiveState) snapshot.
+ *
+ * It carries **metadata and a bounded preview, never the full text**. The archive exists
+ * precisely so that material is out of the request; re-streaming it into the record would put a
+ * second copy of the whole thread on disk for no reader's benefit, and the searchable body stays
+ * recoverable by the agent through `search_archive`, which is whose question it is.
+ */
+export type GgArchiveEntry = {
+  /**
+   * The monotonic ordinal assigned when the item was archived — the handle a model has on where
+   * it sat in its thread, and stable across a fork (an archive's ordinal counter is carried,
+   * never restarted).
+   */
+  seq: number;
+  /**
+   * The context band the item occupied in the live window.
+   */
+  source: GgContextSource;
+  /**
+   * The conversational role the archived message had (`system` / `user` / `assistant` / `tool`).
+   */
+  role: string;
+  /**
+   * The item's length, in characters, of searchable text.
+   */
+  len: number;
+  /**
+   * The first couple of hundred characters of that text, so a reader can tell entries apart
+   * without the record carrying the thread twice.
+   */
+  preview: string;
+};
+
+/**
  * One state of a user-authored [FSM](CAPABILITY_FSM): the [agent profile](GgAgentConfig) that runs
  * while the machine sits in it, and where it may go from there.
  *
@@ -1910,12 +2069,25 @@ export type GgTelemetryKind =
   | {
       type: "skills_state";
       /**
+       * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
+       * read set, not the holder. Empty on records written before module identity existed.
+       */
+      moduleId: string;
+      /**
        * One entry per available skill, in the order the catalog lists them.
        */
       skills: Array<GgSkillState>;
     }
   | {
       type: "memory_state";
+      /**
+       * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
+       * store, not the holder. It is what lets a reader attribute two agents' identical panels
+       * to one store rather than to a coincidence, and what lets a shared store's contents be
+       * shown once, under the module, rather than N times under N agents. Empty on records
+       * written before module identity existed.
+       */
+      moduleId: string;
       /**
        * The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which
        * tools the model was offered, and which of the [caps](GgMemoryCaps) apply. Empty
@@ -2003,6 +2175,11 @@ export type GgTelemetryKind =
   | {
       type: "tasks_state";
       /**
+       * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
+       * list, not the holder. Empty on records written before module identity existed.
+       */
+      moduleId: string;
+      /**
        * The tasks, in the order the model added them (a stable order for the DAG's
        * nodes). Each carries its status and the ids it is blocked by.
        */
@@ -2010,6 +2187,13 @@ export type GgTelemetryKind =
     }
   | {
       type: "board_state";
+      /**
+       * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of. The board is
+       * run-global by construction, so every holder in a run reports the *same* id here —
+       * which is exactly what makes the whole run's board legible as one shared module rather
+       * than as one board per agent. Empty on records written before module identity existed.
+       */
+      moduleId: string;
       /**
        * The epics, in the order the model created them.
        */
@@ -2102,6 +2286,27 @@ export type GgTelemetryKind =
       detail: string;
     }
   | {
+      type: "archive_state";
+      /**
+       * The [module instance](Self::AgentModules) this snapshot is of — the backing archive, not
+       * the holder. Empty on records written before module identity existed.
+       */
+      moduleId: string;
+      /**
+       * The archived entries, in archival order.
+       */
+      entries: Array<GgArchiveEntry>;
+      /**
+       * How many entries are archived (the length of `entries`).
+       */
+      count: number;
+      /**
+       * The total length, in characters, of everything archived — the size of what left the
+       * window.
+       */
+      totalLen: number;
+    }
+  | {
       type: "agent_spawned";
       /**
        * The [agent profile](GgAgentConfig) name this agent runs under (for example
@@ -2147,6 +2352,15 @@ export type GgTelemetryKind =
        * reported it.
        */
       cwd?: string;
+    }
+  | {
+      type: "agent_modules";
+      /**
+       * One entry per [kind](GgModuleKind::ALL), in kind order — including the kinds this
+       * instance's profile has switched off, so an ablation's off arm is legible rather than
+       * absent.
+       */
+      modules: Array<GgAgentModule>;
     }
   | {
       type: "slot_usage";
@@ -2292,21 +2506,18 @@ export type GgTelemetryKind =
        */
       state?: string;
       /**
-       * The [modules](GgModuleKind) the successor received **live**, contents and all, in
-       * [kind](GgModuleKind::ALL) order.
+       * What happened to each [module](GgModuleKind) the two instances between them held, in
+       * [kind](GgModuleKind::ALL) order — the whole of what a successor did and did not
+       * inherit, and **which instance** it is now holding.
+       *
+       * One list rather than the three name lists this replaced (`transferred`/`dropped`/
+       * `initialized`), because those collapsed a per-kind decision the code actually makes: a
+       * fork chooses to link or copy per kind and then reported both as "transferred", so a
+       * copy's linked board and its copied task list were indistinguishable. Each row here
+       * carries its own [disposition](GgModuleDisposition) and the module instance on both
+       * sides, so a store that was swapped underneath a successor is visible as one.
        */
-      transferred: Array<string>;
-      /**
-       * The modules the outgoing instance held that the successor did not receive at all —
-       * their backing stores are gone.
-       */
-      dropped: Array<string>;
-      /**
-       * The modules the successor's own profile enables that it starts **fresh**: either the
-       * plan did not carry them, or what was carried could not be read under the successor's
-       * configuration.
-       */
-      initialized: Array<string>;
+      modules: Array<GgTransitionModule>;
     }
   | {
       type: "issue_review";
@@ -2741,12 +2952,25 @@ export type GgTelemetryEvent = {
   | {
       type: "skills_state";
       /**
+       * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
+       * read set, not the holder. Empty on records written before module identity existed.
+       */
+      moduleId: string;
+      /**
        * One entry per available skill, in the order the catalog lists them.
        */
       skills: Array<GgSkillState>;
     }
   | {
       type: "memory_state";
+      /**
+       * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
+       * store, not the holder. It is what lets a reader attribute two agents' identical panels
+       * to one store rather than to a coincidence, and what lets a shared store's contents be
+       * shown once, under the module, rather than N times under N agents. Empty on records
+       * written before module identity existed.
+       */
+      moduleId: string;
       /**
        * The [strategy](CAPABILITY_MEMORIES) this run's memories are organized by — which
        * tools the model was offered, and which of the [caps](GgMemoryCaps) apply. Empty
@@ -2834,6 +3058,11 @@ export type GgTelemetryEvent = {
   | {
       type: "tasks_state";
       /**
+       * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing
+       * list, not the holder. Empty on records written before module identity existed.
+       */
+      moduleId: string;
+      /**
        * The tasks, in the order the model added them (a stable order for the DAG's
        * nodes). Each carries its status and the ids it is blocked by.
        */
@@ -2841,6 +3070,13 @@ export type GgTelemetryEvent = {
     }
   | {
       type: "board_state";
+      /**
+       * The [module instance](GgTelemetryKind::AgentModules) this snapshot is of. The board is
+       * run-global by construction, so every holder in a run reports the *same* id here —
+       * which is exactly what makes the whole run's board legible as one shared module rather
+       * than as one board per agent. Empty on records written before module identity existed.
+       */
+      moduleId: string;
       /**
        * The epics, in the order the model created them.
        */
@@ -2933,6 +3169,27 @@ export type GgTelemetryEvent = {
       detail: string;
     }
   | {
+      type: "archive_state";
+      /**
+       * The [module instance](Self::AgentModules) this snapshot is of — the backing archive, not
+       * the holder. Empty on records written before module identity existed.
+       */
+      moduleId: string;
+      /**
+       * The archived entries, in archival order.
+       */
+      entries: Array<GgArchiveEntry>;
+      /**
+       * How many entries are archived (the length of `entries`).
+       */
+      count: number;
+      /**
+       * The total length, in characters, of everything archived — the size of what left the
+       * window.
+       */
+      totalLen: number;
+    }
+  | {
       type: "agent_spawned";
       /**
        * The [agent profile](GgAgentConfig) name this agent runs under (for example
@@ -2978,6 +3235,15 @@ export type GgTelemetryEvent = {
        * reported it.
        */
       cwd?: string;
+    }
+  | {
+      type: "agent_modules";
+      /**
+       * One entry per [kind](GgModuleKind::ALL), in kind order — including the kinds this
+       * instance's profile has switched off, so an ablation's off arm is legible rather than
+       * absent.
+       */
+      modules: Array<GgAgentModule>;
     }
   | {
       type: "slot_usage";
@@ -3123,21 +3389,18 @@ export type GgTelemetryEvent = {
        */
       state?: string;
       /**
-       * The [modules](GgModuleKind) the successor received **live**, contents and all, in
-       * [kind](GgModuleKind::ALL) order.
+       * What happened to each [module](GgModuleKind) the two instances between them held, in
+       * [kind](GgModuleKind::ALL) order — the whole of what a successor did and did not
+       * inherit, and **which instance** it is now holding.
+       *
+       * One list rather than the three name lists this replaced (`transferred`/`dropped`/
+       * `initialized`), because those collapsed a per-kind decision the code actually makes: a
+       * fork chooses to link or copy per kind and then reported both as "transferred", so a
+       * copy's linked board and its copied task list were indistinguishable. Each row here
+       * carries its own [disposition](GgModuleDisposition) and the module instance on both
+       * sides, so a store that was swapped underneath a successor is visible as one.
        */
-      transferred: Array<string>;
-      /**
-       * The modules the outgoing instance held that the successor did not receive at all —
-       * their backing stores are gone.
-       */
-      dropped: Array<string>;
-      /**
-       * The modules the successor's own profile enables that it starts **fresh**: either the
-       * plan did not carry them, or what was carried could not be read under the successor's
-       * configuration.
-       */
-      initialized: Array<string>;
+      modules: Array<GgTransitionModule>;
     }
   | {
       type: "issue_review";

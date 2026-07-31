@@ -1,5 +1,54 @@
 {
   "$defs": {
+    "GgAgentModule": {
+      "description": "One [module](GgModuleKind) an agent instance holds — a row of an\n[`AgentModules`](GgTelemetryKind::AgentModules) roster.\n\nThe load-bearing field is [`module_id`](Self::module_id): it identifies the **backing store**\nrather than the holder, so two instances reporting one id are holding one store and two ids are\ntwo stores that may merely agree. Everything a reader wants to know about sharing — which\ninstances read one memory, whether a fork copied or linked, whether a profile's twelve instances\ncurate one notebook or twelve — is a fold over that field across every instance's roster.",
+      "properties": {
+        "enabled": {
+          "description": "Whether the capability behind the module is on for this instance. A disabled module still\noccupies its row, so an ablation's off arm is legible rather than absent — the same reason\nit still occupies its slot in gg's own module set.",
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/GgModuleKind",
+          "description": "Which module this is."
+        },
+        "moduleId": {
+          "description": "The **backing store** this holder is a holder of — `memories-2`, `board-0`. Two instances\nreporting the same id are holding one store; two ids are two stores. Empty for a disabled\nmodule, which has no store to identify.",
+          "type": "string"
+        },
+        "origin": {
+          "$ref": "#/$defs/GgModuleOrigin",
+          "description": "How this holder came by it."
+        },
+        "ownership": {
+          "$ref": "#/$defs/GgModuleOwnership",
+          "description": "Whether this holder's prompt carries the module ([`owned`](GgModuleOwnership::Owned)) or it\nis reachable through its tools alone ([`unowned`](GgModuleOwnership::Unowned))."
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GgMemoryScope"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The [scope](GgMemoryScope) this holder binds under, for the one kind that has one\n(memories); `None` for every other kind. It is the holder's *declared* binding rule, which\nthe [origin](Self::origin) is the *resolved* answer to — see [`GgModuleOrigin`] for what\ntheir disagreeing means."
+        },
+        "writable": {
+          "description": "Whether this holder may **write** the store. `false` marks a\n[read-only](GgMemoryScope::ReadOnly) inherited handle; always `true` for the kinds that have\nno access model of their own.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "moduleId",
+        "enabled",
+        "ownership",
+        "origin",
+        "writable"
+      ],
+      "type": "object"
+    },
     "GgAgentStatus": {
       "description": "The lifecycle status of an agent in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/),\nreported by an [`AgentStatus`](GgTelemetryKind::AgentStatus) transition so the console can\ncolour each node of the live tree (running vs waiting) and mark it done or failed.\n\nAn agent is [`Running`](Self::Running) while it drives its turn loop, [`Blocked`](Self::Blocked)\nwhile it has **freed its running slot to wait on its subagents** (the scheduler's\nblocked-frees-slot state — distinct from merely queuing for a slot), and terminally either\n[`Done`](Self::Done) (its loop ended normally) or [`Failed`](Self::Failed) (its loop ended in a\nmodel error). Like [`AgentSpawned`](GgTelemetryKind::AgentSpawned), the agent's identity rides\non the event's own [`agent_id`](GgTelemetryEvent::agent_id), so the payload carries only the\nstatus.",
       "oneOf": [
@@ -44,6 +93,37 @@
           "type": "string"
         }
       ]
+    },
+    "GgArchiveEntry": {
+      "description": "One entry of the thread [archive](CAPABILITY_AGENT_MANAGED_CONTEXT) — a band of an\n[`ArchiveState`](GgTelemetryKind::ArchiveState) snapshot.\n\nIt carries **metadata and a bounded preview, never the full text**. The archive exists\nprecisely so that material is out of the request; re-streaming it into the record would put a\nsecond copy of the whole thread on disk for no reader's benefit, and the searchable body stays\nrecoverable by the agent through `search_archive`, which is whose question it is.",
+      "properties": {
+        "len": {
+          "description": "The item's length, in characters, of searchable text.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "preview": {
+          "description": "The first couple of hundred characters of that text, so a reader can tell entries apart\nwithout the record carrying the thread twice.",
+          "type": "string"
+        },
+        "role": {
+          "description": "The conversational role the archived message had (`system` / `user` / `assistant` / `tool`).",
+          "type": "string"
+        },
+        "seq": {
+          "description": "The monotonic ordinal assigned when the item was archived — the handle a model has on where\nit sat in its thread, and stable across a fork (an archive's ordinal counter is carried,\nnever restarted).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source": {
+          "$ref": "#/$defs/GgContextSource",
+          "description": "The context band the item occupied in the live window."
+        }
+      },
+      "required": ["seq", "source", "role", "len", "preview"],
+      "type": "object"
     },
     "GgBoardEpic": {
       "description": "One [epic](https://docs.testcabinet.ai/gg/project-management/) on the board — a grouping of\nrelated [issues](GgBoardIssue) reported in a [`BoardState`](GgTelemetryKind::BoardState)\nevent.\n\nAn epic is organizational: it has a stable [`id`](Self::id) issues reference through their\n[`epic_id`](GgBoardIssue::epic_id), a [`title`](Self::title), and a\n[`description`](Self::description). It carries no status of its own — an epic's progress is\nread from the status of the issues grouped under it.\n\nThe id is the epic's **prefix**: an epic is created from a 3–6 letter prefix, upper-cased, and\nevery issue filed under it is numbered from it (`AUTH-1`, `AUTH-2`, …).",
@@ -481,6 +561,151 @@
       "required": ["count", "totalLen", "totalLines"],
       "type": "object"
     },
+    "GgMemoryScope": {
+      "description": "Which [memory](CAPABILITY_MEMORIES) instance an agent instance binds to — the\n[`scope`](MEMORY_PARAM_SCOPE) param, resolved.\n\nMemory used to be strictly per agent instance: a subagent started with an empty notebook and\nnothing it wrote was ever seen by anyone else. That is still the default, and it is still the\nright answer for an ablation that wants each agent measured on its own curation. The other\nthree bind the *same* store to several holders, which is what makes a study of shared,\naccumulated knowledge possible at all.\n\nTwo rules make the four coherent, and they are the ones a configuration's reader has to know:\n\n1. **[`ReadOnly`](Self::ReadOnly) only ever restricts an inherited handle.** An agent that ends\n   up with a fresh instance under `read-only` may write it — a private notebook nobody may\n   write is not a feature.\n2. **Write access is a property of the holder, not of the store.** So a read-only agent's\n   [`Inherited`](Self::Inherited) subagent gets a read/**write** handle onto the same store.",
+      "oneOf": [
+        {
+          "const": "isolated",
+          "description": "A fresh instance per agent **instance**: what one agent writes, no other agent ever sees.\nThe default, and gg's only behaviour before scoping existed.",
+          "type": "string"
+        },
+        {
+          "const": "shared",
+          "description": "One instance per agent **profile**, shared by every instance of it in the run — including\ninstances running in parallel, which are then linked holders of one store and are told\nabout each other's writes.",
+          "type": "string"
+        },
+        {
+          "const": "inherited",
+          "description": "A subagent binds its **spawner's** instance, read/write; an agent spawned any other way\n(the root, an issue's implementer, a reviewer or judge) gets its own. Chains: a subagent of\na subagent inherits the instance its parent inherited, however deep.",
+          "type": "string"
+        },
+        {
+          "const": "read-only",
+          "description": "As [`Inherited`](Self::Inherited), but this holder may **not** write: it is offered the\nread calls alone, and a write reaching gg any other way is refused with an explanation\nrather than silently dropped.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgModuleDisposition": {
+      "description": "What a succession did with one [module](GgModuleKind) — the per-kind outcome an\n[`AgentTransition`](GgTelemetryKind::AgentTransition) reports.\n\nThe distinction that matters is [`Carried`](Self::Carried) versus [`Linked`](Self::Linked)\nversus [`Copied`](Self::Copied): all three leave the successor holding *something*, and only\nthe first two leave it holding the **same store** — with `Linked` the one case where both\ninstances hold it at once, which is what a fork of a shared notebook (or of the run's board)\nproduces.",
+      "oneOf": [
+        {
+          "const": "carried",
+          "description": "The successor holds the very same store, and the predecessor no longer does. A succession.",
+          "type": "string"
+        },
+        {
+          "const": "copied",
+          "description": "The copy holds an **independent** copy of the predecessor's contents, which diverge from\nhere.",
+          "type": "string"
+        },
+        {
+          "const": "linked",
+          "description": "The copy holds a **link** onto the same store — both instances hold it. The\n[board](GgModuleKind::Board) always, and [memories](GgModuleKind::Memories) whose\n[scope](GgMemoryScope) says two agents were meant to curate one notebook.",
+          "type": "string"
+        },
+        {
+          "const": "dropped",
+          "description": "The instance did not travel: its backing store is gone with the predecessor.",
+          "type": "string"
+        },
+        {
+          "const": "initialized",
+          "description": "The successor started a new, empty instance of this kind — either the plan did not carry\none, or what was carried could not be read under the successor's configuration.",
+          "type": "string"
+        },
+        {
+          "const": "absent",
+          "description": "Neither side holds one: the capability is off for both. Present so a\n[roster](GgTelemetryKind::AgentModules) and a transition list line up kind for kind.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgModuleKind": {
+      "description": "The closed set of **modules** an agent instance holds: one unit of per-agent capability state\nthat gg can clone, share between agents, and hand from one agent instance to the next.\n\nThe names are the vocabulary a configuration uses to talk about that state — most visibly an\n[FSM](CAPABILITY_FSM) transition's transfer list, which names the modules the successor state\ninherits. They are a closed taxonomy rather than open capability ids because gg has to\nimplement clone/share/transfer semantics per kind; a capability with no module keeps no state\nworth carrying.\n\nSee the [module model](https://docs.testcabinet.ai/gg/modules/) for the per-kind semantics.",
+      "oneOf": [
+        {
+          "const": "history",
+          "description": "The agent's **conversation window** — every message, file view and pinned block it holds.\nAlways present (an agent without a window is not an agent); it is the module a successor\nreceives to continue a predecessor's thread rather than start afresh.",
+          "type": "string"
+        },
+        {
+          "const": "memories",
+          "description": "The [memories](CAPABILITY_MEMORIES) the agent curates, under whichever strategy the\ncapability configures.",
+          "type": "string"
+        },
+        {
+          "const": "tasks",
+          "description": "The [task](CAPABILITY_TASKS) list — the blocked-by DAG the agent steers by.",
+          "type": "string"
+        },
+        {
+          "const": "board",
+          "description": "The [project-management](CAPABILITY_PROJECT_MANAGEMENT) board. Run-global by\nconstruction: every holder of it holds the *same* board, so it is shared rather than\ncopied however it is carried.",
+          "type": "string"
+        },
+        {
+          "const": "skills",
+          "description": "The [skills](CAPABILITY_SKILLS) library and the set of skills read so far — a promise\nabout which skill bodies are already pinned in the window, so it travels with it.",
+          "type": "string"
+        },
+        {
+          "const": "archive",
+          "description": "The thread [archive](CAPABILITY_AGENT_MANAGED_CONTEXT) `archive_thread` fills and\n`search_archive` reads.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgModuleOrigin": {
+      "description": "How one agent instance came to hold one module instance — the holder-side half of a module's\nidentity, and the difference between *\"this agent made this notebook\"* and *\"this agent was\nhanded it\"*.\n\nIt is a property of the **holder**, not of the store: two holders of one store routinely report\ndifferent origins, because one of them created it and the other bound, inherited or was handed\nit. Read beside the holder's declared [scope](GgMemoryScope) it is also the only way to see a\nbinding that did not resolve the way its configuration asked — a holder reporting\n`scope: inherited` with `origin: created` is one whose inheritance silently fell back to a\nprivate instance, which is a legal outcome nothing else in the record states.\n\nIt deliberately does **not** distinguish a fork's copy from a fork's link. Whether the copy got\nits own store is already visible, and visible more reliably, in the\n[id](GgAgentModule::module_id): a link reports its forker's id and a copy reports a new one.",
+      "oneOf": [
+        {
+          "const": "created",
+          "description": "Created for this instance: a new backing store with nothing behind it. The default, and\nwhat every module of every agent was before instances could be shared.",
+          "type": "string"
+        },
+        {
+          "const": "inherited",
+          "description": "Bound the store this agent's **spawner** offered —\n[`inherited`](GgMemoryScope::Inherited) or [`read-only`](GgMemoryScope::ReadOnly) memories.",
+          "type": "string"
+        },
+        {
+          "const": "profile",
+          "description": "Bound the **profile-scoped** instance every instance of this agent profile shares —\n[`shared`](GgMemoryScope::Shared) memories.",
+          "type": "string"
+        },
+        {
+          "const": "run",
+          "description": "Bound the run's single instance — the [board](GgModuleKind::Board), which is run-global by\nconstruction.",
+          "type": "string"
+        },
+        {
+          "const": "transferred",
+          "description": "Carried live from the predecessor across an `exec` or an [FSM](CAPABILITY_FSM) transition.",
+          "type": "string"
+        },
+        {
+          "const": "forked",
+          "description": "Received when the agent this one was forked from was copied.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgModuleOwnership": {
+      "description": "Whether the state a module-backed capability keeps is carried in its holder's **prompt**, or\nis reachable only through the tools it contributes.\n\nThis is the [`ownership`](MODULE_PARAM_OWNERSHIP) param, and it is the one knob that separates\n\"the agent is told what it holds, every turn\" from \"the agent may look it up\". It exists\nbecause a module is no longer necessarily *about* the agent holding it: once a memory instance\ncan be shared between agents, or a task list handed from one FSM state to the next, an agent\ncan be given a working store it should be able to act on without paying for it in every\nrequest it makes.",
+      "oneOf": [
+        {
+          "const": "owned",
+          "description": "The holder's prompt carries the module: its system-prompt section is rendered, and the\npinned block it keeps (the memory index, the task list, the board) is refreshed into the\nwindow on that module's own schedule. Every capability behaved this way before ownership\nwas configurable, so this is the default and the back-compatible value.",
+          "type": "string"
+        },
+        {
+          "const": "unowned",
+          "description": "The module is reachable through the holder's **tools and nothing else**: no system-prompt\nsection, no pinned block, and no per-turn notice. Its state is still live — the tools read\nand write it, and it is still transferred, shared and reported as\n[telemetry](GgTelemetryKind) exactly as an owned one is — it simply costs the holder no\ncontext until it asks.",
+          "type": "string"
+        }
+      ]
+    },
     "GgNotAProgram": {
       "description": "Why a response was not a program at all.\n\nSuch a turn is **not** a completion: gg feeds it back to the model as an error turn naming the\nshape it sent and telling it to call `finish(summary)` if it meant to end the run, and it\ncounts towards the run's [error ceilings](GgRunLimits) — which is what stops a model that has\nstarted answering in prose from looping forever. It still emits its own\n[`CodeExecution`](GgTelemetryKind::CodeExecution) (with `ok: false` and no duration, because\nnothing ran), so [`code_executions`](GgSessionSummary::code_executions) counts code-shaped\n*turns* and stays the exact denominator for every healing rate.",
       "oneOf": [
@@ -722,6 +947,29 @@
           "type": "string"
         }
       ]
+    },
+    "GgTransitionModule": {
+      "description": "What happened to one [module](GgModuleKind) across a succession — a row of an\n[`AgentTransition`](GgTelemetryKind::AgentTransition)'s\n[`modules`](GgTelemetryKind::AgentTransition::modules) list.\n\nIt carries the module instance on **both** sides of the boundary, which is what makes a store\nswap visible: a [`Carried`](GgModuleDisposition::Carried) or\n[`Linked`](GgModuleDisposition::Linked) module reports the same id twice, and everything else\nreports two different ones (or one, where only one side held anything).",
+      "properties": {
+        "disposition": {
+          "$ref": "#/$defs/GgModuleDisposition",
+          "description": "What the successor (or the copy) received."
+        },
+        "fromModuleId": {
+          "description": "The instance the outgoing agent held, when it held one.",
+          "type": ["string", "null"]
+        },
+        "kind": {
+          "$ref": "#/$defs/GgModuleKind",
+          "description": "Which module this row is about."
+        },
+        "toModuleId": {
+          "description": "The instance the successor holds, when it holds one. Equal to\n[`from_module_id`](Self::from_module_id) for a [carried](GgModuleDisposition::Carried) or\n[linked](GgModuleDisposition::Linked) module and different for every other disposition.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["kind", "disposition"],
+      "type": "object"
     },
     "GgWorkflowPhase": {
       "description": "The boundary a [`WorkflowStage`](GgTelemetryKind::WorkflowStage) event marks — the\n[start or finish](https://docs.testcabinet.ai/gg/workflows/) of one stage of a declared\n[workflow](CAPABILITY_WORKFLOWS).\n\nA workflow stage emits one event as it [starts](Self::Started) (right before it fans its\nsubagents out) and one as it [finishes](Self::Finished) (once every fanned-out agent has\nreturned and its results are collected to feed the next stage), so the console can render the\nworkflow's structure and each stage's duration on the timeline. The per-agent\n[`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentStatus`](GgTelemetryKind::AgentStatus)/[`AgentReturned`](GgTelemetryKind::AgentReturned)\nevents carry the detail of the agents that ran within the stage.",
@@ -1039,6 +1287,11 @@
     {
       "description": "The [skills](https://docs.testcabinet.ai/gg/skills/) available to the model and\nwhich of them have been read.\n\nEmitted once at session start (with the full catalog, all unread) when the\n[skills](CAPABILITY_SKILLS) capability offers any skills, and again each time the\nmodel reads one (that skill flips to `read: true` and its body enters the context\nwindow as a [`Skill`](GgContextSource::Skill)-sourced, compaction-retained item).\nThe console renders it as the run's skill panel. A run with the capability off, or\nwith no skills to offer, emits none.",
       "properties": {
+        "moduleId": {
+          "default": "",
+          "description": "The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing\nread set, not the holder. Empty on records written before module identity existed.",
+          "type": "string"
+        },
         "skills": {
           "description": "One entry per available skill, in the order the catalog lists them.",
           "items": {
@@ -1073,6 +1326,11 @@
             "$ref": "#/$defs/GgMemoryEntry"
           },
           "type": "array"
+        },
+        "moduleId": {
+          "default": "",
+          "description": "The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing\nstore, not the holder. It is what lets a reader attribute two agents' identical panels\nto one store rather than to a coincidence, and what lets a shared store's contents be\nshown once, under the module, rather than N times under N agents. Empty on records\nwritten before module identity existed.",
+          "type": "string"
         },
         "peak": {
           "$ref": "#/$defs/GgMemoryPeak",
@@ -1176,6 +1434,11 @@
     {
       "description": "The model's [task](https://docs.testcabinet.ai/gg/tasks/) list — a blocked-by DAG\nthat is retained across a [compaction] boundary verbatim.\n\nEmitted once at session start (an empty list) when the [tasks](CAPABILITY_TASKS)\ncapability is enabled, and again after every successful mutation\n(`add_task`/`update_task`/`set_blocked_by`/`complete_task`/`remove_task`) so the\nconsole can render the live DAG. The full list is also a pinned\n[`TaskList`](GgContextSource::TaskList)-sourced context item, so the model sees its\nplan each turn. A run with the capability off emits none.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
+        "moduleId": {
+          "default": "",
+          "description": "The [module instance](GgTelemetryKind::AgentModules) this snapshot is of — the backing\nlist, not the holder. Empty on records written before module identity existed.",
+          "type": "string"
+        },
         "tasks": {
           "description": "The tasks, in the order the model added them (a stable order for the DAG's\nnodes). Each carries its status and the ids it is blocked by.",
           "items": {
@@ -1207,6 +1470,11 @@
             "$ref": "#/$defs/GgBoardIssue"
           },
           "type": "array"
+        },
+        "moduleId": {
+          "default": "",
+          "description": "The [module instance](GgTelemetryKind::AgentModules) this snapshot is of. The board is\nrun-global by construction, so every holder in a run reports the *same* id here —\nwhich is exactly what makes the whole run's board legible as one shared module rather\nthan as one board per agent. Empty on records written before module identity existed.",
+          "type": "string"
         },
         "type": {
           "const": "board_state",
@@ -1324,6 +1592,41 @@
       "type": "object"
     },
     {
+      "description": "The out-of-window thread [archive](CAPABILITY_AGENT_MANAGED_CONTEXT) — what `archive_thread`\nhas put away and `search_archive` can recover.\n\nEmitted once as an agent opens (empty, when the capability is on) and again after every\n`archive_thread`, alongside the [`ContextManaged`](Self::ContextManaged) event that records\nthe *act*. The two answer different questions: that one is \"the window was reclaimed by this\nmuch\", this one is \"here is what is now out of it\". A run with the capability off emits none.\n\nThe entries carry metadata and a bounded preview only — see [`GgArchiveEntry`] for why the\nrecord does not carry the archived text a second time.",
+      "properties": {
+        "count": {
+          "description": "How many entries are archived (the length of `entries`).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "entries": {
+          "description": "The archived entries, in archival order.",
+          "items": {
+            "$ref": "#/$defs/GgArchiveEntry"
+          },
+          "type": "array"
+        },
+        "moduleId": {
+          "default": "",
+          "description": "The [module instance](Self::AgentModules) this snapshot is of — the backing archive, not\nthe holder. Empty on records written before module identity existed.",
+          "type": "string"
+        },
+        "totalLen": {
+          "description": "The total length, in characters, of everything archived — the size of what left the\nwindow.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "archive_state",
+          "type": "string"
+        }
+      },
+      "required": ["type", "entries", "count", "totalLen"],
+      "type": "object"
+    },
+    {
       "description": "An agent [started running](https://docs.testcabinet.ai/gg/subagents/) — the event\nthat builds the live agent tree the console visualizes.\n\nEmitted once per agent as it begins its turn loop: the root agent at session start,\nand (Phase 4B) each subagent when the [scheduler](https://docs.testcabinet.ai/gg/subagents/#scheduling)\ngrants it a slot. The spawned agent's **identity is the event's own**\n[`agent_id`](GgTelemetryEvent::agent_id) /\n[`parent_agent_id`](GgTelemetryEvent::parent_agent_id) — an `AgentSpawned` is emitted on\nthe spawned agent's own scoped stream — so the payload does not repeat them; it carries\nthe additional facts the tree view needs beyond identity: which [model slot](GgSlotBinding)\nthe agent runs on, the concrete model that slot resolved to, the agent's depth in the\ntree, and (for a subagent) the brief it was dispatched with. The `agent_id`/\n`parent_agent_id` and the `slot`/`modelId` together are why gg usage is accounted **per\nslot** (see [`SlotUsage`](Self::SlotUsage)) rather than for one model.",
       "properties": {
         "brief": {
@@ -1358,6 +1661,24 @@
         }
       },
       "required": ["type", "slot", "modelId", "depth"],
+      "type": "object"
+    },
+    {
+      "description": "The [modules](GgModuleKind) one agent instance holds, as it opens: what each is, which\nbacking store it is a holder of, whose it is, and whether the agent's prompt carries it.\n\nEmitted **once per incarnation, for every instance** — the root, every subagent, every\nsuccessor — immediately after that instance's [`AgentSpawned`](Self::AgentSpawned) (and its\n[`FsmState`](Self::FsmState), when it stands in a machine). It is the only event that\nreports a module an agent holds but has not yet *touched* — a read-only inherited memory\nholder that never writes emits no [`MemoryState`](Self::MemoryState) of its own — and the\nonly one that reports [ownership](GgModuleOwnership) as data rather than as a log line.\n\nA roster does not change within an incarnation: every operation that changes what an agent\nholds (an `exec`, an [FSM](CAPABILITY_FSM) transition, a `fork`) mints a new agent id, and\nthe new instance emits its own. So it is emitted once and never re-emitted, and it carries\ndeliberately **no holder count** — a point-in-time count is stale the moment a sibling\nspawns, while a consumer holding every instance's roster already knows the exact holder set,\nincluding which of those holders are still running.",
+      "properties": {
+        "modules": {
+          "description": "One entry per [kind](GgModuleKind::ALL), in kind order — including the kinds this\ninstance's profile has switched off, so an ablation's off arm is legible rather than\nabsent.",
+          "items": {
+            "$ref": "#/$defs/GgAgentModule"
+          },
+          "type": "array"
+        },
+        "type": {
+          "const": "agent_modules",
+          "type": "string"
+        }
+      },
+      "required": ["type", "modules"],
       "type": "object"
     },
     {
@@ -1528,23 +1849,16 @@
           "description": "The [agent profile](GgAgentConfig) the successor runs under.",
           "type": "string"
         },
-        "dropped": {
-          "description": "The modules the outgoing instance held that the successor did not receive at all —\ntheir backing stores are gone.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "initialized": {
-          "description": "The modules the successor's own profile enables that it starts **fresh**: either the\nplan did not carry them, or what was carried could not be read under the successor's\nconfiguration.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
         "kind": {
           "$ref": "#/$defs/GgAgentTransitionKind",
           "description": "Which of the three [kinds](GgAgentTransitionKind) of succession this was."
+        },
+        "modules": {
+          "description": "What happened to each [module](GgModuleKind) the two instances between them held, in\n[kind](GgModuleKind::ALL) order — the whole of what a successor did and did not\ninherit, and **which instance** it is now holding.\n\nOne list rather than the three name lists this replaced (`transferred`/`dropped`/\n`initialized`), because those collapsed a per-kind decision the code actually makes: a\nfork chooses to link or copy per kind and then reported both as \"transferred\", so a\ncopy's linked board and its copied task list were indistinguishable. Each row here\ncarries its own [disposition](GgModuleDisposition) and the module instance on both\nsides, so a store that was swapped underneath a successor is visible as one.",
+          "items": {
+            "$ref": "#/$defs/GgTransitionModule"
+          },
+          "type": "array"
         },
         "state": {
           "default": null,
@@ -1555,27 +1869,12 @@
           "description": "The id of the agent instance that takes over (or, for a `fork`, of the copy).",
           "type": "string"
         },
-        "transferred": {
-          "description": "The [modules](GgModuleKind) the successor received **live**, contents and all, in\n[kind](GgModuleKind::ALL) order.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
         "type": {
           "const": "agent_transition",
           "type": "string"
         }
       },
-      "required": [
-        "type",
-        "kind",
-        "toAgentId",
-        "agent",
-        "transferred",
-        "dropped",
-        "initialized"
-      ],
+      "required": ["type", "kind", "toAgentId", "agent", "modules"],
       "type": "object"
     },
     {

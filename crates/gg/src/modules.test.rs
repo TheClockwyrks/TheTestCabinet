@@ -11,7 +11,7 @@ use serde_json::json;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_SKILLS, CAPABILITY_TASKS, GgAgentConfig, GgCapabilityConfig, GgContextSource,
-    GgTelemetryKind, MEMORY_PARAM_SCOPE,
+    GgModuleDisposition, GgTelemetryKind, MEMORY_PARAM_SCOPE,
 };
 
 use super::*;
@@ -48,6 +48,7 @@ fn ctx<'a>(
     board: &'a BoardRuntime,
     memories: &'a MemoryRegistry,
     inherited: &'a InheritedModules,
+    ids: &'a ModuleIds,
 ) -> ModuleResolveCtx<'a> {
     ModuleResolveCtx {
         skills,
@@ -57,14 +58,19 @@ fn ctx<'a>(
         inheritable: false,
         history: history_setup(),
         agent_id: "agent-1",
+        ids,
     }
 }
 
 /// The two run-global inputs a set is resolved against when nothing is shared and nothing is
 /// inherited — which is every test in this file, since scoping is `memories.scope.test.rs`'s
 /// subject and these tests are about the module model around it.
-fn plain() -> (MemoryRegistry, InheritedModules) {
-    (MemoryRegistry::new(), InheritedModules::default())
+fn plain() -> (MemoryRegistry, InheritedModules, ModuleIds) {
+    (
+        MemoryRegistry::new(),
+        InheritedModules::default(),
+        detached_ids(),
+    )
 }
 
 /// A profile enabling `capabilities`, each with the given params.
@@ -221,10 +227,10 @@ fn an_unowned_skills_module_lists_no_catalog() {
 fn a_profile_without_the_board_capability_holds_it_unowned() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::new(BoardCaps::default());
-    let (registry, inherited) = plain();
+    let (registry, inherited, ids) = plain();
     let modules = CapabilityModules::resolve(
         &GgAgentConfig::root(),
-        &ctx(&skills, &board, &registry, &inherited),
+        &ctx(&skills, &board, &registry, &inherited, &ids),
     );
 
     assert!(
@@ -234,8 +240,10 @@ fn a_profile_without_the_board_capability_holds_it_unowned() {
     assert_eq!(modules.board().ownership(), Ownership::Unowned);
 
     let authoring = profile_with(vec![(CAPABILITY_PROJECT_MANAGEMENT, json!({}))]);
-    let modules =
-        CapabilityModules::resolve(&authoring, &ctx(&skills, &board, &registry, &inherited));
+    let modules = CapabilityModules::resolve(
+        &authoring,
+        &ctx(&skills, &board, &registry, &inherited, &ids),
+    );
     assert_eq!(modules.board().ownership(), Ownership::Owned);
 }
 
@@ -443,7 +451,7 @@ fn a_fork_does_not_duplicate_undrained_telemetry() {
 /// (a model that read `Turn #37` must be naming the turns it saw).
 #[test]
 fn a_history_share_is_a_copy_that_keeps_its_turn_number() {
-    let mut history = HistoryModule::new(&history_setup());
+    let mut history = HistoryModule::new(&history_setup(), &detached_ids());
     history.context_mut().begin_turn(37);
     history.context_mut().push_system("the system prompt");
 
@@ -469,8 +477,8 @@ fn a_history_share_is_a_copy_that_keeps_its_turn_number() {
 fn adopting_re_resolves_the_caps_from_the_receiving_profile() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let (registry, inherited) = plain();
-    let ctx = ctx(&skills, &board, &registry, &inherited);
+    let (registry, inherited, ids) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
 
     let mut tasks = TasksRuntime::with_mode(3, TaskMode::Simple);
     add_task(&tasks, "t1");
@@ -492,8 +500,8 @@ fn adopting_re_resolves_the_caps_from_the_receiving_profile() {
 fn a_tightened_cap_keeps_what_is_already_there() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let (registry, inherited) = plain();
-    let ctx = ctx(&skills, &board, &registry, &inherited);
+    let (registry, inherited, ids) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
 
     let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
     write_memory(&memories, "one");
@@ -530,8 +538,8 @@ fn a_tightened_cap_keeps_what_is_already_there() {
 fn caps_are_re_resolved_even_while_the_tools_still_hold_the_store() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let (registry, inherited) = plain();
-    let ctx = ctx(&skills, &board, &registry, &inherited);
+    let (registry, inherited, ids) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
 
     let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
     // Exactly what `ToolRegistry::from_run` does: one binding per memory tool, each an `Arc` clone.
@@ -561,8 +569,8 @@ fn caps_are_re_resolved_even_while_the_tools_still_hold_the_store() {
 fn an_adopted_module_is_not_handed_its_predecessors_unread_news() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let (registry, inherited) = plain();
-    let ctx = ctx(&skills, &board, &registry, &inherited);
+    let (registry, inherited, ids) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
 
     let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default())
         .with_agent("agent-1");
@@ -597,8 +605,8 @@ fn an_adopted_module_is_not_handed_its_predecessors_unread_news() {
 fn a_shared_successor_rebinds_the_instance_its_own_profile_keeps() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let (registry, inherited) = plain();
-    let ctx = ctx(&skills, &board, &registry, &inherited);
+    let (registry, inherited, ids) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
 
     // The instance the receiving profile already keeps, with a memory an earlier instance of it
     // wrote.
@@ -643,8 +651,8 @@ fn a_shared_successor_rebinds_the_instance_its_own_profile_keeps() {
 fn a_profile_that_disables_the_capability_refuses_the_module() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let (registry, inherited) = plain();
-    let ctx = ctx(&skills, &board, &registry, &inherited);
+    let (registry, inherited, ids) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
 
     let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
     assert_eq!(
@@ -660,8 +668,8 @@ fn a_profile_that_disables_the_capability_refuses_the_module() {
 fn a_different_memory_strategy_is_refused_with_a_reason() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let (registry, inherited) = plain();
-    let ctx = ctx(&skills, &board, &registry, &inherited);
+    let (registry, inherited, ids) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
 
     let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
     let mut receiver = profile_with(vec![(CAPABILITY_MEMORIES, json!({}))]);
@@ -682,7 +690,7 @@ fn a_different_memory_strategy_is_refused_with_a_reason() {
 fn an_intersection_transfer_carries_drops_and_initializes() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let (registry, inherited) = plain();
+    let (registry, inherited, ids) = plain();
 
     // The predecessor holds memories and a task list; the successor's profile keeps memories, adds
     // the archive, and drops tasks entirely.
@@ -703,13 +711,13 @@ fn an_intersection_transfer_carries_drops_and_initializes() {
         old,
         &successor_profile,
         &TransferPlan::Intersection,
-        &ctx(&skills, &board, &registry, &inherited),
+        &ctx(&skills, &board, &registry, &inherited, &ids),
     );
 
-    assert!(report.transferred.contains(&ModuleKind::Memories));
-    assert!(report.transferred.contains(&ModuleKind::History));
-    assert!(report.dropped.contains(&ModuleKind::Tasks));
-    assert!(report.initialized.contains(&ModuleKind::Archive));
+    assert!(report.carried().contains(&ModuleKind::Memories));
+    assert!(report.carried().contains(&ModuleKind::History));
+    assert!(report.dropped().contains(&ModuleKind::Tasks));
+    assert!(report.initialized().contains(&ModuleKind::Archive));
 
     assert_eq!(
         successor.caps().memories().count(),
@@ -731,7 +739,7 @@ fn an_intersection_transfer_carries_drops_and_initializes() {
 fn an_explicit_transfer_carries_only_what_it_names() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let (registry, inherited) = plain();
+    let (registry, inherited, ids) = plain();
 
     let old = ModuleSet::inert(&history_setup())
         .with(ModuleHandle::Memories(MemoriesRuntime::new(
@@ -750,13 +758,13 @@ fn an_explicit_transfer_carries_only_what_it_names() {
         old,
         &successor_profile,
         &TransferPlan::Explicit(vec![ModuleKind::Tasks]),
-        &ctx(&skills, &board, &registry, &inherited),
+        &ctx(&skills, &board, &registry, &inherited, &ids),
     );
 
-    assert_eq!(report.transferred, vec![ModuleKind::Tasks]);
-    assert!(report.initialized.contains(&ModuleKind::Memories));
+    assert_eq!(report.carried(), vec![ModuleKind::Tasks]);
+    assert!(report.initialized().contains(&ModuleKind::Memories));
     assert!(
-        report.initialized.contains(&ModuleKind::History),
+        report.initialized().contains(&ModuleKind::History),
         "a transition that does not carry history opens a fresh window"
     );
     assert_eq!(successor.caps().tasks().count(), 1);
@@ -774,14 +782,14 @@ fn an_explicit_transfer_carries_only_what_it_names() {
 fn a_transfer_list_naming_an_absent_module_warns() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let (registry, inherited) = plain();
+    let (registry, inherited, ids) = plain();
     let old = ModuleSet::inert(&history_setup());
 
     let (_, report) = transfer(
         old,
         &profile_with(Vec::new()),
         &TransferPlan::Explicit(vec![ModuleKind::Memories]),
-        &ctx(&skills, &board, &registry, &inherited),
+        &ctx(&skills, &board, &registry, &inherited, &ids),
     );
     assert_eq!(report.warnings.len(), 1, "{report:?}");
     assert!(report.warnings[0].contains("`memories`"));
@@ -794,7 +802,7 @@ fn a_transfer_list_naming_an_absent_module_warns() {
 fn an_incompatible_module_is_reinitialized_with_a_stated_reason() {
     let skills = SkillsRuntime::disabled();
     let board = BoardRuntime::disabled();
-    let (registry, inherited) = plain();
+    let (registry, inherited, ids) = plain();
 
     let old = ModuleSet::inert(&history_setup()).with(ModuleHandle::Memories(
         MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default()),
@@ -808,11 +816,11 @@ fn an_incompatible_module_is_reinitialized_with_a_stated_reason() {
         old,
         &successor_profile,
         &TransferPlan::Intersection,
-        &ctx(&skills, &board, &registry, &inherited),
+        &ctx(&skills, &board, &registry, &inherited, &ids),
     );
 
-    assert!(!report.transferred.contains(&ModuleKind::Memories));
-    assert!(report.initialized.contains(&ModuleKind::Memories));
+    assert!(!report.carried().contains(&ModuleKind::Memories));
+    assert!(report.initialized().contains(&ModuleKind::Memories));
     assert_eq!(report.notes.len(), 1, "{report:?}");
     assert_eq!(successor.caps().memories().count(), 0);
     assert_eq!(
@@ -827,7 +835,7 @@ fn an_incompatible_module_is_reinitialized_with_a_stated_reason() {
 /// one thing that must never be inherited.
 #[test]
 fn a_rebased_window_keeps_the_thread_and_replaces_the_prompt() {
-    let mut history = HistoryModule::new(&history_setup());
+    let mut history = HistoryModule::new(&history_setup(), &detached_ids());
     history
         .context_mut()
         .push_system("the predecessor's prompt");
@@ -890,12 +898,13 @@ fn a_forked_set_is_independent_of_the_set_it_was_cloned_from() {
     let dir = tempfile::TempDir::new().unwrap();
     let skills = SkillsRuntime::new(library(dir.path()));
     let board = BoardRuntime::new(BoardCaps::default());
-    let (registry, inherited) = plain();
+    let (registry, inherited, ids) = plain();
     let profile = profile_with(vec![
         (CAPABILITY_MEMORIES, json!({})),
         (CAPABILITY_TASKS, json!({})),
     ]);
-    let mut original = ModuleSet::resolve(&profile, &ctx(&skills, &board, &registry, &inherited));
+    let mut original =
+        ModuleSet::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
     original.context_mut().push_system("the shared prefix");
     original.context_mut().begin_turn(1);
     original
@@ -903,10 +912,20 @@ fn a_forked_set_is_independent_of_the_set_it_was_cloned_from() {
         .push_assistant(Some("before the fork".to_string()), Vec::new());
     add_task(original.caps().tasks(), "shared");
 
-    let (mut copy, cloned) = fork_modules(original.context(), original.caps(), "agent-2");
+    let (mut copy, cloned) = fork_modules(
+        original.context(),
+        original.history_id(),
+        original.caps(),
+        "agent-2",
+    );
 
+    let copied: Vec<ModuleKind> = cloned
+        .iter()
+        .filter(|entry| entry.disposition == GgModuleDisposition::Copied)
+        .map(|entry| entry.kind)
+        .collect();
     assert!(
-        cloned.contains(&ModuleKind::History) && cloned.contains(&ModuleKind::Tasks),
+        copied.contains(&ModuleKind::History) && copied.contains(&ModuleKind::Tasks),
         "the copy carries the window and everything else it holds: {cloned:?}"
     );
     assert_eq!(
@@ -976,7 +995,7 @@ fn a_forked_memory_is_copied_when_isolated_and_linked_when_it_is_not() {
     let dir = tempfile::TempDir::new().unwrap();
     let skills = SkillsRuntime::new(library(dir.path()));
     let board = BoardRuntime::new(BoardCaps::default());
-    let (registry, inherited) = plain();
+    let (registry, inherited, ids) = plain();
 
     for (scope, links) in [
         (MemoryScope::Isolated, false),
@@ -988,10 +1007,16 @@ fn a_forked_memory_is_copied_when_isolated_and_linked_when_it_is_not() {
             CAPABILITY_MEMORIES,
             json!({ MEMORY_PARAM_SCOPE: scope.as_str() }),
         )]);
-        let original = ModuleSet::resolve(&profile, &ctx(&skills, &board, &registry, &inherited));
+        let original =
+            ModuleSet::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
         write_memory(original.caps().memories(), "before-the-fork");
 
-        let (copy, _) = fork_modules(original.context(), original.caps(), "agent-2");
+        let (copy, _) = fork_modules(
+            original.context(),
+            original.history_id(),
+            original.caps(),
+            "agent-2",
+        );
         assert_eq!(
             copy.caps().memories().count(),
             1,
@@ -1008,4 +1033,386 @@ fn a_forked_memory_is_copied_when_isolated_and_linked_when_it_is_not() {
             "{scope}: a linked notebook shows the copy's write and an isolated one does not"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Module instance identity
+// ---------------------------------------------------------------------------
+
+/// The whole of what an id promises, per kind: a [share](Module::share) is the same store and says
+/// so, a [fork](Module::fork) is a new one and says so, and the two answers are the *only* thing in
+/// the record that distinguishes two holders of one store from two stores that agree.
+///
+/// The board is the exception in both directions — it shares whichever operation is asked for,
+/// because a run has one work queue — and that shows up here as an id that never changes.
+#[test]
+fn share_keeps_a_module_id_and_fork_mints_a_new_one() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let ids = detached_ids();
+    let modules: Vec<ModuleHandle> = vec![
+        ModuleHandle::Memories(MemoriesRuntime::new(
+            MemoryStrategy::Scratchpad,
+            MemoryCaps::default(),
+        )),
+        ModuleHandle::Tasks(TasksRuntime::new(10)),
+        ModuleHandle::Skills(SkillsRuntime::new(library(dir.path()))),
+        ModuleHandle::Archive(crate::archive::ArchiveRuntime::new()),
+    ];
+    for handle in &modules {
+        let module = handle.as_module();
+        let id = module.instance_id().to_string();
+        assert!(
+            id.starts_with(&format!("{}-", module.kind())),
+            "an id says what it identifies: {id}"
+        );
+        assert_eq!(
+            module.share().as_module().instance_id(),
+            id,
+            "{}: two holders of one store report one id",
+            module.kind()
+        );
+        assert_ne!(
+            module.fork().as_module().instance_id(),
+            id,
+            "{}: a copy is a second store and reports a second id",
+            module.kind()
+        );
+    }
+
+    // The window is the other exception, in the other direction: two agents cannot write one
+    // thread, so `share` hands back a copy — and a copy is a second window with a second id.
+    let history = HistoryModule::new(&history_setup(), &ids);
+    assert_ne!(
+        history.share().as_module().instance_id(),
+        history.instance_id()
+    );
+    assert_ne!(
+        history.fork().as_module().instance_id(),
+        history.instance_id()
+    );
+
+    // The board is the run's single work queue: every way of copying it hands back the same one.
+    let board = BoardRuntime::new(BoardCaps::default());
+    let id = board.instance_id().to_string();
+    assert_eq!(board.share().as_module().instance_id(), id);
+    assert_eq!(
+        board.fork().as_module().instance_id(),
+        id,
+        "forking the board would issue `ABC-4` twice; it shares instead, and keeps its identity"
+    );
+}
+
+/// Two instances of one profile scoped `shared` are two **holders**, and the record has to be able
+/// to say so: same id, one store, whatever else differs between them.
+#[test]
+fn two_shared_holders_of_one_profile_report_one_module_id() {
+    let skills = SkillsRuntime::disabled();
+    let board = BoardRuntime::disabled();
+    let (registry, inherited, ids) = plain();
+    let profile = profile_with(vec![(
+        CAPABILITY_MEMORIES,
+        json!({ MEMORY_PARAM_SCOPE: MemoryScope::Shared.as_str() }),
+    )]);
+
+    let first =
+        MemoriesRuntime::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
+    let second =
+        MemoriesRuntime::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
+
+    assert_eq!(first.instance_id(), second.instance_id());
+    assert_eq!(
+        first.origin(),
+        GgModuleOrigin::Profile,
+        "the resolved answer to `shared` is the profile's instance, and the roster says so"
+    );
+    assert_eq!(second.origin(), GgModuleOrigin::Profile);
+    write_memory(&first, "one notebook");
+    assert_eq!(second.count(), 1, "and it really is one store");
+
+    // An `isolated` profile is the control: two instances, two ids.
+    let isolated = profile_with(vec![(CAPABILITY_MEMORIES, json!({}))]);
+    let a = MemoriesRuntime::resolve(
+        &isolated,
+        &ctx(&skills, &board, &registry, &inherited, &ids),
+    );
+    let b = MemoriesRuntime::resolve(
+        &isolated,
+        &ctx(&skills, &board, &registry, &inherited, &ids),
+    );
+    assert_ne!(a.instance_id(), b.instance_id());
+    assert_eq!(a.origin(), GgModuleOrigin::Created);
+}
+
+/// An `inherited` profile with nothing to inherit from silently falls back to a private notebook.
+/// That fallback is legal, invisible in every other field, and exactly what the roster's
+/// `scope` × `origin` pair exists to surface.
+#[test]
+fn an_inherited_holder_with_no_spawner_reports_a_created_origin() {
+    let skills = SkillsRuntime::disabled();
+    let board = BoardRuntime::disabled();
+    let (registry, inherited, ids) = plain();
+    let profile = profile_with(vec![(
+        CAPABILITY_MEMORIES,
+        json!({ MEMORY_PARAM_SCOPE: MemoryScope::Inherited.as_str() }),
+    )]);
+
+    let orphan =
+        MemoriesRuntime::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
+    assert_eq!(orphan.memory_scope(), Some(MemoryScope::Inherited));
+    assert_eq!(
+        orphan.origin(),
+        GgModuleOrigin::Created,
+        "declared inherited, resolved private — the divergence the roster reports"
+    );
+
+    // With a spawner offering a store organized the same way, the scope resolves as declared.
+    let spawner = ModuleSet::resolve(
+        &profile_with(vec![(CAPABILITY_MEMORIES, json!({}))]),
+        &ctx(&skills, &board, &registry, &inherited, &ids),
+    );
+    let offered = InheritedModules::from_spawner(spawner.caps());
+    let child =
+        MemoriesRuntime::resolve(&profile, &ctx(&skills, &board, &registry, &offered, &ids));
+    assert_eq!(child.origin(), GgModuleOrigin::Inherited);
+    assert_eq!(
+        child.instance_id(),
+        spawner.caps().memories().instance_id(),
+        "an inherited holder holds its spawner's very store"
+    );
+}
+
+/// A roster reports every kind, disabled ones included, with the disabled ones carrying no id —
+/// there is no store to identify, and reporting the placeholder gg keeps in the slot would invent
+/// a module instance the run does not have.
+#[test]
+fn a_roster_reports_every_kind_with_ids_only_where_there_is_a_store() {
+    let skills = SkillsRuntime::disabled();
+    let board = BoardRuntime::new(BoardCaps::default());
+    let (registry, inherited, ids) = plain();
+    let profile = profile_with(vec![
+        (CAPABILITY_MEMORIES, json!({ "ownership": "unowned" })),
+        (CAPABILITY_PROJECT_MANAGEMENT, json!({})),
+    ]);
+
+    let set = ModuleSet::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
+    let roster = set.roster();
+
+    assert_eq!(
+        roster.iter().map(|entry| entry.kind).collect::<Vec<_>>(),
+        ModuleKind::ALL.to_vec(),
+        "one row per kind, in kind order"
+    );
+    let memories = &roster[1];
+    assert_eq!(memories.kind, ModuleKind::Memories);
+    assert!(memories.enabled);
+    assert_eq!(memories.ownership, Ownership::Unowned);
+    assert_eq!(memories.scope, Some(MemoryScope::Isolated));
+    assert!(memories.writable);
+    assert_eq!(memories.module_id, set.caps().memories().instance_id());
+
+    let tasks = &roster[2];
+    assert!(!tasks.enabled, "this profile has no task list");
+    assert_eq!(tasks.module_id, "", "a disabled module identifies nothing");
+
+    let board_row = &roster[3];
+    assert_eq!(board_row.origin, GgModuleOrigin::Run);
+    assert_eq!(board_row.module_id, board.instance_id());
+    assert!(
+        roster[0].module_id.starts_with("history-"),
+        "the window is a module too, and the first one"
+    );
+}
+
+/// A fork's per-kind report is the whole reason the three flat name lists were replaced: the copy's
+/// **own** task list and the run's **one** board are two entirely different outcomes, and a list
+/// that called both "transferred" could not tell them apart.
+#[test]
+fn a_fork_reports_linked_and_copied_per_kind_with_both_ids() {
+    let skills = SkillsRuntime::disabled();
+    let board = BoardRuntime::new(BoardCaps::default());
+    let (registry, inherited, ids) = plain();
+    let profile = profile_with(vec![
+        (CAPABILITY_TASKS, json!({})),
+        (CAPABILITY_PROJECT_MANAGEMENT, json!({})),
+    ]);
+    let original = ModuleSet::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
+
+    let (copy, report) = fork_modules(
+        original.context(),
+        original.history_id(),
+        original.caps(),
+        "agent-2",
+    );
+
+    let row = |kind: ModuleKind| {
+        report
+            .iter()
+            .find(|entry| entry.kind == kind)
+            .unwrap_or_else(|| panic!("{kind} is reported"))
+    };
+    assert_eq!(
+        report.iter().map(|entry| entry.kind).collect::<Vec<_>>(),
+        ModuleKind::ALL.to_vec()
+    );
+
+    let history = row(ModuleKind::History);
+    assert_eq!(history.disposition, GgModuleDisposition::Copied);
+    assert_eq!(
+        history.from_module_id.as_deref(),
+        Some(original.history_id())
+    );
+    assert_eq!(history.to_module_id.as_deref(), Some(copy.history_id()));
+    assert_ne!(history.from_module_id, history.to_module_id);
+
+    let tasks = row(ModuleKind::Tasks);
+    assert_eq!(tasks.disposition, GgModuleDisposition::Copied);
+    assert_ne!(
+        tasks.from_module_id, tasks.to_module_id,
+        "a copy's list is its own from here"
+    );
+    assert_eq!(
+        copy.caps().tasks().origin(),
+        GgModuleOrigin::Forked,
+        "the copy holds it because its forker was copied"
+    );
+
+    let board_row = row(ModuleKind::Board);
+    assert_eq!(board_row.disposition, GgModuleDisposition::Linked);
+    assert_eq!(
+        board_row.from_module_id, board_row.to_module_id,
+        "both instances hold the run's one board"
+    );
+    assert_eq!(
+        copy.caps().board().origin(),
+        GgModuleOrigin::Run,
+        "however a holder came by the board, it is the run's"
+    );
+
+    let memories = row(ModuleKind::Memories);
+    assert_eq!(
+        memories.disposition,
+        GgModuleDisposition::Absent,
+        "a kind neither side holds is absent, not dropped"
+    );
+    assert!(memories.from_module_id.is_none());
+}
+
+/// A transfer keeps the store it was handed — same id on both sides — **except** where the
+/// successor's own scope re-binds it. That exception is a store swap, it is correct behaviour, and
+/// before ids there was no way to see it happen.
+#[test]
+fn a_transfer_keeps_the_module_id_unless_the_successor_rebinds() {
+    let skills = SkillsRuntime::disabled();
+    let board = BoardRuntime::disabled();
+    let (registry, inherited, ids) = plain();
+    let profile = profile_with(vec![
+        (CAPABILITY_MEMORIES, json!({})),
+        (CAPABILITY_TASKS, json!({})),
+    ]);
+    let old = ModuleSet::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
+    let (memories_before, tasks_before) = (
+        old.caps().memories().instance_id().to_string(),
+        old.caps().tasks().instance_id().to_string(),
+    );
+
+    // An ordinary successor: the same stores, under a new holder.
+    let (successor, report) = transfer(
+        old,
+        &profile,
+        &TransferPlan::Intersection,
+        &ctx(&skills, &board, &registry, &inherited, &ids),
+    );
+    let row = |report: &TransferReport, kind: ModuleKind| {
+        report
+            .modules
+            .iter()
+            .find(|entry| entry.kind == kind)
+            .cloned()
+            .unwrap_or_else(|| panic!("{kind} is reported"))
+    };
+    let tasks = row(&report, ModuleKind::Tasks);
+    assert_eq!(tasks.disposition, GgModuleDisposition::Carried);
+    assert_eq!(tasks.from_module_id.as_deref(), Some(tasks_before.as_str()));
+    assert_eq!(tasks.to_module_id, tasks.from_module_id);
+    assert_eq!(successor.caps().tasks().instance_id(), tasks_before);
+    assert_eq!(
+        successor.caps().tasks().origin(),
+        GgModuleOrigin::Transferred
+    );
+
+    // A `shared`-scoped successor binds the registry entry for **its own** profile instead.
+    let shared = profile_with(vec![(
+        CAPABILITY_MEMORIES,
+        json!({ MEMORY_PARAM_SCOPE: MemoryScope::Shared.as_str() }),
+    )]);
+    let (rebound, report) = transfer(
+        successor,
+        &shared,
+        &TransferPlan::Intersection,
+        &ctx(&skills, &board, &registry, &inherited, &ids),
+    );
+    let memories = row(&report, ModuleKind::Memories);
+    assert_eq!(memories.disposition, GgModuleDisposition::Carried);
+    assert_eq!(
+        memories.from_module_id.as_deref(),
+        Some(memories_before.as_str())
+    );
+    assert_ne!(
+        memories.to_module_id.as_deref(),
+        Some(memories_before.as_str()),
+        "the successor curates its profile's notebook, not the one it was handed"
+    );
+    assert_eq!(
+        rebound.caps().memories().instance_id(),
+        memories.to_module_id.as_deref().unwrap()
+    );
+    assert_eq!(rebound.caps().memories().origin(), GgModuleOrigin::Profile);
+}
+
+/// A dropped module reports where it went (nowhere) and an initialized one reports the empty store
+/// the successor actually ends up holding — so a reader can follow every kind across the boundary
+/// without guessing which of two ids is which.
+#[test]
+fn a_transfer_names_the_fresh_instance_an_initialized_module_starts_on() {
+    let skills = SkillsRuntime::disabled();
+    let board = BoardRuntime::disabled();
+    let (registry, inherited, ids) = plain();
+    let old = ModuleSet::resolve(
+        &profile_with(vec![(CAPABILITY_TASKS, json!({}))]),
+        &ctx(&skills, &board, &registry, &inherited, &ids),
+    );
+    let tasks_before = old.caps().tasks().instance_id().to_string();
+
+    // The successor has memories and no task list: one kind is dropped, the other starts fresh.
+    let (successor, report) = transfer(
+        old,
+        &profile_with(vec![(CAPABILITY_MEMORIES, json!({}))]),
+        &TransferPlan::Intersection,
+        &ctx(&skills, &board, &registry, &inherited, &ids),
+    );
+
+    let tasks = report
+        .modules
+        .iter()
+        .find(|entry| entry.kind == ModuleKind::Tasks)
+        .expect("tasks are reported");
+    assert_eq!(tasks.disposition, GgModuleDisposition::Dropped);
+    assert_eq!(tasks.from_module_id.as_deref(), Some(tasks_before.as_str()));
+    assert!(
+        tasks.to_module_id.is_none(),
+        "a dropped store went nowhere; there is no successor instance to name"
+    );
+
+    let memories = report
+        .modules
+        .iter()
+        .find(|entry| entry.kind == ModuleKind::Memories)
+        .expect("memories are reported");
+    assert_eq!(memories.disposition, GgModuleDisposition::Initialized);
+    assert!(memories.from_module_id.is_none());
+    assert_eq!(
+        memories.to_module_id.as_deref(),
+        Some(successor.caps().memories().instance_id()),
+        "an initialized module names the empty store the successor is now holding"
+    );
 }

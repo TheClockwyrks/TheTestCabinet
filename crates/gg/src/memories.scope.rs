@@ -19,8 +19,13 @@ use test_cabinet_core::gg::{
 };
 
 use super::{LoggedRevision, MemoryCaps, MemoryChange, MemoryScope, MemoryStore, MemoryStrategy};
-use crate::modules::ModuleResolveCtx;
+use crate::modules::{ModuleIds, ModuleKind, ModuleResolveCtx};
 use crate::prompts::MemoryNoticeEntry;
+
+/// One registry entry: the profile-bound store and its
+/// [module id](crate::modules::Module::instance_id), which are minted together and handed out
+/// together — the id is only meaningful as the identity of that exact store.
+type BoundInstance = (Arc<Mutex<MemoryStore>>, Arc<str>);
 
 /// The [memory instance](MemoryScope::Shared) each agent **profile** binds to, created on first
 /// use and shared by every instance of that profile in the run.
@@ -31,8 +36,9 @@ use crate::prompts::MemoryNoticeEntry;
 /// neither is told what it wrote itself.
 #[derive(Debug, Default)]
 pub struct MemoryRegistry {
-    /// The store bound to each profile name, created lazily.
-    entries: Mutex<HashMap<String, Arc<Mutex<MemoryStore>>>>,
+    /// The store bound to each profile name, with its [module id](crate::modules::ModuleIdMint),
+    /// created lazily.
+    entries: Mutex<HashMap<String, BoundInstance>>,
 }
 
 impl MemoryRegistry {
@@ -41,24 +47,30 @@ impl MemoryRegistry {
         Self::default()
     }
 
-    /// The store bound to `profile`, creating it (organized by `strategy` and bounded by `caps`)
-    /// on the first instance that asks.
+    /// The store bound to `profile`, and its [module id](crate::modules::Module::instance_id),
+    /// creating both (organized by `strategy`, bounded by `caps`, identified out of `ids`) on the
+    /// first instance that asks.
     ///
     /// A later instance takes the store as it stands, **including the limits the first instance's
     /// profile resolved**: they are one store, so there is one set of limits, and re-pointing them
-    /// per instance would make a write's fate depend on which instance happened to make it.
+    /// per instance would make a write's fate depend on which instance happened to make it. It
+    /// takes the same id for the same reason, and that is what makes a profile's twelve instances
+    /// legible as twelve holders of one notebook rather than as twelve notebooks that agree.
     pub fn bind(
         &self,
         profile: &str,
         strategy: MemoryStrategy,
         caps: MemoryCaps,
-    ) -> Arc<Mutex<MemoryStore>> {
+        ids: &ModuleIds,
+    ) -> BoundInstance {
         let mut entries = self.entries.lock().expect("memory registry lock");
-        Arc::clone(
-            entries
-                .entry(profile.to_string())
-                .or_insert_with(|| Arc::new(Mutex::new(MemoryStore::new(strategy, caps)))),
-        )
+        let (store, id) = entries.entry(profile.to_string()).or_insert_with(|| {
+            (
+                Arc::new(Mutex::new(MemoryStore::new(strategy, caps))),
+                ids.next(ModuleKind::Memories),
+            )
+        });
+        (Arc::clone(store), Arc::clone(id))
     }
 }
 

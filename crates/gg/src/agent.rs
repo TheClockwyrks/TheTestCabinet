@@ -135,8 +135,8 @@ use crate::model::{
     ImageContent, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
 };
 use crate::modules::{
-    CapabilityModules, HistorySetup, InheritedModules, Module, ModuleKind, ModuleResolveCtx,
-    ModuleSet, Ownership, Refresh, TransferPlan, TransferReport,
+    CapabilityModules, HistorySetup, InheritedModules, Module, ModuleIdMint, ModuleIds, ModuleKind,
+    ModuleResolveCtx, ModuleSet, Ownership, Refresh, TransferPlan, TransferReport,
 };
 use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
@@ -1073,6 +1073,13 @@ struct Orchestrator {
     /// one notebook and are each told what the other wrote. Empty for every run that scopes
     /// nothing, which is every run that does not say otherwise.
     memory_registry: MemoryRegistry,
+    /// The run's [module id mint](crate::modules::ModuleIdMint) — one monotonic sequence per module
+    /// kind, from which every module instance in the run takes its identity.
+    ///
+    /// Run-global because that is the scope module ids are compared in: the whole point of an id is
+    /// that two agents reporting `memories-3` are holding one notebook, and that is only meaningful
+    /// if one thing hands them out.
+    module_ids: ModuleIds,
     /// Whether any profile this run declares takes its memories from the agent that spawned it —
     /// [`inherited`](MemoryScope::Inherited) or [`read-only`](MemoryScope::ReadOnly).
     ///
@@ -1295,6 +1302,9 @@ impl Orchestrator {
                  program)."
             ));
         }
+        // The run's module id mint, built before anything it identifies: the board below is the
+        // run's single board module, and it takes its id from here.
+        let module_ids: ModuleIds = Arc::new(ModuleIdMint::default());
         Self {
             caps: set.clone(),
             workspace_dir: invocation.workspace_dir.clone(),
@@ -1318,8 +1328,9 @@ impl Orchestrator {
             },
             issue_worktrees: Mutex::new(HashMap::new()),
             issue_reviews: Mutex::new(HashMap::new()),
-            board: resolve_board(set),
+            board: resolve_board(set, &module_ids),
             memory_registry: MemoryRegistry::new(),
+            module_ids,
             memories_inheritable: crate::memories::run_inherits_memories(set),
             // Infallible here: `validate_agents` refused the launch over any machine that could not
             // be built, before this orchestrator was constructed. A machine that somehow still fails
@@ -1369,7 +1380,7 @@ impl Orchestrator {
     /// or a disabled one when the capability is off.
     fn skills_runtime(&self) -> SkillsRuntime {
         if self.skills_enabled {
-            SkillsRuntime::new(Arc::clone(&self.skills_library))
+            SkillsRuntime::new_in(Arc::clone(&self.skills_library), &self.module_ids)
         } else {
             SkillsRuntime::disabled()
         }
@@ -2449,21 +2460,35 @@ async fn run_agent(
                     inheritable: orch.memories_inheritable,
                     history: history.clone(),
                     agent_id: &agent.id,
+                    ids: &orch.module_ids,
                 };
                 (ModuleSet::resolve(&profile, &module_ctx), Opening::Fresh)
             }
         };
         let archive_store = modules.caps().archive().store();
-        // A **successor**'s modules report themselves on its own stream, the moment it has one. The
-        // console reduces per agent, so a module that simply *arrived* — carrying the whole task
-        // list its predecessor built — would otherwise leave the successor's panel empty for state
-        // it very much holds. A first incarnation says nothing here: its modules are empty, and the
-        // root's opening announcement below is what introduces them.
-        if !first_incarnation {
+        let archive_id = modules.caps().archive().instance_id().to_string();
+        // Every instance but the root's *first* one reports its modules' opening snapshots on its
+        // own stream. The console reduces per agent, so a module that simply *arrived* — carrying
+        // the whole task list its predecessor built — would otherwise leave the successor's panel
+        // empty for state it very much holds, and a spawned subagent's panels would stay empty
+        // until it happened to mutate something. Only the root's first incarnation stays quiet
+        // here, because `announce_configuration` below is what introduces its modules and two
+        // announcements of one empty store is one too many.
+        if !first_incarnation || !is_root {
             for event in modules.state_events() {
                 emitter.emit(event);
             }
         }
+        // What this instance **holds**, whether or not it has touched any of it — the only event
+        // that says so, and the one that makes a shared store's holders enumerable. Emitted for
+        // every incarnation of every agent, un-gated: a read-only inherited memory holder that
+        // never writes emits no snapshot at all, and would otherwise be invisible as a holder of
+        // the notebook it is reading. It is emitted once and never re-emitted, because a roster
+        // cannot change within an incarnation — everything that changes what an agent holds mints
+        // a new agent id.
+        emitter.emit(GgTelemetryKind::AgentModules {
+            modules: modules.roster(),
+        });
 
         // This agent's toolset, model, and prompt all come from **its own profile**, so a run can
         // give different agents different capabilities. The stores it binds are its modules', and
@@ -2585,7 +2610,7 @@ async fn run_agent(
                 )),
             }
         }
-        let amc = AmcSetup::resolve(&profile, &registry, archive_store);
+        let amc = AmcSetup::resolve(&profile, &registry, archive_store, archive_id);
         let autoload = AutoloadSetup::resolve(&profile);
         // This agent's persistence: whether its instances are serialized and carry their open file
         // views, bound to the run-global record every instance of its profile shares.
@@ -2807,6 +2832,7 @@ async fn run_agent(
                 inheritable: orch.memories_inheritable,
                 history: successor_history,
                 agent_id: &successor_id,
+                ids: &orch.module_ids,
             };
             crate::modules::transfer(modules, &successor_profile, &handoff.plan, &module_ctx)
         };
@@ -2820,9 +2846,7 @@ async fn run_agent(
             state: successor_fsm
                 .as_ref()
                 .map(|position| position.state().to_string()),
-            transferred: kind_names(&report.transferred),
-            dropped: kind_names(&report.dropped),
-            initialized: kind_names(&report.initialized),
+            modules: report.modules.clone(),
         });
 
         // The exclusivity key follows the profile, so a succession into a persistent profile
@@ -2842,7 +2866,7 @@ async fn run_agent(
                 successor_fsm.as_ref(),
             ),
             modules: successor_modules,
-            history: report.transferred.contains(&ModuleKind::History),
+            history: report.carries(ModuleKind::History),
             from_state: handoff.reason.departed_state(),
             turn_base: turns_taken,
         });
@@ -5394,6 +5418,12 @@ impl Agent {
         // pushes into the one and refreshes the others' pinned blocks into it at each boundary, and
         // the borrow checker will only prove those two things disjoint through the set's own split.
         let (history, caps) = modules.split_mut();
+        // This window's own [module id](crate::modules::Module::instance_id), read before the
+        // window itself is borrowed for the whole session. A `fork` copies the window and has to
+        // report which one it copied, and by then the module around it is unreachable — the loop
+        // holds the bare `ContextModel`, and on the responses-as-code path the window has been
+        // moved out of its module altogether for the duration of a program.
+        let history_id = history.instance_id().to_string();
         let context = history.context_mut();
         // The per-agent turn ceiling, or `None` for unbounded (the default — the host caps the
         // wall-clock, so gg imposes no turn backstop unless a study asks for one). An unbounded run
@@ -6144,8 +6174,11 @@ impl Agent {
                                 transitions::dispatch_forks(
                                     sub,
                                     self,
-                                    context,
-                                    caps,
+                                    transitions::ForkSource {
+                                        context,
+                                        history_id: &history_id,
+                                        caps,
+                                    },
                                     emitter,
                                     state.forks_requested,
                                     turn + 1,
@@ -6236,8 +6269,11 @@ impl Agent {
                             transitions::dispatch_forks(
                                 sub,
                                 self,
-                                context,
-                                caps,
+                                transitions::ForkSource {
+                                    context,
+                                    history_id: &history_id,
+                                    caps,
+                                },
                                 emitter,
                                 turn_forks,
                                 turn + 1,
@@ -6601,11 +6637,17 @@ impl Agent {
                 // result with what was actually reclaimed, and emits the `ContextManaged` effect
                 // (the tool `ToolCall`/`ToolResult` still stream too). `search_archive` needs no
                 // special handling — it read the shared archive in its own `invoke`.
-                let managed_event =
+                let managed_events =
                     if amc.enabled && outcome.ok && is_context_reclaim_tool(&call.name) {
-                        apply_context_reclaim(context, &amc.archive, call, &mut outcome)
+                        apply_context_reclaim(
+                            context,
+                            &amc.archive,
+                            &amc.archive_id,
+                            call,
+                            &mut outcome,
+                        )
                     } else {
-                        None
+                        Vec::new()
                     };
 
                 emitter.emit(GgTelemetryKind::ToolResult {
@@ -6613,7 +6655,7 @@ impl Agent {
                     ok: outcome.ok,
                     summary: outcome.summary.clone(),
                 });
-                if let Some(event) = managed_event {
+                for event in managed_events {
                     emitter.emit(event);
                 }
 
@@ -6665,8 +6707,11 @@ impl Agent {
                 transitions::dispatch_forks(
                     sub,
                     self,
-                    context,
-                    caps,
+                    transitions::ForkSource {
+                        context,
+                        history_id: &history_id,
+                        caps,
+                    },
                     emitter,
                     std::mem::take(&mut declared_forks),
                     turn + 1,
@@ -7037,6 +7082,11 @@ struct AmcSetup {
     /// The shared thread archive the reclaim applies to. Bound to the same store the
     /// `search_archive` tool reads, so archived material is immediately searchable.
     archive: Arc<Mutex<ArchiveStore>>,
+    /// That archive's [module id](crate::modules::Module::instance_id), so the
+    /// [`ArchiveState`](GgTelemetryKind::ArchiveState) an archival emits is attributable to the
+    /// module rather than only to the agent that happened to fill it — a successor searching an
+    /// archive it inherited is holding this same instance.
+    archive_id: String,
     /// Whether this agent actually has `evict_file_view` — read off the registry rather than assumed
     /// from the capability, so the per-file breakdown appears exactly when a call could act on it.
     can_evict: bool,
@@ -7056,10 +7106,12 @@ impl AmcSetup {
         profile: &GgAgentConfig,
         registry: &ToolRegistry,
         archive: Arc<Mutex<ArchiveStore>>,
+        archive_id: String,
     ) -> Self {
         Self {
             enabled: profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
             archive,
+            archive_id,
             can_evict: registry.offers(EVICT_FILE_VIEW_TOOL),
             can_archive: registry.offers(ARCHIVE_THREAD_TOOL),
             top_file_views: profile
@@ -7268,9 +7320,10 @@ impl LimitsSetup {
 fn apply_context_reclaim(
     context: &mut ContextModel,
     archive: &Arc<Mutex<ArchiveStore>>,
+    archive_id: &str,
     call: &ToolCall,
     outcome: &mut ToolOutcome,
-) -> Option<GgTelemetryKind> {
+) -> Vec<GgTelemetryKind> {
     match call.name.as_str() {
         EVICT_FILE_VIEW_TOOL => {
             let path = parse_evict_path(&call.arguments).unwrap_or(None);
@@ -7305,12 +7358,12 @@ fn apply_context_reclaim(
                 paths: result.paths.clone(),
                 detail: detail.clone(),
             }));
-            Some(GgTelemetryKind::ContextManaged {
+            vec![GgTelemetryKind::ContextManaged {
                 action: GgContextAction::EvictFileViews,
                 reclaimed_tokens: result.tokens,
                 items: result.items as u64,
                 detail,
-            })
+            }]
         }
         ARCHIVE_THREAD_TOOL => {
             // Already validated by the tool; a malformed call that somehow reached here names no
@@ -7321,10 +7374,12 @@ fn apply_context_reclaim(
             // What left the window, archived or dropped — the figure the model reasons about when it
             // asks how much its call bought.
             let removed = archived + result.dropped;
-            let archive_total = {
+            // The archive's own snapshot, taken with the same lock the archival used: what is now
+            // *out* of the window, beside the `ContextManaged` record of how much left it.
+            let (archive_total, archive_state) = {
                 let mut store = archive.lock().expect("archive store lock");
                 store.archive(result.items.iter().map(|item| (item.source, &item.message)));
-                store.len()
+                (store.len(), store.state_event(archive_id))
             };
             let detail = if removed == 0 {
                 format!(
@@ -7353,16 +7408,19 @@ fn apply_context_reclaim(
                         paths: Vec::new(),
                         detail: detail.clone(),
                     }));
-            Some(GgTelemetryKind::ContextManaged {
-                action: GgContextAction::ArchiveThread,
-                reclaimed_tokens: result.tokens,
-                items: removed as u64,
-                detail,
-            })
+            vec![
+                GgTelemetryKind::ContextManaged {
+                    action: GgContextAction::ArchiveThread,
+                    reclaimed_tokens: result.tokens,
+                    items: removed as u64,
+                    detail,
+                },
+                archive_state,
+            ]
         }
         // Not a reclaim tool (the caller gates this to `is_context_reclaim_tool`), so nothing
         // to apply.
-        _ => None,
+        _ => Vec::new(),
     }
 }
 
@@ -7590,7 +7648,7 @@ fn board_owner(set: &GgCapabilitySet) -> Option<&GgAgentConfig> {
 /// [owns the board](board_owner), an enabled runtime with an empty board bounded by the
 /// [caps resolved](BoardCaps::resolve) from that profile's capability params; otherwise a
 /// [disabled](BoardRuntime::disabled) runtime (an ablation's off arm) that offers nothing.
-fn resolve_board(set: &GgCapabilitySet) -> BoardRuntime {
+fn resolve_board(set: &GgCapabilitySet, ids: &ModuleIds) -> BoardRuntime {
     let Some(owner) = board_owner(set) else {
         return BoardRuntime::disabled();
     };
@@ -7598,7 +7656,7 @@ fn resolve_board(set: &GgCapabilitySet) -> BoardRuntime {
         .capability(CAPABILITY_PROJECT_MANAGEMENT)
         .map(|cap| BoardCaps::resolve(&cap.params))
         .unwrap_or_default();
-    BoardRuntime::new(caps)
+    BoardRuntime::new_in(caps, ids)
 }
 
 /// Resolve the run's git-backed [isolation and baseline](WorktreesSetup) at session start, reporting
@@ -8634,7 +8692,7 @@ mod transitions;
 
 use transitions::{
     Handoff, Opening, PendingFork, Succession, handle_exec, handle_fork, handle_transition,
-    kind_names, succession_note,
+    succession_note,
 };
 
 #[cfg(test)]

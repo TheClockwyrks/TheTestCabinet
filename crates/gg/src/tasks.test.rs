@@ -268,7 +268,7 @@ fn state_event_reports_the_dag_in_add_order() {
     add(&mut store, "b");
     store.set_blocked_by("b", &["a".to_string()]).unwrap();
     store.complete("a").unwrap();
-    let GgTelemetryKind::TasksState { tasks } = store.state_event() else {
+    let GgTelemetryKind::TasksState { tasks, .. } = store.state_event("tasks-0") else {
         panic!("expected TasksState");
     };
     assert_eq!(tasks.len(), 2);
@@ -345,7 +345,7 @@ fn enabled_runtime_emits_empty_state_and_no_block_until_a_task_exists() {
     // The count cap the system prompt states comes from the runtime.
     assert_eq!(runtime.max_tasks(), 50);
     assert!(runtime.context_block().is_none(), "no tasks yet, no block");
-    let GgTelemetryKind::TasksState { tasks } = runtime.state_event().unwrap() else {
+    let GgTelemetryKind::TasksState { tasks, .. } = runtime.state_event().unwrap() else {
         panic!("expected TasksState");
     };
     assert!(tasks.is_empty());
@@ -358,7 +358,7 @@ fn enabled_runtime_emits_empty_state_and_no_block_until_a_task_exists() {
         .add("a", "A", None, StructuredFields::default(), &[])
         .unwrap();
     assert!(runtime.context_block().is_some());
-    let GgTelemetryKind::TasksState { tasks } = runtime.state_event().unwrap() else {
+    let GgTelemetryKind::TasksState { tasks, .. } = runtime.state_event().unwrap() else {
         panic!("expected TasksState");
     };
     assert_eq!(tasks.len(), 1);
@@ -439,7 +439,7 @@ fn issues_mode_requires_the_structured_fields() {
     assert_eq!(task.completion_criteria(), Some("the widget works"));
 
     // The structured sections reach the telemetry contract.
-    let GgTelemetryKind::TasksState { tasks } = store.state_event() else {
+    let GgTelemetryKind::TasksState { tasks, .. } = store.state_event("tasks-0") else {
         panic!("tasks state");
     };
     assert_eq!(tasks[0].in_scope.as_deref(), Some("the widget"));

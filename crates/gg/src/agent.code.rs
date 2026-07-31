@@ -1075,14 +1075,20 @@ impl LoopToolApi {
         let refused = self.gate(name);
         let call = self.begin(name, args);
         if let Some(refused) = refused {
-            return self.complete(call, refused, None);
+            return self.complete(call, refused, Vec::new());
         }
         let mut outcome = exec(self);
         // Agent-managed context: rewrite the outcome with what the loop actually reclaimed.
         let managed = if self.amc.enabled && outcome.ok && is_context_reclaim_tool(name) {
-            apply_context_reclaim(&mut self.context, &self.amc.archive, &call, &mut outcome)
+            apply_context_reclaim(
+                &mut self.context,
+                &self.amc.archive,
+                &self.amc.archive_id,
+                &call,
+                &mut outcome,
+            )
         } else {
-            None
+            Vec::new()
         };
         self.complete(call, outcome, managed)
     }
@@ -1143,14 +1149,14 @@ impl LoopToolApi {
         &mut self,
         call: ToolCall,
         outcome: ToolOutcome,
-        managed: Option<GgTelemetryKind>,
+        managed: Vec<GgTelemetryKind>,
     ) -> ToolOutcome {
         self.emitter.emit(GgTelemetryKind::ToolResult {
             name: call.name.clone(),
             ok: outcome.ok,
             summary: outcome.summary.clone(),
         });
-        if let Some(event) = managed {
+        for event in managed {
             self.emitter.emit(event);
         }
         if let Some(recorder) = &self.replay {
@@ -1213,7 +1219,7 @@ impl LoopToolApi {
         let refused = self.gate(name);
         let call = self.begin(name, args);
         if let Some(refused) = refused {
-            return self.complete(call, refused, None);
+            return self.complete(call, refused, Vec::new());
         }
         let handle = self.handle.clone();
         let spawner = &self.spawner;
@@ -1225,7 +1231,7 @@ impl LoopToolApi {
                 format!("`{name}` is not available: this run has no delegation runtime."),
             ),
         };
-        self.complete(call, outcome, None)
+        self.complete(call, outcome, Vec::new())
     }
 
     /// Delegation servicing for the two handlers that also need the [board](BoardRuntime) —
@@ -1247,7 +1253,7 @@ impl LoopToolApi {
         let refused = self.gate(name);
         let call = self.begin(name, args);
         if let Some(refused) = refused {
-            return self.complete(call, refused, None);
+            return self.complete(call, refused, Vec::new());
         }
         let handle = self.handle.clone();
         let spawner = &self.spawner;
@@ -1260,7 +1266,7 @@ impl LoopToolApi {
                 format!("`{name}` is not available: this run has no delegation runtime."),
             ),
         };
-        self.complete(call, outcome, None)
+        self.complete(call, outcome, Vec::new())
     }
 
     /// Validate a `wait_for_issue` request and record it for the loop to honour after the program

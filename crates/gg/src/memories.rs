@@ -60,13 +60,14 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_MEMORIES, GgAgentConfig, GgContextSource, GgMemoryCaps, GgMemoryChange,
-    GgMemoryEntry, GgMemoryPeak, GgTelemetryKind, MEMORY_STRATEGY_KEYWORD_SEARCH,
+    GgMemoryEntry, GgMemoryPeak, GgModuleOrigin, GgTelemetryKind, MEMORY_STRATEGY_KEYWORD_SEARCH,
     MEMORY_STRATEGY_MARKDOWN, MEMORY_STRATEGY_SCRATCHPAD,
 };
 
 use crate::model::Message;
 use crate::modules::{
-    AdoptError, Module, ModuleHandle, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    detached_ids,
 };
 use crate::prompts::{
     self, MemoriesBlockContext, MemoryIndexContext, MemoryItemView, MemoryNoticeContext,
@@ -1304,7 +1305,7 @@ impl MemoryStore {
     /// the store's: one store can be held by an agent that owns it and by another that may only
     /// read it, and a snapshot that did not say which would make two agents' panels
     /// indistinguishable.
-    fn state_event(&self, scope: MemoryScope, writable: bool) -> GgTelemetryKind {
+    fn state_event(&self, module_id: &str, scope: MemoryScope, writable: bool) -> GgTelemetryKind {
         let memories = self
             .memories
             .iter()
@@ -1316,6 +1317,7 @@ impl MemoryStore {
             })
             .collect();
         GgTelemetryKind::MemoryState {
+            module_id: module_id.to_string(),
             strategy: self.strategy.id().to_string(),
             memories,
             count: self.memories.len() as u64,
@@ -1544,6 +1546,14 @@ pub struct MemoriesRuntime {
     /// The shared, mutable store — the same handle the tools mutate, and, under a linking
     /// [scope](MemoryScope), the same one other agents hold.
     store: Arc<Mutex<MemoryStore>>,
+    /// The [identity](crate::modules::ModuleIdMint) of that store. It travels with the store, never
+    /// with the holder: two agents linked to one notebook report one id, which is the only thing in
+    /// the record that distinguishes them from two agents whose notes happen to agree.
+    id: Arc<str>,
+    /// The mint a copy of this notebook takes its id from — see [`ModuleIds`].
+    ids: ModuleIds,
+    /// How this holder came by the store.
+    origin: GgModuleOrigin,
     /// This holder's watermarks into the store's log. Behind an `Arc` so an [alias](Self::alias) —
     /// the same holder, temporarily servicing a program on the sandbox's blocking thread —
     /// advances the very same ones, and a write is not reported twice because the loop and the
@@ -1569,23 +1579,38 @@ pub struct MemoriesRuntime {
 }
 
 impl MemoriesRuntime {
-    /// An enabled runtime with an empty store organized by `strategy` and bounded by `caps`.
+    /// An enabled runtime with an empty store organized by `strategy` and bounded by `caps`,
+    /// identified out of a [detached](detached_ids) sequence — the by-hand constructor, which in
+    /// practice means the tests. A run's notebooks are built through [`Self::resolve`].
     pub fn new(strategy: MemoryStrategy, caps: MemoryCaps) -> Self {
+        Self::fresh(strategy, caps, &detached_ids())
+    }
+
+    /// An enabled runtime with an empty store organized by `strategy` and bounded by `caps`,
+    /// identified out of the run's [mint](ModuleIds) — a genuinely new notebook, held by this
+    /// agent alone until it shares or forks it.
+    fn fresh(strategy: MemoryStrategy, caps: MemoryCaps, ids: &ModuleIds) -> Self {
         Self::over(
             Arc::new(Mutex::new(MemoryStore::new(strategy, caps))),
+            ids.next(ModuleKind::Memories),
+            ids,
             false,
         )
     }
 
-    /// An enabled runtime over `store`. When `current` the holder's watermarks start at the
-    /// store's head — a new holder of an existing store is not told about, and does not report,
-    /// history it never missed — and otherwise at the beginning, which is what a holder that
-    /// created the store wants.
+    /// An enabled runtime over `store`, which is identified by `id`. When `current` the holder's
+    /// watermarks start at the store's head — a new holder of an existing store is not told about,
+    /// and does not report, history it never missed — and otherwise at the beginning, which is what
+    /// a holder that created the store wants.
+    ///
+    /// The id is taken rather than minted because this is the constructor a *second* holder goes
+    /// through: a share, an inheritance, a profile-scoped bind. Handing it in is what makes "same
+    /// store, same id" a property of the call rather than of everybody remembering.
     ///
     /// This is the one constructor every holder goes through, which is why it is also where a
     /// holder's watermarks are [registered](MemoryStore::register_holder) with the store: from
     /// here on the store knows what it still owes somebody, and can forget the rest.
-    fn over(store: Arc<Mutex<MemoryStore>>, current: bool) -> Self {
+    fn over(store: Arc<Mutex<MemoryStore>>, id: Arc<str>, ids: &ModuleIds, current: bool) -> Self {
         let cursors = Arc::new(Mutex::new(HolderCursors::default()));
         {
             let mut guard = store.lock().expect("memory store lock");
@@ -1602,6 +1627,9 @@ impl MemoriesRuntime {
             enabled: true,
             ownership: Ownership::Owned,
             store,
+            id,
+            ids: Arc::clone(ids),
+            origin: GgModuleOrigin::Created,
             cursors,
             agent_id: String::new(),
             scope: MemoryScope::default(),
@@ -1651,12 +1679,23 @@ impl MemoriesRuntime {
             .unwrap_or_else(|| MemoryCaps::for_strategy(strategy));
         let scope = resolve_scope(profile).0;
 
-        let (mut bound, access) = match scope {
-            MemoryScope::Isolated => (Self::new(strategy, caps), MemoryAccess::ReadWrite),
-            MemoryScope::Shared => (
-                Self::over(ctx.memories.bind(&profile.name, strategy, caps), true),
+        // The [origin](GgModuleOrigin) is the *resolved* answer to the question the scope asks, and
+        // the two can disagree: an `inherited` profile with no spawner to inherit from falls back
+        // to a private notebook, which nothing else in the record says.
+        let (mut bound, access, origin) = match scope {
+            MemoryScope::Isolated => (
+                Self::fresh(strategy, caps, ctx.ids),
                 MemoryAccess::ReadWrite,
+                GgModuleOrigin::Created,
             ),
+            MemoryScope::Shared => {
+                let (store, id) = ctx.memories.bind(&profile.name, strategy, caps, ctx.ids);
+                (
+                    Self::over(store, id, ctx.ids, true),
+                    MemoryAccess::ReadWrite,
+                    GgModuleOrigin::Profile,
+                )
+            }
             MemoryScope::Inherited | MemoryScope::ReadOnly => {
                 match ctx.inherited.memories_organized_as(strategy) {
                     Some(parent) => (
@@ -1666,15 +1705,21 @@ impl MemoriesRuntime {
                         } else {
                             MemoryAccess::ReadWrite
                         },
+                        GgModuleOrigin::Inherited,
                     ),
                     // No spawner to inherit from (the root, an issue's implementer, a reviewer),
                     // or one whose memories are organized differently: a private notebook, which
                     // its holder may write whatever the scope said.
-                    None => (Self::new(strategy, caps), MemoryAccess::ReadWrite),
+                    None => (
+                        Self::fresh(strategy, caps, ctx.ids),
+                        MemoryAccess::ReadWrite,
+                        GgModuleOrigin::Created,
+                    ),
                 }
             }
         };
         bound.code_mode = ctx.history.code_mode;
+        bound.origin = origin;
         bound.linked = links(profile, scope, ctx);
         bound
             .with_ownership(crate::modules::resolve_ownership(profile, CAPABILITY_MEMORIES).0)
@@ -1768,7 +1813,14 @@ impl MemoriesRuntime {
             enabled: self.enabled,
             ownership: self.ownership,
             linked: self.linked,
-            ..Self::over(Arc::new(Mutex::new(copy)), true)
+            // A new store, so a new id: from here the two notebooks are two, however alike they
+            // look on the turn the copy was taken.
+            ..Self::over(
+                Arc::new(Mutex::new(copy)),
+                self.ids.next(ModuleKind::Memories),
+                &self.ids,
+                true,
+            )
         }
         .with_agent(self.agent_id.clone())
         .with_binding(self.scope, self.access)
@@ -1785,7 +1837,14 @@ impl MemoriesRuntime {
             enabled: self.enabled,
             ownership: self.ownership,
             linked: self.linked,
-            ..Self::over(Arc::clone(&self.store), true)
+            // The same store, so the same id: that identity is the whole of what makes two holders
+            // legible as two holders rather than as a coincidence.
+            ..Self::over(
+                Arc::clone(&self.store),
+                Arc::clone(&self.id),
+                &self.ids,
+                true,
+            )
         }
         .with_agent(self.agent_id.clone())
         .with_binding(self.scope, self.access)
@@ -1803,6 +1862,9 @@ impl MemoriesRuntime {
             enabled: self.enabled,
             ownership: self.ownership,
             store: Arc::clone(&self.store),
+            id: Arc::clone(&self.id),
+            ids: Arc::clone(&self.ids),
+            origin: self.origin,
             cursors: Arc::clone(&self.cursors),
             agent_id: self.agent_id.clone(),
             scope: self.scope,
@@ -1858,12 +1920,11 @@ impl MemoriesRuntime {
         if !self.enabled {
             return None;
         }
-        Some(
-            self.store
-                .lock()
-                .expect("memory store lock")
-                .state_event(self.scope, self.access.is_writable()),
-        )
+        Some(self.store.lock().expect("memory store lock").state_event(
+            &self.id,
+            self.scope,
+            self.access.is_writable(),
+        ))
     }
 
     /// The [`MemoryRevision`](GgTelemetryKind::MemoryRevision) telemetry **this holder** owes its
@@ -2012,6 +2073,26 @@ impl Module for MemoriesRuntime {
         ModuleKind::Memories
     }
 
+    fn instance_id(&self) -> &str {
+        &self.id
+    }
+
+    fn origin(&self) -> GgModuleOrigin {
+        self.origin
+    }
+
+    fn set_origin(&mut self, origin: GgModuleOrigin) {
+        self.origin = origin;
+    }
+
+    fn memory_scope(&self) -> Option<MemoryScope> {
+        Some(self.scope)
+    }
+
+    fn writable(&self) -> bool {
+        self.access.is_writable()
+    }
+
     fn enabled(&self) -> bool {
         self.enabled
     }
@@ -2130,9 +2211,18 @@ impl Module for MemoriesRuntime {
             .map(|cap| MemoryCaps::resolve(strategy, &cap.params))
             .unwrap_or_else(|| MemoryCaps::for_strategy(strategy));
         let scope = resolve_scope(profile).0;
-        if scope == MemoryScope::Shared {
-            self.store = ctx.memories.bind(&profile.name, strategy, caps);
-        }
+        // A `shared`-scoped successor is bound to its **own** profile's registry entry, which is
+        // very often a different store than the one it was handed — so the id moves with it, and
+        // the transition reports two ids rather than pretending the notebook travelled.
+        self.origin = if scope == MemoryScope::Shared {
+            let (store, id) = ctx.memories.bind(&profile.name, strategy, caps, ctx.ids);
+            self.store = store;
+            self.id = id;
+            GgModuleOrigin::Profile
+        } else {
+            GgModuleOrigin::Transferred
+        };
+        self.ids = Arc::clone(ctx.ids);
         if self.store.lock().expect("memory store lock").holders() <= 1 {
             self.store.lock().expect("memory store lock").set_caps(caps);
         }

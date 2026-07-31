@@ -53,11 +53,13 @@
 //! the user-facing description.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_SKILLS, CAPABILITY_TASKS, GgAgentConfig, GgContextSource, GgTelemetryKind,
+    CAPABILITY_SKILLS, CAPABILITY_TASKS, GgAgentConfig, GgAgentModule, GgContextSource,
+    GgMemoryScope, GgModuleDisposition, GgModuleOrigin, GgTelemetryKind, GgTransitionModule,
     MODULE_PARAM_OWNERSHIP,
 };
 
@@ -74,6 +76,65 @@ use crate::tasks::TasksRuntime;
 /// reads name the same six things. See [`GgModuleKind`](test_cabinet_core::gg::GgModuleKind) for
 /// what each one holds.
 pub use test_cabinet_core::gg::GgModuleKind as ModuleKind;
+
+// ---------------------------------------------------------------------------
+// Module instance identity
+// ---------------------------------------------------------------------------
+
+/// The run's source of module instance ids — one monotonic sequence per [kind](ModuleKind), so an
+/// id says what it identifies (`memories-2`) and a run's ids are stable given the same sequence of
+/// spawns, which is what makes an offline test able to assert on them.
+///
+/// # Why identity at all
+///
+/// A module is no longer in one-to-one correspondence with an agent instance: two agents can hold
+/// one memory store, a fork can link the board it copies, and a successor can carry its
+/// predecessor's task list. None of that is legible in a stream that attributes a
+/// [snapshot](Module::state_events) only to the agent that emitted it — two agents showing the same
+/// memories are indistinguishable from two agents whose memories happen to agree. An id on the
+/// **backing store** is the whole answer: same id, same store; different ids, different stores.
+///
+/// The id therefore identifies the store rather than the holder. A [share](Module::share) reports
+/// the same id, a [fork](Module::fork) reports a new one, and a
+/// [transfer](Module::adopt) keeps the one it was handed — which is exactly the set of facts the
+/// console has to be able to state.
+#[derive(Debug, Default)]
+pub struct ModuleIdMint {
+    /// The next ordinal per kind, indexed by the kind's position in [`ModuleKind::ALL`].
+    seq: [AtomicU64; ModuleKind::ALL.len()],
+}
+
+impl ModuleIdMint {
+    /// The next id for `kind` — `memories-0`, `memories-1`, …
+    pub fn next(&self, kind: ModuleKind) -> Arc<str> {
+        let index = ModuleKind::ALL
+            .iter()
+            .position(|candidate| *candidate == kind)
+            .unwrap_or(0);
+        let ordinal = self.seq[index].fetch_add(1, Ordering::Relaxed);
+        Arc::from(format!("{kind}-{ordinal}"))
+    }
+}
+
+/// A handle on the run's [mint](ModuleIdMint).
+///
+/// It is shared rather than passed to each call because a copy has to be able to mint one:
+/// [`Module::fork`] takes `&self` and produces a genuinely new store, and threading a resolution
+/// context into every clone site would mean every one of them knowing about the run. So each module
+/// carries the handle it was built with and mints its copies' ids from it.
+pub type ModuleIds = Arc<ModuleIdMint>;
+
+/// A **detached** mint: a private sequence belonging to nothing.
+///
+/// It is what the by-hand constructors (`MemoriesRuntime::new`, `TasksRuntime::with_mode`, …) fall
+/// back to, which in practice means the tests and the [disabled](Module::enabled) modules an
+/// ablation's off arm holds. Every module a *run* builds is resolved through
+/// [`ModuleSet::resolve`] (or transferred/forked from one that was), and those all carry the run's
+/// own mint off [`ModuleResolveCtx::ids`] — so ids are unique within a run, which is the only scope
+/// they are ever compared in.
+pub fn detached_ids() -> ModuleIds {
+    Arc::new(ModuleIdMint::default())
+}
 
 /// Whether a module is auto-included in its holder's prompt, re-exported from the contract — the
 /// [`ownership`](MODULE_PARAM_OWNERSHIP) param, resolved. See
@@ -135,6 +196,71 @@ pub trait Module: Send {
     /// The module's stable kind — its key in a [`ModuleSet`], the name a transfer list uses, and
     /// the id its telemetry is attributed to.
     fn kind(&self) -> ModuleKind;
+
+    /// The identity of the **backing store** this module is a holder of — see [`ModuleIdMint`].
+    ///
+    /// Two holders reporting the same id are holding one store; two ids are two stores that may
+    /// merely agree. Stable for the life of the store: across a [share](Self::share), across a
+    /// [transfer](Self::adopt), and across the holder that created it being replaced.
+    fn instance_id(&self) -> &str;
+
+    /// How *this holder* came by the module — see [`GgModuleOrigin`]. A property of the holder
+    /// rather than of the store: two holders of one store routinely have different origins, one
+    /// having created it and the other having been handed it.
+    fn origin(&self) -> GgModuleOrigin;
+
+    /// Record how this holder came by the module. Called by the copy/transfer paths, which are the
+    /// only things that know: a module built from a profile has no idea whether it is being
+    /// resolved for a fresh agent or cloned for a copy of one.
+    fn set_origin(&mut self, origin: GgModuleOrigin);
+
+    /// The [origin](GgModuleOrigin) a **copy** of this module's holder reports for it — the
+    /// per-kind half of [`fork_modules`]'s attribution, beside
+    /// [`links_when_forked`](Self::links_when_forked) for the same reason it lives on the trait.
+    ///
+    /// [`Forked`](GgModuleOrigin::Forked) for everything a copy genuinely received *because* its
+    /// forker was copied. The board overrides it: it is run-global by construction, so how a holder
+    /// came by it is always "it is the run's", whether the holder was spawned, transferred or
+    /// copied.
+    fn origin_when_forked(&self) -> GgModuleOrigin {
+        GgModuleOrigin::Forked
+    }
+
+    /// The [scope](GgMemoryScope) this holder binds under, for the one kind that has one
+    /// (memories). `None` for every other kind, which has no binding rule to declare.
+    fn memory_scope(&self) -> Option<GgMemoryScope> {
+        None
+    }
+
+    /// Whether this holder may **write** the store. `false` only for a
+    /// [read-only](GgMemoryScope::ReadOnly) inherited memory handle; every other kind has no access
+    /// model of its own, so every other holder may write.
+    fn writable(&self) -> bool {
+        true
+    }
+
+    /// This module as one row of its holder's [roster](GgTelemetryKind::AgentModules) — the whole
+    /// of what the record says about a module an agent holds but has not yet touched.
+    ///
+    /// A disabled module reports an **empty** id: it has no store, so there is nothing to identify,
+    /// and reporting the id of the placeholder store gg keeps in its slot would invent a module
+    /// instance the run does not have.
+    fn roster_entry(&self) -> GgAgentModule {
+        let enabled = self.enabled();
+        GgAgentModule {
+            kind: self.kind(),
+            module_id: if enabled {
+                self.instance_id().to_string()
+            } else {
+                String::new()
+            },
+            enabled,
+            ownership: self.ownership(),
+            origin: self.origin(),
+            scope: self.memory_scope(),
+            writable: self.writable(),
+        }
+    }
 
     /// Whether the capability behind this module is on for its holder. A disabled module still
     /// occupies its slot in the set — so an ablation's off arm is legible rather than absent —
@@ -311,25 +437,44 @@ impl ModuleHandle {
 pub struct HistoryModule {
     /// The window itself.
     context: ContextModel,
+    /// This window's [identity](ModuleIdMint). Unlike every other kind it lives on the module
+    /// rather than on a store, because a window *has* no store behind it — the module is the
+    /// window, so the module is its own identity.
+    id: Arc<str>,
+    /// How its holder came by it.
+    origin: GgModuleOrigin,
+    /// The mint its copies' ids come from — see [`ModuleIds`].
+    ids: ModuleIds,
 }
 
 impl HistoryModule {
     /// A module over a fresh, empty window measuring with `setup`'s estimator against its window
-    /// limit, in its execution mode.
-    pub fn new(setup: &HistorySetup) -> Self {
-        Self {
-            context: ContextModel::new(
+    /// limit, in its execution mode, identified by a fresh id from `ids`.
+    pub fn new(setup: &HistorySetup, ids: &ModuleIds) -> Self {
+        Self::from_context(
+            ContextModel::new(
                 Arc::clone(&setup.estimator),
                 setup.window_limit,
                 setup.code_mode,
             ),
-        }
+            ids.next(ModuleKind::History),
+            ids,
+        )
     }
 
-    /// A module wrapping an existing window — how a test seeds a module set with a window it has
-    /// already filled, and how a successor is built around a transferred one.
-    pub fn from_context(context: ContextModel) -> Self {
-        Self { context }
+    /// A module wrapping an existing window under the id `id` — how a test seeds a module set with
+    /// a window it has already filled, and how a successor is built around a transferred one.
+    ///
+    /// The id is supplied rather than minted because whether this is the *same* window under a new
+    /// holder (a succession, which keeps the id) or a copy of one (a fork, which does not) is the
+    /// caller's fact, not the window's.
+    pub fn from_context(context: ContextModel, id: Arc<str>, ids: &ModuleIds) -> Self {
+        Self {
+            context,
+            id,
+            origin: GgModuleOrigin::Created,
+            ids: Arc::clone(ids),
+        }
     }
 
     /// The window, for reading. The loop takes the window mutably for a whole turn through
@@ -344,12 +489,19 @@ impl HistoryModule {
         &mut self.context
     }
 
-    /// An independent deep copy of the window — see [`ContextModel`]'s own `Clone` documentation.
-    /// The copy's [turn counter](ContextModel::begin_turn) continues rather than restarting, so a
-    /// later `archive_thread` from either copy names the turns that copy actually saw.
+    /// An independent deep copy of the window under a fresh id from `ids` — see [`ContextModel`]'s
+    /// own `Clone` documentation. The copy's [turn counter](ContextModel::begin_turn) continues
+    /// rather than restarting, so a later `archive_thread` from either copy names the turns that
+    /// copy actually saw.
+    ///
+    /// The id is new because the two windows diverge from here: they hold the same conversation for
+    /// exactly as long as it takes the copy to say its first thing.
     pub fn forked(&self) -> Self {
         Self {
             context: self.context.clone(),
+            id: self.ids.next(ModuleKind::History),
+            origin: GgModuleOrigin::Forked,
+            ids: Arc::clone(&self.ids),
         }
     }
 }
@@ -357,6 +509,18 @@ impl HistoryModule {
 impl Module for HistoryModule {
     fn kind(&self) -> ModuleKind {
         ModuleKind::History
+    }
+
+    fn instance_id(&self) -> &str {
+        &self.id
+    }
+
+    fn origin(&self) -> GgModuleOrigin {
+        self.origin
+    }
+
+    fn set_origin(&mut self, origin: GgModuleOrigin) {
+        self.origin = origin;
     }
 
     fn enabled(&self) -> bool {
@@ -396,7 +560,7 @@ impl Module for HistoryModule {
     }
 
     fn fork(&self) -> ModuleHandle {
-        ModuleHandle::History(Box::new(self.forked()))
+        ModuleHandle::History(Box::new(HistoryModule::forked(self)))
     }
 
     /// **Sharing a window is not supported**, and this returns an independent copy instead.
@@ -425,6 +589,7 @@ impl Module for HistoryModule {
         let _ = profile;
         self.context.set_window_limit(ctx.history.window_limit);
         self.context.set_code_mode(ctx.history.code_mode);
+        self.origin = GgModuleOrigin::Transferred;
         Ok(())
     }
 }
@@ -483,6 +648,10 @@ pub struct ModuleResolveCtx<'a> {
     /// The id of the agent instance the modules are being built for. Recorded on a shared store's
     /// entries so a write can be attributed to the holder that made it.
     pub agent_id: &'a str,
+    /// The run's [mint](ModuleIdMint) — where a module built here takes its
+    /// [instance id](Module::instance_id) from, and the handle it keeps so its own copies can mint
+    /// theirs.
+    pub ids: &'a ModuleIds,
 }
 
 /// What a spawned agent may take over from its spawner, offered at the spawn and taken only by a
@@ -621,6 +790,13 @@ pub fn ownership_warnings(profile: &GgAgentConfig) -> Vec<String> {
 /// refreshes into it, and the borrow checker will only prove that for two disjoint fields. See
 /// [`ModuleSet::split_mut`].
 pub struct CapabilityModules {
+    /// The run's [mint](ModuleIdMint), kept on the set as well as on each module it holds.
+    ///
+    /// The duplication earns its keep at exactly one call site: [`fork_modules`] copies a
+    /// **window** it is handed as a bare [`ContextModel`] — the responses-as-code path moves the
+    /// window out of its module for the duration of a program — so the copy's history id has to be
+    /// minted from somewhere that is not the window's own module.
+    ids: ModuleIds,
     /// The agent's memories.
     memories: MemoriesRuntime,
     /// The agent's task list.
@@ -649,15 +825,18 @@ impl CapabilityModules {
             Ownership::Unowned
         };
         Self {
+            ids: Arc::clone(ctx.ids),
             memories: MemoriesRuntime::resolve(profile, ctx),
-            tasks: TasksRuntime::resolve(profile),
+            tasks: TasksRuntime::resolve(profile, ctx),
+            // The board is the run's, however a holder came by it — see
+            // [`Module::origin_when_forked`].
             board: ctx.board.shared().with_ownership(board_ownership),
             skills: ctx
                 .skills
                 .forked()
                 .with_ownership(resolve_ownership(profile, CAPABILITY_SKILLS).0),
             archive: if profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT) {
-                ArchiveRuntime::new()
+                ArchiveRuntime::new_in(ctx.ids)
                     .with_ownership(resolve_ownership(profile, CAPABILITY_AGENT_MANAGED_CONTEXT).0)
             } else {
                 ArchiveRuntime::disabled()
@@ -671,12 +850,27 @@ impl CapabilityModules {
     /// its tools would have nothing to act on.
     pub fn inert() -> Self {
         Self {
+            ids: detached_ids(),
             memories: MemoriesRuntime::disabled(),
             tasks: TasksRuntime::disabled(),
             board: BoardRuntime::disabled(),
             skills: SkillsRuntime::disabled(),
             archive: ArchiveRuntime::disabled(),
         }
+    }
+
+    /// The run's [mint](ModuleIdMint) — see the [field](Self::ids) for why the set keeps one.
+    pub fn ids(&self) -> &ModuleIds {
+        &self.ids
+    }
+
+    /// This set's [roster](GgTelemetryKind::AgentModules) rows, in [kind](ModuleKind) order — one
+    /// per capability module, the disabled ones included.
+    pub fn roster(&self) -> Vec<GgAgentModule> {
+        self.each()
+            .into_iter()
+            .map(|module| module.roster_entry())
+            .collect()
     }
 
     /// This set with `module` in place of the one it holds of the same kind — the chaining form of
@@ -857,7 +1051,7 @@ impl ModuleSet {
     /// and no reason to go looking through for work other than the job it was given.
     pub fn resolve(profile: &GgAgentConfig, ctx: &ModuleResolveCtx<'_>) -> Self {
         Self {
-            history: HistoryModule::new(&ctx.history),
+            history: HistoryModule::new(&ctx.history, ctx.ids),
             caps: CapabilityModules::resolve(profile, ctx),
         }
     }
@@ -867,9 +1061,10 @@ impl ModuleSet {
     /// from a profile.
     #[allow(dead_code)]
     pub fn inert(setup: &HistorySetup) -> Self {
+        let caps = CapabilityModules::inert();
         Self {
-            history: HistoryModule::new(setup),
-            caps: CapabilityModules::inert(),
+            history: HistoryModule::new(setup, caps.ids()),
+            caps,
         }
     }
 
@@ -932,6 +1127,18 @@ impl ModuleSet {
         self.history.context_mut()
     }
 
+    /// The window's own [module id](Module::instance_id) — what a
+    /// [fork](fork_modules) reports it copied from, and the shorthand for
+    /// `history().instance_id()` at the call sites that hold a whole set.
+    ///
+    /// The loop reads it off the split-out module (see `drive`), which it holds `&mut` for the
+    /// whole session; this is the read surface for the callers that hold a whole set, which today
+    /// are the tests.
+    #[allow(dead_code)]
+    pub fn history_id(&self) -> &str {
+        self.history.instance_id()
+    }
+
     /// The capability modules.
     pub fn caps(&self) -> &CapabilityModules {
         &self.caps
@@ -956,6 +1163,19 @@ impl ModuleSet {
     /// as a context breakdown.
     pub fn state_events(&self) -> Vec<GgTelemetryKind> {
         self.caps.state_events()
+    }
+
+    /// This instance's whole [roster](GgTelemetryKind::AgentModules), in [kind](ModuleKind) order:
+    /// the window first, then the five capability modules, disabled ones included.
+    ///
+    /// It is emitted once per incarnation, as the agent opens, and is the only thing in the record
+    /// that reports a module an agent holds but has not yet touched — a read-only inherited memory
+    /// holder that never writes emits no snapshot of its own, and would otherwise be invisible as a
+    /// holder.
+    pub fn roster(&self) -> Vec<GgAgentModule> {
+        let mut roster = vec![self.history.roster_entry()];
+        roster.extend(self.caps.roster());
+        roster
     }
 }
 
@@ -982,30 +1202,67 @@ impl ModuleSet {
 /// The copy's memories are re-stamped with the **copy's** agent id, whichever way they came, so
 /// its writes are attributed to it and it is not told about its own.
 ///
-/// Returns the set and the kinds it actually carries, which is what the fork's
-/// [`AgentTransition`](GgTelemetryKind::AgentTransition) reports.
+/// Returns the set and, per [kind](ModuleKind), what the copy received and which module instance it
+/// is now holding — which is what the fork's
+/// [`AgentTransition`](GgTelemetryKind::AgentTransition) reports. A
+/// [`Linked`](GgModuleDisposition::Linked) row carries the same id on both sides (both instances
+/// hold the store) and a [`Copied`](GgModuleDisposition::Copied) row carries two, which is the
+/// whole distinction a flat "cloned" list could not make.
+///
+/// `history_id` is the forker's window id, passed in for the same reason the window itself is:
+/// the module around it is not always in reach.
 pub fn fork_modules(
     context: &ContextModel,
+    history_id: &str,
     caps: &CapabilityModules,
     agent_id: &str,
-) -> (ModuleSet, Vec<ModuleKind>) {
+) -> (ModuleSet, Vec<GgTransitionModule>) {
+    let ids = caps.ids();
+    // A copy of a window is a new window: the two hold the same conversation only until the copy
+    // says its first thing.
+    let mut history =
+        HistoryModule::from_context(context.clone(), ids.next(ModuleKind::History), ids);
+    history.set_origin(GgModuleOrigin::Forked);
+    let mut report = vec![GgTransitionModule {
+        kind: ModuleKind::History,
+        disposition: GgModuleDisposition::Copied,
+        from_module_id: Some(history_id.to_string()),
+        to_module_id: Some(history.instance_id().to_string()),
+    }];
     let mut set = ModuleSet {
-        history: HistoryModule::from_context(context.clone()),
-        caps: CapabilityModules::inert(),
+        history,
+        caps: CapabilityModules {
+            ids: Arc::clone(ids),
+            ..CapabilityModules::inert()
+        },
     };
     for module in caps.each() {
-        set.put(if module.links_when_forked() {
+        let linked = module.links_when_forked();
+        let mut copy = if linked {
             module.share()
         } else {
             module.fork()
+        };
+        copy.as_module_mut().set_origin(module.origin_when_forked());
+        report.push(GgTransitionModule {
+            kind: module.kind(),
+            disposition: if !module.enabled() {
+                GgModuleDisposition::Absent
+            } else if linked {
+                GgModuleDisposition::Linked
+            } else {
+                GgModuleDisposition::Copied
+            },
+            from_module_id: module.enabled().then(|| module.instance_id().to_string()),
+            to_module_id: module
+                .enabled()
+                .then(|| copy.as_module().instance_id().to_string()),
         });
+        set.put(copy);
     }
     set.caps.memories = set.caps.memories.with_agent(agent_id);
-    let cloned = ModuleKind::ALL
-        .into_iter()
-        .filter(|kind| set.has(*kind))
-        .collect();
-    (set, cloned)
+    report.sort_by_key(|entry| entry.kind);
+    (set, report)
 }
 
 // ---------------------------------------------------------------------------
@@ -1059,21 +1316,57 @@ fn enables(profile: &GgAgentConfig, kind: ModuleKind) -> bool {
 /// unexplained second agent.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct TransferReport {
-    /// The kinds the successor received live, with their contents.
-    pub transferred: Vec<ModuleKind>,
-    /// The kinds the successor did not receive: not named by the plan, or named but refused by the
-    /// receiving profile's configuration.
-    pub dropped: Vec<ModuleKind>,
-    /// The kinds the successor's own profile enables that it started fresh — either because the
-    /// plan did not carry them, or because what was carried could not be read under the
-    /// successor's configuration.
-    pub initialized: Vec<ModuleKind>,
+    /// What happened to each [kind](ModuleKind), in kind order — the
+    /// [disposition](GgModuleDisposition) plus the module instance on both sides of the boundary.
+    ///
+    /// One list rather than the three name lists this replaced, because those could not express a
+    /// store *swap*: a successor whose own scope re-binds it to its profile's registry entry is
+    /// holding a different store than the one it was handed, and "transferred" said nothing about
+    /// it. The [prose](Self::carried) the successor's opening note is built from is a fold over
+    /// this.
+    pub modules: Vec<GgTransitionModule>,
     /// The model-facing reasons a carried module could not be adopted, in kind order. They go into
     /// the successor's opening note, so a reset is something it is told rather than something it
     /// discovers.
     pub notes: Vec<String>,
     /// Warnings for the operator log: a transfer list naming a module the source state never held.
     pub warnings: Vec<String>,
+}
+
+impl TransferReport {
+    /// The kinds with the given [disposition](GgModuleDisposition), in kind order.
+    fn with_disposition(&self, disposition: GgModuleDisposition) -> Vec<ModuleKind> {
+        self.modules
+            .iter()
+            .filter(|entry| entry.disposition == disposition)
+            .map(|entry| entry.kind)
+            .collect()
+    }
+
+    /// The kinds the successor received **live**, contents and all.
+    pub fn carried(&self) -> Vec<ModuleKind> {
+        self.with_disposition(GgModuleDisposition::Carried)
+    }
+
+    /// The kinds the outgoing instance held that the successor did not receive at all — their
+    /// backing stores are gone with it.
+    pub fn dropped(&self) -> Vec<ModuleKind> {
+        self.with_disposition(GgModuleDisposition::Dropped)
+    }
+
+    /// The kinds the successor's own profile enables that it started **fresh**.
+    pub fn initialized(&self) -> Vec<ModuleKind> {
+        self.with_disposition(GgModuleDisposition::Initialized)
+    }
+
+    /// Whether `kind` was carried live — the question the opening path asks about
+    /// [history](ModuleKind::History), which decides whether the successor opens on its
+    /// predecessor's thread or is seeded like a fresh agent.
+    pub fn carries(&self, kind: ModuleKind) -> bool {
+        self.modules
+            .iter()
+            .any(|entry| entry.kind == kind && entry.disposition == GgModuleDisposition::Carried)
+    }
 }
 
 /// Apply `plan` to `old`, producing the set the successor runs under `profile` with, plus a
@@ -1125,29 +1418,59 @@ pub fn transfer(
         .into_iter()
         .filter(|kind| old.has(*kind))
         .collect();
+    // The instance the *successor* freshly resolved for each kind, read before anything is put in
+    // its place: an `Initialized` row has to name the empty store the successor actually ends up
+    // with, and the module carrying it is about to be dropped or replaced.
+    let fresh: Vec<(ModuleKind, Option<String>)> = successor
+        .roster()
+        .iter()
+        .map(|entry| (entry.kind, entry.enabled.then(|| entry.module_id.clone())))
+        .collect();
+    let fresh_id = |kind: ModuleKind| -> Option<String> {
+        fresh
+            .iter()
+            .find(|(candidate, _)| *candidate == kind)
+            .and_then(|(_, id)| id.clone())
+    };
 
     for mut handle in old.into_handles() {
         let kind = handle.kind();
-        if !carried.contains(&kind) {
+        let from = held
+            .contains(&kind)
+            .then(|| handle.as_module().instance_id().to_string());
+        let (disposition, to) = if !carried.contains(&kind) {
             if enables(profile, kind) {
-                report.initialized.push(kind);
+                (GgModuleDisposition::Initialized, fresh_id(kind))
             } else if held.contains(&kind) {
-                report.dropped.push(kind);
+                (GgModuleDisposition::Dropped, None)
+            } else {
+                (GgModuleDisposition::Absent, None)
             }
-            continue;
-        }
-        match handle.as_module_mut().adopt(profile, ctx) {
-            Ok(()) => {
-                report.transferred.push(kind);
-                successor.put(handle);
+        } else {
+            match handle.as_module_mut().adopt(profile, ctx) {
+                Ok(()) => {
+                    // Read *after* the adopt: a successor whose own scope re-binds it (a `shared`
+                    // memories profile) is now holding a different store than the one it was
+                    // handed, and the two ids are what say so.
+                    let to = handle.as_module().instance_id().to_string();
+                    successor.put(handle);
+                    (GgModuleDisposition::Carried, Some(to))
+                }
+                Err(AdoptError::Disabled) => (GgModuleDisposition::Dropped, None),
+                Err(AdoptError::Incompatible(reason)) => {
+                    report.notes.push(reason);
+                    (GgModuleDisposition::Initialized, fresh_id(kind))
+                }
             }
-            Err(AdoptError::Disabled) => report.dropped.push(kind),
-            Err(AdoptError::Incompatible(reason)) => {
-                report.initialized.push(kind);
-                report.notes.push(reason);
-            }
-        }
+        };
+        report.modules.push(GgTransitionModule {
+            kind,
+            disposition,
+            from_module_id: from,
+            to_module_id: to,
+        });
     }
+    report.modules.sort_by_key(|entry| entry.kind);
 
     (successor, report)
 }

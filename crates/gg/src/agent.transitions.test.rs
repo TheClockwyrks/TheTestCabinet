@@ -26,12 +26,33 @@ use crate::ending::Ending;
 use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_TRANSITIONS, CAPABILITY_MEMORIES, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, GgCapabilityConfig, GgContextSource, GgSubagentRef, GgTelemetryEvent,
-    ROOT_AGENT,
+    CAPABILITY_TASKS, GgCapabilityConfig, GgContextSource, GgModuleDisposition, GgSubagentRef,
+    GgTelemetryEvent, GgTransitionModule, ROOT_AGENT,
 };
 
 use super::super::transitions::{HandoffReason, fork_note, launch_warnings, succession_note};
 use super::{ScriptedFactory, invocation};
+
+/// The module kinds a transition's per-module list reports with `disposition`, as the wire spells
+/// them.
+fn kinds_with(modules: &[GgTransitionModule], disposition: GgModuleDisposition) -> Vec<String> {
+    modules
+        .iter()
+        .filter(|entry| entry.disposition == disposition)
+        .map(|entry| entry.kind.to_string())
+        .collect()
+}
+
+/// One row of a [transfer report](TransferReport), for the note tests — which are about the prose a
+/// disposition produces, not about the ids beside it.
+fn transition_module(kind: ModuleKind, disposition: GgModuleDisposition) -> GgTransitionModule {
+    GgTransitionModule {
+        kind,
+        disposition,
+        from_module_id: None,
+        to_module_id: None,
+    }
+}
 
 /// A roster entry admitting `agent` in every scope — the permissive test allowlist, which is also
 /// what an `exec` target is validated against.
@@ -226,9 +247,10 @@ fn an_exec_note_states_the_inheritance_and_carries_the_predecessors_message() {
         fsm: None,
     };
     let report = TransferReport {
-        transferred: vec![ModuleKind::History],
-        dropped: vec![ModuleKind::Tasks],
-        initialized: Vec::new(),
+        modules: vec![
+            transition_module(ModuleKind::History, GgModuleDisposition::Carried),
+            transition_module(ModuleKind::Tasks, GgModuleDisposition::Dropped),
+        ],
         notes: Vec::new(),
         warnings: Vec::new(),
     };
@@ -384,18 +406,16 @@ async fn an_exec_carries_the_conversation_drops_what_the_successor_lacks_and_sta
                 kind,
                 to_agent_id,
                 agent,
-                transferred,
-                dropped,
-                initialized,
+                modules,
                 ..
             } => Some((
                 *kind,
                 event.agent_id.clone().unwrap_or_default(),
                 to_agent_id.clone(),
                 agent.clone(),
-                transferred.clone(),
-                dropped.clone(),
-                initialized.clone(),
+                kinds_with(modules, GgModuleDisposition::Carried),
+                kinds_with(modules, GgModuleDisposition::Dropped),
+                kinds_with(modules, GgModuleDisposition::Initialized),
             )),
             _ => None,
         })
@@ -496,7 +516,7 @@ async fn an_exec_carries_the_conversation_drops_what_the_successor_lacks_and_sta
     // successor's window.
     let predecessor_tasks = events.iter().any(|event| matches!(
         &event.kind,
-        GgTelemetryKind::TasksState { tasks } if tasks.iter().any(|task| task.title == MOCK_EXEC_TASK)
+        GgTelemetryKind::TasksState { tasks, .. } if tasks.iter().any(|task| task.title == MOCK_EXEC_TASK)
     ));
     assert!(predecessor_tasks, "the predecessor did build a task list");
     assert!(
@@ -664,17 +684,27 @@ async fn a_fork_opens_holding_the_state_its_forker_built() {
             GgTelemetryKind::AgentTransition {
                 kind: GgAgentTransitionKind::Fork,
                 to_agent_id,
-                transferred,
-                dropped,
-                initialized,
+                modules,
                 ..
             } => {
-                assert!(dropped.is_empty(), "a copy is a copy: nothing is dropped");
-                assert!(initialized.is_empty(), "and nothing starts empty");
+                assert!(
+                    kinds_with(modules, GgModuleDisposition::Dropped).is_empty(),
+                    "a copy is a copy: nothing is dropped"
+                );
+                assert!(
+                    kinds_with(modules, GgModuleDisposition::Initialized).is_empty(),
+                    "and nothing starts empty"
+                );
+                // A copy holds its own window and its own list, and the run's one board.
+                let carried = [
+                    kinds_with(modules, GgModuleDisposition::Copied),
+                    kinds_with(modules, GgModuleDisposition::Linked),
+                ]
+                .concat();
                 Some((
                     event.agent_id.clone().unwrap_or_default(),
                     to_agent_id.clone(),
-                    transferred.clone(),
+                    carried,
                 ))
             }
             _ => None,
@@ -718,7 +748,7 @@ async fn a_fork_opens_holding_the_state_its_forker_built() {
     let first_tasks = events
         .iter()
         .find_map(|event| match &event.kind {
-            GgTelemetryKind::TasksState { tasks }
+            GgTelemetryKind::TasksState { tasks, .. }
                 if event.agent_id.as_deref() == Some(copy.as_str()) =>
             {
                 Some(

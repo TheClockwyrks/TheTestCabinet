@@ -89,3 +89,75 @@ fn search_respects_the_result_cap() {
     assert_eq!(store.search("match token", 3).len(), 3);
     assert_eq!(store.search("match token", 100).len(), 5);
 }
+
+/// The snapshot the console renders an archive from: every entry's metadata, a **bounded** preview
+/// of its text, and the totals. The bound is the point — the archive exists so this material is out
+/// of the request, and putting the bodies back into the record would put a second copy of the whole
+/// thread on disk for nobody's benefit.
+#[test]
+fn the_snapshot_reports_metadata_and_a_bounded_preview() {
+    let mut store = ArchiveStore::new();
+    let long = Message::tool_result("call_1", "x".repeat(PREVIEW_CHARS * 3));
+    let said = Message::assistant(Some("a short remark".to_string()), Vec::new());
+    store.archive([
+        (GgContextSource::ToolOutput, &long),
+        (GgContextSource::Assistant, &said),
+    ]);
+
+    let GgTelemetryKind::ArchiveState {
+        module_id,
+        entries,
+        count,
+        total_len,
+    } = store.state_event("archive-7")
+    else {
+        panic!("expected an archive snapshot");
+    };
+
+    assert_eq!(module_id, "archive-7");
+    assert_eq!(count, 2);
+    assert_eq!(entries.len(), 2);
+    assert_eq!(
+        total_len,
+        (PREVIEW_CHARS * 3 + "a short remark".len()) as u64,
+        "the totals measure what was archived, not what the preview shows"
+    );
+
+    let first = &entries[0];
+    assert_eq!(
+        first.seq, 0,
+        "the ordinal is the handle the model has on it"
+    );
+    assert_eq!(first.source, GgContextSource::ToolOutput);
+    assert_eq!(first.role, "tool");
+    assert_eq!(first.len, (PREVIEW_CHARS * 3) as u64);
+    assert_eq!(
+        first.preview.chars().count(),
+        PREVIEW_CHARS,
+        "a long entry is previewed, never carried"
+    );
+
+    let second = &entries[1];
+    assert_eq!(second.role, "assistant");
+    assert_eq!(
+        second.preview, "a short remark",
+        "an entry shorter than the bound is shown whole"
+    );
+}
+
+/// A disabled archive reports nothing at all — an ablation's off arm has no store to snapshot — and
+/// an enabled one reports itself the moment its agent opens, empty, so the module has something to
+/// render before anything has been archived.
+#[test]
+fn the_runtime_snapshots_only_when_the_capability_is_on() {
+    assert!(ArchiveRuntime::disabled().state_event().is_none());
+
+    let runtime = ArchiveRuntime::new();
+    let GgTelemetryKind::ArchiveState { count, entries, .. } =
+        runtime.state_event().expect("an enabled archive reports")
+    else {
+        panic!("expected an archive snapshot");
+    };
+    assert_eq!(count, 0);
+    assert!(entries.is_empty());
+}

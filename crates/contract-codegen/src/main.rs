@@ -191,7 +191,9 @@ fn main() -> Result<()> {
                 gg::GgAgentConfig, gg::GgSubagentRef, gg::GgSubagentScope,
                 gg::GgPromptCacheTtl, gg::GgModelSlot,
                 gg::GgCapabilityConfig, gg::GgCapabilitySet,
-                gg::GgModuleKind, gg::GgModuleOwnership,
+                gg::GgModuleKind, gg::GgModuleOwnership, gg::GgModuleOrigin,
+                gg::GgAgentModule, gg::GgModuleDisposition, gg::GgTransitionModule,
+                gg::GgArchiveEntry,
                 gg::GgFsmState, gg::GgFsmTransition,
                 gg::GgContextSource, gg::GgContextSourceUsage,
                 gg::GgPromptRef, gg::GgLoggedToolCall, gg::GgLoggedImage,
@@ -401,6 +403,20 @@ fn main() -> Result<()> {
                 "GgContextAction",
                 "GgWorkflowPhase",
                 "GgAgentTransitionKind",
+                // The module model's vocabulary. These are *also* the documented shape of a
+                // capability's `ownership`/`scope` params and of an FSM transition's transfer
+                // list — but a params key is free-form JSON in the schema, so the telemetry
+                // event is the one schema root that genuinely references them (through
+                // `AgentModules` and the reshaped `AgentTransition`), which makes this
+                // document their canonical home.
+                "GgModuleKind",
+                "GgModuleOwnership",
+                "GgModuleOrigin",
+                "GgMemoryScope",
+                "GgAgentModule",
+                "GgModuleDisposition",
+                "GgTransitionModule",
+                "GgArchiveEntry",
                 "GgIssueReviewPhase",
                 "GgReviewer",
                 "GgSpeculationPhase",

@@ -27,9 +27,10 @@ use crate::client::{
 use crate::model::ModelClient;
 use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
-    CAPABILITY_FSM, CAPABILITY_TASKS, FSM_PARAM_STATES, GgAgentConfig, GgAgentTransitionKind,
-    GgCapabilityConfig, GgCapabilitySet, GgContextSource, GgSlotBinding, GgTelemetryEvent,
-    GgTelemetryKind, ROOT_AGENT,
+    CAPABILITY_FSM, CAPABILITY_TASKS, FSM_PARAM_STATES, GgAgentConfig, GgAgentModule,
+    GgAgentTransitionKind, GgCapabilityConfig, GgCapabilitySet, GgContextSource,
+    GgModuleDisposition, GgModuleKind, GgModuleOrigin, GgSlotBinding, GgTelemetryEvent,
+    GgTelemetryKind, GgTransitionModule, ROOT_AGENT,
 };
 
 use super::tests::{ScriptedFactory, invocation};
@@ -109,7 +110,7 @@ async fn run_machine(dir: &Path, set: GgCapabilitySet) -> (SessionOutcome, Vec<G
 fn tasks_by_agent(events: &[GgTelemetryEvent]) -> HashMap<String, Vec<String>> {
     let mut held: HashMap<String, Vec<String>> = HashMap::new();
     for event in events {
-        if let GgTelemetryKind::TasksState { tasks } = &event.kind {
+        if let GgTelemetryKind::TasksState { tasks, .. } = &event.kind {
             held.insert(
                 event.agent_id.clone().unwrap_or_default(),
                 tasks.iter().map(|task| task.title.clone()).collect(),
@@ -146,6 +147,17 @@ fn fsm_states(events: &[GgTelemetryEvent]) -> Vec<(String, String, String, Optio
         .collect()
 }
 
+/// The module kinds a transition's per-module list reports with `disposition`, as the wire spells
+/// them — the shape the assertions below were written against before dispositions replaced three
+/// flat name lists.
+fn kinds_with(modules: &[GgTransitionModule], disposition: GgModuleDisposition) -> Vec<String> {
+    modules
+        .iter()
+        .filter(|entry| entry.disposition == disposition)
+        .map(|entry| entry.kind.to_string())
+        .collect()
+}
+
 /// Every `AgentTransition` event in stream order, as `(emitting agent, successor id, transferred)`.
 fn transitions(events: &[GgTelemetryEvent]) -> Vec<(String, String, Vec<String>, Vec<String>)> {
     events
@@ -154,16 +166,15 @@ fn transitions(events: &[GgTelemetryEvent]) -> Vec<(String, String, Vec<String>,
             GgTelemetryKind::AgentTransition {
                 kind,
                 to_agent_id,
-                transferred,
-                initialized,
+                modules,
                 ..
             } => {
                 assert_eq!(*kind, GgAgentTransitionKind::Fsm);
                 Some((
                     event.agent_id.clone().unwrap_or_default(),
                     to_agent_id.clone(),
-                    transferred.clone(),
-                    initialized.clone(),
+                    kinds_with(modules, GgModuleDisposition::Carried),
+                    kinds_with(modules, GgModuleDisposition::Initialized),
                 ))
             }
             _ => None,
@@ -483,5 +494,101 @@ async fn a_structurally_broken_machine_fails_to_launch() {
             GgTelemetryKind::Log { message, .. } if message.contains("nowhere")
         )),
         "and says which edge it could not follow"
+    );
+}
+
+/// A transition reports the module instance on **both** sides of the boundary, per kind — which is
+/// what turns "the successor has a task list" into "the successor has *this* task list, the one its
+/// predecessor built".
+///
+/// The three flat name lists this replaced could not say it: they named kinds, and a kind is not an
+/// instance. A carried module reports one id twice; a kind the successor's profile enables but the
+/// edge did not carry reports the fresh, empty store it actually starts on.
+#[tokio::test]
+async fn a_transitions_module_list_names_the_instance_on_both_sides() {
+    let dir = TempDir::new().unwrap();
+    // The first edge carries nothing at all, so the successor starts fresh on everything its own
+    // profile enables; the second carries the window and the list.
+    let (outcome, events) = run_machine(dir.path(), machine_set(three_state(json!([])))).await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let lists: Vec<Vec<GgTransitionModule>> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::AgentTransition { modules, .. } => Some(modules.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(lists.len(), 2, "two edges, two transitions");
+
+    let row = |modules: &[GgTransitionModule], kind: GgModuleKind| {
+        modules
+            .iter()
+            .find(|entry| entry.kind == kind)
+            .cloned()
+            .unwrap_or_else(|| panic!("{kind} is reported"))
+    };
+    for modules in &lists {
+        assert_eq!(
+            modules.iter().map(|entry| entry.kind).collect::<Vec<_>>(),
+            GgModuleKind::ALL.to_vec(),
+            "a transition list and a roster line up kind for kind"
+        );
+    }
+
+    // The first edge carries nothing: both kinds the successor enables start on a *new* instance,
+    // and the list names the one it starts on rather than leaving the reader to guess.
+    let first_history = row(&lists[0], GgModuleKind::History);
+    assert_eq!(first_history.disposition, GgModuleDisposition::Initialized);
+    assert_ne!(
+        first_history.from_module_id, first_history.to_module_id,
+        "a fresh window is a different window, and the two ids say so"
+    );
+    assert!(first_history.to_module_id.is_some());
+
+    // The second carries both: one instance, reported on both sides of the boundary.
+    let second_history = row(&lists[1], GgModuleKind::History);
+    assert_eq!(second_history.disposition, GgModuleDisposition::Carried);
+    assert_eq!(
+        second_history.from_module_id, second_history.to_module_id,
+        "a carried window is the same window"
+    );
+    let second_tasks = row(&lists[1], GgModuleKind::Tasks);
+    assert_eq!(second_tasks.disposition, GgModuleDisposition::Carried);
+    assert_eq!(second_tasks.from_module_id, second_tasks.to_module_id);
+
+    // And the instance the successor reports holding is the one the transition handed it — the join
+    // that makes a lineage walkable rather than merely plausible.
+    let successors: Vec<(String, Vec<GgAgentModule>)> = events
+        .iter()
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::AgentModules { modules } => {
+                Some((event.agent_id.clone().unwrap_or_default(), modules.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(successors.len(), 3, "one roster per incarnation");
+    let verifier = &successors[2].1;
+    assert_eq!(
+        Some(
+            verifier
+                .iter()
+                .find(|entry| entry.kind == GgModuleKind::History)
+                .unwrap()
+                .module_id
+                .clone()
+        ),
+        second_history.to_module_id,
+        "the last state holds the very window the transition carried to it"
+    );
+    assert_eq!(
+        verifier
+            .iter()
+            .find(|entry| entry.kind == GgModuleKind::History)
+            .unwrap()
+            .origin,
+        GgModuleOrigin::Transferred,
+        "and knows it was handed it rather than having made it"
     );
 }

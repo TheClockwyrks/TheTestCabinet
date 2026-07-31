@@ -187,7 +187,7 @@ fn state_event_reflects_which_skills_are_read() {
     let mut runtime = two_skill_runtime();
 
     // At the start every skill is unread.
-    let GgTelemetryKind::SkillsState { skills } = runtime.state_event().unwrap() else {
+    let GgTelemetryKind::SkillsState { skills, .. } = runtime.state_event().unwrap() else {
         panic!("expected a SkillsState event");
     };
     assert_eq!(skills.len(), 2);
@@ -195,7 +195,7 @@ fn state_event_reflects_which_skills_are_read() {
 
     // After reading `a`, only it is marked read; its description travels with it.
     runtime.record_read("a");
-    let GgTelemetryKind::SkillsState { skills } = runtime.state_event().unwrap() else {
+    let GgTelemetryKind::SkillsState { skills, .. } = runtime.state_event().unwrap() else {
         panic!("expected a SkillsState event");
     };
     let a = skills.iter().find(|s| s.name == "a").unwrap();

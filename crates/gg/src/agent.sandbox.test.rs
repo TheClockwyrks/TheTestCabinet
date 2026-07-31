@@ -934,7 +934,7 @@ async fn a_program_read_skill_pins_the_skill_and_emits_skills_state() {
     let read_flags: Vec<Vec<bool>> = events
         .iter()
         .filter_map(|e| match &e.kind {
-            GgTelemetryKind::SkillsState { skills } => {
+            GgTelemetryKind::SkillsState { skills, .. } => {
                 Some(skills.iter().map(|skill| skill.read).collect())
             }
             _ => None,

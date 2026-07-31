@@ -443,6 +443,24 @@ pub(super) fn handle_fork(
     }))
 }
 
+/// What a copy is taken *from*: the forker's live window, that window's own
+/// [module id](crate::modules::Module::instance_id), and the capability modules it holds.
+///
+/// The three travel together because they are one thing — everything the copy inherits — and they
+/// are three references rather than a `&ModuleSet` because the loop does not always have a set to
+/// point at: it holds the window and the capability modules split apart for the whole of a session
+/// (the borrow checker will only prove those disjoint through the split), and on the
+/// [responses-as-code](crate::sandbox) path the window has been moved out of its module altogether
+/// for the duration of a program.
+pub(super) struct ForkSource<'a> {
+    /// The window the copy opens on.
+    pub context: &'a ContextModel,
+    /// That window's module id, which the copy's transition reports it was copied from.
+    pub history_id: &'a str,
+    /// The modules the copy links or copies, per kind.
+    pub caps: &'a CapabilityModules,
+}
+
 /// Start every [fork](handle_fork) this turn declared, now that the turn's tool results are all
 /// recorded and the window they are copying is a complete conversation again.
 ///
@@ -459,14 +477,14 @@ pub(super) fn handle_fork(
 pub(super) fn dispatch_forks(
     sub: &mut SubagentContext,
     spawner: &Agent,
-    context: &ContextModel,
-    caps: &CapabilityModules,
+    source: ForkSource<'_>,
     emitter: &Emitter,
     forks: Vec<PendingFork>,
     turns_taken: usize,
 ) {
     for fork in forks {
-        let (modules, cloned) = crate::modules::fork_modules(context, caps, &fork.id);
+        let (modules, cloned) =
+            crate::modules::fork_modules(source.context, source.history_id, source.caps, &fork.id);
         let seed = Succession {
             note: fork_note(spawner, &fork.prompt, turns_taken),
             modules,
@@ -490,10 +508,10 @@ pub(super) fn dispatch_forks(
                 // A fork is not a machine move, so there is no state to report.
                 state: None,
                 // Everything a fork carries, it carries: nothing is dropped, and nothing has to be
-                // started empty, because the copy runs the very profile the original does.
-                transferred: kind_names(&cloned),
-                dropped: Vec::new(),
-                initialized: Vec::new(),
+                // started empty, because the copy runs the very profile the original does. What is
+                // worth reading here is *how* each module travelled — the copy's own task list
+                // against the one board it shares with its forker.
+                modules: cloned,
             }),
             Err(err) => emitter.emit(log(
                 "warn",
@@ -577,12 +595,6 @@ fn succession_message(call: &ToolCall, key: &str) -> Option<String> {
 // The notes an arriving instance opens on
 // ---------------------------------------------------------------------------
 
-/// The [module kinds](ModuleKind) in a [transfer report](crate::modules::TransferReport) as the
-/// wire spells them.
-pub(super) fn kind_names(kinds: &[ModuleKind]) -> Vec<String> {
-    kinds.iter().map(|kind| kind.to_string()).collect()
-}
-
 /// The note a successor opens on: who it is now, what it received, what it did not, and whatever its
 /// predecessor wanted it to know.
 ///
@@ -617,9 +629,9 @@ pub(super) fn succession_note(
              `{profile}` agent — its conversation above is yours."
         ),
     };
-    let carried = describe_kinds(&report.transferred);
-    let dropped = describe_kinds(&report.dropped);
-    let fresh = describe_kinds(&report.initialized);
+    let carried = describe_kinds(&report.carried());
+    let dropped = describe_kinds(&report.dropped());
+    let fresh = describe_kinds(&report.initialized());
     note.push_str(&match (carried, dropped.or(fresh)) {
         (Some(carried), Some(other)) => format!(" You carry over {carried}; {other} did not."),
         (Some(carried), None) => format!(" You carry over {carried}."),

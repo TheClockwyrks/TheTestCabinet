@@ -17,12 +17,24 @@
 
 use std::sync::{Arc, Mutex};
 
-use test_cabinet_core::gg::{GgAgentConfig, GgContextSource, GgTelemetryKind};
+use test_cabinet_core::gg::{
+    GgAgentConfig, GgArchiveEntry, GgContextSource, GgModuleOrigin, GgTelemetryKind,
+};
 
 use crate::model::{Message, Role};
 use crate::modules::{
-    AdoptError, Module, ModuleHandle, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    AdoptError, Module, ModuleHandle, ModuleIds, ModuleKind, ModuleResolveCtx, Ownership, Refresh,
+    detached_ids,
 };
+
+/// How much of an archived item's text an [`ArchiveState`](GgTelemetryKind::ArchiveState) snapshot
+/// carries: enough to tell entries apart in a list, and no more.
+///
+/// The archive exists precisely so its material is out of the request; streaming the bodies into
+/// the record would put a second copy of the whole thread on disk for no reader's benefit, and the
+/// searchable text stays recoverable by the agent through `search_archive`, which is whose question
+/// it is.
+const PREVIEW_CHARS: usize = 200;
 
 /// One archived thread item — a message that was removed from the live window and kept here so
 /// [`search_archive`](crate::tools) can recover it.
@@ -44,6 +56,25 @@ pub struct ArchiveEntry {
 }
 
 impl ArchiveEntry {
+    /// The contract form of this entry — its metadata and a bounded
+    /// [preview](PREVIEW_CHARS) of its text, for an
+    /// [`ArchiveState`](GgTelemetryKind::ArchiveState) snapshot.
+    fn to_contract(&self) -> GgArchiveEntry {
+        GgArchiveEntry {
+            seq: self.seq as u64,
+            source: self.source,
+            role: match self.role {
+                Role::System => "system",
+                Role::User => "user",
+                Role::Assistant => "assistant",
+                Role::Tool => "tool",
+            }
+            .to_string(),
+            len: self.text.chars().count() as u64,
+            preview: self.text.chars().take(PREVIEW_CHARS).collect(),
+        }
+    }
+
     /// A short one-line label for the entry — its ordinal and a human role name — used to
     /// preface each hit in a `search_archive` result so the model can tell matches apart.
     pub fn label(&self) -> String {
@@ -84,6 +115,28 @@ impl ArchiveStore {
     /// The number of entries currently archived.
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    /// The archived entries, in archival order — the read surface the tests assert against; the
+    /// [snapshot](Self::state_event) reaches the field directly.
+    #[allow(dead_code)]
+    pub fn entries(&self) -> &[ArchiveEntry] {
+        &self.entries
+    }
+
+    /// The [`ArchiveState`](GgTelemetryKind::ArchiveState) telemetry for the current archive,
+    /// attributed to the [module instance](crate::modules::Module::instance_id) `module_id` — the
+    /// store's identity, not its holder's, so a successor searching an archive it inherited reports
+    /// the same one its predecessor filled.
+    pub fn state_event(&self, module_id: &str) -> GgTelemetryKind {
+        let entries: Vec<GgArchiveEntry> =
+            self.entries.iter().map(ArchiveEntry::to_contract).collect();
+        GgTelemetryKind::ArchiveState {
+            module_id: module_id.to_string(),
+            count: entries.len() as u64,
+            total_len: entries.iter().map(|entry| entry.len).sum(),
+            entries,
+        }
     }
 
     /// Whether the archive holds no entries.
@@ -158,15 +211,32 @@ pub struct ArchiveRuntime {
     /// The shared, mutable store — the same handle `search_archive` reads and the loop's
     /// `archive_thread` reclaim fills.
     store: Arc<Mutex<ArchiveStore>>,
+    /// The [identity](crate::modules::ModuleIdMint) of that store — what says a successor is
+    /// searching the very archive its predecessor filled.
+    id: Arc<str>,
+    /// The mint a copy of this archive takes its id from — see [`ModuleIds`].
+    ids: ModuleIds,
+    /// How this holder came by the archive.
+    origin: GgModuleOrigin,
 }
 
 impl ArchiveRuntime {
-    /// An enabled runtime over a fresh, empty archive.
+    /// An enabled runtime over a fresh, empty archive, identified out of a
+    /// [detached](detached_ids) sequence — the by-hand constructor, which in practice means the
+    /// tests. A run's archives are built through [`Self::new_in`].
     pub fn new() -> Self {
+        Self::new_in(&detached_ids())
+    }
+
+    /// The same, identified out of the run's [mint](ModuleIds).
+    pub fn new_in(ids: &ModuleIds) -> Self {
         Self {
             enabled: true,
             ownership: Ownership::Owned,
             store: Arc::new(Mutex::new(ArchiveStore::new())),
+            id: ids.next(ModuleKind::Archive),
+            ids: Arc::clone(ids),
+            origin: GgModuleOrigin::Created,
         }
     }
 
@@ -186,9 +256,8 @@ impl ArchiveRuntime {
     #[allow(dead_code)] // bound by the tests and by a future incarnation's module set.
     pub fn from_store(store: Arc<Mutex<ArchiveStore>>) -> Self {
         Self {
-            enabled: true,
-            ownership: Ownership::Owned,
             store,
+            ..Self::new()
         }
     }
 
@@ -229,6 +298,11 @@ impl ArchiveRuntime {
             store: Arc::new(Mutex::new(
                 self.store.lock().expect("archive store lock").clone(),
             )),
+            // A new store, so a new id: the two archives grow apart from here, each keeping the
+            // ordinal counter it inherited so neither reissues an existing `#n`.
+            id: self.ids.next(ModuleKind::Archive),
+            ids: Arc::clone(&self.ids),
+            origin: self.origin,
         }
     }
 
@@ -241,7 +315,30 @@ impl ArchiveRuntime {
             enabled: self.enabled,
             ownership: self.ownership,
             store: Arc::clone(&self.store),
+            id: Arc::clone(&self.id),
+            ids: Arc::clone(&self.ids),
+            origin: self.origin,
         }
+    }
+
+    /// The [`ArchiveState`](GgTelemetryKind::ArchiveState) snapshot for the current archive, or
+    /// `None` when the capability is off.
+    ///
+    /// Emitted once as the agent opens (empty) and again after every `archive_thread`, beside the
+    /// [`ContextManaged`](GgTelemetryKind::ContextManaged) event that records the *act*. The two
+    /// answer different questions: that one is "the window was reclaimed by this much", this one is
+    /// "here is what is now out of it" — and without it the archive is the one module with nothing
+    /// at all to render, which under this repo's UX policy is the same as not having it.
+    pub fn state_event(&self) -> Option<GgTelemetryKind> {
+        if !self.enabled {
+            return None;
+        }
+        Some(
+            self.store
+                .lock()
+                .expect("archive store lock")
+                .state_event(&self.id),
+        )
     }
 }
 
@@ -254,6 +351,18 @@ impl Default for ArchiveRuntime {
 impl Module for ArchiveRuntime {
     fn kind(&self) -> ModuleKind {
         ModuleKind::Archive
+    }
+
+    fn instance_id(&self) -> &str {
+        &self.id
+    }
+
+    fn origin(&self) -> GgModuleOrigin {
+        self.origin
+    }
+
+    fn set_origin(&mut self, origin: GgModuleOrigin) {
+        self.origin = origin;
     }
 
     fn enabled(&self) -> bool {
@@ -277,9 +386,11 @@ impl Module for ArchiveRuntime {
     }
 
     fn state_events(&self) -> Vec<GgTelemetryKind> {
-        Vec::new()
+        self.state_event().into_iter().collect()
     }
 
+    /// Nothing: like the task list and the board, the archive's telemetry is **snapshot-only** —
+    /// the whole archive is re-emitted after each `archive_thread` by the agent that made it.
     fn drain_events(&mut self) -> Vec<GgTelemetryKind> {
         Vec::new()
     }
@@ -303,7 +414,6 @@ impl Module for ArchiveRuntime {
         profile: &GgAgentConfig,
         ctx: &ModuleResolveCtx<'_>,
     ) -> Result<(), AdoptError> {
-        let _ = ctx;
         if !profile.is_enabled(test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT) {
             return Err(AdoptError::Disabled);
         }
@@ -313,6 +423,8 @@ impl Module for ArchiveRuntime {
             test_cabinet_core::gg::CAPABILITY_AGENT_MANAGED_CONTEXT,
         )
         .0;
+        self.ids = Arc::clone(ctx.ids);
+        self.origin = GgModuleOrigin::Transferred;
         Ok(())
     }
 }
