@@ -19,9 +19,11 @@ The telemetry must let the console display:
   agents.
 - Every **succession** — an [`exec`](/gg/fork-and-exec/), a `fork`, or an
   [FSM transition](/gg/fsms/). One `agent_transition` on the outgoing instance's stream
-  carries what each [module](/gg/modules/) did (transferred, dropped, initialized), and
-  an `fsm_state` on the incoming one names the machine, the state, and the state it came
-  from. Without them a handoff would arrive as an unexplained second agent.
+  carries what happened to each [module](/gg/modules/) — one row per kind naming its
+  disposition (`carried`, `copied`, `linked`, `dropped`, `initialized`, `absent`) and the
+  store id on each side of the handoff — and an `fsm_state` on the incoming one names the
+  machine, the state, and the state it came from. Without them a handoff would arrive as
+  an unexplained second agent.
 - The **[context-window breakdown](/gg/context-visibility/)** over time — the
   stacked line graph.
 - **Where each turn's time went** — one `turn_timing` per turn, splitting the turn's
@@ -97,6 +99,12 @@ identically down to the order of the cards) reads a run through these surfaces:
   [below](#what-filled-the-window-and-what-it-cost). A profile the configuration
   declares but the run never instantiated still gets a row, because "the reviewer never
   ran" is a result. Each instance is a chip that opens it in the Instances explorer.
+  Under those chips sits the one read-out on the panel that is **not** a sum: what this
+  profile's instances *hold*. Module state does not fold — twelve instances may be reading
+  one store or twelve, and which of those it is *is* the configuration under test — so
+  each [module](/gg/modules/#the-agents-tab-what-a-profiles-instances-hold) kind states
+  its distribution instead, and the one shape whose contents honestly belong to the agent
+  (a single store every instance binds at once) shows them inline, framed as the agent's.
 - The **Project** view — the run-global [Project management](/gg/project-management/)
   board. Because the board is now shared run-wide rather than per agent, it is its own
   top-level section, **not** a file under any one agent.
@@ -106,13 +114,18 @@ identically down to the order of the cards) reads a run through these surfaces:
   the **metric graphs** — [where each turn's time went](#where-a-turns-time-went),
   then throughput (tokens/s), cost per request, cache-read
   share and reasoning share, each gaining one point per model call and each point
-  carrying [the figures behind it](#reading-the-metric-graphs) on hover — tasks,
-  knowledge) are inherently **per agent** — *whose*
-  window filled, *whose* task list this is — so they cannot honestly be shown as one
-  global panel. The explorer lays the run out as a **filesystem**: every agent is a
+  carrying [the figures behind it](#reading-the-metric-graphs) on hover) are inherently
+  **per agent** — *whose* window filled, *whose* requests these were — so they cannot
+  honestly be shown as one global panel. The explorer lays the run out as a
+  **filesystem**: every agent is a
   folder, the things you can monitor about it are its files, and every agent an agent
   **spawned** is a folder under a `subagents` folder — so the
   [delegation tree](/gg/subagents/) *is* the directory tree, rooted at the main agent.
+  What the agent **holds** rather than what it did lives one level in, under a
+  [`modules` folder](/gg/modules/#the-instances-tab-a-modules-folder-per-agent) of its
+  own: a file per module, each stating which store it is, who else is holding it, and
+  what it costs this window — so an agent's own files stay facts about the agent, and a
+  store that four agents share is legible as one store from any of them.
   An agent that did not spawn but **succeeded** another — an
   [`exec`](/gg/fork-and-exec/) or an [FSM transition](/gg/fsms/) — is not delegation and
   is not drawn as such: it hangs directly off its predecessor's folder, tagged with where
@@ -121,8 +134,8 @@ identically down to the order of the cards) reads a run through these surfaces:
   [`fork`](/gg/fork-and-exec/) *is* a genuine child and does go under `subagents`, tagged
   `⑂ fork` so a copy reads as a copy. Either way the arriving agent's Overview states what
   it inherited — the state it entered, and which [modules](/gg/modules/) were carried,
-  dropped and started fresh — and both halves of the handoff appear in the activity feed
-  on the streams they actually landed on.
+  copied, linked, dropped and started fresh — and both halves of the handoff appear in
+  the activity feed on the streams they actually landed on.
   Each agent folder leads with its **lifecycle dot** (running / waiting / done /
   failed) in place of a folder glyph, and carries the profile it runs under on the
   row's trailing edge. Only the main agent is named `root`: an agent the board
@@ -145,6 +158,71 @@ identically down to the order of the cards) reads a run through these surfaces:
   workspace), and, while it is blocked, **what it is waiting on**: `blocked` on its
   own is indistinguishable from stuck, so the wait names its condition (the issue it
   suspended for, or the subagents it is collecting).
+- The **Modules** explorer — the run read by the **state it holds** rather than by the
+  agents holding it, sitting between Instances and Project. Module instances are grouped
+  by kind, one row per **backing store** however many agents hold it, and each kind's
+  group leads with a whole-run
+  [overview](/gg/modules/#the-modules-tab-the-run-read-by-the-state-it-holds) of how that
+  capability is actually being used — how many stores exist, how widely they are shared,
+  what they cost every turn, and how many were never written to. It exists because the
+  Dashboard, the Agents panel and the Instances explorer are all read **per agent**, which
+  is the wrong axis for a thing several agents can hold at once: read per agent, one store
+  shared by four reviewers looks
+  exactly like four stores that happen to agree, and that is the difference between "the
+  shared-memory arm worked" and "it silently fell back to private notebooks". Offered
+  whenever the run enables a module-backed capability; a shell-only run has no tab,
+  because a tab that can only ever be empty is worse than no tab.
+
+## What an agent holds
+
+A [module](/gg/modules/) instance is no longer one-to-one with an agent instance — one
+store can be held by several agents at once, carried whole to a successor, or copied when
+its holder forks — so the stream carries the store's **[identity](/gg/modules/#identity-which-store-is-this)**
+rather than leaving a reader to infer sharing from panels that happen to match. Four
+things carry it:
+
+- **`agent_modules`** — the **roster**: one row per module kind, naming the store the
+  instance bound (`memories-2`), whether the capability is on, whether the prompt
+  [carries](/gg/modules/#ownership) it, how this holder came by it (`created`,
+  `inherited`, `profile`, `run`, `transferred`, `forked`), and — for memories — the
+  declared `scope` and whether this holder may write. Emitted **once per incarnation, for
+  every instance**: the root, every subagent, every successor, immediately after that
+  instance's `agent_spawned` (and its `fsm_state`, where it stands in a machine).
+
+  It is the only event that reports a module an agent holds but has **not yet touched**,
+  which is what makes a read-only inherited holder that never writes appear in the record
+  at all. It deliberately carries no holder count — a count is stale the moment a sibling
+  spawns, while every instance's roster together is the exact holder set, live status
+  included. Rows are emitted for the kinds the profile switched **off** as well, so an
+  [ablation](/gg/toolset-ablation/)'s off arm is legible rather than absent.
+
+  Its `scope` × `origin` pair is worth the field on its own: it is the only place a
+  *declared* binding rule and the *resolved* answer to it appear side by side, so a holder
+  reporting `scope: inherited` with `origin: created` is one whose inheritance silently
+  fell back — which the console reports as a
+  [divergence](/gg/modules/#the-agents-tab-what-a-profiles-instances-hold).
+
+- **`module_id` on every state snapshot** — `memory_state`, `tasks_state`, `board_state`
+  and `skills_state` each name the store they are a snapshot **of**, not merely the agent
+  that emitted them. That is what lets a consumer attribute two agents' identical panels
+  to one store rather than to a coincidence, and what lets a store's contents be shown
+  once, under the store, rather than N times under N agents.
+
+- **`archive_state`** — what `archive_thread` has put away, emitted as an agent opens (the
+  capability being on) and again after every archival, beside the `context_managed` event
+  that records the *act*. The two answer different questions: that one is "the window was
+  reclaimed by this much", this one is "here is what is now out of it". Entries carry the
+  ordinal, band, role and length, plus a **bounded preview** — never the bodies. The
+  [archive](/gg/agent-managed-context/) exists precisely so that material is out of the
+  request, and re-streaming it would put a second copy of the whole thread on disk for no
+  reader's benefit; the searchable body stays recoverable through `search_archive`, which
+  is whose question it is.
+
+- **`agent_transition.modules`** — the per-kind account of a
+  [succession](/gg/fork-and-exec/), carrying both store ids, so a fork's **linked** board
+  and its **copied** task list are distinguishable and a store swapped underneath a
+  successor (a `shared` profile re-binding its own instance) is visible as the two
+  different ids it is.
 
 ## What filled the window, and what it cost
 

@@ -240,12 +240,15 @@ A launched gg run is watched on gg's own live monitor, which renders its
 caching and reasoning splits as rings, how many agents ran, and the configuration it
 is running under); **Agents** —
 the run read per *configured* agent, each profile's instances summed into one
-read-out (how many ran, what they spent between them, and which files and tools
-filled their windows), which is the grain an ablation is read at; and
+read-out (how many ran, what they spent between them, which files and tools
+filled their windows, and what [state](/gg/modules/) they held between them), which is
+the grain an ablation is read at;
 **Instances**, the per-running-agent explorer that lays the run out as a filesystem
-(an instance is a folder, the things you can monitor about it are its files, and a
-spawned agent is a folder under `subagents`). That view is not only for the session
-that launched the run:
+(an instance is a folder, the things you can monitor about it are its files — including
+a `modules` folder for what it holds — and a spawned agent is a folder under
+`subagents`); and **Modules**, the run read by the *state* it holds rather than by the
+agents holding it, grouped by kind so that one store four agents share reads as one
+store. That view is not only for the session that launched the run:
 
 - The **Runs** list opens an in-flight gg run on gg's monitor, not the generic
   harness feed.
@@ -254,11 +257,13 @@ that launched the run:
 - Inside the Instances explorer, a **file is offered when the run's capability set
   justifies it**, not when data happens to have arrived — gg announces its
   configuration on the stream's first event, so a run with the tasks capability
-  always has a per-agent **tasks** file (empty until the model builds its list), while
+  always has a **modules → tasks** file (empty until the model builds its list), while
   a run with compaction off has no compaction file. Every agent always has **overview**,
   **activity**, and **context** files. The [Project management](/gg/project-management/)
   board is **not** a per-agent file — because it is shared run-wide it surfaces as a
-  run-global **Project** section, present only when that capability is on.
+  run-global **Project** section, present only when that capability is on, and an
+  agent's own `modules → board` file links through to it rather than drawing a second
+  copy.
 - The **activity** file is gg's telemetry rendered through the _same_ feed every
   other harness's events render through, so it honors the layout picked in
   **Settings → Appearance** and a gg run doesn't read differently from every other

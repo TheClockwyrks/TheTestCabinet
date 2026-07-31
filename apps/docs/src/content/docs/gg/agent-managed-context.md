@@ -223,3 +223,13 @@ underlying `ToolCall`/`ToolResult` still stream too; the `ContextManaged` event 
 the *effect*, which the console draws as a marker on the timeline and the context graph
 next to the band drop the following breakdown shows. `search_archive` reclaims nothing,
 so it is reported only as an ordinary tool result.
+
+The archive itself is a [module](/gg/modules/), and it reports its **contents** too: an
+`archive_state` snapshot as the agent opens and again after every archival, listing each
+entry's ordinal, band, role and length with a bounded preview of its text — never the
+bodies, since the whole purpose of archiving was to get that material out of the request.
+The console reads it as the agent's `modules/archive` file and as an archive group on the
+[Modules](/gg/modules/#inspecting-modules-in-the-console) tab, beside the reclaim figures
+the `ContextManaged` events carry. An archive is carried whole across an
+[`exec`](/gg/fork-and-exec/) and copied on a `fork` with its ordinals continued rather than
+restarted, so an entry's `seq` means the same thing for the whole lineage.

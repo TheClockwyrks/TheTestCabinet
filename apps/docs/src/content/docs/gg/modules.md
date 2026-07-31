@@ -168,3 +168,112 @@ drained onto the outgoing agent's stream before it goes, and every module the su
 ends up with — carried or fresh — re-states itself on the successor's stream as soon as it
 arrives. The console reduces per agent, so a module that arrived silently would leave the
 successor's panel empty for the rest of the run.
+
+## Identity: which store is this?
+
+Every **backing store** carries an id — `memories-2`, `tasks-0`, `board-0` — minted once
+per kind for the life of the run. The id belongs to the store, not to the agent holding
+it, and that is the whole of it: **two holders reporting the same id are holding one
+store**, and two ids are two stores that may merely happen to agree.
+
+That is a distinction nothing else in the record can make. A share and a fork produce
+identical-looking panels on two agents; a scope is a *declared* value, and one that gg
+resolves differently in several legal cases (an `inherited` agent with no spawner to
+inherit from, a `shared` successor re-bound to its own profile's store). So the id follows
+the store through every operation above: a **share** or an **alias** keeps it, a **fork**
+mints a new one, a **transfer** carries it, and the one case where a transfer swaps the
+store underneath a successor — `shared` memories re-binding to the successor's own profile
+— reports the new id, which is what makes the swap visible rather than something to be
+inferred from a notebook that changed contents.
+
+Each agent instance reports the whole set as it opens: one **roster** row per kind, naming
+the store it bound, whether the capability is on, whether its prompt
+[carries](#ownership) it, how it came by it (created, inherited, bound the profile's
+instance, bound the run's, carried from its predecessor, received from a fork), and — for
+memories — the scope it declared and whether it may write. A roster cannot change within
+an incarnation, since every operation that changes what an agent holds mints a new agent
+id, so it is stated once and never restated. See
+[Telemetry → What an agent holds](/gg/telemetry/#what-an-agent-holds) for the events.
+
+## Inspecting modules in the console
+
+Because a module instance is no longer one-to-one with an agent instance, no per-agent
+view can answer the questions a module raises: *which instances share this store, when was
+it handed on or copied, is it owned (in the prompt) or reachable through its tools alone,
+and is anything actually being put in it?* Three surfaces answer them, at three grains,
+over the same folded model — so a store described as "shared by 4 holders" on one reads
+the same way on the other two.
+
+### The Instances tab: a `modules` folder per agent
+
+Every agent instance's folder gains a **`modules`** folder — closed by default, sitting
+after the agent's own files and before its successors and its `subagents` — with one file
+per module it holds, in kind order. A row whose store has more than one holder carries a
+link glyph and the holder count, so *is this shared?* is answered in the tree without
+opening anything.
+
+What moved, and what did not, follows one rule: a file about the **agent** stayed where it
+was, and a file that was really a view onto a **module** moved in. So Overview, Prompt,
+Activity, Context, Requests, Metrics and Compaction are unchanged (compaction is not
+module-backed — there is no `compaction` module), **Tasks** moved to `modules/tasks`, and
+the old joint **Knowledge** file split into `modules/skills` and `modules/memories`, which
+were always two independently gated modules shared on entirely different terms. Three
+files are new: `modules/board` (this agent's handle on the run's board, with a link to the
+Project tab rather than a second copy of it), `modules/history` (which window this is and
+where it came from — the fill graph stays on Context, one file over), and `modules/archive`
+(newly possible at all, since the archive reported nothing before this release).
+
+Each file leads with the same identity strip: the store's id, its kind, owned or unowned,
+how *this* holder came by it, its read access, everything that has happened to it, what it
+costs this window every turn and what it costs across every live holder, and a chip per
+co-holder that opens that instance's same file. An **unowned** module says so in words —
+"this agent holds it but its prompt does not carry it" — because that configuration's
+effect is otherwise invisible everywhere.
+
+### The Modules tab: the run read by the state it holds
+
+A new tab, between Instances and Project, offered whenever any profile enables a
+module-backed capability. It groups **module instances by kind**, and a store shared by
+four agents is **one** row however many hold it.
+
+Each kind's group leads with an **Overview** — the capability's whole-run read-out, and
+the thing to open first: how many stores exist, how many holders they have between them
+and how many are still running, how many of them are genuinely shared and how widely, what
+they cost every turn summed over the windows actually carrying them, how many were never
+written to at all, and every store side by side. "Twelve private notebooks holding two
+notes each" and "one store four agents curate" are the same capability configured two
+ways, and neither reads as anything one store at a time.
+
+Selecting a store reads it in five sections: its **identity**, its **holders** (each with
+its origin, read access, ownership and what the module costs that instance's window),
+its **lifetime** (created, carried, copied, linked, dropped — oldest first, each naming
+the succession that caused it), its **cost** per holder against the summed live figure,
+and its **contents**, taken from the store's own snapshot rather than from any one agent's
+— a shared store has one content, which is the point.
+
+Holder ids link into the Instances tab at that agent's own `modules/<kind>` file, and
+profile names into the Agents tab; the Instances module file links back.
+
+### The Agents tab: what a profile's instances hold
+
+The Agents tab reads the run per **configured profile**, which is the grain a
+configuration is tuned at — and the module question at that grain is *does one store serve
+all twelve instances of this profile, or twelve?* A **Modules** section under each
+profile's instance chips answers it with one row per kind, badged by how the stores are
+distributed:
+
+| Badge | What it means |
+| --- | --- |
+| **agent-scoped** | One store, bound by every instance at once. The only shape whose contents belong to the *agent*, so they are shown inline, framed as the agent's. |
+| **per instance** | Every instance holds its own. Nothing is shown: any single rendering would be a lie about the others — **Compare in Modules** puts them side by side instead. |
+| **handed on** | One store, held one instance at a time — a succession carried it. It has several holders and is *not* sharing, which a holder count alone gets wrong. |
+| **run-global** | The store reaches beyond this profile — the board, or a store a spawner of another profile owns. |
+| **split** | Several stores, at least one genuinely shared: some instances bound it and some did not. Usually worth opening. |
+
+Where the **declared** configuration and the **observed** distribution disagree, the row
+says so in a note naming both and the likely cause — a `scope: inherited` whose instances
+each got their own (nothing to inherit from), a `shared` profile re-bound mid-run by a
+succession, holders disagreeing about ownership after a transfer. Every one of those is a
+legal configuration, so it is a note and never an error; being loud about it is the point,
+because these are precisely the cases where a configuration reads as working while it is
+not.

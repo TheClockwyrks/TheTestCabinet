@@ -196,6 +196,19 @@ Two more things fall out of the table that are easy to miss:
   created, however deep — each link passes on the handle it holds rather than the one it
   created.
 
+### Reading a scope back off a run
+
+A scope is what the configuration **asked for**; several of the rows above are cases where
+gg legally resolves it to something else — an `inherited` agent with no spawner to inherit
+from gets its own store, a `shared` successor re-binds its own profile's. Every memory
+store therefore carries an [id](/gg/modules/#identity-which-store-is-this), and the
+console reads scoping off the ids rather than off the declaration: the **Modules** tab
+lists each store once with every instance holding it, the profile's row on the **Agents**
+tab says whether its instances turned out to share one store or take one each — and names
+the divergence where that is not what the scope asked for — and each instance's
+`modules/memories` file marks the store it bound and who else is in it. See
+[Inspecting modules in the console](/gg/modules/#inspecting-modules-in-the-console).
+
 ### What a read-only holder is offered
 
 Exactly the read calls, and nothing else — `read_memory` under the two file-shaped

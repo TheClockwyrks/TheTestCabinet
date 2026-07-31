@@ -1299,6 +1299,45 @@ tab; `apps/docs/src/content/docs/components/ui/overview.md` updates the tab list
 if it enumerates one; `changelogs/v0.7.0.md` gains the feature and the one
 breaking change.
 
+### Stage 8 as built — deviations from the stage-8 list
+
+**LANDED** as `docs(gg): module inspection in the console`. Everything the stage asks for
+shipped; four things are shaped differently from the list above.
+
+1. **`components/ui/overview.md` does not enumerate the console's gg tabs** — `rg -n "gg"`
+   over `components/ui/overview.md` and `components/web/overview.md` returns nothing, so
+   there was no tab list there to update. The place that *does* enumerate them in prose is
+   [`gg/configurations.md`](apps/docs/src/content/docs/gg/configurations.md) ("A launched gg
+   run is watched on gg's own live monitor… led by a tab selector"), which gained **Modules**
+   and, in the bullet below it, the correction that a run with the tasks capability now has a
+   **modules → tasks** file rather than a top-level one.
+2. **`gg/modules.md` gained *two* sections, not one.** "Inspecting modules in the console"
+   describes the three surfaces, but it is unreadable without the fact underneath it, which
+   the docs site did not state anywhere: that a **backing store has an id**, that the id
+   follows the store through share/fork/transfer, and that a roster reports what an instance
+   holds before it touches it. That is behaviour, not console UI, so it is its own
+   "Identity: which store is this?" section, and the telemetry page and the changelog both
+   link *to* it rather than restating it.
+3. **`gg/agent-managed-context.md` was updated too**, which the stage list does not mention.
+   Its "What the console sees" section stated that evict and archive emit `ContextManaged`
+   and stopped there — accurate before `ArchiveState` existed and wrong after it, since the
+   archive now reports its contents. Leaving the one page devoted to the archive silent
+   about the only event that says what is *in* it would have been the same omission this
+   whole feature exists to fix.
+4. **The changelog carries two feature sections rather than one bullet.** "Every store has a
+   name" (the identity + roster + archive-state telemetry) and "Three surfaces for reading
+   what a run holds" (the console), plus the `agent_transition` reshape under **Breaking
+   changes** with the reason the three lists could not be kept, and the additive paragraph
+   widened to name `agent_modules`, `archive_state` and the defaulted `module_id`.
+
+**Gates run at this stage** (the full set, not the per-stage subset): `cargo fmt --all`,
+`cargo build --workspace`, `cargo clippy --workspace --all-targets`,
+`cargo nextest run --workspace` (2811 passed, 2 skipped), `cargo test --workspace --doc`,
+`npm run gen:contract` + `git diff --exit-code packages/run-record/src/gg.ts` (no drift),
+`npm run -w @test-cabinet/gg-sandbox signatures` (no drift), `npm run lint`,
+`npm run -w @test-cabinet/ui typecheck`, `npm run -w @test-cabinet/ui test` (683 passed),
+and `npm run build`. All green.
+
 ### Stage 9 (optional, do it if anything above slipped) — `test(gg): end-to-end module identity`
 
 One offline run whose root `exec`s into a second profile carrying memories and
