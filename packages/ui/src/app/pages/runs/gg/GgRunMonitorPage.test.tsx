@@ -524,6 +524,15 @@ function openFolder(name: string) {
   fireEvent.click(screen.getByRole("button", { name }));
 }
 
+// The value of one module figure, read by the row it sits in and its own label. Every
+// module surface states its numbers in the same tile — a large value over a muted label
+// — so a bare `getByText` on the figure would match any number anywhere on the panel;
+// the labeled group is what makes it the *store's* count.
+function statValue(group: string, label: string): string {
+  const row = screen.getByRole("group", { name: group });
+  return within(row).getByText(label).previousElementSibling!.textContent!;
+}
+
 describe("GgRunMonitorPage", () => {
   // The feed style is a persisted, app-wide preference; hold it at the default so
   // one test's choice can't leak into the next.
@@ -791,6 +800,63 @@ describe("GgRunMonitorPage", () => {
     expect(padding(overview)).toBeGreaterThan(padding(issue));
   });
 
+  it("reads a window module by the messages that are in it", () => {
+    // A window's contents ARE its messages. The file used to say what a conversation
+    // window is in a paragraph, state two counts, and send the reader elsewhere for the
+    // one thing it holds — the only module file that answered its own question with a
+    // link. It now carries the message log itself, the way the Requests file does.
+    renderMonitor([
+      sessionStarted(["shell", "tasks"]),
+      roster("root", [held("history", "history-0"), held("tasks", "tasks-0")]),
+      gg({
+        type: "context_message",
+        id: "s",
+        role: "system",
+        content: "You are building a game.",
+        toolCalls: [],
+        images: [],
+        tokens: 8,
+      }),
+      gg({ type: "turn_started" }),
+      gg({
+        type: "prompt",
+        request: [{ id: "s", source: "system" }],
+        totalTokens: 8,
+        finishReason: "stop",
+        tokens: {
+          uncachedInput: 8,
+          cachedInput: 0,
+          output: 0,
+          reasoning: null,
+        },
+      }),
+    ]);
+    openTab("Instances");
+    openFolder("root modules");
+    openFile("root modules history");
+
+    // How much of the run the window has seen, as figures rather than a label/value list.
+    expect(statValue("Window", "turns")).toBe("1");
+    expect(statValue("Window", "messages")).toBe("1");
+    // And the messages themselves — the newest turn open, its one system message in it
+    // (named twice: the collapsed row's preview and the expanded body).
+    const messages = screen.getByRole("region", { name: "Messages" });
+    expect(within(messages).getByText("Turn 1")).toBeInTheDocument();
+    expect(
+      within(messages).getAllByText("You are building a game.").length,
+    ).toBeGreaterThan(0);
+
+    // The same store read as a store, on the Modules tab, shows the same contents —
+    // a window used to be the one kind whose detail there had nothing in it.
+    openTab("Modules");
+    openFolder("history modules");
+    fireEvent.click(screen.getByRole("button", { name: "module history-0" }));
+    const onModulesTab = screen.getByRole("region", { name: "Messages" });
+    expect(
+      within(onModulesTab).getAllByText("You are building a game.").length,
+    ).toBeGreaterThan(0);
+  });
+
   it("splits skills and memories into two module files", () => {
     // They used to share one Knowledge file, which was a forced join: they are gated
     // independently and shared on entirely different terms — a fork copies the skills
@@ -801,7 +867,11 @@ describe("GgRunMonitorPage", () => {
     openFolder("root modules");
     openFile("root modules skills");
     expect(screen.getByText("gg-render")).toBeInTheDocument();
-    expect(screen.getByText("1 of 2 read")).toBeInTheDocument();
+    // The store's figures, in the shape every module states them in: two offered, one
+    // of them read.
+    expect(statValue("Skills", "offered")).toBe("2");
+    expect(statValue("Skills", "read")).toBe("1");
+    expect(screen.getByText("1 unread")).toBeInTheDocument();
     // The memories are their own file, and reading it does not carry the skills along.
     openFile("root modules memories");
     expect(screen.queryByText("gg-render")).toBeNull();
@@ -815,7 +885,7 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getAllByText("2 revisions")).toHaveLength(2);
     // Current and peak usage are both reported, so a curated-down store still says
     // what it once held.
-    expect(screen.getByText("Characters")).toBeInTheDocument();
+    expect(screen.getByText("characters")).toBeInTheDocument();
     expect(screen.getByText("peak 300")).toBeInTheDocument();
     expect(screen.getByText("peak 9")).toBeInTheDocument();
     // The retention note says this module's contents survived the compaction verbatim —
@@ -889,13 +959,16 @@ describe("GgRunMonitorPage", () => {
     ]) {
       expect(screen.queryByRole("button", { name: module })).toBeNull();
     }
-    // And the window's own file says what a window is and points at the two files that
-    // answer how full it got, rather than drawing a second fill graph here.
+    // And the window's own file reads the window: how much of the run it has seen, over
+    // the messages that are in it — rather than a paragraph about what a window is and
+    // two links out to the files that answer it.
     openFile("root modules history");
+    expect(statValue("Window", "turns")).toBe("0");
+    expect(statValue("Window", "compactions")).toBe("0");
     expect(
-      screen.getByRole("button", { name: "What filled it" }),
+      screen.getByRole("region", { name: "Messages" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Turns")).toBeInTheDocument();
+    expect(screen.queryByText(/conversation window/)).toBeNull();
   });
 
   it("offers each agent the modules its own profile justifies, not the Root's", () => {
@@ -1292,7 +1365,11 @@ describe("GgRunMonitorPage", () => {
     // The landing is the first non-history group's Overview: two memory stores between
     // three holds of them.
     expect(screen.getByText("Memories")).toBeInTheDocument();
-    expect(screen.getByText("2 instances · 3 holders")).toBeInTheDocument();
+    // Stated once, as figures. The heading used to trail the same two counts as prose
+    // one line above the stats that carry them.
+    expect(statValue("Usage", "instances")).toBe("2");
+    expect(statValue("Usage", "holders")).toBe("3");
+    expect(screen.queryByText("2 instances · 3 holders")).toBeNull();
     // How widely: one of the two stores is shared, and the widest is held by two — and
     // the other one was never written to at all, which is the other half of "is this
     // capability being used".
@@ -2137,9 +2214,7 @@ describe("GgRunMonitorPage", () => {
       screen.queryByRole("button", { name: "Open in Modules" }),
     ).toBeNull();
     // The file itself is unharmed — it is only the dead exit that is withheld.
-    expect(
-      screen.getByRole("button", { name: "What filled it" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Window" })).toBeInTheDocument();
 
     openTab("Agents");
     openAgentRow("Root");

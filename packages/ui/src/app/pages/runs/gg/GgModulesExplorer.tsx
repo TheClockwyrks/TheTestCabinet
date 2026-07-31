@@ -4,7 +4,6 @@ import type {
   GgModuleKind,
 } from "@test-cabinet/run-record/gg";
 import panels from "./GgPanels.module.scss";
-import dash from "./GgDashboard.module.scss";
 import { formatEventTime } from "../../../eventFeed";
 import type {
   AgentTransition,
@@ -18,7 +17,6 @@ import {
   concurrentHolders,
   isCarried,
   isShared,
-  moduleKindDescription,
   moduleKindLabel,
   moduleReportsContents,
   useGgModules,
@@ -29,6 +27,7 @@ import {
   moduleContentSummary,
   moduleLifetimeLabel,
 } from "./GgModuleViews";
+import { ModuleStat, ModuleStats } from "./ModuleStats";
 import { MODULE_ICONS } from "./ggAgentEntries";
 import { cx } from "./ggFsTree";
 import { FsExplorer, FsFileRow, FsFolder, useFsFolders } from "./GgFsExplorer";
@@ -96,6 +95,12 @@ interface GgModulesExplorerProps {
   /** The latest contents of every module instance, keyed by module id. */
   moduleSnapshots: Map<string, ModuleSnapshot>;
   /**
+   * Whether the stream is still arriving. Only a window's message log reads it — an
+   * empty log is "waiting for the first request" on a live run and "none were recorded"
+   * on a finished one.
+   */
+  live: boolean;
+  /**
    * A store — or a whole kind — to jump to, set when another surface links here (the
    * Instances tab's module header, an Agents-tab row's "compare in Modules"). Consumed
    * once, through `onFocusHandled`.
@@ -115,6 +120,7 @@ export function GgModulesExplorer({
   perAgent,
   transitions,
   moduleSnapshots,
+  live,
   focusModule,
   onFocusHandled,
 }: GgModulesExplorerProps) {
@@ -215,7 +221,7 @@ export function GgModulesExplorer({
       ))}
     >
       {selectedModule ? (
-        <ModuleDetail module={selectedModule} perAgent={perAgent} />
+        <ModuleDetail module={selectedModule} perAgent={perAgent} live={live} />
       ) : selectedGroup ? (
         <KindOverview
           kind={selectedGroup.kind}
@@ -434,17 +440,12 @@ function KindOverview({
     <div className={panels.panelBody}>
       <div className={panels.moduleFile}>
         <section className={panels.moduleHead} aria-label="Module kind">
+          {/* The kind, and nothing else. The instance and holder totals that used to
+              trail it are the first two figures of the stat row immediately below —
+              the same two numbers, stated twice, one line apart. */}
           <div className={panels.moduleIdentity}>
             <span className={panels.moduleId}>{moduleKindLabel(kind)}</span>
-            <span className={panels.moduleKind}>
-              {`${instances.length} instance${instances.length === 1 ? "" : "s"} · ${holders.length} holder${holders.length === 1 ? "" : "s"}`}
-            </span>
           </div>
-          {/* What this kind IS, across a run. Deliberately not the configuration editor's
-              transfer-list prose, which answers "what does carrying this into the next
-              state mean?" in the second person of a checkbox — referents this page has
-              none of. */}
-          <p className={panels.moduleLine}>{moduleKindDescription(kind)}</p>
           {!identified && (
             <p className={panels.moduleNote}>
               This run predates module identity, so every store below is
@@ -455,18 +456,18 @@ function KindOverview({
           )}
         </section>
 
-        <div className={panels.modStats}>
-          <Stat
+        <ModuleStats label="Usage">
+          <ModuleStat
             label="instances"
             value={String(instances.length)}
             sub={dropped > 0 ? `${dropped} dropped` : undefined}
           />
-          <Stat
+          <ModuleStat
             label="holders"
             value={String(holders.length)}
             sub={`${live.length} still running`}
           />
-          <Stat
+          <ModuleStat
             label="shared"
             value={`${shared.length} of ${instances.length}`}
             sub={
@@ -478,7 +479,7 @@ function KindOverview({
             }
             title="How many of this kind's stores more than one instance held AT ONCE. A store passed from one instance to its successor is counted as handed on rather than shared: it collects holders the same way and only ever had one. A capability configured to share whose stores are all private is the divergence worth finding."
           />
-          <Stat
+          <ModuleStat
             label="per turn"
             value={
               perTurn > 0 || (paying > 0 && kind !== "archive")
@@ -489,14 +490,14 @@ function KindOverview({
             title="What this kind costs the windows carrying it, every turn — an owned module's block is re-sent on every request its holder makes, so a store three running agents hold is paid for three times a turn."
           />
           {reportsContents && (
-            <Stat
+            <ModuleStat
               label="holding nothing"
               value={`${empty} of ${instances.length}`}
               sub={empty > 0 ? "never written to" : "all in use"}
               title="Stores whose contents never arrived — the capability was given, the tools were offered, and nothing was put in them."
             />
           )}
-        </div>
+        </ModuleStats>
 
         {/* The distribution: every store of this kind side by side, so "one shared or
             twelve private?" is read down a column rather than assembled from twelve
@@ -554,9 +555,12 @@ function KindOverview({
 function ModuleDetail({
   module,
   perAgent,
+  live,
 }: {
   module: GgModuleInstance;
   perAgent: Map<string, DerivedGgState>;
+  /** Whether the stream is still arriving — the window's message log says so. */
+  live: boolean;
 }) {
   // The holder whose slice the contents are read against — used only by the two kinds
   // whose read-out genuinely needs one (a window's turn count, an archive's reclaim
@@ -581,7 +585,12 @@ function ModuleDetail({
         <CostSection module={module} />
         <section className={panels.moduleStack} aria-label="Contents">
           <span className={panels.subPanelLabel}>Contents</span>
-          <ModuleContents module={module} holder={null} state={holderState} />
+          <ModuleContents
+            module={module}
+            holder={null}
+            state={holderState}
+            live={live}
+          />
         </section>
       </div>
     </div>
@@ -790,28 +799,5 @@ function CostSection({ module }: { module: GgModuleInstance }) {
         </p>
       )}
     </section>
-  );
-}
-
-// One figure on the kind overview, in the Dashboard's stat shape so a module's numbers
-// read the same way as a run's.
-function Stat({
-  label,
-  value,
-  sub,
-  title,
-}: {
-  label: string;
-  value: string;
-  sub?: string;
-  /** Hover text for a stat whose label cannot say what it measures on its own. */
-  title?: string;
-}) {
-  return (
-    <div className={dash.stat} title={title}>
-      <span className={dash.statValue}>{value}</span>
-      <span className={dash.statLabel}>{label}</span>
-      {sub && <span className={dash.statSub}>{sub}</span>}
-    </div>
   );
 }

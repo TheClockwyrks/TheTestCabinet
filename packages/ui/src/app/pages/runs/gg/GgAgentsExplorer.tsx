@@ -322,12 +322,7 @@ export function GgAgentsExplorer({
                 module: selectedEntry.module,
               })
             }
-            onOpenFile={(file) =>
-              setSelection({
-                agentId: selectedNode.id,
-                entry: { kind: "file", file },
-              })
-            }
+            live={live}
           />
         ) : (
           <FileContent
@@ -690,14 +685,15 @@ function ModuleFile({
   modules,
   state,
   onOpenHolder,
-  onOpenFile,
+  live,
 }: {
   agentId: string;
   kind: GgModuleKind;
   modules: GgModuleIndex;
   state: DerivedGgState;
   onOpenHolder: (agentId: string) => void;
-  onOpenFile: (file: AgentFileKind) => void;
+  /** Whether the stream is still arriving — the window's message log says so. */
+  live: boolean;
 }) {
   // The way out to the store read as a store, on the Modules tab. Read from the context
   // rather than passed down, for the same reason every other cross-tab link is: the tab
@@ -735,7 +731,7 @@ function ModuleFile({
           module={module}
           holder={holder}
           state={state}
-          onOpenFile={onOpenFile}
+          live={live}
         />
       </div>
     </div>

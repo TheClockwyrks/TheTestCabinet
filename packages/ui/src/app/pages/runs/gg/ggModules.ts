@@ -323,52 +323,6 @@ export function moduleKindLabel(kind: GgModuleKind): string {
 }
 
 /**
- * What a module kind *is*, across a run — the line a whole-kind read-out leads with.
- *
- * Deliberately not the prose the configuration editor's transfer-list pickers carry: those
- * answer a different question ("what does carrying this into the next state mean?"), in the
- * second person of a checkbox, with referents — "this", "the next state" — that do not
- * exist on a page with no machine and no checkbox on it.
- */
-export function moduleKindDescription(kind: GgModuleKind): string {
-  switch (kind) {
-    case "history":
-      return (
-        "The conversation window itself — every message, file view and pinned block an " +
-        "instance opens each request with. One per instance, always: it has no capability " +
-        "behind it, and the turn loop holds it exclusively."
-      );
-    case "memories":
-      return (
-        "The notes an agent keeps for itself between turns. The one kind with a scope, so " +
-        "it is the one whose stores can be private per instance, shared by every instance " +
-        "of a profile, or inherited from a spawner."
-      );
-    case "tasks":
-      return (
-        "The agent's own to-do list — a blocked-by DAG it ticks off as it works. Private " +
-        "unless a succession hands it on."
-      );
-    case "board":
-      return (
-        "The run's single epic/issue board. There is only ever one: every holder holds a " +
-        "handle on the same store, whatever profile it runs under."
-      );
-    case "skills":
-      return (
-        "Which of the skills offered to an agent it has actually read. A promise about the " +
-        "window, so it only means anything beside the history it refers to."
-      );
-    case "archive":
-      return (
-        "What an agent has put *out* of its window — the archived thread sections and their " +
-        "search index. It is the one kind with no context band, which is exactly what it is " +
-        "for."
-      );
-  }
-}
-
-/**
  * Whether more than one agent instance held this module **at the same time**.
  *
  * Not `holders.length > 1`: a window carried across an `exec` has two holders and was never
@@ -848,7 +802,8 @@ export function deriveGgModules(
     // that survives. This is the same reason `initialized` never adds a row of its own.
     const bornAsCopy = module.lifetime.some(
       (event) =>
-        event.kind === "copied" && event.toAgentId === module.holders[0]?.agentId,
+        event.kind === "copied" &&
+        event.toAgentId === module.holders[0]?.agentId,
     );
     if (bornAsCopy) {
       module.lifetime = module.lifetime.filter(

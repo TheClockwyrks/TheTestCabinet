@@ -226,9 +226,17 @@ module-backed — there is no `compaction` module), **Tasks** moved to `modules/
 the old joint **Knowledge** file split into `modules/skills` and `modules/memories`, which
 were always two independently gated modules shared on entirely different terms. Three
 files are new: `modules/board` (this agent's handle on the run's board, with a link to the
-Project tab rather than a second copy of it), `modules/history` (which window this is and
-where it came from — the fill graph stays on Context, one file over), and `modules/archive`
-(newly possible at all, since the archive reported nothing before this release).
+Project tab rather than a second copy of it), `modules/history` (how much of the run this
+window has seen, over the messages that are in it — the fill graph stays on Context, one
+file over), and `modules/archive` (newly possible at all, since the archive reported
+nothing before this release).
+
+A window's contents *are* its messages, so the file carries the message log itself — the
+same turn-by-turn view the Requests file renders, fed this holder's own stream — rather
+than a link to the file that has it. Every other kind's file states its figures the same
+way the Modules tab's overviews do: a row of large values over muted labels (a window's
+turns and compactions, a memory store's totals and peaks, an archive's entries and what it
+reclaimed), so a store's numbers read at one weight wherever they are met.
 
 Each file leads with the same identity strip: the store's id, its kind, owned or unowned,
 how *this* holder came by it, its read access, everything that has happened to it, what it
@@ -276,7 +284,9 @@ its origin, read access, ownership and what the module costs that instance's win
 its **lifetime** (created, carried, copied, linked, dropped — oldest first, each naming
 the succession that caused it), its **cost** per holder against the summed live figure,
 and its **contents**, taken from the store's own snapshot rather than from any one agent's
-— a shared store has one content, which is the point.
+— a shared store has one content, which is the point. The two kinds that report no
+snapshot read their contents off their holder's stream instead: a window's messages and an
+archive's entries, shown here exactly as they are in the holder's own `modules` folder.
 
 Holder ids link into the Instances tab at that agent's own `modules/<kind>` file, and
 profile names into the Agents tab; the Instances module file links back.

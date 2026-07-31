@@ -1,5 +1,4 @@
 @use "../../../styles/tokens" as t;
-@use "../../../styles/surfaces" as s;
 
 // Shared styling for the gg monitor's Phase-1 panels (context / tasks / skills /
 // memories). These are Stage-1 stubs — a tidy list/meter each — so the styling is
@@ -950,46 +949,12 @@ $context-palette: (
   word-break: break-word;
 }
 
-// --- Memories: totals, peaks, the treemap, and the revision record -----------
-
-// The now/peak figures. A row of three that wraps to two on a narrow panel — the
-// peak is the whole point of the tile, so it never wraps away from its figure.
-.memoryStats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
-  gap: t.$space-xs;
-}
-
-.memoryStat {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: t.$space-xs t.$space-sm;
-  border: t.$border-hairline solid
-    color-mix(in srgb, t.$color-border 40%, transparent);
-  border-radius: t.$radius-md;
-  background: s.$panel-bg;
-}
-
-.memoryStatLabel {
-  color: t.$color-text-muted;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 0.72rem;
-}
-
-.memoryStatValue {
-  color: t.$color-text;
-  font-size: t.$font-lg;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-}
-
-.memoryStatPeak {
-  color: t.$color-text-muted;
-  font-size: t.$font-sm;
-  font-variant-numeric: tabular-nums;
-}
+// --- Memories: the treemap and the revision record ---------------------------
+//
+// The now/peak figures are the shared module figure row (`.modStats` below, via
+// `ModuleStats`) rather than tiles of their own: a memory store's totals are the same
+// class of fact as a window's turns or an archive's entries, and three shapes for one
+// class of fact read as three classes.
 
 // The treemap of memory sizes. Area encodes characters, so the SVG scales
 // uniformly — never stretched to the panel, which would falsify the encoding.
@@ -1849,6 +1814,25 @@ $spec-winner-hue: #f5c451;
   color: t.$color-text-muted;
 }
 
+// One row of the header strip: the fact on the left, its counterpart pushed to the
+// pane's far edge (what the store costs, beside how this holder came by it; who else is
+// in it, beside what has happened to it). The strip is read in a wide pane, and stacking
+// every line at the left margin left half of it empty while pushing the contents down.
+// It wraps when the pane is too narrow to hold both, where the trailing half simply
+// leads its own line — the `auto` margin then costs nothing.
+.moduleFacts {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: t.$space-xs t.$space-lg;
+  min-width: 0;
+
+  > :last-child:not(:first-child) {
+    margin-left: auto;
+    text-align: right;
+  }
+}
+
 // The unowned explanation, set apart by the same left rule the retention note uses: it
 // is a statement about how the run is configured, not part of the module's own read-out.
 .moduleNote {
@@ -1885,7 +1869,6 @@ $spec-winner-hue: #f5c451;
   align-items: center;
   flex-wrap: wrap;
   gap: t.$space-xs;
-  margin-top: t.$space-2xs;
 }
 
 .moduleHoldersLabel {
@@ -2017,9 +2000,12 @@ $spec-winner-hue: #f5c451;
 // reuse the module header strip and the per-kind content views above, so a store reads
 // the same here as it does inside the agent holding it — only the *questions* differ.
 
-// The kind overview's figures, in the Dashboard's own stat grid so a capability's numbers
-// read the way a run's do. `auto-fit` rather than a fixed column count: this pane is
-// narrower than the window and the same five figures have to survive being halved.
+// The figure row every module surface states its numbers in — a kind's whole-run
+// overview here, and each kind's own contents (a window's turns, a store's totals, an
+// archive's reclaim) through `ModuleStats`. The Dashboard's own stat grid, so a
+// capability's numbers read the way a run's do. `auto-fit` rather than a fixed column
+// count: these panes are narrower than the window and the same five figures have to
+// survive being halved.
 .modStats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));

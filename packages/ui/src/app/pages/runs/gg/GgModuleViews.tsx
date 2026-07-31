@@ -1,6 +1,6 @@
 import type { GgBoardIssue } from "@test-cabinet/run-record/gg";
 import panels from "./GgPanels.module.scss";
-import type { DerivedGgState } from "./useGgRunState";
+import type { DerivedGgState, PooledMessage } from "./useGgRunState";
 import { shortTokens } from "./useGgRunState";
 import type {
   GgModuleHolder,
@@ -16,10 +16,12 @@ import {
   moduleOriginLabel,
   moduleScopeLabel,
 } from "./ggModules";
-import { MODULE_ICONS, type AgentFileKind } from "./ggAgentEntries";
+import { MODULE_ICONS } from "./ggAgentEntries";
 import { ISSUE_STATES, ISSUE_STATE_LABELS, issueState } from "./IssueViews";
 import { CONTEXT_SOURCE_LABELS } from "./ContextFillGraph";
 import { MemoriesList } from "./MemoriesList";
+import { ModuleStat, ModuleStats } from "./ModuleStats";
+import { RequestsView } from "./RequestsView";
 import { SkillsList } from "./SkillsList";
 import { TaskDagView } from "./TaskDagView";
 import { useGgExplorerNav } from "./GgExplorerNav";
@@ -160,19 +162,25 @@ export function GgModuleHeader({
       {/* How this holder stands to it: how it came by it, whether it may write it, and
           — where it declared a scope — what it asked for. The declared scope is worth
           stating beside the observed sharing because they are routinely different in
-          legal ways (an `inherited` agent with no spawner quietly gets its own store). */}
-      <p className={panels.moduleLine}>
-        {holder ? (
-          <>
-            {capitalize(moduleOriginLabel(module, holder))}
-            {" · "}
-            {holder.writable ? "read/write" : "read-only"}
-            {holder.scope ? ` · declared ${holder.scope}` : ""}
-            {" · "}
-          </>
-        ) : null}
-        {moduleScopeLabel(module)}
-      </p>
+          legal ways (an `inherited` agent with no spawner quietly gets its own store).
+          What it costs rides at the row's far edge rather than under it: the two are a
+          fact and its price, and stacking them left-aligned left the pane's whole right
+          half empty while the reader scanned two lines for what fits on one. */}
+      <div className={panels.moduleFacts}>
+        <p className={panels.moduleLine}>
+          {holder ? (
+            <>
+              {capitalize(moduleOriginLabel(module, holder))}
+              {" · "}
+              {holder.writable ? "read/write" : "read-only"}
+              {holder.scope ? ` · declared ${holder.scope}` : ""}
+              {" · "}
+            </>
+          ) : null}
+          {moduleScopeLabel(module)}
+        </p>
+        {detail === "full" && <ModuleCost module={module} holder={holder} />}
+      </div>
 
       {/* The one capability setting whose effect is otherwise invisible everywhere: an
           unowned module is held, read and written exactly as any other — it just never
@@ -185,33 +193,38 @@ export function GgModuleHeader({
         </p>
       )}
 
-      {detail === "full" && <ModuleLifetime module={module} />}
-      {detail === "full" && <ModuleCost module={module} holder={holder} />}
-
-      {detail === "full" && others.length > 0 && (
-        <div className={panels.moduleHolders}>
-          <span className={panels.moduleHoldersLabel}>
-            {carried
-              ? holder
-                ? "Also passed through"
-                : "Passed through"
-              : holder
-                ? "Also held by"
-                : "Held by"}
-          </span>
-          {others.map((other) => (
-            <HolderChip
-              key={other.agentId}
-              module={module}
-              holder={other}
-              onOpen={onOpenHolder}
-            />
-          ))}
-          {holder && (
-            <span className={panels.moduleHolderSelf}>this instance</span>
-          )}
-        </div>
-      )}
+      {/* The store's life on the left, everyone in it on the right — the same pairing
+          the line above uses, for the same reason: they are one row's worth of facts. */}
+      {detail === "full" &&
+        (module.lifetime.length > 0 || others.length > 0) && (
+          <div className={panels.moduleFacts}>
+            <ModuleLifetime module={module} />
+            {others.length > 0 && (
+              <div className={panels.moduleHolders}>
+                <span className={panels.moduleHoldersLabel}>
+                  {carried
+                    ? holder
+                      ? "Also passed through"
+                      : "Passed through"
+                    : holder
+                      ? "Also held by"
+                      : "Held by"}
+                </span>
+                {others.map((other) => (
+                  <HolderChip
+                    key={other.agentId}
+                    module={module}
+                    holder={other}
+                    onOpen={onOpenHolder}
+                  />
+                ))}
+                {holder && (
+                  <span className={panels.moduleHolderSelf}>this instance</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
       {/* The way out to the store itself. Everything above is this holder's view of it;
           the Modules tab is where the same store is read as a store — every holder it
@@ -385,16 +398,23 @@ function ModuleCost({
   const summable = isShared(module);
   if (!mine && !(total && summable)) return null;
   return (
-    <p className={panels.moduleCost}>
+    // The rent is stated as a bare figure and explained on hover: "in this window every
+    // turn" is the *definition* of the number, and a definition re-read on every module
+    // file of every agent is a sentence nobody reads twice.
+    <p
+      className={panels.moduleCost}
+      title="What this store costs the windows carrying it every turn — an owned module's block is re-sent on every request its holder makes."
+    >
       {mine && (
         <>
-          <strong>{shortTokens(mine.latestTokens)}</strong> tokens in this
-          window every turn
+          <strong>{shortTokens(mine.latestTokens)}</strong> tokens
           {mine.peakTokens > mine.latestTokens &&
             ` (peak ${shortTokens(mine.peakTokens)})`}
         </>
       )}
-      {mine && total && summable && <span className={panels.moduleSep}> · </span>}
+      {mine && total && summable && (
+        <span className={panels.moduleSep}> · </span>
+      )}
       {total && summable && (
         <>
           <strong>{shortTokens(total.latestTokens)}</strong> across{" "}
@@ -422,20 +442,23 @@ export function ModuleContents({
   module,
   holder,
   state,
-  onOpenFile,
+  live = false,
 }: {
   module: GgModuleInstance;
   holder?: GgModuleHolder | null;
   /** The holding agent's own reduced slice; null when the module is read on its own. */
   state?: DerivedGgState | null;
-  /** Open one of the holding agent's own files, where the content points at one. */
-  onOpenFile?: (file: AgentFileKind) => void;
+  /**
+   * Whether the run is still streaming — only the window's message log cares, and only
+   * for what it says while it is empty ("waiting" rather than "none were recorded").
+   */
+  live?: boolean;
 }) {
   const content = module.content;
   const compactions = state?.compactions.length ?? 0;
   switch (module.kind) {
     case "history":
-      return <HistoryContents state={state ?? null} onOpenFile={onOpenFile} />;
+      return <HistoryContents state={state ?? null} live={live} />;
     case "memories": {
       // The store's contents, but this holder's terms: the snapshot carries the scope
       // and write access of whichever agent last emitted it, which for a shared store is
@@ -490,53 +513,63 @@ export function ModuleContents({
   }
 }
 
-// The `history` module: which window this is and where it came from — not how full it
-// is. Fullness, composition and the messages themselves are per-turn facts about the
-// agent, and they already have two files of their own beside this one; repeating the
-// stacked graph here would be a second, staler copy of the surface that answers it.
+// A window with no holder's stream behind it (the Agents tab reads a store from no
+// instance in particular) has no message log to resolve pointers against — a stable
+// empty map rather than a fresh one per render, which would re-render the log for
+// nothing on every parent update.
+const NO_MESSAGES = new Map<string, PooledMessage>();
+
+// The `history` module: how much of the run this window has seen, and the messages
+// that are in it.
+//
+// The messages ARE the contents of a window — a module file that showed everything
+// about the store except what it holds was the one kind that answered its own question
+// with a link elsewhere. It is the Requests file's own view, fed this holder's stream,
+// so a window reads the same wherever it is opened from.
 function HistoryContents({
   state,
-  onOpenFile,
+  live,
 }: {
   state: DerivedGgState | null;
-  onOpenFile?: (file: AgentFileKind) => void;
+  live: boolean;
 }) {
+  const prompts = state?.prompts ?? [];
+  const compactions = state?.compactions ?? [];
+  // What the summarizing bought back, summed across the boundaries — the figure that
+  // says whether compaction is doing anything, which a bare count cannot.
+  const reclaimed = compactions.reduce(
+    (sum, boundary) =>
+      sum + Math.max(0, boundary.beforeTokens - boundary.afterTokens),
+    0,
+  );
+  const latest = prompts[prompts.length - 1] ?? null;
   return (
     <div className={panels.moduleStack}>
-      <p className={panels.caption}>
-        The agent's conversation window — every message, file view and pinned
-        block it opens each request with. A window is never shared: the turn
-        loop holds it exclusively, so an agent handed one holds it alone, and a
-        fork gets a copy that diverges from the moment it was made.
-      </p>
-      {/* How much of the run this window has seen. What is *in* it — how full, filled
-          by what, and the messages themselves — is the two files below, and the header
-          strip above already carries the window's size and its peak. */}
-      <dl className={panels.projMeta}>
-        <MetaRow label="Turns" value={String(state?.turnCount ?? 0)} />
-        <MetaRow
-          label="Compactions"
-          value={String(state?.compactions.length ?? 0)}
+      <ModuleStats label="Window">
+        <ModuleStat value={String(state?.turnCount ?? 0)} label="turns" />
+        <ModuleStat
+          value={String(compactions.length)}
+          label="compactions"
+          sub={
+            compactions.length > 0
+              ? `~${shortTokens(reclaimed)} reclaimed`
+              : undefined
+          }
         />
-      </dl>
-      {onOpenFile && (
-        <div className={panels.moduleLinks}>
-          <button
-            type="button"
-            className={panels.projAgentLink}
-            onClick={() => onOpenFile("context")}
-          >
-            What filled it
-          </button>
-          <button
-            type="button"
-            className={panels.projAgentLink}
-            onClick={() => onOpenFile("requests")}
-          >
-            The messages in it
-          </button>
-        </div>
-      )}
+        <ModuleStat
+          value={latest ? String(latest.request.length) : "—"}
+          label="messages"
+          sub={latest ? "in the latest request" : undefined}
+        />
+      </ModuleStats>
+      <section className={panels.moduleStack} aria-label="Messages">
+        <span className={panels.subPanelLabel}>Messages</span>
+        <RequestsView
+          prompts={prompts}
+          pool={state?.messagePool ?? NO_MESSAGES}
+          live={live}
+        />
+      </section>
     </div>
   );
 }
@@ -556,11 +589,6 @@ function BoardContents({ issues }: { issues: GgBoardIssue[] }) {
   }
   return (
     <div className={panels.moduleStack}>
-      <p className={panels.caption}>
-        The run's single epic/issue board. Every holder holds the same one — two
-        boards would each mint their own `ABC-4` — so what this agent has is a
-        handle on it, not a copy of it.
-      </p>
       {issues.length === 0 ? (
         <p className={panels.empty}>
           Nothing on the board yet — issues appear here as the model decomposes
@@ -634,14 +662,25 @@ function ArchiveContents({
   }
   return (
     <div className={panels.moduleStack}>
-      <p className={panels.caption}>
-        {entries.length} entr{entries.length === 1 ? "y" : "ies"} ·{" "}
-        {shortTokens(totalLen)} characters out of the window
-        {archived.length > 0 &&
-          ` · ~${shortTokens(reclaimed)} tokens reclaimed across ${
-            archived.length
-          } archive${archived.length === 1 ? "" : "s"}`}
-      </p>
+      {/* What left the window, and what leaving bought — the same figures the caption
+          used to run together in a sentence, read as a row of numbers instead. */}
+      <ModuleStats label="Archive">
+        <ModuleStat value={String(entries.length)} label="entries" />
+        <ModuleStat
+          value={shortTokens(totalLen)}
+          label="characters"
+          sub="out of the window"
+        />
+        <ModuleStat
+          value={archived.length > 0 ? `~${shortTokens(reclaimed)}` : "—"}
+          label="reclaimed"
+          sub={
+            archived.length > 0
+              ? `across ${archived.length} archive${archived.length === 1 ? "" : "s"}`
+              : "not measured"
+          }
+        />
+      </ModuleStats>
       <ul className={panels.archiveList}>
         {entries.map((entry) => (
           <li key={entry.seq} className={panels.archiveRow}>
@@ -661,15 +700,6 @@ function ArchiveContents({
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-function MetaRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className={panels.projMetaRow}>
-      <dt className={panels.projMetaLabel}>{label}</dt>
-      <dd className={panels.projMetaValue}>{value}</dd>
     </div>
   );
 }

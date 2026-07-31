@@ -295,6 +295,7 @@ export function GgRunPanels({
             perAgent={perAgent}
             transitions={transitions}
             moduleSnapshots={moduleSnapshots}
+            live={live}
             focusModule={focusModule}
             onFocusHandled={onModuleFocusHandled}
           />

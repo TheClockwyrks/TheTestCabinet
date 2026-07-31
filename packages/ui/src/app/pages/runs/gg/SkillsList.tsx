@@ -5,6 +5,7 @@
 
 import type { GgSkillState } from "@test-cabinet/run-record/gg";
 import styles from "./GgPanels.module.scss";
+import { ModuleStat, ModuleStats } from "./ModuleStats";
 
 interface SkillsListProps {
   skills: GgSkillState[];
@@ -24,9 +25,17 @@ export function SkillsList({ skills }: SkillsListProps) {
 
   return (
     <div className={styles.stack}>
-      <p className={styles.caption}>
-        {readCount} of {skills.length} read
-      </p>
+      {/* The store's figures in the shape every module states them in — how many were
+          offered against how many were actually read, which is the whole question the
+          skills capability raises. */}
+      <ModuleStats label="Skills">
+        <ModuleStat value={String(skills.length)} label="offered" />
+        <ModuleStat
+          value={String(readCount)}
+          label="read"
+          sub={`${skills.length - readCount} unread`}
+        />
+      </ModuleStats>
       <ul className={styles.knowledgeList}>
         {skills.map((skill) => (
           <li key={skill.name} className={styles.knowledgeRow}>

@@ -21,6 +21,7 @@ import type {
   GgMemoryState,
 } from "./useGgRunState";
 import { MemoryTreemap, type MemoryTile } from "./MemoryTreemap";
+import { ModuleStat, ModuleStats } from "./ModuleStats";
 import styles from "./GgPanels.module.scss";
 
 interface MemoriesListProps {
@@ -104,9 +105,11 @@ function CapMeter({
   );
 }
 
-// One "now / peak" figure. The peak is the point of the tile — a current figure on
-// its own cannot distinguish a store that was never used from one that was used hard
-// and then pruned — so it is stated beside the live number rather than tucked away.
+// One "now / peak" figure, in the shape every module states its figures in: the live
+// number large, its label under it, the peak as the sub-line. The peak is the point of
+// the tile — a current figure on its own cannot distinguish a store that was never used
+// from one that was used hard and then pruned — so it is stated beside the live number
+// rather than tucked away.
 function StatTile({
   label,
   now,
@@ -117,13 +120,11 @@ function StatTile({
   peak: number;
 }) {
   return (
-    <div className={styles.memoryStat}>
-      <span className={styles.memoryStatLabel}>{label}</span>
-      <span className={styles.memoryStatValue}>{numberFmt.format(now)}</span>
-      <span className={styles.memoryStatPeak}>
-        peak {numberFmt.format(peak)}
-      </span>
-    </div>
+    <ModuleStat
+      value={numberFmt.format(now)}
+      label={label}
+      sub={`peak ${numberFmt.format(peak)}`}
+    />
   );
 }
 
@@ -139,7 +140,10 @@ function MemoryRecord({
 }) {
   const overLen = perMemoryCap !== null && entry.len >= perMemoryCap;
   return (
-    <li className={styles.knowledgeRow} data-deleted={entry.live ? undefined : ""}>
+    <li
+      className={styles.knowledgeRow}
+      data-deleted={entry.live ? undefined : ""}
+    >
       <div className={styles.knowledgeHead}>
         <span className={styles.knowledgeName}>
           {entry.name}
@@ -184,7 +188,10 @@ function MemoryRecord({
             {entry.revisions.map((rev) => (
               <li key={rev.revision} className={styles.memoryRevision}>
                 <div className={styles.memoryRevisionHead}>
-                  <span className={styles.memoryRevisionTag} data-change={rev.change}>
+                  <span
+                    className={styles.memoryRevisionTag}
+                    data-change={rev.change}
+                  >
                     v{rev.revision} {CHANGE_LABELS[rev.change]}
                   </span>
                   {rev.change !== "deleted" && (
@@ -195,7 +202,9 @@ function MemoryRecord({
                   )}
                 </div>
                 {rev.description && (
-                  <span className={styles.knowledgeDesc}>{rev.description}</span>
+                  <span className={styles.knowledgeDesc}>
+                    {rev.description}
+                  </span>
                 )}
                 {rev.body && (
                   <pre className={styles.memoryRevisionBody}>{rev.body}</pre>
@@ -258,8 +267,8 @@ export function MemoriesList({ memory }: MemoriesListProps) {
   if (!memory) {
     return (
       <p className={styles.empty}>
-        No memories yet — the memories capability streams the model's self-curated
-        notes here as it writes them.
+        No memories yet — the memories capability streams the model's
+        self-curated notes here as it writes them.
       </p>
     );
   }
@@ -319,13 +328,15 @@ export function MemoriesList({ memory }: MemoriesListProps) {
         )}
       </div>
       {/* What is held now against what was held at the run's high-water mark. */}
-      <div className={styles.memoryStats}>
-        <StatTile label="Memories" now={count} peak={peakCount} />
-        <StatTile label="Characters" now={totalLen} peak={peakLen} />
-        <StatTile label="Lines" now={totalLines} peak={peakLines} />
-      </div>
+      <ModuleStats label="Memories">
+        <StatTile label="memories" now={count} peak={peakCount} />
+        <StatTile label="characters" now={totalLen} peak={peakLen} />
+        <StatTile label="lines" now={totalLines} peak={peakLines} />
+      </ModuleStats>
       {all.length === 0 ? (
-        <p className={styles.empty}>The model has not written any memories yet.</p>
+        <p className={styles.empty}>
+          The model has not written any memories yet.
+        </p>
       ) : (
         <>
           <MemoryTreemap tiles={tiles} />
