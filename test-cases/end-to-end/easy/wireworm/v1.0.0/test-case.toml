@@ -634,6 +634,11 @@ description = "Pressing M toggles the game's mute state."
 validation = { script = "validation/controls/mute-m.mjs", outputs = [
   { id = "mute", name = "The mute toggle after pressing M", kind = "image" },
 ] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a started run advances — simulation time accumulates and the level banner gives way to live play — without anything stepping it from outside."
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 
 # --- Color (sampled from the rendered canvas) ---------------------------------
 # These read the pixels the build actually PAINTS (api.pixel), so a build cannot

@@ -400,6 +400,11 @@ description = "In Solo the AI does not predict bank shots: a fast, steep shot th
 validation = { script = "validation/gameplay/ai-no-predict.mjs", outputs = [
   { id = "scored", name = "A bank shot beating the AI paddle", kind = "video" },
 ] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a served ball crosses the court and the rally plays out without anything stepping it from outside."
+validation = { script = "validation/gameplay/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 
 # --- Paddles ------------------------------------------------------------------
 [[review.categories]]

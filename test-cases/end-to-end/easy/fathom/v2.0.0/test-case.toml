@@ -376,6 +376,11 @@ description = "Pressing M toggles the game's mute flag."
 validation = { script = "validation/controls/mute.mjs", outputs = [
   { id = "mute", name = "The title after toggling mute", kind = "image" },
 ] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live dive advances — simulation time accumulates and the predators patrol — without anything stepping it from outside."
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 
 # --- Maze movement ------------------------------------------------------------
 [[review.categories]]
