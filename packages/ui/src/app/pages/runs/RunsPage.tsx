@@ -207,9 +207,10 @@ export function RunsPage() {
 // searchable — difficulty and tags are deliberately absent here.
 //
 // This narrows only the produced (local, unpublished) runs pinned to the first
-// page; the published window is filtered server-side by `q`, which matches the
-// columns lifted onto the `run` table (case, model, harness, variant) and so does
-// not yet see a gg configuration name.
+// page; the published window is filtered server-side by `q`, against the columns
+// lifted onto the `run` table (case, model, harness, variant, and the gg
+// configuration name). The one asymmetry is the model's catalog display name,
+// searchable here but not server-side, where only the raw recorded id is a column.
 function searchText(
   run: RunSummary,
   findModel: (id: string, harness?: string) => ModelSummary | undefined,

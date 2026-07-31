@@ -330,6 +330,7 @@ impl Db {
             harness_slug: Set(record.subject.harness_slug.as_str().to_string()),
             harness_version: Set(record.subject.harness_version.clone()),
             model_id: Set(record.subject.model_id.clone()),
+            gg_preset: Set(lifted.gg_preset),
             test_type: Set(lifted.test_type),
             run_state: Set(run_state_str(record.status.state).to_string()),
             run_time_seconds: Set(lifted.run_time_seconds),
@@ -357,6 +358,7 @@ impl Db {
                     run::Column::HarnessSlug,
                     run::Column::HarnessVersion,
                     run::Column::ModelId,
+                    run::Column::GgPreset,
                     run::Column::TestType,
                     run::Column::RunState,
                     run::Column::RunTimeSeconds,
@@ -1489,6 +1491,9 @@ fn stored_tournament(model: tournament::Model) -> Result<StoredTournament> {
 struct LiftedRunMetrics {
     /// The kebab-case test-type token (`record.subject.test_type`).
     test_type: String,
+    /// The gg configuration name the run was launched from, or `None` for a non-gg
+    /// run or a gg run assembled without one (see [`lifted_gg_preset`]).
+    gg_preset: Option<String>,
     /// End-to-end wall-clock time in seconds (`record.metrics.run_time_seconds`).
     run_time_seconds: f64,
     /// Total token count across every class — the same sum the UI's `totalTokens`
@@ -1504,10 +1509,31 @@ struct LiftedRunMetrics {
 fn lifted_run_metrics(record: &RunRecord) -> LiftedRunMetrics {
     LiftedRunMetrics {
         test_type: record.subject.test_type.as_str().to_string(),
+        gg_preset: lifted_gg_preset(record),
         run_time_seconds: record.metrics.run_time_seconds,
         total_tokens: record.metrics.tokens.total().unwrap_or(0) as i64,
         cost_comparable: record.metrics.cost.comparable,
     }
+}
+
+/// The lifted `run.gg_preset` column value: the name of the gg configuration the
+/// run was launched from, or `None`.
+///
+/// Gated on the **harness**, not on the capability set alone, so the column's
+/// contract is single-sided: a non-gg run can never hold a preset, and every
+/// consumer may therefore fall back to `model_id` with a bare `COALESCE` instead of
+/// re-deriving the harness test. (The console applies the same guard when it
+/// resolves the cell — see `useEnrichedRuns` in
+/// `packages/ui/src/app/components/runColumns.tsx`.)
+fn lifted_gg_preset(record: &RunRecord) -> Option<String> {
+    if record.subject.harness_slug != HarnessSlug::Gg {
+        return None;
+    }
+    record
+        .subject
+        .gg_capability_set
+        .as_ref()
+        .and_then(|set| set.preset.clone())
 }
 
 /// The run's aggregate rating — the worst rating any reviewer gave any domain —
@@ -2247,7 +2273,9 @@ pub struct SummaryFilter {
     /// Restrict to one harness (`harness_slug`).
     pub harness: Option<String>,
     /// Free-text query matched case-insensitively (LIKE `%q%`) across
-    /// `test_case_slug`, `model_id`, `harness_slug`, and `variant`.
+    /// `test_case_slug`, `model_id`, `harness_slug`, `variant`, and `gg_preset` —
+    /// the last so a gg run is findable by the configuration name its row shows in
+    /// place of a model.
     pub q: Option<String>,
 }
 
@@ -2273,7 +2301,9 @@ pub enum SummarySort {
     TestCase,
     /// By harness slug (`harness_slug`).
     Harness,
-    /// By model id (`model_id`).
+    /// By the run's model/configuration identity — the gg configuration name where
+    /// there is one, else the model id (`COALESCE(gg_preset, model_id)`), so the
+    /// order matches what the console's MODEL / CONFIG cell actually shows.
     Model,
     /// By variant (`variant`).
     Variant,
@@ -2326,7 +2356,11 @@ fn summary_query(filter: &SummaryFilter) -> Select<run::Entity> {
             .add(Expr::expr(Func::lower(run::Column::TestCaseSlug.into_expr())).like(&pattern))
             .add(Expr::expr(Func::lower(run::Column::ModelId.into_expr())).like(&pattern))
             .add(Expr::expr(Func::lower(run::Column::HarnessSlug.into_expr())).like(&pattern))
-            .add(Expr::expr(Func::lower(run::Column::Variant.into_expr())).like(&pattern));
+            .add(Expr::expr(Func::lower(run::Column::Variant.into_expr())).like(&pattern))
+            // A gg row is displayed by its configuration, so it must be findable by
+            // it. NULL (every non-gg run) simply never matches: `lower(NULL) LIKE …`
+            // is NULL, which the OR discards.
+            .add(Expr::expr(Func::lower(run::Column::GgPreset.into_expr())).like(&pattern));
         query = query.filter(text);
     }
     query
@@ -2347,7 +2381,11 @@ fn apply_summary_sort(
         SummarySort::TestType => query.order_by(run::Column::TestType, order),
         SummarySort::TestCase => query.order_by(run::Column::TestCaseSlug, order),
         SummarySort::Harness => query.order_by(run::Column::HarnessSlug, order),
-        SummarySort::Model => query.order_by(run::Column::ModelId, order),
+        // The MODEL / CONFIG column sorts by what it displays: a gg run's
+        // configuration name, falling back to the model id for every other run (and
+        // for a gg run recorded without one). A bare COALESCE suffices because
+        // `gg_preset` is only ever set for a gg run — see `lifted_gg_preset`.
+        SummarySort::Model => query.order_by(model_identity_expr(), order),
         SummarySort::Variant => query.order_by(run::Column::Variant, order),
         // Unknown-cost NULLs sort last in either direction: order first by a
         // null-group key (non-null `false`/0 before null `true`/1), then the value.
@@ -2363,6 +2401,21 @@ fn apply_summary_sort(
             .order_by(run::Column::Rating.into_expr().is_null(), Order::Asc)
             .order_by(rating_rank_expr(), order),
     }
+}
+
+/// The run's model/configuration identity as one sortable expression:
+/// `COALESCE(gg_preset, model_id)` — the gg configuration name where the run has
+/// one, else the model id.
+///
+/// This is the value the console's MODEL / CONFIG cell renders, so ordering by it
+/// puts a server-ordered page in the order its own header claims. Safe as a bare
+/// COALESCE because [`lifted_gg_preset`] only ever writes the column for a gg run.
+fn model_identity_expr() -> SimpleExpr {
+    Func::coalesce([
+        run::Column::GgPreset.into_expr().into(),
+        run::Column::ModelId.into_expr().into(),
+    ])
+    .into()
 }
 
 /// A SQL `CASE` mapping the `run.rating` text token to its tier ordinal (`0` best,
@@ -3381,9 +3434,9 @@ impl Db {
 
     /// Backfill the sort/filter columns lifted onto the `run` row after rows
     /// already existed (`test_type`, `run_time_seconds`, `total_tokens`,
-    /// `cost_comparable`, `rating`, `review_count`): parse each un-backfilled row's
-    /// record for the record-derived columns and compute `rating` / `review_count`
-    /// from its reviews.
+    /// `cost_comparable`, `rating`, `review_count`, `gg_preset`): parse each
+    /// un-backfilled row's record for the record-derived columns and compute
+    /// `rating` / `review_count` from its reviews.
     ///
     /// Idempotent: a row is "un-backfilled" iff its `test_type` is still the empty
     /// string the migration's default stamped — a value no real run carries, since
@@ -3392,6 +3445,10 @@ impl Db {
     /// Best-effort per row: a legacy record that no longer deserializes is left for
     /// a later boot (exactly as [`Self::normalize_free_model_ids`] and
     /// `assemble` tolerate such rows). Returns how many rows were filled.
+    ///
+    /// `gg_preset` arrived later than the rest, so a row this routine has *already*
+    /// settled carries none: [`Self::backfill_gg_presets`] fills those separately,
+    /// against its own candidate set.
     pub async fn backfill_sort_columns(&self) -> Result<usize> {
         let rows = run::Entity::find()
             .filter(run::Column::TestType.eq(""))
@@ -3434,6 +3491,44 @@ impl Db {
             active.cost_comparable = Set(lifted.cost_comparable);
             active.rating = Set(rating);
             active.review_count = Set(review_count);
+            active.gg_preset = Set(lifted.gg_preset);
+            active.update(&self.conn()).await?;
+            backfilled += 1;
+        }
+        Ok(backfilled)
+    }
+
+    /// Backfill the lifted `gg_preset` column for gg runs recorded before it existed,
+    /// so the listing's search and MODEL / CONFIG sort see their configuration names
+    /// instead of falling back to the model.
+    ///
+    /// Scoped to gg rows that are still `NULL`: no other harness can ever hold a
+    /// preset, and a row written since the column existed already carries its value.
+    /// A `NULL` here is genuinely ambiguous — it means either "not yet backfilled" or
+    /// "this gg run was assembled by hand and has no configuration name" — so unlike
+    /// [`Self::backfill_sort_columns`] this cannot settle to an empty candidate set.
+    /// It settles to a **no-write** one instead: the residue is only those preset-less
+    /// gg runs, and each is re-parsed but never rewritten, so a later boot does no
+    /// work beyond the read. Best-effort per row, as the sort-column backfill is: a
+    /// record that no longer deserializes is left for a later boot. Returns how many
+    /// rows were filled.
+    pub async fn backfill_gg_presets(&self) -> Result<usize> {
+        let rows = run::Entity::find()
+            .filter(run::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()))
+            .filter(run::Column::GgPreset.is_null())
+            .all(&self.conn())
+            .await?;
+
+        let mut backfilled = 0usize;
+        for row in rows {
+            let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+                continue;
+            };
+            let Some(preset) = lifted_gg_preset(&record) else {
+                continue;
+            };
+            let mut active = row.into_active_model();
+            active.gg_preset = Set(Some(preset));
             active.update(&self.conn()).await?;
             backfilled += 1;
         }

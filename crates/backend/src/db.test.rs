@@ -1930,6 +1930,95 @@ async fn push_lifts_the_record_sort_columns_and_starts_unrated() {
     // A freshly pushed run carries no reviews yet.
     assert_eq!(row.rating, None);
     assert_eq!(row.review_count, 0);
+    // A third-party-harness run has no configuration to lift.
+    assert_eq!(row.gg_preset, None);
+}
+
+#[tokio::test]
+async fn push_lifts_the_gg_configuration_name_only_for_a_gg_run() {
+    let db = Db::connect_in_memory().await.unwrap();
+
+    let mut named = gg_record("named");
+    named.subject.gg_capability_set.as_mut().unwrap().preset = Some("planning-A".to_string());
+    db.push(&named, &links(), None).await.unwrap();
+    assert_eq!(
+        lifted(&db, "named").await.gg_preset.as_deref(),
+        Some("planning-A")
+    );
+
+    // A gg run assembled by hand records no configuration name; the column stays
+    // NULL and every consumer falls back to the model.
+    let mut hand_assembled = gg_record("hand");
+    hand_assembled
+        .subject
+        .gg_capability_set
+        .as_mut()
+        .unwrap()
+        .preset = None;
+    db.push(&hand_assembled, &links(), None).await.unwrap();
+    assert_eq!(lifted(&db, "hand").await.gg_preset, None);
+
+    // The lift is gated on the HARNESS, not the capability set alone: a non-gg run
+    // carrying one somehow could never displace its model in the listing.
+    let mut impostor = gg_record("impostor");
+    impostor.subject.harness_slug = HarnessSlug::Claude;
+    impostor.subject.gg_capability_set.as_mut().unwrap().preset = Some("planning-A".to_string());
+    db.push(&impostor, &links(), None).await.unwrap();
+    assert_eq!(lifted(&db, "impostor").await.gg_preset, None);
+}
+
+#[tokio::test]
+async fn repush_refreshes_the_lifted_gg_configuration_name() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut r = gg_record("r1");
+    r.subject.gg_capability_set.as_mut().unwrap().preset = Some("planning-A".to_string());
+    db.push(&r, &links(), None).await.unwrap();
+
+    r.subject.gg_capability_set.as_mut().unwrap().preset = Some("planning-B".to_string());
+    db.push(&r, &links(), None).await.unwrap();
+    assert_eq!(
+        lifted(&db, "r1").await.gg_preset.as_deref(),
+        Some("planning-B")
+    );
+}
+
+#[tokio::test]
+async fn backfill_gg_presets_fills_gg_rows_recorded_before_the_column() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut named = gg_record("named");
+    named.subject.gg_capability_set.as_mut().unwrap().preset = Some("planning-A".to_string());
+    db.push(&named, &links(), None).await.unwrap();
+    // A gg run with no configuration name, and a non-gg run: neither is fillable.
+    let mut hand_assembled = gg_record("hand");
+    hand_assembled
+        .subject
+        .gg_capability_set
+        .as_mut()
+        .unwrap()
+        .preset = None;
+    db.push(&hand_assembled, &links(), None).await.unwrap();
+    db.push(&record_with_metrics("other"), &links(), None)
+        .await
+        .unwrap();
+
+    // Simulate rows that predate the column: it read NULL for every one of them.
+    for id in ["named", "hand", "other"] {
+        let mut active = lifted(&db, id).await.into_active_model();
+        active.gg_preset = Set(None);
+        active.update(&db.connection()).await.unwrap();
+    }
+
+    assert_eq!(db.backfill_gg_presets().await.unwrap(), 1);
+    assert_eq!(
+        lifted(&db, "named").await.gg_preset.as_deref(),
+        Some("planning-A")
+    );
+    assert_eq!(lifted(&db, "hand").await.gg_preset, None);
+    assert_eq!(lifted(&db, "other").await.gg_preset, None);
+
+    // Settles to a no-write pass: the preset-less gg run is re-read every boot but
+    // never rewritten, and the filled row has left the candidate set entirely.
+    assert_eq!(db.backfill_gg_presets().await.unwrap(), 0);
 }
 
 #[tokio::test]
@@ -2046,6 +2135,18 @@ async fn seed_ident(
         comparable: Some(1.0),
         actual: Some(1.0),
     };
+    db.push(&r, &links(), None).await.unwrap();
+}
+
+/// Push an unpublished gg run with the given model and configuration name (`None`
+/// = assembled by hand, recording no name), for the tests covering the lifted
+/// `gg_preset` column's search and sort.
+async fn seed_gg_ident(db: &Db, id: &str, model: &str, preset: Option<&str>) {
+    let mut r = gg_record(id);
+    r.subject.test_case_slug = "pong".to_string();
+    r.subject.model_id = model.to_string();
+    r.subject.variant = "base".to_string();
+    r.subject.gg_capability_set.as_mut().unwrap().preset = preset.map(str::to_string);
     db.push(&r, &links(), None).await.unwrap();
 }
 
@@ -2258,6 +2359,74 @@ async fn list_summaries_free_text_matches_across_fields_case_insensitively() {
     assert_eq!(
         summary_ids(&db, &q("tetris"), SummarySort::Tokens, SortDir::Asc).await,
         ["c"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_free_text_matches_a_gg_configuration_name() {
+    let db = Db::connect_in_memory().await.unwrap();
+    seed_gg_ident(&db, "named", "mock/echo", Some("planning-A")).await;
+    seed_gg_ident(&db, "other", "mock/echo", Some("review-heavy")).await;
+    seed_ident(
+        &db,
+        "third",
+        "pong",
+        "sonnet",
+        HarnessSlug::Claude,
+        "base",
+        10,
+    )
+    .await;
+
+    let q = |text: &str| SummaryFilter {
+        q: Some(text.to_string()),
+        ..unpublished_filter()
+    };
+
+    // A gg run is findable by the configuration its row SHOWS, not only by the
+    // representative model behind it — the whole point of the lifted column.
+    assert_eq!(
+        summary_ids(&db, &q("PLANNING"), SummarySort::Date, SortDir::Asc).await,
+        ["named"]
+    );
+    // The other columns still match alongside it: the model is shared by both gg
+    // runs and by neither the third.
+    assert_eq!(
+        summary_ids(&db, &q("mock/echo"), SummarySort::Date, SortDir::Asc).await,
+        ["named", "other"]
+    );
+    // A NULL column simply never matches; it does not swallow the whole OR.
+    assert_eq!(
+        summary_ids(&db, &q("sonnet"), SummarySort::Date, SortDir::Asc).await,
+        ["third"]
+    );
+}
+
+#[tokio::test]
+async fn list_summaries_sorts_model_by_the_configuration_where_there_is_one() {
+    let db = Db::connect_in_memory().await.unwrap();
+    // Chosen so sorting by model id and sorting by what the cell shows disagree: by
+    // model the gg rows lead (`mock/echo` < `sonnet`) in the order a/b; by the
+    // displayed identity they are `zeta`, `alpha`, and the hand-assembled run falls
+    // back to `mock/echo`.
+    seed_gg_ident(&db, "a", "mock/echo", Some("zeta")).await;
+    seed_gg_ident(&db, "b", "mock/echo", Some("alpha")).await;
+    seed_gg_ident(&db, "hand", "mock/echo", None).await;
+    seed_ident(&db, "c", "pong", "sonnet", HarnessSlug::Claude, "base", 10).await;
+
+    assert_eq!(
+        summary_ids(&db, &unpublished_filter(), SummarySort::Model, SortDir::Asc).await,
+        ["b", "hand", "c", "a"]
+    );
+    assert_eq!(
+        summary_ids(
+            &db,
+            &unpublished_filter(),
+            SummarySort::Model,
+            SortDir::Desc
+        )
+        .await,
+        ["a", "c", "hand", "b"]
     );
 }
 

@@ -25,6 +25,17 @@ pub struct Model {
     pub harness_slug: String,
     pub harness_version: Option<String>,
     pub model_id: String,
+    /// The name of the gg **configuration** the run was launched from, lifted from
+    /// `record.subject.gg_capability_set.preset`. A gg run has no single harness
+    /// model — `model_id` is only its representative primary-slot binding — so the
+    /// console's run log identifies a gg row by its configuration, and the listing
+    /// searches and orders that cell by this column rather than by `model_id`.
+    ///
+    /// `NULL` for every non-gg run (the lift is gated on the harness) and for a gg
+    /// run assembled by hand rather than from a named configuration; both fall back
+    /// to `model_id` wherever this column is consulted.
+    #[sea_orm(nullable)]
+    pub gg_preset: Option<String>,
     /// The run's test type, lifted from `record.subject.test_type` as its
     /// kebab-case wire token (`end-to-end`, `asset-generation`, …). Lets the
     /// console listing filter/sort by category without parsing the record blob.

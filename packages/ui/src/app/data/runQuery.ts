@@ -10,6 +10,7 @@ import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type { RunSort, SortDir } from "../../client/clients";
 import { RATINGS } from "../../ratings";
 import { totalTokens } from "../format";
+import { isGgRun } from "./runLinks";
 
 export type { RunSort, SortDir };
 
@@ -36,7 +37,8 @@ export interface RunQuery {
   model?: string;
   /** Filter to one harness slug (an empty string is ignored). */
   harness?: string;
-  /** Case-insensitive substring across testCase/model/harness/variant. */
+  /** Case-insensitive substring across testCase/model/harness/variant, plus a gg
+   * run's configuration name (what its row shows in place of a model). */
   q?: string;
   /** The sort column (default `date`). */
   sort?: RunSort;
@@ -98,6 +100,9 @@ function matches(summary: RunSummary, query: RunQuery): boolean {
       subject.modelId,
       subject.harnessSlug,
       subject.variant,
+      // A gg row is displayed by its configuration, so it is findable by it. Absent
+      // (every non-gg run) contributes nothing, matching the backend's NULL column.
+      ggPreset(summary) ?? "",
     ].map((s) => s.toLowerCase());
     if (!haystack.some((s) => s.includes(q))) return false;
   }
@@ -141,7 +146,7 @@ function primaryCompare(
     case "harness":
       return cmpStr(a.subject.harnessSlug, b.subject.harnessSlug) * order;
     case "model":
-      return cmpStr(a.subject.modelId, b.subject.modelId) * order;
+      return cmpStr(modelIdentity(a), modelIdentity(b)) * order;
     case "variant":
       return cmpStr(a.subject.variant, b.subject.variant) * order;
     case "cost": {
@@ -163,6 +168,23 @@ function primaryCompare(
       return (ratingRank(a.rating) - ratingRank(b.rating)) * order;
     }
   }
+}
+
+// The lifted `run.gg_preset` column's value for a summary: the gg configuration
+// name the run was launched from, or null. Harness-gated exactly as the backend's
+// `lifted_gg_preset` is, so a non-gg run can never be searched or positioned by
+// anything but its model.
+function ggPreset(summary: RunSummary): string | null {
+  const { subject } = summary;
+  return isGgRun(subject.harnessSlug) ? (subject.ggPreset ?? null) : null;
+}
+
+// What the MODEL / CONFIG column sorts by, mirroring the backend's
+// `COALESCE(gg_preset, model_id)`: a gg run's configuration name, else the model
+// id. The RAW id, not a resolved display name — the DB column holds no catalog
+// lookup, and this has to order a page the same way.
+function modelIdentity(summary: RunSummary): string {
+  return ggPreset(summary) ?? summary.subject.modelId;
 }
 
 // The null-group ordering key: non-null rows (group 0) always precede null rows

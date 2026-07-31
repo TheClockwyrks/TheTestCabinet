@@ -409,19 +409,24 @@ The offset mode additionally accepts:
 - **Filters** `testCase`, `model`, and `harness` — each narrows to runs matching
   that lifted subject value.
 - **Search** `q` — a free-text match across the lifted subject columns (test case
-  slug, model id, harness slug, variant). It matches the **raw** recorded ids, not
-  a model's resolved display name.
+  slug, model id, harness slug, variant, and a [gg](/gg/overview/) run's
+  [configuration](/gg/configurations/) name). It matches the **raw** recorded ids,
+  not a model's resolved display name.
 - **Sort** `sort` — one of `date` (default), `runtime`, `tokens`, `cost`,
   `rating`, `testType`, `testCase`, `harness`, `model`, or `variant` — with
-  `dir` (`asc` or `desc`), tie-broken by run id.
+  `dir` (`asc` or `desc`), tie-broken by run id. `model` orders by the run's
+  model/configuration **identity**: a gg run has no single harness model (it binds
+  one per agent, and the recorded model id is only a representative primary-slot
+  value), so it sorts by the configuration it was launched from, and everything
+  else by its model id.
 
 To keep `sort`/`q`/the filters DB-native, the run row lifts the fields the record
 otherwise buries in its JSON blob — the test type, run time, total tokens,
-comparable cost — alongside the rating and review count derived from the reviews
-table, into indexed columns. These are added by a versioned migration with an
-idempotent startup backfill, and kept current as runs are recorded, reviewed, and
-published. (The columns are an internal detail; the projection and params above
-are the contract.)
+comparable cost, and a gg run's configuration name — alongside the rating and
+review count derived from the reviews table, into columns of their own. These are
+added by a versioned migration with an idempotent startup backfill, and kept
+current as runs are recorded, reviewed, and published. (The columns are an
+internal detail; the projection and params above are the contract.)
 
 ### `GET /runs/{id}`
 

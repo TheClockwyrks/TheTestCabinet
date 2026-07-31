@@ -104,6 +104,15 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         Err(err) => tracing::warn!(error = %err, "skipping run sort-column backfill"),
     }
 
+    // The gg configuration name lifted onto the run row arrived after the columns
+    // above, so rows the backfill has already settled need their own pass. Same
+    // contract: idempotent, best-effort, never blocks startup.
+    match db.backfill_gg_presets().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run gg configuration names"),
+        Err(err) => tracing::warn!(error = %err, "skipping run gg-configuration backfill"),
+    }
+
     let db = Arc::new(db);
 
     // Reconcile orphaned in-flight jobs before serving — but only single-box,

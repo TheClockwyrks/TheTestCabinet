@@ -17,6 +17,7 @@ function summary(
     tokens?: number | null;
     cost?: number | null;
     rating?: Rating | null;
+    ggPreset?: string | null;
   } = {},
 ): RunSummary {
   const tokens = fields.tokens === undefined ? 100 : fields.tokens;
@@ -33,6 +34,7 @@ function summary(
       harnessSlug: fields.harness ?? "claude",
       harnessVersion: "1",
       modelId: fields.model ?? "anthropic/claude",
+      ggPreset: fields.ggPreset ?? null,
     },
     caseName: fields.testCase ?? "carom",
     metrics: {
@@ -94,6 +96,48 @@ describe("runSummaryPage", () => {
     expect(ids(runSummaryPage(runs, { q: "hard" }))).toEqual(["b"]);
     expect(ids(runSummaryPage(runs, { q: "codex" }))).toEqual(["c"]);
     expect(runSummaryPage(runs, { q: "  " }).total).toBe(3);
+  });
+
+  it("free-text q matches a gg run's configuration name", () => {
+    const runs = [
+      summary("a", {
+        harness: "gg",
+        model: "mock/echo",
+        ggPreset: "planning-A",
+      }),
+      summary("b", { harness: "gg", model: "mock/echo", ggPreset: null }),
+      // The guard is on the HARNESS: a non-gg run carrying a preset somehow is
+      // still only findable by its model, mirroring the backend's lift.
+      summary("c", { harness: "claude", model: "m", ggPreset: "planning-A" }),
+    ];
+    expect(ids(runSummaryPage(runs, { q: "PLANNING" }))).toEqual(["a"]);
+    expect(ids(runSummaryPage(runs, { q: "mock/echo" })).sort()).toEqual([
+      "a",
+      "b",
+    ]);
+  });
+
+  it("sorts model by the gg configuration where there is one", () => {
+    // By model id the gg rows would lead in the order a/b; by the identity the
+    // cell shows they are `zeta`, `alpha`, and the preset-less run falls back.
+    const runs = [
+      summary("a", { harness: "gg", model: "mock/echo", ggPreset: "zeta" }),
+      summary("b", { harness: "gg", model: "mock/echo", ggPreset: "alpha" }),
+      summary("hand", { harness: "gg", model: "mock/echo", ggPreset: null }),
+      summary("c", { harness: "claude", model: "sonnet" }),
+    ];
+    expect(ids(runSummaryPage(runs, { sort: "model", dir: "asc" }))).toEqual([
+      "b",
+      "hand",
+      "c",
+      "a",
+    ]);
+    expect(ids(runSummaryPage(runs, { sort: "model", dir: "desc" }))).toEqual([
+      "a",
+      "c",
+      "hand",
+      "b",
+    ]);
   });
 
   it("non-published state matches nothing (site holds only published)", () => {
