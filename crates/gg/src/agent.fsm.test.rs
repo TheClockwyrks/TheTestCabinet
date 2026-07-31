@@ -352,10 +352,10 @@ async fn a_transition_that_carries_nothing_starts_the_successor_fresh() {
         moves[0].3
     );
 
-    // **And it is still told what the run is for.** A successor handed no window has nothing to be
-    // rebased onto, so it is opened exactly as a fresh agent is — its own system prompt, then the
-    // run's build prompt — with the handoff note on top. Without that it would hold a system prompt
-    // and a note about a state change, and no statement of the task anywhere.
+    // **And it is still told what the run is for.** A successor handed no window opens exactly as a
+    // fresh agent does — its own system prompt, then the run's build prompt — with the handoff note
+    // on top. Without that it would hold a system prompt and a note about a state change, and no
+    // statement of the task anywhere.
     let opening = events
         .iter()
         .find_map(|event| match &event.kind {

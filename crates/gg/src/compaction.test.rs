@@ -308,7 +308,7 @@ async fn does_not_compact_when_disabled() {
     // `enabled: false`, not the threshold, that blocks the compaction here.
     let setup = setup(CompactionStrategy::HandoffSummarization, 0.9, false);
     let mut ctx = model(10);
-    ctx.push_system("a system prompt that easily exceeds the tiny window budget here");
+    ctx.set_system("a system prompt that easily exceeds the tiny window budget here");
     ctx.push_assistant(Some("lots of ephemeral text ".repeat(4)), Vec::new());
     assert!(ctx.fullness().unwrap() >= 1.0, "the window is over-full");
 
@@ -322,7 +322,7 @@ async fn does_not_compact_below_the_threshold() {
     // Headroom 0.1 → trigger 0.9.
     let setup = setup(CompactionStrategy::HandoffSummarization, 0.1, true);
     let mut ctx = model(100_000);
-    ctx.push_system("short");
+    ctx.set_system("short");
     ctx.push_assistant(Some("a little work".to_string()), Vec::new());
     assert!(ctx.fullness().unwrap() < 0.9);
 
@@ -337,7 +337,7 @@ async fn does_not_compact_with_no_ephemeral_history() {
     let setup = setup(CompactionStrategy::HandoffSummarization, 0.9, true);
     // Over the threshold, but every item is pinned — there is nothing to summarize.
     let mut ctx = model(20);
-    ctx.push_system("a pinned system prompt with enough text to cross the low threshold");
+    ctx.set_system("a pinned system prompt with enough text to cross the low threshold");
     ctx.push_user_prompt("a pinned build prompt");
     assert!(ctx.fullness().unwrap() >= 0.1);
     assert!(!ctx.has_ephemeral());
@@ -366,7 +366,7 @@ async fn compacts_and_retains_pinned_state_verbatim() {
 
     let mut ctx = model(200);
     // Pinned prefix.
-    ctx.push_system("SYSTEM PROMPT");
+    ctx.set_system("SYSTEM PROMPT");
     ctx.push_user_prompt("USER BUILD PROMPT");
     // A read skill is pinned as the tool result answering its read_skill call.
     ctx.push(
@@ -532,7 +532,7 @@ async fn compacts_and_retains_pinned_state_verbatim() {
 fn restored_files_are_seeded_as_tagged_user_file_views() {
     let setup = setup(CompactionStrategy::SelfCompaction, 0.5, true);
     let mut ctx = model(400);
-    ctx.push_system("SYSTEM PROMPT");
+    ctx.set_system("SYSTEM PROMPT");
     ctx.push_user_prompt("USER BUILD PROMPT");
     ctx.push_assistant(Some("ephemeral chatter ".repeat(10)), Vec::new());
 
@@ -580,7 +580,7 @@ fn restored_files_are_seeded_as_tagged_user_file_views() {
 fn the_summary_is_the_last_item_in_the_restarted_window() {
     let setup = setup(CompactionStrategy::SelfCompaction, 0.5, true);
     let mut ctx = model(400);
-    ctx.push_system("SYSTEM PROMPT");
+    ctx.set_system("SYSTEM PROMPT");
     ctx.push_assistant(Some("chatter".to_string()), Vec::new());
     apply_compaction(
         &mut ctx,
@@ -613,7 +613,7 @@ fn the_summary_is_the_last_item_in_the_restarted_window() {
 fn a_fallback_summary_is_flagged_on_the_event() {
     let setup = setup(CompactionStrategy::SelfSummarization, 0.5, true);
     let mut ctx = model(400);
-    ctx.push_system("SYSTEM PROMPT");
+    ctx.set_system("SYSTEM PROMPT");
     ctx.push_assistant(Some("chatter".to_string()), Vec::new());
 
     let request = fallback_request();

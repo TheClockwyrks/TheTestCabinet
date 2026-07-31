@@ -26,8 +26,8 @@ use crate::ending::Ending;
 use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_TRANSITIONS, CAPABILITY_MEMORIES, CAPABILITY_SUBAGENTS,
-    CAPABILITY_TASKS, GgCapabilityConfig, GgContextSource, GgModuleDisposition, GgSubagentRef,
-    GgTelemetryEvent, GgTransitionModule, ROOT_AGENT,
+    CAPABILITY_TASKS, GgCapabilityConfig, GgContextSource, GgModuleDisposition, GgPromptRef,
+    GgSubagentRef, GgTelemetryEvent, GgTransitionModule, ROOT_AGENT,
 };
 
 use super::super::transitions::{HandoffReason, fork_note, launch_warnings, succession_note};
@@ -536,6 +536,114 @@ async fn an_exec_carries_the_conversation_drops_what_the_successor_lacks_and_sta
         )),
         "the successor's ending is the session's"
     );
+}
+
+/// **An exec'd agent reasons under its own system prompt, and only its own.**
+///
+/// The system prompt is the one thing a succession must *not* carry: it states the toolset, the
+/// roster, the ending calls and the capability prose of the profile it was rendered for, and the
+/// whole point of an `exec` is that the successor is a different profile. The thread crosses; the
+/// instructions describing the agent do not.
+///
+/// It is asserted from the message log because that is the request as it actually went out. The two
+/// profiles here differ in exactly the way that shows up in the prompt — the predecessor keeps a
+/// task list and may `exec`, the successor keeps memories and may not — so "the successor's prompt
+/// is its own" is checkable rather than merely plausible, and neither agent's stream may carry a
+/// second `system` message beside it (a provider that concatenates them would hand the model one
+/// instruction block naming two toolsets).
+#[tokio::test]
+async fn an_exec_gives_the_successor_its_own_system_prompt_and_no_trace_of_its_predecessors() {
+    let dir = TempDir::new().unwrap();
+    let events = run_exec(dir.path(), exec_set(), None).await;
+
+    let successor = events
+        .iter()
+        .find_map(|event| match &event.kind {
+            GgTelemetryKind::AgentTransition { to_agent_id, .. } => Some(to_agent_id.clone()),
+            _ => None,
+        })
+        .expect("the exec was reported as a transition");
+
+    // The message pool is per agent, so an agent's stream carries the full body of every message it
+    // sent — including one it inherited, which is exactly what must not be here.
+    let system_prompts = |agent: &str| -> Vec<String> {
+        events
+            .iter()
+            .filter(|event| event.agent_id.as_deref() == Some(agent))
+            .filter_map(|event| match &event.kind {
+                GgTelemetryKind::ContextMessage { role, content, .. } if role == "system" => {
+                    Some(content.clone().unwrap_or_default())
+                }
+                _ => None,
+            })
+            .collect()
+    };
+
+    let predecessor_prompts = system_prompts(ROOT_AGENT_ID);
+    let successor_prompts = system_prompts(&successor);
+    assert_eq!(
+        predecessor_prompts.len(),
+        1,
+        "the predecessor sent exactly one system message: {predecessor_prompts:?}"
+    );
+    assert_eq!(
+        successor_prompts.len(),
+        1,
+        "and so did the successor — two would have it instructed by its predecessor's toolset, \
+         roster and ending calls as well as its own: {successor_prompts:?}"
+    );
+    let predecessor_prompt = &predecessor_prompts[0];
+    let successor_prompt = &successor_prompts[0];
+    assert_ne!(
+        successor_prompt, predecessor_prompt,
+        "the successor is a different profile and reads a different prompt"
+    );
+
+    // The difference is the profiles', not an accident of rendering: each prompt carries the
+    // capability section of the agent it was rendered for, and not the other's.
+    assert!(
+        predecessor_prompt.contains("## Tasks") && !predecessor_prompt.contains("## Memory"),
+        "the predecessor keeps a task list and no memories: {predecessor_prompt}"
+    );
+    assert!(
+        successor_prompt.contains("## Memory") && !successor_prompt.contains("## Tasks"),
+        "and the successor is told about its memories, and about no task list it does not have: \
+         {successor_prompt}"
+    );
+
+    // And it renders **first**, ahead of the thread it inherited, on every request it made.
+    let requests: Vec<Vec<GgPromptRef>> = events
+        .iter()
+        .filter(|event| event.agent_id.as_deref() == Some(successor.as_str()))
+        .filter_map(|event| match &event.kind {
+            GgTelemetryKind::Prompt { request, .. } => Some(request.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(!requests.is_empty(), "the successor did take a turn");
+    let system_id = events
+        .iter()
+        .find_map(|event| match &event.kind {
+            GgTelemetryKind::ContextMessage { id, role, .. }
+                if event.agent_id.as_deref() == Some(successor.as_str()) && role == "system" =>
+            {
+                Some(id.clone())
+            }
+            _ => None,
+        })
+        .expect("the successor's prompt was pooled");
+    for request in &requests {
+        assert_eq!(
+            request.first().map(|item| item.id.as_str()),
+            Some(system_id.as_str()),
+            "the system prompt is message 0 of every request: {request:?}"
+        );
+        assert_eq!(
+            request.iter().filter(|item| item.id == system_id).count(),
+            1,
+            "and it appears once: {request:?}"
+        );
+    }
 }
 
 /// A successor on a **much smaller window** compacts before its first turn.

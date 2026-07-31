@@ -453,7 +453,7 @@ fn a_fork_does_not_duplicate_undrained_telemetry() {
 fn a_history_share_is_a_copy_that_keeps_its_turn_number() {
     let mut history = HistoryModule::new(&history_setup(), &detached_ids());
     history.context_mut().begin_turn(37);
-    history.context_mut().push_system("the system prompt");
+    history.context_mut().push_user_prompt("the build prompt");
 
     let ModuleHandle::History(mut copy) = history.share() else {
         panic!("a history module shares into a history module");
@@ -830,34 +830,48 @@ fn an_incompatible_module_is_reinitialized_with_a_stated_reason() {
     );
 }
 
-/// A transferred window is the predecessor's thread with the **successor's** system prompt at the
-/// head of it: everything behind item 0 is what the successor is meant to keep, and item 0 is the
-/// one thing that must never be inherited.
+/// **A window crosses a succession carrying no system prompt.** The thread is what the successor is
+/// meant to keep; the prompt states the toolset, the roster and the ending calls of the agent it was
+/// rendered for, so the adoption empties it and the successor's own loop fills it in — and until it
+/// does, there is nothing in the window for the successor to read as instructions.
 #[test]
-fn a_rebased_window_keeps_the_thread_and_replaces_the_prompt() {
+fn an_adopted_window_keeps_the_thread_and_drops_the_system_prompt() {
+    let skills = SkillsRuntime::disabled();
+    let board = BoardRuntime::disabled();
+    let (registry, inherited, ids) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited, &ids);
+
     let mut history = HistoryModule::new(&history_setup(), &detached_ids());
-    history
-        .context_mut()
-        .push_system("the predecessor's prompt");
+    history.context_mut().set_system("the predecessor's prompt");
     history.context_mut().push_user_prompt("build the thing");
     history.context_mut().begin_turn(1);
     history
         .context_mut()
         .push_assistant(Some("working on it".to_string()), Vec::new());
 
-    let before = history.context().messages().len();
-    history.context_mut().rebase("the successor's prompt", None);
+    history
+        .adopt(&profile_with(Vec::new()), &ctx)
+        .expect("a window is always adoptable");
+
+    assert!(
+        history.context().system().is_none(),
+        "the predecessor's prompt is gone, not retagged and left in the thread"
+    );
+    let carried = history.context().messages();
+    assert!(
+        !carried
+            .iter()
+            .any(|m| matches!(m.role, crate::model::Role::System)),
+        "and nothing system-role reaches the provider until the successor sets its own: {carried:?}"
+    );
+
+    history.context_mut().set_system("the successor's prompt");
 
     let rendered = history.context().messages();
     assert_eq!(
-        rendered.len(),
-        before,
-        "the opening prompt is replaced where it sits rather than superseded and re-appended"
-    );
-    assert_eq!(
         rendered.first().and_then(|m| m.content.clone()),
         Some("the successor's prompt".to_string()),
-        "item 0 is the successor's own prompt"
+        "the successor's own prompt renders first, ahead of the thread it inherited"
     );
     assert_eq!(
         rendered
@@ -872,13 +886,40 @@ fn a_rebased_window_keeps_the_thread_and_replaces_the_prompt() {
         !rendered
             .iter()
             .any(|m| m.content.as_deref() == Some("the predecessor's prompt")),
-        "the predecessor's prompt is gone, not retagged and left in the thread"
+        "and the predecessor's is not one of them"
     );
     assert!(
         rendered
             .iter()
             .any(|m| m.content.as_deref() == Some("working on it")),
         "the thread the successor inherits is untouched"
+    );
+}
+
+/// The same rule on the other succession shape: a **fork** is a different agent too, so the copy
+/// does not open holding the forker's instructions.
+#[test]
+fn a_forked_window_carries_the_thread_but_not_the_system_prompt() {
+    let mut history = HistoryModule::new(&history_setup(), &detached_ids());
+    history.context_mut().set_system("the forker's prompt");
+    history.context_mut().begin_turn(1);
+    history
+        .context_mut()
+        .push_assistant(Some("before the fork".to_string()), Vec::new());
+
+    let copy = history.forked();
+
+    assert!(copy.context().system().is_none());
+    assert!(
+        copy.context()
+            .messages()
+            .iter()
+            .any(|m| m.content.as_deref() == Some("before the fork")),
+        "the conversation still crosses; only the prompt describing the forker does not"
+    );
+    assert!(
+        history.context().system().is_some(),
+        "and the forker keeps its own — it is still running"
     );
 }
 
@@ -905,7 +946,7 @@ fn a_forked_set_is_independent_of_the_set_it_was_cloned_from() {
     ]);
     let mut original =
         ModuleSet::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
-    original.context_mut().push_system("the shared prefix");
+    original.context_mut().set_system("the shared prefix");
     original.context_mut().begin_turn(1);
     original
         .context_mut()

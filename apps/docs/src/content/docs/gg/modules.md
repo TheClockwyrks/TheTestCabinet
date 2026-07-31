@@ -126,9 +126,12 @@ Two rules about limits:
   it is the next write that is refused. Deleting a memory because the successor's profile is
   stingier would lose work the run already paid for.
 - **The window's system prompt is never inherited.** A system prompt states the toolset, the
-  roster and the ending calls of the agent it was rendered for, so a transferred window has
-  item 0 replaced with the successor's. Everything behind it — the whole thread — is exactly
-  what the successor is meant to keep, and the turn counter is never renumbered.
+  roster and the ending calls of the agent it was rendered for, and it is not part of the
+  thread at all: it sits in a slot of its own that renders first on every request. A window
+  crosses a transfer (or a fork) with that slot **empty**, and the successor's loop fills it
+  with its own before its first turn — so there is no state in which an agent can read
+  instructions written for the agent it replaced. The whole thread is exactly what the
+  successor is meant to keep, and the turn counter is never renumbered.
 
 ## Who copies and who transfers
 

@@ -180,6 +180,16 @@ it, rewriting it invalidates no prefix, and assigning the slot overwrites rather
 accumulates. It is exactly because it costs nothing to rewrite that it can report exact
 figures rather than rounded ones.
 
+**The system prompt is the same shape at the other end.** It, too, is a slot rather than a
+thread item — always the **first** message of the prompt, never one of the items. That is
+what makes it safe for one agent to hand its whole conversation to another: the prompt
+describes the *agent* (its toolset, its roster, its ending calls), not the conversation, so
+it is the one thing a [succession or a fork](/gg/fork-and-exec/) must not carry. A
+transferred window arrives with the slot empty and the successor's loop sets its own, which
+also means a window can never end up carrying two `system` messages — a provider that
+concatenates them (Anthropic's shape does) would otherwise hand the model one instruction
+block naming two toolsets and two sets of ending calls.
+
 **File views.** A `read_file` result is a snapshot of the file _as it was read_, and
 nothing later rewrites it — not a `write_file`, not an `edit_file`, not a re-read. Each
 read appends its own view. So the agent's own writes never silently rewrite the prompt

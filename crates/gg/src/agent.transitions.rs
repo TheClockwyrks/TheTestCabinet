@@ -163,13 +163,16 @@ pub(super) struct Succession {
 /// How an incarnation's window is opened: fresh, or carried over from the instance it succeeds.
 ///
 /// The distinction is only about the first few items of the window and the two things that seed it.
-/// A [fresh](Self::Fresh) opening is what every agent has always had — the system prompt, the build
-/// prompt, any autoloaded specifications, any file views a persistent profile left open. A
+/// A [fresh](Self::Fresh) opening is what every agent has always had — the build prompt, any
+/// autoloaded specifications, any file views a persistent profile left open. A
 /// [carried](Self::Carried) one that received the [history](crate::modules::ModuleKind::History)
-/// module already *has* a thread: its system prompt is [rebased](ContextModel::rebase) to this
-/// profile's (item 0 is the one thing a successor must not inherit — it states someone else's
-/// toolset, roster and ending calls), its build prompt is left alone, and the seeding is skipped
+/// module already *has* a thread: its build prompt is left alone and the seeding is skipped,
 /// because the window it would seed into is not empty.
+///
+/// Neither case says anything about the system prompt, because it is not part of a window's
+/// opening items at all: it lives in a [slot](ContextModel::set_system) that renders first on every
+/// request, arrives from a succession *empty* (a prompt states someone else's toolset, roster and
+/// ending calls), and is set by the loop for every incarnation alike.
 pub(super) enum Opening {
     /// A window with nothing in it yet.
     Fresh,

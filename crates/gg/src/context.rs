@@ -448,15 +448,18 @@ pub struct ArchiveResult {
 ///
 /// # Cloning is a deep copy of the window
 ///
-/// [`Clone`] duplicates every item, the usage-signal slot and the turn counter, and shares only
-/// the [estimator](TokenEstimator) — which is process-wide and stateless, so two windows measured
-/// by it agree. It is what backs the [`history` module](crate::modules::HistoryModule)'s
+/// [`Clone`] duplicates every item, the system-prompt and usage-signal slots and the turn counter,
+/// and shares only the [estimator](TokenEstimator) — which is process-wide and stateless, so two
+/// windows measured by it agree. It is what backs the [`history` module](crate::modules::HistoryModule)'s
 /// [fork](crate::modules::Module::fork): the copy and the original diverge from the moment they
 /// are made, and neither can see the other's pushes. Nothing in a `ContextModel` is shared
 /// mutable state, so there is no "linked window" — see
 /// [`HistoryModule::share`](crate::modules::HistoryModule) for why two agents cannot write one.
 #[derive(Clone)]
 pub struct ContextModel {
+    /// The [system prompt](Self::set_system), held in a slot of its own rather than among the
+    /// [`items`](Self::items) — see that method for why.
+    system: Option<ContextItem>,
     /// The context items, in conversation order.
     items: Vec<ContextItem>,
     /// The estimator every pushed item is measured with.
@@ -492,6 +495,7 @@ impl ContextModel {
         code_mode: bool,
     ) -> Self {
         Self {
+            system: None,
             items: Vec::new(),
             estimator,
             window_limit,
@@ -724,13 +728,58 @@ impl ContextModel {
         }
     }
 
-    /// Seed the pinned [`System`](GgContextSource::System) prompt.
-    pub fn push_system(&mut self, content: impl Into<String>) {
-        self.push(
-            GgContextSource::System,
-            Retention::Pinned,
-            Message::system(content),
-        );
+    /// Set the [`System`](GgContextSource::System) prompt — the `system`-role message rendered
+    /// **first** on every request this window produces.
+    ///
+    /// # It lives in a slot, not in the thread
+    ///
+    /// Exactly like the [context-usage signal](Self::refresh_context_usage_signal) at the other end
+    /// of the window, and for the mirror-image reason. The signal is not conversation because it
+    /// describes the window; the system prompt is not conversation because it describes the
+    /// **agent** — its toolset, its roster, its ending calls, the prose for the capabilities *it*
+    /// has. That is a property of whoever is holding the window this turn, not of the thread the
+    /// window carries, and the two come apart the moment an agent hands its thread on:
+    /// [`exec`](https://docs.testcabinet.ai/gg/fork-and-exec/), an [FSM](crate::fsm) edge and a
+    /// fork all give a *different* profile the predecessor's conversation.
+    ///
+    /// Holding it as item 0 of the thread made that a thing the succession had to remember to undo,
+    /// and got two things structurally wrong that a slot cannot get wrong at all:
+    ///
+    /// - **There can only ever be one.** A window carrying two `system`-role messages is not a
+    ///   hypothetical: any of the ordinary in-thread rewrites (supersede-in-place, a re-seed onto a
+    ///   window that already had one) leaves the stale text behind, still `system`-role, still sent.
+    ///   A provider that flattens them — Anthropic's shape concatenates every system message into
+    ///   one field — then hands the model one instruction block naming two toolsets, two rosters and
+    ///   two sets of ending calls, half of which it does not have. Assigning a slot overwrites.
+    /// - **It is never inherited.** A transferred window arrives [with the slot
+    ///   cleared](crate::modules::HistoryModule), and the successor's loop sets its own before its
+    ///   first turn. The predecessor's prompt cannot reach it, because it is not in what was
+    ///   transferred.
+    ///
+    /// Nothing else moves: the thread behind it, the [turn counter](Self::begin_turn), the pinned
+    /// blocks and the file views are untouched, and a successor re-setting a byte-identical prompt
+    /// (an agent re-incarnating as itself) leaves the provider's cached prefix intact.
+    pub fn set_system(&mut self, content: impl Into<String>) {
+        let message = Message::system(content);
+        let tokens = self.estimator.estimate_message(&message);
+        self.system = Some(ContextItem {
+            source: GgContextSource::System,
+            retention: Retention::Pinned,
+            message,
+            tokens,
+            label: None,
+            region: None,
+            turn: self.turn,
+        });
+    }
+
+    /// Empty the [system-prompt slot](Self::set_system), leaving the thread untouched.
+    ///
+    /// What a window crossing to a **different holder** goes through, so the successor cannot be
+    /// handed instructions written for the agent it succeeded — see
+    /// [`HistoryModule::adopt`](crate::modules::HistoryModule).
+    pub fn clear_system(&mut self) {
+        self.system = None;
     }
 
     /// Seed the pinned [`UserPrompt`](GgContextSource::UserPrompt) (the build prompt).
@@ -740,87 +789,6 @@ impl ContextModel {
             Retention::Pinned,
             Message::user(content),
         );
-    }
-
-    /// Replace the window's opening pair — the [system prompt](Self::push_system) and the
-    /// [build prompt](Self::push_user_prompt) — **in place**, leaving every item behind them
-    /// exactly where it is.
-    ///
-    /// This is what makes a window legal for a different agent profile to continue. A system
-    /// prompt states the toolset, the roster, the ending calls and the capability prose of the
-    /// agent it was rendered for; when a module transfer hands this window to a *different*
-    /// profile, item 0 is the one thing that must not be inherited, or the successor is reading
-    /// instructions written for someone else. The thread behind it is exactly what the successor
-    /// is meant to keep.
-    ///
-    /// A `None` `user_prompt` leaves the existing build prompt alone (an agent continuing on the
-    /// same task); `Some` replaces it.
-    ///
-    /// # Why this does not go through `replace_source`
-    ///
-    /// The append-only discipline every *pinned block* follows — supersede the live item where it
-    /// sits, append the rebuilt one at the tail — is wrong for the opening pair, and dangerously
-    /// so for item 0. A superseded system prompt keeps its `system` **role**: it is retagged as
-    /// history, but it is still rendered to the provider as a system message, so the successor
-    /// would make every request carrying two system prompts — its predecessor's toolset, roster
-    /// and ending calls at the head, and its own at the tail. A provider that flattens the two
-    /// (Anthropic's shape concatenates every system message into one field) hands the model a
-    /// single instruction block naming calls it does not have. So the opening items are replaced
-    /// **in place**, keeping their position and their role and losing the stale text outright.
-    ///
-    /// Nothing is paid for it: a rebase happens only when a window is handed to a *different*
-    /// profile, which changes item 0, and any edit to item 0 has already invalidated the whole
-    /// cached prefix. A byte-identical rebase — an agent re-incarnating as itself — is still a
-    /// no-op, and leaves the cache intact.
-    ///
-    /// Everything else — the [turn counter](Self::begin_turn), the usage-signal slot, the pinned
-    /// blocks, the file views — is untouched. In particular the turn counter is **never** reset:
-    /// a model that read `Turn #37` and later archives turns 12–20 must be naming the turns it
-    /// saw, whichever incarnation showed them to it.
-    pub fn rebase(&mut self, system: impl Into<String>, user_prompt: Option<String>) {
-        self.replace_opening(
-            GgContextSource::System,
-            Message::system(system.into()),
-            true,
-        );
-        if let Some(prompt) = user_prompt {
-            self.replace_opening(GgContextSource::UserPrompt, Message::user(prompt), false);
-        }
-    }
-
-    /// Replace the pinned opening item attributed to `source` **in place**, or seed it when the
-    /// window has none — the primitive [`rebase`](Self::rebase) is made of.
-    ///
-    /// `system` marks the one item whose role is `system`, so the search finds item 0 itself
-    /// rather than one of the ephemeral `System`-sourced process notes the loop pushes (a
-    /// compaction instruction, a handoff note) that share its band.
-    fn replace_opening(&mut self, source: GgContextSource, message: Message, system: bool) {
-        let message = self.headed(source, message);
-        let tokens = self.estimator.estimate_message(&message);
-        let live = self.items.iter_mut().find(|item| {
-            item.source == source
-                && item.retention.is_pinned()
-                && matches!(item.message.role, Role::System) == system
-        });
-        match live {
-            Some(item) => {
-                if item.message != message {
-                    item.message = message;
-                    item.tokens = tokens;
-                }
-            }
-            // A succession whose transfer list did not carry the history module opens on an empty
-            // window; there is nothing to replace, and the opening pair is simply seeded.
-            None => self.items.push(ContextItem {
-                source,
-                retention: Retention::Pinned,
-                message,
-                tokens,
-                label: None,
-                region: None,
-                turn: self.turn,
-            }),
-        }
     }
 
     /// Re-point the [fullness](Self::fullness) denominator at a different model's context window.
@@ -985,15 +953,30 @@ impl ContextModel {
         stripped
     }
 
-    /// Every item that is part of the live window, in the order it is sent: the conversation items
-    /// followed by the [context-usage signal](Self::refresh_context_usage_signal), which is always
-    /// last.
+    /// Every item that is part of the live window, in the order it is sent: the
+    /// [system prompt](Self::set_system), which is always first, then the conversation items, then
+    /// the [context-usage signal](Self::refresh_context_usage_signal), which is always last.
+    ///
+    /// The two ends are slots rather than thread items, so their position is a property of this
+    /// iterator rather than something the pushes have to maintain.
     fn window_items(&self) -> impl Iterator<Item = &ContextItem> {
-        self.items.iter().chain(self.usage_signal.iter())
+        self.system
+            .iter()
+            .chain(self.items.iter())
+            .chain(self.usage_signal.iter())
+    }
+
+    /// The items the window's **own** figures are computed over: the
+    /// [system prompt](Self::set_system) and the conversation, but not the
+    /// [context-usage signal](Self::refresh_context_usage_signal) — which reports those figures and
+    /// so must not be one of them, or computing it would change them.
+    fn accounted_items(&self) -> impl Iterator<Item = &ContextItem> {
+        self.system.iter().chain(self.items.iter())
     }
 
     /// Render the model to the ordered `Vec<Message>` the client consumes — the faithful
-    /// Phase 0 transcript, in item order, with the context-usage signal appended at the end.
+    /// Phase 0 transcript: the system prompt, then the items in order, with the context-usage
+    /// signal appended at the end.
     pub fn messages(&self) -> Vec<Message> {
         self.window_items()
             .map(|item| item.message.clone())
@@ -1087,10 +1070,11 @@ impl ContextModel {
     /// [compaction](crate::compaction::apply_compaction), which then seeds the files the model
     /// asked to keep and appends the summary.
     ///
-    /// The pinned prefix (the system prompt, the build prompt, read skills, in-play memories,
-    /// the task list, and the epic/issue board) is retained unchanged and in order; all ephemeral
-    /// thread material (assistant turns, tool output, file views, process guidance, and any prior
-    /// summary) is dropped.
+    /// The pinned prefix (the build prompt, read skills, in-play memories, the task list, and the
+    /// epic/issue board) is retained unchanged and in order; all ephemeral thread material
+    /// (assistant turns, tool output, file views, process guidance, and any prior summary) is
+    /// dropped. The [system prompt](Self::set_system) is not a thread item at all, so it survives
+    /// a reset by not being part of one.
     ///
     /// A retained skill body is pinned as the `tool` result that answered its `read_skill`
     /// call; once the assistant turn that made that call is dropped, that `tool` message would
@@ -1189,15 +1173,16 @@ impl ContextModel {
     /// every category as a share of the window says how much of the problem each one *is*, and the
     /// nested file list says which reads to drop first.
     ///
-    /// The figures are computed over the conversation items only — the signal's own cost is excluded,
-    /// so the block never accounts for itself and computing it is idempotent.
+    /// The figures are computed over the [accounted items](Self::accounted_items) — the system
+    /// prompt and the conversation — with the signal's own cost excluded, so the block never
+    /// accounts for itself and computing it is idempotent.
     fn context_usage_text(&self, options: UsageSignalOptions) -> Option<String> {
         let limit = self.window_limit?;
         if limit == 0 {
             return None;
         }
         let percent = |tokens: u64| format!("{:.1}%", (tokens as f64 / limit as f64) * 100.0);
-        let total: u64 = self.items.iter().map(|item| item.tokens as u64).sum();
+        let total: u64 = self.accounted_items().map(|item| item.tokens as u64).sum();
 
         // One entry per source that is actually holding something, in `GgContextSource::ALL` order
         // so the block reads the same way from turn to turn. A category at zero is left out rather
@@ -1206,8 +1191,7 @@ impl ContextModel {
             .iter()
             .filter_map(|&source| {
                 let tokens: u64 = self
-                    .items
-                    .iter()
+                    .accounted_items()
                     .filter(|item| item.source == source)
                     .map(|item| item.tokens as u64)
                     .sum();
@@ -1355,9 +1339,10 @@ impl ContextModel {
     /// reads off each result's [turn header](Self::turn_header), so `{from: 4, to: 19}` is exactly
     /// "the turns I can see numbered 4 to 19". They may be given in any order and may overlap; an
     /// item is removed if any range contains it. Only [`Ephemeral`](Retention::Ephemeral) items are
-    /// eligible, so the pinned prefix (the system prompt, the build prompt, read skills, memories,
-    /// the task list, the board) is never touched however wide a range is — and neither is the
-    /// [context-usage signal](Self::refresh_context_usage_signal), which is not a thread item at all.
+    /// eligible, so the pinned prefix (the build prompt, read skills, memories, the task list, the
+    /// board) is never touched however wide a range is — and neither are the
+    /// [system prompt](Self::set_system) or the
+    /// [context-usage signal](Self::refresh_context_usage_signal), which are not thread items at all.
     ///
     /// **Only the results are kept.** An archived turn's [`Assistant`](GgContextSource::Assistant)
     /// message is removed from the window but **not** written to the archive; everything else in the
@@ -1488,9 +1473,19 @@ fn thousands(value: u64) -> String {
 // data model.
 #[allow(dead_code)]
 impl ContextModel {
-    /// The items, in conversation order.
+    /// The **conversation** items, in order. The [system prompt](Self::set_system) and the
+    /// [context-usage signal](Self::refresh_context_usage_signal) are slots rather than thread
+    /// items and are not among them; [`messages`](Self::messages) is what renders all three
+    /// together.
     pub fn items(&self) -> &[ContextItem] {
         &self.items
+    }
+
+    /// The [system prompt](Self::set_system) slot, or `None` on a window that has not been given
+    /// one — a window mid-succession, between the transfer that
+    /// [cleared](Self::clear_system) it and the successor's loop setting its own.
+    pub fn system(&self) -> Option<&ContextItem> {
+        self.system.as_ref()
     }
 
     /// The pinned items — the fixed prefix compaction carries across the boundary

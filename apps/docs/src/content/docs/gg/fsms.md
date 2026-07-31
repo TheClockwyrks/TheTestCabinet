@@ -103,7 +103,8 @@ splits per state in the run's per-slot rollup.
 `transfer` names the [modules](/gg/modules/) the successor inherits — in the state
 they were in, not as a summary. A transition declaring `["history", "tasks"]` hands
 over the whole conversation and the task list itself; the successor's first turn opens
-on its predecessor's thread, with its own system prompt rebased in over the top.
+on its predecessor's thread, under its own system prompt — which is never one of the
+things a transfer carries, whatever the list says (see [modules](/gg/modules/)).
 
 **The list is explicit, and an absent or empty one carries nothing.** That is a
 deliberate hard reset between states rather than an oversight: a recorded configuration

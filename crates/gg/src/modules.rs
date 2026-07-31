@@ -427,8 +427,12 @@ impl ModuleHandle {
 /// History is the module that makes succession mean anything. When an agent
 /// [execs](https://docs.testcabinet.ai/gg/fork-and-exec/) into another, or a machine moves from
 /// one state to the next carrying `history`, what the successor receives is this — the whole
-/// thread, with the predecessor's system prompt [rebased](ContextModel::rebase) away and
-/// everything behind it left exactly where it sat.
+/// thread, exactly as it sat.
+///
+/// What it does **not** receive is the predecessor's [system prompt](ContextModel::set_system).
+/// That is not part of the thread: it lives in a slot of its own, describing the agent rather than
+/// the conversation, and [`adopt`](Self::adopt) empties it on the way across so the successor
+/// cannot be handed instructions naming someone else's toolset, roster and ending calls.
 ///
 /// It is always [enabled](Module::enabled) and always [owned](Ownership::Owned): an agent without
 /// a window is not an agent, and a window the agent's prompt does not carry is a contradiction —
@@ -496,9 +500,15 @@ impl HistoryModule {
     ///
     /// The id is new because the two windows diverge from here: they hold the same conversation for
     /// exactly as long as it takes the copy to say its first thing.
+    ///
+    /// The copy's [system-prompt slot](ContextModel::set_system) is emptied for the same reason
+    /// [`adopt`](Self::adopt) empties a transferred one — the copy is a different agent, and the
+    /// forker's prompt states the forker's toolset — and is filled by the child's own loop.
     pub fn forked(&self) -> Self {
+        let mut context = self.context.clone();
+        context.clear_system();
         Self {
-            context: self.context.clone(),
+            context,
             id: self.ids.next(ModuleKind::History),
             origin: GgModuleOrigin::Forked,
             ids: Arc::clone(&self.ids),
@@ -575,12 +585,16 @@ impl Module for HistoryModule {
         self.fork()
     }
 
-    /// Re-resolve the window's **holder-owned** properties: its execution mode, and (through
-    /// [`ModuleResolveCtx`]) the window limit of the model that is about to reason over it.
+    /// Re-resolve the window's **holder-owned** properties: its execution mode, (through
+    /// [`ModuleResolveCtx`]) the window limit of the model that is about to reason over it, and the
+    /// [system prompt](ContextModel::set_system) — which is *emptied* rather than replaced.
     ///
-    /// The system prompt is *not* rebased here. Rebasing needs a rendered prompt, which needs the
-    /// successor's registry and roster, which are built after its modules are — so the loop does
-    /// it, explicitly, at the one point it has both.
+    /// It is emptied here and filled by the loop because the two halves need different things at
+    /// different times. Clearing needs only the fact that the holder is changing, which is exactly
+    /// what an adoption is; rendering the successor's prompt needs its registry and roster, which
+    /// are built *after* its modules are. Doing the clearing here means a window in flight cannot
+    /// be carrying a prompt for the wrong agent even for the moment in between — there is no state
+    /// in which the predecessor's instructions are reachable and the successor's are not yet set.
     fn adopt(
         &mut self,
         profile: &GgAgentConfig,
@@ -589,6 +603,7 @@ impl Module for HistoryModule {
         let _ = profile;
         self.context.set_window_limit(ctx.history.window_limit);
         self.context.set_code_mode(ctx.history.code_mode);
+        self.context.clear_system();
         self.origin = GgModuleOrigin::Transferred;
         Ok(())
     }
@@ -1219,9 +1234,11 @@ pub fn fork_modules(
 ) -> (ModuleSet, Vec<GgTransitionModule>) {
     let ids = caps.ids();
     // A copy of a window is a new window: the two hold the same conversation only until the copy
-    // says its first thing.
-    let mut history =
-        HistoryModule::from_context(context.clone(), ids.next(ModuleKind::History), ids);
+    // says its first thing. The copy carries no system prompt — the forker's states the forker's
+    // toolset, and the child's own loop sets its own before its first turn.
+    let mut forked = context.clone();
+    forked.clear_system();
+    let mut history = HistoryModule::from_context(forked, ids.next(ModuleKind::History), ids);
     history.set_origin(GgModuleOrigin::Forked);
     let mut report = vec![GgTransitionModule {
         kind: ModuleKind::History,

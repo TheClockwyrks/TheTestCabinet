@@ -5502,35 +5502,38 @@ impl Agent {
                 .and_then(|project| project.assigned_issue.as_deref()),
             fences_are_stripped: code.healing.enabled(HealingStrategy::StripFences),
         });
-        // How the window opens. A **fresh** one is seeded the way every agent's has always been: the
-        // system prompt, then the build prompt, then whatever the capabilities pre-load into it. A
-        // **carried** one already holds a thread, and the only thing about it that must not be
-        // inherited is item 0 — a system prompt states the toolset, the roster and the ending calls
-        // of the agent it was rendered for — so it is rebased in place and everything behind it is
-        // left exactly where it sits. The two seeding steps below are skipped there for the same
-        // reason: they exist to fill an empty window, and this one is not.
+        // This agent's own system prompt, set unconditionally — on a fresh window and on one it
+        // inherited alike. It is not a thread item: it sits in a slot of its own that renders first
+        // on every request (see `ContextModel::set_system`), and a window arrives from a succession
+        // or a fork with that slot *empty*, because the prompt states the toolset, the roster and
+        // the ending calls of the agent it was rendered for and none of those survive the handoff.
+        // So there is nothing here to detect and nothing to undo: whatever this instance inherited,
+        // the prompt it reasons under is its own.
+        context.set_system(system);
+
+        // How the rest of the window opens. A **fresh** one is seeded the way every agent's has
+        // always been: the build prompt, then whatever the capabilities pre-load into it. A
+        // **carried** one already holds a thread, so the seeding steps below are skipped — they
+        // exist to fill an empty window, and this one is not.
         let carried = match &opening {
             Opening::Fresh => {
-                context.push_system(system);
                 context.push_user_prompt(prompt);
                 false
             }
             // A succession whose transfer list did **not** name `history` — the deliberate hard
-            // reset an FSM edge declares by carrying nothing. Its window is empty, so there is no
-            // thread to rebase and nothing for the seeding steps to duplicate: it is opened exactly
-            // as a fresh agent's is, and the handoff note is appended at the tail below on top of
-            // it. Without this the successor would hold a system prompt and a handoff note and no
-            // statement of the task at all — every other agent's brief lives in the build prompt,
-            // and a reset must not be the one way of losing it.
+            // reset an FSM edge declares by carrying nothing. Its window is empty, so there is
+            // nothing for the seeding steps to duplicate: it is opened exactly as a fresh agent's
+            // is, and the handoff note is appended at the tail below on top of it. Without this the
+            // successor would hold a system prompt and a handoff note and no statement of the task
+            // at all — every other agent's brief lives in the build prompt, and a reset must not be
+            // the one way of losing it.
             Opening::Carried { history: false, .. } => {
-                context.push_system(system);
                 context.push_user_prompt(prompt);
                 false
             }
-            Opening::Carried { .. } => {
-                context.rebase(system, None);
-                true
-            }
+            // A carried thread keeps its predecessor's build prompt: the successor is continuing
+            // the same task, and the handoff note at the tail says what changed.
+            Opening::Carried { .. } => true,
         };
 
         // Autoload the specifications: when this agent's profile enables the capability, seed the
@@ -5586,8 +5589,8 @@ impl Agent {
         refresh_boundary_blocks(context, caps);
 
         // The successor's opening note, appended at the **tail** of the transferred thread: what
-        // arrived, what did not, and whatever its predecessor wanted it to know. Pushed after the
-        // rebase and after any pinned blocks the modules brought with them, so it is the last thing
+        // arrived, what did not, and whatever its predecessor wanted it to know. Pushed after any
+        // pinned blocks the modules brought with them, so it is the last thing
         // the model reads before its first turn — and ephemeral, because it is gg speaking about
         // the handoff rather than material the agent produced, and a later compaction has by then
         // folded everything it announced into the blocks that cross the boundary.

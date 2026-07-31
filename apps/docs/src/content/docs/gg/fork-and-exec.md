@@ -47,6 +47,14 @@ The successor is **told** all three, in an opening note at the tail of the windo
 inherited, along with whatever the `prompt` said. An agent left to discover an empty task
 list by calling `add_task` has spent a turn learning something a sentence could have said.
 
+**The system prompt is not on that table, because it never crosses.** It describes the
+*agent* — its toolset, its roster, its capability prose, the calls that end its session —
+and the successor is a different agent. It is not a message in the thread at all: it lives
+in a [slot of its own](/gg/context-visibility/) that renders first on every request, the
+window crosses the boundary with that slot empty, and the successor's own prompt is set
+before its first turn. So an exec'd agent reads its own instructions and only its own, on a
+conversation that is otherwise untouched — and the same is true of a `fork`'s copy.
+
 ### It is one agent throughout
 
 Each incarnation gets a fresh agent id, parents to the one before it, and keeps the **same

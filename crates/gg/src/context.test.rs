@@ -36,7 +36,7 @@ fn call(id: &str, name: &str) -> ToolCall {
 #[test]
 fn prompt_items_expose_source_message_tokens_and_label_in_order() {
     let mut ctx = model(Some(1000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.push_user_prompt("build a game");
     ctx.push_tool_result(tool_output_source("write_file"), "c1", "wrote index.html");
     ctx.push_file_view(
@@ -91,7 +91,7 @@ fn estimate_matches_the_models_estimator() {
 #[test]
 fn renders_to_messages_in_push_order_faithfully() {
     let mut ctx = model(Some(1000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.push_user_prompt("build a game");
     ctx.push_assistant(Some("on it".to_string()), vec![call("c1", "write_file")]);
     ctx.push_tool_result(tool_output_source("write_file"), "c1", "wrote index.html");
@@ -116,34 +116,37 @@ fn renders_to_messages_in_push_order_faithfully() {
 #[test]
 fn tags_sources_and_retention_per_item() {
     let mut ctx = model(Some(1000));
-    ctx.push_system("s");
+    ctx.set_system("s");
     ctx.push_user_prompt("u");
     ctx.push_assistant(Some("a".to_string()), Vec::new());
     ctx.push_tool_result(tool_output_source("shell"), "c1", "out");
     ctx.push_tool_result(tool_output_source("read_file"), "c2", "file body");
 
+    // The system prompt is not a thread item: it sits in a slot of its own, rendered first.
+    let system = ctx.system().expect("the slot was set");
+    assert_eq!(system.source(), GgContextSource::System);
+    assert!(system.retention().is_pinned());
+
     let items = ctx.items();
-    assert_eq!(items[0].source(), GgContextSource::System);
+    assert_eq!(items[0].source(), GgContextSource::UserPrompt);
     assert!(items[0].retention().is_pinned());
-    assert_eq!(items[1].source(), GgContextSource::UserPrompt);
-    assert!(items[1].retention().is_pinned());
-    assert_eq!(items[2].source(), GgContextSource::Assistant);
-    assert!(!items[2].retention().is_pinned());
+    assert_eq!(items[1].source(), GgContextSource::Assistant);
+    assert!(!items[1].retention().is_pinned());
     // A shell result is generic tool output; a file read is a (evictable) file view.
-    assert_eq!(items[3].source(), GgContextSource::ToolOutput);
-    assert_eq!(items[4].source(), GgContextSource::FileView);
+    assert_eq!(items[2].source(), GgContextSource::ToolOutput);
+    assert_eq!(items[3].source(), GgContextSource::FileView);
+    assert!(!items[2].retention().is_pinned());
     assert!(!items[3].retention().is_pinned());
-    assert!(!items[4].retention().is_pinned());
 
     // The pinned/ephemeral partition (the Phase 2 seam) reflects the tags.
-    assert_eq!(ctx.pinned().count(), 2);
+    assert_eq!(ctx.pinned().count(), 1);
     assert_eq!(ctx.ephemeral().count(), 3);
 }
 
 #[test]
 fn per_source_accounting_sums_to_the_total() {
     let mut ctx = model(Some(10_000));
-    ctx.push_system("system prompt text here");
+    ctx.set_system("system prompt text here");
     ctx.push_user_prompt("the build prompt");
     ctx.push_tool_result(tool_output_source("read_file"), "c1", "a file body");
     ctx.push_tool_result(tool_output_source("read_file"), "c2", "another file body");
@@ -183,21 +186,21 @@ fn usage_by_source_is_in_stable_all_order() {
 #[test]
 fn fullness_is_total_over_limit_and_unknown_without_a_limit() {
     let mut ctx = model(Some(100));
-    ctx.push_system("x"); // heuristic: framing(4) + ceil(1/4)=1 => 5 tokens
+    ctx.set_system("x"); // heuristic: framing(4) + ceil(1/4)=1 => 5 tokens
     assert_eq!(ctx.total_tokens(), 5);
     assert_eq!(ctx.window_limit(), Some(100));
     assert_eq!(ctx.fullness(), Some(0.05));
 
     // With no window limit, fullness is unknown (the wire reports it absent).
     let mut no_limit = model(None);
-    no_limit.push_system("x");
+    no_limit.set_system("x");
     assert_eq!(no_limit.fullness(), None);
 }
 
 #[test]
 fn breakdown_event_carries_the_accounting() {
     let mut ctx = model(Some(1000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.push_user_prompt("prompt");
 
     match ctx.breakdown_event() {
@@ -261,7 +264,7 @@ fn tool_output_source_maps_reads_to_file_views() {
 #[test]
 fn evict_file_views_removes_all_or_by_path_and_reclaims_tokens() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.push_file_view(
         Some("a.js".to_string()),
         None,
@@ -342,7 +345,7 @@ fn a_locked_file_view_is_spared_by_eviction() {
 #[test]
 fn compaction_keeps_a_locked_file_view_and_carries_its_image() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.push_user_prompt("build");
     // A locked autoloaded reference image, pinned as an image `tool` result.
     let image = ImageContent::new("image/png", "AAAA".to_string(), 3);
@@ -407,7 +410,7 @@ fn evict_file_views_on_a_missing_path_reclaims_nothing() {
 fn archive_thread_removes_the_named_turns_and_archives_only_their_results() {
     let mut ctx = model(Some(100_000));
     // Pinned prefix (never archived), seeded before any turn opens.
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.push_user_prompt("build");
     ctx.push(
         GgContextSource::Skill,
@@ -485,7 +488,7 @@ fn archive_thread_removes_the_named_turns_and_archives_only_their_results() {
 #[test]
 fn archive_thread_ranges_are_inclusive_and_may_overlap() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     for turn in 1..=5u64 {
         ctx.begin_turn(turn);
         ctx.push_assistant(Some(format!("turn {turn}")), vec![call("c", "shell")]);
@@ -513,7 +516,7 @@ fn archive_thread_ranges_are_inclusive_and_may_overlap() {
 fn archive_thread_never_touches_the_pinned_prefix_or_an_unopened_turn() {
     let mut ctx = model(Some(100_000));
     // Seeded before the first turn, so it carries turn 0.
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.begin_turn(1);
     ctx.push_assistant(Some("turn one".to_string()), Vec::new());
 
@@ -527,7 +530,7 @@ fn archive_thread_never_touches_the_pinned_prefix_or_an_unopened_turn() {
 #[test]
 fn archive_thread_with_no_ranges_or_no_match_archives_nothing() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.begin_turn(1);
     ctx.push_assistant(Some("only turn".to_string()), Vec::new());
 
@@ -636,7 +639,7 @@ fn signal_options() -> UsageSignalOptions {
 #[test]
 fn the_usage_signal_reports_every_category_as_a_share_of_the_window() {
     let mut ctx = model(Some(10_000));
-    ctx.push_system("the base system prompt");
+    ctx.set_system("the base system prompt");
     ctx.push_user_prompt("build a game");
     ctx.replace_source(
         GgContextSource::TaskList,
@@ -667,7 +670,7 @@ fn the_usage_signal_reports_every_category_as_a_share_of_the_window() {
 #[test]
 fn the_usage_signal_breaks_file_views_down_by_file_when_eviction_is_possible() {
     let mut ctx = model(Some(20_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.push_file_view(
         Some("src/main.rs".to_string()),
         None,
@@ -701,7 +704,7 @@ fn the_usage_signal_breaks_file_views_down_by_file_when_eviction_is_possible() {
 #[test]
 fn the_file_breakdown_is_withheld_from_an_agent_that_cannot_evict() {
     let mut ctx = model(Some(20_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.push_file_view(
         Some("src/main.rs".to_string()),
         None,
@@ -727,7 +730,7 @@ fn the_file_breakdown_is_withheld_from_an_agent_that_cannot_evict() {
 #[test]
 fn the_file_breakdown_is_capped_at_the_configured_count() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     for index in 0..8 {
         ctx.push_file_view(
             Some(format!("src/f{index}.rs")),
@@ -757,7 +760,7 @@ fn the_file_breakdown_is_capped_at_the_configured_count() {
 #[test]
 fn repeated_reads_of_one_file_are_summed_into_one_entry() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     for id in ["c1", "c2", "c3"] {
         ctx.push_file_view(
             Some("src/main.rs".to_string()),
@@ -789,7 +792,7 @@ fn repeated_reads_of_one_file_are_summed_into_one_entry() {
 #[test]
 fn a_pinned_file_view_is_left_out_of_the_breakdown() {
     let mut ctx = model(Some(20_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.push_file_view_with_retention(
         Some("specs/spec.md".to_string()),
         None,
@@ -806,7 +809,7 @@ fn a_pinned_file_view_is_left_out_of_the_breakdown() {
 #[test]
 fn the_usage_signal_is_refreshed_in_its_slot_and_never_accumulates() {
     let mut ctx = model(Some(10_000));
-    ctx.push_system("the base system prompt");
+    ctx.set_system("the base system prompt");
     ctx.refresh_context_usage_signal(signal_options());
     let first = signal_text(&ctx).unwrap();
     assert_eq!(count_signal_items(&ctx), 1);
@@ -825,7 +828,7 @@ fn the_usage_signal_is_refreshed_in_its_slot_and_never_accumulates() {
 #[test]
 fn the_usage_signal_does_not_survive_a_context_reset() {
     let mut ctx = model(Some(10_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.push_assistant(Some("working".to_string()), Vec::new());
     ctx.refresh_context_usage_signal(signal_options());
     assert_eq!(count_signal_items(&ctx), 1);
@@ -842,7 +845,7 @@ fn the_usage_signal_does_not_survive_a_context_reset() {
 #[test]
 fn the_usage_signal_renders_last() {
     let mut ctx = model(Some(10_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.refresh_context_usage_signal(signal_options());
     ctx.push_assistant(Some("working".to_string()), Vec::new());
     ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "exit code: 0");
@@ -862,7 +865,7 @@ fn the_usage_signal_renders_last() {
 #[test]
 fn no_usage_signal_without_a_window_limit() {
     let mut ctx = model(None);
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.refresh_context_usage_signal(signal_options());
     assert_eq!(count_signal_items(&ctx), 0);
 }
@@ -896,7 +899,7 @@ fn count_signal_items(ctx: &ContextModel) -> usize {
 #[test]
 fn replacing_a_source_with_an_unchanged_block_leaves_it_in_place() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     let block = Message::user("# Your tasks\n\n- [ ] scaffold");
     ctx.replace_source(
         GgContextSource::TaskList,
@@ -936,7 +939,7 @@ fn replacing_a_source_with_an_unchanged_block_leaves_it_in_place() {
 #[test]
 fn replacing_a_source_with_a_changed_block_moves_it_to_the_tail() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.replace_source(
         GgContextSource::TaskList,
         Retention::Pinned,
@@ -976,7 +979,7 @@ fn replacing_a_source_with_a_changed_block_moves_it_to_the_tail() {
         task_items[0].message().content.as_deref(),
         Some("# Your tasks\n\n- [ ] scaffold\n- [ ] core")
     );
-    let superseded = &ctx.items()[1];
+    let superseded = &ctx.items()[0];
     assert_eq!(superseded.source(), GgContextSource::History);
     assert!(!superseded.retention().is_pinned());
 }
@@ -988,7 +991,7 @@ fn a_changed_block_still_extends_the_previous_window() {
     // the longer it had held still, the more that cost. Superseding in place keeps the render
     // append-only across the change too.
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.replace_source(
         GgContextSource::TaskList,
         Retention::Pinned,
@@ -1030,7 +1033,7 @@ fn a_changed_block_still_extends_the_previous_window() {
 #[test]
 fn replacing_a_source_collapses_multiple_items_back_to_one() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     let block = Message::user("# Memories\n\n- plan");
     // Two items for one single-block source (a shape no caller should produce, but the
     // in-place path must not mistake it for "already correct").
@@ -1051,7 +1054,7 @@ fn replacing_a_source_collapses_multiple_items_back_to_one() {
 #[test]
 fn replacing_an_absent_source_with_nothing_changes_nothing() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     let before = ctx.messages();
     ctx.replace_source(GgContextSource::TaskList, Retention::Pinned, None);
     assert_eq!(ctx.messages(), before);
@@ -1062,7 +1065,7 @@ fn replacing_an_absent_source_with_nothing_changes_nothing() {
 #[test]
 fn refreshing_the_signal_only_ever_changes_the_last_message() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.refresh_context_usage_signal(signal_options());
     ctx.push_assistant(None, vec![call("c1", "shell")]);
     ctx.push_tool_result(GgContextSource::ToolOutput, "c1", "x".repeat(40_000));
@@ -1092,7 +1095,7 @@ fn every_turn_extends_the_previous_turns_window() {
     // turn here — the memory block, the task list, the board, and the usage signal — some
     // holding still, some genuinely changing, and the window still only ever grows.
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.push_user_prompt("build a game");
 
     let memories = Message::user("# Memories\n\n- plan");
@@ -1225,7 +1228,7 @@ fn evicting_a_file_view_reclaims_its_image_too() {
 #[test]
 fn strip_images_drops_pictures_but_keeps_the_conversation_well_formed() {
     let mut ctx = model(Some(100_000));
-    ctx.push_system("system");
+    ctx.set_system("system");
     ctx.push_assistant(None, vec![call("c1", "read_file")]);
     ctx.push_file_view(
         Some("ref.png".to_string()),
@@ -1275,7 +1278,7 @@ fn strip_images_is_a_no_op_when_there_are_none() {
 #[test]
 fn code_mode_heads_synthesized_user_messages_by_source() {
     let mut ctx = code_model(Some(100_000));
-    ctx.push_system("the system prompt");
+    ctx.set_system("the system prompt");
     ctx.push_user_prompt("build a game");
     ctx.push(
         GgContextSource::ToolOutput,

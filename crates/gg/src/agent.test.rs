@@ -1790,7 +1790,7 @@ async fn locked_autoload_survives_compaction() {
         Some(100_000),
         false,
     );
-    unlocked.push_system("system");
+    unlocked.set_system("system");
     unlocked.push_user_prompt("build");
     autoload_specifications(&mut unlocked, &provided, &ctx, false, &emitter).await;
     unlocked.clear_ephemeral();
@@ -1808,7 +1808,7 @@ async fn locked_autoload_survives_compaction() {
         Some(100_000),
         false,
     );
-    locked.push_system("system");
+    locked.set_system("system");
     locked.push_user_prompt("build");
     autoload_specifications(&mut locked, &provided, &ctx, true, &emitter).await;
     assert!(

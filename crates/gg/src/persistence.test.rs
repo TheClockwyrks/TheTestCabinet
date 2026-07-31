@@ -177,7 +177,7 @@ fn the_setup_records_only_for_a_persistent_profile() {
 #[test]
 fn the_recorded_desk_is_the_windows_ephemeral_file_views() {
     let mut window = context();
-    window.push_system("system");
+    window.set_system("system");
     window.push_file_view(Some("a.rs".to_string()), None, "c1", "whole a", vec![]);
     window.push_file_view(
         Some("b.rs".to_string()),
@@ -445,11 +445,13 @@ async fn an_empty_record_seeds_nothing() {
     let (_dir, ctx) = workspace(&[]);
     let (emitter, _sink) = emitter();
     let mut window = context();
-    window.push_system("system");
+    window.set_system("system");
 
     assert_eq!(
         restore_file_views(&mut window, &[], ReadPolicy::Unlimited, &ctx, &emitter).await,
         0
     );
-    assert_eq!(window.items().len(), 1);
+    // Nothing was added to the thread; the system prompt is a slot, not an item.
+    assert!(window.items().is_empty());
+    assert!(window.system().is_some());
 }

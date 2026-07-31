@@ -411,7 +411,7 @@ fn a_memory_compaction_names_the_memory_strategys_own_calls() {
 #[test]
 fn a_handoff_transcript_is_labelled_user_messages_with_no_state() {
     let mut ctx = model(false);
-    ctx.push_system("SYSTEM PROMPT — do not show this to the summarizer");
+    ctx.set_system("SYSTEM PROMPT — do not show this to the summarizer");
     ctx.push_user_prompt("BUILD PROMPT");
     ctx.push(
         GgContextSource::Skill,
