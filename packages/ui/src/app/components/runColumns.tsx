@@ -125,8 +125,9 @@ function categoryLabel(testType: string): string {
 
 // The status label for an in-progress run's live phase. "queued"/"starting" carry
 // an ellipsis (work is pending and will proceed on its own); "pending" is a
-// deliberate hold (the harness is at its parallelism cap), shown without one so it
-// reads as a settled state rather than imminent progress.
+// deliberate hold — the harness is at its parallelism cap, or the run is a game-jam
+// entry waiting for the same model's earlier entry of that jam to finish — shown
+// without one so it reads as a settled state rather than imminent progress.
 const ACTIVE_STATE_LABEL: Readonly<Record<InProgressRun["state"], string>> = {
   queued: "queued…",
   pending: "pending",
