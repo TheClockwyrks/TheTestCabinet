@@ -6,7 +6,7 @@
 // still in flight.
 
 import {
-  startRun,
+  startScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -24,7 +24,7 @@ export default function item() {
     id: "tower-art.projectiles-travel",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single);
+      const snap = await startScenario(api, MAP.single);
       const g = pathGeom(snap.paths[0]);
       const s0 = g.length * 0.2;
       await placeCovering(api, "cleaver", g, s0);

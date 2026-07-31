@@ -27,6 +27,7 @@ import {
   pathGeom,
   placeCovering,
   battery,
+  decayKind,
   TICK,
 } from "../_helpers.mjs";
 import {
@@ -160,8 +161,13 @@ export default function item() {
                 Math.hypot(u.x - o.x, u.y - o.y) <= dist,
             );
             if (nearerHeavy) continue;
-            if (u.electrons >= 6) alpha += 1;
-            if (u.electrons === 2) beta += 1;
+            // What it was BORN as, off `maxHp` — not its live `electrons`, which the
+            // battery is already pulling down. Reading each new id once made this the one
+            // decay check that got the answer right; `decayKind` is what makes it right
+            // by construction rather than by polling fast enough.
+            const kind = decayKind(u);
+            if (kind === "alpha") alpha += 1;
+            if (kind === "beta") beta += 1;
           }
           return d == null;
         },

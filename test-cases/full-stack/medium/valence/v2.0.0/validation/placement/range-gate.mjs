@@ -15,7 +15,7 @@
 // having been out of range throughout rather than on where it was posed.
 
 import {
-  startRun,
+  startScenario,
   pathGeom,
   placeCovering,
   farthestFrom,
@@ -46,7 +46,7 @@ export default function item() {
     id: "placement.range-gate",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single);
+      const snap = await startScenario(api, MAP.single);
       const g = pathGeom(snap.paths[0]);
       const s0 = g.length * 0.18;
       const t = await placeCovering(api, "emitter", g, s0);

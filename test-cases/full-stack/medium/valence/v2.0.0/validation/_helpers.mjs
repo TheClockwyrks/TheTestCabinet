@@ -32,6 +32,27 @@
 // cannot re-seed, since only `reset` takes a seed. Use the plain form for the run
 // an item arranges, the `poseX` twin for any later run it opens inside `act`.
 //
+// WHERE A SCENARIO IS POSED: on a SCENARIO ROUND — the live, wave-less, self-holding
+// round `startScenario` opens (specs/instrumentation.md). `startScenario`/`poseScenario`
+// below open one; every helper that poses matter and runs time goes through them.
+//
+// This is deliberate and it is worth knowing why, because the obvious alternatives both
+// fail. Posing into the opening build phase that `selectMap` leaves you on asks the build
+// to run its entity systems in a phase where a player never has matter on the board —
+// nothing anyone can see turns on it, so a build that gates its tick on
+// `phase === "round"` (an ordinary way to write a tower defence) freezes every scenario
+// while playing perfectly by hand. Posing into a REAL round via `startRound` instead
+// pours the round's own wave over the single unit under test: its bounties land in the
+// energy delta, its leaks in the integrity delta, its atoms compete for the tower's
+// target. The scenario round is the board that is neither — the game's real round
+// behavior, over only what the check posed.
+//
+// The checks that are ABOUT a real round — the round-clear bonus, interest, early send,
+// victory, the boss milestones, the pause items, the round table's own composition — use
+// `startRun`/`poseRun` and drive `startRound` themselves. Those two openers leave the run
+// in the opening build phase and are also what a check that reads static state (a map's
+// geometry, placement legality, the full opening-phase refund) wants.
+//
 // UNITS ARE TICKS. Valence is a 60 Hz fixed timestep (specs/controls.md) and the
 // debug API's `step` takes whole ticks, so every duration below is a tick count
 // (the runtime converts to wall-clock for the record pass). The seconds these
@@ -124,6 +145,59 @@ export function unitById(snap, id) {
 }
 export function towerById(snap, id) {
   return snap.towers.find((t) => t.id === id) ?? null;
+}
+
+/**
+ * Whether a cluster's bond pool is SPENT — the moment a check that chips one open is
+ * waiting for.
+ *
+ * Read the pool, not the trait. specs/instrumentation.md gives `bond` two conformant ways
+ * to say "nothing left": it "falls to `0` as it is chipped open", and it is "`null` if
+ * unbonded" — so a build that drops the `bonded` trait at the break reports `null` from
+ * that instant and one that keeps the unit's pool field around reports `0`. Both are the
+ * same event. `traits.bonded === false` is NOT the thing to wait on: it is a separate
+ * requirement (specs/matter.md: "Bonded is a state, not a lineage"), and a build that gets
+ * it wrong would leave the wait running to the unit's DEATH instead — which is how one
+ * missing flag turned into a dozen assertions comparing against a corpse. Wait on this,
+ * assert the trait separately, and the failure lands on the one thing that broke.
+ *
+ * Pure read of a unit already in hand — callable from any phase.
+ */
+export function poolSpent(unit) {
+  return unit != null && !(unit.bond > 0);
+}
+
+// The decay particles a heavy emits (specs/matter.md): an alpha is a full 6-electron atom,
+// a beta a light 2-electron one.
+export const ALPHA_ELECTRONS = 6;
+export const BETA_ELECTRONS = 2;
+
+/**
+ * Which decay particle a unit was BORN as — `"alpha"`, `"beta"`, or `null` if it is not a
+ * free atom of either size.
+ *
+ * Keyed on `maxHp` (specs/instrumentation.md: `hp`/`maxHp` are "remaining and starting
+ * shells", and an atom's shells ARE its electrons, specs/matter.md), never on the live
+ * `electrons` count. That distinction is the whole point: `electrons` FALLS as the particle
+ * is stripped, so an alpha under fire reads 6, then 4, then 2 on its way down — and a check
+ * that classifies by the live value counts that alpha as a beta. `heavies.decays` did, and
+ * reported "the heavy sheds a beta" as satisfied against a build that never emits one.
+ * `maxHp` does not move, so it identifies the particle however late it is first sighted and
+ * whatever the poll rate.
+ *
+ * SCOPE: this reads a particle's SIZE, which is all a snapshot exposes about where a free
+ * atom came from. On a board that also holds a bonded cluster it cannot tell a shed
+ * 6-electron cluster atom from an alpha. Every caller poses a lone heavy or the boss, so
+ * the only free atoms present are decay emissions; a check that needs both on one board has
+ * to attribute by another means (see the position-credit rule in `boss.fission-daughters`).
+ *
+ * Pure read — callable from any phase.
+ */
+export function decayKind(unit) {
+  if (unit == null || unit.type !== "atom") return null;
+  if (unit.maxHp === ALPHA_ELECTRONS) return "alpha";
+  if (unit.maxHp === BETA_ELECTRONS) return "beta";
+  return null;
 }
 
 // ---- Path geometry (derived from a path snapshot) -----------------------------
@@ -328,9 +402,13 @@ async function applyRunPreconditions(
 
 /**
  * ARRANGE-only. Begin a driven run on `mapId` from a seeded reset and set the economy
- * preconditions. Returns the snapshot after set-up. `round` (optional) primes the round
- * the next `startRound` would build; energy/integrity default generous so scenarios can
- * afford towers and never lose by accident.
+ * preconditions, leaving the run where `selectMap` does: on the untimed OPENING BUILD
+ * PHASE. Returns the snapshot after set-up. `round` (optional) primes the round the next
+ * `startRound` would build; energy/integrity default generous so scenarios can afford
+ * towers and never lose by accident.
+ *
+ * This is the opener for a check that drives a REAL round itself, or that reads static
+ * state and never runs time. A check that poses matter and steps wants `startScenario`.
  *
  * Opens with `api.reset({ seed })`, which is what makes the run reproducible — and what
  * makes this arrange-only. To open a further run from inside `act`, use `poseRun`.
@@ -362,6 +440,47 @@ export async function poseRun(
   { energy = HUGE_ENERGY, integrity = HUGE_INTEGRITY, round } = {},
 ) {
   return applyRunPreconditions(api, mapId, { energy, integrity, round });
+}
+
+/**
+ * Open the SCENARIO ROUND a run's preconditions have been set for, and return the
+ * snapshot on it. Shared by `startScenario` and `poseScenario`.
+ *
+ * A build that does not open one would leave every check downstream measuring a board
+ * that is not live, and that reads as dozens of unrelated conformance failures. So this
+ * refuses to go on: it throws, and the runtime reports the item as "the build exposed the
+ * debug API this check drives" with the message below as the actual — one sentence, the
+ * same on every affected item, naming the operation that was missing. The item that
+ * actually GRADES the operation is `instrumentation.scenario-round`, which drives it
+ * directly and states each of its properties as its own assertion.
+ */
+async function enterScenarioRound(api) {
+  await api.call("startScenario");
+  const snap = await api.snapshot();
+  if (snap.phase !== "round") {
+    throw new Error(
+      `startScenario did not open a live scenario round (phase is "${snap.phase}", ` +
+        `screen "${snap.screen}") — see specs/instrumentation.md; every posed scenario ` +
+        `needs one, so this check could not be run`,
+    );
+  }
+  return snap;
+}
+
+/**
+ * ARRANGE-only. `startRun`, and then a scenario round on top of it: the board every check
+ * that poses matter and runs time works on. Same options and same return shape as
+ * `startRun`.
+ */
+export async function startScenario(api, mapId = MAP.single, opts = {}) {
+  await startRun(api, mapId, opts);
+  return enterScenarioRound(api);
+}
+
+/** Twin of `startScenario` callable from EITHER phase (no `reset`). Same return shape. */
+export async function poseScenario(api, mapId = MAP.single, opts = {}) {
+  await poseRun(api, mapId, opts);
+  return enterScenarioRound(api);
 }
 
 /**
@@ -482,12 +601,12 @@ async function buildCoverAndSpawn(
  * then runs the real sim and reads the outcome — nothing about the result is set up here.
  */
 export async function coverAndSpawn(api, opts = {}) {
-  return buildCoverAndSpawn(api, startRun, opts);
+  return buildCoverAndSpawn(api, startScenario, opts);
 }
 
 /** Twin of `coverAndSpawn` callable from EITHER phase (no `reset`). Same return shape. */
 export async function poseCoverAndSpawn(api, opts = {}) {
-  return buildCoverAndSpawn(api, poseRun, opts);
+  return buildCoverAndSpawn(api, poseScenario, opts);
 }
 
 /** The shared body of `coverAndPassThrough` / `poseCoverAndPassThrough`. */
@@ -521,12 +640,12 @@ async function buildCoverAndPassThrough(
  * `{ g, tower, towerId, unitId, snap0 }`.
  */
 export async function coverAndPassThrough(api, opts = {}) {
-  return buildCoverAndPassThrough(api, startRun, opts);
+  return buildCoverAndPassThrough(api, startScenario, opts);
 }
 
 /** Twin of `coverAndPassThrough` callable from EITHER phase (no `reset`). Same return shape. */
 export async function poseCoverAndPassThrough(api, opts = {}) {
-  return buildCoverAndPassThrough(api, poseRun, opts);
+  return buildCoverAndPassThrough(api, poseScenario, opts);
 }
 
 // ---- Round driving ------------------------------------------------------------
@@ -618,18 +737,47 @@ export async function actNoTowerRound(api, { max = 19200, poll = 120 } = {}) {
 // REAL time in both passes, which is what makes it the right instrument here.
 const MENU_PAINT_MS = 400;
 
+// How long to let a confirmed menu choice land and paint before the screen is read.
+const MENU_SETTLE_MS = 150;
+
+// The key pairs specs/controls.md leaves the build to choose between: "`Up`/`Down` (or
+// `W`/`S`) move the selection and `Enter`/`Space` confirms". BOTH movement bindings are
+// conformant and so are both confirms, so a check that presses only `ArrowDown`+`Enter`
+// pins one arrangement of four and reports a build that navigates fine on `W`/`S` as
+// having no how-to-play screen at all. Movement is tried outermost because a movement key
+// the build ignores leaves the selection where it was, so the next pair starts from the
+// same first entry; the confirms are tried within a pair without re-pressing movement,
+// for the same reason.
+const MENU_MOVE_KEYS = ["ArrowDown", "KeyS"];
+const MENU_CONFIRM_KEYS = ["Enter", "Space"];
+
 /**
- * From a freshly reset title, drive the menu down `steps` entries and confirm — the
- * same keyboard path a player uses (specs/controls.md). A fresh page opens with the
- * first entry highlighted, so `steps` counts entries below it.
+ * From a freshly reset title, drive the menu down `steps` entries and confirm — the same
+ * keyboard path a player uses (specs/controls.md) — and return the SCREEN it reached.
+ * A fresh page opens with the first entry highlighted, so `steps` counts entries below it.
+ *
+ * The caller asserts on the returned screen rather than on a bare boolean, so a build that
+ * navigates to the wrong entry reports where it actually went.
  *
  * Opens with a real paint settle (see `MENU_PAINT_MS`); the presses themselves consume no
  * simulation time, so this is callable from either phase.
  */
 export async function navigateMenu(api, steps) {
   await api.settle(MENU_PAINT_MS);
-  for (let i = 0; i < steps; i += 1) await api.call("press", "ArrowDown");
-  await api.call("press", "Enter");
+  let reached = (await api.snapshot()).screen;
+  for (const move of MENU_MOVE_KEYS) {
+    for (let i = 0; i < steps; i += 1) await api.call("press", move);
+    for (const confirm of MENU_CONFIRM_KEYS) {
+      await api.call("press", confirm);
+      await api.settle(MENU_SETTLE_MS);
+      reached = (await api.snapshot()).screen;
+      // Anything but the title means the menu answered both keys of this pair. Trying a
+      // further binding could only move the selection again from wherever the build left
+      // it, so the entry that was confirmed is the answer — right or wrong.
+      if (reached !== "title") return reached;
+    }
+  }
+  return reached;
 }
 
 // ---- Pixel / color sampling (reads the rendered canvas) -----------------------

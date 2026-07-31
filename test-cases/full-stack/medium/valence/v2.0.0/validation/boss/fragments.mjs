@@ -6,7 +6,7 @@
 // containment pool and then crack the nucleus behind it — and watches the real matter
 // list for the alpha (6-electron) and beta (2-electron) atoms the chain emits.
 
-import { unitById } from "../_helpers.mjs";
+import { unitById, decayKind } from "../_helpers.mjs";
 import { bossUnderFire } from "./_boss.mjs";
 
 const MAX_CRACK_TICKS = 7200; // 7200 ticks = the old 120 s cap — generous game time, not wall clock
@@ -41,11 +41,14 @@ export default function item() {
       // poll 3 = the old 0.05 s chunk.
       r = await api.until(
         (s) => {
+          // By what each fragment was BORN as (`decayKind`, off `maxHp`), not by its live
+          // `electrons`: the Impactor line is chewing these fragments down as fast as the
+          // boss emits them, and a 6-electron alpha being stripped reads 4 and then 2 on
+          // the way — which a live read counts as a beta the boss never emitted.
           for (const u of s.matter) {
-            if (u.type === "atom") {
-              if (u.electrons >= 6) sawAlpha = true;
-              if (u.electrons === 2) sawBeta = true;
-            }
+            const kind = decayKind(u);
+            if (kind === "alpha") sawAlpha = true;
+            if (kind === "beta") sawBeta = true;
           }
           return sawAlpha && sawBeta;
         },

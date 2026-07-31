@@ -15,7 +15,7 @@
 // Both lanes must also carry real traffic, which a posed unit on each confirms.
 
 import {
-  startRun,
+  startScenario,
   pathGeom,
   laneGaps,
   sharedStretch,
@@ -39,7 +39,7 @@ export default function item() {
     id: "maps.branching-fork",
 
     async arrange(api) {
-      snap0 = await startRun(api, MAP.branching, { integrity: 100000 });
+      snap0 = await startScenario(api, MAP.branching, { integrity: 100000 });
       // A real unit on each lane, whose travel `act` then confirms.
       await spawnAt(api, { type: "atom", electrons: 2, pathId: 0, s: 30 });
       await spawnAt(api, { type: "atom", electrons: 2, pathId: 1, s: 30 });

@@ -288,6 +288,25 @@ description = "What the build looks and sounds like: the tool-produced matter, t
 format = 2
 
 # =============================================================================
+# Debug & Automation API
+# =============================================================================
+# Placed first because it is the gate. Almost every automated item below poses matter
+# and towers on the SCENARIO ROUND that `startScenario` opens (specs/instrumentation.md)
+# and then runs the real simulation over it. A build that does not open one fails this
+# item, by name, and the automated verdicts below it are untested rather than answered —
+# which is the difference between reading a result and investigating one.
+
+# --- The scenario board ------------------------------------------------------
+[[review.categories]]
+id = "instrumentation"
+title = "Debug & Automation API"
+[[review.categories.items]]
+id = "scenario-round"
+title = "The debug API opens a live scenario round"
+description = "`startScenario` opens a live round the wave system leaves empty and that does not end on its own: the run enters the round phase without advancing the round number, no wave is sent into it, matter posed on it flows and is fired on by a tower in range exactly as it would mid-round, and the round does not clear back to the build phase when the board empties."
+validation = { script = "validation/instrumentation/scenario-round.mjs", outputs = [{ id = "scenario", name = "A posed unit flowing and under fire on an empty scenario round", kind = "video" }] }
+
+# =============================================================================
 # Reaction Systems
 # =============================================================================
 
@@ -496,8 +515,13 @@ validation = { script = "validation/detection/other-sources.mjs", outputs = [{ i
 [[review.categories.items]]
 id = "inert-modifier"
 title = "Inert is a modifier any type can carry"
-description = "Inert is a modifier rather than a property of three fixed types: a type that is not inert by default — a Dimer — can be released shielded, keeping its own traits and gaining the inert one. While shielded nothing can touch it (a tower never acquires it and its bond pool does not move); revealed by a detector, the same tower chips it. The round table applies the modifier for itself, sending both plain and shielded Dimers."
+description = "Inert is a modifier rather than a property of three fixed types: a type that is not inert by default — a Dimer — can be released shielded, keeping its own traits and gaining the inert one. While shielded nothing can touch it (a tower never acquires it and its bond pool does not move); revealed by a detector, the same tower chips it."
 validation = { script = "validation/detection/inert-modifier.mjs", outputs = [{ id = "shielded", name = "A shielded Dimer untouchable until it is revealed", kind = "video" }] }
+[[review.categories.items]]
+id = "inert-round-table"
+title = "The round table applies the inert modifier"
+description = "The round table uses the modifier for itself rather than leaving it to posed matter: Round 37 fields both plain and shielded Dimers, and the real wave system releases them that way."
+validation = { script = "validation/detection/inert-round-table.mjs", outputs = [{ id = "wave", name = "Round 37 releasing both plain and shielded Dimers", kind = "video" }] }
 [[review.categories.items]]
 id = "catalyst-excite"
 title = "A Catalyst excites matter it reveals"

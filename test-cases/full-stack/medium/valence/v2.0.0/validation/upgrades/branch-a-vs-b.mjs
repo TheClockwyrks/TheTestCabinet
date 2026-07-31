@@ -6,11 +6,11 @@
 // single bolt.
 //
 // TWO runs: the Spread branch is arranged, the Charged branch posed inside `act` with
-// `poseRun` (control ops only — `api.reset` throws there).
+// `poseScenario` (control ops only — `api.reset` throws there).
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -51,7 +51,7 @@ export default function item() {
     id: "upgrades.branch-a-vs-b",
 
     async arrange(api) {
-      await poseVolley(api, startRun, "B"); // SPREAD: up to 3 targets
+      await poseVolley(api, startScenario, "B"); // SPREAD: up to 3 targets
     },
 
     // Both volleys, back to back — the Spread branch fanning out, then the Charged branch
@@ -59,7 +59,7 @@ export default function item() {
     async act(api) {
       spread = await actVolleyCount(api);
 
-      await poseVolley(api, poseRun, "A"); // CHARGED: a single bolt
+      await poseVolley(api, poseScenario, "A"); // CHARGED: a single bolt
       charged = await actVolleyCount(api);
     },
 

@@ -7,8 +7,8 @@
 // ESTABLISHES that situation; the real sim then runs and each check reads the outcome.
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   battery,
   spawnAt,
@@ -52,7 +52,7 @@ async function buildBossUnderFire(
  * boss's transit. Returns `{ g, towers, bossId }`.
  */
 export async function bossUnderFire(api, opts = {}) {
-  return buildBossUnderFire(api, startRun, opts);
+  return buildBossUnderFire(api, startScenario, opts);
 }
 
 /**
@@ -61,7 +61,7 @@ export async function bossUnderFire(api, opts = {}) {
  * `../_helpers.mjs`. The fission check opens its second boss run with this, from `act`.
  */
 export async function poseBossUnderFire(api, opts = {}) {
-  return buildBossUnderFire(api, poseRun, opts);
+  return buildBossUnderFire(api, poseScenario, opts);
 }
 
 /**

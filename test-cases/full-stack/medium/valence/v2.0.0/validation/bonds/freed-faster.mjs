@@ -6,7 +6,7 @@
 // the cluster's.
 
 import {
-  startRun,
+  startScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -25,7 +25,7 @@ export default function item() {
     id: "bonds.freed-faster",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single);
+      const snap = await startScenario(api, MAP.single);
       const g = pathGeom(snap.paths[0]);
       const s0 = g.length * 0.18;
       await placeCovering(api, "cleaver", g, s0);
