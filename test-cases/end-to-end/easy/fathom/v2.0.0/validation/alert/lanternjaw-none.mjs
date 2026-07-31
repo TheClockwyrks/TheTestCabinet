@@ -3,10 +3,11 @@
 // The pose is instant (`arrange`); the sampling sweep that watches for a chase and for
 // any alert consumes time, so it is `act`, and the clip shows exactly that acquisition.
 import {
-  startPlaying,
-  findSightLine,
   denAllExcept,
+  findSightLine,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -20,16 +21,12 @@ export default function item() {
       const snap = await startPlaying(api);
       const line = findSightLine(snap, 3);
       await denAllExcept(api, ["lanternjaw"]);
-      await api.call("setForager", {
-        tx: line.forager.tx,
-        ty: line.forager.ty,
-      });
       await api.call("setPredator", "lanternjaw", {
         tx: line.pred.tx,
         ty: line.pred.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api, line.forager);
       await api.call("setBrightness", 1);
     },
 

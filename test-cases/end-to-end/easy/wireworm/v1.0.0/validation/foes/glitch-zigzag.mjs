@@ -13,12 +13,32 @@
 // behavior this item is named for; the separate `vx` assertion below tests the
 // snapshot's fidelity, so the two failures stay distinguishable.
 
-import { freshBoard } from "../_helpers.mjs";
+import { freshBoard, STAGE_W, TILE } from "../_helpers.mjs";
 
 const SAMPLES = 40;
 const SAMPLE_TICKS = 12; // 12 ticks = the old 0.1s between samples
 
+/**
+ * Whether a foe is CLEARLY on the board, with a whole tile of margin at each side.
+ *
+ * `spawnFoe` is given no position here, so the build chooses where the glitch
+ * enters from — and specs/foes.md only promises that it "enters from a side edge",
+ * which means the first thing it does is arrive. Sampling before it has is
+ * measuring whatever it does outside the board, which is not the roaming zig-zag
+ * this item is named for.
+ *
+ * The margin is a tile wide so this gate stays a gate and not a second assertion:
+ * it only has to separate "still outside, entering" from "well and truly on the
+ * board", and a whole tile of slack means no build is held here over a few pixels
+ * of entry animation. Where a foe's `x, y` sits on its sprite is pinned in
+ * specs/overview.md; nothing about this margin depends on reading it closely.
+ */
+function onBoard(f) {
+  return !!f && f.x >= TILE && f.x <= STAGE_W - 2 * TILE;
+}
+
 export default function item() {
+  let arrived;
   let start;
   let last;
   let sawPos = false;
@@ -39,9 +59,19 @@ export default function item() {
     // The sampled window IS the clip: the reviewer watches the very zig-zag the
     // assertions read out of the velocity signs.
     async act(api) {
-      start = (await api.snapshot()).foes[0];
+      // Wait for the entry the spec promises before reading anything. Capped at 4 s,
+      // far longer than a foe crossing the ~1 s of board edge it enters through
+      // needs; a glitch that never arrives fails the first assertion below and says
+      // so, instead of leaving the motion assertions to describe off-board drift.
+      const entry = await api.until((s) => onBoard(s.foes[0]), {
+        max: 480,
+        poll: 6,
+      });
+      arrived = entry.hit;
+
+      start = entry.snap.foes[0];
       last = start;
-      for (let i = 0; i < SAMPLES; i++) {
+      for (let i = 0; i < SAMPLES && start; i++) {
         await api.advance(SAMPLE_TICKS);
         const f = (await api.snapshot()).foes[0];
         if (!f) break; // the glitch left the board; keep the last reading
@@ -56,11 +86,18 @@ export default function item() {
     },
 
     async assert(api, check) {
+      check.expectOk("the glitch enters the board (specs/foes.md)", arrived);
       check.expectOk(
         "the glitch darts both left and right (restless zig-zag)",
         sawPos && sawNeg,
       );
-      check.expectGt("the glitch descends over the window", last.y, start.y);
+      // `?? 0` so a glitch that never appeared at all reads as "did not descend"
+      // rather than throwing and burying the arrival failure above in a stack trace.
+      check.expectGt(
+        "the glitch descends over the window",
+        last?.y ?? 0,
+        start?.y ?? 0,
+      );
       // The snapshot must report the foe's ACTUAL velocity
       // (specs/instrumentation.md), so a glitch observed reversing must report a
       // `vx` that reverses with it. Scoped to runs where the reversal was actually

@@ -195,6 +195,47 @@ export async function actClimbByPress(
   return api.snapshot();
 }
 
+// ---- Death (read as the life the spec says it costs) ------------------------
+
+/**
+ * ACT half of every death check: advance until the critter has died, and return the
+ * same `{ snap, hit, spent }` as `api.until`. `livesBefore` is the life count read
+ * before the act began (instantly, from `arrange` or the top of `act`).
+ *
+ * A DEATH IS READ AS THE LIFE IT COSTS, NOT AS A `dying` PHASE. The tempting sweep is
+ * `until((s) => s.phase === "dying")`, and it is wrong. Nothing in the specs says when
+ * `phase` is `dying`: specs/instrumentation.md lists it among the values `phase` can
+ * take and stops there, and specs/gameplay.md defines a death only by what it COSTS —
+ * "the current crossing ends, the bear is removed, and a fresh critter respawns on the
+ * near shore with the timer reset". The one pause it mandates is the spawn-in pause
+ * before the BEAR re-emerges, not a window in which the game holds the dead critter on
+ * screen. A build that resolves the death the instant it happens — decrement, reset the
+ * crossing, carry on — meets every word of that and simply never reports `dying`. Sweep
+ * for the phase against such a build and the sweep spends its whole budget looking for a
+ * state that came and went inside one tick (or never existed), so a death that plainly
+ * happened reads as no death at all, and it does it to a build that plays correctly.
+ *
+ * `lives` decrementing is the fact the spec actually mandates, it is in the snapshot
+ * contract, and it means the same thing whatever a build does with its sub-phases. The
+ * `gameover` clause covers the last life — at zero the run ends (specs/gameplay.md) and
+ * a build may report that rather than a decrement — so this reads "the critter died",
+ * not "the critter died and lived".
+ *
+ * The tell that a check has this backwards is a verdict where the `dying` assertion
+ * fails and the `lives` assertion beside it passes: the death happened, the reading
+ * of it did not.
+ */
+export async function actUntilDeath(
+  api,
+  livesBefore,
+  { max = 240, poll = TICK } = {},
+) {
+  return api.until((s) => s.lives < livesBefore || s.screen === "gameover", {
+    max,
+    poll,
+  });
+}
+
 // ---- Controls assertions (record into the item's `check`) ------------------
 
 /**
@@ -314,4 +355,54 @@ export async function arrangeColorScene(api) {
  */
 export async function actColorSettle(api, { settleMs = 80 } = {}) {
   await api.settle(settleMs);
+}
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Floe's cues are synthesized with the Web Audio API (specs/ui.md), so the driver
+// reports every source the build starts (see `api.audio`). The game must not
+// autoplay: it creates (or resumes) its AudioContext only on the first real user
+// interaction, so before driving an event whose cue is checked, arm audio with a
+// GENUINE browser gesture. A build may feed the debug API through a purely logical
+// input path and unlock audio only from a real DOM event (a keydown OR a pointer),
+// so arming uses both `api.userKey` and a corner `api.userClick` rather than a debug
+// `press` — a debug press would leave a conformant build's AudioContext uncreated,
+// so no cue would ever be scheduled though it plays fine for a real player. `KeyZ`
+// has no game binding and the (4, 4) click lands in the inert HUD corner (Floe binds
+// no pointer input), so arming never disturbs game state. From there a cue is
+// confirmed by the audio log growing across the driven event.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+}
+
+// How long to let the page paint before reading the audio log. See `audioCount`.
+const AUDIO_SETTLE_MS = 120;
+
+/**
+ * The number of Web Audio sources the build has started so far, read after letting
+ * the page paint.
+ *
+ * THE PAUSE IS THE WHOLE POINT. Scheduling a cue and stepping the simulation are not
+ * the same act, and the spec does not require them to happen together: specs/ui.md
+ * asks for a cue on each event and says nothing about which turn of the build's own
+ * machinery starts it. A build that raises a sound the moment its simulation decides
+ * one is due has started the source by the time `step` returns; an equally
+ * conformant build queues the events its step produced and hands them to Web Audio
+ * from its render loop, which cannot have run yet — the validate pass holds the
+ * manual clock and steps between driver round trips, so no frame has been painted
+ * since the event happened. Reading the log straight after the step scores the
+ * second build as silent for a cue every player hears, and does it as a RACE: it
+ * depends on whether an animation frame happened to land in the microseconds between
+ * two driver calls, so the same build passes some cue checks and fails others.
+ *
+ * `api.settle` is a real pause in both passes but moves no simulation (see
+ * `packages/browser-driver/validation.mjs`), so it gives the render loop its frame
+ * without letting the game reach any further event that could confuse the reading.
+ * Both ends of a cue measurement go through here, so the count either side is a
+ * settled one and the delta belongs to the event that was driven between them.
+ */
+export async function audioCount(api) {
+  await api.settle(AUDIO_SETTLE_MS);
+  return (await api.audio()).length;
 }

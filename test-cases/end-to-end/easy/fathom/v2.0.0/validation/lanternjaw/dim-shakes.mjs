@@ -26,7 +26,9 @@ import {
   findSightLine,
   findSlipTile,
   denAllExcept,
+  parkForager,
   pred,
+  quietBoard,
   tileCenter,
   LANTERN_RANGE_BASE,
   LANTERN_RANGE_GAIN,
@@ -63,18 +65,17 @@ export default function item() {
       const b = tileCenter(snap.grid, line.forager.tx, line.forager.ty);
       clearance = Math.hypot(a.x - b.x, a.y - b.y);
       await denAllExcept(api, ["lanternjaw"]);
-      await api.call("setForager", {
-        tx: line.forager.tx,
-        ty: line.forager.ty,
-      });
       await api.call("setPredator", "lanternjaw", {
         tx: line.pred.tx,
         ty: line.pred.ty,
         mode: "wander",
       });
-      // Strip the field to a single stray plankton, so nothing the forager passes over
-      // re-brightens G during the measurement.
-      await api.call("poseLastPlankton");
+      // Stand the forager on the sight line and PARK it (facing a wall), then strip the
+      // field to a single stray plankton it cannot reach. Both halves matter: nothing it
+      // passes over may re-brighten G during the measurement, and the clearance figures
+      // asserted below are computed from the posed tiles, so they only describe the real
+      // scenario if the forager is still standing on them when the linger expires.
+      await quietBoard(api, line.forager);
       await api.call("setBrightness", 1);
     },
 
@@ -85,7 +86,7 @@ export default function item() {
       brightRange = bright.detectRange;
       // Go dim and slip away, together — the spec's counter.
       await api.call("setBrightness", 0);
-      await api.call("setForager", { tx: slip.tx, ty: slip.ty });
+      await parkForager(api, slip);
       await api.advance(252); // 252 ticks = 2.1 s, just past the ~2 s linger
       const after = pred(await api.snapshot(), "lanternjaw");
       afterDim = after.state;

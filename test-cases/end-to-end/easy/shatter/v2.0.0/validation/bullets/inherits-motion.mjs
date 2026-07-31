@@ -1,60 +1,93 @@
 // Automated validation for the Bullets item `inherits-motion`: a bullet carries the
 // ship's own motion, so a shot fired while moving is faster than one fired at rest. The
-// ship fires facing +x first at rest, then moving at +300 px/s; each bullet's launch
-// velocity is read the instant it is fired (no stepping), so it reflects the muzzle
-// speed plus the ship's velocity exactly.
+// ship fires facing +x first at rest, then moving at +300 px/s, and the two launch
+// velocities are compared.
 //
-// Both measurements are INSTANT — the launch velocity is read the moment the shot leaves,
-// before any time passes — and the two scenarios are separated by a fresh game (a reset,
-// which only `arrange` may call). So both drives live in `arrange`, and `act` flies the
-// second, faster shot so the clip shows the moving ship's bullet outrunning the ship.
+// Both shots are taken in `act`, in ONE game, with the field emptied between them: each
+// launch velocity is read while exactly one bullet is on the field, so "the bullet that was
+// just fired" is never a guess about which end of the list a build appends to. Waiting the
+// first shot out rather than resetting between the two also keeps the clip continuous — the
+// slow shot crosses and expires, then the fast one leaves visibly harder.
+//
+// Each tap goes through `actTapFire`, which gives the shot one simulation tick before reading
+// it. A build may launch the round inside `press` or latch the tap and launch it on the next
+// fixed step, exactly as a real key tap does, and both are conformant; reading with no time
+// elapsed sees no bullet at all on the second kind. That tick costs at most a fraction of a
+// px/s of gravity on the round, which the tolerances below absorb.
 
-import { newGame, poseShip, MUZZLE_SPEED } from "../_helpers.mjs";
+import {
+  newGame,
+  poseShip,
+  actTapFire,
+  MUZZLE_SPEED,
+  TICK,
+  ticks,
+} from "../_helpers.mjs";
+
+const DRIFT = 300; // px/s of ship motion the second shot must carry
 
 export default function item() {
-  // The two launch velocities, compared by `assert`.
+  // The two shots, compared by `assert`.
   let atRest;
   let moving;
+  let cleared;
 
   return {
     id: "bullets.inherits-motion",
 
     async arrange(api) {
-      // Shot one: fired from a standstill, so it leaves at the muzzle speed alone.
+      // Low and to the left, so both shots have a clear runway across the field and
+      // neither passes close enough to the star for gravity to muddy the comparison.
       await newGame(api);
-      await poseShip(api, { x: 300, y: 560, vx: 0, vy: 0, angle: 0 });
-      await api.call("press", "Space");
-      atRest = (await api.snapshot()).bullets[0];
-
-      // Shot two: the same shot from a ship already moving along its facing.
-      await newGame(api);
-      await poseShip(api, { x: 300, y: 560, vx: 300, vy: 0, angle: 0 });
-      await api.call("press", "Space");
-      moving = (await api.snapshot()).bullets[0];
+      await poseShip(api, { x: 200, y: 620, vx: 0, vy: 0, angle: 0 });
     },
 
     async act(api) {
-      // Let the faster, motion-carrying shot fly: 0.6 s x 120 Hz = 72 ticks.
-      await api.advance(72);
+      // Shot one: fired from a standstill, so it leaves at the muzzle speed alone.
+      atRest = await actTapFire(api);
+
+      // Let it run out, so the second shot is again the only bullet on the field.
+      cleared = await api.until((s) => s.bullets.length === 0, {
+        max: ticks(2.5),
+        poll: TICK,
+      });
+
+      // Shot two: the same shot from a ship already moving along its facing.
+      await poseShip(api, { x: 200, y: 620, vx: DRIFT, vy: 0, angle: 0 });
+      moving = await actTapFire(api);
+
+      await api.advance(72); // 0.6 s tail, so the clip shows the faster shot pull away
     },
 
     async assert(api, check) {
+      check.expectEq(
+        "the first shot is the only bullet on the field",
+        atRest.after,
+        1,
+      );
+      check.expectOk("the first shot clears the field again", cleared.hit);
+      check.expectEq(
+        "the second shot is fired onto an empty field",
+        moving.before,
+        0,
+      );
+
       check.expectClose(
         "a shot fired at rest leaves at the muzzle speed",
-        atRest.vx,
+        atRest.bullet.vx,
         MUZZLE_SPEED,
-        1,
+        2,
       );
       check.expectClose(
         "a shot fired while moving carries the ship's velocity",
-        moving.vx,
-        MUZZLE_SPEED + 300,
-        1,
+        moving.bullet.vx,
+        MUZZLE_SPEED + DRIFT,
+        2,
       );
       check.expectGt(
         "the moving shot is faster than the at-rest shot",
-        moving.vx,
-        atRest.vx + 250,
+        moving.bullet.vx,
+        atRest.bullet.vx + 250,
       );
     },
   };

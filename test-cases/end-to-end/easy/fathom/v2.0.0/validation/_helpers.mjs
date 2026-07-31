@@ -868,6 +868,63 @@ export async function startPlaying(api, seed = 1) {
 export const pred = (snap, kind) => snap.predators.find((p) => p.kind === kind);
 
 /**
+ * Hold the forager still on a tile, as a BYSTANDER, for a scenario that reads
+ * something else (a predator's patrol, a drifter's persistence, a cue).
+ *
+ * WHY THIS EXISTS. `specs/movement.md` and `specs/instrumentation.md` disagree about
+ * what a forager with no key held does. Movement describes the arcade rule — it
+ * "keeps going straight until it can either turn that way or reaches a wall and
+ * stops", and a direction key only "sets the desired direction" — so a conforming
+ * build may well swim on its own. Instrumentation describes `setForager` as leaving
+ * it "at rest (as if no movement key is held)", which reads as stopped. Both are
+ * legitimate; a check must not silently require one.
+ *
+ * A drifting bystander wrecks these scenarios outright: it grazes plankton (which
+ * re-brightens `G` and moves every light-range threshold), and once `poseLastPlankton`
+ * has stripped the board to a single adjacent pellet, its very first step eats it,
+ * clears the maze and descends — re-denning every predator mid-measurement.
+ *
+ * So pose the forager FACING A WALL. Its heading leads nowhere, so it cannot leave the
+ * tile under either reading, using nothing but the documented `setForager`. On a build
+ * that already rests, this is a no-op beyond the facing.
+ *
+ * `tile` defaults to wherever the forager already stands. Returns the snapshot taken
+ * after parking. Only for scenarios where the forager's own facing does not matter —
+ * a check that reads its heading must pose that heading itself.
+ */
+export async function parkForager(api, tile) {
+  const snap = await api.snapshot();
+  const tx = tile ? tile.tx : snap.forager.tx;
+  const ty = tile ? tile.ty : snap.forager.ty;
+  const open = openNeighborDirs(snap, tx, ty);
+  // A one-wide maze leaves nearly every tile with at least one walled side; a full
+  // crossroads has none, in which case the best available is to leave the facing
+  // alone (a resting build still holds, and the caller's finder picked the tile).
+  const walled = ["up", "down", "left", "right"].filter(
+    (d) => !open.includes(d),
+  );
+  await api.call(
+    "setForager",
+    walled.length ? { tx, ty, dir: walled[0] } : { tx, ty },
+  );
+  return api.snapshot();
+}
+
+/**
+ * Strip the board to one plankton for a scenario the forager only watches: park it
+ * facing a wall FIRST, so the single pellet `poseLastPlankton` leaves adjacent to it
+ * cannot be eaten, and the maze cannot clear out from under the measurement.
+ *
+ * Pair this with `parkForager` (see there for why a bystander forager may drift). Use
+ * plain `poseLastPlankton` — never this — in a check that is ABOUT clearing the maze.
+ */
+export async function quietBoard(api, tile) {
+  const snap = await parkForager(api, tile);
+  await api.call("poseLastPlankton");
+  return snap;
+}
+
+/**
  * Park every predator in the den (a clean baseline), except the ones named in
  * `except`. Used so a scenario reads one predator's behavior undisturbed.
  */
@@ -1009,6 +1066,74 @@ export async function sampleAmberOrb(api, x, y, radius = 5) {
   return { r: r / n, g: g / n, b: b / n };
 }
 
+/**
+ * The radii, in px out from a mote's center, that `sampleMoteProfile` reads it at.
+ *
+ * WHY A PROFILE AND NOT ONE RING. `sampleAmberOrb` reads a single ring 5 px out, which
+ * is where the REFERENCE implementation happens to keep its amber: it draws a 14 px orb
+ * whose inner 4 px blow out to near-white, so 5 px lands just outside that core, in the
+ * halo. But the spec fixes the mote's COLOR and, in words, its shape — "a soft amber mote
+ * with a bright core (the amber palette color `#ffd166`)" (specs/gameplay.md,
+ * specs/assets.md) — and nothing else: not the orb's radius, not how bright its core is,
+ * not how fast the glow falls off. A build that draws the same light tighter (an amber
+ * core a couple of px across under a fainter halo) paints an unmistakable amber mote that
+ * a 5 px ring reads as dark fog, and a build that draws it wider blows the 5 px ring out
+ * to white. Both are the mote the spec asks for.
+ *
+ * So a mote is read across a spread of radii instead, and "is it amber" is asked of the
+ * profile rather than of one arbitrary ring. That still fails a build that draws no amber
+ * light at all — nothing in the fog reads amber at ANY radius (see `fog/unrevealed-black`
+ * for how dark the unlit ground is) — while leaving a conforming build free to shape its
+ * own glow.
+ */
+export const MOTE_RADII = [0, 2, 4, 6, 8, 10];
+
+/**
+ * The rendered color at `radius` px out from (x, y): the center pixel itself at radius
+ * 0, otherwise the mean of a 6-point ring at that radius.
+ */
+export async function sampleMoteRing(api, x, y, radius) {
+  if (radius === 0) {
+    const [u, v] = uvOf(x, y);
+    const p = await api.pixel(u, v);
+    return { r: p.r, g: p.g, b: p.b };
+  }
+  return sampleAmberOrb(api, x, y, radius);
+}
+
+/**
+ * A mote's rendered color profile: `{ radius, color }` at each of {@link MOTE_RADII},
+ * innermost first. Like every pixel read, call it from `act` after an `api.settle` (see
+ * the section header above).
+ */
+export async function sampleMoteProfile(api, x, y) {
+  const profile = [];
+  for (const radius of MOTE_RADII) {
+    profile.push({ radius, color: await sampleMoteRing(api, x, y, radius) });
+  }
+  return profile;
+}
+
+/** The innermost sample of `profile` that reads as a warm amber light, or null. */
+export function amberInProfile(profile) {
+  return profile.find((sample) => isAmber(sample.color)) ?? null;
+}
+
+/**
+ * How far apart two motes are drawn, as the LARGEST color distance between their samples
+ * at the same radius. Comparing like radius with like keeps the reading honest — two
+ * motes drawn identically match at every radius, and one drawn differently (a wider halo,
+ * a colder core) separates somewhere in the profile even if it happens to agree on one
+ * ring.
+ */
+export function profileDistance(a, b) {
+  let worst = 0;
+  for (let i = 0; i < a.length && i < b.length; i++) {
+    worst = Math.max(worst, colorDistance(a[i].color, b[i].color));
+  }
+  return worst;
+}
+
 /** Near the pitch-black fog / blackout (very low luminance). */
 export function isDark(c) {
   return luminance(c) < 26;
@@ -1045,28 +1170,54 @@ export async function arrangeMoveKey(api, dir) {
  * recorded clip shows the forager swimming for a readable moment before the key is
  * released (they cannot affect the returned states, which were already captured).
  *
- * Pair with `arrangeMoveKey`. Returns `{ before, after, code }` forager states — what
- * the old `driveMoveKey` returned — for `movedAlong` to judge.
+ * Pair with `arrangeMoveKey`. Returns `{ before, after, code, grid }` — the forager
+ * states either side of the held key, plus the grid frame `movedAlong` measures in.
  */
 export async function actMoveKey(
   api,
   code,
   { ticks = 30, tailTicks = 60 } = {},
 ) {
-  const before = (await api.snapshot()).forager;
+  const start = await api.snapshot();
+  const before = start.forager;
   await api.call("keyDown", code);
   await api.advance(ticks); // 30 ticks = the old 0.25s, ~one tile at 128 px/s
   const after = (await api.snapshot()).forager;
   await api.advance(tailTicks); // 60 ticks (0.5s) of visible travel for the clip
   await api.call("keyUp", code);
-  return { before, after, code };
+  return { before, after, code, grid: start.grid };
 }
 
-/** True if the forager's move went the expected way (tile changed along `dir`). */
-export function movedAlong(before, after, dir) {
+/**
+ * True if the forager's move went the expected way: its POSITION advanced at least half
+ * a tile along `dir`.
+ *
+ * WHY POSITION AND NOT THE TILE INDEX. This used to compare `tx`/`ty` either side of the
+ * hold, and that made the verdict a coin flip. The window is 30 ticks, and at the
+ * forager's fixed `128 px/s` (specs/movement.md) 30 ticks is 32 px — with a 32 px tile,
+ * EXACTLY one tile. So the read landed precisely on the tile boundary, and which side of
+ * it the index had reached came down to floating-point accumulation: a build that
+ * integrates to y = 128.0000000000001 rather than 128.0 has not "arrived" at the next
+ * centre by a 1e-13 margin, reports the tile it came from, and failed a movement it had
+ * performed perfectly. Widening the window would only move the coin flip somewhere else,
+ * because builds legitimately differ on WHEN the index flips: on crossing the boundary
+ * geometrically, or on arriving at the next centre. `snapshot` pins neither ("the tile it
+ * is on/nearest"), so no tile-index comparison can be the honest signal here.
+ *
+ * Position is exact, convention-free, and sits in the same snapshot. Half a tile is the
+ * threshold because it is unambiguous in both directions: far more than any jitter or
+ * sub-pixel drift, and comfortably under the 32 px a conforming build covers in the
+ * window — so this reads "it went that way", and leaves how fast to
+ * `maze-movement/constant-speed`. A held key that does nothing still measures 0.
+ *
+ * No wrap guard is needed: `findOpenWithNeighbor` never places the forager on a border
+ * column, so half a tile of travel cannot cross the wrap tunnel's seam.
+ */
+export function movedAlong(before, after, dir, grid) {
   const [dc, dr] = DIRS[dir];
-  if (dc !== 0) return Math.sign(after.tx - before.tx) === Math.sign(dc);
-  return Math.sign(after.ty - before.ty) === Math.sign(dr);
+  const min = grid.tile / 2;
+  if (dc !== 0) return (after.x - before.x) * dc >= min;
+  return (after.y - before.y) * dr >= min;
 }
 
 /**
@@ -1111,3 +1262,61 @@ export async function actGloamPings(api, ticks, { poll = 6 } = {}) {
 // time instead of stepping it. It returns `{ snap, hit, spent }` (a superset of the
 // old `{ snap, hit }`), with `max`/`poll` in TICKS — the old `maxSeconds` and the old
 // 0.05s default `chunk` become `max: ticksFor(seconds)` and `poll: 6`.
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Fathom's cues are synthesized with the Web Audio API (specs/progression.md), so the
+// driver reports every source the build starts (see `api.audio`). The game must not
+// autoplay: it creates (or resumes) its AudioContext only on the first real user
+// interaction, so before driving an event whose cue is checked, arm audio with a
+// GENUINE browser gesture. A build may feed the debug API through a purely logical
+// input path and unlock audio only from a real DOM event (a keydown OR a pointer), so
+// arming uses both `api.userKey` and a corner `api.userClick` rather than a debug
+// `press` — a debug press would leave a conformant build's AudioContext uncreated, so
+// no cue would ever be scheduled though it plays fine for a real player. `KeyZ` has no
+// game binding (specs/instrumentation.md: movement, confirm/back, pause, mute, sonar,
+// and ink each bind other keys) and the (4, 4) click lands in the top-left corner of
+// the stage, off the HUD's own readouts and short of any interactive control — Fathom
+// takes no pointer input at all (keyboard only, specs/progression.md), so arming never
+// disturbs game state. From there a cue is confirmed by the audio log growing across
+// the driven event.
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+}
+
+// How long to let the page paint before reading the audio log. See `audioCount`.
+const AUDIO_SETTLE_MS = 120;
+
+/**
+ * The number of Web Audio sources the build has started so far, read after letting the
+ * page paint.
+ *
+ * THE PAUSE IS THE WHOLE POINT. Scheduling a cue and stepping the simulation are not the
+ * same act, and nothing requires them to happen together: `specs/progression.md` asks for
+ * a distinct cue on each event and says nothing about which turn of the build's own
+ * machinery starts it, while `specs/instrumentation.md`'s render-free rule governs how
+ * game STATE advances, not when its sound is handed to Web Audio. A build that raises a
+ * sound the moment its simulation decides one is due has started the source by the time
+ * `step` returns; an equally conformant build queues the events its step produced and
+ * plays them from its render loop, which cannot have run yet — the validate pass holds
+ * the manual clock and steps between driver round trips, so no frame has been painted
+ * since the event happened. Reading the log straight after the step scores the second
+ * build as silent for a cue every player hears, and does it as a RACE: it depends on
+ * whether an animation frame happened to land in the microseconds between two driver
+ * calls, so the same build fails the items that read straight back and passes the one
+ * whose cue happens to precede a long sweep, on the incidental latency of that sweep's
+ * round trips.
+ *
+ * `api.settle` is a real pause in both passes but moves no simulation (see
+ * `packages/browser-driver/validation.mjs`), so it gives the render loop its frame
+ * without letting the game reach any further event that could confuse the reading. Both
+ * ends of a cue measurement go through here, so the count either side is a settled one
+ * and the delta belongs to the event that was driven between them — settling only the
+ * second read would let a cue queued during setup drain into it and pass an item that
+ * never made its own sound.
+ */
+export async function audioCount(api) {
+  await api.settle(AUDIO_SETTLE_MS);
+  return (await api.audio()).length;
+}

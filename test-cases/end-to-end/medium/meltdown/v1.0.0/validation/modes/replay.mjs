@@ -4,7 +4,13 @@
 // drive a Containment/Medium run to Game over, then choose PLAY AGAIN and confirm the
 // fresh run is the same mode and difficulty.
 
-import { newGame, spawn, press } from "../_helpers.mjs";
+import {
+  newGame,
+  spawn,
+  press,
+  skipToApproach,
+  actTail,
+} from "../_helpers.mjs";
 
 export default function item() {
   let over;
@@ -13,26 +19,35 @@ export default function item() {
   return {
     id: "modes.replay",
 
+    // The leak that ends the run, the Game-over screen, PLAY AGAIN, and a beat of the
+    // replayed run — four things, so a wider ceiling than its neighbours.
+    clipMs: 9000,
+
     // A Containment/Medium run on its last life, so one Mote ends it — the replay has
-    // to come out of a REAL game-over, not a posed one.
+    // to come out of a REAL game-over, not a posed one. Getting that Mote to an
+    // exhaust is sixteen seconds of walking and none of the subject, so it is run
+    // through unfilmed and the clip opens on its final approach.
     async arrange(api) {
       await newGame(api, "containment", "medium");
       await api.call("setLives", 1);
-      await spawn(api, "mote", "left");
+      const moteId = await spawn(api, "mote", "left");
+      await skipToApproach(api, moteId);
     },
 
-    // Run to the game over, then take PLAY AGAIN. 1800 ticks = the old 30s cap,
-    // polled every 12 ticks (the old 0.2s chunk).
+    // Finish the leak that ends the run, then take PLAY AGAIN. 300 ticks = 5s, ample
+    // for the stretch the skip stopped on.
     //
     // Note PLAY AGAIN goes through the game's own menu, not `newGame` — which is the
     // point of the check, and also why nothing here needs `restartGame`.
     async act(api) {
       over = await api.until((t) => t.screen === "gameover", {
-        max: 1800,
-        poll: 12,
+        max: 300,
+        poll: 6,
       });
+      await actTail(api, 90); // hold on the Game-over screen before taking its menu
       await press(api, "Enter"); // PLAY AGAIN
       s = await api.snapshot();
+      await actTail(api, 180); // 3 s of the replayed run, same mode and difficulty
     },
 
     async assert(api, check) {

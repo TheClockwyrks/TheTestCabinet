@@ -4,7 +4,7 @@
 // than a scaling wave schedule (specs/modes.md — 600 money, 20 lives, one wave). We
 // start it, read the economy, and release the onslaught.
 
-import { newGame, TICK } from "../_helpers.mjs";
+import { newGame, TICK, actTail } from "../_helpers.mjs";
 
 export default function item() {
   let s;
@@ -23,11 +23,18 @@ export default function item() {
 
     // 360 ticks = the old 6s cap; polling every tick catches the onslaught the moment
     // it starts releasing surge.
+    // The sweep normally returns on its very first sample: `arrange` has already sent
+    // the wave, so the phase is right and the first units are on the floor before any
+    // time is asked for. That left the item filming nothing — the recording was over
+    // before the build's first paint, and the clip was a second of the browser's blank
+    // white page. The beat afterwards is what gives the Hundred's wave frames to be
+    // seen in.
     async act(api) {
       r = await api.until((t) => t.phase === "wave" && t.surge.length > 0, {
         max: 360,
         poll: TICK,
       });
+      await actTail(api, 180); // 3 s of the wave this mode opens with
     },
 
     async assert(api, check) {

@@ -3,10 +3,10 @@
 // Firing a discharge spends the entire resonance meter, dropping it to zero. The
 // meter is filled, a REAL discharge fired, and the meter read back.
 
-import { startClean } from "../_helpers.mjs";
+import { startClean, LEAD_IN_TICKS } from "../_helpers.mjs";
 
 export default function item() {
-  // The meter before the discharge (read while arranging) and the state after it.
+  // The meter just before the discharge and the state immediately after it.
   let before;
   let snap;
 
@@ -14,15 +14,23 @@ export default function item() {
     id: "polarity.discharge-spends",
 
     // A live stage-1 wave with the meter posed full, its swarm kept so the wave the
-    // discharge fires is visibly sweeping something. The full meter is read here,
-    // instantly, so the "before" value is established before anything can spend it.
+    // discharge fires is visibly sweeping something.
     async arrange(api) {
       await startClean(api, { clear: false });
       await api.call("setResonance", 100);
-      before = (await api.snapshot()).resonance;
     },
 
     async act(api) {
+      // Show the FULL meter before spending it. The item is a before/after about the
+      // meter, and discharging at the top of `act` left a clip that only ever showed
+      // a meter reading zero, with nothing to say it had been full. Hold on the
+      // charged meter first; the swarm keeps flying in behind it.
+      await api.advance(LEAD_IN_TICKS);
+
+      // Read the meter at the last instant before the discharge, so the "before"
+      // value is the one the discharge actually spends.
+      before = (await api.snapshot()).resonance;
+
       await api.call("discharge");
       // Read immediately: spending is instantaneous, so this catches the meter at
       // the moment it drops rather than after anything could have refilled it.

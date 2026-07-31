@@ -4,6 +4,7 @@
 // handleInput() (edge events) each frame, then fixedStep() at a fixed timestep,
 // then updatePointer() before render.
 
+import { Audio } from "./audio";
 import { heatColor } from "./colors";
 import {
   BASE_K,
@@ -95,6 +96,7 @@ const HOTKEYS: Record<string, number> = {
 
 export class Game {
   readonly input: Input;
+  readonly audio = new Audio();
 
   state: AppState = "title";
   phase: Phase = "build";
@@ -167,6 +169,7 @@ export class Game {
 
   constructor(input: Input) {
     this.input = input;
+    this.input.onFirstPress(() => this.audio.resume());
     this.fieldRight = this.grid.distanceField(this.grid.rightExhaust.tiles);
     this.fieldBottom = this.grid.distanceField(this.grid.bottomExhaust.tiles);
     this.toTitle();
@@ -284,14 +287,17 @@ export class Game {
     this.score += 100 * this.waveNumber;
     if (this.waveNumber >= this.cfg.totalWaves) {
       this.score += 250 * this.lives;
+      this.audio.victory();
       this.state = "victory";
       this.menuIndex = 0;
       return;
     }
+    this.audio.waveClear();
     this.enterBuildPhase(this.waveNumber + 1, true);
   }
 
   private gameOver(): void {
+    this.audio.gameOver();
     this.state = "gameover";
     this.menuIndex = 0;
     this.armed = null;
@@ -489,6 +495,7 @@ export class Game {
         t.heat = REDLINE;
         t.tripped = true;
         t.tripTimer = TRIP_TIME;
+        this.audio.trip();
       }
     }
   }
@@ -557,6 +564,7 @@ export class Game {
       color: t.isRime ? "#79e0ff" : heatColor(t.heat),
       life: 0.07,
     });
+    this.audio.fire();
   }
 
   private moveSurge(dt: number): void {
@@ -578,6 +586,7 @@ export class Game {
         this.money += u.def.bounty;
         this.score += u.def.bounty;
         this.kills++;
+        this.audio.death();
       } else {
         survivors.push(u);
       }
@@ -591,6 +600,7 @@ export class Game {
       if (u.leaked) {
         this.lives -= u.def.leak;
         this.leakCount++;
+        this.audio.leak();
       } else {
         survivors.push(u);
       }
@@ -671,6 +681,7 @@ export class Game {
     t.placedWave = this.waveNumber;
     for (const tile of this.grid.footprintTiles(col, row, t.size)) this.grid.blocked[tile] = 1;
     this.towers.push(t);
+    this.audio.place();
     this.money -= TOWER_DEFS[type].cost;
     this.recomputePaths();
     // Placement stays armed so the tower remains "held" by the cursor and the
@@ -803,6 +814,7 @@ export class Game {
         // read-only debug overlay toggle (specs/instrumentation.md).
         if (ev.code === "KeyM") {
           this.muted = !this.muted;
+          this.audio.setMuted(this.muted);
         } else if (ev.code === "Backquote") {
           this.debugOverlay = !this.debugOverlay;
         } else {

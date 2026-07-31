@@ -268,6 +268,29 @@ function makeScriptApi(page, handle, outDir, producedImages) {
     snapshot: () => call("snapshot", []),
     // A generic call into any case-declared control operation.
     call: (method, ...args) => call(method, args),
+    // Deliver a genuine, browser-trusted key tap through Chromium's own input
+    // pipeline — NOT the debug API. Two things separate this from a debug
+    // `press`/`keyDown`: it dispatches a real DOM `keydown`/`keyup` the build's
+    // own listeners catch, and it counts as the user gesture Chromium's autoplay
+    // policy requires. A build is free to feed the debug API through a purely
+    // logical input path (the contract only asks that injected input reach the
+    // same game handling the keyboard does), and to create or resume its
+    // AudioContext lazily from a real DOM interaction rather than from that
+    // logical path — both are conformant. When it does, driving input through
+    // the debug API never unlocks its audio, so no cue is ever scheduled and the
+    // `audio` probe reads nothing though the build plays fine for a real player.
+    // A real tap here arms such a build. `code` is a `KeyboardEvent.code`; pass a
+    // key the game does not bind so arming never disturbs game state.
+    userKey: (code) => page.keyboard.press(String(code)),
+    // The pointer counterpart to `userKey`: a genuine, browser-trusted click at
+    // viewport coordinates `(x, y)` through Chromium's own input pipeline. It
+    // dispatches the real `pointerdown`/`mousedown`/`mouseup`/`click` sequence a
+    // build's listeners catch and counts as the autoplay gesture — for a build
+    // that takes its first interaction (and unlocks audio) from a pointer rather
+    // than a key. The driver cannot know a build's UI layout, so the caller passes
+    // coordinates it expects to be INERT — a field corner, typically — and arming
+    // never triggers a game action (placing a unit, firing, moving a menu).
+    userClick: (x, y) => page.mouse.click(Number(x) || 0, Number(y) || 0),
     // Real wall-clock pause: unlike `step` (which advances the simulation
     // instantly), this lets the build's render loop animate on screen, so a video
     // output captures real motion.
@@ -434,16 +457,24 @@ async function runScript(args) {
         };
         return true;
       };
-      // Prefer the shared base class so every source kind is caught once; only if it
-      // is unavailable fall back to wrapping each concrete source's own `start`.
+      // Wrap the shared base class so any source kind that inherits `start`
+      // unchanged is caught for free, then ALSO wrap every concrete subclass that
+      // redefines its own `start`. This is not redundant: per the Web Audio spec,
+      // `AudioBufferSourceNode.start(when, offset, duration)` takes extra optional
+      // parameters beyond the base `AudioScheduledSourceNode.start(when)`, so
+      // Chromium gives it its OWN `start` on `AudioBufferSourceNode.prototype` that
+      // SHADOWS the base one — wrapping only the base never sees a decoded/sampled
+      // clip play (only a plain oscillator or constant source, which inherit
+      // `start` unchanged and so are already caught by the base wrap). Each `wrap`
+      // call is a no-op when its target has no own `start`, so calling all four
+      // unconditionally is safe and catches every kind regardless of which
+      // prototype a given browser happens to put `start` on.
       const Base = window.AudioScheduledSourceNode;
-      if (!(Base && wrap(Base.prototype))) {
-        if (window.OscillatorNode) wrap(window.OscillatorNode.prototype);
-        if (window.AudioBufferSourceNode)
-          wrap(window.AudioBufferSourceNode.prototype);
-        if (window.ConstantSourceNode)
-          wrap(window.ConstantSourceNode.prototype);
-      }
+      if (Base) wrap(Base.prototype);
+      if (window.OscillatorNode) wrap(window.OscillatorNode.prototype);
+      if (window.AudioBufferSourceNode)
+        wrap(window.AudioBufferSourceNode.prototype);
+      if (window.ConstantSourceNode) wrap(window.ConstantSourceNode.prototype);
     });
     const page = await context.newPage();
     page.on("console", (msg) => {

@@ -6,7 +6,7 @@
 // damages it.
 
 import {
-  startRun,
+  startScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -23,7 +23,7 @@ export default function item() {
     id: "detection.catalyst",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single);
+      const snap = await startScenario(api, MAP.single);
       const g = pathGeom(snap.paths[0]);
       const s0 = g.length * 0.18;
       await placeCovering(api, "catalyst", g, s0);
@@ -33,7 +33,12 @@ export default function item() {
       // `revealed` flag (~tick 6) — the read raced the kill and dereferenced a dead unit.
       // Six shells outlast the reveal read while still letting the "a nearby tower can
       // now fire on it" assertion observe hp fall on the first hit.
-      id = await spawnAt(api, { type: "noble", electrons: 6, pathId: 0, s: s0 });
+      id = await spawnAt(api, {
+        type: "noble",
+        electrons: 6,
+        pathId: 0,
+        s: s0,
+      });
     },
 
     // The reveal and the shot that follows it — the whole of what is checked, and the
@@ -41,9 +46,14 @@ export default function item() {
     async act(api) {
       // 6 ticks = the old 0.1 s: long enough for the aura to have applied.
       await api.advance(6);
-      revealed = unitById(await api.snapshot(), id).revealed;
+      // Guarded, for the reason the electron count above already records: a build that
+      // strips the noble faster leaves nothing here to read, and an unguarded read throws
+      // out of the item, which the runtime reports as a broken debug API rather than as the
+      // failed reveal it would be.
+      const posed = unitById(await api.snapshot(), id);
+      revealed = posed ? posed.revealed : false;
 
-      const hp0 = unitById(await api.snapshot(), id).hp;
+      const hp0 = posed ? posed.hp : 0;
       // 180 ticks = the old 3 s cap; poll 3 = the old 0.05 s chunk.
       r = await api.until(
         (s) => {

@@ -32,7 +32,10 @@ export default function item() {
     },
 
     async assert(api, check) {
-      check.expectOk("the Core is on the floor", c !== null);
+      // Hard: the reads below are off the Core, so a soft guard would let the script
+      // throw on a null and be recorded as a debug-API failure rather than as this
+      // check's own verdict.
+      check.assertOk("the Core is on the floor", c !== null);
       check.expectEq("the Core is not slowed by the Rime", c.slowed, false);
       check.expectClose(
         "the Core keeps its full base speed (30 px/s)",

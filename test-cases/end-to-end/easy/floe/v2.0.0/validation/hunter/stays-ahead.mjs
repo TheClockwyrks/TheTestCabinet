@@ -8,12 +8,25 @@
 
 import { startCrossing, buildSafeColumn } from "../_helpers.mjs";
 
+// How far the bear must actually travel during the climb for "it never caught the
+// critter" to mean anything, in px. THIS ITEM'S CLAIM IS NEGATIVE — the bear does not
+// catch a cleanly-played critter — and a negative claim is satisfied trivially by a
+// bear that cannot move at all. Without this, a build whose pursuit is completely
+// broken passes an item about pursuit being FAIR, and reads to a reviewer as a
+// balanced chase that was never driven.
+//
+// The reference covers ~140 px of the climb, so a tile is a wide margin for a build
+// that pursues at all, while a bear stuck in place (jittering a fraction of a pixel
+// and being dragged back) falls far short.
+const MIN_BEAR_PATH_PX = 32;
+
 export default function item() {
-  // Whether the climb ended in a death, the sweep that watched it, and the lives left
-  // at the end.
+  // Whether the climb ended in a death, the sweep that watched it, the lives left at
+  // the end, and how far the bear actually covered while trailing.
   let dead;
   let r;
   let finalLives;
+  let bearPath;
 
   return {
     id: "hunter.stays-ahead",
@@ -30,9 +43,21 @@ export default function item() {
     // the whole point of the item, and the clip.
     async act(api) {
       dead = false;
+      bearPath = 0;
+      // The bear's position at the previous sample, for accumulating its path.
+      let prevBear = null;
       await api.call("keyDown", "ArrowUp");
       r = await api.until(
         (s) => {
+          // Accumulate the trailing bear's real travel as the sweep polls, so the
+          // "never caught" verdict is only credited to a bear that was chasing.
+          const bear = s.bears[0];
+          if (bear?.present) {
+            if (prevBear) {
+              bearPath += Math.hypot(bear.x - prevBear.x, bear.y - prevBear.y);
+            }
+            prevBear = bear;
+          }
           if (s.phase === "dying") {
             dead = true;
             return true;
@@ -48,6 +73,11 @@ export default function item() {
     async assert(api, check) {
       check.expectOk("a cleanly-hopped crossing is completed", r.hit && !dead);
       check.expectOk("the bear never caught the fast critter", !dead);
+      check.expectGt(
+        "the bear was actually chasing (not stuck in place)",
+        bearPath,
+        MIN_BEAR_PATH_PX,
+      );
       check.expectEq("the crossing kept all lives", finalLives, 3);
     },
   };

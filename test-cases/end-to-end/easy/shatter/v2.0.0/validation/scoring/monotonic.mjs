@@ -25,9 +25,14 @@ export default function item() {
       scores = [];
       for (let i = 0; i < 3; i += 1) {
         await api.call("addRock", "small", { x: 400, y: 250, vx: 0, vy: 0 });
-        await actFireUntilGone(api, "small");
+        // A short dwell per kill rather than the helper's default: three of them run
+        // back to back here, and the run has to stay inside the stretch this scenario
+        // set up — long enough and the game's own next wave arrives mid-sequence and
+        // starts putting rocks in front of the shots.
+        await actFireUntilGone(api, "small", { dwell: 30 });
         scores.push((await api.snapshot()).score);
       }
+      await api.advance(90); // 0.75 s tail, so the clip ends on the final score
     },
 
     async assert(api, check) {

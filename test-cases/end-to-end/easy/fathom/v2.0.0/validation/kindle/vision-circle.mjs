@@ -5,21 +5,23 @@
 // Which tiles are revealed is only known after the flood has run, so the pulse, the
 // choice of the two tiles and the sampling are all `act`.
 import {
-  startPlaying,
   findStraightRun,
-  openTiles,
-  tileCenter,
-  sampleColor,
   luminance,
-  isDark,
+  openTiles,
+  quietBoard,
+  sampleColor,
+  startPlaying,
+  tileCenter,
   unmetPrecondition,
 } from "../_helpers.mjs";
+import { isFogBlack, sampleFog } from "./_kindle.mjs";
 
 export default function item() {
   let inside;
   let beyond;
   let ci;
   let cb;
+  let fog;
 
   return {
     id: "kindle.vision-circle",
@@ -30,8 +32,10 @@ export default function item() {
       // eat (so brightness — and the vision circle — stay at rest), and a single pulse
       // reveals tiles straight down the corridor well past the vision circle.
       const run = findStraightRun(snap, 9);
-      await api.call("setForager", { tx: run.tx, ty: run.ty, dir: run.dir });
-      await api.call("poseLastPlankton");
+      // Parked, not merely placed: every distance below is measured from the forager,
+      // so a build whose forager swims off on its own would move the frame of reference
+      // mid-measurement as well as eating the last pellet.
+      await quietBoard(api, { tx: run.tx, ty: run.ty });
       await api.call("clearCooldowns");
     },
 
@@ -70,13 +74,18 @@ export default function item() {
       const pb = tileCenter(s.grid, beyond.c, beyond.r);
       ci = await sampleColor(api, pi.x, pi.y);
       cb = await sampleColor(api, pb.x, pb.y);
+      // The build's own flat fog, to compare the outer sample against. Explored
+      // ground beyond the circle must be painted back to exactly this — merely being
+      // "dark" does not separate it from the REMEMBERED dim a build with no vision
+      // circle would draw there (see ./_kindle.mjs).
+      fog = await sampleFog(api, s, [f]);
       await api.screenshot("circle");
     },
 
     async assert(api, check) {
       check.expectOk(
-        "explored ground beyond the vision circle is pitch black",
-        isDark(cb),
+        "explored ground beyond the vision circle is painted back to the flat fog",
+        isFogBlack(cb, fog),
       );
       check.expectGt(
         "terrain inside the vision circle is drawn",

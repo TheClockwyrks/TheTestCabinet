@@ -15,6 +15,7 @@
 //! table via [`crate::db::Db::push`] on success, the same store a locally-driven
 //! `tcab` run pushes to.
 
+use std::collections::HashMap;
 use std::convert::Infallible;
 
 use axum::Json;
@@ -33,6 +34,7 @@ use uuid::Uuid;
 use test_cabinet_core::event::HarnessEvent;
 use test_cabinet_core::preview::AssetPreview;
 use test_cabinet_core::run_record::{RunRecord, RunState};
+use test_cabinet_core::test_case::TestType;
 // The job-API wire shapes shared with the dispatcher, driver, and the queue's
 // Rust clients live in `core` (so neither must depend on this crate) — both the
 // request shapes the driver/dispatcher speak and the server **output** shapes a
@@ -67,7 +69,8 @@ pub async fn launch(
     Json(body): Json<LaunchBody>,
 ) -> Result<Response, ApiError> {
     let now = now_rfc3339()?;
-    let new = build_new_job(&body, &now).map_err(ApiError::bad_request)?;
+    let new = build_new_job(&body, resolve_test_type(&state, &body), &now)
+        .map_err(ApiError::bad_request)?;
     let id = new.id.clone();
 
     state.db.enqueue_job(new).await.map_err(ApiError::from)?;
@@ -115,8 +118,14 @@ pub async fn launch_batch(
     // `items` vector stays index-aligned with `body.runs`.
     let mut items: Vec<LaunchBatchItem> = Vec::with_capacity(body.runs.len());
     let mut to_insert: Vec<crate::db::NewJob> = Vec::with_capacity(body.runs.len());
+    // A batch usually fans one case out over many models/harnesses, so resolve each
+    // (case, version)'s type once instead of re-reading the same manifest per run.
+    let mut types: HashMap<(String, String), TestType> = HashMap::new();
     for run in &body.runs {
-        match build_new_job(run, &now) {
+        let test_type = *types
+            .entry((run.test_case.clone(), run.version.clone()))
+            .or_insert_with(|| resolve_test_type(&state, run));
+        match build_new_job(run, test_type, &now) {
             Ok(new) => {
                 items.push(LaunchBatchItem {
                     job_id: Some(new.id.clone()),
@@ -140,12 +149,33 @@ pub async fn launch_batch(
     Ok((StatusCode::ACCEPTED, Json(LaunchBatchAck { jobs: items })).into_response())
 }
 
+/// The test type of the case version a launch request targets, read from the
+/// ingested manifest.
+///
+/// It is lifted onto the job row so the queue can serialize the run types that must
+/// not overlap (a game jam per model — see [`crate::db::Db::claim_next_job`]). A
+/// version that is not ingested resolves to the default type rather than rejecting
+/// the launch: whether the case resolves at all is the driver's call, and it fails
+/// the run with a far better diagnostic than an enqueue-time guess would.
+fn resolve_test_type(state: &AppState, body: &LaunchBody) -> TestType {
+    state
+        .store
+        .read_manifest(&body.test_case, &body.version)
+        .map(|manifest| manifest.test_type)
+        .unwrap_or_default()
+}
+
 /// Validate a launch request and build the `queued` job to enqueue for it: mint the
-/// job id and per-job driver token and serialize the request verbatim. Returns the
-/// human-readable reason on a validation failure. Shared by the single
+/// job id and per-job driver token and serialize the request verbatim. `test_type`
+/// is the resolved type of the case it targets (see [`resolve_test_type`]). Returns
+/// the human-readable reason on a validation failure. Shared by the single
 /// ([`launch`]) and batch ([`launch_batch`]) enqueue paths so both validate and
 /// record a run identically.
-fn build_new_job(body: &LaunchBody, now: &str) -> Result<crate::db::NewJob, String> {
+fn build_new_job(
+    body: &LaunchBody,
+    test_type: TestType,
+    now: &str,
+) -> Result<crate::db::NewJob, String> {
     if body.test_case.trim().is_empty() {
         return Err("`testCase` must not be empty".to_string());
     }
@@ -166,6 +196,7 @@ fn build_new_job(body: &LaunchBody, now: &str) -> Result<crate::db::NewJob, Stri
         test_case_slug: body.test_case.clone(),
         test_case_version: body.version.clone(),
         variant: body.variant.clone(),
+        test_type: test_type.as_str().to_string(),
         harness_slug: body.harness.as_str().to_string(),
         model_id: body.model.clone(),
         job_token: Uuid::new_v4().to_string(),
@@ -563,6 +594,7 @@ async fn maybe_enqueue_retry(
             test_case_slug: job.test_case_slug.clone(),
             test_case_version: job.test_case_version.clone(),
             variant: job.variant.clone(),
+            test_type: job.test_type.clone(),
             harness_slug: job.harness_slug.clone(),
             model_id: job.model_id.clone(),
             job_token,

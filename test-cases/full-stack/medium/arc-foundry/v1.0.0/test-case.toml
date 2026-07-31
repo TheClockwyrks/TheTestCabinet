@@ -316,7 +316,7 @@ validation = { script = "validation/pathing/shortest-open-route.mjs", outputs = 
 [[review.categories.items]]
 id = "never-seal-refused"
 title = "A placement that would seal a segment is refused"
-description = "The never-seal rule: a placement that would fully seal a waypoint segment is refused and changes nothing (no candidate lands, the stamp allowance is unchanged), while a legal placement elsewhere is accepted."
+description = "The never-seal rule: a placement that would fully seal a waypoint segment is refused and changes nothing (no candidate lands, the stamp allowance is unchanged), while a legal placement elsewhere is accepted. The refused rock covers no protected tile and overlaps nothing, so sealing the segment is the only thing left to refuse it for."
 validation = { script = "validation/pathing/never-seal-refused.mjs", outputs = [{ id = "refused", name = "The board after a refused seal and an accepted placement", kind = "image" }] }
 [[review.categories.items]]
 id = "no-build-on-waypoint"
@@ -352,7 +352,10 @@ validation = { script = "validation/pathing/map-c-housings.mjs", outputs = [{ id
 id = "three-maps"
 title = "Three maps with distinct waypoint topologies"
 description = "The three maps (The Substation, The Switchyard, The Transformer Yard) define different ordered waypoint chains at pinned coordinates — chosen, not randomly generated — so they differ in topology, not in numbers."
-validation = { script = "validation/pathing/three-maps.mjs", outputs = [{ id = "maps", name = "The three maps' waypoint layouts", kind = "image" }] }
+# One still PER MAP. A single capture could only ever show one of the three topologies, which is
+# no evidence that they differ — the claim is about the comparison, so the media has to carry all
+# three for a reviewer to make it.
+validation = { script = "validation/pathing/three-maps.mjs", outputs = [{ id = "map-substation", name = "The Substation's waypoint layout", kind = "image" }, { id = "map-switchyard", name = "The Switchyard's waypoint layout", kind = "image" }, { id = "map-transformer", name = "The Transformer Yard's waypoint layout", kind = "image" }] }
 
 # --- Economy & Grid Integrity -------------------------------------------------
 [[review.categories]]
@@ -376,7 +379,7 @@ validation = { script = "validation/economy/placement-free.mjs", outputs = [{ id
 [[review.categories.items]]
 id = "wave-clear-bonus"
 title = "Clearing a wave pays a small bonus"
-description = "Clearing a wave pays a small flat wave-clear bonus in Charge (8 + 2*wave = 10 on Wave 1) and nothing else — there is no interest on banked Charge."
+description = "Clearing a wave pays the flat wave-clear bonus in Charge (8 + 2*wave = 10 on Wave 1) and nothing else. It is a function of the wave number alone: the same clear pays the same whether the player is broke or sitting on a hoard, because banked Charge earns no interest."
 validation = { script = "validation/economy/wave-clear-bonus.mjs", outputs = [{ id = "hud", name = "Charge after a cleared wave", kind = "image" }] }
 [[review.categories.items]]
 id = "dismantle-no-refund"
@@ -433,6 +436,11 @@ id = "combine-actions-only"
 title = "Folding offers a quality climb and a recipe, and nothing else"
 description = "The only two ways to fold pieces together are COMBINE (a matching same-type, same-quality pair climbs one quality tier) and COMBINE SPECIAL (a recipe multiset assembles a combination tower). No action folds a pair into a result of the same type and quality, which would spend a piece for no gain."
 validation = { script = "validation/build/combine-actions-only.mjs", outputs = [{ id = "combine", name = "A matching pair climbing a quality tier", kind = "video" }] }
+[[review.categories.items]]
+id = "explicit-set-folds-exactly"
+title = "An explicit selection folds exactly that set"
+description = "Shift-selecting the exact pieces to fold decides the fold: on a board where the same initiator could either quality-combine a matching pair or assemble a combination-tower recipe, committing the combine with the pair explicitly selected climbs that pair one tier and does not assemble the recipe."
+validation = { script = "validation/build/explicit-set-folds-exactly.mjs", outputs = [{ id = "explicit", name = "The explicitly chosen pair folding, not the recipe it could have assembled", kind = "video" }] }
 [[review.categories.items]]
 id = "downgrade-keeps-lower"
 title = "Downgrade keeps a candidate one tier lower"
@@ -779,6 +787,11 @@ id = "panel-layout-stable"
 title = "The inspector's controls never move on their own"
 description = "Every action a selected structure can offer holds a fixed slot and is disabled rather than removed when it is momentarily unusable, so a change in game state the player did not trigger (a wave starting or ending, Charge accruing, a partner appearing) never adds, removes, or moves a control under the pointer."
 validation = { script = "validation/controls/panel-layout-stable.mjs", outputs = [{ id = "panel", name = "The inspector's fixed action slots", kind = "image" }] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation-frame loop drives the fixed 60 Hz tick from the wall clock, so a live wave progresses — simulation time accumulates and the Load walks its route — without anything stepping it from outside."
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "released", name = "The instant a unit is released", kind = "image" }, { id = "advanced", name = "One second later, on the build's own clock", kind = "image" }] }
 
 # --- Produced Art -------------------------------------------------------------
 # The produced sprites, animations, VFX, and audio are inherently visual/aural, so they
@@ -824,24 +837,95 @@ reference = "gameplay"
 proof = "gameplay"
 
 # --- Audio --------------------------------------------------------------------
+# Each mandated cue (specs/assets.md "Audio") is its own review item, decided
+# automatically: a reporter-side Web Audio probe reads the sources the build has
+# started (`api.audio`, see `validation/_helpers.mjs`'s `armAudio`/`audioCount`), so a
+# check confirms a cue plays on its event without inspecting the sound itself — a build
+# fails exactly the cue it omits, the same taxonomy floe's Audio category uses. The
+# build must not autoplay, so each check arms audio with a real gesture (a key tap and
+# a corner click) first. The exact timbre, the fire-cue-per-family distinctness, and
+# the slow/burn status cues' quality stay for the reviewer; only that the matching
+# produced clip is scheduled is scored here.
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
-id = "sfx-cues"
-title = "Produced fire, stamp, combine, kill, and leak cues"
-description = "The yard has produced sound: a stamp clunk, a fire cue per component family, a combine chime, a kill pop, a rock-settle thunk, and a leak alarm, played on the matching events via Web Audio (no downloaded or hand-oscillated stand-in)."
-proof = "pressure"
+id = "stamp"
+title = "Stamp cue"
+description = "A press/stamp clunk, produced with the audio tools, plays when a rock drops from the scrap-press."
+validation = { script = "validation/audio/stamp.mjs", outputs = [
+  { id = "stamp", name = "The rock drop whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
-id = "status-cues"
-title = "Produced slow and burn status cues"
-description = "A slow hum plays while a unit is slowed and a burn sizzle while a burn DoT ticks — distinct produced status cues."
-proof = "pressure"
+id = "zap"
+title = "Capacitor/Emitter fire cue"
+description = "A sharp zap, produced with the audio tools, plays when a Capacitor or Emitter fires."
+validation = { script = "validation/audio/zap.mjs", outputs = [
+  { id = "zap", name = "The shot whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "chain"
+title = "Coil fire cue"
+description = "A crackling chain, produced with the audio tools, plays when a Coil fires."
+validation = { script = "validation/audio/chain.mjs", outputs = [
+  { id = "chain", name = "The shot whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "discharge"
+title = "Arc-Node/Discharge Rig fire cue"
+description = "A discharge boom, produced with the audio tools, plays when an Arc-Node or Discharge Rig fires."
+validation = { script = "validation/audio/discharge.mjs", outputs = [
+  { id = "discharge", name = "The shot whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "combine"
+title = "Combine chime"
+description = "A combine chime, produced with the audio tools, plays when a quality-combine or recipe-combine folds structures into one (the same cue a combination-tower spawn reuses)."
+validation = { script = "validation/audio/combine.mjs", outputs = [
+  { id = "combine", name = "The fold whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "kill"
+title = "Kill cue"
+description = "A kill/ground-out pop, produced with the audio tools, plays when a shot destroys a unit."
+validation = { script = "validation/audio/kill.mjs", outputs = [
+  { id = "kill", name = "The kill whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "settle"
+title = "Rock-settle cue"
+description = "A rock-settle thunk, produced with the audio tools, plays when unkept rocks harden into blockers at the harvest."
+validation = { script = "validation/audio/settle.mjs", outputs = [
+  { id = "settle", name = "The hardening whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "leak"
+title = "Leak alarm"
+description = "A leak alarm, produced with the audio tools, plays when a unit grounds out at the Collector and Grid Integrity drops."
+validation = { script = "validation/audio/leak.mjs", outputs = [
+  { id = "leak", name = "The leak whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "slow"
+title = "Slow status cue"
+description = "A slow hum (an icy/EM shimmer), produced with the audio tools, plays for a Choke's slow."
+validation = { script = "validation/audio/slow.mjs", outputs = [
+  { id = "slow", name = "The shot whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "burn"
+title = "Burn status cue"
+description = "A burn sizzle (a crackling overcurrent DoT cue), produced with the audio tools, plays for a Rectifier's burn."
+validation = { script = "validation/audio/burn.mjs", outputs = [
+  { id = "burn", name = "The shot whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "music"
 title = "Produced industrial-electro music bed"
-description = "A tense, driving industrial-electro reactor music bed the build produced with the music tool loops under play."
-proof = "pressure"
+description = "A tense, driving industrial-electro reactor music bed the build produced with the music tool loops under play, once the player first interacts."
+validation = { script = "validation/audio/music.mjs", outputs = [
+  { id = "music", name = "The arming whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "no-autostart-mute"
 title = "Audio waits for interaction and can be muted"

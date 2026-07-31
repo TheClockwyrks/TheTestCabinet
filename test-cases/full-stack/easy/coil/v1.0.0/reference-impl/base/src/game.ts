@@ -213,7 +213,11 @@ export class Game {
   }
 
   // Advance one fixed tick and fold the result back into the state machine. Returns the
-  // tick's events (or null if no tick ran) so the loop can drive audio and the bite anim.
+  // tick's events (or null if no tick ran) so the loop can drive the bite anim. The audio
+  // cues themselves are played HERE, not by the loop that calls this: `advance` is also
+  // reached from `step()` (the debug API's manual clock, specs/instrumentation.md), and a
+  // cue tied to the tick's own outcome must fire the same way whether the tick was driven
+  // by a real player or a scripted scenario stepping ticks directly.
   private advance(): TickEvents | null {
     if (this.state !== "playing") return null;
     this.sim.tick(TICK_DT);
@@ -226,6 +230,9 @@ export class Game {
       comboRose: this.sim.comboRoseThisTick,
       died: this.sim.diedThisTick,
     };
+    if (events.ate) this.audio.play("eat");
+    if (events.comboRose) this.audio.play("combo");
+    if (events.died) this.audio.play("death");
     if (this.sim.ended) {
       this.state = this.sim.endReason === "cleared" ? "cleared" : "gameover";
       this.menuIndex = 0;

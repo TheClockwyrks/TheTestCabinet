@@ -27,7 +27,7 @@ export default function item() {
       );
       check.expectOk(
         "holding W moves the forager up a tile",
-        movedAlong(out.before, out.after, "up"),
+        movedAlong(out.before, out.after, "up", out.grid),
       );
     },
   };

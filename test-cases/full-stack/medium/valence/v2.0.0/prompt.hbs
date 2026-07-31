@@ -77,7 +77,9 @@ The project's **Playwright** and its headless **Chromium** are installed, and th
 container has network access, so you can drive the built game in a real browser.
 Using them to validate your build as you go — serving it, selecting a map, placing
 towers, running a round, and exercising the `window.__valence` API — is a good way to
-catch problems, but whether and how far to do so is your call. (You will separately
+catch problems, but whether and how far to do so is your call. Worth exercising the
+control operations deliberately, and not only a played round: playing by hand never
+touches the scenario board a script poses on. (You will separately
 need them for the proof-of-implementation captures that `specs/proof.md` asks for.)
 
 Whenever you do launch the browser, use the project's own Playwright: import it from

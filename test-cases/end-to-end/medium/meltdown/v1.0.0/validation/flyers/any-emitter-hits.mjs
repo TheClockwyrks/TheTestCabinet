@@ -4,7 +4,7 @@
 // not the only counter (specs/towers.md). We place a plain Arc on the flight line,
 // spawn a real Drift, and confirm the Arc damages it.
 
-import { newGame, build, spawn, TICK } from "../_helpers.mjs";
+import { newGame, build, spawn, actTail, TICK } from "../_helpers.mjs";
 
 export default function item() {
   let driftId;
@@ -24,12 +24,15 @@ export default function item() {
     },
 
     // 360 ticks = the old 6s cap; polling every tick catches the first hit rather
-    // than a state several shots later.
+    // than a state several shots later. The sweep ends ON the tick the Arc's shot
+    // connects, so without the tail the clip is a Drift flying in and then black —
+    // the one thing the item exists to show is the frame after the cut.
     async act(api) {
       r = await api.until(
         (s) => s.surge.some((u) => u.id === driftId && u.hp < u.maxHp),
         { max: 360, poll: TICK },
       );
+      await actTail(api);
     },
 
     async assert(api, check) {

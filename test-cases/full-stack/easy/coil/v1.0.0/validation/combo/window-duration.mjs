@@ -8,13 +8,15 @@
 // All exact under the manual clock.
 //
 // The lane is posed instantly (`arrange`); the eats and the 27 drift ticks consume
-// time and are the clip. Note what the RECORDED clip looks like: actDriftTicks re-poses
-// the snake to the same short lane before each tick, so on camera the snake appears to
-// snap back rather than travel. That is deliberate — it is what keeps the snake off the
-// walls and off the pellet for the whole window, so the drain is the only thing
-// changing — and the evidence a reviewer wants is the combo meter in the HUD draining
-// to zero over 3.5 s, which the full act does show. The clip is left uncapped for that
-// reason; at 29 ticks it is ~3.6 s, comfortably inside the runtime's budget.
+// time and are the clip. What the RECORDED clip shows is the snake crossing the board
+// (actDriftTicks re-poses it to the start of the lane only as it nears the right wall,
+// not every tick) while the HUD's combo meter drains to zero and the multiplier drops
+// back to x1 — which is the evidence this item is about. The clip is left uncapped for
+// that reason; at 29 ticks it is ~3.6 s, comfortably inside the runtime's budget.
+//
+// The two eats that open the window are waited FOR rather than assumed to land on the
+// record pass's wall clock (see `actEatSequence`); without that the recording could
+// reach the drain at x1 with a single eat scored, and show no multiplier to reset.
 
 import {
   actDriftTicks,

@@ -6,10 +6,11 @@
 // marks one and not the other is the real sim, so it is `act`, and the capture at the end
 // is the reviewer's evidence.
 import {
-  startPlaying,
   denAllExcept,
   findSonarSenseTiles,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -32,7 +33,7 @@ export default function item() {
         ty: l.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton"); // keep the forager dark (g stays 0)
+      await quietBoard(api); // keep the forager dark (g stays 0)
       await api.call("clearCooldowns");
     },
 

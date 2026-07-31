@@ -6,7 +6,13 @@
 // fabricated end. Nothing here announces the outcome; `act` runs the real sim and
 // `snapshot` reads it back.
 
-import { startRun, pathGeom, spawnAt, unitById, MAP } from "../_helpers.mjs";
+import {
+  startScenario,
+  pathGeom,
+  spawnAt,
+  unitById,
+  MAP,
+} from "../_helpers.mjs";
 
 export default function item() {
   let g;
@@ -21,7 +27,7 @@ export default function item() {
     id: "maps.single-path",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single, { integrity: 100000 });
+      const snap = await startScenario(api, MAP.single, { integrity: 100000 });
       pathCount = snap.paths.length;
       g = pathGeom(snap.paths[0]);
 

@@ -5,10 +5,11 @@
 // The Flarefish is posed out beyond the light in `arrange`; firing the pulse and watching
 // the front sweep over it is the real sim, so it is `act` — and that sweep is the clip.
 import {
-  startPlaying,
   denAllExcept,
   findSonarSenseTiles,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -27,7 +28,7 @@ export default function item() {
         ty: target.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton"); // keep the stationary forager dark (g stays 0)
+      await quietBoard(api); // keep the stationary forager dark (g stays 0)
     },
 
     async act(api) {

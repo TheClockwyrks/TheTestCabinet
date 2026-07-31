@@ -4,6 +4,16 @@
 // Standing the forager behind the junction is instant (`arrange`); approaching it,
 // buffering the turn mid-tile and reaching the center where the turn is actually taken is
 // the real sim, so it is `act` — and that is exactly the clip a reviewer needs to see.
+//
+// ONE KEY AT A TIME. The approach key is RELEASED before the perpendicular is pressed.
+// `specs/movement.md` says a direction key "sets the desired direction" and that the
+// desired direction is buffered — "hold or tap a direction slightly before a junction and
+// the forager takes it at the junction" — so a tap of the perpendicular is exactly the
+// input the rule describes. It says nothing about which of two simultaneously held keys
+// wins, so an earlier form of this check — which pressed the perpendicular while still
+// holding the approach key — rode on an unspecified tie-break: against a build that
+// resolves it oldest-first the forager simply never turned, which ALSO made the
+// "not taken mid-tile" assertion pass for the wrong reason.
 import { startPlaying, findCorner, DIR_KEY } from "../_helpers.mjs";
 
 export default function item() {
@@ -29,13 +39,13 @@ export default function item() {
       // would be 16 px, reaching the junction center and destroying the very invariant
       // this check probes. So: 14.
       await api.advance(14); // ~14.9 px in: mid-tile, short of the junction center
-      // Buffer the perpendicular turn while mid-tile.
+      // Buffer the perpendicular turn while mid-tile, with only that key held.
+      await api.call("keyUp", DIR_KEY[c.approach]);
       await api.call("keyDown", DIR_KEY[c.perp]);
       mid = (await api.snapshot()).forager;
       await api.advance(36); // 36 ticks = the old 0.3 s: reach the junction center — the turn is taken there
       turned = (await api.snapshot()).forager;
-      await api.advance(96); // 96 ticks = the old 800 ms live tail, both keys still held
-      await api.call("keyUp", DIR_KEY[c.approach]);
+      await api.advance(96); // 96 ticks = the old 800 ms live tail, the turn key held
       await api.call("keyUp", DIR_KEY[c.perp]);
     },
 

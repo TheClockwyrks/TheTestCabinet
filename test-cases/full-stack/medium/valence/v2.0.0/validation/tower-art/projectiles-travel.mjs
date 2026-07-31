@@ -6,7 +6,7 @@
 // still in flight.
 
 import {
-  startRun,
+  startScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -24,7 +24,7 @@ export default function item() {
     id: "tower-art.projectiles-travel",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single);
+      const snap = await startScenario(api, MAP.single);
       const g = pathGeom(snap.paths[0]);
       const s0 = g.length * 0.2;
       await placeCovering(api, "cleaver", g, s0);
@@ -40,21 +40,33 @@ export default function item() {
         max: 120,
         poll: TICK,
       });
-      p0 = r.snap.projectiles[0];
+      // A HITSCAN build — the very thing specs/towers.md forbids ("Hitscan does not satisfy
+      // this") — never puts a projectile in the snapshot at all, so this is the expected
+      // shape of a failing build and not a surprise. Reading `projectiles[0]` unguarded
+      // threw out of `act`, which the runtime reports as a broken debug API rather than as a
+      // failed requirement: the harshest signal there is, and pinned on the wrong thing.
+      // Leaving the readings null lets the assertions below record the real failure.
+      p0 = r.snap.projectiles[0] ?? null;
+      if (p0 == null) return;
 
       before = { x: p0.x, y: p0.y };
       // The old 0.03 s is 1.8 ticks, which the contract refuses. It meant "a couple of
       // steps" — long enough for measurable travel, short enough that the shot has not
       // landed — so 2 ticks is the honest reading of it.
       await api.advance(2);
-      after = (await api.snapshot()).projectiles.find((p) => p.id === p0.id);
+      after =
+        (await api.snapshot()).projectiles.find((p) => p.id === p0.id) ?? null;
     },
 
     async assert(api, check) {
       check.expectOk("a shot is fired", r.hit);
+      check.expectOk(
+        "the shot exists as a projectile on the board (not a hitscan hit)",
+        p0 != null,
+      );
       check.expectGt(
         "the projectile has a travel velocity (not hitscan)",
-        Math.hypot(p0.vx, p0.vy),
+        p0 ? Math.hypot(p0.vx, p0.vy) : 0,
         1,
       );
       check.expectOk(
@@ -63,7 +75,7 @@ export default function item() {
       );
       check.expectGt(
         "the projectile moved across the board",
-        Math.hypot(after.x - before.x, after.y - before.y),
+        after ? Math.hypot(after.x - before.x, after.y - before.y) : 0,
         1,
       );
     },

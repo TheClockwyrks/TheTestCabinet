@@ -27,7 +27,7 @@ export default function item() {
       );
       check.expectOk(
         "holding ArrowLeft moves the forager left a tile",
-        movedAlong(out.before, out.after, "left"),
+        movedAlong(out.before, out.after, "left", out.grid),
       );
     },
   };

@@ -4,17 +4,18 @@
 // The blind pair is posed instantly (`arrange`); `act` lets the pose settle, gives the
 // build a frame to paint, and reads the amber halo back off the canvas.
 import {
-  startPlaying,
-  findOccludedPair,
+  amberInProfile,
   denAllExcept,
+  findOccludedPair,
   pred,
-  sampleAmberOrb,
-  isAmber,
+  quietBoard,
+  sampleMoteProfile,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
   let lit;
-  let col;
+  let profile;
 
   return {
     id: "lanternjaw.bulb-visible",
@@ -23,13 +24,12 @@ export default function item() {
       const snap = await startPlaying(api);
       const bp = findOccludedPair(snap); // close enough for the Kindle circle, LOS blocked so unlit
       await denAllExcept(api, ["lanternjaw"]);
-      await api.call("setForager", { tx: bp.forager.tx, ty: bp.forager.ty });
       await api.call("setPredator", "lanternjaw", {
         tx: bp.pred.tx,
         ty: bp.pred.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api, bp.forager);
     },
 
     async act(api) {
@@ -38,13 +38,18 @@ export default function item() {
       lit = p.lit;
       // A REAL pause (the old wait(120)) so the bulb has been painted before sampling.
       await api.settle(120);
-      col = await sampleAmberOrb(api, p.x, p.y);
+      // The bulb read across its whole profile rather than at one fixed ring: the spec
+      // fixes the amber, not the size of the glow it is painted in (see `MOTE_RADII`).
+      profile = await sampleMoteProfile(api, p.x, p.y);
       await api.screenshot("bulb");
     },
 
     async assert(api, check) {
       check.expectOk("the Lanternjaw's tile is unlit fog", lit === false);
-      check.expectOk("its amber bulb is still drawn in the dark", isAmber(col));
+      check.expectOk(
+        "its amber bulb is still drawn in the dark",
+        Boolean(amberInProfile(profile)),
+      );
     },
   };
 }

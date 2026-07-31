@@ -1,121 +1,103 @@
 # 🧩 Outside the Box
 
-That is your theme. Build one complete **puzzle game** around it. What kind of puzzle,
-and everything around it, is yours to invent — this is the most open-ended of briefs,
-with no specification and no reference design to match.
+The theme for this game jam is thinking outside the box. Build a complete
+puzzle game of any kind. You are responsible for naming the game and you may
+not use "Outside the Box" as the name of your game.
 
-The name is the puzzle-solver's creed: *think outside the box.* A good puzzle asks the
-player to see past the obvious and find the insight hiding in plain sight — and a good
-puzzle *game* is a designer setting that moment up on purpose, again and again. That is
-what you are building.
+Your game must meet these requirements:
 
-Only a few things are fixed, and your game must deliver all of them:
+- It must a puzzle game.
+  The core of play is a challenge the player solves by thinking, reaching an
+  insight, a plan, a solution, rather than by reflexes or chance. What that
+  challenge is is entirely up to you.
+- At least eight levels.
+  Ship a minimum of eight distinct, hand-designed levels, or puzzles, stages,
+  boards, whatever your game calls them. More than 8 levels is allowed, but
+  fewer than 8 levels will immediately disqualify your game.
+- A real difficulty ramp.
+  Levels must grow in difficulty. Start gentle and teaching, and build to
+  genuinely hard, each level asking a little more than the one before. You do
+  not have to show the player a difficulty rating, but the order they play in
+  must be a deliberate progression.
 
-- **It is a puzzle game.** The core of play is a challenge the player solves by
-  *thinking* — reaching an insight, a plan, a solution — rather than by reflexes or
-  chance. What that challenge is is entirely up to you: spatial, logical, mechanical,
-  physical, wordplay, anything that makes a player stop and work it out.
-- **At least eight levels.** Ship a minimum of eight distinct, hand-designed levels —
-  or puzzles, stages, boards, whatever your game calls them. This is a floor, not a
-  target: build more if they are good, but never fewer.
-- **A real difficulty ramp.** Those levels must climb. Start gentle and teaching, and
-  build to genuinely hard, each level asking a little more than the one before. You do
-  not have to show the player a difficulty rating — but the order they play in must be
-  a deliberate progression, and getting that ordering right (predicting how hard each
-  puzzle actually is) is a real part of the challenge. A player should feel the
-  difficulty rise, never lurch backward.
+At the end of the game jam, your submission will be judged against the other
+contestants' submissions. Judges will be looking at how novel the challenges
+are, difficulty of the puzzles, and overall aesthetics and polish. Your goal is
+to take first place in the jam.
 
-Beyond those, everything is open: the puzzle mechanic and how it works, the setting and
-its art, whether there is any story, how the player moves between levels, and what
-winning a level and winning the game look like. Invent the puzzle you find most
-interesting, and design the levels that show it off — from its simplest form to its
-most demanding.
+## workspace
 
 Your project root is `{{workspace}}`. Build the game there.
 
+The workspace is a git repository, initialized before you started. Your finished
+implementation is published directly from this repository's commits, and any
+uncommitted work is **not** published.
+
+Create any number of commits as you go. Once the game is complete, verify that
+no unintended untracked files exist and that you have committed a README.md that
+describes your game. Your README.md should be written with a prospective player
+as the target audience.
+
 ## Your time budget
 
-You have **about {{time_limit_hours}} hours** of wall-clock time for this run, after
-which the session is stopped — whatever is committed at that point is what gets
-published. Budget it: leave yourself room to build the assets, verify the game, and
-commit before the clock runs out. You can check the current time at any point by
-running `date` in the container, so you can see how much of the budget remains and
-pace the work accordingly. Scope to finish comfortably rather than racing the
-deadline.
+You have {{time_limit_hours}} hours of wall-clock time for this run. Running
+`date` in the container reports the current time, so you can see how much of the
+budget remains.
 
 ## Your starting point
 
 A starter project is already in place at `{{workspace}}`: a `package.json` that
-pins **Playwright** as a dev dependency, with its dependencies already installed
-(`node_modules/` is populated and headless **Chromium** is downloaded), so you can
-build and verify right away. Build on this project — keep the `package.json`, add
-your framework, bundler, and a `build` script on top of it, and keep the lockfile
-in sync.
+pins Playwright as a dev dependency, with its dependencies already installed.
+`node_modules/` is populated and headless Chromium is downloaded, so you can
+build and verify right away. Build on this project: keep the `package.json`, add
+your framework, bundler, and a `build` script on top of it, and keep the
+lockfile in sync.
+
+There is no global Playwright on `PATH`. Use the project's own instance by
+importing it (`import { chromium } from "playwright"`) or by running `npx
+playwright`. This environment has no Chromium sandbox, so Chromium has to be
+launched with the `--no-sandbox` argument.
 
 ## Producing the game's assets
 
-The game ships its own art, animation, effects, and sound, and you must produce them
-for real. Placeholder rectangles, stand-ins drawn at runtime, or silence count as
-unfinished work. Six asset-generation binaries are on your `PATH` to help (run each
-with `--help` to learn its operations):
+You must produce the art, animations, effects, and sound for your game. If you
+use placeholder rectangles, stand-ins drawn at runtime, or omit assets, your
+game will be judged extremely poorly when the game jam submissions are judged.
+
+Six asset-generation binaries are on your `PATH` to help. Run each with `--help`
+to learn its operations:
 
 - `draw`, `draw-sheet`: 2D sprites and animated sprite sheets.
 - `particle-2d`: 2D particle effects.
 - `sfx-synth`, `sfx-sample`: sound effects, synthesized or sample-based.
 - `music`: music tracks.
 
-Use them, or produce assets any other way you prefer. Treat asset generation as a
-one-time step: these binaries are on your `PATH` only while this run is live, not
-when your build is re-run to validate it. So generate the assets once into committed
-files and have `npm run build` simply bundle them; `npm run build` must **not**
-invoke `draw` or any other generation binary.
+Use them, or produce assets any other way you prefer. These binaries are only
+available during this run and not when your submission is published. Generate
+any assets once and commit them. Do not define build commands that call into
+the asset generation binaries.
 
 ## The fixed build/serve interface
 
-The project stays a **Node project** built with only Node.js and npm-installed
-dependencies. Extend the provided `package.json` and **commit a
-`package-lock.json`** (run `npm install` after changing dependencies so the
-lockfile matches). `npm ci` then `npm run build` must produce the static site —
-with no other manual step — into one of `dist/`, `build/`, or `out/` at the project
-root, with an `index.html` at the root of that directory. Serving that directory
-as-is must run the game, and it must work **at any base path** (it is played back
-from a per-run sub-path, so every URL the build constructs at runtime — including
-every produced asset — must be page-relative, never a leading `/`; for a bundler,
-set a relative base such as `base: './'`).
+The project stays a Node project built with only Node.js and npm-installed
+dependencies. Extend the provided `package.json` and commit a
+`package-lock.json`, running `npm install` after changing dependencies so the
+lockfile matches. `npm ci` followed by `npm run build`, with no other manual
+step, must produce the static site into one of `dist/`, `build/`, or `out/` at
+the project root, with an `index.html` at the root of that directory. Serving
+that directory as-is must run the game.
 
-If you would rather write your game's core logic (a physics/simulation loop, pathing,
-anything performance-sensitive) in **Rust and compile it to WebAssembly**, you can:
-this container has the Rust toolchain, the `wasm32-unknown-unknown` target, and
-`wasm-bindgen`/`wasm-pack` on `PATH`. But treat the compiled wasm as a **build
-input**, not a build step — those tools are on `PATH` only while this run is live,
-not when your build is re-run to validate it. So compile the wasm once during the
-run and **commit** the resulting `.wasm` (and any generated JS glue), then have
-`npm run build` simply bundle the committed output; it must **not** invoke
-`cargo`/`wasm-pack`. Plain JavaScript/TypeScript is perfectly fine too — reach for
-wasm only if it genuinely helps your game.
+The build must also work at **any base path**. It is played back from a per-run
+sub-path, so every URL it constructs at runtime, including every produced asset,
+must be page-relative and never start with `/`. For a bundler, set a relative
+base such as `base: './'`.
 
-## Verify before you finish
-
-Your project has **Playwright** and a headless **Chromium** installed as project
-dependencies, plus network access — use them to verify your build, do not just
-assume it works. Before you consider the task complete, produce the **static
-production build**, serve it locally, open it in Chromium with Playwright, and
-confirm it **loads with no console errors**. Then **actually play it** — start a
-round, exercise the core loop, and play it through to a natural end (a win, a loss,
-a cleared goal, or a satisfying session) — and fix anything that is broken, unclear,
-or unfun before finishing. Launch Chromium with the
-`--no-sandbox` argument (this container has no Chromium sandbox).
-
-Use the project's own Playwright (import it from your project, e.g.
-`import { chromium } from "playwright"`, or run `npx playwright`); there is no
-global Playwright on `PATH`.
-
-## Commit your work
-
-Your project root is a **git repository**, initialized before you started. Your
-finished implementation is published directly from this repository's commits, so
-uncommitted work is **not** published. When the game is complete and verified, run
-`git add -A` then `git commit`, and confirm `git status` reports a clean working
-tree. A `.gitignore` already excludes `node_modules/` and the build output — a
-clean tree means committing your source, your `package-lock.json`, a short
-`README.md`, and the **produced assets** the game ships.
+You can write your game's core logic in Rust and compile it to WebAssembly if
+you prefer: this container has the Rust toolchain, the `wasm32-unknown-unknown`
+target, and `wasm-bindgen`/`wasm-pack` on `PATH`. As with the asset generation
+tools, these are on `PATH` only while this run is live, so the compiled wasm is
+a build input rather than a build step. Compile it once during the run, commit
+the resulting `.wasm` and any generated JS glue, and have `npm run build` bundle
+the committed output without invoking `cargo` or `wasm-pack`. Plain JavaScript
+or TypeScript is acceptable too; reach for wasm only if it genuinely helps your
+game.

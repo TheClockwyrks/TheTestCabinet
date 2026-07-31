@@ -6,8 +6,14 @@
 // The cleared field, the ship's pose and the readied charge are the preconditions (`arrange`);
 // the launch and the flight past the star are the behavior (`act`), so the clip is the torpedo
 // holding its line where a bullet would visibly bend. 0.8 s x 120 Hz = 96 ticks.
+//
+// Headings are compared with `angleDelta`, never by subtracting or by taking `Math.abs` of a
+// raw angle. A heading names a direction and the case fixes no range for it, so a build
+// keeping headings in [0, 2pi) reports a torpedo drifting a hair below straight as ~6.28
+// rather than ~-0.003 — the same flight path, a whole turn of apparent error. The shortest-arc
+// reading is the same on every convention.
 
-import { newGame, poseShip } from "../_helpers.mjs";
+import { newGame, poseShip, angleDelta } from "../_helpers.mjs";
 
 export default function item() {
   // The torpedo as it launched, and after it has crossed the well.
@@ -36,7 +42,7 @@ export default function item() {
     async assert(api, check) {
       check.expectClose(
         "the torpedo launches straight (heading 0)",
-        launch.heading,
+        angleDelta(launch.heading, 0),
         0,
         1e-6,
       );
@@ -46,7 +52,7 @@ export default function item() {
       );
       check.expectClose(
         "its heading is unchanged — no homing, no curve",
-        t.heading,
+        angleDelta(t.heading, 0),
         0,
         0.02,
       );

@@ -236,8 +236,11 @@ must be operable with the mouse alone, with a keyboard accelerator as an alterna
 
 - Maze length. The status bar shows how long the current maze is, the length of the
   ground route the Load walks through the ordered waypoint chain around your walls
-  (`specs/board.md`), expressed in a stable unit (e.g. tiles). It updates live as you
-  build, so the player can see a placement lengthen the route. Hovering the readout
+  (`specs/board.md`), in TILES: the sum of the route's step lengths, an orthogonal
+  step counting `1` tile and a diagonal step `√2` (`specs/board.md` "Diagonal rule").
+  It updates live as you build, so the player can see a placement lengthen the route —
+  any wall the route has to go around raises this figure, including one it only has to
+  round a corner of. Hovering the readout
   draws the full ground path on the yard (a highlighted line from Entry through every
   waypoint to the Collector). This is the walking route only: air units ignore the maze
   (`specs/enemies.md`, `specs/board.md`), so the flyers' straight-line path is not part

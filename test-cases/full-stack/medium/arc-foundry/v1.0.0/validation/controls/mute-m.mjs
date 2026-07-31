@@ -1,13 +1,20 @@
 // Automated validation for controls.mute-m: pressing M toggles audio mute.
 //
-// The reset is the arrange; the M KEY PRESS and the reads either side of it are the act.
+// Opening a run is the arrange; the M KEY PRESS and the reads either side of it are the act.
+//
+// WHERE M IS DRIVEN. This used to press M on the TITLE screen: `arrange` was a bare `reset`,
+// which returns the game to its initial title state (`specs/instrumentation.md`), and nothing
+// started a run. Mute is a HUD control — `specs/ui.md` puts it in the status bar and
+// `specs/controls.md` lists it among the accelerators alongside it — and the status bar only
+// exists on the board. Whether a build also answers M on its menus is its own business, and
+// this item is not the place to decide it, so the binding is driven where the spec plainly
+// requires it: during play.
 
-import { snap } from "../_helpers.mjs";
+import { startBuild, snap } from "../_helpers.mjs";
 
-// The old script waited 80 ms after the reset for the build to come up. At 60 Hz that is 4.8
-// ticks, which the tick contract rejects rather than rounds, so round UP to 5: a settle only
-// has to be at LEAST as long as it was, never shorter.
-const SETTLE_TICKS = 5;
+// A paint settle so the status bar has drawn its mute control before and after the toggle —
+// the still is read from a rendered frame, and no amount of stepping paints one.
+const SETTLE_MS = 120;
 
 export default function item() {
   // The mute flag either side of the press, read by `assert`.
@@ -18,13 +25,15 @@ export default function item() {
     id: "controls.mute-m",
 
     async arrange(api) {
-      await api.reset();
+      await startBuild(api);
     },
 
     async act(api) {
-      await api.advance(SETTLE_TICKS);
+      await api.settle(SETTLE_MS);
       before = (await snap(api)).muted;
+
       await api.call("press", "KeyM");
+      await api.settle(SETTLE_MS);
       after = (await snap(api)).muted;
 
       await api.screenshot("mute");

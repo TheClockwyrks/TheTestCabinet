@@ -4,12 +4,13 @@
 // that collects its pings is the measurement, so it is `act` and is what the clip opens
 // on (the record pass films the start of the watch and stops on its budget).
 import {
-  startPlaying,
+  GLOAMFIN_PING_INTERVAL,
+  actGloamPings,
   denAllExcept,
   findFarTile,
-  actGloamPings,
+  quietBoard,
+  startPlaying,
   ticksFor,
-  GLOAMFIN_PING_INTERVAL,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -27,7 +28,7 @@ export default function item() {
         ty: far.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

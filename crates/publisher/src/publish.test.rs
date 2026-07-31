@@ -131,6 +131,7 @@ fn sample_record() -> RunRecord {
             detail: None,
         },
         game_jam_readme: None,
+        game_jam_prior_entries: Vec::new(),
     }
 }
 

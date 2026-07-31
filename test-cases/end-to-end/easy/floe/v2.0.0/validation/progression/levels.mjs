@@ -7,6 +7,13 @@
 
 import { startCrossing, WATER_TOP } from "../_helpers.mjs";
 
+// How long the clip keeps filming once level 2 is up. The item's second half is that
+// the new level runs FASTER, and a speed is not something a single frame can show —
+// the sweep landed on the tick the level turned over, so the clip ended on a board
+// that had barely begun to move. A few seconds of level 2 actually running is what
+// lets a reviewer see the traffic and the floes going quicker than they did.
+const TAIL_TICKS = 360; // 3 s
+
 export default function item() {
   // The level-1 lane speed, read instantly before the clear (afterwards the level has
   // been rebuilt), and the sweep that waited for level 2.
@@ -34,6 +41,7 @@ export default function item() {
       // The clear runs through a between-levels pause, so sweep for the new level:
       // 2.5 s at a 0.1 s cadence.
       r = await api.until((s) => s.level === 2, { max: 300, poll: 12 });
+      await api.advance(TAIL_TICKS); // level 2 running, visibly quicker
     },
 
     async assert(api, check) {

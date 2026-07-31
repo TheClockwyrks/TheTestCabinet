@@ -364,9 +364,9 @@ title = "Growth & Pellets"
 id = "grows-by-one"
 title = "Eating grows the snake by exactly one"
 description = "Eating a pellet grows the snake by exactly one cell (the tail does not retract that tick); a following normal tick keeps the length constant."
-# Automated validation: place a pellet one cell ahead, step to eat it and confirm
-# length +1, then step a normal tick and confirm length holds. See
-# validation/growth/grows-by-one.mjs.
+# Automated validation: place a pellet a short run ahead, step up to it, step the eat
+# and confirm length +1, then park the pellet and step a normal tick to confirm the
+# length holds. See validation/growth/grows-by-one.mjs.
 validation = { script = "validation/growth/grows-by-one.mjs", outputs = [
   { id = "grow", name = "The snake growing by one on an eat", kind = "video" },
 ] }
@@ -657,6 +657,12 @@ description = "Pressing M toggles the mute state."
 validation = { script = "validation/controls/mute-key.mjs", outputs = [
   { id = "mute", name = "The title after toggling mute", kind = "image" },
 ] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live round advances — simulation time accumulates and the snake crawls forward — without anything stepping it from outside."
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
+
 
 # --- Presentation -------------------------------------------------------------
 # Matters of craft and produced art that reading pixels cannot settle: they roll up
@@ -690,18 +696,55 @@ description = "The head is an animated sprite sheet the build produced with draw
 proof = "combo"
 
 # --- Audio --------------------------------------------------------------------
-# The genuinely produced sound and music (specs/assets.md), reviewed by a person from
-# the proof clip; no validation script.
+# The genuinely produced sound and music (specs/assets.md), each mandated cue its own
+# review item so a build fails exactly the cue it omits or never wires, rather than an
+# averaged-away "produced-sfx". Every check is a reporter-side Web Audio probe (see
+# `api.audio` and validation/_helpers.mjs `armAudio`/`audioCount`): the build must not
+# autoplay, so audio is armed FIRST with a genuine browser gesture (a real key press
+# AND a corner click — a debug `press` would leave a conformant build's AudioContext
+# uncreated, since it may unlock only from a real DOM event), and a cue is confirmed by
+# the Web Audio source log growing across the driven event. Only that a cue plays is
+# scored automatically; its DISTINCTNESS, timbre, and overall craft against the other
+# cues stays for the reviewer, from the proof clip.
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
-id = "produced-sfx"
-title = "Produced sound effects"
-description = "The game plays real sound effects the build produced with the audio tools — an eat cue, a combo-up cue, and a death sound (sfx-synth and/or sfx-sample) — via Web Audio with a mute toggle and no autoplay before the first input; not silence and not a hand-oscillated Web Audio stand-in."
-proof = "combo"
+id = "eat"
+title = "Eat cue"
+description = "A short cue, produced with the audio tools (sfx-synth and/or sfx-sample) and played via Web Audio, plays when a pellet is eaten."
+# Automated validation: pose a clear eat, arm audio, and confirm a Web Audio source
+# starts across the eat. See validation/audio/eat.mjs.
+validation = { script = "validation/audio/eat.mjs", outputs = [
+  { id = "eat", name = "The eat whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "combo-up"
+title = "Combo-up cue"
+description = "A brighter cue, produced with the audio tools and played via Web Audio, plays when the combo multiplier increases."
+# Automated validation: eat twice within the combo window, arm audio, and confirm a Web
+# Audio source starts on the second eat's rise (isolated from the first eat's own cue).
+# See validation/audio/combo-up.mjs.
+validation = { script = "validation/audio/combo-up.mjs", outputs = [
+  { id = "combo", name = "The combo rise whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "death"
+title = "Death cue"
+description = "A distinct tone, produced with the audio tools and played via Web Audio, plays when the snake dies."
+# Automated validation: pose a fatal wall hit, arm audio, and confirm a Web Audio
+# source starts across the death. See validation/audio/death.mjs.
+validation = { script = "validation/audio/death.mjs", outputs = [
+  { id = "death", name = "The death whose cue is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "produced-music"
 title = "Produced music bed"
-description = "The game plays a low-key looping music bed the build produced with the music tool, under the round, respecting the mute toggle."
-proof = "combo"
+description = "The game plays a low-key looping music bed the build produced with the music tool, played via Web Audio under the round, respecting the mute toggle."
+# Automated validation: press Enter on the title as a real browser gesture — the one
+# keypress that both arms audio and begins the round, the only path a player has — and
+# confirm a Web Audio source starts (the looping bed) under that round. See
+# validation/audio/produced-music.mjs.
+validation = { script = "validation/audio/produced-music.mjs", outputs = [
+  { id = "music", name = "The music bed starting under a round", kind = "video" },
+] }

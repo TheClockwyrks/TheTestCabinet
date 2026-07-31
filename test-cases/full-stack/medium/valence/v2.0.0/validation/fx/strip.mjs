@@ -6,6 +6,12 @@
 
 import { coverAndSpawn, TICK } from "../_helpers.mjs";
 
+// The clip used to cut on the frame the burst first appeared, which shows a burst starting
+// and never playing. A produced particle system is SIMULATED and varies shot to shot
+// (specs/assets.md), so what a reviewer has to see is it playing out — and, over a second,
+// the atom shedding further electrons under continued fire.
+const TAIL_TICKS = 90;
+
 export default function item() {
   let r;
 
@@ -25,6 +31,7 @@ export default function item() {
         max: 180,
         poll: TICK,
       });
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {

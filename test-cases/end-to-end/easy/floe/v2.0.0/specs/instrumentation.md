@@ -204,6 +204,20 @@ auto-repeat hops, reading `snapshot()` to see where the critter ended up.
 }
 ```
 
+`phase` is the sub-phase of a live game (it is meaningful only while `screen` is
+`"playing"`):
+
+- `"crossing"` — a critter is on the board and under the player's control. This is
+  the phase for all of normal play.
+- `"dying"` — the death pause that follows a lost life (`specs/gameplay.md`), from
+  the moment the life is deducted until the fresh critter appears on the near shore.
+  Every death has one, whatever caused it, so a snapshot taken at any point in that
+  pause reports `"dying"` — and a caller stepping tick by tick across a death sees
+  `"crossing"` become `"dying"` and then `"crossing"` again.
+- `"clearing"` — a completed crossing or a filled level is being resolved. A build
+  that resolves either immediately simply passes through this phase, so unlike
+  `"dying"` it need not be observable between two steps.
+
 `critter.footing` is `"solid"` on the shores, median, and ice band, `"floe"` while
 standing on a floe over the water, and `"water"` while over open water (a state the
 critter cannot survive past the next step). `bears[i].swimming` is true while that

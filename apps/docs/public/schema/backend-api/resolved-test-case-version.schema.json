@@ -597,6 +597,11 @@
         "domain": {
           "type": ["string", "null"]
         },
+        "graded": {
+          "default": false,
+          "description": "Whether the item is graded on the five-level scale (a game-jam category)\nrather than pass/fail. False for every other test type. The reviewer UI keys\nits editor control (emoji grade scale vs. pass/fail) off this flag.",
+          "type": "boolean"
+        },
         "id": {
           "type": "string"
         },

@@ -3,7 +3,7 @@
 // Entering play and clearing the board is instant (`arrange`); the drifter is spawned on
 // the forager's own tile and the eat then happens in the real sim, so both live in `act`
 // — the clip shows the drifter actually being taken.
-import { startPlaying, SCORE_DRIFTER } from "../_helpers.mjs";
+import { SCORE_DRIFTER, quietBoard, startPlaying } from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -14,7 +14,7 @@ export default function item() {
 
     async arrange(api) {
       await startPlaying(api);
-      await api.call("poseLastPlankton"); // clear plankton so only the drifter scores here
+      await quietBoard(api); // clear plankton so only the drifter scores here
     },
 
     async act(api) {

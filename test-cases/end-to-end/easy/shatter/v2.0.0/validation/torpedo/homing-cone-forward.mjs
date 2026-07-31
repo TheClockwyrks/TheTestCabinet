@@ -6,8 +6,14 @@
 // The ship's pose, the rock behind it and the readied charge are the preconditions (`arrange`);
 // the launch and the flight away from the rock are the behavior (`act`), so the clip is the
 // torpedo declining to turn around. 0.3 s x 120 Hz = 36 ticks.
+//
+// Headings are compared with `angleDelta`, never by subtracting or by taking `Math.abs` of a
+// raw angle. A heading names a direction and the case fixes no range for it, so a build
+// keeping headings in [0, 2pi) reports a torpedo drifting a hair below straight as ~6.28
+// rather than ~-0.003 — the same flight path, a whole turn of apparent error. The shortest-arc
+// reading is the same on every convention.
 
-import { newGame, poseShip } from "../_helpers.mjs";
+import { newGame, poseShip, angleDelta } from "../_helpers.mjs";
 
 export default function item() {
   // The torpedo as it launched, and once it has had time to turn (and not).
@@ -40,7 +46,7 @@ export default function item() {
       check.expectOk("the torpedo is still in flight", Boolean(t));
       check.expectLt(
         "it does not turn around toward the rock behind it",
-        Math.abs(t.heading),
+        Math.abs(angleDelta(t.heading, 0)),
         0.1,
       );
       check.expectGt(

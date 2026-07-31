@@ -15,6 +15,15 @@ import { startCrossing, ROW_NEAR, WATER_TOP } from "../_helpers.mjs";
 const BAY_COL = 20;
 const BAY_INDEX = 2;
 
+// How long the critter is filmed riding up to the bay before it hops in, and how
+// long the clip keeps rolling once it is back on the near shore. The item is about
+// WHERE the fresh critter comes back, and the sweep ends on the tick it arrives —
+// so without a tail the clip was a critter in a bay and then a cut, which is the
+// half of the behavior that was never in question. The tail is what shows the
+// respawn; the lead-in is what shows the crossing it was earned by.
+const LEAD_TICKS = 60; // 0.5 s
+const TAIL_TICKS = 240; // 2 s
+
 export default function item() {
   // The bay fill and the respawn it produced, for `assert` to read.
   let filled;
@@ -34,6 +43,7 @@ export default function item() {
 
     // The bay fill and the respawn it triggers — both what is checked and the clip.
     async act(api) {
+      await api.advance(LEAD_TICKS); // the critter waiting under the open bay
       await api.call("press", "ArrowUp");
       filled = await api.until((s) => s.bays[BAY_INDEX] === true, {
         max: 60,
@@ -43,6 +53,7 @@ export default function item() {
         (s) => s.phase === "crossing" && s.critter.row === ROW_NEAR,
         { max: 180, poll: 6 }, // 1.5 s — covers the brief bay-fill pause
       );
+      await api.advance(TAIL_TICKS); // the fresh critter waiting on the near shore
     },
 
     async assert(api, check) {

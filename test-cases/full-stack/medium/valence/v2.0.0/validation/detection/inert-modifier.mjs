@@ -12,16 +12,16 @@
 //     chipped straight away, so the tower plainly works;
 //   * put a detector on it and it is revealed, and the same tower then chips it.
 //
-// The round table's own use of the modifier is checked too: Round 37 fields both plain
-// and shielded Dimers, and the real wave system must release them that way.
+// The round table's own use of the modifier is a separate item — `inert-round-table`,
+// which drives the real Round 37 wave. This one is about the modifier itself, so it runs
+// entirely on posed matter over a scenario round.
 //
-// THREE runs. Only the first is arranged (it opens from a seeded reset); the shielded
-// comparison and the Round 37 sweep are posed inside `act` with `poseRun`, since
-// `api.reset` throws there.
+// TWO runs. Only the first is arranged (it opens from a seeded reset); the shielded
+// comparison is posed inside `act` with `poseScenario`, since `api.reset` throws there.
 
 import {
-  startRun,
-  poseRun,
+  startScenario,
+  poseScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -33,7 +33,6 @@ import {
 } from "../_helpers.mjs";
 
 const SHIELDED_TICKS = 180; // 180 ticks = the old 3 s — long enough for an Emitter to fire repeatedly
-const MAX_WAVE_TICKS = 5400; // 5400 ticks = the old 90 s cap — game time, not wall clock
 
 /** Pose a Dimer (optionally shielded) under an Emitter; `begin` opens the run. */
 async function poseDimerUnderEmitter(api, begin, { inert }) {
@@ -76,8 +75,6 @@ export default function item() {
   let shielded;
   let revealHit;
   let chipped;
-  let sawPlain;
-  let sawShielded;
 
   return {
     id: "detection.inert-modifier",
@@ -85,16 +82,16 @@ export default function item() {
     // A Dimer is not inert by default — the control that shows the tower works at all.
     // It is the run this item arranges; the rest are posed.
     async arrange(api) {
-      posedPlain = await poseDimerUnderEmitter(api, startRun, { inert: false });
-      sawPlain = false;
-      sawShielded = false;
+      posedPlain = await poseDimerUnderEmitter(api, startScenario, {
+        inert: false,
+      });
     },
 
     async act(api) {
       plain = await actDimerUnderEmitter(api, posedPlain);
 
       // The same Dimer, released shielded — a fresh run, posed with control ops only.
-      const posedShielded = await poseDimerUnderEmitter(api, poseRun, {
+      const posedShielded = await poseDimerUnderEmitter(api, poseScenario, {
         inert: true,
       });
       shielded = await actDimerUnderEmitter(api, posedShielded);
@@ -114,7 +111,10 @@ export default function item() {
           poll: TICK,
         },
       );
-      const bondAtReveal = unitById(revealHit.snap, shielded.id).bond;
+      // Guarded: if the Dimer never got revealed (or is gone), the assertions below report
+      // that; an unguarded read would throw and be reported as a broken debug API.
+      const atReveal = unitById(revealHit.snap, shielded.id);
+      const bondAtReveal = atReveal ? atReveal.bond : 0;
       // 480 ticks = the old 8 s cap, polled every TICK for the first chip.
       chipped = await api.until(
         (s) => {
@@ -122,23 +122,6 @@ export default function item() {
           return u == null || u.bond < bondAtReveal;
         },
         { max: 480, poll: TICK },
-      );
-
-      // The round table applies the modifier for itself: Round 37 sends plain AND shielded
-      // Dimers, released by the real wave system. A third posed run.
-      await poseRun(api, MAP.single, { round: 37, integrity: 1e9 });
-      await api.call("startRound");
-      // poll 15 = the old 0.25 s chunk.
-      await api.until(
-        (s) => {
-          for (const u of s.matter) {
-            if (u.type !== "dimer") continue;
-            if (u.traits.inert) sawShielded = true;
-            else sawPlain = true;
-          }
-          return sawPlain && sawShielded;
-        },
-        { max: MAX_WAVE_TICKS, poll: 15 },
       );
     },
 
@@ -181,12 +164,6 @@ export default function item() {
 
       check.expectOk("a detector reveals the shielded Dimer", revealHit.hit);
       check.expectOk("once revealed, a stripper chips its bonds", chipped.hit);
-
-      check.expectOk("the round table releases plain Dimers", sawPlain);
-      check.expectOk(
-        "...and shielded ones, from the same roster entry",
-        sawShielded,
-      );
     },
   };
 }

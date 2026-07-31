@@ -4,10 +4,11 @@
 // The blind pair is posed instantly (`arrange`); the stretch that proves nothing happens
 // — no fix — is the real sim, so it is `act`.
 import {
-  startPlaying,
-  findOccludedPair,
   denAllExcept,
+  findOccludedPair,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -20,13 +21,12 @@ export default function item() {
       const snap = await startPlaying(api);
       const bp = findOccludedPair(snap); // within the R=320 range, LOS blocked by rock
       await denAllExcept(api, ["lanternjaw"]);
-      await api.call("setForager", { tx: bp.forager.tx, ty: bp.forager.ty });
       await api.call("setPredator", "lanternjaw", {
         tx: bp.pred.tx,
         ty: bp.pred.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api, bp.forager);
       await api.call("setBrightness", 1); // R = 320 px, so only the wall can block the sense
     },
 

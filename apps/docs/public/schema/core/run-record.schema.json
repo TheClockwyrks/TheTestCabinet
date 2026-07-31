@@ -1184,6 +1184,21 @@
       "required": ["tick", "checksum"],
       "type": "object"
     },
+    "PriorGameJamEntryRef": {
+      "description": "A pointer to one earlier game-jam entry a run was seeded with: which run it was\nand when it finished, as recorded on the later run.\n\nThe [`PriorGameJamEntry`] the driver fetches minus the README body — the record\nnotes *that* a run was briefed with an entry and which run it came from, and\nleaves the text on the run that produced it.",
+      "properties": {
+        "finishedAt": {
+          "description": "RFC 3339 timestamp of when the earlier run finished.",
+          "type": "string"
+        },
+        "runId": {
+          "description": "The earlier run's id.",
+          "type": "string"
+        }
+      },
+      "required": ["runId", "finishedAt"],
+      "type": "object"
+    },
     "ProofResult": {
       "description": "The presence result for a single declared proof-of-implementation artifact.\n\nA test case can ask the agent to write evidence (a screenshot or short clip)\nto a known path; validation records whether each declared proof turned up in\nthe produced tree. This is **informational** — a missing proof never gates the\nrun's status; it is surfaced so a reviewer sees the gap.",
       "properties": {
@@ -1785,8 +1800,15 @@
       "description": "RFC 3339 timestamp for when the run finished.",
       "type": "string"
     },
+    "gameJamPriorEntries": {
+      "description": "The earlier entries this **game-jam** run was seeded with and briefed to build\nsomething distinct from: the id and finish time of each prior run of the same\njam by the same model whose README was placed in the run's\n`previous-entries/` folder, oldest first.\n\nEmpty for a jam's first run by a model (and for every other test type). Unlike\n[`game_jam_readme`](Self::game_jam_readme) this *is* meant to be shown: it is\nhow a reviewer — or whoever is asking why a model built the same game twice —\ncan see what history a run actually had. The READMEs themselves are not\nduplicated here; each is on the run it names. Defaulted and omitted when empty\nso records written before the field existed still deserialize.",
+      "items": {
+        "$ref": "#/$defs/PriorGameJamEntryRef"
+      },
+      "type": "array"
+    },
     "gameJamReadme": {
-      "description": "The gameplay `README.md` a **game-jam** run produced, captured verbatim from\nthe produced tree at run finish (trimmed to a sane cap). `None` for every\nother test type, and for a game-jam run that shipped no README.\n\nThis is what makes a later jam run aware of what earlier runs already built:\nthe backend serves the prior runs' READMEs (matched on the same jam, harness,\nand model) back to a new run, which seeds them and is asked to build something\ndistinct. Kept out of a run's other surfaces — it exists to brief the *next*\nrun, not to be displayed. Defaulted and omitted when absent so records written\nbefore the field existed still deserialize and non-jam records stay slim.",
+      "description": "The gameplay `README.md` a **game-jam** run produced, captured verbatim from\nthe produced tree at run finish (trimmed to a sane cap). `None` for every\nother test type, and for a game-jam run that shipped no README.\n\nThis is what makes a later jam run aware of what earlier runs already built:\nthe backend serves the prior runs' READMEs (matched on the same jam and model,\nacross harnesses) back to a new run, which seeds them and is asked to build\nsomething distinct. Kept out of a run's other surfaces — it exists to brief the\n*next* run, not to be displayed. Defaulted and omitted when absent so records\nwritten before the field existed still deserialize and non-jam records stay\nslim.",
       "type": ["string", "null"]
     },
     "id": {

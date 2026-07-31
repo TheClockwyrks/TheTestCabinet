@@ -8,12 +8,16 @@
 // resolves the reset). The final multiplier and window are read back.
 //
 // The lane is posed instantly (`arrange`); the eats and the 32 drift ticks consume time
-// and are the clip. As in window-duration, the drift re-poses the snake to the same
-// short lane before each tick, so on camera it appears to snap back rather than travel;
-// that is what keeps it clear of the walls and the pellet for the whole lapse, and the
-// evidence a reviewer wants — the combo meter draining and the multiplier dropping to
-// x1 — plays out in full. At 34 ticks the clip is ~4.25 s, inside the runtime's budget,
-// so it is left uncapped.
+// and are the clip. As in window-duration, the drift lets the snake cross the board and
+// re-poses it to the start of the lane only as it nears the right wall, so it stays
+// clear of the walls and the pellet for the whole lapse while the evidence a reviewer
+// wants — the combo meter draining and the multiplier dropping to x1 — plays out in
+// full. At 34 ticks the clip is ~4.25 s, inside the runtime's budget, so it is left
+// uncapped.
+//
+// The two eats that raise the multiplier are waited FOR rather than assumed to land on
+// the record pass's wall clock (see `actEatSequence`); without that the recording could
+// enter the lapse already at x1, with nothing left to reset on camera.
 
 import {
   actDriftTicks,

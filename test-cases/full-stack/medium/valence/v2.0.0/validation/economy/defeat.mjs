@@ -5,7 +5,7 @@
 // collector whose leak cost exceeds it, and runs on until the defeat screen resolves
 // through the real containment check.
 
-import { startRun, pathGeom, spawnAt, MAP } from "../_helpers.mjs";
+import { startScenario, pathGeom, spawnAt, MAP } from "../_helpers.mjs";
 
 export default function item() {
   let r;
@@ -14,7 +14,7 @@ export default function item() {
     id: "economy.defeat",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single, { integrity: 1 });
+      const snap = await startScenario(api, MAP.single, { integrity: 1 });
       const g = pathGeom(snap.paths[0]);
       await spawnAt(api, {
         type: "atom",
