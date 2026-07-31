@@ -16,14 +16,15 @@ import {
   issueState,
 } from "./IssueViews";
 import { useGgExplorerNav } from "./GgExplorerNav";
-import { cx, fsGuide, fsIndent } from "./ggFsTree";
+import { cx } from "./ggFsTree";
 import {
-  ChevronIcon,
-  EpicIcon,
-  FolderIcon,
-  FolderOpenIcon,
-  IssueIcon,
-} from "./ggIcons";
+  FsExplorer,
+  FsFileRow,
+  FsFolder,
+  useFsFolders,
+  type FsFolders,
+} from "./GgFsExplorer";
+import { EpicIcon, IssueIcon } from "./ggIcons";
 import panels from "./GgPanels.module.scss";
 
 // The Project explorer: gg's run-global epic/issue board, read like a filesystem.
@@ -144,23 +145,13 @@ export function ProjectExplorer({ board, issueReviews }: ProjectExplorerProps) {
 
   const [selection, setSelection] = useState<Selection | null>(firstSelection);
 
-  // Only the *overrides* of each folder's default open state are held, so an issue the
-  // board files mid-run takes the default (closed) as it appears rather than springing
-  // open the moment gg enqueues it. Epics open by default — they are the board's outline,
-  // and closed they say nothing — while an issue is a folder you open to read: a decomposed
-  // epic has a dozen of them, each holding an Overview and a file per review round, and all
-  // of that unfolded at once buries the outline it hangs under.
-  const [openOverrides, setOpenOverrides] = useState<
-    ReadonlyMap<string, boolean>
-  >(() => new Map());
-  const isOpen = (key: string, byDefault: boolean) =>
-    openOverrides.get(key) ?? byDefault;
-  const toggle = (key: string, byDefault: boolean) =>
-    setOpenOverrides((prev) => {
-      const next = new Map(prev);
-      next.set(key, !(prev.get(key) ?? byDefault));
-      return next;
-    });
+  // Epics open by default — they are the board's outline, and closed they say nothing —
+  // while an issue is a folder you open to read: a decomposed epic has a dozen of them,
+  // each holding an Overview and a file per review round, and all of that unfolded at once
+  // buries the outline it hangs under. Only the *overrides* of those defaults are held, so
+  // an issue the board files mid-run takes its default as it appears rather than springing
+  // open the moment gg enqueues it.
+  const folders = useFsFolders();
 
   // Keep the selection valid as the stream reshapes the board: a selected epic that
   // was removed, a selected issue that is gone, or a review round that no longer
@@ -204,42 +195,37 @@ export function ProjectExplorer({ board, issueReviews }: ProjectExplorerProps) {
       : null;
 
   return (
-    <div className={panels.explorer}>
-      <nav className={panels.explorerSidebar} aria-label="Project board">
-        <ul className={panels.fsTree}>
-          {groups.map((group) => (
-            <EpicFolder
-              key={group.id}
-              group={group}
-              issueReviews={issueReviews}
-              isOpen={isOpen}
-              toggle={toggle}
-              selection={selection}
-              onSelect={setSelection}
-            />
-          ))}
-        </ul>
-      </nav>
-      <div className={panels.explorerContent}>
-        {selectedIssue && selection?.kind === "review" ? (
-          <ReviewDetail
-            issue={selectedIssue}
-            round={selectedRound}
-            index={selection.round}
-          />
-        ) : selectedIssue ? (
-          <IssueDetail
-            issue={selectedIssue}
-            byId={byId}
-            review={issueReviews.get(selectedIssue.id) ?? null}
-          />
-        ) : selectedGroup ? (
-          <EpicDetail group={selectedGroup} byId={byId} />
-        ) : (
-          <p className={panels.empty}>Select an epic or issue.</p>
-        )}
-      </div>
-    </div>
+    <FsExplorer
+      sidebarLabel="Project board"
+      tree={groups.map((group) => (
+        <EpicFolder
+          key={group.id}
+          group={group}
+          issueReviews={issueReviews}
+          folders={folders}
+          selection={selection}
+          onSelect={setSelection}
+        />
+      ))}
+    >
+      {selectedIssue && selection?.kind === "review" ? (
+        <ReviewDetail
+          issue={selectedIssue}
+          round={selectedRound}
+          index={selection.round}
+        />
+      ) : selectedIssue ? (
+        <IssueDetail
+          issue={selectedIssue}
+          byId={byId}
+          review={issueReviews.get(selectedIssue.id) ?? null}
+        />
+      ) : selectedGroup ? (
+        <EpicDetail group={selectedGroup} byId={byId} />
+      ) : (
+        <p className={panels.empty}>Select an epic or issue.</p>
+      )}
+    </FsExplorer>
   );
 }
 
@@ -248,84 +234,55 @@ export function ProjectExplorer({ board, issueReviews }: ProjectExplorerProps) {
 function EpicFolder({
   group,
   issueReviews,
-  isOpen,
-  toggle,
+  folders,
   selection,
   onSelect,
 }: {
   group: EpicGroup;
   issueReviews: Map<string, IssueReviewState>;
-  isOpen: (key: string, byDefault: boolean) => boolean;
-  toggle: (key: string, byDefault: boolean) => void;
+  folders: FsFolders;
   selection: Selection | null;
   onSelect: (selection: Selection) => void;
 }) {
   const folderKey = `epic:${group.id}`;
-  const open = isOpen(folderKey, true);
+  const open = folders.isOpen(folderKey, true);
   const done = group.issues.filter((i) => i.status === "done").length;
   const epicSelected =
     selection?.kind === "epic" && selection.groupId === group.id;
 
   return (
-    <li className={panels.fsNode}>
-      <button
-        type="button"
-        className={panels.fsRow}
-        style={fsIndent(0)}
-        aria-expanded={open}
-        onClick={() => toggle(folderKey, true)}
-      >
-        <span className={panels.fsCaret} aria-hidden="true">
-          <ChevronIcon className={open ? panels.fsCaretOpen : undefined} />
-        </span>
-        {open ? (
-          <FolderOpenIcon className={panels.fsIcon} />
-        ) : (
-          <FolderIcon className={panels.fsIcon} />
-        )}
-        <span className={panels.fsName}>{group.title}</span>
+    <FsFolder
+      depth={0}
+      open={open}
+      onToggle={() => folders.toggle(folderKey, true)}
+      name={group.title}
+      meta={
         <span className={panels.fsMeta}>
           {done}/{group.issues.length}
         </span>
-      </button>
-      {open && (
-        // The rows under a folder carry the depth-1 indent, exactly as the Agents
-        // explorer's do — without it every row lines up flush with its folder and the
-        // tree reads as a flat list rather than a directory.
-        <ul className={panels.fsChildren} style={fsGuide(0)}>
-          {group.isEpic && (
-            <li>
-              <button
-                type="button"
-                className={cx(
-                  panels.fsRow,
-                  panels.fsFile,
-                  epicSelected && panels.fsRowActive,
-                )}
-                style={fsIndent(1)}
-                aria-label={`${group.title} overview`}
-                aria-current={epicSelected ? "true" : undefined}
-                onClick={() => onSelect({ kind: "epic", groupId: group.id })}
-              >
-                <EpicIcon className={panels.fsIcon} />
-                <span className={panels.fsName}>Overview</span>
-              </button>
-            </li>
-          )}
-          {group.issues.map((issue) => (
-            <IssueFolder
-              key={issue.id}
-              issue={issue}
-              rounds={issueReviews.get(issue.id)?.rounds ?? []}
-              isOpen={isOpen}
-              toggle={toggle}
-              selection={selection}
-              onSelect={onSelect}
-            />
-          ))}
-        </ul>
+      }
+    >
+      {group.isEpic && (
+        <FsFileRow
+          depth={1}
+          selected={epicSelected}
+          onSelect={() => onSelect({ kind: "epic", groupId: group.id })}
+          ariaLabel={`${group.title} overview`}
+          icon={<EpicIcon className={panels.fsIcon} />}
+          name="Overview"
+        />
       )}
-    </li>
+      {group.issues.map((issue) => (
+        <IssueFolder
+          key={issue.id}
+          issue={issue}
+          rounds={issueReviews.get(issue.id)?.rounds ?? []}
+          folders={folders}
+          selection={selection}
+          onSelect={onSelect}
+        />
+      ))}
+    </FsFolder>
   );
 }
 
@@ -337,108 +294,69 @@ function EpicFolder({
 function IssueFolder({
   issue,
   rounds,
-  isOpen,
-  toggle,
+  folders,
   selection,
   onSelect,
 }: {
   issue: GgBoardIssue;
   rounds: IssueReviewRound[];
-  isOpen: (key: string, byDefault: boolean) => boolean;
-  toggle: (key: string, byDefault: boolean) => void;
+  folders: FsFolders;
   selection: Selection | null;
   onSelect: (selection: Selection) => void;
 }) {
   const folderKey = `issue:${issue.id}`;
-  const open = isOpen(folderKey, false);
+  const open = folders.isOpen(folderKey, false);
   const overviewSelected =
     selection?.kind === "issue" && selection.issueId === issue.id;
 
   return (
-    <li className={panels.fsNode}>
-      <button
-        type="button"
-        className={panels.fsRow}
-        style={fsIndent(1)}
-        aria-expanded={open}
-        aria-label={`issue ${issue.id}`}
-        onClick={() => toggle(folderKey, false)}
-      >
-        <span className={panels.fsCaret} aria-hidden="true">
-          <ChevronIcon className={open ? panels.fsCaretOpen : undefined} />
-        </span>
-        {open ? (
-          <FolderOpenIcon className={panels.fsIcon} />
-        ) : (
-          <FolderIcon className={panels.fsIcon} />
-        )}
-        <span className={panels.fsName}>
-          {issue.id}: {issue.title}
-        </span>
+    <FsFolder
+      depth={1}
+      open={open}
+      onToggle={() => folders.toggle(folderKey, false)}
+      ariaLabel={`issue ${issue.id}`}
+      name={`${issue.id}: ${issue.title}`}
+      meta={
         <span
           className={panels.fsStatusDot}
           data-status={issueDotStatus(issue)}
           aria-hidden="true"
         />
-      </button>
-      {open && (
-        <ul className={panels.fsChildren} style={fsGuide(1)}>
-          <li>
-            <button
-              type="button"
-              className={cx(
-                panels.fsRow,
-                panels.fsFile,
-                overviewSelected && panels.fsRowActive,
-              )}
-              style={fsIndent(2)}
-              aria-label={`${issue.id} overview`}
-              aria-current={overviewSelected ? "true" : undefined}
-              onClick={() => onSelect({ kind: "issue", issueId: issue.id })}
-            >
-              <IssueIcon className={panels.fsIcon} />
-              <span className={panels.fsName}>Overview</span>
-            </button>
-          </li>
-          {rounds.map((round, index) => {
-            const selected =
-              selection?.kind === "review" &&
-              selection.issueId === issue.id &&
-              selection.round === index;
-            return (
-              <li key={index}>
-                <button
-                  type="button"
-                  className={cx(
-                    panels.fsRow,
-                    panels.fsFile,
-                    selected && panels.fsRowActive,
-                  )}
-                  style={fsIndent(2)}
-                  aria-label={`${issue.id} review ${index + 1}`}
-                  aria-current={selected ? "true" : undefined}
-                  onClick={() =>
-                    onSelect({
-                      kind: "review",
-                      issueId: issue.id,
-                      round: index,
-                    })
-                  }
-                >
-                  <IssueIcon className={panels.fsIcon} />
-                  <span className={panels.fsName}>Review {index + 1}</span>
-                  <span
-                    className={panels.fsStatusDot}
-                    data-status={roundDotStatus(round)}
-                    aria-hidden="true"
-                  />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </li>
+      }
+    >
+      <FsFileRow
+        depth={2}
+        selected={overviewSelected}
+        onSelect={() => onSelect({ kind: "issue", issueId: issue.id })}
+        ariaLabel={`${issue.id} overview`}
+        icon={<IssueIcon className={panels.fsIcon} />}
+        name="Overview"
+      />
+      {rounds.map((round, index) => (
+        <FsFileRow
+          key={index}
+          depth={2}
+          selected={
+            selection?.kind === "review" &&
+            selection.issueId === issue.id &&
+            selection.round === index
+          }
+          onSelect={() =>
+            onSelect({ kind: "review", issueId: issue.id, round: index })
+          }
+          ariaLabel={`${issue.id} review ${index + 1}`}
+          icon={<IssueIcon className={panels.fsIcon} />}
+          name={`Review ${index + 1}`}
+          meta={
+            <span
+              className={panels.fsStatusDot}
+              data-status={roundDotStatus(round)}
+              aria-hidden="true"
+            />
+          }
+        />
+      ))}
+    </FsFolder>
   );
 }
 

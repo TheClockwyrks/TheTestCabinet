@@ -28,7 +28,14 @@ import {
   shortTokens,
   toolCallsPerResponse,
 } from "./useGgRunState";
-import { cx, fsGuide, fsIndent } from "./ggFsTree";
+import { cx } from "./ggFsTree";
+import {
+  FsExplorer,
+  FsFileRow,
+  FsFolder,
+  useFsFolders,
+  type FsFolders,
+} from "./GgFsExplorer";
 import type { GgModuleIndex, GgModuleInstance } from "./ggModules";
 import { isShared, moduleKindLabel, useGgModules } from "./ggModules";
 import type { AgentEntry, AgentFileKind } from "./ggAgentEntries";
@@ -66,13 +73,7 @@ import { PromptView } from "./PromptView";
 import { RequestsView } from "./RequestsView";
 import { RequestMetricsGraphs } from "./RequestMetricsGraphs";
 import { CompactionView } from "./CompactionView";
-import {
-  ChevronIcon,
-  FolderIcon,
-  FolderOpenIcon,
-  LinkIcon,
-  ModulesIcon,
-} from "./ggIcons";
+import { LinkIcon, ModulesIcon } from "./ggIcons";
 
 // The Instances explorer: a gg run read agent by agent, laid out like a filesystem.
 //
@@ -216,20 +217,10 @@ export function GgAgentsExplorer({
   // The open/closed state of the tree's folders, keyed `folder:<id>` (an agent
   // folder), `sub:<id>` (an agent's subagents folder) and `mod:<id>` (an agent's
   // modules folder). Only the *overrides* are held: a folder the reader has not
-  // touched reads its default (see `folderOpen`), which is what keeps a fleet's worth
-  // of agents arriving mid-run collapsed as they appear rather than each one springing
-  // open the moment it spawns.
-  const [openOverrides, setOpenOverrides] = useState<
-    ReadonlyMap<string, boolean>
-  >(() => new Map());
-  const isOpen = (key: string, byDefault: boolean) =>
-    openOverrides.get(key) ?? byDefault;
-  const toggle = (key: string, byDefault: boolean) =>
-    setOpenOverrides((prev) => {
-      const next = new Map(prev);
-      next.set(key, !(prev.get(key) ?? byDefault));
-      return next;
-    });
+  // touched reads its default, which is what keeps a fleet's worth of agents arriving
+  // mid-run collapsed as they appear rather than each one springing open the moment it
+  // spawns.
+  const folders = useFsFolders();
 
   const [selection, setSelection] = useState<Selection>({
     agentId: ROOT_ID,
@@ -241,22 +232,20 @@ export function GgAgentsExplorer({
   // module. Forced rather than cleared back to the default, because a subagent folder
   // and a modules folder both default to *closed* — clearing them would leave the thing
   // the reader just asked for hidden behind two carets.
+  const openFolders = folders.open;
   const reveal = useCallback(
     (agentId: string, entry: AgentEntry) => {
       setSelection({ agentId, entry });
-      setOpenOverrides((prev) => {
-        const next = new Map(prev);
-        let cur: string | null = agentId;
-        while (cur != null) {
-          next.set(`folder:${cur}`, true);
-          next.set(`sub:${cur}`, true);
-          cur = nodeById.get(cur)?.parentId ?? null;
-        }
-        if (entry.kind === "module") next.set(`mod:${agentId}`, true);
-        return next;
-      });
+      const keys: string[] = [];
+      let cur: string | null = agentId;
+      while (cur != null) {
+        keys.push(`folder:${cur}`, `sub:${cur}`);
+        cur = nodeById.get(cur)?.parentId ?? null;
+      }
+      if (entry.kind === "module") keys.push(`mod:${agentId}`);
+      openFolders(keys);
     },
-    [nodeById],
+    [nodeById, openFolders],
   );
 
   // Keep the selection valid as the live stream grows and reshapes: if the selected
@@ -298,65 +287,60 @@ export function GgAgentsExplorer({
     modules,
     roles,
     arrivals,
-    isOpen,
-    toggle,
+    folders,
     selection,
     onSelect: setSelection,
   };
 
   return (
-    <div className={panels.explorer}>
-      <nav className={panels.explorerSidebar} aria-label="Agents">
-        <ul className={panels.fsTree}>
-          {forest.map((root) => (
-            <FolderNode key={root.id} node={root} depth={0} ctx={ctx} />
-          ))}
-        </ul>
-      </nav>
-      <div className={panels.explorerContent}>
-        {selectedState && selectedNode ? (
-          selectedEntry.kind === "module" ? (
-            <ModuleFile
-              agentId={selectedNode.id}
-              kind={selectedEntry.module}
-              modules={modules}
-              state={selectedState}
-              // A co-holder chip opens the same store read from the other instance —
-              // the same module file, one folder over — so it stays inside the explorer
-              // rather than routing through the panels' one-shot focus channel.
-              onOpenHolder={(agentId) =>
-                reveal(agentId, {
-                  kind: "module",
-                  module: selectedEntry.module,
-                })
-              }
-              onOpenFile={(file) =>
-                setSelection({
-                  agentId: selectedNode.id,
-                  entry: { kind: "file", file },
-                })
-              }
-            />
-          ) : (
-            <FileContent
-              node={selectedNode}
-              state={selectedState}
-              file={selectedEntry.file}
-              role={roles.get(selectedNode.id)}
-              arrival={arrivals.get(selectedNode.id)}
-              capabilitySet={capabilitySet}
-              workflows={workflows}
-              fsmPath={fsmPath}
-              transitions={transitions}
-              speculations={speculations}
-              live={live}
-            />
-          )
+    <FsExplorer
+      sidebarLabel="Agents"
+      tree={forest.map((root) => (
+        <FolderNode key={root.id} node={root} depth={0} ctx={ctx} />
+      ))}
+    >
+      {selectedState && selectedNode ? (
+        selectedEntry.kind === "module" ? (
+          <ModuleFile
+            agentId={selectedNode.id}
+            kind={selectedEntry.module}
+            modules={modules}
+            state={selectedState}
+            // A co-holder chip opens the same store read from the other instance —
+            // the same module file, one folder over — so it stays inside the explorer
+            // rather than routing through the panels' one-shot focus channel.
+            onOpenHolder={(agentId) =>
+              reveal(agentId, {
+                kind: "module",
+                module: selectedEntry.module,
+              })
+            }
+            onOpenFile={(file) =>
+              setSelection({
+                agentId: selectedNode.id,
+                entry: { kind: "file", file },
+              })
+            }
+          />
         ) : (
-          <p className={panels.empty}>No agent selected.</p>
-        )}
-      </div>
-    </div>
+          <FileContent
+            node={selectedNode}
+            state={selectedState}
+            file={selectedEntry.file}
+            role={roles.get(selectedNode.id)}
+            arrival={arrivals.get(selectedNode.id)}
+            capabilitySet={capabilitySet}
+            workflows={workflows}
+            fsmPath={fsmPath}
+            transitions={transitions}
+            speculations={speculations}
+            live={live}
+          />
+        )
+      ) : (
+        <p className={panels.empty}>No agent selected.</p>
+      )}
+    </FsExplorer>
   );
 }
 
@@ -369,9 +353,8 @@ interface ExplorerCtx {
   roles: Map<string, SpeculationRole>;
   /** How each instance arrived, for the ones that arrived by a succession. */
   arrivals: Map<string, AgentTransition>;
-  /** Whether a folder is open, given the default it takes when untouched. */
-  isOpen: (key: string, byDefault: boolean) => boolean;
-  toggle: (key: string, byDefault: boolean) => void;
+  /** The tree's open/closed bookkeeping, shared by every folder in it. */
+  folders: FsFolders;
   selection: Selection;
   onSelect: (selection: Selection) => void;
 }
@@ -418,138 +401,124 @@ function FolderNode({
   // past — so an agent is a closed folder you open to read, and the run's entry point
   // (its root) is the one already open.
   const openByDefault = isRoot;
-  const open = ctx.isOpen(folderKey, openByDefault);
+  const open = ctx.folders.isOpen(folderKey, openByDefault);
   const label = isRoot ? "root" : node.id;
   const role = ctx.roles.get(node.id);
   const arrival = ctx.arrivals.get(node.id);
 
   return (
-    <li className={panels.fsNode}>
-      <button
-        type="button"
-        className={panels.fsRow}
-        style={fsIndent(depth)}
-        aria-expanded={open}
-        // Named as the folder it is, the way an issue folder is: without this the row's
-        // accessible name is its id run together with its profile ("agent-0 reviewer"),
-        // which reads as two loose tokens rather than as the thing being opened.
-        aria-label={`agent ${label}`}
-        onClick={() => ctx.toggle(folderKey, openByDefault)}
-      >
-        <span className={panels.fsCaret} aria-hidden="true">
-          <ChevronIcon className={open ? panels.fsCaretOpen : undefined} />
-        </span>
-        {/* An agent's lifecycle dot stands where a folder icon would: the caret
-            already says the row is a folder, so the glyph is spent on the one thing
-            worth reading at a glance in a fleet of agents — who is running, waiting,
-            done, or failed. */}
+    <FsFolder
+      depth={depth}
+      open={open}
+      onToggle={() => ctx.folders.toggle(folderKey, openByDefault)}
+      // Named as the folder it is, the way an issue folder is: without this the row's
+      // accessible name is its id run together with its profile ("agent-0 reviewer"),
+      // which reads as two loose tokens rather than as the thing being opened.
+      ariaLabel={`agent ${label}`}
+      // An agent's lifecycle dot stands where a folder icon would: the caret already
+      // says the row is a folder, so the glyph is spent on the one thing worth reading
+      // at a glance in a fleet of agents — who is running, waiting, done, or failed.
+      icon={
         <span
           className={panels.fsAgentDot}
           data-status={node.status}
           aria-hidden="true"
         />
-        <span className={panels.fsName}>{label}</span>
-        {role === "winner" && (
-          <span className={panels.fsWinner} title="chosen best-of-K attempt">
-            ★
-          </span>
-        )}
-        {/* How this instance arrived, when it arrived by a succession: the state it
-            entered, or the move that produced it. Without it a lineage is N unrelated
-            ids, which is the one thing about a machine (or an exec) nobody can infer. */}
-        {arrival && (
-          <span
-            className={panels.fsArrival}
-            title={`${arrival.kind === "fork" ? "forked from" : "continued from"} ${arrival.fromAgentId}`}
-          >
-            {arrivalTag(arrival)}
-          </span>
-        )}
-        {/* The trailing annotation — "main agent", or the profile the agent runs
-            under — pushed to the row's far edge, so it lines up down the tree instead
-            of jittering with each agent's name length. */}
-        {isRoot ? (
-          <span className={cx(panels.fsMeta, panels.fsMetaTrailing)}>
-            main agent
-          </span>
-        ) : (
-          node.slot && (
-            <span className={cx(panels.fsMeta, panels.fsMetaTrailing)}>
-              {node.slot}
+      }
+      name={label}
+      meta={
+        <>
+          {role === "winner" && (
+            <span className={panels.fsWinner} title="chosen best-of-K attempt">
+              ★
             </span>
-          )
-        )}
-      </button>
-      {open && (
-        <ul className={panels.fsChildren} style={fsGuide(depth)}>
-          {files.map((file) => {
-            const selected =
+          )}
+          {/* How this instance arrived, when it arrived by a succession: the state it
+              entered, or the move that produced it. Without it a lineage is N unrelated
+              ids, which is the one thing about a machine (or an exec) nobody can infer. */}
+          {arrival && (
+            <span
+              className={panels.fsArrival}
+              title={`${arrival.kind === "fork" ? "forked from" : "continued from"} ${arrival.fromAgentId}`}
+            >
+              {arrivalTag(arrival)}
+            </span>
+          )}
+          {/* The trailing annotation — "main agent", or the profile the agent runs
+              under — pushed to the row's far edge, so it lines up down the tree instead
+              of jittering with each agent's name length. */}
+          {isRoot ? (
+            <span className={cx(panels.fsMeta, panels.fsMetaTrailing)}>
+              main agent
+            </span>
+          ) : (
+            node.slot && (
+              <span className={cx(panels.fsMeta, panels.fsMetaTrailing)}>
+                {node.slot}
+              </span>
+            )
+          )}
+        </>
+      }
+    >
+      {files.map((file) => {
+        const FileIcon = FILE_ICONS[file];
+        return (
+          <FsFileRow
+            key={file}
+            depth={depth + 1}
+            selected={
               ctx.selection.agentId === node.id &&
-              sameEntry(ctx.selection.entry, { kind: "file", file });
-            const FileIcon = FILE_ICONS[file];
-            return (
-              <li key={file}>
-                <button
-                  type="button"
-                  className={cx(
-                    panels.fsRow,
-                    panels.fsFile,
-                    selected && panels.fsRowActive,
-                  )}
-                  style={fsIndent(depth + 1)}
-                  // Name the agent so a file row is unambiguous on its own — a
-                  // screen reader (and the eye scanning a deep tree) should not have
-                  // to infer which folder an "activity" row belongs to.
-                  aria-label={`${label} ${FILE_LABELS[file]}`}
-                  aria-current={selected ? "true" : undefined}
-                  onClick={() =>
-                    ctx.onSelect({
-                      agentId: node.id,
-                      entry: { kind: "file", file },
-                    })
-                  }
-                >
-                  <FileIcon className={panels.fsIcon} />
-                  <span className={panels.fsName}>{FILE_LABELS[file]}</span>
-                </button>
-              </li>
-            );
-          })}
-          {/* What this instance holds. Guarded rather than unconditional: every
-              instance has a window, so in practice the folder always has at least the
-              `history` row — but an instance the module index has not caught up with
-              yet would otherwise draw an empty folder. */}
-          {held.length > 0 && (
-            <ModulesFolder
-              agentId={node.id}
-              label={label}
-              held={held}
-              depth={depth + 1}
-              ctx={ctx}
-            />
-          )}
-          {/* The next incarnation of this same agent, in line with its own files —
-              not nested under `subagents`, which it is not one of. */}
-          {successors.map((successor) => (
-            <FolderNode
-              key={successor.id}
-              node={successor}
-              depth={depth + 1}
-              ctx={ctx}
-            />
-          ))}
-          {spawned.length > 0 && (
-            <SubagentsFolder
-              node={node}
-              label={label}
-              spawned={spawned}
-              depth={depth + 1}
-              ctx={ctx}
-            />
-          )}
-        </ul>
+              sameEntry(ctx.selection.entry, { kind: "file", file })
+            }
+            onSelect={() =>
+              ctx.onSelect({
+                agentId: node.id,
+                entry: { kind: "file", file },
+              })
+            }
+            // Name the agent so a file row is unambiguous on its own — a screen reader
+            // (and the eye scanning a deep tree) should not have to infer which folder
+            // an "activity" row belongs to.
+            ariaLabel={`${label} ${FILE_LABELS[file]}`}
+            icon={<FileIcon className={panels.fsIcon} />}
+            name={FILE_LABELS[file]}
+          />
+        );
+      })}
+      {/* What this instance holds. Guarded rather than unconditional: every instance
+          has a window, so in practice the folder always has at least the `history` row —
+          but an instance the module index has not caught up with yet would otherwise
+          draw an empty folder. */}
+      {held.length > 0 && (
+        <ModulesFolder
+          agentId={node.id}
+          label={label}
+          held={held}
+          depth={depth + 1}
+          ctx={ctx}
+        />
       )}
-    </li>
+      {/* The next incarnation of this same agent, in line with its own files — not
+          nested under `subagents`, which it is not one of. */}
+      {successors.map((successor) => (
+        <FolderNode
+          key={successor.id}
+          node={successor}
+          depth={depth + 1}
+          ctx={ctx}
+        />
+      ))}
+      {spawned.length > 0 && (
+        <SubagentsFolder
+          node={node}
+          label={label}
+          spawned={spawned}
+          depth={depth + 1}
+          ctx={ctx}
+        />
+      )}
+    </FsFolder>
   );
 }
 
@@ -576,44 +545,23 @@ function SubagentsFolder({
   const subKey = `sub:${node.id}`;
   // The grouping folder itself stays open by default: it is not an agent, and closing it
   // would hide the *list* of agents the reader then has to open one of.
-  const open = ctx.isOpen(subKey, true);
+  const open = ctx.folders.isOpen(subKey, true);
   return (
-    <li className={panels.fsNode}>
-      <button
-        type="button"
-        className={panels.fsRow}
-        style={fsIndent(depth)}
-        aria-expanded={open}
-        // Named for the agent it hangs under, like every other row in the tree: there
-        // is one of these per instance that delegated, so a bare "subagents" is
-        // ambiguous the moment a run has two.
-        aria-label={`${label} subagents`}
-        onClick={() => ctx.toggle(subKey, true)}
-      >
-        <span className={panels.fsCaret} aria-hidden="true">
-          <ChevronIcon className={open ? panels.fsCaretOpen : undefined} />
-        </span>
-        {open ? (
-          <FolderOpenIcon className={panels.fsIcon} />
-        ) : (
-          <FolderIcon className={panels.fsIcon} />
-        )}
-        <span className={panels.fsName}>subagents</span>
-        <span className={panels.fsMeta}>{spawned.length}</span>
-      </button>
-      {open && (
-        <ul className={panels.fsChildren} style={fsGuide(depth)}>
-          {spawned.map((child) => (
-            <FolderNode
-              key={child.id}
-              node={child}
-              depth={depth + 1}
-              ctx={ctx}
-            />
-          ))}
-        </ul>
-      )}
-    </li>
+    <FsFolder
+      depth={depth}
+      open={open}
+      onToggle={() => ctx.folders.toggle(subKey, true)}
+      // Named for the agent it hangs under, like every other row in the tree: there is
+      // one of these per instance that delegated, so a bare "subagents" is ambiguous the
+      // moment a run has two.
+      ariaLabel={`${label} subagents`}
+      name="subagents"
+      meta={<span className={panels.fsMeta}>{spawned.length}</span>}
+    >
+      {spawned.map((child) => (
+        <FolderNode key={child.id} node={child} depth={depth + 1} ctx={ctx} />
+      ))}
+    </FsFolder>
   );
 }
 
@@ -644,81 +592,63 @@ function ModulesFolder({
   ctx: ExplorerCtx;
 }) {
   const modKey = `mod:${agentId}`;
-  const open = ctx.isOpen(modKey, false);
+  const open = ctx.folders.isOpen(modKey, false);
   return (
-    <li className={panels.fsNode}>
-      <button
-        type="button"
-        className={panels.fsRow}
-        style={fsIndent(depth)}
-        aria-expanded={open}
-        // Named for its agent, for the same reason its rows are: there is one modules
-        // folder per instance, so an unlabelled "modules" is ambiguous in every run.
-        aria-label={`${label} modules`}
-        onClick={() => ctx.toggle(modKey, false)}
-      >
-        <span className={panels.fsCaret} aria-hidden="true">
-          <ChevronIcon className={open ? panels.fsCaretOpen : undefined} />
-        </span>
-        <ModulesIcon className={panels.fsIcon} />
-        <span className={panels.fsName}>modules</span>
-        <span className={panels.fsMeta}>{held.length}</span>
-      </button>
-      {open && (
-        <ul className={panels.fsChildren} style={fsGuide(depth)}>
-          {held.map((module) => {
-            const selected =
+    <FsFolder
+      depth={depth}
+      open={open}
+      onToggle={() => ctx.folders.toggle(modKey, false)}
+      // Named for its agent, for the same reason its rows are: there is one modules
+      // folder per instance, so an unlabelled "modules" is ambiguous in every run.
+      ariaLabel={`${label} modules`}
+      icon={<ModulesIcon className={panels.fsIcon} />}
+      name="modules"
+      meta={<span className={panels.fsMeta}>{held.length}</span>}
+    >
+      {held.map((module) => {
+        const ModuleIcon = MODULE_ICONS[module.kind];
+        return (
+          <FsFileRow
+            key={module.kind}
+            depth={depth + 1}
+            selected={
               ctx.selection.agentId === agentId &&
               sameEntry(ctx.selection.entry, {
                 kind: "module",
                 module: module.kind,
-              });
-            const ModuleIcon = MODULE_ICONS[module.kind];
-            const shared = isShared(module);
-            return (
-              <li key={module.kind}>
-                <button
-                  type="button"
-                  className={cx(
-                    panels.fsRow,
-                    panels.fsFile,
-                    selected && panels.fsRowActive,
-                  )}
-                  style={fsIndent(depth + 1)}
-                  aria-label={`${label} modules ${module.kind}`}
-                  aria-current={selected ? "true" : undefined}
-                  onClick={() =>
-                    ctx.onSelect({
-                      agentId,
-                      entry: { kind: "module", module: module.kind },
-                    })
-                  }
-                >
-                  <ModuleIcon className={panels.fsIcon} />
-                  <span className={panels.fsName}>{module.kind}</span>
-                  {shared && (
-                    <>
-                      <LinkIcon className={panels.fsShared} />
-                      {/* The count reads at a glance and the title names the store and
-                          the holders, because "shared with whom?" is the next question
-                          and the file that answers it in full is one click further. */}
-                      <span
-                        className={cx(panels.fsMeta, panels.fsMetaTrailing)}
-                        title={`${module.id} — held by ${module.holders
-                          .map((holder) => holder.agentId)
-                          .join(", ")}`}
-                      >
-                        {module.holders.length} holders
-                      </span>
-                    </>
-                  )}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </li>
+              })
+            }
+            onSelect={() =>
+              ctx.onSelect({
+                agentId,
+                entry: { kind: "module", module: module.kind },
+              })
+            }
+            ariaLabel={`${label} modules ${module.kind}`}
+            icon={<ModuleIcon className={panels.fsIcon} />}
+            name={module.kind}
+            meta={
+              isShared(module) && (
+                <>
+                  <LinkIcon className={panels.fsShared} />
+                  {/* The count reads at a glance and the title names the store and the
+                      holders, because "shared with whom?" is the next question and the
+                      file that answers it in full is one click further. */}
+                  <span
+                    className={cx(panels.fsMeta, panels.fsMetaTrailing)}
+                    title={`${module.id} — held by ${module.holders
+                      .map((holder) => holder.agentId)
+                      .join(", ")}`}
+                  >
+                    {module.holders.length} holders
+                  </span>
+                </>
+              )
+            }
+          />
+        );
+      })}
+    </FsFolder>
   );
 }
 
