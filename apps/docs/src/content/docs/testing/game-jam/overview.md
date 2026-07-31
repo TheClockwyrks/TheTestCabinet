@@ -33,7 +33,7 @@ the same jam can produce wholly different games and both be excellent.
 A jam provides:
 
 - A **theme** — a short, evocative brief rendered into the prompt (for example
-  _Dead Man's Switch_). The model interprets it however it finds most interesting.
+  _Locomotivation_). The model interprets it however it finds most interesting.
 - A stated **time budget** — the prompt tells the model how many wall-clock hours it
   has (`{{time_limit_hours}}`, from the case's `max_runtime_hours`) and that it can
   run `date` in the container to see the current time and pace itself.

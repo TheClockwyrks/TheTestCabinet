@@ -159,11 +159,11 @@ fn carom_instrumentation_renders_per_variant_ball_count() {
 }
 
 #[test]
-fn resolves_dead_mans_switch_game_jam() {
+fn resolves_locomotivation_game_jam() {
     let catalog = TestCaseCatalog::new(catalog_root());
     let resolved = catalog
-        .resolve("dead-mans-switch", "v1.0.0")
-        .expect("resolve the dead-mans-switch jam");
+        .resolve("locomotivation", "v1.0.0")
+        .expect("resolve the locomotivation jam");
 
     // A game jam: full-stack-style build, no domains, and the generic graded
     // checklist injected because the manifest declares no categories of its own.
