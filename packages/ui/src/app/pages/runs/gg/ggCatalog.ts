@@ -305,7 +305,7 @@ export const DEFAULT_READ_LINE_CAP = 250;
 // Where a `shell` command's output goes — the shell capability's implementation. The
 // values are gg's implementation ids (`crates/core/src/gg.rs`); the empty value is the
 // default (adaptive). Both truncating modes write every command's stdout and stderr to a
-// file pair under `/tmp/gg/shell` and return only the configured tail, so a chatty build
+// file pair under `/tmp/gg-shell` and return only the configured tail, so a chatty build
 // cannot spend a large slice of the window in one call.
 export const SHELL_OUTPUT_OPTIONS = [
   { value: "", label: "Adaptive (default)" },
@@ -320,7 +320,7 @@ export const TRUNCATING_SHELL_OUTPUT_MODES = ["", "offload"] as const;
 // What each output mode does — the detail lifted off the picker's option labels into
 // the field's help tooltip.
 export const SHELL_OUTPUT_HINT =
-  "Adaptive returns only the exit code for a command that succeeded, and the tail for one that failed. Offload returns the tail for every command. Both write the full stdout and stderr to a file pair under /tmp/gg/shell and tell the agent where to grep for the rest. Inline returns the whole output (capped at 16 KiB) and writes nothing to disk.";
+  "Adaptive returns only the exit code for a command that succeeded, and the tail for one that failed. Offload returns the tail for every command. Both write the full stdout and stderr to a file pair under /tmp/gg-shell and tell the agent where to grep for the rest. Inline returns the whole output (capped at 16 KiB) and writes nothing to disk.";
 
 // The two ceilings gg falls back to when a truncating shell output mode names neither
 // (`DEFAULT_MAX_LINES`/`DEFAULT_MAX_CHARS` in `crates/gg/src/tools/shell.rs`).

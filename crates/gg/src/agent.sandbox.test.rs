@@ -552,7 +552,7 @@ async fn a_program_gets_the_offloaded_tail_and_the_paths_to_the_rest() {
     assert!(seen.contains("Output truncated"), "{seen}");
     // The gg-managed directory the pair went to (`OFFLOAD_DIR`), spelled out: this run resolved
     // its policy from a real capability set, so the path is the production one.
-    assert!(seen.contains("/tmp/gg/shell"), "{seen}");
+    assert!(seen.contains("/tmp/gg-shell"), "{seen}");
     for suffix in [".stdout", ".stderr"] {
         assert!(seen.contains(suffix), "the note names both files: {seen}");
     }

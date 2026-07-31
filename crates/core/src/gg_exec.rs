@@ -49,7 +49,10 @@ const GG_SLUG: &str = "gg";
 /// The absolute in-container path the `gg` binary is installed to. Deliberately
 /// **outside** [`WORKSPACE_DIR`](crate::execution::WORKSPACE_DIR) (`/work`) so it never
 /// lands in the collected implementation artifact.
-const GG_BINARY_PATH: &str = "/tmp/gg";
+///
+/// Defined in the shared [contract](crate::gg::BINARY_PATH) because the in-container gg
+/// process has to know what it may not write underneath.
+const GG_BINARY_PATH: &str = crate::gg::BINARY_PATH;
 
 /// The absolute in-container path the [`GgInvocation`] JSON is written to, also
 /// outside `/work` so it is not collected. `gg` reads it via `--config`.

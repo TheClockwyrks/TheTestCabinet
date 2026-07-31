@@ -31,7 +31,7 @@ a mode rather than a fixed behavior.
 | `inline` | The whole merged output, tail-truncated at gg's 16 KiB cap. | Nothing. |
 
 Under either truncating mode, each command's two streams are written to their own file
-under `/tmp/gg/shell` — outside the workspace, because these are gg's bookkeeping and a
+under `/tmp/gg-shell` — outside the workspace, because these are gg's bookkeeping and a
 run's diff should not fill up with build logs. The pair is written for *every* command, not
 only a chatty one: "the full output is on disk" is only useful if it is true
 unconditionally, since an agent that has to guess whether this command's log exists is back
@@ -48,8 +48,8 @@ success comes back as
 ```
 exit code: 0
 [The command succeeded, so its output is not shown. The full stdout and stderr were written to:
-  stdout: /tmp/gg/shell/cmd-41-0003.stdout
-  stderr: /tmp/gg/shell/cmd-41-0003.stderr
+  stdout: /tmp/gg-shell/cmd-41-0003.stdout
+  stderr: /tmp/gg-shell/cmd-41-0003.stderr
 Read or grep those files if you need them.]
 ```
 
@@ -92,8 +92,8 @@ costs no context for a feature it did not need. Output that does not is followed
 ```
 [Output truncated: showing the last 200 lines. The full stdout and stderr of this command
 were written to:
-  stdout: /tmp/gg/shell/cmd-41-0003.stdout
-  stderr: /tmp/gg/shell/cmd-41-0003.stderr
+  stdout: /tmp/gg-shell/cmd-41-0003.stdout
+  stderr: /tmp/gg-shell/cmd-41-0003.stderr
 Read or grep those files if you need more than what is shown above.]
 ```
 

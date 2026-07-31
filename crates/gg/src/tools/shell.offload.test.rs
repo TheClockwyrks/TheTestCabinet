@@ -76,6 +76,37 @@ fn an_unconfigured_capability_is_adaptive_at_the_defaults() {
     assert_eq!(limits.dir, std::path::Path::new(OFFLOAD_DIR));
 }
 
+/// The offload directory must not nest under the gg binary, which is a regular *file* at
+/// `/tmp/gg` for the whole of a run.
+///
+/// This is the one thing about `OFFLOAD_DIR` no other test can see: every test above points `dir`
+/// at a temp directory, so the production path is exercised only in a container. It regressed
+/// exactly that way — `OFFLOAD_DIR` was once `/tmp/gg/shell`, every `create_dir_all` in a real run
+/// failed with `ENOTDIR`, and offloading silently degraded to inline output for entire sessions.
+/// The second half reproduces that failure against a temp replica, so this test fails loudly with
+/// the reason rather than just an inscrutable string comparison.
+#[tokio::test]
+async fn offload_dir_is_not_under_the_gg_binary() {
+    let binary = std::path::Path::new(test_cabinet_core::gg::BINARY_PATH);
+    let offload = std::path::Path::new(OFFLOAD_DIR);
+    assert!(
+        !offload.starts_with(binary),
+        "{OFFLOAD_DIR} nests under the gg binary at {}, so it can never be created in a run",
+        binary.display(),
+    );
+
+    // Why it can never be created: a file where the parent directory would have to be.
+    let temp = TempDir::new().expect("temp dir");
+    let file_in_the_way = temp.path().join("gg");
+    tokio::fs::write(&file_in_the_way, "the gg binary")
+        .await
+        .expect("write");
+    let err = tokio::fs::create_dir_all(file_in_the_way.join("shell"))
+        .await
+        .expect_err("a directory cannot be created under a file");
+    assert_eq!(err.kind(), std::io::ErrorKind::NotADirectory);
+}
+
 /// The inline mode is the opt-out, and it ignores the ceilings — they are the other modes'
 /// configuration.
 #[test]

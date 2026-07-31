@@ -30,6 +30,17 @@ use crate::metrics::{Cost, TokenCounts};
 /// only ever binds this one.
 pub const PRIMARY_SLOT: &str = "primary";
 
+/// The absolute in-container path the `gg` binary is installed to.
+///
+/// It lives here, in the shared contract, rather than privately in the host-side
+/// installer that writes it, because it constrains the **other** side too: this path is a
+/// regular *file* for the whole of a run, so nothing gg creates in the container may nest
+/// underneath it. A path that does cannot be created at all — `create_dir_all` on any
+/// descendant fails with `ENOTDIR`, in the container only, where no unit test looks. gg's
+/// own scratch paths are therefore siblings spelled `/tmp/gg-*` (`/tmp/gg-invocation.json`,
+/// `/tmp/gg-cancel`, and the shell capability's `/tmp/gg-shell`), never children.
+pub const BINARY_PATH: &str = "/tmp/gg";
+
 /// The stable id of the Phase 0 shell capability: the agent's ability to run shell
 /// commands in the run container (the `shell` tool).
 ///

@@ -47,7 +47,7 @@ fn full_system() -> SystemContext {
         shell: ShellView {
             offloaded: true,
             tail: "last 200 lines".to_string(),
-            directory: "/tmp/gg/shell".to_string(),
+            directory: "/tmp/gg-shell".to_string(),
         },
         skills: vec![SkillView {
             name: "physics".to_string(),
@@ -245,7 +245,7 @@ fn no_run_describes_shell_offloading() {
             };
             let prompt = render_system(&context, None);
             assert!(!prompt.contains("## Shell output"), "{prompt}");
-            assert!(!prompt.contains("/tmp/gg/shell"), "{prompt}");
+            assert!(!prompt.contains("/tmp/gg-shell"), "{prompt}");
         }
     }
 }

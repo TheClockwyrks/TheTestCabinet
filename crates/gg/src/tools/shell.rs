@@ -80,7 +80,14 @@ pub const DEFAULT_MAX_CHARS: usize = 4096;
 /// The gg-managed directory offloaded output is written to. Outside the workspace on purpose: these
 /// files are gg's bookkeeping, not the agent's work product, and a run's diff should not fill up
 /// with build logs.
-pub const OFFLOAD_DIR: &str = "/tmp/gg/shell";
+///
+/// A **sibling** of the gg binary rather than a child of it. The binary is installed at
+/// [`BINARY_PATH`](test_cabinet_core::gg::BINARY_PATH) — `/tmp/gg`, a regular file — so the
+/// `/tmp/gg/shell` this once was could never be created in a real run: every `create_dir_all`
+/// failed with `ENOTDIR`, offloading fell back to inline output for the whole of every session, and
+/// nothing caught it because a unit test pointing `dir` at a temp directory never touches the
+/// production path. `offload_dir_is_not_under_the_gg_binary` in `shell.offload.test.rs` guards it.
+pub const OFFLOAD_DIR: &str = "/tmp/gg-shell";
 
 /// The serial number of the next offloaded command, so no two commands in a process — including two
 /// agents running concurrently on the subagent scheduler — ever share a file pair.
@@ -677,7 +684,7 @@ async fn write_offload_pair(
     limits: &OffloadLimits,
 ) -> std::io::Result<OffloadPaths> {
     // The process id is in the name as well as the counter: two gg processes sharing a machine (a
-    // developer running two runs at once) share `/tmp/gg/shell`, and the counter alone is
+    // developer running two runs at once) share `/tmp/gg-shell`, and the counter alone is
     // per-process.
     let sequence = OFFLOAD_SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let stem = format!("cmd-{}-{sequence:04}", std::process::id());
