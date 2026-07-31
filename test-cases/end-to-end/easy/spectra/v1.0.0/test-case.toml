@@ -717,6 +717,11 @@ id = "no-autorepeat-flip"
 title = "A held flip acts once"
 description = "Holding the flip key flips the band exactly once, not repeatedly, so a held key does not flap the band back and forth."
 validation = { script = "validation/controls/no-autorepeat-flip.mjs", outputs = [{ id = "flip", name = "A held flip flipping only once", kind = "video" }] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live wave advances — simulation time accumulates and the drones fly their approach — without anything stepping it from outside."
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 
 # --- Color (sampled from the rendered canvas) ---------------------------------
 # Each point samples the pixels the build actually RENDERS at a known on-field

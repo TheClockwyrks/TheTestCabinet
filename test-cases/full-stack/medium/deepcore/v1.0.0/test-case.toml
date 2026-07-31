@@ -773,6 +773,11 @@ id = "game-over"
 title = "Game Over screen"
 description = "The Game Over screen on death (run summary, and Continue From Save or Play Again, plus Menu) is reachable and correct."
 validation = { script = "validation/states/game-over.mjs", outputs = [{ id = "game-over", name = "The Game Over screen", kind = "image" }] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live expedition advances — simulation time accumulates and the build reports the clock as its own — without anything stepping it from outside."
+validation = { script = "validation/states/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 
 # --- HUD Readouts -------------------------------------------------------------
 [[review.categories]]
