@@ -159,26 +159,86 @@ export interface GgModuleInstance {
   totalCost: GgModuleCost | null;
 }
 
+/**
+ * How one agent profile's instances are distributed over one kind's stores — the headline
+ * of a profile's module row, and the whole distinction between state that belongs to the
+ * *agent* and state that belongs to one of its instances.
+ *
+ * - `instance` — every instance that holds this kind holds a store of its own. There is
+ *   nothing here that belongs to the profile, and any single rendering of "the agent's
+ *   memories" would be a lie about eleven of its twelve instances.
+ * - `agent` — they hold **one** store, all at once: agent-scoped state. What one instance
+ *   writes, the next one reads, and the store's contents *are* the profile's.
+ * - `carried` — one store, but held one instance at a time. A succession handed it on, so
+ *   it looks like sharing in a holder count and is not: only ever one holder had it.
+ * - `run` — the one store they share reaches beyond this profile (the board, or a notebook
+ *   a spawner of another profile owns).
+ * - `mixed` — several stores, at least one of them genuinely shared: some instances bound
+ *   the shared one and some did not. The interesting failure.
+ */
+export type GgAgentModuleSharing =
+  | "instance"
+  | "agent"
+  | "carried"
+  | "run"
+  | "mixed";
+
+/** One store an agent profile's instances hold, and how many of them hold it. */
+export interface GgAgentModuleHold {
+  /** The store itself — so a surface can read its holders, lifetime and contents. */
+  module: GgModuleInstance;
+  /** How many of THIS profile's instances hold it (`module.holders` counts every holder). */
+  holdersInProfile: number;
+}
+
+/**
+ * A legal, ordinary disagreement between what a profile's configuration asked for and what
+ * its instances actually got.
+ *
+ * Never an error: every divergence gg can produce here is a correct outcome of a
+ * configuration that could not be honored literally (an `inherited` agent with no spawner
+ * quietly gets its own store; a `shared` profile re-binds when a successor takes over). But
+ * they are silent everywhere else, and they are exactly the thing that decides whether an
+ * ablation's arm ran the way it was written — so they are said out loud, with the cause.
+ */
+export interface GgModuleDivergence {
+  /** What the configuration asked for. */
+  declared: string;
+  /** What the run actually did. */
+  observed: string;
+  /** Why that happens, in a sentence. */
+  note: string;
+}
+
 /** How one agent PROFILE's instances are distributed over one kind's module instances. */
 export interface GgAgentModuleSummary {
   kind: GgModuleKind;
-  /** The instances this profile's instances hold, most-held first. */
-  instances: Array<{
-    id: string;
-    holdersInProfile: number;
-    totalHolders: number;
-  }>;
+  /** The stores this profile's instances hold, most-held first. */
+  instances: GgAgentModuleHold[];
+  /** The row's headline — see {@link GgAgentModuleSharing}. */
+  sharing: GgAgentModuleSharing;
+  /** How many of the profile's instances hold this kind at all. */
+  holdingInstances: number;
   /**
-   * The row's headline. `instance` — every instance of the profile has its own; `agent` —
-   * they all share one; `run` — the one they share reaches beyond this profile; `mixed` —
-   * some share and some do not, which is the interesting failure.
+   * The one store every instance of this profile shares, when there is one — i.e. exactly
+   * when `sharing === "agent"`. It is the only case whose contents can honestly be rendered
+   * at the profile's grain, so the surfaces that do read it from here rather than deciding
+   * for themselves.
    */
-  sharing: "instance" | "agent" | "run" | "mixed";
+  agentScoped: GgModuleInstance | null;
   /** What this profile's instances actually reported holding it as, when they agree. */
   observedOwnership: GgModuleOwnership | null;
   /** The declared scope its instances reported, when they agree; null otherwise. */
   observedScope: GgMemoryScope | null;
-  /** Summed across the profile's instances, and the per-instance mean. */
+  /**
+   * What the profile's configuration asked for, with the params' own defaults filled in.
+   * Null for a kind with no capability behind it (the window) and for a profile the
+   * captured configuration does not declare, where there is nothing to have asked.
+   */
+  declared: { ownership: string; scope: string | null } | null;
+  /** Where the declaration and the run disagree — see {@link GgModuleDivergence}. */
+  divergences: GgModuleDivergence[];
+  /** Summed across the profile's instances' windows, per turn. */
   cost: GgModuleCost | null;
 }
 
@@ -230,6 +290,25 @@ export function moduleKindLabel(kind: GgModuleKind): string {
 /** Whether more than one agent instance ever held this module. */
 export function isShared(module: GgModuleInstance): boolean {
   return module.holders.length > 1;
+}
+
+/**
+ * The holders that hold the store *alongside* one another rather than one after another.
+ *
+ * A store gathers several holders in two entirely different ways, and telling them apart is
+ * the whole difference between agent-scoped state and an ordinary succession. A `shared`
+ * memory store is bound by every instance of a profile **at the same time** — four agents
+ * curating one notebook. A window carried across an `exec` also ends up with two holders,
+ * but only ever one of them held it: the successor took it and the predecessor let it go.
+ * Both read as "2 holders", and only one of them is sharing.
+ *
+ * A [transferred](GgModuleOrigin) holder is precisely the one that *replaced* its
+ * predecessor rather than joining it, so it is the one origin that adds no concurrent
+ * holder. Every other origin — created, inherited, profile-bound, run-bound, forked-and-
+ * linked — is a holder that joined the ones already there.
+ */
+export function concurrentHolders(module: GgModuleInstance): GgModuleHolder[] {
+  return module.holders.filter((holder) => holder.origin !== "transferred");
 }
 
 /** The holders of `module` other than `agentId`'s, in first-seen order. */
@@ -661,43 +740,40 @@ function foldByProfile(
         }
       }
       if (counts.size === 0) continue;
-      const instances = [...counts.entries()]
-        .map(([id, holdersInProfile]) => ({
-          id,
-          holdersInProfile,
-          totalHolders: byId.get(id)?.holders.length ?? holdersInProfile,
-        }))
+      const instances: GgAgentModuleHold[] = [...counts.entries()]
+        .flatMap(([id, holdersInProfile]) => {
+          const module = byId.get(id);
+          return module ? [{ module, holdersInProfile }] : [];
+        })
         .sort(
           (a, b) =>
-            b.holdersInProfile - a.holdersInProfile || a.id.localeCompare(b.id),
+            b.holdersInProfile - a.holdersInProfile ||
+            a.module.id.localeCompare(b.module.id),
         );
-
-      // The sharing headline. One store the profile's instances all bind and nobody else
-      // does is `agent`; one that reaches beyond the profile is `run`; several stores where
-      // one of them is shared is `mixed`, which is the interesting failure.
-      const shared = instances.filter((entry) => entry.totalHolders > 1);
-      let sharing: GgAgentModuleSummary["sharing"];
-      if (instances.length === 1 && instances[0]!.totalHolders > 1) {
-        sharing =
-          instances[0]!.holdersInProfile === instances[0]!.totalHolders
-            ? "agent"
-            : "run";
-      } else if (instances.length === 1) {
-        sharing = nodes.length > 1 ? "agent" : "instance";
-      } else {
-        sharing = shared.length > 0 ? "mixed" : "instance";
-      }
 
       const agree = <T>(values: T[]): T | null => {
         const distinct = new Set(values);
         return distinct.size === 1 ? values[0]! : null;
       };
+      const sharing = classifySharing(instances);
+      // Only the one shape whose contents can honestly be shown at the profile's grain: one
+      // store, held by every instance of the profile that holds this kind, all at once.
+      const agentScoped =
+        sharing === "agent" ? (instances[0]?.module ?? null) : null;
+      const declared = declaredFor(set, profile, kind);
       summaries.push({
         kind,
         instances,
         sharing,
+        holdingInstances: instances.reduce(
+          (sum, hold) => sum + hold.holdersInProfile,
+          0,
+        ),
+        agentScoped,
         observedOwnership: agree(holders.map((holder) => holder.ownership)),
         observedScope: agree(holders.map((holder) => holder.scope)),
+        declared,
+        divergences: moduleDivergences(declared, instances, holders),
         cost: sumCosts(holders.map((holder) => holder.cost)),
       });
     }
@@ -708,6 +784,141 @@ function foldByProfile(
   for (const declared of set?.agents ?? []) {
     if (!out.has(declared.name)) out.set(declared.name, []);
   }
+  return out;
+}
+
+// How one profile's instances stand to one kind's stores — see {@link GgAgentModuleSharing}.
+//
+// Everything turns on {@link concurrentHolders} rather than on the raw holder count: a store
+// two instances held one after the other is not shared, however much a count says it is, and
+// calling a succession "agent-scoped" would be the single most misleading thing this surface
+// could say (it would invite a reader to treat one instance's contents as the profile's).
+function classifySharing(holds: GgAgentModuleHold[]): GgAgentModuleSharing {
+  if (holds.length > 1) {
+    // Several stores. The question is only whether any of them is genuinely shared: that is
+    // the profile that half-bound its shared store, which is worth opening.
+    return holds.some((hold) => concurrentHolders(hold.module).length > 1)
+      ? "mixed"
+      : "instance";
+  }
+  const hold = holds[0];
+  if (!hold) return "instance";
+  const { module, holdersInProfile } = hold;
+  if (concurrentHolders(module).length > 1) {
+    // Shared. Whether it is the *agent's* turns on whether anybody outside the profile is in
+    // it — a store the run's board or another profile's spawner also holds is not this
+    // agent's state, it is the run's.
+    return holdersInProfile === module.holders.length ? "agent" : "run";
+  }
+  return module.holders.length > 1 ? "carried" : "instance";
+}
+
+// What the profile's configuration asked for about this kind, or null where it asked
+// nothing.
+//
+// Null in two cases, both of which matter: the window, which has no capability behind it (it
+// is not something an agent is given, it is what an agent *is*), and a profile the captured
+// configuration does not declare at all — a run recorded without its configuration, or an
+// agent spawned under a name the set no longer carries. Reading `declaredModuleConfig`'s
+// defaults for either would manufacture a declaration nobody made and then report the run
+// diverging from it.
+function declaredFor(
+  set: GgCapabilitySet | null,
+  profile: string,
+  kind: GgModuleKind,
+): { ownership: string; scope: string | null } | null {
+  const capability = MODULE_CAPABILITY_IDS.get(kind);
+  if (!capability) return null;
+  const config = agentProfile(set, profile);
+  const declares = config?.capabilities.some(
+    (entry) => entry.id === capability && entry.enabled,
+  );
+  return declares ? declaredModuleConfig(set, profile, kind) : null;
+}
+
+// Where a profile's declaration and its instances' behaviour disagree.
+//
+// Each of these is a legal outcome — gg resolves an impossible scope by falling back rather
+// than failing — and each is otherwise completely silent: the run reports the scope it was
+// *asked* for whatever it then bound, which is exactly why the observed side of these
+// surfaces had to be built. For the user's stated purpose (is this capability being used the
+// way it was configured to be?) these lines are the highest-value thing on the tab.
+function moduleDivergences(
+  declared: { ownership: string; scope: string | null } | null,
+  holds: GgAgentModuleHold[],
+  holders: GgModuleHolder[],
+): GgModuleDivergence[] {
+  if (!declared) return [];
+  const out: GgModuleDivergence[] = [];
+
+  switch (declared.scope) {
+    case "shared":
+      if (holds.length > 1) {
+        out.push({
+          declared: "shared",
+          observed: `${holds.length} stores`,
+          note:
+            "A successor re-binds to its own profile's entry rather than carrying its " +
+            "predecessor's, so an exec or an FSM transition part-way through a run leaves " +
+            "the earlier store behind. Each instance still shares with the ones it ran " +
+            "beside.",
+        });
+      }
+      break;
+    case "inherited":
+    case "read-only":
+      // The `MemoriesRuntime::resolve` fallback, which is invisible in the record: a holder
+      // that inherited nothing still reports the scope it asked for.
+      if (holders.every((holder) => holder.origin !== "inherited")) {
+        out.push({
+          declared: declared.scope,
+          observed: "nothing inherited",
+          note:
+            "These instances have no spawner to inherit from — or their spawner organizes " +
+            "its memories differently — so each one fell back to a store of its own.",
+        });
+      }
+      break;
+    case "isolated":
+      if (holds.some((hold) => concurrentHolders(hold.module).length > 1)) {
+        out.push({
+          declared: "isolated",
+          observed: "a store reached more than one instance",
+          note:
+            "The scope decides what an instance binds when it opens, not what it can be " +
+            "given afterwards: a fork links its parent's store, and a transition hands one " +
+            "on.",
+        });
+      }
+      break;
+    default:
+      break;
+  }
+
+  if (holders.length > 0) {
+    const owned = holders.filter(
+      (holder) => holder.ownership === "owned",
+    ).length;
+    if (owned > 0 && owned < holders.length) {
+      out.push({
+        declared: declared.ownership,
+        observed: `${owned} of ${holders.length} instances own it`,
+        note:
+          "Holders only disagree about ownership when a store is carried across profiles " +
+          "that configure it differently — whether it is in the prompt is the holder's " +
+          "configuration, not the store's.",
+      });
+    } else if (holders[0] && holders[0].ownership !== declared.ownership) {
+      out.push({
+        declared: declared.ownership,
+        observed: holders[0].ownership,
+        note:
+          "Every instance holds it on terms its own profile did not ask for, which is what " +
+          "a module carried in from another profile looks like.",
+      });
+    }
+  }
+
   return out;
 }
 

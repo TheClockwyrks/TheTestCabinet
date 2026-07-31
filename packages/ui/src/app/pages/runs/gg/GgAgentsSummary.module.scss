@@ -372,3 +372,232 @@ button.instanceChip {
     color: t.$color-text;
   }
 }
+
+// --- The modules section --------------------------------------------------------
+//
+// What a profile's instances *hold*, as against what they did. Every row leads with the
+// same three things in the same place — the kind, how its stores are distributed, and the
+// figures — so the distinction the section exists for (one store for the agent, or one per
+// instance?) is read down a column rather than out of five differently-shaped paragraphs.
+
+.modules {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// One module kind. Boxed, unlike the attribution rows, because a row can carry a whole
+// store's contents inside it — without a frame the memories of an agent-scoped store would
+// read as the next thing in the section rather than as what that row is *about*.
+.moduleRow {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  padding: t.$space-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 55%, transparent);
+  border-radius: t.$radius-sm;
+  min-width: 0;
+
+  // The one distribution whose contents belong to the agent is the one worth finding at a
+  // glance, so it — and only it — carries an accent edge.
+  &[data-sharing="agent"] {
+    border-left: 2px solid t.$color-accent;
+  }
+}
+
+.moduleRowHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: t.$space-xs t.$space-sm;
+  min-width: 0;
+}
+
+.moduleRowIcon {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: 0 0 auto;
+  color: t.$color-text-muted;
+}
+
+.moduleRowKind {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+// The distribution, as a badge. Agent-scoped is accented and everything else is quiet:
+// the badge's job is to make one case findable, not to color-code five.
+.sharingBadge {
+  font-size: 0.72rem;
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-xs;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  color: t.$color-text-muted;
+  white-space: nowrap;
+  cursor: help;
+
+  &[data-sharing="agent"] {
+    color: t.$color-accent;
+    border-color: color-mix(in srgb, t.$color-accent 55%, transparent);
+  }
+
+  &[data-sharing="mixed"] {
+    color: t.$color-warning;
+    border-color: color-mix(in srgb, t.$color-warning 55%, transparent);
+  }
+}
+
+// The counts, pushed to the trailing edge so they line up down the section the way the
+// closed rows' figures do.
+.moduleRowFacts {
+  margin-left: auto;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.moduleRowLine {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  max-width: 80ch;
+}
+
+// A legal disagreement between what the configuration asked for and what the run did (see
+// `GgModuleDivergence`). Marked, not alarmed: every one of these is a correct outcome, and
+// being loud about them is the point of the section — but they are notes, never errors.
+.divergence {
+  margin: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  max-width: 80ch;
+  border-left: 2px solid color-mix(in srgb, t.$color-warning 70%, transparent);
+  padding-left: t.$space-sm;
+}
+
+.divergenceHead {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+// The framed agent-scoped store: the whole risk of putting store-shaped state on a
+// profile's row is a reader taking one instance's notes for the agent's, so the frame and
+// its label say which it is, above the contents rather than beside them.
+.agentScoped {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  padding: t.$space-sm;
+  border-radius: t.$radius-sm;
+  background: color-mix(in srgb, t.$color-accent 6%, transparent);
+  min-width: 0;
+}
+
+.agentScopedLabel {
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: t.$color-accent;
+}
+
+// The instance-scoped footer: the two figures that say whether the capability is being used
+// at all, then out to the surface where N stores are compared.
+.moduleRowFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-xs t.$space-sm;
+}
+
+.moduleRowMeta {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// --- The store list (handed on, run-global, split) ------------------------------
+
+.stores {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+}
+
+// id · holders · what is in it · what it costs. Wraps rather than scrolling: a store id and
+// a holder list are both operator-authored lengths.
+.storeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-xs t.$space-sm;
+  font-size: t.$font-sm;
+}
+
+.storeId {
+  font: inherit;
+  font-size: t.$font-sm;
+  font-variant-numeric: tabular-nums;
+  color: t.$color-text;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+button.storeId {
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-accent;
+  }
+}
+
+.storeHolders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.storeHolder {
+  font: inherit;
+  font-size: 0.72rem;
+  color: t.$color-text-muted;
+  background: none;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-2xs;
+}
+
+button.storeHolder {
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    color: t.$color-text;
+    border-color: t.$color-accent;
+  }
+}
+
+.storeContents {
+  color: t.$color-text-muted;
+}
+
+.storeCost {
+  margin-left: auto;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

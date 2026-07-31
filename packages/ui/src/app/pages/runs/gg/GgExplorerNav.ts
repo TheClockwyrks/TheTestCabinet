@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+import type { GgModuleKind } from "@test-cabinet/run-record/gg";
 import type { AgentEntry } from "./ggAgentEntries";
 
 // A tiny navigation channel from the run-wide panels into the explorers that read one
@@ -26,6 +27,17 @@ export interface GgExplorerNav {
    * reads it from nobody in particular.
    */
   openModule: (moduleId: string) => void;
+  /**
+   * Switch to the Modules tab and open one module *kind's* whole-run read-out — how many
+   * stores of it the run opened, how widely they are shared, what they cost and how much
+   * they hold.
+   *
+   * The counterpart of {@link openModule} for a question that no single store answers:
+   * "twelve private notebooks holding two notes each" against "one store four agents
+   * curate" is only legible with every instance of the kind side by side, which is what a
+   * profile whose stores are one-per-instance has to hand its reader through to.
+   */
+  openModuleKind: (kind: GgModuleKind) => void;
   /**
    * Switch to the Agents tab and open one configured agent's row — the run read at the
    * grain a configuration is actually tuned at. A module's holder is an instance *of*

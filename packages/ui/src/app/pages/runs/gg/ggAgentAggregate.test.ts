@@ -11,14 +11,18 @@
 import { describe, expect, it } from "vitest";
 import type {
   GgAgentConfig,
+  GgAgentModule,
   GgCapabilitySet,
+  GgModuleKind,
   GgTelemetryEvent,
   GgTelemetryKind,
+  GgTransitionModule,
 } from "@test-cabinet/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import type { ModelPrices } from "../../../data/models";
 import type { ModelNameLookup, ModelPriceLookup } from "./ggCost";
 import { deriveGgAgentSummaries, UNNAMED_AGENT } from "./ggAgentAggregate";
+import { deriveGgModules } from "./ggModules";
 import { reduceGgEvents, reduceGgEventsPerAgent } from "./useGgRunState";
 
 const TS = "2026-07-29T00:00:00Z";
@@ -92,12 +96,54 @@ function status(
   } as GgTelemetryKind);
 }
 
-function profile(name: string, modelId: string, caps: string[]): GgAgentConfig {
+// A capability is named either bare (taking its defaults) or as `[id, params]` — the params
+// are what the configuration ASKED for about a module (`{ scope: "shared" }`), which the
+// module fold reads as the declared half of what its instances then got.
+type CapabilitySpec = string | [string, Record<string, unknown>];
+
+function profile(
+  name: string,
+  modelId: string,
+  caps: CapabilitySpec[],
+): GgAgentConfig {
   return {
     name,
     modelId,
-    capabilities: caps.map((id) => ({ id, enabled: true })),
+    capabilities: caps.map((cap) => {
+      const [id, params] = Array.isArray(cap) ? cap : [cap, {}];
+      return { id, enabled: true, params };
+    }),
   } as GgAgentConfig;
+}
+
+/** One row of an instance's module roster. Defaults to a private, owned, writable store. */
+function held(
+  kind: GgModuleKind,
+  moduleId: string,
+  overrides: Partial<GgAgentModule> = {},
+): GgAgentModule {
+  return {
+    kind,
+    moduleId,
+    enabled: true,
+    ownership: "owned",
+    origin: "created",
+    writable: true,
+    ...overrides,
+  };
+}
+
+/** The roster one instance emits as it opens. Two instances, one id, one store. */
+function roster(
+  agentId: string,
+  modules: GgAgentModule[],
+  parentAgentId?: string,
+): HarnessEvent {
+  return gg(
+    agentId,
+    { type: "agent_modules", modules } as GgTelemetryKind,
+    parentAgentId,
+  );
 }
 
 function set(...agents: GgAgentConfig[]): GgCapabilitySet {
@@ -117,13 +163,35 @@ function summarize(
   capabilitySet: GgCapabilitySet | null,
 ) {
   const derived = reduceGgEvents(events);
+  const perAgent = reduceGgEventsPerAgent(events);
   return deriveGgAgentSummaries(
     capabilitySet,
     derived.agentForest,
-    reduceGgEventsPerAgent(events),
+    perAgent,
     priceOf,
     nameOf,
+    // The module index the Agents panel folds beside this one: a profile's module row is a
+    // regrouping of it, since a store's holders span profiles and cannot be found one
+    // profile at a time.
+    deriveGgModules(
+      capabilitySet,
+      derived.agentForest,
+      perAgent,
+      derived.transitions,
+      derived.moduleSnapshots,
+    ),
   );
+}
+
+/** The module row of one profile's summary, for the kind the test is about. */
+function moduleRow(
+  summaries: ReturnType<typeof summarize>,
+  name: string,
+  kind: GgModuleKind,
+) {
+  return summaries
+    .find((summary) => summary.name === name)!
+    .modules.find((row) => row.kind === kind)!;
 }
 
 describe("deriveGgAgentSummaries", () => {
@@ -364,6 +432,196 @@ describe("deriveGgAgentSummaries", () => {
     expect(spec?.turns).toBe(3);
     expect(spec?.billedTokens).toBeCloseTo(1500, 6);
     expect(spec?.cost).toBeCloseTo(1500 * 1e-5, 10);
+  });
+
+  // --- The modules a profile holds ---------------------------------------------
+  //
+  // The one thing on a profile's row that is not a sum, and the distinction the whole
+  // module read-out exists for: twelve instances may be reading ONE store or twelve, and
+  // which of those it is *is* the configuration under test. Every other figure here folds
+  // instances into one number; this one must not, and must never call twelve stores one.
+
+  it("folds a shared memory store into one agent-scoped row", () => {
+    // Two Reviewer instances report the same store id, which is what a resolved `shared`
+    // scope looks like on the wire. At the profile's grain that is one store, and its
+    // contents are the *agent's* — the only shape whose contents can honestly be shown here.
+    const summaries = summarize(
+      [
+        spawn("root", "Root", "vendor/big"),
+        roster("root", [held("history", "history-0")]),
+        spawn("r1", "reviewer", "vendor/small", "root"),
+        roster(
+          "r1",
+          [
+            held("history", "history-1"),
+            held("memories", "memories-0", {
+              origin: "profile",
+              scope: "shared",
+            }),
+          ],
+          "root",
+        ),
+        spawn("r2", "reviewer", "vendor/small", "root"),
+        roster(
+          "r2",
+          [
+            held("history", "history-2"),
+            held("memories", "memories-0", {
+              origin: "profile",
+              scope: "shared",
+            }),
+          ],
+          "root",
+        ),
+      ],
+      set(
+        profile("Root", "vendor/big", ["subagents"]),
+        profile("reviewer", "vendor/small", [
+          ["memories", { scope: "shared" }],
+        ]),
+      ),
+    );
+
+    const memories = moduleRow(summaries, "reviewer", "memories");
+    expect(memories.sharing).toBe("agent");
+    expect(memories.agentScoped?.id).toBe("memories-0");
+    expect(memories.holdingInstances).toBe(2);
+    expect(memories.instances).toHaveLength(1);
+    expect(memories.declared).toEqual({ ownership: "owned", scope: "shared" });
+    // The configuration asked for a shared store and got one, so there is nothing to say.
+    expect(memories.divergences).toEqual([]);
+    // A window is never shared, whatever the memories do — so the same profile's history
+    // row is one store per instance, and nothing about it belongs to the agent.
+    const history = moduleRow(summaries, "reviewer", "history");
+    expect(history.sharing).toBe("instance");
+    expect(history.agentScoped).toBeNull();
+    expect(history.instances).toHaveLength(2);
+  });
+
+  it("folds an isolated profile's memories into one store per instance", () => {
+    // The ablation's other arm, and the control for the test above: byte-for-byte the same
+    // run except that the two instances report two ids. Nothing here belongs to the agent,
+    // so `agentScoped` must be null — a surface that rendered either store as "the
+    // reviewer's memories" would be lying about the other instance.
+    const summaries = summarize(
+      [
+        spawn("root", "Root", "vendor/big"),
+        roster("root", [held("history", "history-0")]),
+        spawn("r1", "reviewer", "vendor/small", "root"),
+        roster(
+          "r1",
+          [held("history", "history-1"), held("memories", "memories-0")],
+          "root",
+        ),
+        spawn("r2", "reviewer", "vendor/small", "root"),
+        roster(
+          "r2",
+          [held("history", "history-2"), held("memories", "memories-1")],
+          "root",
+        ),
+      ],
+      set(
+        profile("Root", "vendor/big", ["subagents"]),
+        profile("reviewer", "vendor/small", ["memories"]),
+      ),
+    );
+
+    const memories = moduleRow(summaries, "reviewer", "memories");
+    expect(memories.sharing).toBe("instance");
+    expect(memories.agentScoped).toBeNull();
+    expect(memories.instances.map((hold) => hold.module.id)).toEqual([
+      "memories-0",
+      "memories-1",
+    ]);
+    expect(memories.holdingInstances).toBe(2);
+    // An absent param is the default, and the default is what it got.
+    expect(memories.declared).toEqual({
+      ownership: "owned",
+      scope: "isolated",
+    });
+    expect(memories.divergences).toEqual([]);
+  });
+
+  it("says so when a declared scope did not resolve the way it was written", () => {
+    // The `MemoriesRuntime::resolve` fallback, which is otherwise completely silent: an
+    // `inherited` agent with no spawner to inherit from quietly gets its own store, and the
+    // record still reports the scope it asked for. This note is the only place it shows.
+    const summaries = summarize(
+      [
+        spawn("root", "Root", "vendor/big"),
+        roster("root", [held("history", "history-0")]),
+        spawn("r1", "reviewer", "vendor/small", "root"),
+        roster(
+          "r1",
+          [
+            held("history", "history-1"),
+            held("memories", "memories-0", { scope: "inherited" }),
+          ],
+          "root",
+        ),
+      ],
+      set(
+        profile("Root", "vendor/big", ["subagents"]),
+        profile("reviewer", "vendor/small", [
+          ["memories", { scope: "inherited" }],
+        ]),
+      ),
+    );
+
+    const memories = moduleRow(summaries, "reviewer", "memories");
+    expect(memories.sharing).toBe("instance");
+    expect(memories.divergences).toEqual([
+      {
+        declared: "inherited",
+        observed: "nothing inherited",
+        note: expect.stringContaining("no spawner to inherit from"),
+      },
+    ]);
+  });
+
+  it("calls a store handed to a successor carried, not shared", () => {
+    // Two holders, and no sharing: the successor took the task list and the predecessor let
+    // it go, so only ever one instance had it. Counting holders alone reads this exactly
+    // like a store two instances curate together, which is the one thing this row must
+    // never say — it would invite a reader to treat one instance's tasks as the agent's.
+    const summaries = summarize(
+      [
+        spawn("root", "Root", "vendor/big"),
+        roster("root", [
+          held("history", "history-0"),
+          held("tasks", "tasks-0"),
+        ]),
+        gg("root", {
+          type: "agent_transition",
+          kind: "exec",
+          toAgentId: "next",
+          agent: "Root",
+          modules: [
+            {
+              kind: "tasks",
+              disposition: "carried",
+              fromModuleId: "tasks-0",
+              toModuleId: "tasks-0",
+            } satisfies GgTransitionModule,
+          ],
+        } as GgTelemetryKind),
+        spawn("next", "Root", "vendor/big"),
+        roster("next", [
+          held("history", "history-1"),
+          held("tasks", "tasks-0", { origin: "transferred" }),
+        ]),
+      ],
+      set(profile("Root", "vendor/big", ["tasks"])),
+    );
+
+    const tasks = moduleRow(summaries, "Root", "tasks");
+    expect(tasks.sharing).toBe("carried");
+    expect(tasks.agentScoped).toBeNull();
+    expect(tasks.instances).toHaveLength(1);
+    expect(tasks.instances[0]!.module.holders.map((h) => h.agentId)).toEqual([
+      "root",
+      "next",
+    ]);
   });
 
   it("summarizes a run whose configuration was never captured", () => {

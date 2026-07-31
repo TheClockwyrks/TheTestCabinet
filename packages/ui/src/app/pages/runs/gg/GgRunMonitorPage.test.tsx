@@ -1897,6 +1897,141 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByLabelText("agent-1 overview")).toBeInTheDocument();
   });
 
+  // --- Agent-scoped module state ----------------------------------------------
+  //
+  // A profile's row is a sum of its instances, and module state is the one thing on it that
+  // does not sum: twelve instances may be reading ONE store or twelve, and which of those it
+  // is *is* the configuration under test. So the section states the distribution, shows the
+  // contents only for the one shape whose contents belong to the agent, and says plainly
+  // when there is no such shape rather than leaving an empty box behind.
+
+  // Open one configured agent's row on the Agents tab (every row starts closed).
+  function openAgentRow(name: string) {
+    const row = screen
+      .getAllByRole("button", { expanded: false })
+      .find((candidate) => candidate.textContent?.includes(name));
+    fireEvent.click(row!);
+    return row!;
+  }
+
+  it("shows a profile's shared store once, as the agent's own", () => {
+    // Two Reviewer instances curate ONE notebook, so at the profile's grain there is a
+    // single store and its contents ARE the reviewer's. This is the case the user asked for
+    // — and it is legitimate here precisely because there is nothing to aggregate.
+    renderMonitor(moduleRun());
+    openTab("Agents");
+    openAgentRow("Reviewer");
+
+    // The distribution first: one store, both instances, and what the two windows pay for
+    // it between them every turn.
+    const memories = screen.getByRole("region", { name: "Reviewer memories" });
+    expect(within(memories).getByText("agent-scoped")).toBeInTheDocument();
+    expect(
+      within(memories).getByText("1 store · 2 of 2 instances · 1.4k/turn"),
+    ).toBeInTheDocument();
+    expect(
+      within(memories).getByText(
+        /One store — memories-1 — bound by 2 instances/,
+      ),
+    ).toBeInTheDocument();
+
+    // And the contents, framed so it is unmistakable that they are the agent's rather than
+    // one instance's — which is the whole risk of putting store-shaped state on this row.
+    const scoped = within(memories).getByRole("region", {
+      name: "Reviewer agent-scoped memories",
+    });
+    expect(
+      within(scoped).getByText(/read here once for the whole agent/),
+    ).toBeInTheDocument();
+    expect(
+      within(scoped).getAllByText("review-standards").length,
+    ).toBeGreaterThan(0);
+
+    // A window, by contrast, is never shared — so the same profile's history row is one
+    // store per instance and shows no contents at all.
+    const history = screen.getByRole("region", { name: "Reviewer history" });
+    expect(within(history).getByText("per instance")).toBeInTheDocument();
+    expect(
+      within(history).getByText(/every instance's history is its own/),
+    ).toBeInTheDocument();
+  });
+
+  it("says an isolated profile has no agent-scoped state rather than showing nothing", () => {
+    // The ablation's off arm. Two Reviewer instances, `isolated` memories, two stores: any
+    // rendering of either one as "the reviewer's memories" would be a lie about the other,
+    // so the row states that, states how much of the capability went unused, and hands the
+    // reader to the surface where N stores are compared.
+    renderMonitor([
+      sessionStartedWith([
+        { name: "Root", capabilities: ["shell", "subagents"] },
+        { name: "Reviewer", capabilities: ["memories"] },
+      ]),
+      roster("root", [held("history", "history-0")]),
+      ...["agent-0", "agent-1"].map((id, index) =>
+        ggFrom(id, "root", {
+          type: "agent_spawned",
+          slot: "Reviewer",
+          modelId: "mock/scripted-builder",
+          depth: 1,
+          brief: `Review ${index}.`,
+        }),
+      ),
+      roster(
+        "agent-0",
+        [held("history", "history-1"), held("memories", "memories-0")],
+        "root",
+      ),
+      roster(
+        "agent-1",
+        [held("history", "history-2"), held("memories", "memories-1")],
+        "root",
+      ),
+    ]);
+    openTab("Agents");
+    openAgentRow("Reviewer");
+
+    const memories = screen.getByRole("region", { name: "Reviewer memories" });
+    expect(
+      within(memories).getByText("2 stores · 2 of 2 instances"),
+    ).toBeInTheDocument();
+    expect(
+      within(memories).getByText(/every instance's memories is its own/),
+    ).toBeInTheDocument();
+    // No agent-scoped frame at all — not an empty one.
+    expect(
+      screen.queryByRole("region", { name: "Reviewer agent-scoped memories" }),
+    ).toBeNull();
+    // And the read-out that says whether the capability was used at all: neither store was
+    // ever written to.
+    expect(
+      within(memories).getByText("2 of 2 stores never written to"),
+    ).toBeInTheDocument();
+  });
+
+  it("walks from a profile's modules out to the stores and the instances holding them", () => {
+    renderMonitor(moduleRun());
+    openTab("Agents");
+    openAgentRow("Reviewer");
+
+    // A holder of the agent-scoped store opens that instance's own file for it — the same
+    // store, read from inside one of the agents in it.
+    fireEvent.click(screen.getByRole("button", { name: "agent-1" }));
+    expect(screen.getByRole("radio", { name: "Instances" })).toBeChecked();
+    expect(
+      screen.getByRole("button", { name: "agent-1 modules memories" }),
+    ).toHaveAttribute("aria-current", "true");
+
+    // And a per-instance row hands the reader to the kind's whole-run read-out, which is
+    // where several stores of one kind are actually comparable.
+    openTab("Agents");
+    openAgentRow("Reviewer");
+    fireEvent.click(screen.getByRole("button", { name: "Compare in Modules" }));
+    expect(screen.getByRole("radio", { name: "Modules" })).toBeChecked();
+    expect(
+      screen.getByRole("button", { name: "history overview" }),
+    ).toHaveAttribute("aria-current", "true");
+  });
+
   it("states a profile's and an instance's own generation rate in their Tokens read-out", () => {
     // Two reviewer instances generating 200 tokens each: one spends 2s inside its model
     // (100 tok/s), the other 8s (25 tok/s). The profile's rate is its whole generation over

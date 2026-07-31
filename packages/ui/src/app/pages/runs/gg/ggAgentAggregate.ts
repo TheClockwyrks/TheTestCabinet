@@ -40,6 +40,10 @@ import {
   type GgContextAttribution,
 } from "./ggContextAttribution";
 import { agentModelMs, generatedTokens } from "./ggThroughput";
+// Types only: `ggModules` reads this module's `agentProfileName`, so importing anything
+// from it at runtime would close a cycle. A type import erases, and the index itself is
+// handed in by the caller that folded it.
+import type { GgAgentModuleSummary, GgModuleIndex } from "./ggModules";
 import { ROOT_AGENT } from "./ggCatalog";
 import {
   ROOT_ID,
@@ -137,6 +141,20 @@ export interface GgAgentSummary {
   toolCallsPerResponse: number | null;
   /** What filled its instances' windows, and what that material cost. */
   context: GgContextAttribution;
+  /**
+   * The [modules](./ggModules) its instances hold, one row per kind — and, per kind, whether
+   * they hold **one** store between them or one each.
+   *
+   * This is the only figure on a profile's row that is not a sum. Everything else here folds
+   * twelve instances into one number because the instances are twelve samples of one arm;
+   * module state does not fold, because twelve instances may be reading one store or twelve,
+   * and which of those it is *is the configuration under test*. So the row reports the
+   * distribution rather than a total, and names the one store where there is one.
+   *
+   * Empty for a profile the run never instantiated, and for a run folded without a module
+   * index (see {@link deriveGgAgentSummaries}).
+   */
+  modules: GgAgentModuleSummary[];
 }
 
 const EMPTY_STATUS_COUNTS: Record<GgAgentStatus, number> = {
@@ -251,6 +269,12 @@ function orderedInstances(
  * context accounting priceable; without them the token figures still hold and every cost
  * reads null. Profiles list in configuration order (the root first), with any profile seen
  * only on the stream after them.
+ *
+ * `modules` is the run's [module index](./ggModules), whose per-profile fold becomes each
+ * row's {@link GgAgentSummary.modules}. It is taken rather than derived here because it is a
+ * fold over the *whole* run — a store's holders span profiles, so it cannot be computed one
+ * profile at a time — and because three surfaces read it, which is precisely the reason it
+ * is one traversal. Null leaves every row's module list empty and changes nothing else.
  */
 export function deriveGgAgentSummaries(
   capabilitySet: GgCapabilitySet | null,
@@ -258,6 +282,7 @@ export function deriveGgAgentSummaries(
   perAgent: ReadonlyMap<string, DerivedGgState>,
   priceOf: ModelPriceLookup,
   nameOf: ModelNameLookup,
+  modules: GgModuleIndex | null,
 ): GgAgentSummary[] {
   const declared: GgAgentConfig[] = capabilitySet?.agents ?? [];
   const instances = orderedInstances(agentForest, capabilitySet);
@@ -373,6 +398,7 @@ export function deriveGgAgentSummaries(
       tools,
       toolCallsPerResponse: toolCallsPerResponse(tools, turns),
       context: mergeGgAttributions(contextParts),
+      modules: modules?.byProfile.get(name) ?? [],
     };
   });
 }
@@ -381,11 +407,16 @@ export function deriveGgAgentSummaries(
  * The run's per-agent summaries, priced against the loaded model catalog (which also
  * supplies each profile's model display name). The catalog is optional — a console with no
  * gallery provider still gets every token, turn, and instance figure, with costs null.
+ *
+ * The module index is handed in (see {@link useGgModules}) rather than folded here: it is a
+ * whole-run traversal three surfaces share, and it is what keeps this module free of a
+ * runtime dependency on the one that reads its `agentProfileName`.
  */
 export function useGgAgentSummaries(
   capabilitySet: GgCapabilitySet | null,
   agentForest: readonly AgentTreeNode[],
   perAgent: ReadonlyMap<string, DerivedGgState>,
+  modules: GgModuleIndex | null,
 ): GgAgentSummary[] {
   const findModel = useFindModelOptional();
   return useMemo(
@@ -396,7 +427,8 @@ export function useGgAgentSummaries(
         perAgent,
         (id) => findModel?.(id)?.prices ?? null,
         (id) => findModel?.(id)?.name ?? null,
+        modules,
       ),
-    [capabilitySet, agentForest, perAgent, findModel],
+    [capabilitySet, agentForest, perAgent, findModel, modules],
   );
 }

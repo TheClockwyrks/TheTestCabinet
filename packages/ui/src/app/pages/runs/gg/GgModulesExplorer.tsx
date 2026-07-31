@@ -71,6 +71,17 @@ type Selection =
   | { kind: "group"; moduleKind: GgModuleKind }
   | { kind: "module"; moduleId: string };
 
+/**
+ * What another surface can ask this tab to open: one store, or one kind's whole-run
+ * read-out.
+ *
+ * Both are asked for, and by different questions — a module file's "open in Modules" means
+ * *this* store, and a profile whose stores turned out to be one-per-instance means "show me
+ * all of them side by side" — so the focus channel carries the selection itself rather than
+ * a bare id plus a second, parallel channel that could disagree with it.
+ */
+export type GgModuleFocus = Selection;
+
 interface GgModulesExplorerProps {
   /** The run's configuration — what each profile *declared* about its modules. */
   capabilitySet: GgCapabilitySet | null;
@@ -83,10 +94,11 @@ interface GgModulesExplorerProps {
   /** The latest contents of every module instance, keyed by module id. */
   moduleSnapshots: Map<string, ModuleSnapshot>;
   /**
-   * A module instance to jump to, set when another surface links here (the Instances
-   * tab's module header). Consumed once, through `onFocusHandled`.
+   * A store — or a whole kind — to jump to, set when another surface links here (the
+   * Instances tab's module header, an Agents-tab row's "compare in Modules"). Consumed
+   * once, through `onFocusHandled`.
    */
-  focusModule?: string | null;
+  focusModule?: GgModuleFocus | null;
   onFocusHandled?: () => void;
 }
 
@@ -137,14 +149,25 @@ export function GgModulesExplorer({
     if (!stillValid) setSelection(firstSelection);
   }, [modules, selection, firstSelection]);
 
-  // Honor a jump-to-module request from elsewhere in the panels — today the Instances
-  // tab's module header, which is the same store read from one of its holders. Its kind's
-  // group is forced open on the way, since a group can be closed (history's is, by
-  // default) and landing behind a caret would drop half the request.
+  // Honor a jump-to request from elsewhere in the panels — the Instances tab's module
+  // header (the same store, read from one of its holders) or an Agents-tab row whose stores
+  // turned out to be one per instance (this kind, all of them, side by side). The target's
+  // group is forced open on the way, since a group can be closed (history's is, by default)
+  // and landing behind a caret would drop half the request.
   const openFolders = folders.open;
   useEffect(() => {
     if (focusModule == null) return;
-    const module = modules.byId.get(focusModule);
+    if (focusModule.kind === "group") {
+      if (
+        !modules.byKind.some((group) => group.kind === focusModule.moduleKind)
+      )
+        return;
+      setSelection(focusModule);
+      openFolders([kindKey(focusModule.moduleKind)]);
+      onFocusHandled?.();
+      return;
+    }
+    const module = modules.byId.get(focusModule.moduleId);
     if (!module) return;
     setSelection({ kind: "module", moduleId: module.id });
     openFolders([kindKey(module.kind)]);

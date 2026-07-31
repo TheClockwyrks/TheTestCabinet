@@ -11,7 +11,7 @@ import panels from "./GgPanels.module.scss";
 import type { GgRunState } from "./useGgRunState";
 import { GgAgentsExplorer } from "./GgAgentsExplorer";
 import { GgAgentsSummary } from "./GgAgentsSummary";
-import { GgModulesExplorer } from "./GgModulesExplorer";
+import { GgModulesExplorer, type GgModuleFocus } from "./GgModulesExplorer";
 import { ProjectExplorer } from "./ProjectExplorer";
 import { MODULE_CAPABILITY_IDS, anyAgentCapabilityOn } from "./ggCatalog";
 import type { AgentEntry } from "./ggAgentEntries";
@@ -28,7 +28,10 @@ import { GgExplorerNavContext, type GgExplorerNav } from "./GgExplorerNav";
 //   declares, each with its instances summed into one read-out — how many of it ran,
 //   what they spent between them, and which files and tools filled their windows.
 //   That is the grain a configuration is tuned at (twelve reviewer instances are one
-//   arm of the experiment, not twelve), and it is the only view that answers it. See
+//   arm of the experiment, not twelve), and it is the only view that answers it. It is
+//   also where **agent-scoped** module state is read: a store every instance of one
+//   profile binds at once belongs to the profile rather than to any of its instances, so
+//   its contents are shown there, once, rather than repeated under twelve agents. See
 //   {@link GgAgentsSummary}.
 // - Instances is the same run read one running agent at a time. The rich per-instance
 //   views (the prompt it was given, its activity, its context window, what it spent) are
@@ -188,7 +191,7 @@ export function GgRunPanels({
   // configured agent's row on the Agents tab (a holder's profile — "is this how that arm is
   // configured?"). Each is cleared through its own handler, so consuming one request cannot
   // silently drop another that arrived in the same render.
-  const [focusModule, setFocusModule] = useState<string | null>(null);
+  const [focusModule, setFocusModule] = useState<GgModuleFocus | null>(null);
   const [focusProfile, setFocusProfile] = useState<string | null>(null);
   const nav: GgExplorerNav = useMemo(
     () => ({
@@ -199,7 +202,11 @@ export function GgRunPanels({
       },
       openModule: (moduleId) => {
         setTab("modules");
-        setFocusModule(moduleId);
+        setFocusModule({ kind: "module", moduleId });
+      },
+      openModuleKind: (moduleKind) => {
+        setTab("modules");
+        setFocusModule({ kind: "group", moduleKind });
       },
       openProfile: (name) => {
         setTab("agents");
@@ -246,6 +253,8 @@ export function GgRunPanels({
             capabilitySet={capabilitySet}
             agentForest={agentForest}
             perAgent={perAgent}
+            transitions={transitions}
+            moduleSnapshots={moduleSnapshots}
             focusProfile={focusProfile}
             onFocusHandled={onProfileFocusHandled}
           />

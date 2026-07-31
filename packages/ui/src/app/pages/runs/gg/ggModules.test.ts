@@ -24,6 +24,7 @@ import type {
 import type { HarnessEvent } from "../../../../client/types";
 import {
   coHolders,
+  concurrentHolders,
   declaredModuleConfig,
   deriveGgModules,
   isShared,
@@ -302,6 +303,56 @@ describe("deriveGgModules", () => {
     expect(reviewer.find((row) => row.kind === "memories")!.sharing).toBe(
       "instance",
     );
+  });
+
+  it("tells a store two instances share from one they held in turn", () => {
+    // Both are "2 holders" and only one of them is sharing. A successor that took its
+    // predecessor's window replaced it rather than joining it, so nothing was ever held by
+    // two instances at once — which is the difference between agent-scoped state and an
+    // ordinary succession, and the one a holder count cannot make.
+    const events = [
+      spawn("root", "Root"),
+      roster("root", [held("history", "history-0")]),
+      spawn("agent-0", "Reviewer", "root"),
+      roster(
+        "agent-0",
+        [
+          held("history", "history-1"),
+          held("memories", "memories-0", { origin: "profile" }),
+        ],
+        "root",
+      ),
+      spawn("agent-1", "Reviewer", "root"),
+      roster(
+        "agent-1",
+        [
+          held("history", "history-2"),
+          held("memories", "memories-0", { origin: "profile" }),
+        ],
+        "root",
+      ),
+      spawn("agent-2", "Root"),
+      roster("agent-2", [
+        held("history", "history-0", { origin: "transferred" }),
+      ]),
+    ];
+
+    const modules = index(
+      events,
+      set([
+        ["Root", []],
+        ["Reviewer", ["memories"]],
+      ]),
+    );
+
+    const window = modules.byId.get("history-0")!;
+    expect(window.holders).toHaveLength(2);
+    expect(concurrentHolders(window).map((h) => h.agentId)).toEqual(["root"]);
+    const notebook = modules.byId.get("memories-0")!;
+    expect(concurrentHolders(notebook).map((h) => h.agentId)).toEqual([
+      "agent-0",
+      "agent-1",
+    ]);
   });
 
   it("calls a store held across profiles run-scoped", () => {
@@ -660,10 +711,22 @@ describe("deriveGgModules", () => {
     const reviewer = modules.byProfile.get("Reviewer")!;
     const memories = reviewer.find((row) => row.kind === "memories")!;
     expect(memories.sharing).toBe("mixed");
-    expect(memories.instances).toEqual([
-      { id: "memories-0", holdersInProfile: 2, totalHolders: 2 },
-      { id: "memories-1", holdersInProfile: 1, totalHolders: 1 },
+    // The hold carries the store itself, so a surface reading a profile's row can show its
+    // holders, its lifetime and its contents without a second lookup.
+    expect(
+      memories.instances.map((hold) => [
+        hold.module.id,
+        hold.holdersInProfile,
+        hold.module.holders.length,
+      ]),
+    ).toEqual([
+      ["memories-0", 2, 2],
+      ["memories-1", 1, 1],
     ]);
+    expect(memories.holdingInstances).toBe(3);
+    // Nothing is the agent's: two of its three instances share a store and the third does
+    // not, so there is no one store whose contents are the profile's.
+    expect(memories.agentScoped).toBeNull();
     // Three instances, three windows — each its own, which is what a window always is.
     expect(reviewer.find((row) => row.kind === "history")!.sharing).toBe(
       "instance",

@@ -5,18 +5,32 @@ import type {
   GgCapabilitySet,
 } from "@test-cabinet/run-record/gg";
 import dash from "./GgDashboard.module.scss";
+import panels from "./GgPanels.module.scss";
 import styles from "./GgAgentsSummary.module.scss";
 import { useGgAgentSummaries, type GgAgentSummary } from "./ggAgentAggregate";
 import type { GgAttributionRow } from "./ggContextAttribution";
-import type { AgentTreeNode, DerivedGgState } from "./useGgRunState";
+import type {
+  AgentTransition,
+  AgentTreeNode,
+  DerivedGgState,
+  ModuleSnapshot,
+} from "./useGgRunState";
 import { callRatePhrase, shortTokens } from "./useGgRunState";
+import type { GgAgentModuleSharing, GgAgentModuleSummary } from "./ggModules";
+import { moduleKindLabel, useGgModules } from "./ggModules";
+import {
+  GgModuleHeader,
+  ModuleContents,
+  moduleContentSummary,
+} from "./GgModuleViews";
+import { MODULE_ICONS } from "./ggAgentEntries";
 import {
   CostWidget,
   TokensWidget,
   formatCost,
   formatPercent,
 } from "./GgOverviewWidgets";
-import { useGgExplorerNav } from "./GgExplorerNav";
+import { useGgExplorerNav, type GgExplorerNav } from "./GgExplorerNav";
 
 // The Agents tab: a gg run read **per configured agent** rather than per instance.
 //
@@ -69,6 +83,10 @@ interface GgAgentsSummaryProps {
   agentForest: AgentTreeNode[];
   /** Each instance's own reduced slice, keyed by agent id. */
   perAgent: Map<string, DerivedGgState>;
+  /** The successions — what each of them did to each module (a store's lifetime). */
+  transitions: AgentTransition[];
+  /** The latest contents of every module instance, keyed by module id. */
+  moduleSnapshots: Map<string, ModuleSnapshot>;
   /**
    * A configured agent to open, set when another surface links here — a module holder's
    * profile chip on the Modules tab, which asks "is this how that arm is configured?".
@@ -91,10 +109,27 @@ export function GgAgentsSummary({
   capabilitySet,
   agentForest,
   perAgent,
+  transitions,
+  moduleSnapshots,
   focusProfile,
   onFocusHandled,
 }: GgAgentsSummaryProps) {
-  const summaries = useGgAgentSummaries(capabilitySet, agentForest, perAgent);
+  // The run folded by module instance, so a profile's row can say whether its twelve
+  // instances read one store or twelve. Folded here, beside the per-profile fold, for the
+  // same reason that one is: both cost nothing while this tab is closed.
+  const modules = useGgModules(
+    capabilitySet,
+    agentForest,
+    perAgent,
+    transitions,
+    moduleSnapshots,
+  );
+  const summaries = useGgAgentSummaries(
+    capabilitySet,
+    agentForest,
+    perAgent,
+    modules,
+  );
   // Which rows are open, by agent name. Everything starts closed — the panel's first job is
   // the comparison across agents, and a run with five profiles opened by default would bury
   // it under five screens of detail — so the set holds only what the reader has opened.
@@ -342,6 +377,10 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
       {ran ? (
         <>
           <InstanceChips agent={agent} />
+          {/* Directly under the chips, because "do those twelve instances share one memory
+              store?" is the question the chips themselves raise, and answering it two
+              scroll-lengths later answers it too late. */}
+          <ModulesSection agent={agent} />
           <AgentStats agent={agent} />
           {/* The same Tokens and Cost widgets the Dashboard and an instance's Overview
               use, fed this agent's summed usage — so a profile's spend reads in the shape
@@ -415,6 +454,319 @@ function InstanceChips({ agent }: { agent: GgAgentSummary }) {
       })}
     </ul>
   );
+}
+
+// --- Modules ------------------------------------------------------------------
+//
+// What this profile's instances *hold*, as against what they did.
+//
+// It is the one thing on this panel that is not a sum, and it is here for exactly that
+// reason: every other figure folds twelve instances into one number because the instances
+// are twelve samples of one arm, and module state does not fold — twelve instances may be
+// reading one store or twelve, and *which of those it is* is the configuration under test.
+// A profile whose `shared` memories quietly resolved to twelve private notebooks reads
+// identically to one whose sharing worked in every other view in the console.
+//
+// So each row states the distribution first and never averages it away. The one case whose
+// contents can honestly be shown at this grain — one store, bound by every instance at once
+// — shows them inline, framed as the agent's; every other case says how many stores there
+// are and hands the reader to the Modules tab, where stores are compared side by side.
+
+// The five distributions, in the two words a badge has room for.
+const SHARING_LABELS: Record<GgAgentModuleSharing, string> = {
+  agent: "agent-scoped",
+  instance: "per instance",
+  carried: "handed on",
+  run: "run-global",
+  mixed: "split",
+};
+
+// What each of them means, for a reader who has not met the distinction before — and, for
+// `carried`, the one that a holder count alone gets wrong.
+const SHARING_HINTS: Record<GgAgentModuleSharing, string> = {
+  agent:
+    "One store, bound by every instance of this agent at once — what one writes, the others read. This is the only shape whose contents belong to the agent rather than to an instance.",
+  instance:
+    "Every instance holds a store of its own. Nothing here belongs to the agent, so nothing is shown: any single rendering would be a lie about the other instances.",
+  carried:
+    "One store, but held one instance at a time — a succession handed it on. It reads as several holders and is not sharing: only ever one of them had it.",
+  run: "The store these instances bind reaches beyond this agent — the run's board, or a store a spawner of another profile owns.",
+  mixed:
+    "Several stores, at least one of them genuinely shared: some instances bound it and some did not. Usually worth opening.",
+};
+
+// The whole module read-out for one profile.
+function ModulesSection({ agent }: { agent: GgAgentSummary }) {
+  const nav = useGgExplorerNav();
+  if (agent.modules.length === 0) return null;
+  const count = agent.instances.length;
+  return (
+    <section className={styles.section} aria-label={`${agent.name} modules`}>
+      <span className={dash.cardLabel}>Modules · {agent.modules.length}</span>
+      <p className={styles.sectionNote}>
+        The state this agent's{" "}
+        {count === 1 ? "one instance" : `${count} instances`} hold. A store
+        marked <strong>agent-scoped</strong> is a single one every instance
+        binds at once, so its contents below are the agent's; anything else is a
+        store per instance, and no one rendering of those would be true of the
+        agent.
+      </p>
+      <ul className={styles.modules}>
+        {agent.modules.map((row) => (
+          <ModuleRow key={row.kind} agent={agent} row={row} nav={nav} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// One module kind, at the profile's grain: how its stores are distributed, where that
+// diverges from what the configuration asked for, and then either the store itself or the
+// way to compare the several there turned out to be.
+function ModuleRow({
+  agent,
+  row,
+  nav,
+}: {
+  agent: GgAgentSummary;
+  row: GgAgentModuleSummary;
+  nav: GgExplorerNav | null;
+}) {
+  const Icon = MODULE_ICONS[row.kind];
+  const stores = row.instances.length;
+  return (
+    <li>
+      {/* Named, because a row can carry a whole store's contents and the reader has to be
+          able to tell — by ear as well as by eye — which kind's state they are looking at
+          and whose it is. */}
+      <section
+        className={styles.moduleRow}
+        data-sharing={row.sharing}
+        aria-label={`${agent.name} ${row.kind}`}
+      >
+        <div className={styles.moduleRowHead}>
+          <Icon className={styles.moduleRowIcon} />
+          <span className={styles.moduleRowKind}>
+            {moduleKindLabel(row.kind)}
+          </span>
+          <span
+            className={styles.sharingBadge}
+            data-sharing={row.sharing}
+            title={SHARING_HINTS[row.sharing]}
+          >
+            {SHARING_LABELS[row.sharing]}
+          </span>
+          <span className={styles.moduleRowFacts}>
+            {plural(stores, "store")} · {row.holdingInstances} of{" "}
+            {plural(agent.instances.length, "instance")}
+            {row.cost ? ` · ${shortTokens(row.cost.latestTokens)}/turn` : ""}
+          </span>
+        </div>
+        <p className={styles.moduleRowLine}>{sharingSentence(row)}</p>
+        {/* Where the configuration and the run disagree — always legal, never silent. */}
+        {row.divergences.map((divergence, index) => (
+          <p key={index} className={styles.divergence}>
+            <strong className={styles.divergenceHead}>
+              Declared {divergence.declared}, observed {divergence.observed}.
+            </strong>{" "}
+            {divergence.note}
+          </p>
+        ))}
+        {row.agentScoped ? (
+          <AgentScopedStore agent={agent} row={row} nav={nav} />
+        ) : row.sharing === "instance" ? (
+          <PerInstanceStores row={row} nav={nav} />
+        ) : (
+          <StoreList row={row} nav={nav} />
+        )}
+      </section>
+    </li>
+  );
+}
+
+// How this profile's instances stand to this kind's stores, in one sentence — the sentence
+// the badge is the two-word version of.
+function sharingSentence(row: GgAgentModuleSummary): string {
+  const label = moduleKindLabel(row.kind).toLowerCase();
+  const first = row.instances[0]?.module;
+  const stores = row.instances.length;
+  switch (row.sharing) {
+    case "agent":
+      return `One store — ${first?.id} — bound by ${plural(row.holdingInstances, "instance")} of this agent at once: what one writes, the next reads.`;
+    case "carried": {
+      const holders = first?.holders ?? [];
+      const from = holders[0]?.agentId ?? "its first holder";
+      const to = holders[holders.length - 1]?.agentId ?? "its successor";
+      return `One store, held one instance at a time: ${first?.id} passed from ${from} to ${to}, so only ever one instance had it.`;
+    }
+    case "run":
+      return `${first?.id} reaches beyond this agent — ${plural(first?.holders.length ?? 0, "holder")} across the run — so it is the run's state rather than this agent's.`;
+    case "instance":
+      return row.holdingInstances === 1
+        ? `The one instance holding ${label} has a store of its own.`
+        : `${plural(stores, "store")} for ${plural(row.holdingInstances, "instance")}: every instance's ${label} is its own, so there is nothing here that belongs to the agent.`;
+    case "mixed":
+      return `${plural(stores, "store")} across ${plural(row.holdingInstances, "instance")} — some bound a shared one and some did not.`;
+  }
+}
+
+// The one store every instance of the profile binds, shown in full and framed as the
+// agent's.
+//
+// This is the user's explicit ask, and it is legitimate here precisely because there is
+// nothing to aggregate: with one store the profile's memories *are* that store. The frame is
+// not decoration — the whole risk of putting instance-shaped state on a profile's row is a
+// reader taking one instance's notes for the agent's, so the region says which it is, in
+// words, above the contents.
+function AgentScopedStore({
+  agent,
+  row,
+  nav,
+}: {
+  agent: GgAgentSummary;
+  row: GgAgentModuleSummary;
+  nav: GgExplorerNav | null;
+}) {
+  const module = row.agentScoped;
+  if (!module) return null;
+  return (
+    <section
+      className={styles.agentScoped}
+      aria-label={`${agent.name} agent-scoped ${row.kind}`}
+    >
+      <span className={styles.agentScopedLabel}>
+        Agent-scoped — one store, read here once for the whole agent rather than
+        once per instance
+      </span>
+      {/* The same strip the store carries on the other two surfaces, read from no holder
+          in particular: its id, whether the holders' prompts carry it, its lifetime, what
+          it costs their windows between them, and every instance in it as a chip. */}
+      <GgModuleHeader
+        module={module}
+        holder={null}
+        onOpenHolder={
+          nav
+            ? (agentId) =>
+                nav.openAgent(agentId, { kind: "module", module: row.kind })
+            : undefined
+        }
+        onOpenModule={nav ? () => nav.openModule(module.id) : undefined}
+      />
+      <ModuleContents module={module} holder={null} state={null} />
+    </section>
+  );
+}
+
+// The instance-scoped case: how many stores there are, how many were never written to, and
+// what one costs on average — then out to the Modules tab, which is where N stores are
+// compared. Deliberately no contents: there are N of them and any one of them shown here
+// would read as the agent's.
+function PerInstanceStores({
+  row,
+  nav,
+}: {
+  row: GgAgentModuleSummary;
+  nav: GgExplorerNav | null;
+}) {
+  const untouched = row.instances.filter(
+    (hold) => moduleContentSummary(hold.module) == null,
+  ).length;
+  const each =
+    row.cost && row.holdingInstances > 0
+      ? row.cost.latestTokens / row.holdingInstances
+      : null;
+  return (
+    <div className={styles.moduleRowFoot}>
+      <span className={styles.moduleRowMeta}>
+        {untouched > 0
+          ? `${untouched} of ${plural(row.instances.length, "store")} never written to`
+          : `all ${plural(row.instances.length, "store")} in use`}
+        {each != null && ` · ~${shortTokens(Math.round(each))}/turn each`}
+      </span>
+      {nav && (
+        <button
+          type="button"
+          className={panels.projAgentLink}
+          onClick={() => nav.openModuleKind(row.kind)}
+        >
+          Compare in Modules
+        </button>
+      )}
+    </div>
+  );
+}
+
+// The stores themselves, for the shapes where there are few of them and which one is which
+// matters: a handed-on store, a run-global one, and the split case worth opening. Each row
+// names its holders, so the way back to an instance is one click from the profile's grain.
+function StoreList({
+  row,
+  nav,
+}: {
+  row: GgAgentModuleSummary;
+  nav: GgExplorerNav | null;
+}) {
+  return (
+    <ul className={styles.stores}>
+      {row.instances.map(({ module, holdersInProfile }) => {
+        const title = `${holdersInProfile} of this agent's instances hold it, ${plural(module.holders.length, "holder")} in all`;
+        return (
+          <li key={module.id} className={styles.storeRow}>
+            {nav ? (
+              <button
+                type="button"
+                className={styles.storeId}
+                title={title}
+                onClick={() => nav.openModule(module.id)}
+              >
+                {module.id}
+              </button>
+            ) : (
+              <span className={styles.storeId} title={title}>
+                {module.id}
+              </span>
+            )}
+            <span className={styles.storeHolders}>
+              {module.holders.map((holder) =>
+                nav ? (
+                  <button
+                    key={holder.agentId}
+                    type="button"
+                    className={styles.storeHolder}
+                    onClick={() =>
+                      nav.openAgent(holder.agentId, {
+                        kind: "module",
+                        module: row.kind,
+                      })
+                    }
+                  >
+                    {holder.agentId}
+                  </button>
+                ) : (
+                  <span key={holder.agentId} className={styles.storeHolder}>
+                    {holder.agentId}
+                  </span>
+                ),
+              )}
+            </span>
+            <span className={styles.storeContents}>
+              {moduleContentSummary(module) ?? "nothing in it"}
+            </span>
+            <span className={styles.storeCost}>
+              {module.totalCost
+                ? `${shortTokens(module.totalCost.latestTokens)}/turn`
+                : "—"}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// "1 store" / "3 stores" — spelled once, since these rows count five different things.
+function plural(count: number, noun: string): string {
+  return `${numberFmt.format(count)} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 // The figures that only mean something once the instances are summed: how many ran and how

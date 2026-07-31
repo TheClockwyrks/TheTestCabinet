@@ -1210,6 +1210,85 @@ instances folds to one store and `sharing: "agent"`; an `isolated` one to two an
 `GgRunMonitorPage.test.tsx` — the agent-scoped row renders its store's memories
 inline and the instance-scoped one does not.
 
+### Stage 7 as built — deviations from §5
+
+**LANDED** as `feat(ui): agent-scoped modules on the Agents tab`. All of §5 shipped: the
+`modules` fold on `GgAgentSummary`, the Modules section between `InstanceChips` and
+`AgentStats`, the sharing badges, the inline contents for an agent-scoped store, and the
+declared-versus-observed notes. Nine things are shaped differently from §5; **stage 8
+should document what shipped, not §5.**
+
+1. **There is a fifth sharing value, `carried`, and it is the most load-bearing change in
+   the stage.** §5.2's four values classify by *how many holders*, and that is wrong for
+   the case every run with an `exec` or an FSM produces: a window or a task list handed to
+   a successor has two holders of which only ever **one** held it. Under the four-value
+   rule that reads as `agent` — "one store, both instances" — which would invite a reader
+   to treat one instance's tasks as the profile's, the single most misleading thing this
+   surface could say. So `GgAgentModuleSharing` gained `carried`, and every classification
+   now goes through a new exported `concurrentHolders(module)` — the holders whose
+   [origin](GgModuleOrigin) is not `transferred`, i.e. the ones that *joined* the holders
+   already there rather than replacing them. `agent` now requires more than one concurrent
+   holder, which also fixes a latent bug in §2's fold: `instances.length === 1` with
+   `nodes.length > 1` unconditionally returned `agent`, whatever the holder count.
+2. **`GgAgentModuleSummary.instances` carries the `GgModuleInstance`, not its id.** §5.1's
+   `{ id, holdersInProfile, totalHolders }` cannot render anything — a row that shows a
+   store's contents, its holders and its cost would have to look every one of them back up
+   in `byId`, which is a second traversal of a fold that exists to be shared. So the hold is
+   `{ module, holdersInProfile }` and `totalHolders` is `module.holders.length`, i.e. one
+   spelling of one fact. (The one `ggModules.test.ts` assertion that spelled the old shape
+   was updated.)
+3. **`agentScoped: GgModuleInstance | null` on the summary.** §5.2 leaves each surface to
+   decide when contents may be rendered; that decision is exactly the thing that must not be
+   made twice, so the fold makes it once and names the store — non-null precisely when
+   `sharing === "agent"`. A surface then renders contents iff `agentScoped` is set.
+4. **`divergences` is a list of `GgModuleDivergence { declared, observed, note }`, not one
+   `string | null`.** A row can diverge on scope *and* on ownership independently, and
+   collapsing that to one string means silently dropping one of two findings. The structured
+   shape is also what lets the surface render the declared/observed pair in one weight and
+   the cause in another.
+5. **The declared half and the divergences are computed in `ggModules.foldByProfile`, not in
+   `deriveGgAgentSummaries`.** They belong with the observed facts they are a comparison
+   against, `declaredModuleConfig` was already there, and it keeps `GgAgentSummary.modules` a
+   pure regrouping. `declaredFor` also returns **null** — rather than
+   `declaredModuleConfig`'s defaults — for the window (no capability behind it) and for a
+   profile the captured configuration does not declare, so a run recorded without its
+   configuration cannot be reported as diverging from a declaration nobody made.
+6. **`deriveGgAgentSummaries` takes the `GgModuleIndex` as a sixth argument and
+   `useGgAgentSummaries` takes it as a fourth**, rather than folding it. `ggModules` imports
+   `agentProfileName` from `ggAgentAggregate`, so importing anything from `ggModules` at
+   runtime would close a cycle; the index is a whole-run traversal three surfaces share
+   anyway. `ggAgentAggregate`'s import of it is therefore `import type`. `GgAgentsSummary`
+   folds it with `useGgModules` beside `useGgAgentSummaries` — a third independent fold,
+   deliberately, on the same "a tab costs nothing while closed" precedent the panel's own
+   doc comment states.
+7. **`GgExplorerNav` gained `openModuleKind(kind)`, and the Modules tab's focus channel
+   became `GgModuleFocus`** (exported from `GgModulesExplorer`, structurally its
+   `Selection`). §5.2's "a link into the Modules tab, which is where twelve instances are
+   compared" wants the kind **Overview** stage 6 invented, and `openModule(id)` can only
+   select one store. One channel carrying the selection beats a bare id plus a parallel
+   kind channel that could disagree with it.
+8. **Every module row is a labelled `<section>` (`"<Profile> <kind>"`), and the agent-scoped
+   store a nested one (`"<Profile> agent-scoped <kind>"`).** The requirement that it never be
+   ambiguous whether the screen shows one instance's state or the whole agent's has to hold
+   by ear as well as by eye; it is also what makes the rows addressable in tests, since two
+   rows of one profile routinely carry identical figure lines.
+9. **An instance-scoped row shows a usage line, not a distribution list.** §5.2 asks for
+   "the distribution (count, and the size range across instances)"; what shipped is *"2 of 2
+   stores never written to · ~800/turn each"* plus **Compare in Modules**, because the
+   per-store list is one row per instance — twelve windows for a twelve-instance profile —
+   and the surface built to compare N stores side by side is one click away. `carried`,
+   `run` and `mixed` rows **do** list their stores (there are one or two of them, and which
+   is which is the point), each with its holders as chips that open that instance's own file.
+
+**Tests:** four new cases in `ggAgentAggregate.test.ts` (a `shared` profile folding to one
+agent-scoped store with no divergence; the `isolated` control folding to two with
+`agentScoped` null; an `inherited` scope that inherited nothing reporting its divergence; a
+carried task list classified `carried` rather than `agent`), one in `ggModules.test.ts`
+(`concurrentHolders` telling a shared store from one held in turn), and three in
+`GgRunMonitorPage.test.tsx` over stage 6's `moduleRun()` fixture (the shared store's
+contents rendered inline and framed; the isolated profile saying so and showing no frame;
+both cross-links out).
+
 ### Stage 8 — `docs(gg): module inspection in the console`
 
 `apps/docs/src/content/docs/gg/modules.md` gains an "Inspecting modules" section
