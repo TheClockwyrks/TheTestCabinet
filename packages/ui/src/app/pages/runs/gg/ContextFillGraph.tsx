@@ -39,7 +39,7 @@ import { agentCapabilityOn, LEGACY_FILESYSTEM_CAP_ID } from "./ggCatalog";
 import { formatPercent } from "./GgOverviewWidgets";
 import styles from "./GgPanels.module.scss";
 
-// The eleven context sources in their fixed, stable order (mirrors
+// The ten context sources in their fixed, stable order (mirrors
 // `GgContextSource::ALL`). Band order and colors are keyed to this list so the
 // graph stays stable across turns — a source is the same band, the same hue,
 // everywhere.
@@ -151,7 +151,7 @@ export function visibleSources(
 }
 
 // Tokens held by one source in a snapshot (0 when the band is absent, though gg
-// always emits all eleven).
+// always emits all ten).
 function sourceTokens(
   snapshot: ContextSnapshot,
   source: GgContextSource,

@@ -101,12 +101,19 @@ export function isSuccession(arrival: AgentTransition | undefined): boolean {
 }
 
 // The short marker a lineage carries in the tree: which of the three kinds of
-// succession produced this node, named the way the run's configuration names it (an
-// FSM transition by the state it entered, the other two by the move itself).
+// succession produced this node, named the way the run's configuration names it — by
+// the machine state it entered whenever it entered one, and by the move itself
+// otherwise. An `exec` onto a process is the case that needs both: gg resolves such a
+// handoff to the machine's entry state, so the arrival really is an exec *into* a
+// named state and the tag says so rather than dropping half of it.
 export function arrivalTag(arrival: AgentTransition): string {
   if (arrival.kind === "fork") return "⑂ fork";
-  if (arrival.kind === "fsm") return `⇢ ${arrival.state ?? "state"}`;
-  return "⇢ exec";
+  if (arrival.state) {
+    return arrival.kind === "fsm"
+      ? `⇢ ${arrival.state}`
+      : `⇢ exec → ${arrival.state}`;
+  }
+  return arrival.kind === "fsm" ? "⇢ state" : "⇢ exec";
 }
 
 // The lineage line on an agent's identity card: where this instance came from, and

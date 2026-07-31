@@ -244,7 +244,7 @@ export interface AgentTransition {
 }
 
 // One `context_breakdown` snapshot — a point on the stacked context-window graph.
-// `bySource` is always all nine `GgContextSource` bands in fixed order (zeros
+// `bySource` is always all ten `GgContextSource` bands in fixed order (zeros
 // included), so the graph's bands stay stable across turns.
 export interface ContextSnapshot {
   // The wall-clock time of the snapshot, for the graph's x-axis.
@@ -794,7 +794,11 @@ function ggFeedRow(
             ? `Forked a copy of this agent as ${gg.toAgentId}.`
             : gg.kind === "fsm"
               ? `Transitioned to \`${gg.state ?? "?"}\` (${gg.agent}) as ${gg.toAgentId}.`
-              : `Continued as \`${gg.agent}\` (${gg.toAgentId}).`,
+              : gg.state
+                ? // An `exec` whose target was a process: gg entered the machine at
+                  // its entry state, so the row names the state as well as the agent.
+                  `Continued as \`${gg.agent}\` in \`${gg.state}\` (${gg.toAgentId}).`
+                : `Continued as \`${gg.agent}\` (${gg.toAgentId}).`,
         args: moduleFate(gg.transferred, gg.dropped, gg.initialized),
         tone: "handoff",
       };

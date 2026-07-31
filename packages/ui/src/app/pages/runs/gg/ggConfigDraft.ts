@@ -37,7 +37,6 @@ import type {
   GgSubagentScope,
 } from "@test-cabinet/run-record/gg";
 import {
-  ALL_CAP_IDS,
   CAPABILITIES,
   DEFAULT_CAP_IDS,
   FILESYSTEM_CAP_IDS,
@@ -45,9 +44,11 @@ import {
   FSM_STATES_PARAM,
   LEGACY_FILESYSTEM_CAP_ID,
   MODULE_KINDS,
+  PRESET_CAP_IDS,
   PRIMARY_SLOT,
   ROOT_AGENT,
   RUN_LIMIT_SPECS,
+  SUBAGENT_SCOPES,
   type CapSpec,
   type ParamSpec,
 } from "./ggCatalog";
@@ -395,14 +396,46 @@ function builtIn(
   };
 }
 
+// The capabilities that read the agent's **roster** — delegation, board dispatch and
+// succession. A profile enabling any of them and listing nobody is at best inert (no
+// `spawn_subagent`, no `exec`) and at worst unlaunchable: gg refuses an agent that may
+// file issues with no implementer to assign them to. A single-agent configuration has
+// exactly one profile it can name, which is itself — a shape the contract explicitly
+// allows, and the only one under which "one agent, everything on" means anything.
+const ROSTER_CAP_IDS = [
+  "subagents",
+  "workflows",
+  "speculative-execution",
+  "project-management",
+  "agent-transitions",
+] as const;
+
 /**
  * A whole draft around one agent: it is the root, it defers to a freshly declared
- * `primary` model slot, and any `agent` param it carries points at it.
+ * `primary` model slot, any `agent` param it carries points at it, and — if it enables
+ * anything that needs a roster — it lists itself in every scope.
  */
 function singleAgentDraft(agent: GgAgentDraft): GgConfigDraft {
   const slot = blankPrimaryModelSlot();
+  const needsRoster = ROSTER_CAP_IDS.some(
+    (id) => agent.capabilities[id]?.enabled,
+  );
   const root = seedAgentParams(
-    { ...agent, modelSource: "model-slot", modelSlotId: slot.id },
+    {
+      ...agent,
+      modelSource: "model-slot",
+      modelSlotId: slot.id,
+      subagents: needsRoster
+        ? [
+            {
+              agentId: agent.id,
+              description:
+                "Itself — a single-agent configuration has one profile to delegate to, dispatch issues to and review with.",
+              scopes: SUBAGENT_SCOPES.map((scope) => scope.value),
+            },
+          ]
+        : agent.subagents,
+    },
     agent.id,
   );
   return {
@@ -423,13 +456,13 @@ export const BUILT_IN_GG_CONFIGS: ReadonlyArray<BuiltInGgConfig> = [
   builtIn(
     "full",
     "Every capability on, with the standard subagent params.",
-    ALL_CAP_IDS,
+    PRESET_CAP_IDS,
     FULL_PARAM_DEFAULTS,
   ),
   builtIn(
     "no-compaction",
     "Everything on except the compaction backstop — the context-overflow arm.",
-    ALL_CAP_IDS.filter((id) => id !== "compaction"),
+    PRESET_CAP_IDS.filter((id) => id !== "compaction"),
     FULL_PARAM_DEFAULTS,
   ),
   builtIn("shell-only", "Shell and nothing else — the ablation extreme.", [

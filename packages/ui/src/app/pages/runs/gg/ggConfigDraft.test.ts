@@ -7,6 +7,7 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import { DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE } from "@test-cabinet/run-record/gg-system-prompt";
 import {
+  BUILT_IN_GG_CONFIGS,
   agentStates,
   bindModelSlots,
   blankAgentDraft,
@@ -1121,5 +1122,31 @@ describe("a state machine", () => {
     ]);
     expect(warnings.join(" ")).toMatch(/unreachable from `explore`/);
     expect(warnings.join(" ")).toMatch(/other capabilities \(Memories\)/);
+  });
+});
+
+describe("the built-in configurations", () => {
+  // A preset is offered as a ready-to-run configuration: pick it, bind a model, launch. So
+  // every one of them has to survive the editor's own save gate — which is also gg's launch
+  // validation, restated. The "everything on" presets used to be built from *every* catalogue
+  // capability, which quietly enabled `fsm` with no `states`: gg refuses that outright (an FSM
+  // agent has no turns of its own), so both presets failed to launch before their first turn,
+  // in a shape the editor would have refused an operator for authoring by hand.
+  it("are all launchable as offered", () => {
+    for (const config of BUILT_IN_GG_CONFIGS) {
+      expect(draftSaveError(config.draft), config.name).toBeNull();
+    }
+  });
+
+  it("do not enable a capability that needs authoring beside it", () => {
+    for (const config of BUILT_IN_GG_CONFIGS) {
+      const set = capabilitySetFromDraft(config.draft, null);
+      for (const agent of set.agents) {
+        expect(
+          agent.capabilities.some((cap) => cap.id === "fsm" && cap.enabled),
+          `${config.name} enables a machine it does not declare`,
+        ).toBe(false);
+      }
+    }
   });
 });

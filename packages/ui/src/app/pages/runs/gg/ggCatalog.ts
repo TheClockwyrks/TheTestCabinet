@@ -258,6 +258,11 @@ export interface CapSpec {
     tools: ReadonlyArray<string>;
     hint?: string;
   }>;
+  // The capability cannot be turned on by itself: it is inert — or, as with `fsm`,
+  // refused at launch — until a param nobody can guess is authored beside it. Such a
+  // capability is excluded from the everything-on presets (see `PRESET_CAP_IDS`),
+  // which exist to be launchable without further editing.
+  requiresAuthoring?: boolean;
 }
 
 // The legacy umbrella capability the four filesystem tool capabilities were split out
@@ -1103,6 +1108,9 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     id: FSM_CAP_ID,
     name: "Process (state machine)",
     group: "Delegation",
+    // A machine is its `states`: gg refuses to launch an agent that enables this and
+    // declares none, because an FSM agent has no turns of its own.
+    requiresAuthoring: true,
     purpose:
       "Make this agent a **process** rather than a worker: a named list of states, each running one of the configuration's other agent profiles, and each declaring where it may go and what it takes with it. The machine is one agent to everyone else — one instance in the tree, one slot, one return value — so it can be the run's root, a subagent, or an issue's implementer. An agent standing in a state is offered `transition_state` for exactly the edges its state declares; a state with no edges ends the machine.",
     defaultOn: false,
@@ -1167,7 +1175,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
 export const DEFAULT_CAP_IDS = CAPABILITIES.filter((c) => c.defaultOn).map(
   (c) => c.id,
 );
-export const ALL_CAP_IDS = CAPABILITIES.map((c) => c.id);
+// Every capability an "everything on" preset may enable: all of them, minus the ones
+// that need something authored beside them to mean anything. A preset is offered as a
+// ready-to-run configuration, so it must not contain a capability whose bare form gg
+// refuses to launch — `fsm` with no `states` is exactly that, and a single-agent
+// preset has no other profiles for a machine's states to run anyway.
+export const PRESET_CAP_IDS = CAPABILITIES.filter(
+  (c) => !c.requiresAuthoring,
+).map((c) => c.id);
 
 // Every tool name any capability offers, in catalog order, de-duplicated — the
 // universe of `toolOffered` facet targets and toolset-ablation levers.
