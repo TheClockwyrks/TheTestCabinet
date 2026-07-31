@@ -5,8 +5,9 @@
 // stream — the rich view is not something that changes shape once the run ends. The one
 // deliberate difference is the status card, which the finished run omits because its page
 // header already carries the run's state; everything below that must be identical, in the
-// same order. These pin that, and the money row's own composition (Cost leading, Tokens
-// beside it, the configuration under Tokens).
+// same order. These pin that, the clocks row (four sibling tiles of its own, so the run's
+// two clocks are not footnotes to one another), and the money row's own composition (Cost
+// leading, Tokens beside it, the configuration under Tokens).
 
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -130,6 +131,13 @@ const STATUS: GgDashboardStatus = {
 function renderDashboard(
   status?: GgDashboardStatus,
   children?: React.ReactNode,
+  // The run's ceiling, which the catalog resolves — passed explicitly so a test can render
+  // the case where it could not be reached (null) as well as the ordinary one.
+  timeoutSeconds: number | null = 4 * 3600,
+  // Whether the run is still executing at the stated present. It gates the clocks row's two
+  // instantaneous counts — "2 agents working" is a claim about now — so a finished run is
+  // rendered by saying so here rather than by doctoring the fixture's statuses.
+  stillRunning = true,
 ) {
   const derived = reduceGgEvents(EVENTS);
   return render(
@@ -147,8 +155,9 @@ function renderDashboard(
         // measured against one 90-second-later "present" — enough for the card to state a
         // wall clock and a summed agent time rather than two zeroes.
         Date.parse(TS) + 90_000,
+        stillRunning,
       )}
-      timeoutSeconds={4 * 3600}
+      timeoutSeconds={timeoutSeconds}
     >
       {children}
     </GgDashboard>,
@@ -177,6 +186,9 @@ describe("the gg Dashboard", () => {
       "Turns",
       "Tokens / s",
       "Runtime",
+      "Active",
+      "Waiting",
+      "Time limit",
       "Cost",
       "Tokens",
       "Configuration",
@@ -192,6 +204,9 @@ describe("the gg Dashboard", () => {
       "Turns",
       "Tokens / s",
       "Runtime",
+      "Active",
+      "Waiting",
+      "Time limit",
       "Cost",
       "Tokens",
       "Configuration",
@@ -246,25 +261,78 @@ describe("the gg Dashboard", () => {
     expect(card.title).toBe("vendor/small: 200 tok/s\nvendor/big: 100 tok/s");
   });
 
-  it("states both of the run's clocks and the ceiling it is bounded by", () => {
+  it("gives each of the run's clocks a tile of its own rather than one headline and three footnotes", () => {
     renderDashboard(STATUS);
-    const card = screen.getByText("Runtime").parentElement!;
-    // The wall clock is the headline — 90s of it, per the fixture's stated present.
-    expect(within(card).getByText("1m 30s")).toBeInTheDocument();
-    expect(within(card).getByText("wall clock")).toBeInTheDocument();
-    // And the sum beneath it: every event carries the run's start timestamp and neither
-    // agent ended, so both agents count the full 90s — 3m 00s of agent time inside 1m 30s of
-    // wall clock, which is the whole reason both figures are shown. Neither agent ever
-    // blocked, so the whole of it is active — and the waiting line still reads `0s` rather
-    // than vanishing, so the card keeps its height as a live run starts and stops blocking.
-    expect(within(card).getByText("active 3m 00s")).toBeInTheDocument();
-    expect(within(card).getByText("waiting 0s")).toBeInTheDocument();
-    expect(within(card).getByText("limit 4h")).toBeInTheDocument();
-    // How many agents that is spread across is the Agents widget's job; the ratio between
-    // the two clocks is the tooltip's, so "2.0 agents at once" is stated somewhere rather
-    // than left to be divided by the reader.
-    expect(card.textContent).not.toContain("agents");
-    expect(card.title).toContain("2.0 agents working at once");
+    // The wall clock — 90s of it, per the fixture's stated present.
+    const wall = screen.getByText("Runtime").parentElement!;
+    expect(within(wall).getByText("1m 30s")).toBeInTheDocument();
+    expect(within(wall).getByText("wall clock")).toBeInTheDocument();
+    // The ratio between the two clocks is the one fact no tile states on its face, so it
+    // rides on the wall clock's tooltip rather than being left for the reader to divide.
+    expect(wall.title).toContain("2.0 agents working at once");
+
+    // The summed agent time beside it, at the same weight: every event carries the run's
+    // start timestamp and neither agent ended, so both count the full 90s — 3m 00s of agent
+    // time inside 1m 30s of wall clock, which is the whole reason both figures are shown.
+    const active = screen.getByText("Active").parentElement!;
+    expect(within(active).getByText("3m 00s")).toBeInTheDocument();
+
+    // Neither agent ever blocked, so the waiting reads zero rather than vanishing — the row
+    // keeps its shape as a live run starts and stops blocking, and "0s / none waiting" is a
+    // positive statement that nothing is stuck, which an absent tile would not be.
+    const waiting = screen.getByText("Waiting").parentElement!;
+    expect(within(waiting).getByText("0s")).toBeInTheDocument();
+    expect(within(waiting).getByText("none waiting")).toBeInTheDocument();
+
+    // And the ceiling, on a tile of its own instead of a line under an unrelated clock.
+    const limit = screen.getByText("Time limit").parentElement!;
+    expect(within(limit).getByText("4h")).toBeInTheDocument();
+    expect(within(limit).getByText("wall-clock ceiling")).toBeInTheDocument();
+  });
+
+  it("counts the agents working right now under the time they have worked", () => {
+    renderDashboard(STATUS);
+    // Both of the fixture's agents are live (nothing returned them and no session end
+    // reconciled them), so the run has two working and none waiting. This is the count the
+    // sum above it is *not*: how many agents contributed to 3m 00s is a different question,
+    // and it is the tooltip that keeps the two apart.
+    const active = screen.getByText("Active").parentElement!;
+    expect(within(active).getByText("2 agents working")).toBeInTheDocument();
+    expect(active.title).toContain("2 agents that have run");
+    expect(active.title).toContain("working right now");
+  });
+
+  it("stops counting agents at work once the run is no longer running", () => {
+    // The same fixture read as a finished run — and it is exactly the shape that catches
+    // this out: nothing in it ever ends, because a stream truncated by a kill or a harness
+    // error never emits the session end that would reconcile its agents. The clocks are the
+    // record of what the run did and stay; the counts are claims about now and go to zero,
+    // rather than a concluded run's page insisting two agents are still working.
+    renderDashboard(undefined, undefined, 4 * 3600, false);
+    const wall = screen.getByText("Runtime").parentElement!;
+    expect(within(wall).getByText("1m 30s")).toBeInTheDocument();
+    const active = screen.getByText("Active").parentElement!;
+    expect(within(active).getByText("3m 00s")).toBeInTheDocument();
+    expect(within(active).getByText("none working")).toBeInTheDocument();
+    const waiting = screen.getByText("Waiting").parentElement!;
+    expect(within(waiting).getByText("none waiting")).toBeInTheDocument();
+  });
+
+  it("keeps the ceiling's tile when no limit resolved rather than shortening the row", () => {
+    // The catalog could not be reached, so there is no figure to state. The tile holds its
+    // place — a row that dropped to three tiles would move every clock beside it, and the
+    // absence would read as "this run has no ceiling" rather than "we could not look one up".
+    renderDashboard(STATUS, undefined, null);
+    const limit = screen.getByText("Time limit").parentElement!;
+    expect(within(limit).getByText("—")).toBeInTheDocument();
+    expect(within(limit).getByText("no limit resolved")).toBeInTheDocument();
+    // And the row is still four tiles, in the same order.
+    expect(cardLabels().slice(3, 7)).toEqual([
+      "Runtime",
+      "Active",
+      "Waiting",
+      "Time limit",
+    ]);
   });
 
   it("leads the panel with the run's notices rather than burying them under the cards", () => {

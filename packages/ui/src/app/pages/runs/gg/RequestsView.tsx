@@ -10,7 +10,6 @@
 // to the stacked Context graph — the graph shows the composition, this shows the
 // contents.
 
-import { useMemo } from "react";
 import type { GgContextSource } from "@test-cabinet/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import type { PooledMessage, PromptTurn } from "./useGgRunState";
@@ -106,13 +105,15 @@ function MessageRow({
           </span>
         </summary>
         <div className={panels.reqMessageBody}>
-          <p className={panels.reqMeta}>
-            <span>{message.role}</span>
-            <span>{shortTokens(message.tokens)} tokens</span>
-            {message.toolCallId != null && (
-              <span>answers {message.toolCallId}</span>
-            )}
-          </p>
+          {/* The pairing back to the call this message answers is the one fact the
+              expansion adds that the collapsed row does not already carry — the role
+              is the band tag and the cost is the token column, both a line above, so
+              restating them here was pure duplication. Most messages answer nothing,
+              and an always-rendered paragraph would hold an empty line open on every
+              one of them, so it appears only when there is a call to name. */}
+          {message.toolCallId != null && (
+            <p className={panels.reqMeta}>answers {message.toolCallId}</p>
+          )}
           {message.content != null && message.content !== "" && (
             <ExpandablePre
               content={message.content}
@@ -159,11 +160,14 @@ function Stat({ value, label }: { value: string; label: string }) {
   );
 }
 
-// One turn — its request (ordered messages, colored by band) and its response, in a
-// collapsible card. The header carries the turn's shape at a glance: message count,
-// request size (the fullness numerator, matching the graph at this turn), the reply's
-// output tokens and cost, and why the turn stopped.
-function TurnCard({
+// One turn — its request (ordered messages, colored by band) and its response, as a
+// collapsible entry sitting directly on the view's backdrop, separated from its
+// neighbours by a hairline rather than boxed in a card of its own: the messages inside
+// it are already tinted, bordered rows, and wrapping that in a second frame nested a
+// widget in a widget for no added meaning. The header carries the turn's shape at a
+// glance: message count, request size (the fullness numerator, matching the graph at
+// this turn), the reply's output tokens and cost, and why the turn stopped.
+function TurnEntry({
   prompt,
   pool,
   open,
@@ -238,9 +242,14 @@ export function RequestsView({
   pool: Map<string, PooledMessage>;
   live: boolean;
 }) {
-  // Newest turn open by default — the one a live watcher is most likely reading.
-  const lastTurn = prompts.length - 1;
-  const openTurn = useMemo(() => lastTurn, [lastTurn]);
+  // Newest turn open by default — the one a live watcher is most likely reading. This
+  // takes the last entry's own `turn`, not its index in the list: `turn` is the number
+  // the `prompt` event carried, and `open` below compares against that. An agent whose
+  // recorded turns don't happen to be a contiguous 0-based run — a resumed agent, or a
+  // stream a filter has thinned — would then match no turn at all, and with the turn
+  // cards gone a wholly collapsed list is flatter than it used to be.
+  const openTurn =
+    prompts.length > 0 ? prompts[prompts.length - 1]!.turn : null;
 
   if (prompts.length === 0) {
     return (
@@ -252,7 +261,7 @@ export function RequestsView({
   return (
     <div className={panels.requests}>
       {prompts.map((prompt) => (
-        <TurnCard
+        <TurnEntry
           key={prompt.turn}
           prompt={prompt}
           pool={pool}

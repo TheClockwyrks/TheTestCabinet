@@ -80,7 +80,8 @@ interface GgDashboardProps {
   /**
    * The wall-clock ceiling the run is bounded by, in seconds — the test case's own
    * `max_runtime_hours`, which is what the host stops a run at. Null where the catalog could
-   * not be reached to resolve it, in which case the Runtime card simply states no limit.
+   * not be reached to resolve it, in which case the Time limit card states exactly that
+   * rather than disappearing (see {@link RuntimeRow}).
    */
   timeoutSeconds: number | null;
   /**
@@ -118,6 +119,12 @@ interface GgDashboardProps {
  * account of its spend — the total, the per-class split, and where that money went per
  * slot and per model, across all the run's models rather than scoped to any one agent
  * — with Tokens beside it and the configuration slotted in underneath.
+ *
+ * Under the top row the run's clocks take a row of their own — the wall clock, the active
+ * agent time, the waiting, and the ceiling, one tile each (see {@link RuntimeRow}). They
+ * were a single tile with three sub-lines crammed under one headline, which read as a
+ * footnote to the wall clock rather than as the four independent facts they are; given a
+ * row, each figure gets a headline and a sentence saying what it counts.
  *
  * Both surfaces get the *same* layout: the one difference is the status card, which a
  * finished run omits because the run detail page's own header already carries its state
@@ -167,10 +174,12 @@ export function GgDashboard({
     [perAgent],
   );
 
-  // The bento span the top row's stat tiles take: a quarter each beside the status card
-  // (6 + 3 + 3 + 3 overflows twelve, so the status card gives up half its width — see
-  // `StatusCard`), a third each where the page header carries the state instead.
-  const statSpan = status ? styles.cardQuarter : styles.cardThird;
+  // The bento span the top row's stat tiles take. The row is three tiles beside the status
+  // card and two without it, so it fills twelve either way: thirds where the status card
+  // leads (4 + 4 + 4, the status card taking a third of its own — see `StatusCard`), halves
+  // where the page header carries the state instead (6 + 6). The runtime figures are no
+  // longer in this row at all; they have one of their own below it.
+  const statSpan = status ? styles.cardThird : styles.cardHalf;
 
   return (
     <div className={styles.dashboard}>
@@ -181,12 +190,13 @@ export function GgDashboard({
       {children}
 
       <div className={styles.cards}>
-        {/* The top row: where the run is at — its phase, how many turns it has spent, how
-            fast it is generating, and how long it has been going. The live monitor leads the
-            row with the status card; a finished run's gg tab has its state in the page's own
-            header, so the three stat tiles split that row between them rather than leaving a
-            hole where the status card would have been — the row below it is then identical on
-            both surfaces. */}
+        {/* The top row: where the run is at — its phase, how many turns it has spent, and
+            how fast it is generating. The live monitor leads the row with the status card; a
+            finished run's gg tab has its state in the page's own header, so the two stat
+            tiles widen to split that row between them rather than leaving a hole where the
+            status card would have been — the rows below it are then identical on both
+            surfaces. How long the run has been going is the row underneath, which is four
+            figures rather than one and so earns its own. */}
         {status && <StatusCard status={status} />}
         <TurnsCard
           turns={totalTurns}
@@ -194,11 +204,12 @@ export function GgDashboard({
           className={statSpan}
         />
         <ThroughputCard throughput={throughput} className={statSpan} />
-        <RuntimeCard
-          runtime={runtime}
-          timeoutSeconds={timeoutSeconds}
-          className={statSpan}
-        />
+
+        {/* The clocks row, laid out as its own block for the reason the money row below
+            is: its four tiles are fixed here rather than wherever the bento's dense
+            auto-placement would pack them, so the row reads identically whether or not a
+            status card precedes it. */}
+        <RuntimeRow runtime={runtime} timeoutSeconds={timeoutSeconds} />
 
         {/* The money row, laid out as its own block so it reads the same whether or not
             a status card precedes it (its two columns are fixed here rather than
@@ -445,10 +456,10 @@ function AgentOverviewRow({
 }
 
 // The session's turn count: how many model request/response cycles the run has spent,
-// across every agent. It sits on the top row with the status, the generation rate, and the
-// runtime — the four facts that answer "where is this run at" — each taking a quarter of the
-// row. Where there is no status card (a finished run, whose state its page header already
-// carries) the three stat tiles split the row into thirds instead.
+// across every agent. It sits on the top row with the status and the generation rate — how
+// much the run has done, and how fast it is doing it — each taking a third of the row. Where
+// there is no status card (a finished run, whose state its page header already carries) the
+// two stat tiles widen to a half each rather than leaving the row short.
 function TurnsCard({
   turns,
   agents,
@@ -456,7 +467,7 @@ function TurnsCard({
 }: {
   turns: number;
   agents: number;
-  /** The bento span the card takes: a quarter beside a status card, a third without one. */
+  /** The bento span the card takes: a third beside a status card, a half without one. */
   className: string | undefined;
 }) {
   return (
@@ -475,7 +486,7 @@ function TurnsCard({
 // spent inside their calls, across every model it used (see `ggThroughput`). It joins the
 // status and the turn count on the top row as the third answer to "where is this run at" —
 // the two counts say how much a run has done and spent, and neither says whether the
-// wall-clock behind them went into generating or into waiting.
+// wall-clock behind them (the row below) went into generating or into waiting.
 //
 // One figure, because it is the run's average: the models that make it up are named in the
 // card's tooltip on a multi-model run, where an average is a blend of rates rather than a
@@ -520,76 +531,138 @@ function ThroughputCard({
   );
 }
 
-// How long the run has been going, and how much agent-time that bought: the wall clock as
-// the headline, with every agent's runtime summed beneath it and the ceiling the host will
-// stop the run at.
+// How many agents are in a given state, as the sentence that hangs under a duration: "3
+// agents working", "1 agent waiting", "none working". Spelled out rather than left as a bare
+// figure because these tiles pair a *count* with a *clock*, and "3" under "12m 04s" reads as
+// part of the measurement; the verb is what makes it a separate fact. Zero reads "none"
+// rather than "0 agents" — a run with nobody working is a state, not a quantity, and the
+// word is what a reader glancing at a stalled run actually registers.
+function agentPhrase(count: number, verb: string): string {
+  if (count === 0) return `none ${verb}`;
+  return `${count} ${count === 1 ? "agent" : "agents"} ${verb}`;
+}
+
+// The clocks row: the wall clock, the agent time it bought, the waiting it did not, and the
+// ceiling the host stops the run at — one tile each.
 //
-// Two figures rather than one because either alone misleads (see `ggRuntime`): the wall clock
-// is measured over exactly the span the timeout is (setup excluded), while the sum is the
-// work the run actually got done in that time — a run that fans four agents out spends four
-// minutes of agent time per wall minute, and the gap between the figures is the parallelism
-// the configuration bought. The wall clock counts up live, so the card is a clock rather than
-// a snapshot of whenever the newest event happened to land.
+// Four tiles rather than one, because these are four independent facts and not a headline
+// with footnotes. They were a single Runtime card: the wall clock as its figure with the
+// other three crammed under it as unit-sized lines, which made the summed agent time — the
+// figure that says whether the configuration's parallelism did anything — read as an
+// annotation of the wall clock rather than as the thing it is measured *against*. Given a
+// row, each duration gets a headline at the same weight as its neighbours and a sentence
+// saying what it counts.
 //
-// The sum is **active** time: an agent blocked on its children or on a board issue is not
-// working, so its wait is excluded and named separately rather than folded in — a delegating
-// run whose parents mostly wait would otherwise report several times the work it did.
-function RuntimeCard({
+// Why both clocks are shown at all (see `ggRuntime`): the wall clock covers exactly the span
+// the timeout does (setup excluded), while the sum is the work the run actually got done
+// inside it — a run that fans four agents out spends four minutes of agent time per wall
+// minute, and the gap between the figures is the parallelism the configuration bought. Both
+// count up live, so the row is a clock rather than a snapshot of whenever the newest event
+// landed.
+//
+// Active and Waiting are the two halves of that sum: an agent blocked on its children or on
+// a board issue is not working, so its wait is subtracted from the active total and given a
+// tile of its own rather than folded in — a delegating run whose parents mostly wait would
+// otherwise report several times the work it did. Each pairs its duration with the
+// *instantaneous* count of agents in that state, which is what makes a live run legible: a
+// run reading "none working / 4 agents waiting" is stalled on something, and no accumulated
+// total says that until minutes after the fact. Those two counts speak only while the run is
+// executing — before and after, they read "none" whatever the last statuses on the stream
+// said, since they are claims about a present the run no longer has (see `ggRuntime`).
+function RuntimeRow({
   runtime,
   timeoutSeconds,
-  className,
 }: {
   runtime: GgRuntime;
   timeoutSeconds: number | null;
-  /** The bento span the card takes — see {@link TurnsCard}. */
-  className: string | undefined;
 }) {
-  const { wallMs, agentMs, suspendedMs, agentCount, parallelism } = runtime;
+  const {
+    wallMs,
+    agentMs,
+    suspendedMs,
+    agentCount,
+    activeAgents,
+    waitingAgents,
+    parallelism,
+  } = runtime;
   return (
-    <div
-      className={`${styles.card} ${className}`}
-      title={
-        parallelism != null
-          ? `${formatRuntime(agentMs)} of active agent time across ${agentCount} ${
-              agentCount === 1 ? "agent" : "agents"
-            } in ${formatRuntime(
-              wallMs ?? 0,
-            )} of wall clock — ${parallelism.toFixed(1)} agents working at once on average` +
-            (suspendedMs > 0
-              ? `, plus ${formatRuntime(
-                  suspendedMs,
-                )} spent suspended waiting on subagents or issues`
-              : "")
-          : undefined
-      }
-    >
-      <span className={styles.cardLabel}>Runtime</span>
-      <span className={styles.metricValue}>
-        {wallMs == null ? "—" : formatRuntime(wallMs)}
-      </span>
-      <span className={styles.metricUnit}>
-        {wallMs == null ? "not running yet" : "wall clock"}
-      </span>
-      {/* The sum reads as lines under the headline rather than as its own tile: it is the
-          same clock counted per agent, so it belongs under the figure it decomposes.
-          "active" rather than "total" because it is exactly that — the waiting takes a line
-          of its own so neither figure is read as standing for both. How many agents that is
-          spread across is left to the widgets that exist to say so (Agents, Configuration);
-          repeating it here only crowded the two clocks this card is read for.
+    <div className={styles.runtimeBlock}>
+      {/* The ratio between the two clocks is the one fact none of the four tiles states on
+          its face — it is a division of one by another — so it rides as the wall clock's
+          tooltip, on the tile that is the denominator. */}
+      <div
+        className={styles.card}
+        title={
+          parallelism != null
+            ? `${formatRuntime(agentMs)} of active agent time in ${formatRuntime(
+                wallMs ?? 0,
+              )} of wall clock — ${parallelism.toFixed(
+                1,
+              )} agents working at once on average`
+            : undefined
+        }
+      >
+        <span className={styles.cardLabel}>Runtime</span>
+        <span className={styles.metricValue}>
+          {wallMs == null ? "—" : formatRuntime(wallMs)}
+        </span>
+        <span className={styles.metricUnit}>
+          {wallMs == null ? "not running yet" : "wall clock"}
+        </span>
+      </div>
 
-          Waiting is stated even at zero. This card is watched while it counts up, and a
-          line that appeared the first time an agent blocked would shove the limit line —
-          and every card below it — down mid-glance; a steady `waiting 0s` is also a
-          positive statement that nothing is blocked, which the absent line was not. */}
-      <span className={styles.metricUnit}>active {formatRuntime(agentMs)}</span>
-      <span className={styles.metricUnit}>
-        waiting {formatRuntime(suspendedMs)}
-      </span>
-      <span className={styles.metricUnit}>
-        {timeoutSeconds != null
-          ? `limit ${formatLimit(timeoutSeconds)}`
-          : "no limit resolved"}
-      </span>
+      {/* The count under the sum is how many agents are working *now*, which is emphatically
+          not how many contributed to the sum — a finished run has hours of agent time and
+          nobody working, and a run still in setup has a root with a span and nobody working
+          either (`ggRuntime` withholds the count outside the run's own execution). The
+          tooltip is where that distinction is spelled out, since the tile has room for one
+          sentence and the live count is the one worth reading. It is withheld only where no
+          agent has a recorded span at all — a stream with nothing in it yet — since there is
+          then no total for the sentence to be about. */}
+      <div
+        className={styles.card}
+        title={
+          agentCount > 0
+            ? `Summed across the ${agentCount} ${
+                agentCount === 1 ? "agent" : "agents"
+              } that have run — the count beneath is how many are working right now, not how many contributed to the total`
+            : undefined
+        }
+      >
+        <span className={styles.cardLabel}>Active</span>
+        <span className={styles.metricValue}>{formatRuntime(agentMs)}</span>
+        <span className={styles.metricUnit}>
+          {agentPhrase(activeAgents, "working")}
+        </span>
+      </div>
+
+      <div
+        className={styles.card}
+        title="Time agents spent suspended rather than working — waiting on the subagents they fanned out, or on a board issue"
+      >
+        <span className={styles.cardLabel}>Waiting</span>
+        <span className={styles.metricValue}>{formatRuntime(suspendedMs)}</span>
+        <span className={styles.metricUnit}>
+          {agentPhrase(waitingAgents, "waiting")}
+        </span>
+      </div>
+
+      {/* Stated even where nothing resolved one. The tile holds its place in the row rather
+          than collapsing it to three — and "no limit resolved" is a positive statement that
+          the catalog could not be reached, which an absent tile would leave a reader to
+          mistake for a run that simply has no ceiling. */}
+      <div
+        className={styles.card}
+        title="The test case's own max_runtime_hours — the ceiling the host stops the run at, measured against the wall clock beside it (setup excluded)"
+      >
+        <span className={styles.cardLabel}>Time limit</span>
+        <span className={styles.metricValue}>
+          {timeoutSeconds == null ? "—" : formatLimit(timeoutSeconds)}
+        </span>
+        <span className={styles.metricUnit}>
+          {timeoutSeconds == null ? "no limit resolved" : "wall-clock ceiling"}
+        </span>
+      </div>
     </div>
   );
 }
@@ -604,13 +677,13 @@ function StatusCard({ status }: { status: GgDashboardStatus }) {
           ? styles.pillStopped
           : styles.pillLive;
   return (
-    // A quarter of the row, not all of it: the turn count, the generation rate, and the
-    // runtime take a quarter each beside it. The kill control rides on the label's row at
-    // the card's trailing edge rather than in the line below: at this width it used to wrap
-    // under the pill, which both cost a row and moved the control depending on how long the
-    // phase's detail ran. Level with "Status" it is always in the same corner, and the pill
-    // and its detail get the full line back.
-    <div className={`${styles.card} ${styles.cardQuarter}`}>
+    // A third of the row, not all of it: the turn count and the generation rate take a
+    // third each beside it. The kill control rides on the label's row at the card's trailing
+    // edge rather than in the line below: at the quarter-width this card used to take it
+    // wrapped under the pill, which both cost a row and moved the control depending on how
+    // long the phase's detail ran. Level with "Status" it is always in the same corner, and
+    // the pill and its detail get the full line back.
+    <div className={`${styles.card} ${styles.cardThird}`}>
       <div className={styles.cardHeader}>
         <span className={styles.cardLabel}>Status</span>
         {/* Rendered only when the host supplies one — a finished run has nothing to kill,

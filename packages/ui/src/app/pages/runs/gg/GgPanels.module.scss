@@ -2850,17 +2850,25 @@ $fs-caret-glyph: 0.75rem;
 
 // --- Requests view (the de-duplicated message log) ---------------------------
 
-// The itemized companion to the Context graph: a stack of turn cards, each holding
-// that turn's request (messages aligned into columns, colored by the same context-
-// source palette the graph uses) and its response.
+// The itemized companion to the Context graph: a stack of collapsible turns, each
+// holding that turn's request (messages aligned into columns, colored by the same
+// context-source palette the graph uses) and its response.
+//
+// The turns sit directly on the view's backdrop rather than each in a card of its
+// own. A turn's contents are already surfaces — every message row is a filled,
+// band-tinted strip stepped up off that backdrop — so boxing them put a widget inside
+// a widget, and at the four or five turns a real run records, the stack of frames read
+// as the structure instead of the messages doing so. What separates one turn from the
+// next is a hairline rule, in the manner the activity feed's "gutter" layout separates
+// its events (see FeedView.module.scss); the list therefore carries no gap of its own,
+// each turn's own padding giving it its rhythm.
 .requests {
   display: flex;
   flex-direction: column;
-  gap: t.$space-sm;
 }
 
-// A disclosure caret that rotates when its `<details>` opens. Shared by turn cards
-// and message rows.
+// A disclosure caret that rotates when its `<details>` opens. Shared by the turn
+// entries and the message rows inside them.
 .reqCaret {
   flex: 0 0 auto;
   width: 0.9rem;
@@ -2873,19 +2881,33 @@ details[open] > summary .reqCaret {
   transform: rotate(90deg);
 }
 
-// One turn, a collapsible card.
+// One turn, a collapsible entry on the backdrop. Its only chrome is the hairline that
+// divides it from the turn above — drawn on the turn itself rather than through a
+// `+ &` sibling selector, so the rule belongs to the row and survives being reordered
+// or re-parented — and the first turn drops it, since a rule directly under the view's
+// leading edge reads as an underline of whatever sits above the list rather than as a
+// separator between two turns.
 .reqTurn {
-  border: t.$border-hairline solid t.$color-border;
-  border-radius: t.$radius-md;
-  background: t.$color-bg;
-  overflow: hidden;
+  border-top: t.$border-hairline solid t.$color-border;
+
+  &:first-child {
+    border-top: none;
+  }
 }
 
+// The turn header. With no card edge to define the row it carries the vertical rhythm
+// itself, so the two axes moved in opposite directions when the box went away: the
+// vertical padding doubled to `$space-sm`, because nothing else now sets one turn's
+// header apart from the turn above; the horizontal padding halved to `$space-xs`,
+// because there is no longer a box inset to sit within and the header should read as
+// starting at the pane's own leading edge — kept off it only far enough that the hover
+// wash doesn't butt flush against the pane's padding. That is exactly the inset
+// `.reqTurnBody` uses, so a turn's label and its messages line up on one left edge.
 .reqTurnSummary {
   display: flex;
   align-items: center;
   gap: t.$space-sm;
-  padding: t.$space-xs t.$space-sm;
+  padding: t.$space-sm t.$space-xs;
   cursor: pointer;
   list-style: none;
 
@@ -2893,8 +2915,14 @@ details[open] > summary .reqCaret {
     display: none;
   }
 
+  // The same faint text wash the message rows hover to, rather than a lift onto a
+  // surface token. Neither token is available to it: the header sits directly on the
+  // explorer pane, which is already `$panel-bg`, so lifting to that would be a no-op;
+  // and lifting to `$color-surface-2` would dress the header in the message rows' own
+  // fill, reading as the header turning into a message. A wash of the text color is
+  // the only lift that is both visible here and unlike anything else on the view.
   &:hover {
-    background: s.$panel-bg;
+    background: color-mix(in srgb, t.$color-text 6%, transparent);
   }
 }
 
@@ -2953,12 +2981,18 @@ details[open] > summary .reqCaret {
   }
 }
 
+// The opened turn's contents. This carried a `border-top` when the turn was a card —
+// the card's internal divider between its header and its body — which now has nothing
+// to divide *within*: the only rule left in the list is the one *between* turns, and a
+// second hairline a row below it would read as the turn having ended where it in fact
+// opened. The separation between the header and the body is carried by the section
+// captions instead. The trailing padding is the deeper one, so an open turn's last
+// message clears the next turn's rule.
 .reqTurnBody {
-  padding: t.$space-2xs t.$space-sm t.$space-sm;
+  padding: t.$space-2xs t.$space-xs t.$space-md;
   display: flex;
   flex-direction: column;
   gap: t.$space-2xs;
-  border-top: t.$border-hairline solid t.$color-border;
 }
 
 // The "Request" / "Response" section captions within a turn.
@@ -2989,10 +3023,23 @@ details[open] > summary .reqCaret {
 
 // One message, tinted on its leading edge with its context-source band color so a
 // request reads as the itemization of the stacked graph.
+//
+// The fill is the opaque `$color-surface-2` every row-inside-a-panel on these views
+// uses (`.archiveRow`, `.modDistRow`), and emphatically *not* `$panel-bg`. It was
+// `$panel-bg` while a turn was a card, because the card's own opaque `$color-bg` sat
+// behind it and the two were a real step apart. With the card gone the only backdrop
+// left behind a message row is the explorer pane's `.panelBody`, which is itself
+// `$panel-bg` — and since that token is `color-mix(… 88%, transparent)`, stacking it
+// on itself lands at ~98.6% over ~98.4%, about one value step in 255. The `gap`
+// between rows then showed nothing, and a run of same-band rows (consecutive tool
+// outputs, the common case) fused into one undifferentiated block edged only by the
+// continuous color bar. An opaque surface a real step above the pane keeps every row
+// separable from its neighbours and from the backdrop, and leaves `.reqContent`'s
+// `$color-bg` block reading as recessed *within* a row rather than level with it.
 .reqMessage {
   border-left: 3px solid t.$color-border;
   border-radius: 0 t.$radius-sm t.$radius-sm 0;
-  background: s.$panel-bg;
+  background: t.$color-surface-2;
 }
 
 .reqMessageDetails {
@@ -3049,30 +3096,29 @@ details[open] > summary .reqCaret {
   font-style: italic;
 }
 
+// The expanded body sits at the entry's full width, symmetrically padded. It used to
+// be indented by the width of the caret and tag columns so that it began under the
+// collapsed row's preview — a tidy alignment that cost it the better part of 7.5rem
+// on every line of what is the longest text on the view (a whole file view, a tool
+// result, a system prompt). The expansion is what a reader opened the row *for*, so
+// it gets the width; the row above it keeps the columns.
 .reqMessageBody {
   padding: t.$space-2xs t.$space-xs t.$space-xs;
-  // Align the expanded body under the preview column, past the caret + tag gutters.
-  padding-left: calc(0.9rem + 6.5rem + #{t.$space-xs} * 2);
   display: flex;
   flex-direction: column;
   gap: t.$space-2xs;
 }
 
-// The expanded-body meta line: role · tokens · answered call, dot-separated.
+// The expanded body's one meta line — the call this message answers. The role and the
+// token cost used to share it, dot-separated, until they were dropped as restatements
+// of the band tag and token column in the row directly above; only a tool result has
+// anything to say here at all, so the line is absent from most messages. It carries no
+// `tabular-nums` for the same reason: that was there to column-align the token figure,
+// and what is left is an opaque tool-call id, not a number to align down a column.
 .reqMeta {
   margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: t.$space-xs;
   font-size: t.$font-sm;
   color: t.$color-text-muted;
-  font-variant-numeric: tabular-nums;
-
-  span + span::before {
-    content: "·";
-    margin-right: t.$space-xs;
-    opacity: 0.6;
-  }
 }
 
 // The verbatim message text — a scrollable, wrapped code block so a large file view
@@ -3089,6 +3135,23 @@ details[open] > summary .reqCaret {
   word-break: break-word;
   max-height: 24rem;
   overflow: auto;
+}
+
+// The same block, capped at half the height, for the Prompt view. A rendered opening
+// prompt is the longest single message a run holds — a whole system framing plus the
+// build prompt — so at `.reqContent`'s cap the two of them fill several screens and
+// the reader has to scroll past them to reach anything else on the file, including
+// the second message. Every prompt body carries the fullscreen affordance, and the
+// overlay is where a prompt is actually *read*; inline, it only has to be identifiable
+// and skimmable, which 12rem is comfortably enough for. This deliberately does not
+// touch `.reqContent` — the Requests view itemizes many short messages at once and
+// wants the taller inline read.
+//
+// Applied alongside `.reqContent` rather than replacing it, so it inherits the block's
+// framing and only overrides the cap; it must therefore stay *below* `.reqContent`
+// here, as two single-class selectors are settled by source order.
+.promptContent {
+  max-height: 12rem;
 }
 
 // --- Fullscreen message overlay ----------------------------------------------
@@ -3357,39 +3420,163 @@ details[open] > summary .reqCaret {
   word-break: break-word;
 }
 
+// The rendered prompt's messages. Like the activity feed, this is a list of labeled
+// entries, and it is arranged by the same user preference: the container carries
+// `data-feed-style` and the three layout blocks below arrange it, mirroring the ones
+// at the bottom of FeedView.module.scss. The container itself is style-agnostic and
+// spacing-free — each layout gives its own entries their padding, and the ones that
+// rule between entries would double a gap into a moat around every rule.
 .promptMessages {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: t.$space-sm;
 }
 
-// One prompt message: a band-colored left rule (matching the Context graph), a head
-// with its band tag and role/tokens, and its full text below.
+// One prompt message, in whichever arrangement is active: a head (the band tag and the
+// role/token meta) and a body (the message text, or a note that it carried none). The
+// band's color arrives from PromptView as an inline `--band-color` — it comes from the
+// Context graph's per-source palette, not from the `--ttc-event-*` tokens the activity
+// feed's accents use — and each layout draws its accent from that one variable, on
+// whichever edge that layout puts it.
+//
+// The arrangement declared here is the *fallback*, not a fourth style: all three
+// layout blocks below override every property of it. It exists because
+// `data-feed-style` comes from a persisted app-wide setting (`ttc:settings`, written
+// by `appSettings.ts`, which carries no `version`/`migrate`), so a value written by an
+// older or a newer build reaches this list matching none of those blocks. While the
+// layout lived exclusively in them, such an entry rendered with no padding, no accent
+// and no separation at all — its head running the band tag straight into
+// "system · 10 tokens". The fallback is the "stacked" arrangement, which needs no
+// column sizing and so degrades gracefully at any pane width. "stacked" still declares
+// the same properties itself rather than leaning on this: each of the three blocks
+// stays a complete layout that can be read — and changed — without consulting the base.
 .promptMessage {
-  border: t.$border-hairline solid t.$color-border;
-  border-left-width: 2px;
-  border-radius: t.$radius-md;
-  padding: t.$space-sm;
+  // A default for the custom property, for the same reason `.line` declares one: the
+  // accent must resolve to *something* if the entry is ever rendered without the
+  // inline property PromptView supplies.
+  --band-color: #{t.$color-border};
+  min-width: 0;
+
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
-  min-width: 0;
+  padding: t.$space-sm t.$space-md;
+  border-left: 2px solid var(--band-color);
+  border-top: t.$border-hairline solid t.$color-border;
+
+  &:first-child {
+    border-top: none;
+  }
 }
 
+// The head is a flex container in every layout; only its direction and spacing change
+// — a stacked column when it is a left gutter, a baseline-aligned row when it rides
+// above the body. The gap is declared here rather than only in the layout blocks so
+// that the tag never runs into its meta, whichever of them is (or is not) in force.
 .promptMessageHead {
   display: flex;
-  align-items: baseline;
-  gap: t.$space-sm;
   min-width: 0;
+  gap: t.$space-sm;
 }
 
 .promptMessageMeta {
   font-size: t.$font-sm;
   color: t.$color-text-muted;
   font-variant-numeric: tabular-nums;
+}
+
+// In the two gutter-column layouts the band tag shares a 7rem column with its meta, so
+// it wraps to a second line rather than ellipsing away half of "User prompt" — the tag
+// is the entry's label, and a label that cannot be read is worse than a taller row.
+// (In "stacked" the tag sits on a full-width header row and keeps `.reqTag`'s
+// single-line truncation.)
+.promptMessages[data-feed-style="gutter"] .promptMessageHead .reqTag,
+.promptMessages[data-feed-style="divider"] .promptMessageHead .reqTag {
+  white-space: normal;
+  overflow: visible;
+  word-break: break-word;
+}
+
+// --- Prompt layout: "gutter" -------------------------------------------------
+// The band tag stacked over its role/tokens in a fixed left column, the message text
+// to its right, a 2px accent bar in the band's color on the leading edge, and a
+// hairline rule between entries — drawn per entry as FeedView does, with the leading
+// one dropped: this list sits directly on the pane rather than inside a bordered box,
+// so a rule at the very top would read as an underline of the section's caption.
+//
+// The text column is `minmax(0, 1fr)` rather than `1fr`: a grid track sized `1fr`
+// floors at its content's min-content width, and the body is a `<pre>` of unbroken
+// prompt text, which would push the column — and the pane — wider than its share.
+.promptMessages[data-feed-style="gutter"] {
+  .promptMessage {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    gap: t.$space-md;
+    padding: t.$space-sm t.$space-md;
+    border-left: 2px solid var(--band-color);
+    border-top: t.$border-hairline solid t.$color-border;
+  }
+
+  .promptMessage:first-child {
+    border-top: none;
+  }
+
+  .promptMessageHead {
+    flex-direction: column;
+    gap: t.$space-xs;
+  }
+}
+
+// --- Prompt layout: "divider" ------------------------------------------------
+// The same two columns, but the band's accent becomes a 2px rule down the right of the
+// gutter column and the rules between entries are dropped — so the color reads as the
+// boundary between the label and what it labels. This is the one layout that wants
+// neither of the two borders the fallback arrangement declares, so it turns both off
+// explicitly rather than by omission; the accent it does want is on the head below.
+.promptMessages[data-feed-style="divider"] {
+  .promptMessage {
+    display: grid;
+    grid-template-columns: 7rem minmax(0, 1fr);
+    gap: t.$space-md;
+    padding: t.$space-sm t.$space-md;
+    border-left: none;
+    border-top: none;
+  }
+
+  .promptMessageHead {
+    flex-direction: column;
+    gap: t.$space-xs;
+    padding-right: t.$space-md;
+    border-right: 2px solid var(--band-color);
+  }
+}
+
+// --- Prompt layout: "stacked" ------------------------------------------------
+// The band tag and its role/tokens ride one header row above the text, so the message
+// gets the pane's full width — the layout to pick when the prompt is long or the
+// window is narrow. Each entry keeps the leading accent bar and the hairline rule, the
+// leading rule dropped as in "gutter".
+.promptMessages[data-feed-style="stacked"] {
+  .promptMessage {
+    display: flex;
+    flex-direction: column;
+    gap: t.$space-xs;
+    padding: t.$space-sm t.$space-md;
+    border-left: 2px solid var(--band-color);
+    border-top: t.$border-hairline solid t.$color-border;
+  }
+
+  .promptMessage:first-child {
+    border-top: none;
+  }
+
+  .promptMessageHead {
+    flex-direction: row;
+    align-items: baseline;
+    gap: t.$space-sm;
+  }
 }
 
 // --- Tools panel (an agent's per-tool usage) ---------------------------------

@@ -11,8 +11,11 @@
 // opening prompt: the system framing and the build/user prompt the agent actually
 // started its first turn from, resolved from the de-duplicated message log.
 
+import type { CSSProperties } from "react";
 import type { GgContextSource } from "@test-cabinet/run-record/gg";
 import panels from "./GgPanels.module.scss";
+import { useAppSettings } from "../../../store/appSettings";
+import { cx } from "./ggFsTree";
 import type { AgentNode, PooledMessage, PromptTurn } from "./useGgRunState";
 import { ROOT_ID, shortTokens } from "./useGgRunState";
 import {
@@ -57,6 +60,14 @@ export function PromptView({
   const brief = node.brief != null && node.brief !== "" ? node.brief : null;
   const hasPrompt = promptMessages.length > 0;
 
+  // The prompt list is a feed of labeled entries in the same sense the activity feed
+  // is — a band tag and its meta against a body of text — so it is arranged by the
+  // same app-wide preference rather than by a second, prompt-only choice: a reader who
+  // set the console to "stacked" because a fixed left column wastes width on their
+  // screen means it here too. The three arrangements carry identical information (see
+  // the layout blocks in GgPanels.module.scss); only where the label sits differs.
+  const feedStyle = useAppSettings((s) => s.eventFeedStyle);
+
   return (
     <div className={panels.promptView}>
       {/* The brief the agent was dispatched with — from its parent when an agent
@@ -83,7 +94,7 @@ export function PromptView({
           {isRoot ? "Prompt" : "Rendered prompt"}
         </span>
         {hasPrompt ? (
-          <ul className={panels.promptMessages}>
+          <ul className={panels.promptMessages} data-feed-style={feedStyle}>
             {promptMessages.map(({ source, message }, i) => (
               <PromptMessage
                 key={`${message.id}-${i}`}
@@ -109,8 +120,18 @@ function emptyPromptNote(live: boolean, hasBrief: boolean): string {
   return "The exact prompt isn’t recorded for this run.";
 }
 
-// One prompt message: its band tag (colored to match the Context graph), its role
-// and token cost, and its full text.
+// One prompt message: its band tag (colored to match the Context graph) over its role
+// and token cost, and its full text. The markup is identical in all three feed styles
+// — a head and a body, in that document order — and the chosen layout decides whether
+// the head becomes a left gutter column or a header row above the body, exactly as
+// `FeedView` does for an event line.
+//
+// The band color is a per-message value (the Context graph's palette, keyed by source)
+// rather than one of the `--ttc-event-*` tokens the activity feed's accents come from,
+// so it can only reach the stylesheet from here. It rides in as a custom property
+// instead of as a `border-left-color`, because each layout draws the accent on a
+// different edge — a left bar in "gutter"/"stacked", a rule to the right of the gutter
+// column in "divider" — and only a variable can be read by all three.
 function PromptMessage({
   source,
   message,
@@ -120,7 +141,10 @@ function PromptMessage({
 }) {
   const color = CONTEXT_SOURCE_COLORS[source];
   return (
-    <li className={panels.promptMessage} style={{ borderLeftColor: color }}>
+    <li
+      className={panels.promptMessage}
+      style={{ "--band-color": color } as CSSProperties}
+    >
       <div className={panels.promptMessageHead}>
         <span className={panels.reqTag} style={{ color }}>
           {CONTEXT_SOURCE_LABELS[source]}
@@ -132,7 +156,7 @@ function PromptMessage({
       {message.content != null && message.content !== "" ? (
         <ExpandablePre
           content={message.content}
-          className={panels.reqContent}
+          className={cx(panels.reqContent, panels.promptContent)}
           label={`${CONTEXT_SOURCE_LABELS[source]} ${message.role} message`}
         />
       ) : (

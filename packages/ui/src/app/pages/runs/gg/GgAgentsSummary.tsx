@@ -1,11 +1,16 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { SegmentedControl, type SegmentedOption } from "@test-cabinet/ui";
 import type {
   GgAgentStatus,
   GgCapabilitySet,
 } from "@test-cabinet/run-record/gg";
 import dash from "./GgDashboard.module.scss";
-import panels from "./GgPanels.module.scss";
 import styles from "./GgAgentsSummary.module.scss";
 import { useGgAgentSummaries, type GgAgentSummary } from "./ggAgentAggregate";
 import type { GgAttributionRow } from "./ggContextAttribution";
@@ -355,6 +360,14 @@ function Figure({
 
 // One agent in full, behind its row: what it is configured as, what its instances spent, and
 // what filled their windows.
+//
+// The detail leads with the agent's *identity* — the capabilities it was granted and the
+// instances that came of it — because those two say what this arm of the experiment is, and
+// every number below is read against them. Then six content sections in one order: the summed
+// figures, the two spend widgets that take the money and token figures of that row apart, what
+// those instances hold, what filled their windows, and what they called. Each is a direct
+// child of `.agentDetail`, so every boundary between them is the single gap that container
+// sets — see the stylesheet for why the uniformity is deliberate.
 function AgentDetail({ agent }: { agent: GgAgentSummary }) {
   const ran = agent.instances.length > 0;
   return (
@@ -381,26 +394,30 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
       {ran ? (
         <>
           <InstanceChips agent={agent} />
-          {/* Directly under the chips, because "do those twelve instances share one memory
-              store?" is the question the chips themselves raise, and answering it two
-              scroll-lengths later answers it too late. */}
-          <ModulesSection agent={agent} />
+          {/* The summed figures lead the content: "how many ran, how they ended, what a
+              typical one cost, how hard they leaned on the window" is the question the row
+              was opened to ask, and everything under it is one of those figures taken
+              apart. */}
           <AgentStats agent={agent} />
-          {/* The same Tokens and Cost widgets the Dashboard and an instance's Overview
-              use, fed this agent's summed usage — so a profile's spend reads in the shape
-              a run's spend does, rather than as a differently-shaped summary. Stacked at
-              the detail's full width rather than side by side: each carries a rate, two
-              composition rings, or a class split, and halving the column squeezed all of
+          {/* The same Tokens and Cost widgets the Dashboard and an instance's Overview use,
+              fed this agent's summed usage — so a profile's spend reads in the shape a run's
+              spend does, rather than as a differently-shaped summary. They sit immediately
+              under the figures because that is exactly what they are: the `tokens each` and
+              `cost each` stats decomposed into their classes. Two separate sections at the
+              detail's full width rather than a pair of columns — each carries a rate, two
+              composition rings, or a per-class split, and halving the column squeezed all of
               that into a pair of narrow towers. */}
-          <div className={styles.widgetStack}>
-            <TokensWidget
-              usage={agent.usage}
-              throughput={agent.tokensPerSecond}
-              bare
-              wide
-            />
-            <CostWidget usage={agent.usage} breakdown={agent.cost} bare />
-          </div>
+          <TokensWidget
+            usage={agent.usage}
+            throughput={agent.tokensPerSecond}
+            bare
+            wide
+          />
+          <CostWidget usage={agent.usage} breakdown={agent.cost} bare />
+          {/* What those instances *hold*, as against what they spent — the answer to the
+              question the instance chips raise, and the one section here that is not a sum:
+              twelve instances may be reading one store or twelve. */}
+          <ModulesSection agent={agent} />
           <ContextBreakdown agent={agent} />
           <ToolsSection agent={agent} />
         </>
@@ -474,7 +491,8 @@ function InstanceChips({ agent }: { agent: GgAgentSummary }) {
 // So each row states the distribution first and never averages it away. The one case whose
 // contents can honestly be shown at this grain — one store, bound by every instance at once
 // — shows them inline, framed as the agent's; every other case says how many stores there
-// are and hands the reader to the Modules tab, where stores are compared side by side.
+// are and leaves comparing them to the Modules tab, which is where stores are read side by
+// side. Every row is itself the way there (see {@link ModuleRow}).
 
 // The five distributions, in the two words a badge has room for.
 const SHARING_LABELS: Record<GgAgentModuleSharing, string> = {
@@ -503,18 +521,13 @@ const SHARING_HINTS: Record<GgAgentModuleSharing, string> = {
 function ModulesSection({ agent }: { agent: GgAgentSummary }) {
   const nav = useGgExplorerNav();
   if (agent.modules.length === 0) return null;
-  const count = agent.instances.length;
   return (
     <section className={styles.section} aria-label={`${agent.name} modules`}>
       <span className={dash.cardLabel}>Modules · {agent.modules.length}</span>
-      <p className={styles.sectionNote}>
-        The state this agent's{" "}
-        {count === 1 ? "one instance" : `${count} instances`} hold. A store
-        marked <strong>agent-scoped</strong> is a single one every instance
-        binds at once, so its contents below are the agent's; anything else is a
-        store per instance, and no one rendering of those would be true of the
-        agent.
-      </p>
+      {/* No preamble explaining the distinction: every row states its own distribution as a
+          badge with the explanation on it and then spells the same thing out as a sentence
+          directly beneath, so a paragraph above the list only said a third time what each
+          row is already about to say for itself. */}
       <ul className={styles.modules}>
         {agent.modules.map((row) => (
           <ModuleRow key={row.kind} agent={agent} row={row} nav={nav} />
@@ -524,9 +537,58 @@ function ModulesSection({ agent }: { agent: GgAgentSummary }) {
   );
 }
 
+// What a click inside a module row can land on that is somebody else's to answer for: the
+// row's own overlay, a store's id and its holder chips, and every control an agent-scoped
+// store's read-out renders. Matched by *shape* rather than by class name, so a control added
+// to `GgModuleViews` later is exempt without this file having to be told about it — a row is
+// a container for other people's markup, and enumerating it here would go stale silently.
+const INTERACTIVE_DESCENDANT =
+  'button, a, summary, input, select, textarea, [role="button"]';
+
+// Whether the click that just landed is really the release of a drag across some text. The
+// module rows carry the longest prose on the panel — the sharing sentence and the divergence
+// notes — and a row that navigated away the moment a selection was let go would be a row
+// nobody could quote.
+function endsATextSelection(): boolean {
+  const selection = window.getSelection();
+  return selection != null && selection.toString().length > 0;
+}
+
 // One module kind, at the profile's grain: how its stores are distributed, where that
-// diverges from what the configuration asked for, and then either the store itself or the
-// way to compare the several there turned out to be.
+// diverges from what the configuration asked for, and then either the store itself or a list
+// of the several there turned out to be.
+//
+// The whole row is the way through to the Modules tab's read-out of this kind — a profile's
+// row can say "twelve stores, four of them never written to" but it can never compare them,
+// and comparing them is the next question every one of these rows raises. That used to be a
+// "Compare in Modules" button on the one branch that had room for it; it is now the row
+// itself, so the affordance is the same on every distribution rather than on one of five.
+//
+// It cannot be a `<button>` wrapping the row: two of the three branches below render buttons
+// of their own (a store's holder chips, its id, the agent-scoped store's header links) and
+// nested buttons are invalid HTML — the browser is free to drop the inner ones, which is
+// exactly the way out to an instance that must keep working. So the row stays a `<section>`
+// and the target is split by input device, which is the only shape that covers the *whole*
+// row without nesting anything inside anything:
+//
+//   - the **mouse** target is the `<section>`'s own `onClick`, so a click lands wherever the
+//     row is — including over an agent-scoped store's header and contents, the branch with
+//     by far the most vertical extent and the one readers most want to compare;
+//   - the **keyboard** target is a button overlaid on the row's inset, carrying the
+//     accessible name and the focus ring. It is `pointer-events: none`, so it is reached
+//     only by the tab order and fired only by activation (Enter/Space, or assistive tech) —
+//     which is what keeps it from covering anything: the prose under it stays selectable and
+//     no control under it has to be raised out of its way.
+//
+// The row's handler owes two exemptions for that to be honest. A click that landed on a
+// genuinely interactive descendant is that descendant's — including the overlay's own
+// activation click, which bubbles here and is bailed on by the same rule rather than
+// navigating twice. And a click that merely releases a drag is the end of a *selection*, not
+// a click on the row: the divergence notes are the longest prose in the section, and throwing
+// the reader onto another tab the instant they finish selecting one would make it uncopyable.
+//
+// Without a nav channel (a panel rendered outside the explorers) there is nowhere to go, so
+// there is no overlay, no handler and no `data-clickable`: the row is inert, as it was before.
 function ModuleRow({
   agent,
   row,
@@ -538,6 +600,17 @@ function ModuleRow({
 }) {
   const Icon = MODULE_ICONS[row.kind];
   const stores = row.instances.length;
+  const openModuleKind = nav?.openModuleKind;
+  // Attached only where the overlay is rendered, so the row's two halves are never out of
+  // step with each other or with the affordances `data-clickable` turns on.
+  const onRowClick = openModuleKind
+    ? (event: ReactMouseEvent<HTMLElement>) => {
+        const target = event.target as Element | null;
+        if (target?.closest(INTERACTIVE_DESCENDANT) != null) return;
+        if (endsATextSelection()) return;
+        openModuleKind(row.kind);
+      }
+    : undefined;
   return (
     <li>
       {/* Named, because a row can carry a whole store's contents and the reader has to be
@@ -546,8 +619,24 @@ function ModuleRow({
       <section
         className={styles.moduleRow}
         data-sharing={row.sharing}
+        // Present only when the row really is clickable, since it is what turns on the
+        // hover, focus and cursor affordances that promise it can be.
+        data-clickable={openModuleKind ? "" : undefined}
         aria-label={`${agent.name} ${row.kind}`}
+        onClick={onRowClick}
       >
+        {/* The keyboard's half of the target. First child so it leads the row in the tab
+            order, which is where a target for the whole row belongs; and labelled with where
+            it goes rather than with what it covers, since it has no text of its own and
+            "memories" alone would read as a second name for the row. */}
+        {openModuleKind && (
+          <button
+            type="button"
+            className={styles.moduleRowOverlay}
+            aria-label={`Compare ${moduleKindLabel(row.kind).toLowerCase()} across instances in Modules`}
+            onClick={() => openModuleKind(row.kind)}
+          />
+        )}
         <div className={styles.moduleRowHead}>
           <Icon className={styles.moduleRowIcon} />
           <span className={styles.moduleRowKind}>
@@ -579,7 +668,7 @@ function ModuleRow({
         {row.agentScoped ? (
           <AgentScopedStore agent={agent} row={row} nav={nav} />
         ) : row.sharing === "instance" ? (
-          <PerInstanceStores row={row} nav={nav} />
+          <PerInstanceStores row={row} />
         ) : (
           <StoreList row={row} nav={nav} />
         )}
@@ -664,50 +753,32 @@ function AgentScopedStore({
 }
 
 // The instance-scoped case: how many stores there are, how many were never written to, and
-// what one costs on average — then out to the Modules tab, which is where N stores are
-// compared. Deliberately no contents: there are N of them and any one of them shown here
-// would read as the agent's.
-function PerInstanceStores({
-  row,
-  nav,
-}: {
-  row: GgAgentModuleSummary;
-  nav: GgExplorerNav | null;
-}) {
+// what one costs on average. Deliberately no contents — there are N of them and any one of
+// them shown here would read as the agent's — and deliberately no link of its own either:
+// comparing the N is what the whole row now opens, so a button repeating that inside the row
+// would be a second control for the target the row already is.
+function PerInstanceStores({ row }: { row: GgAgentModuleSummary }) {
   // "Never written to" is only a statement a kind that HAS contents can bear. A window
   // reports itself per turn as a context breakdown rather than as a snapshot, so counting
   // its absent snapshot would report every conversation window in the run as unused.
   const reportsContents = moduleReportsContents(row.kind);
   const untouched = reportsContents
-    ? row.instances.filter(
-        (hold) => moduleContentSummary(hold.module) == null,
-      ).length
+    ? row.instances.filter((hold) => moduleContentSummary(hold.module) == null)
+        .length
     : 0;
   const each =
     row.cost && row.holdingInstances > 0
       ? row.cost.latestTokens / row.holdingInstances
       : null;
-  const openModuleKind = nav?.openModuleKind;
   return (
-    <div className={styles.moduleRowFoot}>
-      <span className={styles.moduleRowMeta}>
-        {!reportsContents
-          ? plural(row.instances.length, "store")
-          : untouched > 0
-            ? `${untouched} of ${plural(row.instances.length, "store")} never written to`
-            : `all ${plural(row.instances.length, "store")} in use`}
-        {each != null && ` · ~${shortTokens(Math.round(each))}/turn each`}
-      </span>
-      {openModuleKind && (
-        <button
-          type="button"
-          className={panels.projAgentLink}
-          onClick={() => openModuleKind(row.kind)}
-        >
-          Compare in Modules
-        </button>
-      )}
-    </div>
+    <span className={styles.moduleRowMeta}>
+      {!reportsContents
+        ? plural(row.instances.length, "store")
+        : untouched > 0
+          ? `${untouched} of ${plural(row.instances.length, "store")} never written to`
+          : `all ${plural(row.instances.length, "store")} in use`}
+      {each != null && ` · ~${shortTokens(Math.round(each))}/turn each`}
+    </span>
   );
 }
 

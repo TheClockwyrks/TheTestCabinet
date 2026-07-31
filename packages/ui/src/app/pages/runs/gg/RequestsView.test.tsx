@@ -6,6 +6,7 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import { reduceGgEvents } from "./useGgRunState";
+import type { PooledMessage, PromptTurn } from "./useGgRunState";
 import { RequestsView } from "./RequestsView";
 
 const TS = "2026-07-26T00:00:00Z";
@@ -94,6 +95,57 @@ function twoTurnStream(): HarnessEvent[] {
   ];
 }
 
+// A one-turn stream whose single request message is a tool result — the only kind of
+// message that answers a named call, and so the only kind with anything left to say in
+// its expansion now that the role and the token cost have been dropped from it.
+function toolResultStream(): HarnessEvent[] {
+  return [
+    gg({
+      type: "context_message",
+      id: "m_tool",
+      role: "tool",
+      content: "42",
+      toolCalls: [],
+      images: [],
+      tokens: 7,
+      toolCallId: "call_7",
+    } as GgTelemetryKind),
+    gg({
+      type: "prompt",
+      request: [{ id: "m_tool", source: "tool_output" }],
+      totalTokens: 7,
+      finishReason: "stop",
+      tokens: {},
+    } as GgTelemetryKind),
+  ];
+}
+
+// A pooled message and a turn built by hand, so a test can hand `RequestsView` turn
+// numbers the reducer would never produce from a whole stream — the view takes
+// `PromptTurn[]` as its contract, and a caller may pass a slice of an agent's turns or
+// a resumed agent's stream, neither of which is a contiguous 0-based run.
+function pooled(id: string, content: string): PooledMessage {
+  return { id, role: "user", content, toolCalls: [], images: [], tokens: 5 };
+}
+
+function turnAt(turn: number, messageId: string): PromptTurn {
+  return {
+    turn,
+    request: [{ id: messageId, source: "user_prompt" }],
+    totalTokens: 5,
+    responseId: null,
+    finishReason: "stop",
+    tokens: {
+      uncachedInput: 5,
+      cachedInput: null,
+      output: null,
+      reasoning: null,
+    },
+    cost: null,
+    durationMs: null,
+  };
+}
+
 describe("message log reduction", () => {
   it("pools each message once and records each turn's pointers", () => {
     const state = reduceGgEvents(twoTurnStream());
@@ -146,6 +198,85 @@ describe("RequestsView", () => {
   it("shows an empty state with nothing logged", () => {
     render(<RequestsView prompts={[]} pool={new Map()} live={false} />);
     expect(screen.getByText("No requests were recorded.")).toBeInTheDocument();
+  });
+
+  // The expansion is the full-width read of one message's text; it no longer repeats
+  // the role and the token cost, both of which the collapsed row above it already
+  // carries as the band tag and the token column.
+  it("does not repeat the role or the token count in an expanded message", () => {
+    const state = reduceGgEvents(twoTurnStream());
+    render(
+      <RequestsView
+        prompts={state.prompts}
+        pool={state.messagePool}
+        live={false}
+      />,
+    );
+    // The band tags still label every row ("User prompt" appears once per turn).
+    expect(screen.getAllByText("User prompt").length).toBeGreaterThan(0);
+    // But the raw role and the "N tokens" restatement are gone from the bodies.
+    expect(screen.queryByText("user")).toBeNull();
+    expect(screen.queryByText("system")).toBeNull();
+    expect(screen.queryByText("20 tokens")).toBeNull();
+    expect(screen.queryByText("10 tokens")).toBeNull();
+  });
+
+  // With the role and cost gone, most messages have nothing left to put in the meta
+  // line — so it is not rendered at all rather than left empty, holding a blank line
+  // open in every expansion.
+  it("omits the meta line entirely when a message answers no call", () => {
+    const state = reduceGgEvents(twoTurnStream());
+    render(
+      <RequestsView
+        prompts={state.prompts}
+        pool={state.messagePool}
+        live={false}
+      />,
+    );
+    // Both the collapsed preview and the expanded <pre> carry the text; either one
+    // resolves to the message's own <details>.
+    const message = screen.getAllByText("build a game")[0]!.closest("details")!;
+    expect(message.querySelector("p")).toBeNull();
+  });
+
+  // The pairing back to the call a tool result answers appears nowhere else, so it
+  // survives as the expansion's only meta.
+  it("names the call a tool result answers", () => {
+    const state = reduceGgEvents(toolResultStream());
+    render(
+      <RequestsView
+        prompts={state.prompts}
+        pool={state.messagePool}
+        live={false}
+      />,
+    );
+    const message = screen.getAllByText("42")[0]!.closest("details")!;
+    expect(message.querySelector("p")?.textContent).toBe("answers call_7");
+  });
+
+  // The newest turn is opened by its own recorded turn number, not by its position in
+  // the list — the two coincide only while the turns are a contiguous 0-based run, and
+  // keying on the index left every turn shut whenever they were not.
+  it("opens the newest turn when the turn numbers are not zero-based", () => {
+    const pool = new Map<string, PooledMessage>([
+      ["m_a", pooled("m_a", "the earlier turn")],
+      ["m_b", pooled("m_b", "the newest turn")],
+    ]);
+    render(
+      <RequestsView
+        prompts={[turnAt(7, "m_a"), turnAt(9, "m_b")]}
+        pool={pool}
+        live={false}
+      />,
+    );
+    const earlier = screen.getByText("Turn 8").closest("details")!;
+    const newest = screen.getByText("Turn 10").closest("details")!;
+    expect(newest.open).toBe(true);
+    expect(earlier.open).toBe(false);
+    // The open turn actually shows its contents — the point of opening it.
+    expect(
+      within(newest).getAllByText("the newest turn").length,
+    ).toBeGreaterThan(0);
   });
 
   it("marks a turn with no response", () => {

@@ -15,7 +15,7 @@
 // A bento of cards rather than a uniform grid: a twelve-column track lets tiles
 // take different widths (the token and cost widgets earn the room their rings and
 // splits want; the stat and status tiles stay narrow) so the read-out has a
-// deliberate shape. The card spans below pair up to fill each row (6+3+3, 6+6, 12), and
+// deliberate shape. The card spans below pair up to fill each row (4+4+4, 6+6, 12), and
 // `align-items: stretch` gives the two tiles in a row a shared height — so a wide
 // widget and its shorter neighbor line up flush rather than leaving a gap beneath the
 // shorter one. Every card is full-width when the row is too narrow to bento.
@@ -28,11 +28,46 @@
 }
 
 // The twelve-column track engages only when the whole read-out is wide enough to
-// bento; below that the single-column base leaves every card a full row (a span
-// clamps to the lone column), so the layout collapses cleanly on narrow screens.
+// bento. Below that the base is a single column and *no card carries a span* — every
+// span below is declared inside this same breakpoint — so each card takes a full row and
+// the layout collapses cleanly on narrow screens. The spans have to be withheld rather
+// than left to clamp: an auto-placed item spanning more tracks than the explicit grid has
+// grows the implicit grid to fit it, so a lone `span 12` would silently give the
+// single-column track twelve columns and lay the cards out side by side at whatever
+// widths their content happened to want.
 @media (min-width: 52rem) {
   .cards {
     grid-template-columns: repeat(12, 1fr);
+  }
+}
+
+// The clocks row: the wall clock, the active agent time, the waiting, and the ceiling,
+// one tile each. Its own block rather than four tiles in the bento, for the reason the
+// money row below is — auto-placement (and `grid-auto-flow: dense` in particular) would
+// pack them into whatever gap the row above left, and the two surfaces differ by exactly
+// the one card that decides how big that gap is. Fixed here, the four read as one row on
+// both.
+//
+// Below the bento breakpoint they go two-up rather than stacking: these are four short
+// durations, so a pair per line stays perfectly legible while a four-tall stack of
+// full-width tiles would push the money row a screen down on the very surface someone is
+// watching a run on. `min-width: 0` on the block keeps a long figure from widening a
+// track past the pane the dashboard is rendered in.
+.runtimeBlock {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: t.$space-md;
+  align-items: stretch;
+  min-width: 0;
+}
+
+// Above the breakpoint the block takes the whole bento row and lays its four tiles
+// across it. The span belongs here rather than in the base rule: below the breakpoint the
+// dashboard grid is one column, and a span there would grow it to twelve (see `.cards`).
+@media (min-width: 52rem) {
+  .runtimeBlock {
+    grid-column: span 12;
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
@@ -43,7 +78,6 @@
 // run's gg tab) differ by exactly that card. Stacked in one column until the bento
 // engages.
 .spendBlock {
-  grid-column: span 12;
   display: flex;
   flex-direction: column;
   gap: t.$space-md;
@@ -63,8 +97,11 @@
   flex: 1 1 auto;
 }
 
+// As with the clocks row, the bento span is declared at the breakpoint and not below it,
+// where the dashboard grid is a single column a span would grow to twelve (see `.cards`).
 @media (min-width: 52rem) {
   .spendBlock {
+    grid-column: span 12;
     display: grid;
     // The 7/5 proportion the bento's own tiles take, with the wider share going to
     // Cost — it is the tile carrying three breakdowns.
@@ -107,20 +144,23 @@
   min-width: 0;
 }
 
-// Bento spans for the twelve-column dashboard grid. A span clamps to one column
-// under the bento breakpoint (single-column track) and in the auto-fit overview
-// grid, so a widget carrying one still stacks correctly where there is no bento.
-// The top row pairs them to fill twelve either way: status + turns + rate + runtime
-// (3+3+3+3) on the live monitor, turns + rate + runtime (4+4+4) where the page header
-// carries the state.
-.cardFull {
-  grid-column: span 12;
-}
-.cardThird {
-  grid-column: span 4;
-}
-.cardQuarter {
-  grid-column: span 3;
+// Bento spans for the twelve-column dashboard grid. They exist only above the bento
+// breakpoint, where that grid does: below it the cards sit in a single-column track and a
+// span would grow the implicit grid rather than clamp to it (see `.cards`), so a card
+// carrying one simply takes a full row like every other. The top row pairs them to fill
+// twelve either way: status + turns + rate (4+4+4) on the live monitor, turns + rate
+// (6+6) where the page header carries the state. The clocks below it are not spans at
+// all — they are `.runtimeBlock`'s own grid.
+@media (min-width: 52rem) {
+  .cardFull {
+    grid-column: span 12;
+  }
+  .cardHalf {
+    grid-column: span 6;
+  }
+  .cardThird {
+    grid-column: span 4;
+  }
 }
 
 .cardLabel {
@@ -201,7 +241,7 @@
 // than relying on the row's `space-between` alone so it stays pinned right if the row
 // ever carries a third element. It keeps the default `flex: 0 1 auto` — pinning it at
 // `flex: none` would let the failure message the control grows beside its button size
-// this quarter-width card at max-content and spill out of it — and `min-width: 0` so
+// this narrow card at max-content and spill out of it — and `min-width: 0` so
 // that shrinking can actually reach the message's own text, which then wraps.
 .statusAction {
   margin-left: auto;
@@ -217,7 +257,7 @@
   margin-bottom: 0;
 }
 
-// A headline figure — the cost total, the agent count — big over its unit.
+// A headline figure — the cost total, the agent count — big over its caption.
 .metricValue {
   font-size: t.$font-lg;
   font-weight: 600;
@@ -225,8 +265,11 @@
   font-variant-numeric: tabular-nums;
 }
 
-// The unit beside a figure ("tokens", "agents", "actual …") — present but
-// subordinate to the number it qualifies.
+// The line under a headline figure, saying what it counts — present but subordinate to
+// the number it qualifies. Often a bare unit ("tokens", "agents", "actual …"), but on the
+// clocks row a whole phrase ("wall clock", "2 agents working", "no limit resolved"): a
+// duration's unit is already in the figure itself, so what the line carries there is the
+// fact the figure states rather than its dimension.
 .metricUnit {
   color: t.$color-text-muted;
   font-size: t.$font-sm;

@@ -2024,14 +2024,37 @@ describe("GgRunMonitorPage", () => {
       screen.getByRole("button", { name: "agent-1 modules memories" }),
     ).toHaveAttribute("aria-current", "true");
 
-    // And a per-instance row hands the reader to the kind's whole-run read-out, which is
-    // where several stores of one kind are actually comparable.
+    // And the module row *itself* hands the reader to the kind's whole-run read-out, which
+    // is where several stores of one kind are actually comparable. The target is the whole
+    // row rather than a button inside it, so the Reviewer's `history` row (two stores, one
+    // per instance) is reached by its destination rather than by a label it shares with
+    // every other row. This is the keyboard's half of it: an overlay laid on the row's
+    // inset, carrying the name and the focus ring.
     openTab("Agents");
     openAgentRow("Reviewer");
-    fireEvent.click(screen.getByRole("button", { name: "Compare in Modules" }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Compare history across instances in Modules",
+      }),
+    );
     expect(screen.getByRole("radio", { name: "Modules" })).toBeChecked();
     expect(
       screen.getByRole("button", { name: "history overview" }),
+    ).toHaveAttribute("aria-current", "true");
+
+    // The mouse's half is the row's own handler, and "the whole row" is meant literally:
+    // a click on a memory *inside* the agent-scoped store's framed read-out — most of that
+    // row's height, and the distribution a reader most wants to compare — reaches the same
+    // place. The overlay never covers this, which is also why the text stays selectable.
+    openTab("Agents");
+    openAgentRow("Reviewer");
+    const scoped = within(
+      screen.getByRole("region", { name: "Reviewer memories" }),
+    ).getByRole("region", { name: "Reviewer agent-scoped memories" });
+    fireEvent.click(within(scoped).getAllByText("review-standards")[0]!);
+    expect(screen.getByRole("radio", { name: "Modules" })).toBeChecked();
+    expect(
+      screen.getByRole("button", { name: "memories overview" }),
     ).toHaveAttribute("aria-current", "true");
   });
 
@@ -2120,9 +2143,22 @@ describe("GgRunMonitorPage", () => {
 
     openTab("Agents");
     openAgentRow("Root");
+    // Same withholding on the Agents tab, where the exit is the module row itself. Matched
+    // by the destination the overlay is named for rather than by one kind's wording, so a
+    // row of any kind that grew an overlay here would fail this; and the row must also be
+    // left without the `data-clickable` that turns on the hover and cursor affordances,
+    // since a row that looks clickable and is not is the same dead exit one step earlier.
+    // Both halves of the target go together — no overlay for the keyboard, no handler for
+    // the mouse — so clicking the row's body is inert too.
+    const history = screen.getByRole("region", { name: "Root history" });
     expect(
-      screen.queryByRole("button", { name: "Compare in Modules" }),
+      within(history).queryByRole("button", {
+        name: /across instances in Modules/,
+      }),
     ).toBeNull();
+    expect(history).not.toHaveAttribute("data-clickable");
+    fireEvent.click(history);
+    expect(screen.queryByRole("radio", { name: "Modules" })).toBeNull();
   });
 
   it("says a pre-identity run's store id is inferred rather than passing it off as a name", () => {
