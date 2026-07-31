@@ -956,6 +956,75 @@ registry id, which is a *different* id and must be reported as such);
 snapshots before it mutates anything; an `inherited` read-only holder appears in
 the record at all; an FSM transition's `modules` list carries both ids per kind.
 
+### Stages 1, 2 & 4 as built — deviations from §1 and §2
+
+**LANDED** as `feat(gg): give every module instance an identity the record can name` and
+`feat(ui): the gg module model over the reducer`. All of §1 and all of §2 shipped; the
+three stages went together because §4's selector layer is unbuildable without the
+telemetry §1 adds and untestable without §2 emitting it. Eleven things are shaped
+differently from the sketch above; **stages 5–7 should build on this list, not on §2.3's
+signatures.**
+
+1. **The mint is reached through the modules, not threaded through every constructor.**
+   §1.1 puts the id on each backing store and says the mint is "carried on
+   `ModuleResolveCtx`", which it is — but `MemoryStore::new`, `TaskStore::with_mode`,
+   `ArchiveStore::new` and friends have ~130 call sites, almost all of them tests, and
+   `Module::fork` takes `&self` and must be able to mint. So each **runtime** carries an
+   `ids: ModuleIds` (an `Arc<ModuleIdMint>`) alongside its id: `resolve` takes the run's
+   off `ctx.ids`, and the by-hand constructors fall back to `modules::detached_ids()` — a
+   private sequence, documented as such, which only the tests and the disabled modules an
+   ablation's off arm holds ever use. Every module a *run* builds is resolved, transferred
+   or forked from one that was, so ids are unique within a run, which is the only scope
+   they are compared in.
+2. **`Module::instance_id(&self) -> &str` as designed**, which is why the id lives on the
+   runtime rather than inside the mutex-guarded store: a borrow cannot escape a lock. Each
+   of the five sites that decides "same store or new store" (`new`/`over`/`forked`/
+   `shared`/`alias`, plus `adopt`'s rebind) sets it explicitly, and
+   `MemoriesRuntime::over` **takes** the id rather than minting one, so "same store, same
+   id" is a property of the call instead of something every caller has to remember.
+3. **`Module` gained `set_origin` and `origin_when_forked`.** §1.1 lists two methods;
+   `fork_modules` copies through the trait and has to attribute what it hands over, and
+   the board's answer differs from every other kind's (it is run-global by construction,
+   so a copy's board reports `Run`, not `Forked`). `origin_when_forked` puts that per-kind
+   choice with the kind, exactly as `links_when_forked` already does. `Module::roster_entry`
+   is a **provided** method, so a kind added later reports itself without touching the
+   roster builder.
+4. **`Module::memory_scope`/`writable` are provided methods** with `None`/`true` defaults,
+   overridden by memories alone. Named `memory_scope` rather than `scope` because
+   `MemoriesRuntime::scope` already exists and returns a non-`Option`.
+5. **`TransferReport.modules` replaced the three vectors** as designed, with `carried()`,
+   `dropped()`, `initialized()` and `carries(kind)` as folds over it — `succession_note`
+   and the `Opening::Carried { history }` check read those and produce byte-identical
+   prose.
+6. **`TasksRuntime::resolve(profile, ctx)`** — it needs the run's mint, and it was the one
+   module resolver that did not take the context.
+7. **`dispatch_forks` takes a `transitions::ForkSource`** (`context`, `history_id`,
+   `caps`) instead of three positional arguments: the window's id has to travel with the
+   window, and eight arguments is one past clippy's ceiling. `fork_modules` likewise takes
+   `history_id` — the module around the window is not always in reach (the loop holds the
+   two split apart, and a code turn moves the window out of its module altogether), so
+   `drive` reads the id once, right after `ModuleSet::split_mut`.
+8. **`apply_context_reclaim` returns `Vec<GgTelemetryKind>`**, so an `archive_thread`
+   emits its `ArchiveState` beside the `ContextManaged` that records the act. `AmcSetup`
+   carries the archive's `archive_id` for it, and `CodeTurn::complete` takes a vec too.
+9. **The reduced `AgentTransition` gained a `timestamp`.** §2.4's lifetime is "ordered by
+   the transition's timestamp" and the reduced type carried none.
+10. **`moduleFate()` names `copied` and `linked` separately** rather than folding both into
+    "carried" — that distinction is the whole reason §1.6 replaced the three lists, and
+    hiding it again in the one-line prose would have been perverse.
+11. **`ggModules.ts` exports three things §2.3 does not name**, each earning its place:
+    `GgModuleIndex.identified` (false on a roster-less record, so a surface can soften its
+    language rather than assert things it synthesized); `declaredModuleConfig(set, profile,
+    kind)`, a module-shaped wrapper over `ggCatalog`'s new `capabilityParam` that resolves
+    both params **with their defaults** (a surface comparing declared against observed
+    needs "owned"/"isolated", not `null`); and `MODULE_KIND_ORDER`. `moduleOriginLabel`
+    takes `(module, holder)` rather than the holder alone — naming *whom* a module was
+    inherited or carried from needs the holder list and the lifetime beside it.
+
+**Deferred to stage 5:** the five new `ggIcons.tsx` marks §7's stage-4 list mentions. They
+are purely presentational, nothing consumes them yet, and an unused export is a worse
+seam than a late one; add them with the folder that renders them.
+
 ### Stage 3 — `refactor(ui): extract the shared gg filesystem explorer`
 
 §6, with `GgAgentsExplorer` and `ProjectExplorer` moved onto the primitives. No

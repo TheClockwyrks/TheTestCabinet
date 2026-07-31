@@ -14,7 +14,9 @@ import { useWorkers } from "../../../../client/context";
 import type { HarnessEvent, RunOutcome } from "../../../../client/types";
 import type { CostMetrics, TokenMetrics } from "@test-cabinet/run-record";
 import type {
+  GgAgentModule,
   GgAgentStatus,
+  GgArchiveEntry,
   GgBoardEpic,
   GgBoardIssue,
   GgCapabilitySet,
@@ -33,6 +35,7 @@ import type {
   GgSpeculationPhase,
   GgTaskEntry,
   GgTelemetryEvent,
+  GgTransitionModule,
   GgWorkflowPhase,
   GgAgentTransitionKind,
 } from "@test-cabinet/run-record/gg";
@@ -227,6 +230,9 @@ export interface FsmVisit {
 // stream just before its successor's spawn. It carries what each module did, which
 // is the difference between a handoff and a restart and is otherwise invisible.
 export interface AgentTransition {
+  // When it happened — the envelope's timestamp. It is what orders a module instance's
+  // lifetime (see `ggModules`), which is otherwise a set of events with no clock.
+  timestamp: string;
   // The instance that handed off.
   fromAgentId: string;
   // Which kind of succession this was: an FSM transition, an exec, or a fork.
@@ -237,10 +243,13 @@ export interface AgentTransition {
   agent: string;
   // The state it entered, for an FSM transition; null otherwise.
   state: string | null;
-  // The module kinds carried live, dropped outright, and started fresh.
-  transferred: string[];
-  dropped: string[];
-  initialized: string[];
+  // What happened to each module the two instances between them held, in kind order:
+  // its disposition (carried / copied / linked / dropped / initialized / absent) and
+  // the module INSTANCE on both sides. The instances are what make a store swap
+  // visible — a successor re-bound to its own profile's memory store reports two ids
+  // for a module the disposition calls "carried", which is exactly right and was
+  // inexpressible while this was three lists of kind names.
+  modules: GgTransitionModule[];
 }
 
 // One `context_breakdown` snapshot — a point on the stacked context-window graph.
@@ -425,6 +434,37 @@ export interface BoardState {
   issues: GgBoardIssue[];
 }
 
+// The latest `archive_state` — what `archive_thread` has put away and `search_archive`
+// can recover (see gg/agent-managed-context). Entries carry metadata and a bounded
+// preview, never the archived text: the archive exists precisely so that material is
+// out of the request, and a second copy of the thread in the record would serve nobody.
+export interface ArchiveState {
+  // The module instance this snapshot is of.
+  moduleId: string;
+  entries: GgArchiveEntry[];
+  count: number;
+  // The total length, in characters, of everything archived — the size of what left
+  // the window.
+  totalLen: number;
+}
+
+// --- Module instances --------------------------------------------------------
+
+// The latest CONTENTS of one module instance, keyed by module id in
+// `DerivedGgState.moduleSnapshots` and tagged by kind so a consumer switches on the
+// tag rather than sniffing fields.
+//
+// It exists because a module instance is no longer in one-to-one correspondence with
+// an agent instance: a store two agents share has ONE content, and rendering it twice
+// under two agents is the confusion module identity exists to end. `history` has no
+// entry here — a window reports itself as a context breakdown, per turn, per agent.
+export type ModuleSnapshot =
+  | { kind: "memories"; memory: GgMemoryState }
+  | { kind: "tasks"; tasks: GgTaskEntry[] }
+  | { kind: "board"; board: BoardState }
+  | { kind: "skills"; skills: GgSkillState[] }
+  | { kind: "archive"; archive: ArchiveState };
+
 // --- Issue reviews -----------------------------------------------------------
 
 // The review lifecycle of one issue (see gg/project-management). An issue's reviewers
@@ -578,6 +618,14 @@ export interface GgRunState {
   // epics-and-issues capability is off (or no snapshot has arrived yet).
   board: BoardState | null;
 
+  // --- Module instances ----------------------------------------------------
+  // The latest contents of every module instance the run mentioned, keyed by module
+  // id (see `ModuleSnapshot`). This is the one cross-agent fold: a store two agents
+  // share has ONE content, and the module-inspection surfaces render it once, under
+  // the module, rather than once per holder. Empty on a record written before module
+  // identity existed, which `ggModules` degrades gracefully for.
+  moduleSnapshots: Map<string, ModuleSnapshot>;
+
   // --- Issue reviews -------------------------------------------------------
   // Per-issue review lifecycle, keyed by issue id (from the event envelope);
   // empty when no issue named reviewers (no `issue_review` events).
@@ -674,14 +722,22 @@ export function retainedSummary(retained: GgRetainedState): string {
 // the difference between a handoff and a restart, and it is otherwise invisible — two
 // agent ids with nothing between them.
 export function moduleFate(
-  transferred: ReadonlyArray<string>,
-  dropped: ReadonlyArray<string>,
-  initialized: ReadonlyArray<string>,
+  modules: ReadonlyArray<GgTransitionModule>,
 ): string | undefined {
+  const kinds = (disposition: GgTransitionModule["disposition"]) =>
+    modules
+      .filter((entry) => entry.disposition === disposition)
+      .map((entry) => entry.kind);
+  const phrase = (label: string, list: string[]) =>
+    list.length ? `${label} ${list.join(", ")}` : null;
   const parts = [
-    transferred.length ? `carried ${transferred.join(", ")}` : null,
-    dropped.length ? `dropped ${dropped.join(", ")}` : null,
-    initialized.length ? `fresh ${initialized.join(", ")}` : null,
+    phrase("carried", kinds("carried")),
+    // A copy and a link are both "the successor has one", and they are the difference
+    // between a second store and a second holder — so they are named separately.
+    phrase("copied", kinds("copied")),
+    phrase("linked", kinds("linked")),
+    phrase("dropped", kinds("dropped")),
+    phrase("fresh", kinds("initialized")),
   ].filter((part): part is string => part !== null);
   return parts.length ? parts.join(" · ") : undefined;
 }
@@ -799,7 +855,7 @@ function ggFeedRow(
                   // its entry state, so the row names the state as well as the agent.
                   `Continued as \`${gg.agent}\` in \`${gg.state}\` (${gg.toAgentId}).`
                 : `Continued as \`${gg.agent}\` (${gg.toAgentId}).`,
-        args: moduleFate(gg.transferred, gg.dropped, gg.initialized),
+        args: moduleFate(gg.modules),
         tone: "handoff",
       };
     case "fsm_state":
@@ -922,6 +978,24 @@ export interface DerivedGgState {
   memory: GgMemoryState | null;
   tasks: GgTaskEntry[];
   board: BoardState | null;
+  // The latest `archive_state` for this partition; null when agent-managed context is
+  // off (no snapshot ever arrives).
+  archive: ArchiveState | null;
+  // What this agent instance HOLDS, as it opened: one row per module kind, off arms
+  // included, each naming the backing store it is a holder of. Over one agent's
+  // partition this is that instance's roster; over the whole stream it is every
+  // instance's, concatenated, which nothing reads — `ggModules` folds the per-agent
+  // slices instead, because a roster is a fact about one instance.
+  //
+  // Empty on a record written before module identity existed, which `ggModules`
+  // degrades to today's per-agent behaviour for.
+  modules: GgAgentModule[];
+  // The latest contents of every module instance the stream mentioned, keyed by module
+  // id. This is the one genuinely CROSS-AGENT fold in this reducer, and it belongs
+  // here rather than in a per-agent slice for the reason module identity exists: a
+  // shared store has one content, and showing it once under the module is the whole
+  // point.
+  moduleSnapshots: Map<string, ModuleSnapshot>;
   issueReviews: Map<string, IssueReviewState>;
   speculations: SpeculationState[];
 }
@@ -1295,6 +1369,24 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   const memoryHistory = new Map<string, GgMemoryHistory>();
   let tasks: GgTaskEntry[] = [];
   let board: BoardState | null = null;
+  let archive: ArchiveState | null = null;
+  // The rosters this partition saw — over one agent's slice, that agent's own (a roster
+  // is emitted once per incarnation and an incarnation is an agent id, so there is
+  // exactly one); over the whole stream, everybody's.
+  const modules: GgAgentModule[] = [];
+  // The latest contents of each module instance, keyed by module id (see
+  // `ModuleSnapshot`). Cross-agent by construction: a shared store has one content
+  // whichever holder happened to report it last.
+  const moduleSnapshots = new Map<string, ModuleSnapshot>();
+  // Which memory instance each agent is currently reporting, so a `memory_revision` —
+  // which carries no module id of its own — can be attributed to the store it landed
+  // in. Exact, because a snapshot always precedes its holder's first revision and an
+  // agent's memory module cannot change without the agent id changing with it.
+  const memoryModuleByAgent = new Map<string, string>();
+  // Each memory INSTANCE's revision history, keyed by module id then by slug, so the
+  // module's own contents carry the same "written and later deleted" record the
+  // per-agent panel does.
+  const moduleMemoryHistory = new Map<string, Map<string, GgMemoryHistory>>();
   // Per-issue review lifecycle, keyed by the envelope's issueId.
   const issueReviews = new Map<string, IssueReviewState>();
   // The best-of-K speculations, in first-seen order. The lifecycle carries no id, so
@@ -1530,14 +1622,13 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         break;
       case "agent_transition":
         transitions.push({
+          timestamp: event.timestamp,
           fromAgentId: event.event.agentId ?? ROOT_ID,
           kind: gg.kind,
           toAgentId: gg.toAgentId,
           agent: gg.agent,
           state: gg.state ?? null,
-          transferred: gg.transferred,
-          dropped: gg.dropped,
-          initialized: gg.initialized,
+          modules: gg.modules,
         });
         break;
       case "context_breakdown":
@@ -1624,13 +1715,35 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           responseMs: gg.responseMs,
         });
         break;
+      case "agent_modules":
+        modules.push(...gg.modules);
+        break;
+      case "archive_state": {
+        // Latest snapshot wins: gg re-emits the whole archive after each archival.
+        archive = {
+          moduleId: gg.moduleId ?? "",
+          entries: gg.entries,
+          count: gg.count,
+          totalLen: gg.totalLen,
+        };
+        if (archive.moduleId) {
+          moduleSnapshots.set(archive.moduleId, { kind: "archive", archive });
+        }
+        break;
+      }
       case "skills_state":
         skills = gg.skills;
+        if (gg.moduleId) {
+          moduleSnapshots.set(gg.moduleId, {
+            kind: "skills",
+            skills: gg.skills,
+          });
+        }
         break;
-      case "memory_state":
+      case "memory_state": {
         // Latest snapshot wins: gg re-emits the whole set on each mutation. The
         // history is stitched on after the pass, from the revision stream.
-        memoryRef.latest = {
+        const snapshot: GgMemoryState = {
           strategy: gg.strategy,
           memories: gg.memories,
           count: gg.count,
@@ -1642,7 +1755,16 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           writable: gg.writable ?? true,
           history: [],
         };
+        memoryRef.latest = snapshot;
+        if (gg.moduleId) {
+          memoryModuleByAgent.set(gg.agentId ?? ROOT_ID, gg.moduleId);
+          moduleSnapshots.set(gg.moduleId, {
+            kind: "memories",
+            memory: snapshot,
+          });
+        }
         break;
+      }
       case "memory_revision": {
         // Append-only: one entry per slug, in first-written order, accumulating
         // every revision of it. A deletion clears `live` but keeps the memory (and
@@ -1673,15 +1795,55 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           entry.len = gg.len;
           entry.lines = gg.lines;
         }
+        // The same revision, filed against the STORE it landed in rather than against
+        // the agent that made it — so a notebook two agents curate together shows one
+        // history under the module rather than half of it under each holder. A
+        // revision carries no module id (it is a record of an act, not of a store), so
+        // it is attributed through the snapshot its author most recently reported.
+        const moduleId = memoryModuleByAgent.get(gg.agentId ?? ROOT_ID);
+        if (moduleId != null) {
+          let byName = moduleMemoryHistory.get(moduleId);
+          if (!byName) {
+            byName = new Map();
+            moduleMemoryHistory.set(moduleId, byName);
+          }
+          const existing = byName.get(gg.name);
+          byName.set(gg.name, {
+            ...(existing ?? {
+              name: gg.name,
+              revisions: [],
+              live: false,
+              description: "",
+              len: 0,
+              lines: 0,
+            }),
+            revisions: [
+              ...(existing?.revisions ?? []),
+              { ...entry.revisions[entry.revisions.length - 1]! },
+            ],
+            live: entry.live,
+            description: entry.live
+              ? gg.description
+              : (existing?.description ?? ""),
+            len: entry.live ? gg.len : (existing?.len ?? 0),
+            lines: entry.live ? gg.lines : (existing?.lines ?? 0),
+          });
+        }
         break;
       }
       case "tasks_state":
         tasks = gg.tasks;
+        if (gg.moduleId) {
+          moduleSnapshots.set(gg.moduleId, { kind: "tasks", tasks: gg.tasks });
+        }
         break;
       case "board_state":
         // Latest snapshot wins: gg re-emits the whole board on each mutation, so
         // the most recent `board_state` is the live board.
         board = { epics: gg.epics, issues: gg.issues };
+        if (gg.moduleId) {
+          moduleSnapshots.set(gg.moduleId, { kind: "board", board });
+        }
         break;
       case "issue_review": {
         // The reviewed issue rides on the event envelope's `issueId`, not the
@@ -1752,7 +1914,9 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   // fault that never happened. This mirrors gg's own `is_failure_status`, which draws the
   // line in exactly the same place and for exactly this reason.
   if (sessionEndStatus != null) {
-    const terminal: GgAgentStatus = FAILED_SESSION_STATUSES.has(sessionEndStatus)
+    const terminal: GgAgentStatus = FAILED_SESSION_STATUSES.has(
+      sessionEndStatus,
+    )
       ? "failed"
       : "done";
     // Read off the closure-assigned `let` once, so the loop below narrows cleanly.
@@ -1817,6 +1981,17 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     memory = { ...memory, history: [...memoryHistory.values()] };
   }
 
+  // The same stitch, per memory INSTANCE — so the module's own contents are as complete
+  // as any one holder's panel, deleted memories included.
+  for (const [moduleId, byName] of moduleMemoryHistory) {
+    const snapshot = moduleSnapshots.get(moduleId);
+    if (snapshot?.kind !== "memories") continue;
+    moduleSnapshots.set(moduleId, {
+      kind: "memories",
+      memory: { ...snapshot.memory, history: [...byName.values()] },
+    });
+  }
+
   return {
     feed,
     announcedCapabilitySet,
@@ -1846,6 +2021,9 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     memory,
     tasks,
     board,
+    archive,
+    modules,
+    moduleSnapshots,
     issueReviews,
     speculations,
   };

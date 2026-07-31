@@ -126,11 +126,7 @@ function AgentArrival({ arrival }: { arrival: AgentTransition }) {
       : arrival.kind === "fsm"
         ? "transitioned from"
         : "continued from";
-  const fate = moduleFate(
-    arrival.transferred,
-    arrival.dropped,
-    arrival.initialized,
-  );
+  const fate = moduleFate(arrival.modules);
   return (
     <p className={styles.agentArrival}>
       <span className={styles.agentFieldLabel}>{label}</span>
@@ -344,7 +340,14 @@ export function FsmPathStrip({
   // can say what arrived with it rather than leaving the reader to pair two streams.
   const carried = new Map<string, string[]>();
   for (const transition of transitions) {
-    carried.set(transition.toAgentId, transition.transferred);
+    // What ARRIVED live, which for a state chip is what the reader is after: a module
+    // the successor started fresh on is a module the state did not receive.
+    carried.set(
+      transition.toAgentId,
+      transition.modules
+        .filter((entry) => entry.disposition === "carried")
+        .map((entry) => entry.kind),
+    );
   }
   return (
     <section className={styles.agentSection}>

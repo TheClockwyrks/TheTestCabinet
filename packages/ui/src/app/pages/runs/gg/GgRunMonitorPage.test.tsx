@@ -5,8 +5,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   GgContextSource,
   GgContextSourceUsage,
+  GgModuleKind,
   GgTelemetryEvent,
   GgTelemetryKind,
+  GgTransitionModule,
 } from "@test-cabinet/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import {
@@ -52,6 +54,36 @@ function bySource(
     source,
     tokens: partial[source] ?? 0,
   }));
+}
+
+// One row of an `agent_transition`'s per-module list. A transition reports what
+// happened to each module AND which instance is on each side of the boundary, so the
+// four helpers below spell the four outcomes these fixtures need:
+//
+//   carried — the successor holds the very same store (one id, twice)
+//   copied  — the copy holds an independent copy (two ids)
+//   fresh   — the successor started an empty instance of its own
+//   gone    — the store did not travel and is gone with the predecessor
+function carried(kind: GgModuleKind, id: string): GgTransitionModule {
+  return {
+    kind,
+    disposition: "carried",
+    fromModuleId: id,
+    toModuleId: id,
+  };
+}
+function copied(
+  kind: GgModuleKind,
+  from: string,
+  to: string,
+): GgTransitionModule {
+  return { kind, disposition: "copied", fromModuleId: from, toModuleId: to };
+}
+function fresh(kind: GgModuleKind, to: string): GgTransitionModule {
+  return { kind, disposition: "initialized", toModuleId: to };
+}
+function gone(kind: GgModuleKind, from: string): GgTransitionModule {
+  return { kind, disposition: "dropped", fromModuleId: from };
 }
 
 const TS = "2026-07-23T00:00:00Z";
@@ -183,6 +215,7 @@ const EVENTS: HarnessEvent[] = [
   }),
   gg({
     type: "tasks_state",
+    moduleId: "tasks-0",
     tasks: [
       {
         id: "t1",
@@ -206,6 +239,7 @@ const EVENTS: HarnessEvent[] = [
   }),
   gg({
     type: "skills_state",
+    moduleId: "skills-0",
     skills: [
       { name: "gg-render", description: "How to draw.", read: true },
       { name: "gg-audio", description: "How to make sound.", read: false },
@@ -213,6 +247,7 @@ const EVENTS: HarnessEvent[] = [
   }),
   gg({
     type: "memory_state",
+    moduleId: "memories-0",
     strategy: "scratchpad",
     memories: [
       {
@@ -287,6 +322,7 @@ const EVENTS: HarnessEvent[] = [
   // plus an ungrouped issue (no epicId), so grouping and derived readiness show.
   gg({
     type: "board_state",
+    moduleId: "board-0",
     epics: [
       {
         id: "e1",
@@ -767,6 +803,7 @@ describe("GgRunMonitorPage", () => {
       }),
       ggFrom("agent-0", undefined, {
         type: "tasks_state",
+        moduleId: "tasks-0",
         tasks: [
           {
             id: "t1",
@@ -842,6 +879,7 @@ describe("GgRunMonitorPage", () => {
       ]),
       gg({
         type: "board_state",
+        moduleId: "board-0",
         epics: [],
         issues: [
           {
@@ -1404,6 +1442,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(),
       gg({
         type: "board_state",
+        moduleId: "board-0",
         epics: [],
         issues: [
           issue("i1", "Set up the canvas", "in_progress"),
@@ -1464,6 +1503,7 @@ describe("GgRunMonitorPage", () => {
       sessionStarted(),
       gg({
         type: "board_state",
+        moduleId: "board-0",
         epics: [],
         issues: [
           {
@@ -1593,9 +1633,12 @@ describe("GgRunMonitorPage", () => {
         toAgentId: "agent-1",
         agent: "Builder",
         state: "build",
-        transferred: ["history", "tasks"],
-        dropped: ["board"],
-        initialized: ["memories"],
+        modules: [
+          carried("history", "history-0"),
+          fresh("memories", "memories-1"),
+          carried("tasks", "tasks-0"),
+          gone("board", "board-0"),
+        ],
       }),
       ggFrom("agent-1", "root", {
         type: "agent_spawned",
@@ -1617,9 +1660,11 @@ describe("GgRunMonitorPage", () => {
         kind: "fork",
         toAgentId: "agent-2",
         agent: "Builder",
-        transferred: ["history", "tasks", "memories"],
-        dropped: [],
-        initialized: [],
+        modules: [
+          copied("history", "history-0", "history-1"),
+          copied("memories", "memories-1", "memories-2"),
+          copied("tasks", "tasks-0", "tasks-1"),
+        ],
       }),
       ggFrom("agent-2", "agent-1", {
         type: "agent_spawned",
@@ -1634,9 +1679,11 @@ describe("GgRunMonitorPage", () => {
         kind: "exec",
         toAgentId: "agent-3",
         agent: "Verifier",
-        transferred: ["history"],
-        dropped: ["memories"],
-        initialized: ["tasks"],
+        modules: [
+          carried("history", "history-1"),
+          gone("memories", "memories-2"),
+          fresh("tasks", "tasks-2"),
+        ],
       }),
       ggFrom("agent-3", "agent-2", {
         type: "agent_spawned",
@@ -1672,7 +1719,9 @@ describe("GgRunMonitorPage", () => {
     openFile("agent-1 overview");
     expect(screen.getByText("transitioned from")).toBeInTheDocument();
     expect(
-      screen.getByText("carried history, tasks · dropped board · fresh memories"),
+      screen.getByText(
+        "carried history, tasks · dropped board · fresh memories",
+      ),
     ).toBeInTheDocument();
 
     // The exec'd instance reads the same way, under the profile it became — and it
@@ -1690,7 +1739,9 @@ describe("GgRunMonitorPage", () => {
     expect(
       screen.getByText(/Transitioned to `build` \(Builder\)/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/Entered `explore`, running Explorer/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Entered `explore`, running Explorer/),
+    ).toBeInTheDocument();
   });
 
   it("shows empty states when no gg telemetry arrives", () => {

@@ -454,6 +454,45 @@ export const MODULE_KINDS: ReadonlyArray<{
   },
 ];
 
+// Which capability backs each module kind (`MODULE_CAPABILITIES` in
+// `crates/gg/src/modules.rs`). It is what a surface asks when it has to decide whether an
+// agent holds a module at all and the record predates module rosters — and, read the other
+// way, what lets a module's row link back to the capability an operator would tune.
+//
+// `history` is absent deliberately, and that absence is load-bearing: the window is not a
+// capability, it is the agent. Every agent has one, always.
+export const MODULE_CAPABILITY_IDS: ReadonlyMap<GgModuleKind, string> = new Map(
+  [
+    ["memories", "memories"],
+    ["tasks", "tasks"],
+    ["board", "project-management"],
+    ["skills", "skills"],
+    ["archive", "agent-managed-context"],
+  ],
+);
+
+// One capability param off one agent's profile, or null when the profile, the capability or
+// the key is absent.
+//
+// This is the DECLARED half of every module question — what the configuration asked for, as
+// against what `ggModules` observes it got. The two diverge in ordinary, legal ways (an
+// `inherited` agent with no spawner silently gets its own store), and saying so is the most
+// useful thing the module surfaces do; neither can be said without reading the params, which
+// nothing in the monitor did before.
+export function capabilityParam(
+  set: GgCapabilitySet | null,
+  agent: string | null | undefined,
+  capabilityId: string,
+  key: string,
+): unknown {
+  const capability = agentProfile(set, agent)?.capabilities.find(
+    (c) => c.id === capabilityId,
+  );
+  if (!capability) return null;
+  const params = capability.params as Record<string, unknown> | undefined;
+  return params?.[key] ?? null;
+}
+
 // The capability whose `states` param *is* a machine, and the param key it reads
 // (`CAPABILITY_FSM` / `FSM_PARAM_STATES` in `crates/core/src/gg.rs`). Named constants
 // because three modules — the catalog entry, the draft's state editor, and the

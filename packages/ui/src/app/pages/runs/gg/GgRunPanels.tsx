@@ -84,6 +84,10 @@ export type GgPanelState = Pick<
   | "perAgent"
   | "board"
   | "issueReviews"
+  // The latest contents of every module instance the run mentioned, keyed by module id.
+  // Cross-agent by construction — a store two agents share has one content — so it comes
+  // off the whole-run reduction rather than off any one agent's slice.
+  | "moduleSnapshots"
 >;
 
 interface GgRunPanelsProps {
