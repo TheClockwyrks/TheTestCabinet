@@ -465,7 +465,15 @@ export async function spawnControlled(api, type, opts = {}) {
  * ingredient
  * as a candidate (the first at the corridor anchor so the combo covers the route
  * entry-spawned units walk), set the explicit combine multiset, and commit. Returns the combo
- * tower's id (it lands at the anchor/initiator footprint) and the ingredient ids.
+ * tower's id (it lands at the anchor/initiator footprint) and the ingredients as
+ * `{ id, col, row }` — each one's FOOTPRINT as well as the id it was placed under.
+ *
+ * The footprints are what a caller checking the fold's aftermath wants. A consumed ingredient
+ * is gone as a piece: `specs/build.md` has its FOOTPRINT harden into an inert blocker, and
+ * whether the build hardens the piece in place under its old id or replaces it with a fresh
+ * blocker at the same tiles is its own affair — no spec pins a piece's id across a combine.
+ * So the anchor is the stable handle to what the fold left behind, and the id is only good
+ * for naming the pieces the fold was given.
  *
  * A fresh-consuming recipe is the level's harvest, so the fold launches Wave 1. `clear` (the
  * default) runs that wave out with `skipClearWave`, for the same reason `armTower` does: the
@@ -481,13 +489,14 @@ export async function assembleCombo(
   const recipe = RECIPES[comboId];
   await startBuild(api, { seed, difficulty });
   await api.call("setIntegrity", 999);
-  const ids = [];
+  const ingredients = [];
   for (let i = 0; i < recipe.length; i += 1) {
     const [type, tier] = recipe[i];
     const spot = SPOTS[i];
     const cand = await placeCandidate(api, type, tier, spot.col, spot.row);
-    ids.push(cand.id);
+    ingredients.push({ id: cand.id, col: spot.col, row: spot.row });
   }
+  const ids = ingredients.map((g) => g.id);
   await api.call("setCombineSet", ids);
   await api.call("combine", ids[0]);
   const s = await api.snapshot();
@@ -498,7 +507,7 @@ export async function assembleCombo(
   if (clear) await skipClearWave(api);
   // The clear pays the wave-clear bonus, so the Charge a caller asked for is set after it.
   await api.call("setCharge", charge);
-  return { comboId: combo ? combo.id : null, ingredientIds: ids };
+  return { comboId: combo ? combo.id : null, ingredients };
 }
 
 /**
