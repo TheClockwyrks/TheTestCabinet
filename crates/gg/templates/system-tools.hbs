@@ -19,20 +19,19 @@ A reply with no tool call is an error.
 
 {{#if memories.readOnly}}
 {{#if memories.scratchpad}}
-You have access to another agent's memories: durable notes it curates, every one
-of which is shown to you in full above. They are yours to read, not to change —
-you are offered no call that writes one.
+You have read-only access to another agent's memories, which are notes it
+created to record important details. These are shown in full.
 {{/if}}
 {{#if memories.markdown}}
-You have access to another agent's memories: a set of markdown files with a
-memory index. The index shows a brief description of each memory so you know
-which are relevant; read one with `read_memory`. They are yours to read, not to
-change — you are offered no call that writes one.
+You have read-only access to another agent's memories, which are notes it
+created to record important details. Refer to the memory index to determine
+relevant memories, then use `read_memory` to read the memory in full.
 {{/if}}
 {{#if memories.keywordSearch}}
-You have access to another agent's memories: durable notes with no index. Find
-the relevant ones with `search_memories`, then read them with `read_memory`.
-They are yours to read, not to change — you are offered no call that writes one.
+You have read-only access to another agent's memories, which are notes it
+created to record important details. Use `search_memories` to perform keyword
+search to locate relevant memories, then use `read_memory` to read a memory in
+full.
 {{/if}}
 {{else}}
 {{#if memories.scratchpad}}
@@ -62,13 +61,11 @@ previously recorded info.
 {{#if memories.linked}}
 These memories are `{{memories.scope}}`: other agents in this run hold the same
 set and curate it alongside you. When one of them adds, revises or removes a
-memory you will be told so in a short message naming what changed, so you can
-decide whether to read it; your own writes are never announced back to you. Such
-a message is this system reporting a fact, not another agent addressing you.
+memory, you will be given a system-generated notification naming what changed so
+you can decide whether to read it.
 {{/if}}
 {{#if memories.maxLenDescription}}
-A memory's description must be at most {{memories.maxLenDescription}}
-characters.
+A memory's description must be at most {{memories.maxLenDescription}} characters.
 {{/if}}
 {{/if}}
 
@@ -90,16 +87,6 @@ to update a task's data. Use `complete_task` to mark a task as completed or
 Tasks are required to form a directed acyclic graph. You may record task
 dependencies when adding a task or using `set_blocked_by`. Cycles will be
 automatically rejected.
-{{/if}}
-
-{{#if persistence}}
-## Persistence
-
-You are a persistent agent: only one instance of you runs at a time, and you
-keep the files you were working on between sessions. The `read_file` results
-already in your context are the file views you had open when you last finished —
-re-read just now, so they show the workspace as it stands today, not as you left
-it. Files you leave open when you finish will be waiting for you next time.
 {{/if}}
 
 {{#if subagents}}
