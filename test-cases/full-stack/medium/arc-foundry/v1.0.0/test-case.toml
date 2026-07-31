@@ -787,6 +787,11 @@ id = "panel-layout-stable"
 title = "The inspector's controls never move on their own"
 description = "Every action a selected structure can offer holds a fixed slot and is disabled rather than removed when it is momentarily unusable, so a change in game state the player did not trigger (a wave starting or ending, Charge accruing, a partner appearing) never adds, removes, or moves a control under the pointer."
 validation = { script = "validation/controls/panel-layout-stable.mjs", outputs = [{ id = "panel", name = "The inspector's fixed action slots", kind = "image" }] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation-frame loop drives the fixed 60 Hz tick from the wall clock, so a live wave progresses — simulation time accumulates and the Load walks its route — without anything stepping it from outside."
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "released", name = "The instant a unit is released", kind = "image" }, { id = "advanced", name = "One second later, on the build's own clock", kind = "image" }] }
 
 # --- Produced Art -------------------------------------------------------------
 # The produced sprites, animations, VFX, and audio are inherently visual/aural, so they
