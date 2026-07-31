@@ -1,121 +1,118 @@
 # 🤖 Band of Bots
 
 That is your theme. Build one complete game around it. Its setting, look, and feel are
-yours to invent, with no specification and no reference design to match — but this
-theme fixes a **shape of game** and a set of hard problems to solve, and your game
-must deliver on all of them.
+yours to invent, with no specification and no reference design to match. This theme
+fixes a **shape of game** and a set of hard problems to solve, and your game must
+deliver on all of them.
 
-The name is a play on "Band of Brothers": this is a **battle royale** fought not with
-a band of brothers but a **band of bots** — a squad of AI teammates at the player's
-side, in a match otherwise full of AI combatants. It is built to test three things at
-once, and your game must be built genuinely around all three:
+The name is a play on "Band of Brothers": this is a battle royale fought not with a
+band of brothers but a band of bots, a squad of AI teammates at the player's side, in
+a match otherwise full of AI combatants. It is built to test three things at once, and
+your game must be built genuinely around all three:
 
-- **A battle royale at scale — single-player.** A large field of combatants begins in
-  a large, contested arena that shrinks over time, and the match runs until a winner
-  is left standing. The player is the only human in it; every other combatant is
-  driven by AI. Making that field genuinely large — many individual actors all acting
-  at once, and driving them *efficiently* enough that the game stays smooth — is part
-  of the challenge, not something to trim away.
+- **A single-player battle royale at scale.** A large field of combatants begins in a
+  large, contested arena that shrinks over time, and the match runs until a winner is
+  left standing. The player is the only human in it; every other combatant is driven
+  by AI. Making that field genuinely large, with many individual actors all acting at
+  once and driven *efficiently* enough that the game stays smooth, is part of the
+  challenge rather than something to trim away.
 - **A squad of AI teammates.** The player does not fight alone: a squad of AI allies
   fights at their side, and directing that squad is part of playing the game. The
-  allies must read as real teammates — competent, useful, worth having — rather than
-  liabilities the player has to babysit.
+  allies must read as real teammates, competent and useful and worth having, rather
+  than liabilities the player has to babysit.
 - **Coordination that feels natural.** Commanding and coordinating the squad has to be
   a slick, low-friction flow: fast to express what you want and see it happen, never a
   menu you wrestle or a chore that feels like pulling teeth. This is the heart of the
-  jam — the interface between a human and their AI squad is the thing most worth
+  jam. The interface between a human and their AI squad is the thing most worth
   getting right, so give it real design attention.
 
-Everything about *how* the battle royale plays — what the player and the combatants
-can do, what fills the arena, and how a match unfolds moment to moment — is entirely
-yours to invent. There is no prescribed way it must work. Design the game you find
-most fun, and make that large space genuinely enjoyable to move through and fight in.
+Everything about *how* the battle royale plays is entirely yours to invent: what the
+player and the combatants can do, what fills the arena, and how a match unfolds moment
+to moment. There is no prescribed way it must work. Design the game you find most fun,
+and make that large space genuinely enjoyable to move through and fight in.
+
+"Band of Bots" is the name of the jam, **not** the name of your game. Title the game
+yourself, to fit the game you build.
 
 Your project root is `{{workspace}}`. Build the game there.
 
 ## Your time budget
 
-You have **about {{time_limit_hours}} hours** of wall-clock time for this run, after
-which the session is stopped — whatever is committed at that point is what gets
-published. Budget it: leave yourself room to build the assets, verify the game, and
-commit before the clock runs out. You can check the current time at any point by
-running `date` in the container, so you can see how much of the budget remains and
-pace the work accordingly. Scope to finish comfortably rather than racing the
-deadline.
+You have **about {{time_limit_hours}} hours** of wall-clock time for this run. The
+session is stopped at that point, and whatever is committed by then is what gets
+published. Budget the time so you can build the assets, verify the game, and commit
+before the clock runs out. Running `date` in the container reports the current time,
+so you can see how much of the budget remains. Scope to finish comfortably rather
+than racing the deadline.
 
 ## Your starting point
 
-A starter project is already in place at `{{workspace}}`: a `package.json` that
-pins **Playwright** as a dev dependency, with its dependencies already installed
-(`node_modules/` is populated and headless **Chromium** is downloaded), so you can
-build and verify right away. Build on this project — keep the `package.json`, add
-your framework, bundler, and a `build` script on top of it, and keep the lockfile
-in sync.
+A starter project is already in place at `{{workspace}}`: a `package.json` that pins
+Playwright as a dev dependency, with its dependencies already installed.
+`node_modules/` is populated and headless Chromium is downloaded, so you can build
+and verify right away. Build on this project: keep the `package.json`, add your
+framework, bundler, and a `build` script on top of it, and keep the lockfile in sync.
 
 ## Producing the game's assets
 
 The game ships its own art, animation, effects, and sound, and you must produce them
 for real. Placeholder rectangles, stand-ins drawn at runtime, or silence count as
-unfinished work. Six asset-generation binaries are on your `PATH` to help (run each
-with `--help` to learn its operations):
+unfinished work. Six asset-generation binaries are on your `PATH` to help. Run each
+with `--help` to learn its operations:
 
 - `draw`, `draw-sheet`: 2D sprites and animated sprite sheets.
 - `particle-2d`: 2D particle effects.
 - `sfx-synth`, `sfx-sample`: sound effects, synthesized or sample-based.
 - `music`: music tracks.
 
-Use them, or produce assets any other way you prefer. Treat asset generation as a
-one-time step: these binaries are on your `PATH` only while this run is live, not
-when your build is re-run to validate it. So generate the assets once into committed
-files and have `npm run build` simply bundle them; `npm run build` must **not**
-invoke `draw` or any other generation binary.
+Use them, or produce assets any other way you prefer. These binaries are on your
+`PATH` only while this run is live, not when your build is re-run to validate it, so
+asset generation is a one-time step. Generate the assets once into committed files
+and have `npm run build` bundle them; it must not invoke `draw` or any other
+generation binary.
 
 ## The fixed build/serve interface
 
-The project stays a **Node project** built with only Node.js and npm-installed
-dependencies. Extend the provided `package.json` and **commit a
-`package-lock.json`** (run `npm install` after changing dependencies so the
-lockfile matches). `npm ci` then `npm run build` must produce the static site —
-with no other manual step — into one of `dist/`, `build/`, or `out/` at the project
-root, with an `index.html` at the root of that directory. Serving that directory
-as-is must run the game, and it must work **at any base path** (it is played back
-from a per-run sub-path, so every URL the build constructs at runtime — including
-every produced asset — must be page-relative, never a leading `/`; for a bundler,
-set a relative base such as `base: './'`).
+The project stays a Node project built with only Node.js and npm-installed
+dependencies. Extend the provided `package.json` and commit a `package-lock.json`,
+running `npm install` after changing dependencies so the lockfile matches. `npm ci`
+followed by `npm run build`, with no other manual step, must produce the static site
+into one of `dist/`, `build/`, or `out/` at the project root, with an `index.html` at
+the root of that directory. Serving that directory as-is must run the game.
 
-If you would rather write your game's core logic (a physics/simulation loop, pathing,
-anything performance-sensitive) in **Rust and compile it to WebAssembly**, you can:
-this container has the Rust toolchain, the `wasm32-unknown-unknown` target, and
-`wasm-bindgen`/`wasm-pack` on `PATH`. But treat the compiled wasm as a **build
-input**, not a build step — those tools are on `PATH` only while this run is live,
-not when your build is re-run to validate it. So compile the wasm once during the
-run and **commit** the resulting `.wasm` (and any generated JS glue), then have
-`npm run build` simply bundle the committed output; it must **not** invoke
-`cargo`/`wasm-pack`. Plain JavaScript/TypeScript is perfectly fine too — reach for
-wasm only if it genuinely helps your game.
+The build must also work at **any base path**. It is played back from a per-run
+sub-path, so every URL it constructs at runtime, including every produced asset, must
+be page-relative and never start with `/`. For a bundler, set a relative base such as
+`base: './'`.
 
-## Verify before you finish
+You can write your game's core logic in Rust and compile it to WebAssembly if you
+prefer: this container has the Rust toolchain, the `wasm32-unknown-unknown` target,
+and `wasm-bindgen`/`wasm-pack` on `PATH`. Those tools are on `PATH` only while this
+run is live, so the compiled wasm is a build input rather than a build step. Compile
+it once during the run, commit the resulting `.wasm` and any generated JS glue, and
+have `npm run build` bundle the committed output without invoking `cargo` or
+`wasm-pack`. Plain JavaScript or TypeScript is fine too; reach for wasm only if it
+genuinely helps your game.
 
-Your project has **Playwright** and a headless **Chromium** installed as project
-dependencies, plus network access — use them to verify your build, do not just
-assume it works. Before you consider the task complete, produce the **static
-production build**, serve it locally, open it in Chromium with Playwright, and
-confirm it **loads with no console errors**. Then **actually play it** — start a
-round, exercise the core loop, and play it through to a natural end (a win, a loss,
-a cleared goal, or a satisfying session) — and fix anything that is broken, unclear,
-or unfun before finishing. Launch Chromium with the
-`--no-sandbox` argument (this container has no Chromium sandbox).
+## Verifying your work
 
-Use the project's own Playwright (import it from your project, e.g.
-`import { chromium } from "playwright"`, or run `npx playwright`); there is no
-global Playwright on `PATH`.
+Playwright and a headless Chromium are installed in the project as dependencies, and
+the container has network access, so you can build the game, serve it, open it in a
+browser, and play it. There is no global Playwright on `PATH`; the project's own is
+reached by importing it (`import { chromium } from "playwright"`) or by running
+`npx playwright`. This container has no Chromium sandbox, so Chromium has to be
+launched with the `--no-sandbox` argument.
+
+What is judged is the static production build produced from your committed source,
+served as-is. Nothing is rebuilt, repaired, or played by anyone else between the end
+of this run and that judgement.
 
 ## Commit your work
 
-Your project root is a **git repository**, initialized before you started. Your
-finished implementation is published directly from this repository's commits, so
-uncommitted work is **not** published. When the game is complete and verified, run
-`git add -A` then `git commit`, and confirm `git status` reports a clean working
-tree. A `.gitignore` already excludes `node_modules/` and the build output — a
-clean tree means committing your source, your `package-lock.json`, a short
-`README.md`, and the **produced assets** the game ships.
+Your project root is a git repository, initialized before you started. Your finished
+implementation is published directly from this repository's commits, so uncommitted
+work is **not** published. When the game is complete and verified, run `git add -A`
+then `git commit`, and confirm `git status` reports a clean working tree. A
+`.gitignore` already excludes `node_modules/` and the build output, so a clean tree
+means you have committed your source, your `package-lock.json`, a short `README.md`,
+and the produced assets the game ships.
