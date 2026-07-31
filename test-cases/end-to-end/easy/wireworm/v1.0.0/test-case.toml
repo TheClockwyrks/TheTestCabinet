@@ -722,7 +722,7 @@ proof = "gameplay"
 [[review.categories.items]]
 id = "window-fit"
 title = "Window fit"
-description = "The entire 1280x720 stage — the full HUD bar, the whole board, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input."
+description = "The entire 1280x720 stage — the full HUD bar, the whole board, and all four edges — stays visible, fitted, and centered at any window size and pixel density, including on load before any input. (Diagnostic note, not part of this item: if the build draws correctly but never MOVES — a run that sits on its LEVEL 1 banner forever, or plays in slow motion — suspect frame pacing rather than the game logic, and record your display's refresh rate in the writeup. A loop that rebuilds its fixed-timestep accumulator each frame instead of carrying the remainder stalls outright above 120 Hz and loses time at most rates, while running perfectly at exactly 60 Hz — which is also the rate the automated validation runs at, so it can pass every scripted check and still be unplayable on your machine.)"
 reference = "title"
 proof = "title"
 [[review.categories.items]]

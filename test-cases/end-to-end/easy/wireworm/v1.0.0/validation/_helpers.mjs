@@ -115,6 +115,12 @@ export function segmentAt(snap, c, r) {
  * run, which the spec never promised, and every check that did not happen to call
  * `setWorm` silently measured a frozen title screen.)
  *
+ * It then poses a BYSTANDER worm, because `enterPlay` alone does not leave a state
+ * a level can be played from — see `poseBystander` for why an empty board is a
+ * cleared level and what that does to a scenario. A check that poses its own worm
+ * needs no further thought: `setWorm` REPLACES the worms on the board, so the
+ * bystander is gone the moment the scenario's own worm is laid.
+ *
  * ARRANGE ONLY. This calls `api.reset`, which the runtime rejects inside `act`
  * (reset hands the build back to its manual clock, which would silently freeze the
  * recording). To pose a second scenario mid-`act`, use control ops instead.
@@ -123,6 +129,66 @@ export async function freshBoard(api, seed = 1) {
   await api.reset({ seed });
   await api.call("enterPlay");
   await api.call("clearField");
+  await poseBystander(api);
+}
+
+// The bystander's parking spot: the top row, at the right edge, heading INTO that
+// edge. See `poseBystander` for why each of those three facts matters.
+export const BYSTANDER_C = COLS - 1; // 39
+export const BYSTANDER_R = 0;
+
+/**
+ * Pose a bystander worm — a worm no assertion ever reads — purely so the board is
+ * not empty of worm segments while a scenario runs.
+ *
+ * A board with no worm segments on it is a CLEARED LEVEL. specs/worm.md fixes the
+ * condition as "a level is cleared when every worm segment on the board is gone",
+ * and the build is entitled to evaluate that the moment it sees it — nothing in the
+ * specs says the level must first have HAD a worm. So the worm-less board
+ * `enterPlay` is specified to produce (specs/instrumentation.md: it "leaves the
+ * board clear of worms and foes") reads exactly like the player having shot the
+ * last segment, and the level clears on the very first tick that runs. Three things
+ * follow from that one tick, and all of them bite:
+ *
+ *   * The clock. Clearing advances the level, and a level opens on its banner
+ *     (specs/ui.md). A banner is not live play, so `step` does not advance the
+ *     simulation through it — the scenario is frozen for the whole banner, which is
+ *     most or all of the tick budget an item's `until` sweep is allowed. The item
+ *     then times out having never run the mechanic it poses.
+ *   * The board. Advancing rebuilds the level: the posed foes and bolts are cleared
+ *     and the cursor is re-centred, so a foe an item spawned and then read back is
+ *     simply gone, and a scenario posed around a cursor position is measuring some
+ *     other cursor.
+ *   * The score and level. Clearing banks `100 * level` (specs/progression.md), so
+ *     an item comparing a score delta against a bounty or a node's `+1` reads the
+ *     clear bonus instead, and an item that pins its level reads the next one.
+ *
+ * So a bystander is not only for scenarios that destroy a worm: ANY item that
+ * `freshBoard`s and then spends time without posing a worm of its own needs one, or
+ * the level ends underneath it before its first tile step.
+ *
+ * Parking. The worm is put in the TOP ROW at the RIGHT EDGE, heading into that
+ * edge, and every one of those is load-bearing:
+ *
+ *   * Top row, because a worm only descends when something turns it
+ *     (specs/worm.md) — on an empty board that is the side edge, so it crosses all
+ *     40 columns before dropping a single row. At level 1 (0.14 s per tile step,
+ *     the slowest the game ever runs) that is ~5.6 s per row, so it is still in the
+ *     top rows long after the longest item here has finished, and it can neither
+ *     reach the player band nor disturb a scenario posed on rows 3..19.
+ *   * Right edge, because the scenarios here are posed on columns 5..20 and the
+ *     worm walks AWAY from them: it turns on the edge immediately and winds left,
+ *     so it is ~39 tile steps from column 0 and never near a fired column early on,
+ *     when the bolt checks resolve.
+ *   * One segment, so it is the smallest thing that satisfies "a worm segment on
+ *     the board" and blocks as little of it as possible.
+ *
+ * It is never read by an assertion and never fired at. Note `clearField` does NOT
+ * remove it (that op clears nodes, not worms), but `setWorm` does — an item that
+ * poses its own worm replaces the bystander, which is exactly what it wants.
+ */
+export async function poseBystander(api) {
+  await setWorm(api, [{ c: BYSTANDER_C, r: BYSTANDER_R }], 1, 1);
 }
 
 /** Replace the worms with a single worm laid out by `spec` (segments[0] = head). */
