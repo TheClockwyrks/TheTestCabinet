@@ -5,6 +5,7 @@
 
 import {
   startClean,
+  spawnBystander,
   armAudio,
   actAudioCount,
   LEAD_IN_TICKS,
@@ -18,8 +19,15 @@ export default function item() {
   return {
     id: "audio.flip",
 
+    // The flip is a keyboard action of the LIVE WAVE, so the wave has to still be
+    // running when the key is pressed. A cleared field is a cleared wave (see
+    // `spawnBystander`), so an empty one ends the wave on the first tick of the
+    // lead-in and the press then lands on the stage-cleared screen, where the flip
+    // key does nothing — no band change, no cue, and a stage-clear cue of its own in
+    // the audio log to confuse the count. One bystander keeps the wave live.
     async arrange(api) {
       await startClean(api);
+      await spawnBystander(api);
       await api.call("setShipBand", "cyan");
       await armAudio(api);
     },

@@ -5,7 +5,12 @@
 // the fire key is held while the real simulation steps — no bullet appears while
 // the lockout stands, and one appears once it clears.
 
-import { startClean, friendlyBullets, FLIP_LOCKOUT } from "../_helpers.mjs";
+import {
+  startClean,
+  spawnBystander,
+  friendlyBullets,
+  FLIP_LOCKOUT,
+} from "../_helpers.mjs";
 
 // Halfway through the 0.30 s lockout: late enough that a build with no lockout would
 // certainly have fired by now, early enough that a correct build certainly has not.
@@ -34,10 +39,20 @@ export default function item() {
   return {
     id: "polarity.flip-lockout",
 
-    // A clean wave with the ship on a known band. The field is empty so nothing can
-    // consume a bullet and make "no bullet fired" true for the wrong reason.
+    // A clean wave with the ship on a known band. The ship's column is empty so
+    // nothing can consume a bullet and make "no bullet fired" true for the wrong
+    // reason — the one drone on the field is a bystander parked well off to the
+    // side.
+    //
+    // It is there because this item waits for the field to CLEAR between the lead-in
+    // shots and the flip, and a field with nothing left on it is a wave the game may
+    // call cleared (see `spawnBystander`). Without it the wave ends exactly at that
+    // wait, the game leaves `inWave`, and every shot after the flip is swallowed by
+    // the stage-cleared screen — which reads as the lockout never lifting.
     async arrange(api) {
       await startClean(api);
+      await spawnBystander(api);
+      await api.call("setShipX", 640); // the bystander sits off this column
       await api.call("setShipBand", "cyan");
     },
 
