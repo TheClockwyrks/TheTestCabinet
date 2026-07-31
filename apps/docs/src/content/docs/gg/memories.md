@@ -163,6 +163,37 @@ records who may write it. So a `read-only` agent's own `inherited` subagent gets
 **read/write** handle onto the very same store, and inheritance chains: a subagent
 of a subagent holds the instance the top of the chain created, however deep.
 
+### Which instance each kind of agent binds
+
+`inherited` and `read-only` are defined against *how the agent was started*, so the four
+scopes read differently at each of the places gg starts one. This is the whole table:
+
+| Started as | `isolated` | `shared` | `inherited` | `read-only` |
+| --- | --- | --- | --- | --- |
+| **The run's root** | its own | the profile's instance | its own (nothing spawned it) | its own, and **writable** |
+| **An issue's implementer** ([auto-dispatched](/gg/project-management/#auto-dispatch)) | its own | the profile's instance | its own (it is top-level, not a subagent) | its own, and **writable** |
+| **A [subagent](/gg/subagents/)** — an ad-hoc spawn, a [workflow](/gg/workflows/) stage, a [speculation](/gg/speculative-execution/) attempt | its own | the profile's instance | its **spawner's**, read/write — or its own, if the spawner keeps no memories | its spawner's, **read-only** |
+| **A reviewer, judge or merge agent** | its own | the profile's instance | its own — gg dispatches these directly, not through a spawner | its own, and **writable** |
+| **A [`fork`](/gg/fork-and-exec/)** | an independent copy | the same instance (already one) | its forker's, read/write | its forker's, read-only |
+| **A successor** ([`exec`](/gg/fork-and-exec/) or an [FSM transition](/gg/fsms/)) | the predecessor's instance, transferred | the predecessor's instance, transferred | the predecessor's instance, transferred | transferred, with access from the **successor's** own scope |
+
+The last row is a [transfer](/gg/modules/#transfer) rather than a binding, so it obeys the
+transfer rules first: a successor whose profile turns memories off gets none, and one that
+organizes them under a different [strategy](#the-three-strategies) gets a fresh instance and
+is told why. One consequence is worth stating outright, because it is the one place the
+matrix does not do what the scope alone suggests: a successor scoped `shared` inherits the
+store it was handed, and does **not** rebind to the instance its own profile keeps.
+
+Two more things fall out of the table that are easy to miss:
+
+- **A second instance of a `shared` profile is the linked case.** Two implementers of the
+  same profile running in parallel curate one store, and each is told what the other wrote.
+  That is the difference between `shared` and `isolated`: not what an instance *may* do,
+  but how many instances there are.
+- **`inherited` chains.** A subagent of a subagent binds whatever the top of the chain
+  created, however deep — each link passes on the handle it holds rather than the one it
+  created.
+
 ### What a read-only holder is offered
 
 Exactly the read calls, and nothing else — `read_memory` under the two file-shaped
@@ -238,7 +269,10 @@ around:
   already have read.
 
 A run in which nothing is linked never produces a notice at all, and pays nothing
-for the machinery.
+for the machinery. Neither does an **[unowned](/gg/modules/#ownership)** holder: it has no
+pinned index and gets no notices, because both are the module putting itself in the window,
+and it was configured not to. Its watermark advances all the same, so no backlog builds up
+behind it — news it was never going to be told is not news held back for later.
 
 ## Compaction
 

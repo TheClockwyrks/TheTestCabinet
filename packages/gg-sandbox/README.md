@@ -24,7 +24,7 @@ binary/generated artifacts** in the Rust crate:
 | `src/types.ts` | The **model-facing** record and enum types — gg's vocabulary, not the WIT's. |
 | `src/errors.ts` | `ToolError`, and the argument validators every wrapper runs first. |
 | `src/catalogue.ts` | Pure data: gg tool name ↔ SDK function ↔ module, plus `SESSION_ENTRY`. |
-| `src/tools/*.ts` | The 29 typed wrappers, one module per capability family. |
+| `src/tools/*.ts` | The 37 typed wrappers — one per gg tool, grouped one module per capability family — plus the two on-demand documentation functions (`listFunctions`, `readDoc`). |
 | `src/helpers.ts` | The one helper, `readTextFile`. |
 | `src/session.ts` | `finish(summary)` — the one model-facing function that is not a gg tool. |
 | `src/shim.ts` | The component's entry point: `run(program, tools)` and `boundTools()`. |

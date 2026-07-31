@@ -27,22 +27,41 @@ Every module-backed capability reads an **`ownership`** param:
 { "id": "tasks", "enabled": true, "params": { "ownership": "unowned" } }
 ```
 
-- **`owned`** (the default) — the holder's prompt carries the module. Its system-prompt
-  section is rendered, and the pinned block it keeps (the memory index, the task list, the
-  board) is refreshed into the window on that module's own schedule. This is how every
-  capability behaved before ownership was configurable, so a configuration that says
-  nothing keeps behaving exactly as it did.
-- **`unowned`** — the module is reachable through the holder's **tools and nothing else**.
-  No system-prompt section, no pinned block. Its state is still completely live: the tools
-  read and write it, its telemetry still reaches the console, and it is still copied and
-  transferred like any other module. It simply costs the holder no context until it asks.
+Five capabilities carry it, one per module a configuration can turn on:
+[`memories`](/gg/memories/), [`tasks`](/gg/tasks/),
+[`project-management`](/gg/project-management/) (the board), [`skills`](/gg/skills/), and
+[`agent-managed-context`](/gg/agent-managed-context/) (the thread archive). The sixth
+module, `history`, has no capability behind it and no ownership to configure: an agent's
+window *is* its prompt.
+
+- **`owned`** (the default) — the holder's prompt carries the module's **state**: the
+  pinned block it keeps — the memory index, the task list, the board — is refreshed into
+  the window on that module's own schedule, and skills contribute their up-front catalog
+  listing. This is how every capability behaved before ownership was configurable, so a
+  configuration that says nothing keeps behaving exactly as it did.
+- **`unowned`** — none of that reaches the window. No pinned block, no catalog listing, no
+  [linked-memory notice](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote).
+  Everything else is untouched: the tools are still offered, the store is still read and
+  written through them, the telemetry still reaches the console, and the module is still
+  copied and transferred like any other. It simply costs the holder no context until it
+  asks.
+
+What ownership does **not** change is the system prompt's instructions for the capability.
+An unowned module still has its tools, and a model handed `add_task` with nothing telling
+it what a task list is for would use it worse than one told nothing at all. So the prompt
+still explains the capability; what it stops doing is handing over the contents every turn.
+[Skills](/gg/skills/) are the one place the two are the same thing — the catalog *is* the
+state — so an unowned skills module has no menu in the prompt, and `read_skill` reads a
+skill by name for an agent that was never shown the list.
 
 An unrecognized value falls back to `owned` and is reported as a launch **warning**, never
 a launch failure — the same way every other unrecognized capability *value* is treated.
 
 Unowned is worth reaching for when a module is not really *about* the agent holding it: an
 agent given a working store it should be able to act on, but that it should not be paying
-for in every request it makes.
+for in every request it makes. The extreme case is a module that pins nothing in the first
+place — the thread [archive](/gg/agent-managed-context/) — where ownership is recorded and
+carried but there is nothing in the window for it to withhold.
 
 One case applies it for you: an agent whose profile has **no project-management
 capability** holds the run's board unowned. It is still on the same queue — an issue it was
@@ -127,3 +146,25 @@ A **fork** is the other half: [`fork`](/gg/fork-and-exec/) clones a whole set fo
 the agent that made it, using the fork/share rules above per kind — an independent window and
 task list, a shared board, and memories that follow the forker's
 [scope](/gg/memories/#scoping-whose-memories-are-these).
+
+Only an FSM transition names modules explicitly, and the six kinds above are exactly the
+vocabulary its `transfer` list is written in — `history`, `memories`, `tasks`, `board`,
+`skills`, `archive`. The console's [state editor](/gg/fsms/#authoring-one-in-the-console)
+renders them as a checkbox each. A name that is not one of the six is dropped with a launch
+warning rather than failing the machine: one mistyped word should not stop a run whose other
+nine edges are fine.
+
+## What a module reports
+
+A module's telemetry is attributed to **its holder**, which is what keeps the console's
+per-agent panels honest when a store has more than one. A write is reported once, on the
+stream of the agent that made it; every other holder re-emits its own state snapshot
+instead, because its panel changed but the work was not its own. An **unowned** module
+still reports everything — ownership decides what reaches the *model*, never what reaches
+the record.
+
+The other half of that rule is what happens on a handoff: a module that is dropped is
+drained onto the outgoing agent's stream before it goes, and every module the successor
+ends up with — carried or fresh — re-states itself on the successor's stream as soon as it
+arrives. The console reduces per agent, so a module that arrived silently would leave the
+successor's panel empty for the rest of the run.

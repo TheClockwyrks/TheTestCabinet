@@ -133,6 +133,33 @@ about the mismatch. If two states' windows differ greatly, configure a
 [compaction](/gg/compaction/) strategy whose summarizer runs on a separate model. That
 is a configuration decision, not something the harness should be guessing at.
 
+## Authoring one in the console
+
+A machine is written in the [configuration editor](/gg/configurations/), not by hand. Turn
+the `fsm` capability on for a profile and it stops being an agent form and becomes a
+**process editor**: one card per state, in order, with the first one badged **entry** and a
+state with no outgoing edges badged **terminal**.
+
+Per state: a **name**, the **agent** it runs — a select over the configuration's other
+profiles, so a state can only ever name something that exists — and its outgoing edges.
+Per edge: the **target**, a select over the sibling state names; **when to take this**, the
+free-text `description` the model is shown beside the target; and **what transfers**, a
+checkbox per [module kind](/gg/modules/). A new edge arrives with **History** ticked,
+which is the common case, and an edge carrying nothing says so on its face rather than
+looking like an edge somebody forgot to finish.
+
+Two editing affordances exist because the two mistakes they prevent are silent ones.
+**Make entry** moves a state to the front rather than asking anyone to reorder rows to
+change which one starts. And **renaming a state carries its inbound edges** — every
+transition pointing at the old name follows it — because a rename that left them behind
+would produce exactly the "a transition names a state that does not exist" failure below,
+one field away from where it was caused.
+
+The editor refuses to save a machine gg would refuse to launch, in the same words and
+beside the row that has to change, and shows the non-blocking cases as warnings rather
+than blocking on them. That is the whole point of authoring it here: a machine that fails
+at launch fails after the run container is up and the model is bound.
+
 ## What is refused at launch
 
 These are **launch failures**, in the same class as a roster reference naming an

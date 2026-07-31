@@ -54,6 +54,19 @@ whole decomposition into its window would spend its context every turn on a docu
 can only be distracted by — and would invite a dispatched implementer to go looking for
 work other than the issue it was given.
 
+Mechanically that is [module ownership](/gg/modules/#ownership) doing the work: every agent
+in the run holds the one board, and an agent with no project-management capability holds it
+**unowned** — live enough to be dispatched an issue from, invisible in its prompt. An agent
+that *has* the capability can be put in the same position deliberately, by setting
+`"ownership": "unowned"` on it: it keeps every board tool and its prompt section, and loses
+the per-turn cost of carrying the whole decomposition — worth having on a board large enough
+that the block is the biggest thing in the window.
+
+Forking or transferring the board never copies it. Two boards would each keep their own
+per-prefix issue counter and would both hand out `AUTH-4`, for two different pieces of
+work, in a run whose logs, briefs and agent names all quote that id — so a request to copy
+the board gives a second handle on the same one.
+
 ## Auto-dispatch
 
 The board **runs itself**. Submitting an issue **enqueues** it. Once every issue it

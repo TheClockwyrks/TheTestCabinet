@@ -34,8 +34,8 @@ interface types {
         /// Well-formed, but in conflict with the current state: an ambiguous edit, a dependency
         /// cycle, a duplicate id, a subagent that already returned.
         conflict,
-        /// gg refused the call: plan mode, the run's FSM state, the delegation depth cap, or a
-        /// turn-level transition attempted from inside a program.
+        /// gg refused the call: the delegation depth cap, a memory instance this agent holds
+        /// read-only, or a second succession in a turn that already declared one.
         refused,
         /// The tool exists but this run's capability set does not offer it. A program cannot
         /// normally reach this — a withheld tool is not bound into its scope at all — so it is the

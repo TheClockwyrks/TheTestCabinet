@@ -204,6 +204,32 @@ subagent ends **itself**, its parent is told through the ordinary agent-return c
 and the run carries on. When the breaching agent is the root, the run ends — the root
 ending has always ended the session.
 
+### "Per agent" counts a lineage, not an incarnation
+
+An agent that [becomes another agent](/gg/fork-and-exec/) — an `exec`, or an
+[FSM transition](/gg/fsms/) — is still **one** agent to every ceiling on this page. The
+turn ceiling is the one that has to be said out loud: a succession's incarnations spend
+**one** allowance between them, so a three-state machine under `maxTurns: 60` gets sixty
+turns for the whole process rather than sixty each. Anything else would make the ceiling a
+function of how many states somebody wrote down, and a configuration could buy itself more
+turns by splitting a state in two.
+
+The same figure numbers the window's turns continuously across the handoff, which is what
+keeps a transferred `Turn #37` meaning turn 37 — and an `archive_thread` reference to it
+still resolving — after the agent that took that turn is gone.
+
+The **error** ceilings are the deliberate exception: each incarnation starts its
+consecutive-error count and its error-rate window fresh. They measure whether *this* agent,
+with *this* toolset on *this* model, is thrashing, and a new profile's first turns are not
+evidence about its predecessor's.
+
+A [`fork`](/gg/fork-and-exec/) is not a succession but a child, so it gets its own error
+ceilings like any subagent. Its **turns**, though, are numbered from the count its forker
+had already spent — a copy that restarted at zero would collide with turns already in the
+window it inherited, silently repointing any later `archive_thread` — so a copy has the
+remainder of the ceiling rather than a fresh one. Forking at turn 55 of a 60-turn ceiling
+buys five turns, not sixty.
+
 **Cost is run-wide**, because every agent bills the same run and a per-agent cost ceiling
 would be trivially defeated by delegating. One shared total is fed by every agent at its
 model-response site and read by every agent at its own turn boundary, so the figure is

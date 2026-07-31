@@ -12,8 +12,9 @@ capability's **`judgeAgent`** profile (defaulting to the
 [root agent](/gg/configurations/#agents)) — selects the winning attempt to merge and
 discards the rest.
 
-Every primitive it needs already exists, so it is largely an [FSM](/gg/fsms/)
-(`fan-out → judge → merge/discard`) plus a merge step:
+Every primitive it needs already exists, so it is largely a fixed sequence —
+`fan-out → judge → merge/discard` — over machinery the other delegation capabilities
+already provide:
 
 - **Fan-out** over K attempts via the subagent scheduler.
 - **Isolation** so attempts do not collide — each runs in its own worktree.

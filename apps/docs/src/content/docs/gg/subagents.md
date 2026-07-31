@@ -25,6 +25,11 @@ agent is told *when* to reach for each target it is allowed. A profile may list
 when the capability is on. The spawned child runs under the named profile — its own
 capabilities, model, and [execution mode](/gg/responses-as-code/).
 
+The roster's `subagent` scope is also what [`exec`](/gg/fork-and-exec/) is checked
+against: putting a profile to work is putting a profile to work, whether by handing it a
+brief or by *becoming* it, and a fourth scope for the second case would be contract
+surface earning nothing.
+
 Requirements:
 
 - **Recursion.** An agent that lists itself can spawn copies of its own profile, up
@@ -73,3 +78,21 @@ bounds the run's concurrency as a whole — including the top-level agents a
 [board](/gg/project-management/) dispatches, in a run where nothing has the subagents
 capability at all. A `maxParallel` left on this capability by an older configuration is
 still honored, but the run-level value wins when both are set.
+
+## A fork is a subagent
+
+[`fork`](/gg/fork-and-exec/) — run a copy of yourself — produces an ordinary child of this
+machinery, and that is deliberate rather than incidental. A copy takes its own id one level
+deeper, contends for a slot under the same `maxParallel` cap, is refused at the same maximum
+depth, returns through the same channel, and answers `wait_for_subagents` and `send_message`
+like anything else. The only difference is where it starts: a subagent opens on a brief
+somebody had to write, a copy opens already holding everything its forker worked out.
+
+That is also why `fork` is offered **only** to a profile that has this capability or
+[workflows](/gg/workflows/). A copy nobody can wait on or message is a leak rather than a
+second worker.
+
+An [`exec`](/gg/fork-and-exec/) is the opposite case and is deliberately **not** a spawn: it
+replaces the agent making it rather than adding one, so it keeps the same depth, holds the
+same slot, and produces one return value. Nothing about the delegation tree changes when an
+agent becomes a different agent.

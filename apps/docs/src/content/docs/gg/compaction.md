@@ -55,9 +55,12 @@ worse. A model that never complies stops on the run's
 - **Memory compaction** (`memory-compaction`) — there is no summary at all. gg
   requires the agent to record its working state as [memories](/gg/memories/), which
   are retained verbatim across the boundary, and accepts only memory calls until one
-  whole reply's calls have all succeeded. It **requires the memories capability**; a
-  run that names it without memories falls back to the default rather than stalling
-  on a gate it could never satisfy.
+  whole reply's calls have all succeeded. It **requires memories the agent may write**;
+  an agent with no memories at all — or one holding somebody else's
+  [read-only](/gg/memories/#what-a-read-only-holder-is-offered) — falls back to the
+  default, with a warning, rather than stalling on a gate it could never satisfy. A
+  read-only holder is offered no write call, so the pending compaction would wait for a
+  reply it had no way to compose and the run would wedge against a full window.
 
 ### A separate model condenses it, out of band
 
@@ -174,7 +177,26 @@ verbatim, forming the fixed prefix of the post-compaction context window:
   thing the model reads.
 
 The [Project management](/gg/project-management/) board is likewise retained across a
-compaction boundary. [Agent-managed context](/gg/agent-managed-context/) is the
-model-facing complement to compaction: compaction is the automatic backstop when
-the window fills; agent-managed context lets a disciplined agent avoid ever hitting
-it.
+compaction boundary. That list is not hand-maintained: what crosses is whatever the
+agent's [modules](/gg/modules/) pin, so a module the agent does not hold contributes
+nothing and an **unowned** one contributes nothing either — it was never in the window
+to carry over.
+
+[Agent-managed context](/gg/agent-managed-context/) is the model-facing complement to
+compaction: compaction is the automatic backstop when the window fills; agent-managed
+context lets a disciplined agent avoid ever hitting it.
+
+## A succession compacts before its first turn
+
+When an agent [becomes another agent](/gg/fork-and-exec/) — an `exec`, or an
+[FSM transition](/gg/fsms/) — the window it hands on is measured against the
+**successor's** compaction setup: its threshold, its strategy, its handoff model, and
+above all its own window limit. So the check runs once before the successor's first
+turn, and an agent that filled a million-token window and then moved into a state on a
+32k model is over its window the moment it arrives and compacts immediately.
+
+gg deliberately does no more than that. If two profiles' windows differ greatly, the
+answer is to configure a strategy whose summarizer runs on a **separate model** — the
+`model` / `modelSlot` handoff above — because a summarization that has to fit inside
+the smaller of the two windows is exactly the case the handoff strategies exist for.
+That is a configuration decision and gg has no basis for guessing at it.

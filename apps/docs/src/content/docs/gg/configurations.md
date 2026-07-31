@@ -102,7 +102,22 @@ carries:
   not automatically trusted to review it, and an agent with no
   [subagents](/gg/subagents/) capability still uses its roster to staff issues. Every
   such call names its target **by name** and refuses one the roster does not list in
-  the right scope; a profile may list itself, allowing recursion.
+  the right scope; a profile may list itself, allowing recursion. The `subagent` scope
+  does double duty: it is also the allowlist [`exec`](/gg/fork-and-exec/) is checked
+  against, since becoming a profile and briefing one are both putting it to work.
+
+Two capability choices change what a profile *is*, rather than what it can do, so they
+are worth knowing before reading the rest of this page:
+
+- A profile that enables **[`fsm`](/gg/fsms/)** is a **machine**, not an agent. Its
+  `states` param is an ordered list over the configuration's *other* profiles, and it
+  takes no turns of its own — its model binding and any other capability it declares are
+  ignored, and the editor says so. It is namable everywhere an ordinary profile is: as
+  the root, as a roster target, as an issue's implementer.
+- Every capability backed by a [module](/gg/modules/) — memories, tasks, project
+  management, skills, agent-managed context — carries an **`ownership`** param deciding
+  whether the agent's prompt carries that module or only its tools do. Left alone it is
+  `owned`, which is how every configuration written before the param behaves.
 
 ## Model slots
 

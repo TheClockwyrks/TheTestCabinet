@@ -99,14 +99,29 @@ whatever [completion](/gg/completion/) gate the profile sets). An instance stopp
 record standing — the desk of an agent that was cut off mid-thought is not a useful thing to
 inherit, and overwriting a good one with it would lose the profile's place.
 
+An instance that [handed itself on](/gg/fork-and-exec/) — an `exec`, or an
+[FSM transition](/gg/fsms/) — records nothing either, for the same reason: it did not finish,
+it became something else, and it took its open views with it in the window it transferred.
+What that succession *does* do is exchange the exclusivity it holds. The one-at-a-time cap is
+keyed on the profile, and a successor runs a different one, so gg swaps the key without
+releasing the slot — blocking through the ordinary scheduler machinery if the profile the
+successor is moving into is already held by somebody else.
+
 ## What is not persisted
 
 Only file views. Not the thread, not the [task list](/gg/tasks/), not
-[memories](/gg/memories/), not read [skills](/gg/skills/). An agent that carried its whole
-conversation over would be one long agent with a confusing turn count, and memories already
-exist for state a profile wants to *narrate* across sessions — a persistent profile with
-memories on gets both, which is the interesting configuration. Persistence answers the
-narrower question of **which files the worker was looking at**.
+[memories](/gg/memories/), not read [skills](/gg/skills/). Two instances of a profile are two
+separate agents that happen to share a desk, and an instance that inherited the previous one's
+whole conversation would be one long agent with a confusing turn count. Memories already exist
+for state a profile wants to *narrate* across sessions — a persistent profile with
+`"scope": "shared"` [memories](/gg/memories/#scoping-whose-memories-are-these) gets both, which
+is the interesting configuration. Persistence answers the narrower question of **which files
+the worker was looking at**.
+
+Carrying a whole conversation forward is a different feature with different mechanics:
+[`exec`](/gg/fork-and-exec/) and an [FSM transition](/gg/fsms/) transfer live
+[modules](/gg/modules/) between two incarnations of **one** agent — one slot, one return value,
+one continuous turn count — rather than between two instances that each stand on their own.
 
 A [responses-as-code](/gg/responses-as-code/) agent puts no file view in its window at all
 (a program's reads are consumed inside the program, which is one of the reasons that mode

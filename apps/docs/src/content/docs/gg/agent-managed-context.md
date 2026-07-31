@@ -188,6 +188,20 @@ a case-insensitive substring match over each archived message's text (including 
 calls it made) and returns the matching entries, capped so a broad query cannot itself
 refill the window.
 
+**The archive is a [module](/gg/modules/)**, and it travels the way modules do: a
+[`fork`](/gg/fork-and-exec/) gets an independent copy, and an
+[`exec`](/gg/fork-and-exec/) or an [FSM transition](/gg/fsms/) that names `archive` hands
+it to the successor whole. One thing is deliberately carried rather than restarted across
+either: an entry's **ordinal**. Two copies that both numbered from zero would each print an
+entry as `#0`, and a search result quoting one would be ambiguous about which thread it came
+out of.
+
+This capability also reads the `ownership` param every module-backed one does, and it is
+the one place the answer makes no difference: the archive is by definition *out* of the
+window, so there is no pinned block for `"ownership": "unowned"` to withhold. It is
+recorded, carried across a transfer, and changes nothing — the param exists so every
+module answers the same question, not because every module has an interesting answer.
+
 ## Parameters
 
 | Param | Default | Meaning |

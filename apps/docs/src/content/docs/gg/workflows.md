@@ -14,5 +14,8 @@ Requirements:
 - Reuse the same [subagent scheduler](/gg/subagents/#scheduling) and its
   parallelism and depth caps.
 
-Workflows are the deterministic, structured cousin of subagents;
-[FSM-driven processes](/gg/fsms/) push this further into predetermined control flow.
+Workflows are the deterministic, structured cousin of subagents. The difference from an
+[FSM process](/gg/fsms/) is who declares the structure and what the structure *is*: a
+workflow is fan-out the running agent asks for, and the agents it staffs are children that
+return to it; a machine is a state table the **configuration** declares, and its states
+succeed one another as one agent, handing over the modules the edge names.

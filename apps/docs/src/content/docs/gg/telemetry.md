@@ -17,6 +17,11 @@ The telemetry must let the console display:
   form.
 - For each agent, whether it is **actively executing or blocked** waiting on other
   agents.
+- Every **succession** — an [`exec`](/gg/fork-and-exec/), a `fork`, or an
+  [FSM transition](/gg/fsms/). One `agent_transition` on the outgoing instance's stream
+  carries what each [module](/gg/modules/) did (transferred, dropped, initialized), and
+  an `fsm_state` on the incoming one names the machine, the state, and the state it came
+  from. Without them a handoff would arrive as an unexplained second agent.
 - The **[context-window breakdown](/gg/context-visibility/)** over time — the
   stacked line graph.
 - **Where each turn's time went** — one `turn_timing` per turn, splitting the turn's
@@ -106,8 +111,18 @@ identically down to the order of the cards) reads a run through these surfaces:
   window filled, *whose* task list this is — so they cannot honestly be shown as one
   global panel. The explorer lays the run out as a **filesystem**: every agent is a
   folder, the things you can monitor about it are its files, and every agent an agent
-  spawned is a folder under a `subagents` folder — so the
+  **spawned** is a folder under a `subagents` folder — so the
   [delegation tree](/gg/subagents/) *is* the directory tree, rooted at the main agent.
+  An agent that did not spawn but **succeeded** another — an
+  [`exec`](/gg/fork-and-exec/) or an [FSM transition](/gg/fsms/) — is not delegation and
+  is not drawn as such: it hangs directly off its predecessor's folder, tagged with where
+  it came from (`⇢ verify`, `⇢ exec`), so a chain of incarnations reads as the one lineage
+  it is rather than as N unrelated agents that happened to appear in order. A
+  [`fork`](/gg/fork-and-exec/) *is* a genuine child and does go under `subagents`, tagged
+  `⑂ fork` so a copy reads as a copy. Either way the arriving agent's Overview states what
+  it inherited — the state it entered, and which [modules](/gg/modules/) were carried,
+  dropped and started fresh — and both halves of the handoff appear in the activity feed
+  on the streams they actually landed on.
   Each agent folder leads with its **lifecycle dot** (running / waiting / done /
   failed) in place of a folder glyph, and carries the profile it runs under on the
   row's trailing edge. Only the main agent is named `root`: an agent the board

@@ -19,6 +19,7 @@ renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-templa
 | `tasks.hbs`                | The pinned [task list](/gg/tasks/) block.                                                                                                                                              |
 | `board.hbs`                | The pinned [Project management](/gg/project-management/) board block.                                                                                                                  |
 | `memories.hbs`             | The pinned [memories](/gg/memories/) block.                                                                                                                                            |
+| `memory-notice.hbs`        | The per-turn notice a holder of a [linked memory instance](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote) is given when **another** holder wrote, revised or deleted one. |
 | `code-result.hbs`          | The turn feedback for a [responses-as-code](/gg/responses-as-code/) program that ran — its call roster, its output, and anything it needs telling.                                     |
 | `code-transpile-error.hbs` | The turn feedback for a [program](/gg/responses-as-code/) that did not compile, so nothing ran.                                                                                        |
 | `code-sandbox-error.hbs`   | The turn feedback for a [program](/gg/responses-as-code/) the sandbox could not run to a result — a memory ceiling or a trap.                                                          |
@@ -62,6 +63,13 @@ gg's whole premise is that capabilities are independently toggleable, and that e
 to the prompt: **a capability that is off contributes no prompt text at all**. That is
 what makes an [ablation](/gg/overview/#the-capability-set) clean — the off arm's model
 is never told about a feature it does not have.
+
+What a capability that is *on* contributes is split in two, and
+[module ownership](/gg/modules/#ownership) is the line between them. The **instructions**
+— how to use the calls, what the limits are — are rendered whenever the capability is
+enabled, because an agent offered a tool has to be told what it is for. The **state** — the
+pinned blocks below, and the skills catalog — is rendered only for an `owned` module. An
+unowned one keeps its tools and its section and stops handing over its contents every turn.
 
 So each system template is one `{{#if}}` section per capability, over a rendering context
 that carries both _whether_ each capability is on and _how it is configured_. A run's actual
@@ -144,3 +152,20 @@ would spend context re-teaching `add_task` on every refresh, for the life of the
 The derived parts of a block — whether an item is _ready_ or _blocked by_ specific
 incomplete items — are computed in Rust by the store that owns the DAG. The template only
 lays the result out.
+
+Which of the three an agent actually gets is decided by its [modules](/gg/modules/): a
+block belongs to a module, and an [unowned](/gg/modules/#ownership) one contributes none.
+The same rule is what keeps the board out of an agent that has no board tools — it holds
+the run's board unowned, so it can be [dispatched an issue](/gg/project-management/) from
+a board it is never shown.
+
+### The one message that is appended rather than pinned
+
+A [linked memory instance](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote)
+is the exception that proves the pinning rule. When another holder writes, `memory-notice.hbs`
+renders a short message naming what changed, and gg **appends** it at the tail of the window
+instead of rebuilding the pinned memory block. Rebuilding the block would rewrite a prefix
+the provider has already cached, on a turn this agent did nothing at all; an append leaves the
+whole previous request a byte-identical prefix of the next one. What the agent is told about
+its memories being shared at all comes from the system prompt, so a mid-thread notice reads as
+gg reporting a fact rather than as another agent addressing it.

@@ -33,7 +33,7 @@ Tasks are the lightweight tier of work tracking. Their heavyweight counterpart i
 [Project management](/gg/project-management/) board, and the two share the blocked-by
 DAG concept — but they differ in the two things that matter:
 
-- **Scope.** A task list is **per agent** — one agent's private plan, even in
+- **Scope.** A task list is **per agent instance** — one agent's own plan, even in
   `issues` mode. The board is **run-global**, shared by every agent.
 - **Dispatch.** Tasks are **never auto-dispatched**; an agent works its own list.
   Board issues **auto-dispatch** — gg spawns a dedicated top-level agent for each one
@@ -41,3 +41,23 @@ DAG concept — but they differ in the two things that matter:
 
 So `issues` mode gives a task the *shape* of a board issue without the *behaviour*:
 it is still the agent's own to-do, not a work item the run will staff on its own.
+
+## A list can outlive the instance that wrote it
+
+"Per agent instance" is about who may *write* it, not about how long it lasts. A task
+list is a [module](/gg/modules/), so it moves the way modules move: an
+[FSM transition](/gg/fsms/) whose edge names `tasks` hands the list to the next state's
+agent **in exactly the state it was in** — the completions, the blocked-by edges, the
+mode — rather than as a summary somebody had to write. An [`exec`](/gg/fork-and-exec/)
+carries it whenever both profiles have the capability, and a `fork` gives the copy its
+own independent list that diverges from that moment.
+
+What never happens is two agents writing one list at the same time. Unlike
+[memories](/gg/memories/#scoping-whose-memories-are-these), a task list has no shared
+scope: task ids are model-authored, so two live writers would mint the same id for two
+different pieces of work and there would be no merge that could tell them apart.
+
+Like every module-backed capability, tasks read an
+[`ownership`](/gg/modules/#ownership) param. An **unowned** task list keeps its tools, its
+contents and its prompt section, and stops being pinned into the window — the agent works
+it by calling into it rather than by being handed the whole list every turn.

@@ -1796,6 +1796,40 @@ ownership, clone/transfer semantics, the per-kind table) and
 per §5.5, plus `astro.config.mjs` sidebar entries for the two new pages.
 `apps/docs/src/content/docs/changelogs/` gets the v0.7.0 entries for all of it.
 
+### 7.5 Stage 8 as built — one behavioural discrepancy found while writing the docs
+
+**LANDED** as `docs(gg): the module-based agent model`. All of §7's stage-8 list is done, plus a
+sweep of every other gg page and a `changelogs/v0.7.0.md`. Writing the pages surfaced one place
+where the shipped behaviour and §1.2 disagree, and the docs were written to the **behaviour**:
+
+1. **`unowned` withholds a module's *state* from the window, not its system-prompt section.**
+   §1.2 and §1.5 say an unowned module contributes "no system-prompt section, no pinned block".
+   As built, `Module::context_block` returns `None` for an unowned memories/tasks/board module —
+   so the pinned block is gone — but the capability's *instructional* prompt section is still
+   gated on `offers_*()`, i.e. on the capability being enabled, so it still renders. Skills are
+   the exception and match §1.2 exactly, because `SkillsRuntime::prompt_entries` returns an empty
+   menu for an unowned holder and the section vanishes with it; the archive has no prompt surface
+   at all, so its ownership is inert.
+
+   This is left as-is rather than "fixed", and the docs state it as the rule, because it is the
+   better behaviour: an unowned module still has its **tools**, and a model handed `add_task`
+   with nothing telling it what a task list is for would use it worse than one told nothing at
+   all. The coherent line is "ownership decides whether the *contents* ride in every request",
+   and skills only differ because for skills the catalog listing *is* the contents. A later stage
+   that wants §1.2's literal reading must also decide what an agent does with an undocumented
+   toolset; that is a behaviour change, not a cleanup.
+
+2. **`crates/gg/wit/gg-sandbox.wit`'s `error-code::refused` doc comment** still described plan
+   mode and turn-level transitions. It is reworded. A WIT *comment* is not part of the world's
+   type signature, so the committed component and `signatures.json` are unaffected —
+   `the_committed_component_matches_this_build` and the `bound-tools` gates pass unchanged, and
+   `build.sh` was **not** re-run for it.
+
+3. **The changelog is `v0.7.0.md` and covers the agent-model rework only.** There was no v0.7.0
+   entry at all, so one was created with the release framing (gg is the headline) plus this
+   rework's features, removals, breaking changes and fixes. It is titled `(unreleased)` and is
+   expected to grow the rest of v0.7.0's notes before release.
+
 ### Stage 9 — `test(gg): end-to-end coverage of the composed model`
 
 The integration pass the individual stages cannot give: an offline run whose root

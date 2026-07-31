@@ -198,8 +198,8 @@ scope. There is no dispatcher to name a tool through and no JSON to hand-assembl
 | `listDir(path?: string)` | `DirEntry[]` |
 | `spawnSubagent(request: { agent: string; } & ({ prompt: string; } \| { issueId: string; }))` | `SubagentHandle` |
 
-Thirty of gg's thirty-three tools are bound this way — everything except the three
-[turn-level transitions](#turn-level-transitions-are-not-composable) — plus one
+**Every** one of gg's thirty-seven tools is bound this way — there is no withheld class
+(see [below](#every-tool-is-bound)) — plus one
 convenience helper, `readTextFile(path, options?)`, for the overwhelmingly common case
 of wanting a file's text rather than its metadata, and the
 [ending calls](/gg/completion/#ending-calls), which are membrane functions like any other
@@ -482,6 +482,17 @@ offered. gg once withheld three *turn-level transitions* — `enter_plan_mode`,
 value a program could compose — but those tools no longer exist, and nothing has replaced
 them.
 
+The calls that come closest are the three that change *which agent is running*, and none
+of them is withheld either — they are **deferred**, the shape `context.compact` already
+has. `agents.exec(agent, prompt?)` and `agents.transitionState(state, note?)` register the
+handoff, return, and let the program run to its end; the loop applies it once the turn
+closes, because replacing the window a running program is composing into would pull every
+remaining statement out from under it. `agents.fork(prompt)` returns the copy's id
+immediately — the id is real — but the copy itself is dispatched when the turn closes, so
+it cannot be waited on until the next one. A turn makes at most one succession, so a second
+`exec` (or an `exec` after a `transitionState`) throws a `refused` `ToolError` that a
+program can catch; forks are additive and a turn may declare as many as it likes.
+
 ## A tool failure throws
 
 Under tool calling, a failed tool returns its failure **into** the conversation as a
@@ -587,7 +598,7 @@ of code-shaped turns a run took.
 | The program `return`ed a value | the guest | that return values are discarded and `console.log` is the channel |
 | The program called `finish` and then failed | the host, which revokes the flag | that a program which fails has not finished, and to call `finish` again from one that runs to its end |
 | Work deferred with `.then()` ran after the program ended | the guest's call guard | that deferred work is outside the turn and its failures are never reported |
-| A turn-level transition, or a tool this run withholds | the host's backstop | a `refused:` line in the feedback; **not** counted as a tool call |
+| A tool this run withholds, or a second succession in a turn that already declared one | the host's backstop | a `refused:` line in the feedback; **not** counted as a tool call |
 | The run's wall-clock budget ran out mid-program | the deadline check before each call | a `limit-exceeded` failure saying the budget is spent and prior work stands |
 | Execution timeout reached | the trap classifier | the ceiling, and that a timeout this long almost always means a loop or recursion that never ends — find it rather than write less |
 | Memory cap exceeded, or set below the guest's ~10 MiB floor | the memory limiter's denial flag | the configured cap, and the floor the guest engine needs before a program runs at all |

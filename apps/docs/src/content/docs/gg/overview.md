@@ -123,8 +123,8 @@ implementations**, and _beyond that_ modularity comes almost entirely from **whi
 tools are offered to the agents** — a different set of tools, or a different
 implementation of a given tool, reconfigures behaviour without a combinatorial
 explosion of pluggable subsystems. So "swap the compaction strategy" or "swap the
-planner" is, in practice, "offer a different tool (or tool implementation) for it",
-not a bespoke plugin interface per capability. The agent loop is the only
+memory strategy" is, in practice, "offer a different tool (or tool implementation)
+for it", not a bespoke plugin interface per capability. The agent loop is the only
 coarse-grained plug point. Treating the toolset itself as an experimental variable
 is [toolset ablation](/gg/toolset-ablation/).
 
@@ -226,6 +226,10 @@ saved, launched, and analyzed in the console is
   accounting itself is intrinsic, not a capability.)
 - [Agent-managed context](/gg/agent-managed-context/) — let an agent evict file
   views and archive thread history.
+- [Modules](/gg/modules/) — what an agent *holds* rather than what it can do: the six
+  units of per-agent state, whether its prompt carries each one, and what happens to
+  them when it is copied or succeeded. Not a capability of its own — the model every
+  other capability's state is kept under.
 
 **Knowledge**
 
