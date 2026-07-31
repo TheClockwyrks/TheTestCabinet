@@ -2279,8 +2279,16 @@ export type GgTelemetryKind =
        */
       agent: string;
       /**
-       * The [FSM state](GgFsmState::name) the successor enters, for a
-       * [`fsm`](GgAgentTransitionKind::Fsm) transition. `None` for the other two kinds.
+       * The [FSM state](GgFsmState::name) the successor stands in once the succession has been
+       * applied, when it stands in one at all.
+       *
+       * Set for every [`fsm`](GgAgentTransitionKind::Fsm) transition, and also for an
+       * [`exec`](GgAgentTransitionKind::Exec) whose target is an **FSM shell**: gg resolves such
+       * a handoff to the machine's entry state, so the successor genuinely enters a process and
+       * the record has to say which state it entered. `None` for an `exec` into an ordinary
+       * profile and for a [`fork`](GgAgentTransitionKind::Fork), neither of which moves the
+       * agent within a machine — a fork of an agent standing in a state is a second worker, not
+       * a second position, and carries no state of its own.
        */
       state?: string;
       /**
@@ -3102,8 +3110,16 @@ export type GgTelemetryEvent = {
        */
       agent: string;
       /**
-       * The [FSM state](GgFsmState::name) the successor enters, for a
-       * [`fsm`](GgAgentTransitionKind::Fsm) transition. `None` for the other two kinds.
+       * The [FSM state](GgFsmState::name) the successor stands in once the succession has been
+       * applied, when it stands in one at all.
+       *
+       * Set for every [`fsm`](GgAgentTransitionKind::Fsm) transition, and also for an
+       * [`exec`](GgAgentTransitionKind::Exec) whose target is an **FSM shell**: gg resolves such
+       * a handoff to the machine's entry state, so the successor genuinely enters a process and
+       * the record has to say which state it entered. `None` for an `exec` into an ordinary
+       * profile and for a [`fork`](GgAgentTransitionKind::Fork), neither of which moves the
+       * agent within a machine — a fork of an agent standing in a state is a second worker, not
+       * a second position, and carries no state of its own.
        */
       state?: string;
       /**

@@ -1803,6 +1803,12 @@ impl Module for BoardRuntime {
         ModuleHandle::Board(self.shared())
     }
 
+    /// Always. A copy of an agent is a second worker on the *same* run, and the board is that
+    /// run's single work queue.
+    fn links_when_forked(&self) -> bool {
+        true
+    }
+
     /// Re-resolve the caps and the ownership from the receiving profile.
     ///
     /// A profile without the authoring capability does **not** refuse the board: it holds the same

@@ -55,7 +55,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
@@ -83,10 +83,10 @@ mod search;
 #[path = "memories.scope.rs"]
 mod scope;
 
-pub use scope::{MemoryRegistry, launch_warnings, resolve_scope};
+pub use scope::{MemoryRegistry, launch_warnings, resolve_scope, run_inherits_memories};
 pub use search::MemoryHit;
 
-use scope::notice_entries;
+use scope::{links, notice_entries};
 
 /// Default [maximum number of memories](MemoryCaps::max_count) under the
 /// [scratchpad](MemoryStrategy::Scratchpad) strategy. A small ceiling — the point is a curated
@@ -658,9 +658,11 @@ pub enum MemoryChange {
 /// once — on the stream of the agent that made it — and every *other* holder can be told about it
 /// in its next prompt without being told about its own.
 ///
-/// The log is never truncated, because a cursor is an index into it. In exchange it holds only
-/// text the store already held once, bounded by the same [per-memory limit](MemoryCaps) every
-/// body is.
+/// A cursor is an **absolute** position in that log rather than an index into the `Vec` behind it,
+/// which is what lets the store forget an entry every one of its holders has already read past
+/// (see [`register_holder`](Self::register_holder)). Without that a working notebook edited for
+/// hours would retain a full copy of every wording a memory ever had, for a reader that can no
+/// longer exist; with it the log costs what is still owed and nothing else.
 #[derive(Debug, Clone)]
 pub struct MemoryStore {
     strategy: MemoryStrategy,
@@ -669,9 +671,20 @@ pub struct MemoryStore {
     /// The next revision number for each slug ever written, kept across a delete so a
     /// re-created name continues its history rather than restarting it.
     revisions: BTreeMap<String, u64>,
-    /// Every mutation this store has ever taken, oldest first, each tagged with the agent that
-    /// made it. Append-only: holders read it through their own cursors (see the type's docs).
+    /// Every mutation this store has taken that some holder may still be owed, oldest first, each
+    /// tagged with the agent that made it. Holders read it through their own cursors (see the
+    /// type's docs) and it is pruned from the front once every live holder has passed an entry.
     log: Vec<LoggedRevision>,
+    /// The absolute position of `log[0]` — how many entries have been [pruned](Self::prune_log)
+    /// off the front. A holder's cursor is an absolute position, so this is what translates one
+    /// into an index and what makes [`log_len`](Self::log_len) keep counting past a prune.
+    log_base: usize,
+    /// The watermarks of every holder of this store, weakly held so a finished agent's holder
+    /// releases them. They exist for exactly one purpose: to know which log entries nobody can
+    /// still be owed. A store with no live holder prunes nothing — that is a store being driven
+    /// directly (a test, or one built but not yet bound), and forgetting its log would lose the
+    /// record its first holder is about to read.
+    holders: Vec<Weak<Mutex<HolderCursors>>>,
     /// The high-water marks, updated after every mutation.
     peak: MemoryPeak,
 }
@@ -756,6 +769,8 @@ impl MemoryStore {
             memories: Vec::new(),
             revisions: BTreeMap::new(),
             log: Vec::new(),
+            log_base: 0,
+            holders: Vec::new(),
             peak: MemoryPeak::default(),
         }
     }
@@ -811,20 +826,82 @@ impl MemoryStore {
         self.peak
     }
 
-    /// How many entries the [revision log](Self::log_from) holds — its head, and where a new
-    /// holder's cursors start so it is not told about history it never missed.
+    /// The head of the [revision log](Self::log_from) — how many mutations this store has taken
+    /// in its life, and where a new holder's cursors start so it is not told about history it
+    /// never missed.
+    ///
+    /// It counts every entry ever recorded, including any the store has since
+    /// [pruned](Self::prune_log): a cursor is an absolute position, so the count it is compared
+    /// against has to be one too.
     pub fn log_len(&self) -> usize {
-        self.log.len()
+        self.log_base + self.log.len()
     }
 
-    /// The [logged revisions](LoggedRevision) at or after `cursor`, oldest first — the
-    /// append-only record of what was done to this store, which each holder reads through its own
+    /// The [logged revisions](LoggedRevision) at or after the absolute position `cursor`, oldest
+    /// first — the record of what was done to this store, which each holder reads through its own
     /// watermark rather than draining out from under the others.
     ///
     /// A `cursor` beyond the head yields nothing, which is what a holder that is already current
-    /// sees on a turn where nobody wrote.
+    /// sees on a turn where nobody wrote. A `cursor` *behind* the pruned front yields everything
+    /// still held, which cannot happen for a registered holder — pruning stops at the earliest
+    /// live cursor — and is the harmless answer for one that is not.
     pub fn log_from(&self, cursor: usize) -> &[LoggedRevision] {
-        self.log.get(cursor..).unwrap_or(&[])
+        self.log
+            .get(cursor.saturating_sub(self.log_base)..)
+            .unwrap_or(&[])
+    }
+
+    /// Register a holder's [watermarks](HolderCursors) with the store, so it knows what is still
+    /// owed to somebody.
+    ///
+    /// Held **weakly**: a holder is a live agent instance, and when the agent finishes nothing
+    /// should keep its cursors — or the entries behind them — alive. Called once per holder, from
+    /// the one constructor every holder goes through.
+    fn register_holder(&mut self, cursors: &Arc<Mutex<HolderCursors>>) {
+        self.holders.retain(|holder| holder.strong_count() > 0);
+        self.holders.push(Arc::downgrade(cursors));
+    }
+
+    /// How many live holders this store has.
+    ///
+    /// The question behind it is always "is this notebook one agent's, or several agents'?" — it
+    /// decides whether a [transfer](crate::modules::transfer) may re-point the store's
+    /// [limits](Self::set_caps) at the receiving profile's, which would otherwise silently change
+    /// what the *other* holders may write.
+    pub fn holders(&self) -> usize {
+        self.holders
+            .iter()
+            .filter(|holder| holder.strong_count() > 0)
+            .count()
+    }
+
+    /// Forget the log entries every live holder has already read past.
+    ///
+    /// Run after each mutation, because that is the only moment the log grows. The floor is the
+    /// earliest of every live holder's two watermarks: an entry below it can no longer be streamed
+    /// as telemetry or announced in a notice, so nothing can ask for it again. A store with no
+    /// live holder keeps everything — its first holder starts at the head, but a store driven
+    /// directly (a test, or the registry entry between two instances of a profile) has a record
+    /// worth reading.
+    fn prune_log(&mut self) {
+        self.holders.retain(|holder| holder.strong_count() > 0);
+        let mut floor = usize::MAX;
+        for holder in &self.holders {
+            let Some(cursors) = holder.upgrade() else {
+                continue;
+            };
+            let cursors = cursors.lock().expect("memory cursors lock");
+            floor = floor.min(cursors.telemetry.min(cursors.notice));
+        }
+        if floor == usize::MAX {
+            return;
+        }
+        let forget = floor.saturating_sub(self.log_base);
+        if forget == 0 {
+            return;
+        }
+        self.log.drain(..forget.min(self.log.len()));
+        self.log_base = floor;
     }
 
     /// The memories, in slug order. (A read surface for the tests; the loop reaches the
@@ -1111,6 +1188,9 @@ impl MemoryStore {
             total_len: self.peak.total_len.max(self.total_len()),
             total_lines: self.peak.total_lines.max(self.total_lines()),
         };
+        // The log just grew, which is the only moment anything can have become unreachable: every
+        // other holder's cursor is where it was, and this write is behind none of them.
+        self.prune_log();
     }
 
     /// Refuse a description whose length exceeds the description limit.
@@ -1478,6 +1558,10 @@ pub struct MemoriesRuntime {
     scope: MemoryScope,
     /// Whether this holder may write.
     access: MemoryAccess,
+    /// Whether this store may be held by more than one agent — see [`is_linked`](Self::is_linked)
+    /// for why it is a property of the *run's* configuration rather than of how many holders the
+    /// store happens to have when the prompt is rendered.
+    linked: bool,
     /// Whether the holder writes programs rather than calling tools — which changes what the
     /// memory calls are *named* in the notice this holder is given. A property of the holder's
     /// execution mode, so it is re-resolved whenever a different agent takes the store over.
@@ -1497,23 +1581,32 @@ impl MemoriesRuntime {
     /// store's head — a new holder of an existing store is not told about, and does not report,
     /// history it never missed — and otherwise at the beginning, which is what a holder that
     /// created the store wants.
+    ///
+    /// This is the one constructor every holder goes through, which is why it is also where a
+    /// holder's watermarks are [registered](MemoryStore::register_holder) with the store: from
+    /// here on the store knows what it still owes somebody, and can forget the rest.
     fn over(store: Arc<Mutex<MemoryStore>>, current: bool) -> Self {
-        let head = if current {
-            store.lock().expect("memory store lock").log_len()
-        } else {
-            0
-        };
+        let cursors = Arc::new(Mutex::new(HolderCursors::default()));
+        {
+            let mut guard = store.lock().expect("memory store lock");
+            if current {
+                let head = guard.log_len();
+                *cursors.lock().expect("memory cursors lock") = HolderCursors {
+                    telemetry: head,
+                    notice: head,
+                };
+            }
+            guard.register_holder(&cursors);
+        }
         Self {
             enabled: true,
             ownership: Ownership::Owned,
             store,
-            cursors: Arc::new(Mutex::new(HolderCursors {
-                telemetry: head,
-                notice: head,
-            })),
+            cursors,
             agent_id: String::new(),
             scope: MemoryScope::default(),
             access: MemoryAccess::ReadWrite,
+            linked: false,
             code_mode: false,
         }
     }
@@ -1582,6 +1675,7 @@ impl MemoriesRuntime {
             }
         };
         bound.code_mode = ctx.history.code_mode;
+        bound.linked = links(profile, scope, ctx);
         bound
             .with_ownership(crate::modules::resolve_ownership(profile, CAPABILITY_MEMORIES).0)
             .with_binding(scope, access)
@@ -1629,11 +1723,31 @@ impl MemoriesRuntime {
         self.access.is_writable()
     }
 
-    /// Whether this holder's store may be held by other agents — [`isolated`](MemoryScope::Isolated)
-    /// memories never are, so a run that scopes nothing pays nothing for the machinery that makes
-    /// linking work.
+    /// Whether **this holder's own binding** links it to other agents — the question a
+    /// [fork](crate::modules::fork_modules) asks, because a copy of an agent whose memories are
+    /// shared keeps sharing them while a copy of an [isolated](MemoryScope::Isolated) notebook
+    /// diverges.
+    ///
+    /// It is a property of the scope alone, and deliberately narrower than
+    /// [`is_linked`](Self::is_linked): an isolated holder is never linked *by its own binding*,
+    /// however many of the agents it spawns go on to inherit its store.
     pub fn is_linkable(&self) -> bool {
         self.enabled && self.scope.may_link()
+    }
+
+    /// Whether this store may end up held by more than one agent at all — what the holder's
+    /// **prompt** is told, so a mid-thread "another agent added a memory"
+    /// [notice](Self::notice) is a message it was warned to expect rather than an unexplained
+    /// interruption.
+    ///
+    /// Wider than [`is_linkable`](Self::is_linkable) because inheritance is an offer the *spawner*
+    /// makes whatever its own scope is: an agent whose memories are `isolated` still hands them to
+    /// a child scoped [`inherited`](MemoryScope::Inherited), and it is that child's write the
+    /// parent is then told about. The answer therefore folds in one run-level fact — whether any
+    /// profile this run declares inherits memories at all — resolved once at launch, because the
+    /// prompt is rendered before the first child is spawned and must not change afterwards.
+    pub fn is_linked(&self) -> bool {
+        self.enabled && (self.scope.may_link() || self.linked)
     }
 
     /// An **independent** notebook holding a copy of everything this one holds: a new store, the
@@ -1645,10 +1759,15 @@ impl MemoriesRuntime {
     /// original's writes as telemetry nor announces them to its model as news: the history came
     /// with the notebook, and it was never missed.
     pub fn forked(&self) -> Self {
-        let copy = self.store.lock().expect("memory store lock").clone();
+        let mut copy = self.store.lock().expect("memory store lock").clone();
+        // The copy is nobody's yet: the holders it inherited from the clone are the *original's*,
+        // and leaving them registered would let this store prune entries against watermarks that
+        // were never read from it.
+        copy.holders.clear();
         Self {
             enabled: self.enabled,
             ownership: self.ownership,
+            linked: self.linked,
             ..Self::over(Arc::new(Mutex::new(copy)), true)
         }
         .with_agent(self.agent_id.clone())
@@ -1665,6 +1784,7 @@ impl MemoriesRuntime {
         Self {
             enabled: self.enabled,
             ownership: self.ownership,
+            linked: self.linked,
             ..Self::over(Arc::clone(&self.store), true)
         }
         .with_agent(self.agent_id.clone())
@@ -1687,6 +1807,7 @@ impl MemoriesRuntime {
             agent_id: self.agent_id.clone(),
             scope: self.scope,
             access: self.access,
+            linked: self.linked,
             code_mode: self.code_mode,
         }
     }
@@ -1949,6 +2070,13 @@ impl Module for MemoriesRuntime {
         ModuleHandle::Memories(self.shared())
     }
 
+    /// Whether the forker's own [binding](Self::is_linkable) links it. Two agents meant to curate
+    /// one notebook do not stop meaning it because one of them was copied; an
+    /// [isolated](MemoryScope::Isolated) notebook is copied, and the two diverge from there.
+    fn links_when_forked(&self) -> bool {
+        self.is_linkable()
+    }
+
     /// Re-resolve the holder-owned configuration from the receiving profile — its limits, its
     /// ownership, its [scope](MemoryScope) and the write access that follows from it, the agent
     /// holding it, and the execution mode its notices are named in — refusing a profile that does
@@ -1961,10 +2089,22 @@ impl Module for MemoriesRuntime {
     /// gg refuses, the caller starts the successor with a fresh store, and the successor is told
     /// why rather than left to discover an empty notebook.
     ///
+    /// A successor whose own scope is [`shared`](MemoryScope::Shared) does not adopt the store it
+    /// was handed at all: `shared` means *bound to the profile*, so it re-binds the
+    /// [registry](MemoryRegistry) entry for the profile it is about to run under. Otherwise one
+    /// profile could be curating two different notebooks at once — the one its predecessor handed
+    /// it, and the one every other instance of it resolved — which is the exact situation the scope
+    /// exists to prevent.
+    ///
     /// The limits are re-pointed **only when this holder is the store's sole holder**. A store
     /// several agents are curating together has one set of limits by construction; re-pointing
     /// them because one of its holders was replaced would silently change what the *others* may
     /// write.
+    ///
+    /// Finally, both [watermarks](HolderCursors) are re-pointed at the store's head. The successor
+    /// is a *new* holder under a new agent id: without this it would inherit its predecessor's
+    /// unread news and, since a notice is anything the holder did not author itself, be told that
+    /// "another agent" had written the memories it wrote one turn earlier under its old name.
     fn adopt(
         &mut self,
         profile: &GgAgentConfig,
@@ -1989,10 +2129,24 @@ impl Module for MemoriesRuntime {
         let caps = capability
             .map(|cap| MemoryCaps::resolve(strategy, &cap.params))
             .unwrap_or_else(|| MemoryCaps::for_strategy(strategy));
-        if Arc::strong_count(&self.store) == 1 {
+        let scope = resolve_scope(profile).0;
+        if scope == MemoryScope::Shared {
+            self.store = ctx.memories.bind(&profile.name, strategy, caps);
+        }
+        if self.store.lock().expect("memory store lock").holders() <= 1 {
             self.store.lock().expect("memory store lock").set_caps(caps);
         }
-        let scope = resolve_scope(profile).0;
+        // A new holder of whatever store it ended up with: registered with it, and current with it.
+        self.cursors = Arc::new(Mutex::new(HolderCursors::default()));
+        {
+            let mut store = self.store.lock().expect("memory store lock");
+            let head = store.log_len();
+            *self.cursors.lock().expect("memory cursors lock") = HolderCursors {
+                telemetry: head,
+                notice: head,
+            };
+            store.register_holder(&self.cursors);
+        }
         self.enabled = true;
         self.ownership = crate::modules::resolve_ownership(profile, CAPABILITY_MEMORIES).0;
         self.scope = scope;
@@ -2002,6 +2156,7 @@ impl Module for MemoriesRuntime {
             MemoryScope::ReadOnly => MemoryAccess::ReadOnly,
             _ => MemoryAccess::ReadWrite,
         };
+        self.linked = links(profile, scope, ctx);
         self.agent_id = ctx.agent_id.to_string();
         self.code_mode = ctx.history.code_mode;
         Ok(())

@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use serde_json::json;
 use test_cabinet_core::gg::{
-    CAPABILITY_MEMORIES, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgSubagentRef,
-    GgTelemetryKind, ROOT_AGENT,
+    CAPABILITY_MEMORIES, CAPABILITY_SUBAGENTS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet,
+    GgSubagentRef, GgTelemetryKind, ROOT_AGENT,
 };
 
 use super::*;
@@ -48,11 +48,23 @@ impl World {
         agent_id: &'a str,
         inherited: &'a InheritedModules,
     ) -> ModuleResolveCtx<'a> {
+        self.ctx_in_run(agent_id, inherited, false)
+    }
+
+    /// The same, in a run where `inheritable` says some declared profile takes its memories from
+    /// its spawner — the run-level fact a holder's own scope cannot see.
+    fn ctx_in_run<'a>(
+        &'a self,
+        agent_id: &'a str,
+        inherited: &'a InheritedModules,
+        inheritable: bool,
+    ) -> ModuleResolveCtx<'a> {
         ModuleResolveCtx {
             skills: &self.skills,
             board: &self.board,
             memories: &self.registry,
             inherited,
+            inheritable,
             history: HistorySetup {
                 estimator: Arc::new(HeuristicTokenEstimator),
                 window_limit: None,
@@ -759,4 +771,147 @@ fn a_delivered_notice_is_not_re_issued_after_the_block_is_rebuilt() {
         reader.notice().is_none(),
         "and the news is not announced a second time"
     );
+}
+
+// ---------------------------------------------------------------------------
+// What the store keeps
+// ---------------------------------------------------------------------------
+
+/// **The revision log forgets what every live holder has read past.**
+///
+/// A cursor is an absolute position, so an entry below the earliest cursor of every live holder can
+/// never be streamed or announced again. Keeping it anyway would make a working notebook edited for
+/// hours retain a full copy of every wording each memory ever had, for a reader that cannot exist —
+/// so the store drops the prefix and keeps counting from where it was.
+#[test]
+fn the_revision_log_forgets_what_every_holder_has_read_past() {
+    let world = World::new();
+    let config = profile("Curator", MemoryStrategy::Markdown, MemoryScope::Shared);
+    let mut author = resolve_alone(&world, &config, "agent-0");
+    let mut reader = resolve_alone(&world, &config, "agent-1");
+
+    for n in 0..5 {
+        write_as(&author, &format!("note-{n}"), "a body");
+    }
+    let store = author.store();
+    assert_eq!(
+        store.lock().expect("memory store lock").log_len(),
+        5,
+        "the head counts every mutation the store has taken"
+    );
+    assert!(
+        store.lock().expect("memory store lock").log_from(0).len() >= 5,
+        "and nothing is dropped while both holders are still behind it"
+    );
+
+    // Both holders catch up: the author streams its own writes, the reader is told about them.
+    author.revision_events();
+    reader.revision_events();
+    reader.notice();
+    author.notice();
+    // Only a mutation can prune, because only a mutation can make an entry unreachable.
+    write_as(&author, "note-5", "a body");
+
+    let store = store.lock().expect("memory store lock");
+    assert_eq!(
+        store.log_len(),
+        6,
+        "the head keeps counting past what was pruned — a cursor is compared against it"
+    );
+    assert_eq!(
+        store.log_from(5).len(),
+        1,
+        "the entry neither holder has seen is still there"
+    );
+    assert!(
+        store.log_from(0).len() < 6,
+        "and the ones both have read past are gone"
+    );
+}
+
+/// A store nobody holds keeps its whole log: it is either being driven directly (a test) or is a
+/// registry entry between two instances of a profile, and the next holder to arrive would otherwise
+/// find a record with a hole in it.
+#[test]
+fn a_store_with_no_holders_forgets_nothing() {
+    let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    for n in 0..4 {
+        store
+            .write("nobody", &format!("note-{n}"), "a description", "a body")
+            .expect("the write is within the caps");
+    }
+
+    assert_eq!(store.log_from(0).len(), 4);
+    assert_eq!(store.log_len(), 4);
+}
+
+// ---------------------------------------------------------------------------
+// What a holder is told about being linked
+// ---------------------------------------------------------------------------
+
+/// **A spawner is told its memories may be shared even when its own scope is `isolated`.**
+///
+/// Inheritance is an offer the *spawner* makes, whatever its own scope: a root scoped `isolated`
+/// still hands its store to a child scoped `inherited`, and it is that child's write the root is
+/// then told about in a mid-thread notice. Deriving the prompt's warning from the holder's own
+/// scope alone left the one agent that receives such a notice as the one agent never warned it
+/// could.
+#[test]
+fn a_spawner_is_told_its_isolated_memories_may_still_be_shared() {
+    let world = World::new();
+    let nothing = InheritedModules::default();
+
+    // A profile that can spawn, in a run where somebody inherits.
+    let mut delegating = scratchpad("Lead", MemoryScope::Isolated);
+    delegating
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
+    let lead = MemoriesRuntime::resolve(&delegating, &world.ctx_in_run("agent-0", &nothing, true));
+    assert!(
+        lead.is_linked(),
+        "an agent that can spawn an inheriting child may end up sharing its notebook"
+    );
+    assert!(
+        !lead.is_linkable(),
+        "its own binding still links it to nobody, so a fork of it still gets a private copy"
+    );
+
+    // The same run, for an agent that cannot spawn: nothing can ever take its store.
+    let solitary = scratchpad("Worker", MemoryScope::Isolated);
+    let worker = MemoriesRuntime::resolve(&solitary, &world.ctx_in_run("agent-1", &nothing, true));
+    assert!(!worker.is_linked());
+
+    // And a run in which nobody inherits at all: the spawner is told nothing either.
+    let lead_alone =
+        MemoriesRuntime::resolve(&delegating, &world.ctx_in_run("agent-2", &nothing, false));
+    assert!(!lead_alone.is_linked());
+}
+
+/// The run-level half of that answer is read off the whole capability set, once, at launch: does
+/// any profile take its memories from its spawner?
+#[test]
+fn a_run_knows_whether_any_profile_inherits_memories() {
+    let inheriting = GgCapabilitySet {
+        agents: vec![
+            scratchpad("Lead", MemoryScope::Isolated),
+            scratchpad("Worker", MemoryScope::Inherited),
+        ],
+        ..GgCapabilitySet::default()
+    };
+    assert!(crate::memories::run_inherits_memories(&inheriting));
+
+    let read_only = GgCapabilitySet {
+        agents: vec![scratchpad("Worker", MemoryScope::ReadOnly)],
+        ..GgCapabilitySet::default()
+    };
+    assert!(crate::memories::run_inherits_memories(&read_only));
+
+    let nobody = GgCapabilitySet {
+        agents: vec![
+            scratchpad("Lead", MemoryScope::Isolated),
+            scratchpad("Notebook", MemoryScope::Shared),
+        ],
+        ..GgCapabilitySet::default()
+    };
+    assert!(!crate::memories::run_inherits_memories(&nobody));
 }

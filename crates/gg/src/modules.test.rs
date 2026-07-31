@@ -54,6 +54,7 @@ fn ctx<'a>(
         board,
         memories,
         inherited,
+        inheritable: false,
         history: history_setup(),
         agent_id: "agent-1",
     }
@@ -516,6 +517,126 @@ fn a_tightened_cap_keeps_what_is_already_there() {
     );
 }
 
+/// **The receiving profile's limits are applied even though the outgoing agent's tools were still
+/// holding the store.**
+///
+/// A holder hands its store to every memory tool it offers, as an `Arc` clone inside a
+/// `MemoryBinding`, and those tools are alive right up to the moment the transfer runs. Deciding
+/// "is this store one agent's?" by counting `Arc`s therefore always answered *no* in a real run,
+/// and the caps a successor declared were silently never applied — the classic transfer bug this
+/// module exists to prevent, hidden by a fixture that happened to hold no tools. The question is
+/// asked of the store's registered **holders** instead.
+#[test]
+fn caps_are_re_resolved_even_while_the_tools_still_hold_the_store() {
+    let skills = SkillsRuntime::disabled();
+    let board = BoardRuntime::disabled();
+    let (registry, inherited) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited);
+
+    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    // Exactly what `ToolRegistry::from_run` does: one binding per memory tool, each an `Arc` clone.
+    let bindings: Vec<_> = (0..3).map(|_| memories.binding()).collect();
+
+    let receiver = profile_with(vec![(CAPABILITY_MEMORIES, json!({ "maxCount": 3 }))]);
+    memories
+        .adopt(&receiver, &ctx)
+        .expect("memories are adoptable");
+
+    assert_eq!(
+        memories.caps().max_count,
+        Some(3),
+        "the successor's own limit is in force"
+    );
+    drop(bindings);
+}
+
+/// **A successor is not told that "another agent" wrote the memories it wrote itself.**
+///
+/// A [notice](crate::memories::MemoriesRuntime::notice) is anything in the log this holder did not
+/// author, and a successor is a new holder under a new id — so a write the predecessor made in the
+/// very turn it handed off would read, one turn later, as somebody else's work. Adoption re-points
+/// both watermarks at the store's head, which is also what stops an *isolated* module (shared with
+/// nobody, ever) producing a notice at all.
+#[test]
+fn an_adopted_module_is_not_handed_its_predecessors_unread_news() {
+    let skills = SkillsRuntime::disabled();
+    let board = BoardRuntime::disabled();
+    let (registry, inherited) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited);
+
+    let mut memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default())
+        .with_agent("agent-1");
+    memories
+        .binding()
+        .lock()
+        .write("agent-1", "plan", "the plan", "the body")
+        .expect("the write is within the caps");
+
+    let receiver = profile_with(vec![(CAPABILITY_MEMORIES, json!({}))]);
+    memories
+        .adopt(&receiver, &ctx)
+        .expect("memories are adoptable");
+
+    assert!(
+        Module::notice(&mut memories).is_none(),
+        "the successor is told nothing about writes it made under its previous id"
+    );
+    assert!(
+        memories.revision_events().is_empty(),
+        "and streams nothing its predecessor already streamed"
+    );
+}
+
+/// **A successor scoped `shared` binds its own profile's instance, not the one it was handed.**
+///
+/// `shared` means *bound to the profile*: every instance of that profile in the run curates one
+/// notebook. A successor that kept the store its predecessor passed it would leave one profile
+/// curating two — the transferred one, and the one every other instance of it resolves — which is
+/// the exact situation the scope exists to prevent.
+#[test]
+fn a_shared_successor_rebinds_the_instance_its_own_profile_keeps() {
+    let skills = SkillsRuntime::disabled();
+    let board = BoardRuntime::disabled();
+    let (registry, inherited) = plain();
+    let ctx = ctx(&skills, &board, &registry, &inherited);
+
+    // The instance the receiving profile already keeps, with a memory an earlier instance of it
+    // wrote.
+    let mut receiver = profile_with(vec![(
+        CAPABILITY_MEMORIES,
+        json!({ MEMORY_PARAM_SCOPE: MemoryScope::Shared.as_str() }),
+    )]);
+    receiver.name = "Notebook".to_string();
+    let existing = MemoriesRuntime::resolve(&receiver, &ctx);
+    existing
+        .binding()
+        .lock()
+        .write("agent-0", "house-style", "how we write", "the body")
+        .expect("the write is within the caps");
+
+    // The predecessor's own, entirely separate, notebook.
+    let mut carried = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
+    write_memory(&carried, "predecessor-note");
+
+    carried
+        .adopt(&receiver, &ctx)
+        .expect("memories are adopted");
+
+    let held: Vec<String> = carried
+        .binding()
+        .lock()
+        .memories()
+        .iter()
+        .map(|memory| memory.name().to_string())
+        .collect();
+    assert_eq!(
+        held,
+        vec!["house-style".to_string()],
+        "the successor curates the profile's notebook, not the one it was handed"
+    );
+    assert_eq!(carried.scope(), MemoryScope::Shared);
+}
+
 /// A profile that does not enable the capability **refuses** the module: turning a capability off is
 /// what "this agent does not get one" means.
 #[test]
@@ -719,15 +840,31 @@ fn a_rebased_window_keeps_the_thread_and_replaces_the_prompt() {
     let before = history.context().messages().len();
     history.context_mut().rebase("the successor's prompt", None);
 
-    assert_eq!(
-        history.context().messages().len(),
-        before + 1,
-        "the changed prompt is superseded and re-appended, never edited in place"
-    );
     let rendered = history.context().messages();
     assert_eq!(
-        rendered.last().and_then(|m| m.content.clone()),
-        Some("the successor's prompt".to_string())
+        rendered.len(),
+        before,
+        "the opening prompt is replaced where it sits rather than superseded and re-appended"
+    );
+    assert_eq!(
+        rendered.first().and_then(|m| m.content.clone()),
+        Some("the successor's prompt".to_string()),
+        "item 0 is the successor's own prompt"
+    );
+    assert_eq!(
+        rendered
+            .iter()
+            .filter(|m| matches!(m.role, crate::model::Role::System))
+            .count(),
+        1,
+        "exactly one system-role message reaches the provider: two would have the successor \
+         instructed by its predecessor's toolset, roster and ending calls as well as its own"
+    );
+    assert!(
+        !rendered
+            .iter()
+            .any(|m| m.content.as_deref() == Some("the predecessor's prompt")),
+        "the predecessor's prompt is gone, not retagged and left in the thread"
     );
     assert!(
         rendered

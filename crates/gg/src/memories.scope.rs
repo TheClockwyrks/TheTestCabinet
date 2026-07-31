@@ -14,10 +14,12 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_MEMORIES, GgAgentConfig, GgCapabilitySet, MEMORY_PARAM_SCOPE,
+    CAPABILITY_MEMORIES, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, GgAgentConfig,
+    GgCapabilitySet, MEMORY_PARAM_SCOPE,
 };
 
 use super::{LoggedRevision, MemoryCaps, MemoryChange, MemoryScope, MemoryStore, MemoryStrategy};
+use crate::modules::ModuleResolveCtx;
 use crate::prompts::MemoryNoticeEntry;
 
 /// The [memory instance](MemoryScope::Shared) each agent **profile** binds to, created on first
@@ -101,6 +103,36 @@ pub fn resolve_scope(profile: &GgAgentConfig) -> (MemoryScope, Option<String>) {
             )),
         ),
     }
+}
+
+/// Whether **any** profile this run declares takes its memories from its spawner — the run-level
+/// half of [`MemoriesRuntime::is_linked`](super::MemoriesRuntime::is_linked).
+///
+/// A holder learns whether its own binding links it from its own [scope](MemoryScope), but that is
+/// only half the question: inheritance is an offer the *spawner* makes, and a spawner scoped
+/// [`isolated`](MemoryScope::Isolated) still hands its store to a child scoped
+/// [`inherited`](MemoryScope::Inherited). Whether such a child exists at all is a property of the
+/// whole configuration, so it is answered once at launch and carried into every module resolution
+/// — the alternative, counting a store's live holders when the prompt is rendered, answers "has it
+/// happened yet" rather than "can it happen", and a prompt rendered before the first spawn would
+/// always say no.
+pub fn run_inherits_memories(set: &GgCapabilitySet) -> bool {
+    set.agents.iter().any(|profile| {
+        profile.is_enabled(CAPABILITY_MEMORIES) && resolve_scope(profile).0.is_inherited()
+    })
+}
+
+/// Whether a holder built for `profile` under `scope` should be told its memories may be held by
+/// another agent too — see [`MemoriesRuntime::is_linked`](super::MemoriesRuntime::is_linked).
+///
+/// Either its own binding links it, or it can spawn and this run declares somebody who inherits.
+/// The delegation check is what keeps the warning off an agent that has no way of producing the
+/// child that would inherit from it.
+pub fn links(profile: &GgAgentConfig, scope: MemoryScope, ctx: &ModuleResolveCtx<'_>) -> bool {
+    scope.may_link()
+        || (ctx.inheritable
+            && (profile.is_enabled(CAPABILITY_SUBAGENTS)
+                || profile.is_enabled(CAPABILITY_WORKFLOWS)))
 }
 
 /// The scopes, as a prose list — the vocabulary every scope diagnostic offers back.

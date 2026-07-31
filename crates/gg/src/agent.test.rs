@@ -1627,6 +1627,58 @@ fn system_prompt_names_the_api_objects_in_code_mode() {
     assert!(!empty.contains("`system`"), "{empty}");
 }
 
+/// **An unowned module says nothing in the system prompt.**
+///
+/// `unowned` means the module is reachable through its *tools and nothing else*: not the pinned
+/// block (which each module withholds itself), and not the capability's own section either — the
+/// paragraphs explaining what a task list is for and what its ceiling is. What documents the tools
+/// is their own schemas, which are untouched. Withholding only the block would have left an
+/// operator who set the param to cut a large module out of every request still paying for its
+/// prose on every turn.
+#[test]
+fn an_unowned_module_contributes_no_prompt_section() {
+    let registry = ToolRegistry::from_capabilities(&GgAgentConfig::root());
+
+    let owned = DisabledRuntimes {
+        tasks: Some(TasksRuntime::new(7)),
+        memories: Some(MemoriesRuntime::new(
+            crate::memories::MemoryStrategy::Scratchpad,
+            crate::memories::MemoryCaps::default(),
+        )),
+        ..DisabledRuntimes::new()
+    };
+    let with_sections = system_prompt(owned.inputs(&registry));
+    assert!(
+        with_sections.contains("add_task"),
+        "an owned task list is explained: {with_sections}"
+    );
+    assert!(
+        with_sections.contains("memor"),
+        "and so are its memories: {with_sections}"
+    );
+
+    let unowned = DisabledRuntimes {
+        tasks: Some(TasksRuntime::new(7).with_ownership(Ownership::Unowned)),
+        memories: Some(
+            MemoriesRuntime::new(
+                crate::memories::MemoryStrategy::Scratchpad,
+                crate::memories::MemoryCaps::default(),
+            )
+            .with_ownership(Ownership::Unowned),
+        ),
+        ..DisabledRuntimes::new()
+    };
+    let without = system_prompt(unowned.inputs(&registry));
+    assert!(
+        !without.contains("add_task"),
+        "an unowned task list is not described at all: {without}"
+    );
+    assert!(
+        !without.contains("write_memory"),
+        "nor are its memories: {without}"
+    );
+}
+
 /// The system prompt states the run's `read_file` line cap — a per-run configuration value the
 /// prompt interpolates rather than restating a default — and says nothing about reads when the
 /// mode is uncapped.
@@ -5010,6 +5062,73 @@ async fn an_inherited_subagent_curates_its_spawners_memories() {
         _ => false,
     });
     assert!(noticed, "the root was told about the child's write");
+}
+
+/// **A holder that binds somebody else's store opens with it in its window.**
+///
+/// The pinned memory block is otherwise rebuilt only at a compaction boundary, because between
+/// boundaries the model's own calls and their confirmations are what tell it what it holds. That
+/// reasoning covers a store the agent filled itself and says nothing about one it was *handed*: an
+/// inherited notebook was never written by a call in this thread, so nothing carries the news and
+/// the window would open with no trace of memories the system prompt says are shown in full — and,
+/// under `scratchpad`, no read call to reach them with either. gg therefore builds the block once
+/// as the window is opened.
+#[tokio::test]
+async fn an_inherited_store_is_in_the_childs_window_from_its_first_turn() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-mem".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), memory_scope_set("inherited"));
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_AGENT, |b| {
+            Box::new(MockClient::with_memory_parent_script(&b.model_id))
+        })
+        .slot("subagent", |b| {
+            Box::new(MockClient::with_memory_child_script(&b.model_id))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    // The child's very first window report: its own memory call has not happened yet, so any
+    // Memory-band tokens are the block gg opened it on.
+    let opening = events
+        .iter()
+        .find_map(|event| match &event.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. }
+                if event.agent_id.as_deref() == Some("agent-0") =>
+            {
+                Some(by_source.clone())
+            }
+            _ => None,
+        })
+        .expect("the child reported its window");
+    let memory_band = opening
+        .iter()
+        .find(|usage| usage.source == GgContextSource::Memory)
+        .map(|usage| usage.tokens)
+        .unwrap_or(0);
+    assert!(
+        memory_band > 0,
+        "the child opened on the notebook it inherited: {opening:?}"
+    );
+    // And it is the spawner's memory that is in there, not an empty block.
+    let shown = events.iter().any(|event| match &event.kind {
+        GgTelemetryKind::ContextMessage { content, .. } => {
+            event.agent_id.as_deref() == Some("agent-0")
+                && content
+                    .as_deref()
+                    .is_some_and(|text| text.contains(MOCK_MEMORY_PARENT))
+        }
+        _ => false,
+    });
+    assert!(
+        shown,
+        "the inherited memory itself is in the child's window"
+    );
 }
 
 /// The same run under `isolated` — the default, and the behaviour every existing configuration

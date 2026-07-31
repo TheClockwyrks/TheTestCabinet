@@ -796,9 +796,9 @@ fn a_terminal_state_is_offered_no_transition_tool() {
 /// conditions, and each is withheld when the thing that would make it usable is missing.
 ///
 /// `exec` needs a roster (there has to be something to become) and is withheld inside a machine,
-/// where the next move is `transition_state`'s. `fork` needs the delegation machinery, because a
-/// copy nobody can wait on or message is a leak rather than a second worker. Neither is offered
-/// without the capability at all.
+/// where the next move is `transition_state`'s. `fork` needs the `subagents` capability, which is
+/// what offers the two calls that collect a copy — a copy nobody can wait on or message is a leak
+/// rather than a second worker. Neither is offered without the capability at all.
 #[test]
 fn the_agent_transition_tools_are_offered_on_their_own_terms() {
     use test_cabinet_core::gg::{
@@ -835,6 +835,24 @@ fn the_agent_transition_tools_are_offered_on_their_own_terms() {
         .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
     assert_eq!(offered(&with_delegation, None), (false, true));
+
+    // **And an agent whose only child can be a copy of itself is given the calls that collect
+    // one.** The roster is what `spawn_subagent` needs, not what `fork` needs, so gating waiting
+    // and messaging on it left the one profile that can fork and cannot spawn — every
+    // "everything on" single-agent preset — holding a `fork` whose result it could never reach.
+    let registry = ToolRegistry::from_run(
+        &with_delegation,
+        &CapabilityModules::inert(),
+        &AgentFacts::default(),
+    );
+    assert!(
+        !registry.offers(SPAWN_SUBAGENT_TOOL),
+        "there is still nobody on the roster to spawn"
+    );
+    assert!(
+        registry.offers(WAIT_FOR_SUBAGENTS_TOOL) && registry.offers(SEND_MESSAGE_TOOL),
+        "but the copy it can make is waitable and messageable"
+    );
 
     // Both, and then the same profile standing in a machine: the copy is still a copy, but where
     // the run goes next has stopped being this agent's decision.

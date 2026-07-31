@@ -754,28 +754,72 @@ impl ContextModel {
     /// is meant to keep.
     ///
     /// A `None` `user_prompt` leaves the existing build prompt alone (an agent continuing on the
-    /// same task); `Some` replaces it. Both replacements are done through
-    /// [`replace_source`](Self::replace_source), so a byte-identical rebase is a no-op — the
-    /// common case when an agent re-incarnates as itself — and a changed one supersedes rather
-    /// than deletes, keeping the render append-only for the prompt cache.
+    /// same task); `Some` replaces it.
+    ///
+    /// # Why this does not go through `replace_source`
+    ///
+    /// The append-only discipline every *pinned block* follows — supersede the live item where it
+    /// sits, append the rebuilt one at the tail — is wrong for the opening pair, and dangerously
+    /// so for item 0. A superseded system prompt keeps its `system` **role**: it is retagged as
+    /// history, but it is still rendered to the provider as a system message, so the successor
+    /// would make every request carrying two system prompts — its predecessor's toolset, roster
+    /// and ending calls at the head, and its own at the tail. A provider that flattens the two
+    /// (Anthropic's shape concatenates every system message into one field) hands the model a
+    /// single instruction block naming calls it does not have. So the opening items are replaced
+    /// **in place**, keeping their position and their role and losing the stale text outright.
+    ///
+    /// Nothing is paid for it: a rebase happens only when a window is handed to a *different*
+    /// profile, which changes item 0, and any edit to item 0 has already invalidated the whole
+    /// cached prefix. A byte-identical rebase — an agent re-incarnating as itself — is still a
+    /// no-op, and leaves the cache intact.
     ///
     /// Everything else — the [turn counter](Self::begin_turn), the usage-signal slot, the pinned
     /// blocks, the file views — is untouched. In particular the turn counter is **never** reset:
     /// a model that read `Turn #37` and later archives turns 12–20 must be naming the turns it
     /// saw, whichever incarnation showed them to it.
-    #[allow(dead_code)] // the successor half of a module transfer; see `crate::modules::HistoryModule`.
     pub fn rebase(&mut self, system: impl Into<String>, user_prompt: Option<String>) {
-        self.replace_source(
+        self.replace_opening(
             GgContextSource::System,
-            Retention::Pinned,
-            Some(Message::system(system)),
+            Message::system(system.into()),
+            true,
         );
         if let Some(prompt) = user_prompt {
-            self.replace_source(
-                GgContextSource::UserPrompt,
-                Retention::Pinned,
-                Some(Message::user(prompt)),
-            );
+            self.replace_opening(GgContextSource::UserPrompt, Message::user(prompt), false);
+        }
+    }
+
+    /// Replace the pinned opening item attributed to `source` **in place**, or seed it when the
+    /// window has none — the primitive [`rebase`](Self::rebase) is made of.
+    ///
+    /// `system` marks the one item whose role is `system`, so the search finds item 0 itself
+    /// rather than one of the ephemeral `System`-sourced process notes the loop pushes (a
+    /// compaction instruction, a handoff note) that share its band.
+    fn replace_opening(&mut self, source: GgContextSource, message: Message, system: bool) {
+        let message = self.headed(source, message);
+        let tokens = self.estimator.estimate_message(&message);
+        let live = self.items.iter_mut().find(|item| {
+            item.source == source
+                && item.retention.is_pinned()
+                && matches!(item.message.role, Role::System) == system
+        });
+        match live {
+            Some(item) => {
+                if item.message != message {
+                    item.message = message;
+                    item.tokens = tokens;
+                }
+            }
+            // A succession whose transfer list did not carry the history module opens on an empty
+            // window; there is nothing to replace, and the opening pair is simply seeded.
+            None => self.items.push(ContextItem {
+                source,
+                retention: Retention::Pinned,
+                message,
+                tokens,
+                label: None,
+                region: None,
+                turn: self.turn,
+            }),
         }
     }
 

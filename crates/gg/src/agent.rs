@@ -1073,6 +1073,14 @@ struct Orchestrator {
     /// one notebook and are each told what the other wrote. Empty for every run that scopes
     /// nothing, which is every run that does not say otherwise.
     memory_registry: MemoryRegistry,
+    /// Whether any profile this run declares takes its memories from the agent that spawned it —
+    /// [`inherited`](MemoryScope::Inherited) or [`read-only`](MemoryScope::ReadOnly).
+    ///
+    /// Resolved once, here, because it is a fact about the *configuration* rather than about any
+    /// one agent, and because the agent it matters to is the **spawner**: an agent whose own
+    /// memories are isolated has to be told in its opening prompt that a child may nonetheless
+    /// come to hold them, and that prompt is rendered before it has spawned anything.
+    memories_inheritable: bool,
     /// Every [machine](crate::fsm) this run declares, keyed by the **FSM shell**
     /// [profile](GgAgentConfig) that declares it — parsed once at launch, then shared by every
     /// incarnation each machine runs.
@@ -1312,6 +1320,7 @@ impl Orchestrator {
             issue_reviews: Mutex::new(HashMap::new()),
             board: resolve_board(set),
             memory_registry: MemoryRegistry::new(),
+            memories_inheritable: crate::memories::run_inherits_memories(set),
             // Infallible here: `validate_agents` refused the launch over any machine that could not
             // be built, before this orchestrator was constructed. A machine that somehow still fails
             // to parse simply declares nothing and its shell runs as an ordinary agent, which the
@@ -2428,6 +2437,7 @@ async fn run_agent(
                 succession.modules,
                 Opening::Carried {
                     note: succession.note,
+                    history: succession.history,
                 },
             ),
             None => {
@@ -2436,6 +2446,7 @@ async fn run_agent(
                     board: &orch.board,
                     memories: &orch.memory_registry,
                     inherited,
+                    inheritable: orch.memories_inheritable,
                     history: history.clone(),
                     agent_id: &agent.id,
                 };
@@ -2793,6 +2804,7 @@ async fn run_agent(
                 board: &orch.board,
                 memories: &orch.memory_registry,
                 inherited,
+                inheritable: orch.memories_inheritable,
                 history: successor_history,
                 agent_id: &successor_id,
             };
@@ -2830,6 +2842,7 @@ async fn run_agent(
                 successor_fsm.as_ref(),
             ),
             modules: successor_modules,
+            history: report.transferred.contains(&ModuleKind::History),
             from_state: handoff.reason.departed_state(),
             turn_base: turns_taken,
         });
@@ -5464,6 +5477,18 @@ impl Agent {
                 context.push_user_prompt(prompt);
                 false
             }
+            // A succession whose transfer list did **not** name `history` — the deliberate hard
+            // reset an FSM edge declares by carrying nothing. Its window is empty, so there is no
+            // thread to rebase and nothing for the seeding steps to duplicate: it is opened exactly
+            // as a fresh agent's is, and the handoff note is appended at the tail below on top of
+            // it. Without this the successor would hold a system prompt and a handoff note and no
+            // statement of the task at all — every other agent's brief lives in the build prompt,
+            // and a reset must not be the one way of losing it.
+            Opening::Carried { history: false, .. } => {
+                context.push_system(system);
+                context.push_user_prompt(prompt);
+                false
+            }
             Opening::Carried { .. } => {
                 context.rebase(system, None);
                 true
@@ -5509,13 +5534,26 @@ impl Agent {
             ));
         }
 
+        // Pin the blocks whose modules arrived holding something.
+        //
+        // The memory block is otherwise rebuilt only at a compaction boundary, because between
+        // boundaries the model's own calls and their confirmations are what tell it what it holds
+        // (see `MemoriesRuntime::context_block`). That reasoning covers a store this agent filled
+        // itself — and covers nothing about a store it was *handed*. A holder that binds its
+        // spawner's instance, the registry entry a `shared` profile shares, or a transferred module
+        // opens on memories it never wrote a call for: without this its window would carry no trace
+        // of them, while its system prompt told it they were shown to it in full. A block over an
+        // empty store renders nothing, so this is a no-op for the ordinary case of an agent that
+        // starts with nothing.
+        refresh_boundary_blocks(context, caps);
+
         // The successor's opening note, appended at the **tail** of the transferred thread: what
         // arrived, what did not, and whatever its predecessor wanted it to know. Pushed after the
         // rebase and after any pinned blocks the modules brought with them, so it is the last thing
         // the model reads before its first turn — and ephemeral, because it is gg speaking about
         // the handoff rather than material the agent produced, and a later compaction has by then
         // folded everything it announced into the blocks that cross the boundary.
-        if let Opening::Carried { note } = &opening {
+        if let Opening::Carried { note, .. } = &opening {
             context.push(
                 GgContextSource::System,
                 Retention::Ephemeral,
@@ -6658,30 +6696,6 @@ impl Agent {
                 };
             }
 
-            // The state transition this turn declared: every tool result — including the
-            // transition call's — is now recorded, so the conversation is valid and the incarnation
-            // may end. It is checked **after** the ending above, which is what makes an ending win a
-            // turn that declared both: the agent said its work was done, and a successor would have
-            // nothing left to do.
-            //
-            // Recorded as a `Progressed` turn rather than a `Finished` one: the session is not over,
-            // it is continuing as somebody else, and the error-rate window this agent has built up
-            // travels no further than this incarnation anyway.
-            if let Some(handoff) = declared_handoff {
-                let _ = agent_limits.record(TurnOutcome::Progressed, &self.id);
-                return LoopEnd {
-                    status: STATUS_COMPLETED,
-                    turns: turn + 1,
-                    tokens: total_tokens,
-                    cost: total_cost,
-                    slot: self.slot.clone(),
-                    final_text: None,
-                    ending: None,
-                    limit: None,
-                    handoff: Some(handoff),
-                };
-            }
-
             // The deferred half of a compaction the model performed itself: every tool result —
             // including the `compact` call's — is now recorded, so the conversation is valid and the
             // window may be rewritten. Two things can land here: a `compact` call (whether gg asked
@@ -6717,6 +6731,37 @@ impl Agent {
                     Message::user(pending.unsatisfied(false, memory_calls)),
                 ),
                 (None, None) => {}
+            }
+
+            // The state transition this turn declared: every tool result — including the
+            // transition call's — is now recorded and any compaction the turn asked for has been
+            // applied, so the conversation is valid and the incarnation may end. Two orderings
+            // matter here, and both are deliberate:
+            //
+            // * **after the ending**, which is what makes an ending win a turn that declared both:
+            //   the agent said its work was done, and a successor would have nothing left to do;
+            // * **after the compaction**, because the successor inherits *this* window and it must
+            //   inherit the one this turn actually produced. A model that compacted and handed off
+            //   in one turn paid for a summary; dropping it would hand the successor the full
+            //   window it thought it had just condensed. The code path applies the two in the same
+            //   order, for the same reason.
+            //
+            // Recorded as a `Progressed` turn rather than a `Finished` one: the session is not over,
+            // it is continuing as somebody else, and the error-rate window this agent has built up
+            // travels no further than this incarnation anyway.
+            if let Some(handoff) = declared_handoff {
+                let _ = agent_limits.record(TurnOutcome::Progressed, &self.id);
+                return LoopEnd {
+                    status: STATUS_COMPLETED,
+                    turns: turn + 1,
+                    tokens: total_tokens,
+                    cost: total_cost,
+                    slot: self.slot.clone(),
+                    final_text: None,
+                    ending: None,
+                    limit: None,
+                    handoff: Some(handoff),
+                };
             }
 
             // The tool-calling turn is done: every requested call was dispatched and answered, and
@@ -7876,6 +7921,18 @@ fn code_heading_views(
         .collect()
 }
 
+/// Whether the system prompt describes `module`'s capability at all: it is enabled **and**
+/// [owned](Ownership::Owned) by this agent.
+///
+/// This is the whole of what [`unowned`](Ownership::Unowned) means at the prompt — the module is
+/// reachable through the holder's tools and nothing else. The tools themselves are untouched (the
+/// registry is built from the capability, not from the ownership), its state stays live, and its
+/// telemetry is still emitted; what an unowned module costs its holder is a schema per call it may
+/// make, rather than a section of every request plus a pinned block that grows with the state.
+fn describes(module: &dyn Module) -> bool {
+    module.enabled() && module.ownership().is_owned()
+}
+
 /// The entries of `profile`'s [roster](GgAgentConfig::subagents) that carry `scope`, as the prompt
 /// lists them: the target's name plus the caller-scoped description of when to use it.
 fn roster(profile: &GgAgentConfig, scope: GgSubagentScope) -> Vec<SpawnableAgentView> {
@@ -7957,12 +8014,12 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
     // discipline every other section follows.
     let code_headings = if responses_as_code {
         code_heading_views(
-            memories.offers_memories(),
-            tasks.offers_tasks(),
+            describes(memories),
+            describes(tasks),
             // Gated on this agent's own capability, exactly as the board section below is: an agent
             // without it is never shown a `Board` block, so naming the heading would describe a
             // message kind it cannot receive.
-            board.offers_board() && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT),
+            describes(board) && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT),
             // A restored file view is a `File` message too, so a persistent agent is told the heading
             // even in the (unusual) case that it reads nothing itself.
             offers_read || autoload_specs.is_some() || persistence,
@@ -7999,7 +8056,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             // The strategy decides what the section says: what memory *is* on this run differs
             // enough between the three (all of it in the window, an index over it, or nothing
             // until you search) that they are three paragraphs rather than one with holes.
-            memories: memories.offers_memories().then(|| {
+            memories: describes(memories).then(|| {
                 let caps = memories.caps();
                 let strategy = memories.strategy();
                 MemoriesView {
@@ -8017,11 +8074,11 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
                     // depend on how this agent was spawned: a profile scoped `read-only` that
                     // ended up with an instance of its own may write it.
                     read_only: !memories.is_writable(),
-                    linked: memories.is_linkable(),
+                    linked: memories.is_linked(),
                     scope: memories.scope().to_string(),
                 }
             }),
-            tasks: tasks.offers_tasks().then(|| TasksView {
+            tasks: describes(tasks).then(|| TasksView {
                 max_tasks: tasks.max_tasks(),
             }),
             // The board-authoring section is gated on **this agent's own** capability, not on the
@@ -8029,8 +8086,8 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             // work to an agent whose profile offers none of those tools is a prompt that names
             // tools the model does not have — which is exactly how an implementer ends up reaching
             // for `create_issue` instead of doing the work it was sent to do.
-            board: (board.offers_board() && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT))
-                .then(|| {
+            board: (describes(board) && profile.is_enabled(CAPABILITY_PROJECT_MANAGEMENT)).then(
+                || {
                     let caps = board.caps();
                     BoardView {
                         max_epics: caps.max_epics,
@@ -8040,7 +8097,8 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
                         issue_agents,
                         reviewer_agents,
                     }
-                }),
+                },
+            ),
             // The issue this agent was dispatched to implement, when it was one — rendered
             // whatever its own capabilities are, since being told what it is working on has
             // nothing to do with whether it may author the board.

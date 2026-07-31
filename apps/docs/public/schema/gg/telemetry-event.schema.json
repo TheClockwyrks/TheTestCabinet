@@ -1548,7 +1548,7 @@
         },
         "state": {
           "default": null,
-          "description": "The [FSM state](GgFsmState::name) the successor enters, for a\n[`fsm`](GgAgentTransitionKind::Fsm) transition. `None` for the other two kinds.",
+          "description": "The [FSM state](GgFsmState::name) the successor stands in once the succession has been\napplied, when it stands in one at all.\n\nSet for every [`fsm`](GgAgentTransitionKind::Fsm) transition, and also for an\n[`exec`](GgAgentTransitionKind::Exec) whose target is an **FSM shell**: gg resolves such\na handoff to the machine's entry state, so the successor genuinely enters a process and\nthe record has to say which state it entered. `None` for an `exec` into an ordinary\nprofile and for a [`fork`](GgAgentTransitionKind::Fork), neither of which moves the\nagent within a machine — a fork of an agent standing in a state is a second worker, not\na second position, and carries no state of its own.",
           "type": ["string", "null"]
         },
         "toAgentId": {

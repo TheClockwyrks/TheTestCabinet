@@ -28,8 +28,8 @@ use crate::model::ModelClient;
 use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
     CAPABILITY_FSM, CAPABILITY_TASKS, FSM_PARAM_STATES, GgAgentConfig, GgAgentTransitionKind,
-    GgCapabilityConfig, GgCapabilitySet, GgSlotBinding, GgTelemetryEvent, GgTelemetryKind,
-    ROOT_AGENT,
+    GgCapabilityConfig, GgCapabilitySet, GgContextSource, GgSlotBinding, GgTelemetryEvent,
+    GgTelemetryKind, ROOT_AGENT,
 };
 
 use super::tests::{ScriptedFactory, invocation};
@@ -340,6 +340,48 @@ async fn a_transition_that_carries_nothing_starts_the_successor_fresh() {
         "the successor's own task module was initialized fresh: {:?}",
         moves[0].3
     );
+
+    // **And it is still told what the run is for.** A successor handed no window has nothing to be
+    // rebased onto, so it is opened exactly as a fresh agent is — its own system prompt, then the
+    // run's build prompt — with the handoff note on top. Without that it would hold a system prompt
+    // and a note about a state change, and no statement of the task anywhere.
+    let opening = events
+        .iter()
+        .find_map(|event| match &event.kind {
+            GgTelemetryKind::ContextBreakdown { by_source, .. }
+                if event.agent_id.as_deref() == Some("agent-0") =>
+            {
+                Some(by_source.clone())
+            }
+            _ => None,
+        })
+        .expect("the successor reported its window");
+    let band = |source: GgContextSource| {
+        opening
+            .iter()
+            .find(|usage| usage.source == source)
+            .map(|usage| usage.tokens)
+            .unwrap_or(0)
+    };
+    assert!(
+        band(GgContextSource::UserPrompt) > 0,
+        "the successor holds a build prompt: {opening:?}"
+    );
+    assert_eq!(
+        band(GgContextSource::Assistant),
+        0,
+        "and none of its predecessor's conversation, which is what the empty list asked for"
+    );
+    let briefed = events.iter().any(|event| match &event.kind {
+        GgTelemetryKind::ContextMessage { content, .. } => {
+            event.agent_id.as_deref() == Some("agent-0")
+                && content
+                    .as_deref()
+                    .is_some_and(|text| text.contains("Build a tiny game."))
+        }
+        _ => false,
+    });
+    assert!(briefed, "and it is the run's own prompt");
 }
 
 /// A successor that was **not** handed a window is seeded like a fresh agent — and a successor that

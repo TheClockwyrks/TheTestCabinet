@@ -668,16 +668,30 @@ impl ToolRegistry {
         // their caller-scoped guidance so the model knows who it may spawn and why.
         let spawnable = &capabilities.subagents;
         let can_delegate = !spawnable.is_empty();
+        // Whether this profile can produce a child *without* naming one: a
+        // [fork](transitions::ForkTool) targets the agent itself, so it needs no roster entry. It
+        // is what makes an agent with an empty allowlist a delegating agent all the same, and the
+        // reason the collection calls below are not gated on the roster alone.
+        let can_fork = capabilities.is_enabled(CAPABILITY_AGENT_TRANSITIONS)
+            && capabilities.is_enabled(CAPABILITY_SUBAGENTS);
 
-        if capabilities.is_enabled(CAPABILITY_SUBAGENTS) && can_delegate {
+        if capabilities.is_enabled(CAPABILITY_SUBAGENTS) {
             // The subagent tools only *declare* themselves; the loop intercepts their calls and
             // performs the spawn/wait/message against the orchestrator and scheduler (they act on
             // the agent tree, which a self-contained tool cannot reach).
-            tools.push(Box::new(subagents::SpawnSubagentTool::new(
-                spawnable.clone(),
-            )));
-            tools.push(Box::new(subagents::WaitForSubagentsTool));
-            tools.push(Box::new(subagents::SendMessageTool));
+            if can_delegate {
+                tools.push(Box::new(subagents::SpawnSubagentTool::new(
+                    spawnable.clone(),
+                )));
+            }
+            // Waiting and messaging are offered to an agent that can have children **at all** —
+            // by spawning them from its roster, or by forking itself. Gating them on the roster
+            // alone left a profile whose only child is a copy of itself holding a `fork` it could
+            // neither wait on nor guide, which is the leak the capability's own rule forbids.
+            if can_delegate || can_fork {
+                tools.push(Box::new(subagents::WaitForSubagentsTool));
+                tools.push(Box::new(subagents::SendMessageTool));
+            }
         }
 
         if capabilities.is_enabled(CAPABILITY_WORKFLOWS) && can_delegate {
@@ -724,14 +738,13 @@ impl ToolRegistry {
             if can_delegate && facts.fsm.is_none() {
                 tools.push(Box::new(transitions::ExecTool::new(spawnable.clone())));
             }
-            // `fork` needs the delegation machinery rather than a roster: the copy is a child, and
-            // an agent that cannot `wait_for_subagents` on it or `send_message` to it has produced
-            // a leak rather than a second worker. It is gated on this agent's *own* profile
-            // carrying one of the two delegating capabilities, which is also what gets it the
-            // collection tools to go with the copy.
-            if capabilities.is_enabled(CAPABILITY_SUBAGENTS)
-                || capabilities.is_enabled(CAPABILITY_WORKFLOWS)
-            {
+            // `fork` needs a way to *collect* the copy rather than a roster: it is a child, and an
+            // agent that cannot `wait_for_subagents` on it or `send_message` to it has produced a
+            // leak rather than a second worker. Those two calls come with the
+            // [subagents](CAPABILITY_SUBAGENTS) capability, so that — and not the roster, which a
+            // fork never reads, nor `workflows`, which drives declared stages and offers neither
+            // call — is exactly what it is gated on.
+            if can_fork {
                 tools.push(Box::new(transitions::ForkTool));
             }
         }

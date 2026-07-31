@@ -173,6 +173,11 @@ pub const MOCK_EXEC_PROMPT: &str = "the failing case is in the loader, not the p
 /// the whole session's return value, produced by an agent that did not start it.
 pub const MOCK_EXEC_RETURN: &str = "The session finished as the agent it became.";
 
+/// The summary the [compacting-handoff script](MockClient::with_compacting_exec_script) writes in
+/// the same turn as its `exec` — what the successor's window is rebuilt from, and what a handoff
+/// applied ahead of the compaction would silently discard.
+pub const MOCK_EXEC_SUMMARY: &str = "The loader is where the failing case lives.";
+
 /// The title of the task the [fork script](MockClient::with_fork_script) adds **before** it forks,
 /// so a test can assert the copy opened holding it without ever having written it.
 pub const MOCK_FORK_TASK: &str = "Reproduce the crash";
@@ -2119,6 +2124,55 @@ impl MockClient {
         Self::new(model_id, vec![plan, succeed])
     }
 
+    /// The **predecessor** of the offline "compacted handoff" e2e: a script that condenses its own
+    /// window and hands off **in the same turn**.
+    ///
+    /// The pair is the point. Both calls are deferred to the end of the turn — a window may not be
+    /// rewritten, nor handed to anybody, between an assistant's tool calls and the results
+    /// answering them — and the order they are applied in decides what the successor inherits. The
+    /// compaction is what the model paid for; if the handoff were applied first the summary would
+    /// be dropped on the floor and the successor would open on the very window its predecessor
+    /// thought it had just condensed. Selected in production by a mock `model_id` naming
+    /// `exec-compacting`.
+    pub fn with_compacting_exec_script(model_id: impl Into<String>) -> Self {
+        let usage = |input: u64, output: u64| TokenCounts {
+            uncached_input: Some(input),
+            cached_input: None,
+            output: Some(output),
+            reasoning: None,
+        };
+        let plan = ModelResponse {
+            text: Some("Writing down what to look at.".to_string()),
+            tool_calls: vec![ToolCall {
+                id: "call_exec_task".to_string(),
+                name: "add_task".to_string(),
+                arguments: json!({ "id": "t1", "title": MOCK_EXEC_TASK }),
+            }],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(600, 30),
+            cost: None,
+        };
+        let condense_and_succeed = ModelResponse {
+            text: Some("Summarizing, then handing over.".to_string()),
+            tool_calls: vec![
+                ToolCall {
+                    id: "call_compact".to_string(),
+                    name: "compact".to_string(),
+                    arguments: json!({ "summary": MOCK_EXEC_SUMMARY }),
+                },
+                ToolCall {
+                    id: "call_exec".to_string(),
+                    name: "exec".to_string(),
+                    arguments: json!({ "agent": "After", "prompt": MOCK_EXEC_PROMPT }),
+                },
+            ],
+            finish_reason: FinishReason::ToolCalls,
+            usage: usage(700, 40),
+            cost: None,
+        };
+        Self::new(model_id, vec![plan, condense_and_succeed])
+    }
+
     /// The **successor** of the offline `exec` e2e: a script that finishes, which is how a
     /// succession ends. Selected in production by a mock `model_id` naming `exec-after` (see
     /// [`mock_client_for`]).
@@ -2953,7 +3007,9 @@ pub fn client_for_slot(
 /// no runaway recursion. This keys purely on the (offline) `model_id`, matching how
 /// [`resolve_provider_kind`] already selects the mock provider by `model_id`.
 fn mock_client_for(model_id: &str) -> MockClient {
-    if model_id.contains("exec-before") {
+    if model_id.contains("exec-compacting") {
+        MockClient::with_compacting_exec_script(model_id)
+    } else if model_id.contains("exec-before") {
         MockClient::with_exec_before_script(model_id)
     } else if model_id.contains("exec-after") {
         MockClient::with_exec_after_script(model_id)

@@ -52,13 +52,6 @@
 //! See the [module model](https://docs.testcabinet.ai/gg/modules/) on the documentation site for
 //! the user-facing description.
 
-// The transfer half of the module model — `fork`/`share`/`adopt` and the [`transfer`] primitive
-// over them — is fully implemented and exercised by this module's tests, but nothing in the agent
-// loop hands a live module to a second holder yet: that is what `fork`, `exec` and a machine
-// transition are built on, and they arrive with the features that use them. The abstraction lands
-// whole rather than in pieces, because a half-built one cannot be checked against its own rules.
-#![allow(dead_code)]
-
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -208,6 +201,22 @@ pub trait Module: Send {
     /// it never missed.
     fn share(&self) -> ModuleHandle;
 
+    /// Whether copying the *agent* should [link](Self::share) this module rather than
+    /// [fork](Self::fork) it — the per-kind half of [`fork_modules`].
+    ///
+    /// `false` for a module that is genuinely one agent's, which is the default and the answer for
+    /// four of the six kinds. The board says `true` unconditionally (a second copy of the run's
+    /// work queue would issue the same identifier twice) and memories say `true` when their
+    /// [scope](crate::memories::MemoryScope) links them (two agents meant to curate one notebook
+    /// do not stop meaning it because one of them was copied).
+    ///
+    /// It lives on the trait, beside the two operations it chooses between, so that a kind added
+    /// later answers the question in its own file rather than being forgotten in a copy routine
+    /// that never mentions it.
+    fn links_when_forked(&self) -> bool {
+        false
+    }
+
     /// Re-resolve this module's configuration from the profile that is about to hold it — its
     /// caps, its mode, its ownership, and anything else the *holder* rather than the contents
     /// decides.
@@ -323,7 +332,9 @@ impl HistoryModule {
         Self { context }
     }
 
-    /// The window, for reading.
+    /// The window, for reading. The loop takes the window mutably for a whole turn through
+    /// [`context_mut`](Self::context_mut); this is the read surface the tests assert against.
+    #[allow(dead_code)]
     pub fn context(&self) -> &ContextModel {
         &self.context
     }
@@ -461,6 +472,12 @@ pub struct ModuleResolveCtx<'a> {
     /// Only a profile that asks for them ([`inherited`](crate::memories::MemoryScope::Inherited) or
     /// [`read-only`](crate::memories::MemoryScope::ReadOnly)) takes anything from here.
     pub inherited: &'a InheritedModules,
+    /// Whether **any** profile this run declares inherits its memories from its spawner, resolved
+    /// once at launch. It is what tells an agent whose own memories are
+    /// [isolated](crate::memories::MemoryScope::Isolated) that a child may nonetheless end up
+    /// holding them — see
+    /// [`MemoriesRuntime::is_linked`](crate::memories::MemoriesRuntime::is_linked).
+    pub inheritable: bool,
     /// The holder-owned properties of the conversation window.
     pub history: HistorySetup,
     /// The id of the agent instance the modules are being built for. Recorded on a shared store's
@@ -662,9 +679,11 @@ impl CapabilityModules {
         }
     }
 
-    /// This set with `module` in place of the one it holds of the same kind — the builder callers
-    /// that assemble a set by hand use. A [history](ModuleKind::History) handle is rejected: the
-    /// window is held by the [`ModuleSet`] around this, not among the capability modules.
+    /// This set with `module` in place of the one it holds of the same kind — the chaining form of
+    /// [`put`](Self::put), for the tests that assemble a set a module at a time. A
+    /// [history](ModuleKind::History) handle is rejected: the window is held by the [`ModuleSet`]
+    /// around this, not among the capability modules.
+    #[allow(dead_code)]
     pub fn with(mut self, module: ModuleHandle) -> Self {
         self.put(module);
         self
@@ -843,7 +862,10 @@ impl ModuleSet {
         }
     }
 
-    /// A set holding nothing: an empty window and five disabled modules.
+    /// A set holding nothing: an empty window and five disabled modules. The starting point every
+    /// test that assembles a set by hand builds from; the loop always [resolves](Self::resolve) one
+    /// from a profile.
+    #[allow(dead_code)]
     pub fn inert(setup: &HistorySetup) -> Self {
         Self {
             history: HistoryModule::new(setup),
@@ -851,10 +873,9 @@ impl ModuleSet {
         }
     }
 
-    /// This set with `module` put in place of the one it currently holds of that kind.
-    ///
-    /// The builder every caller that assembles a set by hand uses — the tests, and the
-    /// [transfer](transfer) that replaces a freshly initialized module with a carried one.
+    /// This set with `module` put in place of the one it currently holds of that kind — the
+    /// chaining form of [`put`](Self::put), for the tests that assemble a set a module at a time.
+    #[allow(dead_code)]
     pub fn with(mut self, module: ModuleHandle) -> Self {
         self.put(module);
         self
@@ -895,22 +916,18 @@ impl ModuleSet {
         }
     }
 
-    /// The window module.
-    pub fn history(&self) -> &HistoryModule {
-        &self.history
-    }
-
-    /// The window module, mutably.
-    pub fn history_mut(&mut self) -> &mut HistoryModule {
-        &mut self.history
-    }
-
-    /// The window itself — the shorthand for `history().context()`.
+    /// The window itself — the shorthand for `history().context()`. The loop holds the window and
+    /// the capability modules apart for a whole turn through [`split_mut`](Self::split_mut); this
+    /// is the read surface for the callers that hold a whole set, which today are the fork path
+    /// and the tests.
+    #[allow(dead_code)]
     pub fn context(&self) -> &ContextModel {
         self.history.context()
     }
 
-    /// The window itself, mutably.
+    /// The window itself, mutably — the counterpart of [`context`](Self::context), for the tests
+    /// that fill a set's window before transferring or cloning it.
+    #[allow(dead_code)]
     pub fn context_mut(&mut self) -> &mut ContextModel {
         self.history.context_mut()
     }
@@ -953,18 +970,17 @@ impl ModuleSet {
 /// forks from inside a [code turn](crate::sandbox) is holding the live [`ContextModel`] alone: the
 /// module around it stays behind in the agent's set while a program runs.
 ///
-/// Three of the six deviate from a plain `fork()`, each for a reason the [per-kind
-/// table](Module::fork) already states, and all three are visible right here rather than in prose:
+/// Every module goes through the same two-way choice — [`Module::links_when_forked`] decides
+/// whether the copy is a [link](Module::share) onto the same store or an independent
+/// [copy](Module::fork) — so the per-kind rules live with the kinds rather than in a routine that
+/// has to remember all six. Today the board always links, memories link when their
+/// [scope](crate::memories::MemoryScope) says two agents were meant to curate one notebook, and
+/// the rest are copied. (Skills are copied and still share the loaded library, which is immutable;
+/// what is copied is the read set, a promise about *this* window — and the window is being copied
+/// with it.)
 ///
-/// - **memories** follow the forker's [scope](crate::memories::MemoryScope). A
-///   [linkable](MemoriesRuntime::is_linkable) one is [shared](Module::share) — the two agents were
-///   already meant to curate one notebook, and a fork is not a reason to split it — while an
-///   [isolated](crate::memories::MemoryScope::Isolated) one is copied and the two diverge. Either
-///   way the copy is re-stamped with the **copy's** agent id, so its writes are attributed to it.
-/// - **the board** is always shared: it is the run's single work queue, and a second copy of it
-///   would issue the same identifier twice.
-/// - **skills** share the loaded library (it is immutable) and copy the read set, which is a
-///   promise about *this* window — and the window is being copied with it.
+/// The copy's memories are re-stamped with the **copy's** agent id, whichever way they came, so
+/// its writes are attributed to it and it is not told about its own.
 ///
 /// Returns the set and the kinds it actually carries, which is what the fork's
 /// [`AgentTransition`](GgTelemetryKind::AgentTransition) reports.
@@ -973,22 +989,18 @@ pub fn fork_modules(
     caps: &CapabilityModules,
     agent_id: &str,
 ) -> (ModuleSet, Vec<ModuleKind>) {
-    let memories = if caps.memories.is_linkable() {
-        caps.memories.shared()
-    } else {
-        caps.memories.forked()
-    }
-    .with_agent(agent_id);
-    let set = ModuleSet {
+    let mut set = ModuleSet {
         history: HistoryModule::from_context(context.clone()),
-        caps: CapabilityModules {
-            memories,
-            tasks: caps.tasks.forked(),
-            board: caps.board.shared(),
-            skills: caps.skills.forked(),
-            archive: caps.archive.forked(),
-        },
+        caps: CapabilityModules::inert(),
     };
+    for module in caps.each() {
+        set.put(if module.links_when_forked() {
+            module.share()
+        } else {
+            module.fork()
+        });
+    }
+    set.caps.memories = set.caps.memories.with_agent(agent_id);
     let cloned = ModuleKind::ALL
         .into_iter()
         .filter(|kind| set.has(*kind))

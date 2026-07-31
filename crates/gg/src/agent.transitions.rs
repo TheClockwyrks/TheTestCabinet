@@ -144,6 +144,10 @@ pub(super) struct Succession {
     pub(super) modules: ModuleSet,
     /// The successor's [opening note](Opening::Carried).
     pub(super) note: String,
+    /// Whether the [history](crate::modules::ModuleKind::History) module travelled with the
+    /// succession — what [`Opening::Carried::history`] is built from. A fork always carries one;
+    /// an FSM edge carries one only if its transfer list says so.
+    pub(super) history: bool,
     /// The [machine](crate::fsm) state the predecessor was in, for the successor's own
     /// [`FsmState`](GgTelemetryKind::FsmState) event. `None` for a succession outside a machine.
     pub(super) from_state: Option<String>,
@@ -161,10 +165,11 @@ pub(super) struct Succession {
 /// The distinction is only about the first few items of the window and the two things that seed it.
 /// A [fresh](Self::Fresh) opening is what every agent has always had — the system prompt, the build
 /// prompt, any autoloaded specifications, any file views a persistent profile left open. A
-/// [carried](Self::Carried) one already *has* a thread: its system prompt is
-/// [rebased](ContextModel::rebase) to this profile's (item 0 is the one thing a successor must not
-/// inherit — it states someone else's toolset, roster and ending calls), its build prompt is left
-/// alone, and the seeding is skipped because the window it would seed into is not empty.
+/// [carried](Self::Carried) one that received the [history](crate::modules::ModuleKind::History)
+/// module already *has* a thread: its system prompt is [rebased](ContextModel::rebase) to this
+/// profile's (item 0 is the one thing a successor must not inherit — it states someone else's
+/// toolset, roster and ending calls), its build prompt is left alone, and the seeding is skipped
+/// because the window it would seed into is not empty.
 pub(super) enum Opening {
     /// A window with nothing in it yet.
     Fresh,
@@ -174,6 +179,15 @@ pub(super) enum Opening {
     Carried {
         /// The successor's opening note.
         note: String,
+        /// Whether the [history](crate::modules::ModuleKind::History) module actually came with
+        /// the succession.
+        ///
+        /// Always true for an [`exec`](handle_exec) and a [`fork`](handle_fork), whose plans carry
+        /// every module both sides hold; false for the FSM edge that declares an empty transfer
+        /// list — the deliberate hard reset — whose successor is handed a brand-new empty window
+        /// and must therefore be seeded like a fresh agent rather than rebased onto a thread it
+        /// does not have.
+        history: bool,
     },
 }
 
@@ -456,6 +470,9 @@ pub(super) fn dispatch_forks(
         let seed = Succession {
             note: fork_note(spawner, &fork.prompt, turns_taken),
             modules,
+            // A copy is the forker's whole conversation, always: that is what distinguishes it
+            // from an ordinary subagent spawned on the same profile.
+            history: true,
             // A copy is not standing anywhere in a machine: it is a second worker for the agent
             // that made it, not a second driver of the process that agent is in.
             from_state: None,
@@ -706,11 +723,12 @@ pub(super) fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
                 profile.name,
             ));
         }
-        if !profile.is_enabled(CAPABILITY_SUBAGENTS) && !profile.is_enabled(CAPABILITY_WORKFLOWS) {
+        if !profile.is_enabled(CAPABILITY_SUBAGENTS) {
             warnings.push(format!(
-                "agent `{}`: it enables `{CAPABILITY_AGENT_TRANSITIONS}` but neither \
-                 `{CAPABILITY_SUBAGENTS}` nor `{CAPABILITY_WORKFLOWS}`, so a copy of it could \
-                 never be waited on or messaged and `{FORK_TOOL}` is not offered.",
+                "agent `{}`: it enables `{CAPABILITY_AGENT_TRANSITIONS}` but not \
+                 `{CAPABILITY_SUBAGENTS}`, which is what offers `wait_for_subagents` and \
+                 `send_message` — so a copy of it could never be waited on or messaged, and \
+                 `{FORK_TOOL}` is not offered.",
                 profile.name,
             ));
         }

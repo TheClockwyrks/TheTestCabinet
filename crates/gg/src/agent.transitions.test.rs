@@ -19,8 +19,8 @@ use tempfile::TempDir;
 
 use super::*;
 use crate::client::{
-    MOCK_EXEC_PROMPT, MOCK_EXEC_RETURN, MOCK_EXEC_TASK, MOCK_FORK_PROMPT, MOCK_FORK_RETURN,
-    MOCK_FORK_TASK, MockClient,
+    MOCK_EXEC_PROMPT, MOCK_EXEC_RETURN, MOCK_EXEC_SUMMARY, MOCK_EXEC_TASK, MOCK_FORK_PROMPT,
+    MOCK_FORK_RETURN, MOCK_FORK_TASK, MockClient,
 };
 use crate::ending::Ending;
 use crate::telemetry::{CollectingSink, Emitter};
@@ -342,6 +342,7 @@ async fn run_exec(
     let scripted = |binding: &GgSlotBinding| -> Box<dyn ModelClient> {
         Box::new(match binding.model_id.as_str() {
             "mock/exec-before" => MockClient::with_exec_before_script(&binding.model_id),
+            "mock/exec-compacting" => MockClient::with_compacting_exec_script(&binding.model_id),
             "mock/exec-after" => MockClient::with_exec_after_script(&binding.model_id),
             other => MockClient::new(other.to_string(), Vec::new()),
         })
@@ -534,7 +535,7 @@ async fn an_exec_onto_a_smaller_window_compacts_before_the_successors_first_turn
     // A window the predecessor's thread cannot possibly fit in.
     let windows = BTreeMap::from([
         ("mock/exec-before".to_string(), 200_000),
-        ("mock/exec-after".to_string(), 500),
+        ("mock/exec-after".to_string(), 200),
     ]);
     let events = run_exec(dir.path(), set, Some(windows)).await;
 
@@ -545,6 +546,60 @@ async fn an_exec_onto_a_smaller_window_compacts_before_the_successors_first_turn
     assert!(
         compacted,
         "the successor compacted the window it inherited before taking a turn"
+    );
+}
+
+/// **A turn that compacts and hands off does both, in that order.**
+///
+/// Both calls are deferred to the end of the turn, so the loop chooses which is applied first, and
+/// only one order is defensible: the successor inherits this window, and it must inherit the one
+/// the turn actually produced. Applying the handoff first returned from the loop before the
+/// compaction was reached, so the summary the model paid to write was dropped and the successor
+/// opened on the full window its predecessor believed it had just condensed — while the tool result
+/// it had already been given promised the opposite. The code path has always applied the two this
+/// way round; this is the tool-calling path agreeing with it.
+#[tokio::test]
+async fn a_turn_that_compacts_and_execs_hands_over_the_compacted_window() {
+    let dir = TempDir::new().unwrap();
+    let mut set = exec_set();
+    set.agents[0].model_id = "mock/exec-compacting".to_string();
+    set.agents[0].capabilities.push(GgCapabilityConfig {
+        implementation: Some(
+            test_cabinet_core::gg::COMPACTION_STRATEGY_SELF_COMPACTION.to_string(),
+        ),
+        ..GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_COMPACTION)
+    });
+    let events = run_exec(dir.path(), set, None).await;
+
+    let compacted = events.iter().any(|event| {
+        event.agent_id.as_deref() == Some(ROOT_AGENT_ID)
+            && matches!(&event.kind, GgTelemetryKind::Compaction { .. })
+    });
+    assert!(
+        compacted,
+        "the compaction the turn declared was applied before the incarnation ended"
+    );
+
+    // And the successor opened on the summary rather than on the thread it replaced.
+    let successor = events
+        .iter()
+        .find_map(|event| match &event.kind {
+            GgTelemetryKind::AgentTransition { to_agent_id, .. } => Some(to_agent_id.clone()),
+            _ => None,
+        })
+        .expect("the exec produced a successor");
+    let inherited_summary = events.iter().any(|event| match &event.kind {
+        GgTelemetryKind::ContextMessage { content, .. } => {
+            event.agent_id.as_deref() == Some(successor.as_str())
+                && content
+                    .as_deref()
+                    .is_some_and(|text| text.contains(MOCK_EXEC_SUMMARY))
+        }
+        _ => false,
+    });
+    assert!(
+        inherited_summary,
+        "the successor's window is the compacted one"
     );
 }
 

@@ -334,6 +334,12 @@ impl GgMemoryScope {
     pub fn may_link(self) -> bool {
         !matches!(self, GgMemoryScope::Isolated)
     }
+
+    /// Whether a holder under this scope takes its instance from the agent that **spawned** it —
+    /// the two scopes that make a spawner's notebook shared whatever the spawner's own scope says.
+    pub fn is_inherited(self) -> bool {
+        matches!(self, GgMemoryScope::Inherited | GgMemoryScope::ReadOnly)
+    }
 }
 
 impl std::fmt::Display for GgMemoryScope {
@@ -387,6 +393,14 @@ pub enum GgModuleOwnership {
     /// [telemetry](GgTelemetryKind) exactly as an owned one is — it simply costs the holder no
     /// context until it asks.
     Unowned,
+}
+
+impl GgModuleOwnership {
+    /// Whether this is [`Owned`](Self::Owned) — the question every prompt-assembly site asks, since
+    /// what ownership decides is whether the holder's prompt carries the module at all.
+    pub fn is_owned(self) -> bool {
+        matches!(self, GgModuleOwnership::Owned)
+    }
 }
 
 /// The closed set of **modules** an agent instance holds: one unit of per-agent capability state
@@ -4201,8 +4215,16 @@ pub enum GgTelemetryKind {
         to_agent_id: String,
         /// The [agent profile](GgAgentConfig) the successor runs under.
         agent: String,
-        /// The [FSM state](GgFsmState::name) the successor enters, for a
-        /// [`fsm`](GgAgentTransitionKind::Fsm) transition. `None` for the other two kinds.
+        /// The [FSM state](GgFsmState::name) the successor stands in once the succession has been
+        /// applied, when it stands in one at all.
+        ///
+        /// Set for every [`fsm`](GgAgentTransitionKind::Fsm) transition, and also for an
+        /// [`exec`](GgAgentTransitionKind::Exec) whose target is an **FSM shell**: gg resolves such
+        /// a handoff to the machine's entry state, so the successor genuinely enters a process and
+        /// the record has to say which state it entered. `None` for an `exec` into an ordinary
+        /// profile and for a [`fork`](GgAgentTransitionKind::Fork), neither of which moves the
+        /// agent within a machine — a fork of an agent standing in a state is a second worker, not
+        /// a second position, and carries no state of its own.
         #[serde(default)]
         state: Option<String>,
         /// The [modules](GgModuleKind) the successor received **live**, contents and all, in
