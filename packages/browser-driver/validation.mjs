@@ -31,8 +31,11 @@
 //     let outcome;
 //     return {
 //       id: "gameplay.scoring-p1",
-//       // Instant: pose preconditions with control ops only. Runs in BOTH passes,
-//       // so the record pass reaches `act` in exactly the state the check saw.
+//       // Instant: pose preconditions with control ops, plus `skip`/`skipUntil` for
+//       // any simulation the scenario has to travel through before the behavior can
+//       // happen. Runs in BOTH passes, so the record pass reaches `act` in exactly
+//       // the state the check saw — and the clip opens there rather than a minute
+//       // earlier.
 //       async arrange(api) {
 //         await startPlaying(api);
 //         await api.call("setBall", 0, { x: 900, y: 360, vx: 620 });
@@ -161,7 +164,8 @@ function makeApi(base, { mode, tickHz, phase, budget }) {
     if (phase.current === "arrange") {
       throw new Error(
         `api.${name}() was called from arrange(), which must be instant — ` +
-          `move anything that consumes time into act(), the phase that is timed and filmed`,
+          `move anything that consumes time into act(), the phase that is timed and filmed, ` +
+          `or use api.skip()/api.skipUntil() if it is only setup the clip should not contain`,
       );
     }
   };
@@ -215,6 +219,85 @@ function makeApi(base, { mode, tickHz, phase, budget }) {
         return base.wait(n * unitMs);
       }
       return base.step(n);
+    },
+
+    /**
+     * Advance by `amount` INSTANTLY in both passes — simulation time the clip is
+     * better off without.
+     *
+     * `advance` and `until` are real time in the record pass, which is what makes a
+     * clip show the game at the speed it actually runs. But plenty of scenarios have
+     * to travel a long way before the thing under test can happen at all: a unit
+     * walks the width of the floor before it can leak, a wave plays itself out before
+     * it can pay a bonus, a fed gun warms for fifteen seconds before its setpoint
+     * means anything. Filming that is not evidence, it is the journey to the
+     * evidence — and it is most of the clip, most of the run time, and most of the
+     * stored bytes.
+     *
+     * So `skip` runs the same real simulation and lands in the same state, but does
+     * it with an exact `step` in BOTH passes: no wall clock, no filming budget, no
+     * footage. An item skips the approach and then `advance`/`until` the part a
+     * reviewer needs to watch, so the clip opens near the condition under test
+     * instead of a minute before it.
+     *
+     * This is not a way to make a check cheap — the validate pass was always instant,
+     * so skipping changes nothing about a verdict. It is purely about what the
+     * recording contains. And it is not `settle`: skipping moves the simulation and
+     * paints nothing in particular, where `settle` pauses for paint and moves
+     * nothing.
+     *
+     * Unlike `advance` this is legal in `arrange`, which is where most of it belongs:
+     * pose the world, skip to the brink, and let `act` be the behavior. In `act` the
+     * build's own clock is handed back afterwards, exactly as `reset` does, so a skip
+     * partway through a drive does not leave the recording filming a frozen game.
+     */
+    skip: async (amount) => {
+      const n = Number(amount) || 0;
+      const result = await base.step(n);
+      if (recording && phase.current === "act") {
+        await base.call("setAutoStep", true);
+      }
+      return result;
+    },
+
+    /**
+     * Sweep to a condition INSTANTLY in both passes — {@link skip} in the shape of
+     * `until`, for the common case where the distance to the brink is not a fixed
+     * number of ticks but "however long it takes this unit to get near the exhaust".
+     *
+     * Returns the same `{ snap, hit, spent }` as `until`. Prefer it over guessing a
+     * skip amount: a hardcoded one either overshoots the moment it meant to stop
+     * short of, or leaves a different-but-conformant build still far away.
+     *
+     * The predicate is evaluated exactly ONCE per sample, as `until` does. Items
+     * legitimately hang state off it — counting how many units were freshly damaged
+     * on a tick, recording the closest a unit came — and re-testing the final sample
+     * to decide `hit` would run those side effects twice on the one sample that
+     * matters most.
+     */
+    skipUntil: async (predicate, { max, poll = 1 } = {}) => {
+      const limit = Number(max) || 0;
+      const chunk = Number(poll) || 1;
+      const done = async () => {
+        if (recording && phase.current === "act") {
+          await base.call("setAutoStep", true);
+        }
+      };
+      let snap = await base.snapshot();
+      if (predicate(snap)) {
+        await done();
+        return { snap, hit: true, spent: 0 };
+      }
+      for (let spent = 0; spent < limit; spent += chunk) {
+        await base.step(chunk);
+        snap = await base.snapshot();
+        if (predicate(snap)) {
+          await done();
+          return { snap, hit: true, spent: spent + chunk };
+        }
+      }
+      await done();
+      return { snap, hit: false, spent: limit };
     },
 
     /**

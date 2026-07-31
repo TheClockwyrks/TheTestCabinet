@@ -8,12 +8,21 @@
 import {
   startClean,
   spawnDrone,
-  shootDrone,
+  spawnBystander,
+  shootUntil,
+  readsAs,
   findDrone,
+  LEAD_IN_TICKS,
   RES_KILL,
 } from "../_helpers.mjs";
 
-const RESOLVE_MAX_TICKS = 60; // 60 ticks = the old 0.5 s cap on a hit resolving
+// Each shot is fired from the ship's lane and has to travel ~280 px to its target
+// (0.37 s at the specified bullet speed); this leaves room for a slower build.
+const RESOLVE_MAX_TICKS = 150;
+
+// A beat between the three kills, so the clip reads as three separate events with
+// the meter stepping between them rather than one flurry.
+const BETWEEN_TICKS = 48;
 
 export default function item() {
   // The two drones and the meter readings after each event.
@@ -36,6 +45,7 @@ export default function item() {
     async arrange(api) {
       await startClean(api);
       await api.call("setResonance", 0);
+      await spawnBystander(api);
       shardId = await spawnDrone(api, {
         kind: "shard",
         band: "cyan",
@@ -53,19 +63,42 @@ export default function item() {
       });
     },
 
+    // Every shot below is fired from the ship's lane rather than posed on its
+    // target, so each kill is a bullet the reviewer watches rise and connect, with a
+    // beat between them for the meter's step to register. Posed on the drone, all
+    // three resolved within a handful of ticks of each other and the clip showed
+    // nothing but the aftermath (see `LEAD_IN_TICKS`).
+    //
+    // `shootUntil` rather than a single shot: three kills with beats between them
+    // runs past the two seconds a posed formation drone can be relied on to sit
+    // still (`FORMATION_WINDOW_TICKS`), so a later shot may be fired at a drone the
+    // assault has already peeled into a dive. Retrying re-aims; the rule under test
+    // is the resonance a kill pays, not marksmanship.
     async act(api) {
+      // A beat on the posed field, so the clip opens on the scene.
+      await api.advance(LEAD_IN_TICKS);
+
       // A Shard kill feeds resonance.
-      await shootDrone(api, shardId, "cyan");
-      const a = await api.until((s) => findDrone(s, shardId) === null, {
-        max: RESOLVE_MAX_TICKS,
-      });
+      const a = await shootUntil(
+        api,
+        shardId,
+        (s) => readsAs(s, shardId),
+        (s) => findDrone(s, shardId) === null,
+        { max: RESOLVE_MAX_TICKS },
+      );
       afterShardKill = a.snap.resonance;
+      await api.advance(BETWEEN_TICKS);
 
       // A Prism's shell break feeds NO resonance; its core kill does. Re-zero the
       // meter so the shell break is measured from nothing.
       await api.call("setResonance", 0);
-      await shootDrone(api, prismId, "cyan"); // matches the shell -> breaks it
-      await api.until(
+      // Each shot is aimed by what its target currently reads as rather than a
+      // hardcoded band: a Prism that dives to the bottom triggers a spectral
+      // inversion, which swaps the band every drone answers to (see `readsAs`).
+      await shootUntil(
+        api,
+        prismId,
+        (s) => readsAs(s, prismId), // matches the exposed layer -> breaks it
         (s) => {
           const d = findDrone(s, prismId);
           return d !== null && d.shellAlive === false;
@@ -73,15 +106,20 @@ export default function item() {
         { max: RESOLVE_MAX_TICKS },
       );
       afterShellBreak = (await api.snapshot()).resonance;
+      await api.advance(BETWEEN_TICKS);
 
-      await shootDrone(api, prismId, "magenta"); // matches the exposed core -> kills it
-      const c = await api.until((s) => findDrone(s, prismId) === null, {
-        max: RESOLVE_MAX_TICKS,
-      });
+      const c = await shootUntil(
+        api,
+        prismId,
+        (s) => readsAs(s, prismId), // matches the exposed core -> kills it
+        (s) => findDrone(s, prismId) === null,
+        { max: RESOLVE_MAX_TICKS },
+      );
       afterCoreKill = c.snap.resonance;
 
-      // Hold on the final meter so the clip ends on the gain rather than the kill.
-      await api.advance(120); // 120 ticks (1 s) with the meter's step up on screen
+      // Hold on the filled meter so the clip ends on the gain rather than the kill.
+      // A bystander keeps the wave alive, so this is filmed over the field.
+      await api.advance(96);
     },
 
     async assert(api, check) {

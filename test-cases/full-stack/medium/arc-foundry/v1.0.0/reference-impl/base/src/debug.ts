@@ -27,6 +27,7 @@ export interface DebugContext {
   setPointer(x: number, y: number): void; // move the pointer (held-ghost / hover)
   resetUi(): void; // clear the loop's menu-index / overlay / pending-map UI state
   panelButtons(): PanelButton[]; // the inspector's action buttons as last rendered
+  menuButtons(): PanelButton[]; // the current menu screen's choices as last rendered
 }
 
 // One inspector action button as the panel last drew it: where it sits, what it reads, and
@@ -48,6 +49,7 @@ export interface FoundryDebugApi {
   setAutoStep(enabled: boolean): void;
   snapshot(): FoundrySnapshot;
   panelButtons(): PanelButton[];
+  menuButtons(): PanelButton[];
   startRun(options?: { map?: string; difficulty?: Difficulty }): void;
   setCharge(amount: number): void;
   setIntegrity(amount: number): void;
@@ -140,6 +142,15 @@ export function installDebugApi(ctx: DebugContext): void {
     // panel did not reflow across a game-state change (specs/controls.md).
     panelButtons() {
       return ctx.panelButtons();
+    },
+
+    // The choices of the menu screen currently showing, as it last drew them, in presentation
+    // order. specs/ui.md fixes each menu's CONTENT and NAVIGATION but leaves its layout to the
+    // build, so this is how a caller finds a choice without knowing where it landed: read the
+    // entry, then click the middle of the rectangle it reports (specs/instrumentation.md). Empty
+    // on any screen that is not a menu.
+    menuButtons() {
+      return ctx.menuButtons();
     },
 
     // ---- Control operations (arrange preconditions; route through the real systems) ----

@@ -4,10 +4,11 @@
 // real simulation time to happen, so the watch for the alert is `act` — and that watch
 // is exactly what the recorded clip shows.
 import {
-  startPlaying,
-  findSightLine,
   denAllExcept,
+  findSightLine,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -20,16 +21,12 @@ export default function item() {
       const snap = await startPlaying(api);
       const line = findSightLine(snap, 3);
       await denAllExcept(api, ["flarefish"]);
-      await api.call("setForager", {
-        tx: line.forager.tx,
-        ty: line.forager.ty,
-      });
       await api.call("setPredator", "flarefish", {
         tx: line.pred.tx,
         ty: line.pred.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api, line.forager);
       await api.call("setBrightness", 1);
     },
 

@@ -17,11 +17,11 @@ export default function item() {
     id: "targeting.last",
 
     async arrange(api) {
-      ctx = await arrangeHeadTargets(api);
+      ctx = await arrangeHeadTargets(api, "last");
     },
 
     async act(api) {
-      posed = await actHeadTargets(api, ctx, "last");
+      posed = await actHeadTargets(api, ctx);
     },
 
     async assert(api, check) {

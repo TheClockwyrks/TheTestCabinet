@@ -4,10 +4,11 @@
 // needs to take effect in the sim are `act`, so the clip shows the range being read at
 // a low G and then at a high one.
 import {
-  startPlaying,
-  findOpenWithNeighbor,
   denAllExcept,
+  findOpenWithNeighbor,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -28,7 +29,7 @@ export default function item() {
       });
       // Clear the board (all but one pellet, placed adjacent to the stationary forager)
       // so the forager cannot eat and bump its own brightness while we read the range.
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

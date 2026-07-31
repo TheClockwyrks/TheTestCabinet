@@ -140,6 +140,7 @@ fn record(r: Run) -> RunRecord {
             .iter()
             .map(|(n, c)| ((*n).to_string(), *c))
             .collect(),
+        game_jam_prior_entries: Vec::new(),
     }
 }
 

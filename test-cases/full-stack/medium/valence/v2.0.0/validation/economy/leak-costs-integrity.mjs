@@ -4,7 +4,13 @@
 // check poses a heavy isotope (leak value 3) just short of the collector, runs on until it
 // leaks, and confirms integrity fell by exactly its leak value.
 
-import { startRun, pathGeom, spawnAt, unitById, MAP } from "../_helpers.mjs";
+import {
+  startScenario,
+  pathGeom,
+  spawnAt,
+  unitById,
+  MAP,
+} from "../_helpers.mjs";
 
 const ISOTOPE_LEAK = 3; // MATTER.heavy.leak — specs/matter.md
 
@@ -17,7 +23,7 @@ export default function item() {
     id: "economy.leak-costs-integrity",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single, { integrity: 100 });
+      const snap = await startScenario(api, MAP.single, { integrity: 100 });
       const g = pathGeom(snap.paths[0]);
       id = await spawnAt(api, { type: "isotope", pathId: 0, s: g.length - 20 });
       int0 = (await api.snapshot()).integrity;

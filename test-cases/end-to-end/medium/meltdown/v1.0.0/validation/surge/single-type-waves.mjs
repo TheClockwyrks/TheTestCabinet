@@ -9,7 +9,7 @@
 // the single previewed type. Across the run the waves must not all be the same type —
 // the roster cycles, so each wave presses a different answer.
 
-import { newGame } from "../_helpers.mjs";
+import { newGame, actTail } from "../_helpers.mjs";
 
 // A spread across the run: the opening waves, the ones where the roster is still being
 // introduced, and a couple past the midpoint. All are non-milestone waves (the
@@ -32,6 +32,13 @@ async function preview(api, wave) {
 // cover the same 840 ticks. Sampling in slices (rather than one long advance) is the
 // point — a mixed wave could field its second type at any moment in the window, and
 // only a repeated read would catch it.
+//
+// The slices are SKIPPED rather than advanced. The sampling has to cover the whole
+// window to be sound, but a reviewer does not have to sit through two of them: at
+// real time this was half a minute of clip, most of it an empty floor between spawns,
+// and it crowded out the one thing worth seeing. The verdict is unchanged — a skipped
+// slice steps the same real simulation and reads the same snapshot — and `act` films
+// a beat of the last released wave in flight instead.
 const SLICE_TICKS = 30;
 const SLICES = 28;
 
@@ -52,7 +59,7 @@ async function spawnedTypes(api, wave) {
   await api.call("startWave");
   const seen = new Set();
   for (let i = 0; i < SLICES; i += 1) {
-    await api.advance(SLICE_TICKS);
+    await api.skip(SLICE_TICKS);
     for (const u of (await api.snapshot()).surge) {
       if (!carriedOver.has(u.id)) seen.add(u.type);
     }
@@ -67,6 +74,9 @@ export default function item() {
 
   return {
     id: "surge.single-type-waves",
+
+    // The sampling is skipped; only a beat of the last released wave is filmed.
+    clipMs: 5500,
 
     async arrange(api) {
       await newGame(api, "containment", "medium", 100000);
@@ -89,6 +99,11 @@ export default function item() {
         const got = await spawnedTypes(api, w);
         released.push({ wave: w, want, got });
       }
+
+      // The sampling above is skipped, so this is the only filmed part: a beat of the
+      // last released wave still on the floor, one intruder type across the whole of
+      // it. That is what the item claims, and it is legible in a few seconds.
+      await actTail(api, 180);
     },
 
     async assert(api, check) {

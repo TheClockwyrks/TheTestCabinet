@@ -32,6 +32,27 @@
 // cannot re-seed, since only `reset` takes a seed. Use the plain form for the run
 // an item arranges, the `poseX` twin for any later run it opens inside `act`.
 //
+// WHERE A SCENARIO IS POSED: on a SCENARIO ROUND — the live, wave-less, self-holding
+// round `startScenario` opens (specs/instrumentation.md). `startScenario`/`poseScenario`
+// below open one; every helper that poses matter and runs time goes through them.
+//
+// This is deliberate and it is worth knowing why, because the obvious alternatives both
+// fail. Posing into the opening build phase that `selectMap` leaves you on asks the build
+// to run its entity systems in a phase where a player never has matter on the board —
+// nothing anyone can see turns on it, so a build that gates its tick on
+// `phase === "round"` (an ordinary way to write a tower defence) freezes every scenario
+// while playing perfectly by hand. Posing into a REAL round via `startRound` instead
+// pours the round's own wave over the single unit under test: its bounties land in the
+// energy delta, its leaks in the integrity delta, its atoms compete for the tower's
+// target. The scenario round is the board that is neither — the game's real round
+// behavior, over only what the check posed.
+//
+// The checks that are ABOUT a real round — the round-clear bonus, interest, early send,
+// victory, the boss milestones, the pause items, the round table's own composition — use
+// `startRun`/`poseRun` and drive `startRound` themselves. Those two openers leave the run
+// in the opening build phase and are also what a check that reads static state (a map's
+// geometry, placement legality, the full opening-phase refund) wants.
+//
 // UNITS ARE TICKS. Valence is a 60 Hz fixed timestep (specs/controls.md) and the
 // debug API's `step` takes whole ticks, so every duration below is a tick count
 // (the runtime converts to wall-clock for the record pass). The seconds these
@@ -72,6 +93,18 @@ export const MAP = {
   multiple: "multiple",
 };
 
+// Map SELECTORS by the mandated `style` enum (specs/instrumentation.md's `maps[].style`).
+// specs/board.md requires both styles to appear SOMEWHERE in the set and explicitly leaves
+// which map takes which to the model: "The single-path, branching, and multiple-path maps
+// above may each pick either style, so long as both styles appear somewhere in the set." So
+// a check that needs a curved or a straight board must ask for it BY STYLE and let the
+// build answer — pairing a style with a topology (the curved map is the single one, the
+// straight map is the branching one) only describes one conformant arrangement of several.
+export const STYLE = {
+  curved: "curved",
+  straight: "straight",
+};
+
 // Generous preconditions for scenarios that must simply afford towers or never lose.
 export const HUGE_ENERGY = 100000;
 export const HUGE_INTEGRITY = 1e9;
@@ -93,11 +126,78 @@ export function interestOn(energy) {
 // Pure reads of a snapshot already in hand: no api call, no time, so they are
 // callable from any phase.
 
+/**
+ * Build the error an item throws when its scenario cannot be POSED against this build — the
+ * debug API answered every call correctly, there simply was no such spot / shape in the
+ * model's own world. The driver reads it as INCONCLUSIVE rather than as a conformance
+ * failure (see `PRECONDITION_UNMET` in `packages/browser-driver/validation.mjs`). It sets
+ * the documented flag directly rather than importing the runtime's factory, because a case's
+ * `validation/` folder is loaded by path and has no resolvable specifier for that module.
+ */
+export function preconditionUnmet(reason) {
+  const err = new Error(String(reason));
+  err.ttcPreconditionUnmet = true;
+  return err;
+}
+
 export function unitById(snap, id) {
   return snap.matter.find((u) => u.id === id) ?? null;
 }
 export function towerById(snap, id) {
   return snap.towers.find((t) => t.id === id) ?? null;
+}
+
+/**
+ * Whether a cluster's bond pool is SPENT — the moment a check that chips one open is
+ * waiting for.
+ *
+ * Read the pool, not the trait. specs/instrumentation.md gives `bond` two conformant ways
+ * to say "nothing left": it "falls to `0` as it is chipped open", and it is "`null` if
+ * unbonded" — so a build that drops the `bonded` trait at the break reports `null` from
+ * that instant and one that keeps the unit's pool field around reports `0`. Both are the
+ * same event. `traits.bonded === false` is NOT the thing to wait on: it is a separate
+ * requirement (specs/matter.md: "Bonded is a state, not a lineage"), and a build that gets
+ * it wrong would leave the wait running to the unit's DEATH instead — which is how one
+ * missing flag turned into a dozen assertions comparing against a corpse. Wait on this,
+ * assert the trait separately, and the failure lands on the one thing that broke.
+ *
+ * Pure read of a unit already in hand — callable from any phase.
+ */
+export function poolSpent(unit) {
+  return unit != null && !(unit.bond > 0);
+}
+
+// The decay particles a heavy emits (specs/matter.md): an alpha is a full 6-electron atom,
+// a beta a light 2-electron one.
+export const ALPHA_ELECTRONS = 6;
+export const BETA_ELECTRONS = 2;
+
+/**
+ * Which decay particle a unit was BORN as — `"alpha"`, `"beta"`, or `null` if it is not a
+ * free atom of either size.
+ *
+ * Keyed on `maxHp` (specs/instrumentation.md: `hp`/`maxHp` are "remaining and starting
+ * shells", and an atom's shells ARE its electrons, specs/matter.md), never on the live
+ * `electrons` count. That distinction is the whole point: `electrons` FALLS as the particle
+ * is stripped, so an alpha under fire reads 6, then 4, then 2 on its way down — and a check
+ * that classifies by the live value counts that alpha as a beta. `heavies.decays` did, and
+ * reported "the heavy sheds a beta" as satisfied against a build that never emits one.
+ * `maxHp` does not move, so it identifies the particle however late it is first sighted and
+ * whatever the poll rate.
+ *
+ * SCOPE: this reads a particle's SIZE, which is all a snapshot exposes about where a free
+ * atom came from. On a board that also holds a bonded cluster it cannot tell a shed
+ * 6-electron cluster atom from an alpha. Every caller poses a lone heavy or the boss, so
+ * the only free atoms present are decay emissions; a check that needs both on one board has
+ * to attribute by another means (see the position-credit rule in `boss.fission-daughters`).
+ *
+ * Pure read — callable from any phase.
+ */
+export function decayKind(unit) {
+  if (unit == null || unit.type !== "atom") return null;
+  if (unit.maxHp === ALPHA_ELECTRONS) return "alpha";
+  if (unit.maxHp === BETA_ELECTRONS) return "beta";
+  return null;
 }
 
 // ---- Path geometry (derived from a path snapshot) -----------------------------
@@ -159,26 +259,124 @@ export function firstInRange(
   return 0;
 }
 
+/**
+ * The arc length on `pathGeomObj` whose world point is FARTHEST from `tower`, with that
+ * distance. The mirror of `firstInRange`, for a check that needs a unit the tower plainly
+ * cannot reach: a map's geometry is the model's own, and a serpentine legitimately folds a
+ * far-along arc length back alongside the tower, so "half way down the path" is not a
+ * synonym for "out of range". This finds the point that really is furthest away and hands
+ * back the distance so the item can state the clearance it got rather than assume one.
+ *
+ * `from`/`to` bound the search, which a caller almost always wants: the point furthest from
+ * a tower near the inlet is usually the collector itself, and a unit posed there leaks
+ * before the window is out. Leave a margin of at least the fastest atom's travel (speed up
+ * to 112 px/s, specs/matter.md) over the window being measured.
+ *
+ * Pure computation — callable from any phase.
+ */
+export function farthestFrom(
+  pathGeomObj,
+  tower,
+  { stepPx = 4, from = 0, to = pathGeomObj.length } = {},
+) {
+  let best = { s: from, dist: -1 };
+  for (
+    let s = Math.max(0, from);
+    s <= Math.min(pathGeomObj.length, to);
+    s += stepPx
+  ) {
+    const p = pathGeomObj.pointAt(s);
+    const d = Math.hypot(p.x - tower.x, p.y - tower.y);
+    if (d > best.dist) best = { s, dist: d };
+  }
+  return best;
+}
+
+// ---- Two paths: where they coincide, and where they diverge --------------------
+//
+// A branching map's fork is two paths that COINCIDE on a shared trunk (the inlet approach)
+// AND/OR a shared final run, then diverge into distinct lanes between them (specs/board.md).
+// Which of those a conformant map shares is the model's own choice — board.md also allows
+// the lanes to "diverge to their own collectors", and allows per-path inlets and collectors
+// — so a check must READ the shared and divergent stretches off the geometry rather than
+// assume the fork shares both endpoints. These helpers do that, and are what
+// `maps.branching-fork` and `placement.covers-both-lanes` build their scenarios from.
+
+/**
+ * For each of `samples` arc lengths along `ga`, the closest approach to `gb`: `{ s, sOther,
+ * gap }`, where `sOther` is the arc length on `gb` that comes closest and `gap` the distance
+ * between the two points. Pure computation over two `pathGeom` readers — any phase.
+ */
+export function laneGaps(ga, gb, { samples = 200 } = {}) {
+  const rows = [];
+  for (let i = 0; i <= samples; i += 1) {
+    const s = (ga.length * i) / samples;
+    const p = ga.pointAt(s);
+    let best = { sOther: 0, gap: Infinity };
+    for (let j = 0; j <= samples; j += 1) {
+      const so = (gb.length * j) / samples;
+      const q = gb.pointAt(so);
+      const gap = Math.hypot(p.x - q.x, p.y - q.y);
+      if (gap < best.gap) best = { sOther: so, gap };
+    }
+    rows.push({ s, ...best });
+  }
+  return rows;
+}
+
+/**
+ * The longest run of `laneGaps` rows whose `gap` stays within `tol` — a stretch the two
+ * paths genuinely SHARE — reported as its middle sample plus how much of `ga` it spans.
+ * Returns `null` when the paths never coincide. `tol` is deliberately tight (a few pixels):
+ * a shared segment is the same world points, not merely two lanes running near each other.
+ */
+export function sharedStretch(rows, { tol = 6 } = {}) {
+  let best = null;
+  let from = -1;
+  const close = (to) => {
+    if (from < 0) return;
+    const span = rows[to].s - rows[from].s;
+    if (!best || span > best.span) {
+      best = { ...rows[Math.floor((from + to) / 2)], span, from, to };
+    }
+    from = -1;
+  };
+  for (let i = 0; i < rows.length; i += 1) {
+    if (rows[i].gap <= tol) {
+      if (from < 0) from = i;
+    } else close(i - 1);
+  }
+  close(rows.length - 1);
+  return best;
+}
+
+/** The `laneGaps` row where the two paths are furthest apart — the heart of a divergent lane. */
+export function widestGap(rows) {
+  return rows.reduce((a, b) => (b.gap > a.gap ? b : a), rows[0]);
+}
+
 // ---- Run set-up ---------------------------------------------------------------
 //
 // `startRun` (arrange) and `poseRun` (either phase) reach the same state; see the
 // `poseX` note in the file header for why both exist.
 
 /**
- * Resolve a map SELECTOR (a `MAP.*` topology value) to the `id` THIS build gave the map
- * with that topology, read back from the snapshot's `maps` list. Ids are the model's own
- * (specs/instrumentation.md), so a check keys the map by the fixed `topology` enum and
- * never by a literal id. Falls back to matching `difficulty` for robustness.
+ * Resolve a map SELECTOR to the `id` THIS build gave the matching map, read back from the
+ * snapshot's `maps` list. Ids are the model's own (specs/instrumentation.md), so a check
+ * keys the map by one of the fixed enums and never by a literal id: a `MAP.*` topology, a
+ * `STYLE.*` path style, or a difficulty. Tried in that order, so `MAP.single` still means
+ * "the single-path map" whichever style it happens to be drawn in.
  */
 async function resolveMapId(api, selector) {
   const { maps } = await api.snapshot();
   const m =
     maps.find((x) => x.topology === selector) ??
+    maps.find((x) => x.style === selector) ??
     maps.find((x) => x.difficulty === selector);
   if (!m) {
     throw new Error(
-      `no map exposes topology/difficulty "${selector}" (saw ${maps
-        .map((x) => `${x.id}=${x.topology}`)
+      `no map exposes topology/style/difficulty "${selector}" (saw ${maps
+        .map((x) => `${x.id}=${x.topology}/${x.style}`)
         .join(", ")})`,
     );
   }
@@ -186,7 +384,11 @@ async function resolveMapId(api, selector) {
 }
 
 /** The economy/round preconditions both run-starters apply, in the order that matters. */
-async function applyRunPreconditions(api, selector, { energy, integrity, round }) {
+async function applyRunPreconditions(
+  api,
+  selector,
+  { energy, integrity, round },
+) {
   // The caller names the map by topology (MAP.*); resolve it to this build's own id
   // first, since ids are model-chosen. Order matters: `selectMap` starts the run
   // (setting the mode's own energy and integrity), so the overrides come after it.
@@ -200,9 +402,13 @@ async function applyRunPreconditions(api, selector, { energy, integrity, round }
 
 /**
  * ARRANGE-only. Begin a driven run on `mapId` from a seeded reset and set the economy
- * preconditions. Returns the snapshot after set-up. `round` (optional) primes the round
- * the next `startRound` would build; energy/integrity default generous so scenarios can
- * afford towers and never lose by accident.
+ * preconditions, leaving the run where `selectMap` does: on the untimed OPENING BUILD
+ * PHASE. Returns the snapshot after set-up. `round` (optional) primes the round the next
+ * `startRound` would build; energy/integrity default generous so scenarios can afford
+ * towers and never lose by accident.
+ *
+ * This is the opener for a check that drives a REAL round itself, or that reads static
+ * state and never runs time. A check that poses matter and steps wants `startScenario`.
  *
  * Opens with `api.reset({ seed })`, which is what makes the run reproducible — and what
  * makes this arrange-only. To open a further run from inside `act`, use `poseRun`.
@@ -237,6 +443,47 @@ export async function poseRun(
 }
 
 /**
+ * Open the SCENARIO ROUND a run's preconditions have been set for, and return the
+ * snapshot on it. Shared by `startScenario` and `poseScenario`.
+ *
+ * A build that does not open one would leave every check downstream measuring a board
+ * that is not live, and that reads as dozens of unrelated conformance failures. So this
+ * refuses to go on: it throws, and the runtime reports the item as "the build exposed the
+ * debug API this check drives" with the message below as the actual — one sentence, the
+ * same on every affected item, naming the operation that was missing. The item that
+ * actually GRADES the operation is `instrumentation.scenario-round`, which drives it
+ * directly and states each of its properties as its own assertion.
+ */
+async function enterScenarioRound(api) {
+  await api.call("startScenario");
+  const snap = await api.snapshot();
+  if (snap.phase !== "round") {
+    throw new Error(
+      `startScenario did not open a live scenario round (phase is "${snap.phase}", ` +
+        `screen "${snap.screen}") — see specs/instrumentation.md; every posed scenario ` +
+        `needs one, so this check could not be run`,
+    );
+  }
+  return snap;
+}
+
+/**
+ * ARRANGE-only. `startRun`, and then a scenario round on top of it: the board every check
+ * that poses matter and runs time works on. Same options and same return shape as
+ * `startRun`.
+ */
+export async function startScenario(api, mapId = MAP.single, opts = {}) {
+  await startRun(api, mapId, opts);
+  return enterScenarioRound(api);
+}
+
+/** Twin of `startScenario` callable from EITHER phase (no `reset`). Same return shape. */
+export async function poseScenario(api, mapId = MAP.single, opts = {}) {
+  await poseRun(api, mapId, opts);
+  return enterScenarioRound(api);
+}
+
+/**
  * Place a real tower of `kind` so it covers arc length `s` on `pathGeomObj` — offset
  * off the path centerline along its local normal (so it sits beside the lane, not on
  * it), trying a few offsets and both sides until the real placement path accepts it.
@@ -265,13 +512,10 @@ export async function placeCovering(
   }
   // The map is the model's own: a conformant build can legitimately have no legal
   // spot for this tower near this arc length, which decides nothing about its debug
-  // API. Mark it inconclusive rather than failing the run — see `PRECONDITION_UNMET`
-  // in `packages/browser-driver/validation.mjs`.
-  const err = new Error(
+  // API. Mark it inconclusive rather than failing the run.
+  throw preconditionUnmet(
     `placeCovering(${kind}) found no legal spot near s=${s}`,
   );
-  err.ttcPreconditionUnmet = true;
-  throw err;
 }
 
 /**
@@ -357,12 +601,12 @@ async function buildCoverAndSpawn(
  * then runs the real sim and reads the outcome — nothing about the result is set up here.
  */
 export async function coverAndSpawn(api, opts = {}) {
-  return buildCoverAndSpawn(api, startRun, opts);
+  return buildCoverAndSpawn(api, startScenario, opts);
 }
 
 /** Twin of `coverAndSpawn` callable from EITHER phase (no `reset`). Same return shape. */
 export async function poseCoverAndSpawn(api, opts = {}) {
-  return buildCoverAndSpawn(api, poseRun, opts);
+  return buildCoverAndSpawn(api, poseScenario, opts);
 }
 
 /** The shared body of `coverAndPassThrough` / `poseCoverAndPassThrough`. */
@@ -396,12 +640,12 @@ async function buildCoverAndPassThrough(
  * `{ g, tower, towerId, unitId, snap0 }`.
  */
 export async function coverAndPassThrough(api, opts = {}) {
-  return buildCoverAndPassThrough(api, startRun, opts);
+  return buildCoverAndPassThrough(api, startScenario, opts);
 }
 
 /** Twin of `coverAndPassThrough` callable from EITHER phase (no `reset`). Same return shape. */
 export async function poseCoverAndPassThrough(api, opts = {}) {
-  return buildCoverAndPassThrough(api, poseRun, opts);
+  return buildCoverAndPassThrough(api, poseScenario, opts);
 }
 
 // ---- Round driving ------------------------------------------------------------
@@ -478,16 +722,62 @@ export async function actNoTowerRound(api, { max = 19200, poll = 120 } = {}) {
 }
 
 // ---- Menu input ---------------------------------------------------------------
+
+// How long to let the build PAINT its menu before injecting keys into it.
+//
+// A menu key only means something once the build has laid the menu out, and a build is
+// entitled to do that as it draws: hit-testing keyboard selection against the entries the
+// last drawn frame produced is a perfectly ordinary way to write one, and the reference and
+// the builds seen so far both do something along those lines. Nothing in specs/controls.md
+// requires the menu to answer a key pressed before the first frame — a player cannot press
+// one that early — so a check that injects keys immediately is testing the harness's timing,
+// not the build. It was doing exactly that: `states.howto` settled 60 ms after `reset()` and
+// then pressed, which on a cold page can land before any frame has run, and the item reported
+// a build whose HOW TO PLAY entry works perfectly a moment later as unreachable. A settle is
+// REAL time in both passes, which is what makes it the right instrument here.
+const MENU_PAINT_MS = 400;
+
+// How long to let a confirmed menu choice land and paint before the screen is read.
+const MENU_SETTLE_MS = 150;
+
+// The key pairs specs/controls.md leaves the build to choose between: "`Up`/`Down` (or
+// `W`/`S`) move the selection and `Enter`/`Space` confirms". BOTH movement bindings are
+// conformant and so are both confirms, so a check that presses only `ArrowDown`+`Enter`
+// pins one arrangement of four and reports a build that navigates fine on `W`/`S` as
+// having no how-to-play screen at all. Movement is tried outermost because a movement key
+// the build ignores leaves the selection where it was, so the next pair starts from the
+// same first entry; the confirms are tried within a pair without re-pressing movement,
+// for the same reason.
+const MENU_MOVE_KEYS = ["ArrowDown", "KeyS"];
+const MENU_CONFIRM_KEYS = ["Enter", "Space"];
+
 /**
- * From a freshly reset title, drive the menu down `steps` entries and confirm — the
- * same keyboard path a player uses (specs/controls.md). A fresh page opens with the
- * first entry highlighted, so `steps` counts entries below it.
+ * From a freshly reset title, drive the menu down `steps` entries and confirm — the same
+ * keyboard path a player uses (specs/controls.md) — and return the SCREEN it reached.
+ * A fresh page opens with the first entry highlighted, so `steps` counts entries below it.
  *
- * Single key presses, so it consumes no simulation time — callable from either phase.
+ * The caller asserts on the returned screen rather than on a bare boolean, so a build that
+ * navigates to the wrong entry reports where it actually went.
+ *
+ * Opens with a real paint settle (see `MENU_PAINT_MS`); the presses themselves consume no
+ * simulation time, so this is callable from either phase.
  */
 export async function navigateMenu(api, steps) {
-  for (let i = 0; i < steps; i += 1) await api.call("press", "ArrowDown");
-  await api.call("press", "Enter");
+  await api.settle(MENU_PAINT_MS);
+  let reached = (await api.snapshot()).screen;
+  for (const move of MENU_MOVE_KEYS) {
+    for (let i = 0; i < steps; i += 1) await api.call("press", move);
+    for (const confirm of MENU_CONFIRM_KEYS) {
+      await api.call("press", confirm);
+      await api.settle(MENU_SETTLE_MS);
+      reached = (await api.snapshot()).screen;
+      // Anything but the title means the menu answered both keys of this pair. Trying a
+      // further binding could only move the selection again from wherever the build left
+      // it, so the entry that was confirmed is the answer — right or wrong.
+      if (reached !== "title") return reached;
+    }
+  }
+  return reached;
 }
 
 // ---- Pixel / color sampling (reads the rendered canvas) -----------------------
@@ -512,4 +802,176 @@ export async function samplePixel(api, x, y) {
 /** Euclidean distance between two RGB colors (0 to ~441). Pure — any phase. */
 export function colorDistance(a, b) {
   return Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
+}
+
+// ---- Audio (reads the Web Audio cues the build actually schedules) ----------
+//
+// Valence's sound is the PRODUCED .wav files (`sfx-synth`/`sfx-sample`/`music`,
+// specs/assets.md), decoded and played through the Web Audio API, so the driver
+// reports every source the build starts (see `api.audio`). The game must not
+// autoplay: it creates its AudioContext only on the first real user interaction
+// (main.ts's `gesture()`, fired from a buffered click OR key), so before driving an
+// event whose cue is checked, arm audio with a GENUINE browser gesture. A build may
+// feed the debug API through a purely logical input path and unlock audio only from a
+// real DOM event, so arming uses both `api.userKey` and a corner `api.userClick`
+// rather than a debug `press` — a debug press would leave a conformant build's
+// AudioContext uncreated, so no cue would ever be scheduled though it plays fine for
+// a real player. `KeyZ` has no game binding (main.ts's `routeKey`/menu handling never
+// matches it) and (4, 4) sits in the empty top-left of the 56px status bar — left of
+// its controls (the speed/pause/mute buttons start at x=1112) and above the board
+// hit-test (`y > STATUS_H`, specs/board.md), so arming never places a tower, selects a
+// unit, or activates a menu, in any screen.
+//
+// UNLOCK TIMING: unlike a synthesized cue, resuming here kicks off an ASYNC fetch +
+// `decodeAudioData` of every produced clip (`audio.ts`'s `resume`), and `gesture()`
+// does not await it. A cue driven before its clip finishes decoding is silently
+// dropped (`Audio.play` no-ops when `this.buffers` has no entry yet for that cue) —
+// permanently, since the queue that carried it is cleared every frame regardless. A
+// short REAL settle after arming gives the decode time to land before an item drives
+// its cue; `advance` would not do this, since it is an exact instant `step` on the
+// validate pass's manual clock and lets no real (wall-clock) time pass for the fetch
+// to progress.
+//
+// ARMING MUST ALSO GO QUIET. The gesture does not only unlock audio — it is what starts the
+// looping music bed (specs/assets.md: "loop the music bed"), and a build may start that bed a
+// beat later, once its clip has decoded or off a short timer. Anything the gesture kicks off
+// this way lands in the audio log at some unpredictable moment shortly afterwards, and an
+// event-cue check measures a DELTA: if the bed arrives inside its window, the check counts the
+// bed as the event's cue. It did — with a fixed 300 ms arm, a build that starts its bed on a
+// 500 ms timer satisfied `audio.build` and `audio.shot-strip` with their own cues deleted. So
+// arming waits until the log stops growing, and every cue check then takes its baseline with
+// the bed already counted. A build that loops by starting a fresh source per repeat would
+// never go quiet; the bound below gives up rather than hang, which is the one shape this
+// count-only probe cannot fully isolate.
+const ARM_SETTLE_MS = 300;
+const ARM_QUIET_STEP_MS = 120;
+const ARM_QUIET_MAX_MS = 2400;
+
+export async function armAudio(api) {
+  await api.userKey("KeyZ");
+  await api.userClick(4, 4);
+  await api.settle(ARM_SETTLE_MS);
+  // Wait until the log has something in it AND has stopped growing. Both halves matter: a
+  // count that is still zero says nothing has started YET, which is indistinguishable from a
+  // build with no bed — and stopping there is what let the bed arrive later, inside a cue
+  // check's window. A build that really plays nothing simply spends the bound.
+  let previous = -1;
+  let count = await audioCount(api);
+  for (
+    let waited = 0;
+    waited < ARM_QUIET_MAX_MS && (count === 0 || count !== previous);
+    waited += ARM_QUIET_STEP_MS
+  ) {
+    previous = count;
+    await api.settle(ARM_QUIET_STEP_MS);
+    count = await audioCount(api);
+  }
+}
+
+/** The number of Web Audio sources the build has started so far. */
+export async function audioCount(api) {
+  return (await api.audio()).length;
+}
+
+/**
+ * Read `audioCount` after a real repaint pause.
+ *
+ * A build may QUEUE its cues from the simulation and play them when it next paints (the
+ * reference does exactly that: `main.ts`'s frame drains `sndQueue` through `audio.play`),
+ * so a cue scheduled during an instant `step` has not reached Web Audio yet — and
+ * `api.advance` cannot help, because on the validate pass it consumes no wall clock at all.
+ * Settling on BOTH sides of a measurement is what makes the delta mean "the cues this span
+ * played", rather than racing whichever frames happened to land between driver round trips.
+ */
+async function settledAudioCount(api) {
+  await api.settle(80);
+  return audioCount(api);
+}
+
+/**
+ * Wait — in REAL time, bounded — until the build has started more Web Audio sources than
+ * `baseline`, and return the count it reached.
+ *
+ * For a cue whose window contains nothing else that could make a sound, "did it play?" is a
+ * question about eventually, not about a particular millisecond. A build is entitled to put
+ * the cue a beat after the trigger: to defer the music bed until its clip has decoded, to
+ * start it off a short timer after the unlocking gesture, to drain a queue on its next
+ * animation frame. None of that is visible to a player, and none of it is forbidden — so a
+ * check that settles a fixed 100 or 300 ms and then reads once is measuring the harness's
+ * patience. It was: `audio.music` read the log 300 ms after arming and reported "no source
+ * starts for the reactor music bed" against a build that starts its bed on a 500 ms timer.
+ *
+ * Use this only where the event under test is the ONLY thing in the window that can play —
+ * a placement, a leak, the music bed. Where a firing tower is also making noise, the window
+ * has to stay tight instead; see `cueOnImpact`.
+ */
+export async function audioCountAbove(
+  api,
+  baseline,
+  { max = 3000, step = 100 } = {},
+) {
+  let count = await audioCount(api);
+  for (let waited = 0; waited < max && count <= baseline; waited += step) {
+    await api.settle(step);
+    count = await audioCount(api);
+  }
+  return count;
+}
+
+/**
+ * Measure the Web Audio sources a build starts across ONE IMPACT on `unitId` — the impact
+ * that fires `event` — and report the count it gained.
+ *
+ * Why not simply compare the log before and after a window that contains the event: a
+ * damage tower plays a cue every time it FIRES (specs/assets.md, "the shot cue when a
+ * damage tower fires"), so any window long enough to contain a bond snap, a decay, or a kill
+ * also contains several shot cues, and the log grows whether or not the event has its own
+ * cue at all. That is not a check of the event's cue — it passes on the shots alone, and
+ * did: `audio.bond-snap` recorded "a bond-snap cue plays on the snap" as satisfied on a run
+ * where the bond never snapped.
+ *
+ * So this walks the fire on the unit impact by impact. For each, it skips (instantly, in
+ * both passes) to the brink — a NEW shot already in the air at the unit, so that shot's own
+ * launch cue is behind the baseline — takes the baseline, and then watches only until the
+ * event fires or that shot is spent. The gain across that span is what the event itself
+ * played. `window` stays well inside a damage tower's reload (the slowest is the Reactor's
+ * 0.6/s, 100 ticks), so no further shot can be launched inside a measured span.
+ *
+ * `event(snapshot)` is evaluated exactly ONCE per sample and its verdict is remembered, so a
+ * caller may keep state in it (the id set an "a fragment was emitted" predicate needs, say)
+ * without the bookkeeping being run twice on the sample that matters most — the same
+ * guarantee `api.until` gives.
+ *
+ * Consumes time, so `act` only. Returns `{ hit, gained, shots, snap }`.
+ */
+export async function cueOnImpact(
+  api,
+  unitId,
+  event,
+  { shots = 8, approach = 900, window = 45 } = {},
+) {
+  const inFlight = new Set();
+  for (let i = 1; i <= shots; i += 1) {
+    const armed = await api.skipUntil(
+      (s) =>
+        s.projectiles.some((p) => p.targetId === unitId && !inFlight.has(p.id)),
+      { max: approach, poll: TICK },
+    );
+    if (!armed.hit) break;
+    for (const p of armed.snap.projectiles) {
+      if (p.targetId === unitId) inFlight.add(p.id);
+    }
+    const before = await settledAudioCount(api);
+    let fired = false;
+    const r = await api.until(
+      (s) => {
+        if (event(s)) fired = true;
+        return fired || !s.projectiles.some((p) => inFlight.has(p.id));
+      },
+      { max: window, poll: TICK },
+    );
+    const gained = (await settledAudioCount(api)) - before;
+    if (fired) return { hit: true, gained, shots: i, snap: r.snap };
+  }
+  return { hit: false, gained: 0, shots: 0, snap: await api.snapshot() };
 }

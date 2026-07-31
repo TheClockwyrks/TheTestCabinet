@@ -1,0 +1,96 @@
+# The obstacles sway and rotate, so the ball bounces off tilted, oriented faces.
+# The change applies to both Solo and Versus, so gyre is rated on the case's
+# common `single-player` and `versus` domains — it adds no domain of its own.
+slug = "gyre"
+name = "Gyre"
+description = "The obstacles sway and rotate, so the ball bounces off tilted, oriented faces."
+
+# The rules that vary live in the common `.hbs` specs, branched on this variant's
+# slug when rendered: gyre keeps the same single-ball serving as base (the default
+# branch of `specs/balls.md.hbs`), but its field's moving/rotating obstacles and
+# their oriented collision replace the static ones (the `gyre` branch of
+# `specs/playfield.md.hbs`). So gyre declares no `spec` of its own.
+# Variant-specific reference: every variant lists the same menu, but this one is
+# captured from THIS variant's reference-impl build and served as-is, so the dimmed
+# field behind the menu shows this variant's own rules — here the obstacles frozen
+# at a swayed, tilted pose, hinting at the live rotation. `gameplay` and `game-over`
+# are common (in test-case.toml).
+reference = [{ view = "title", media = "reference/screenshots/gyre/title.png" }]
+
+# The authored, *correct* static build of this variant — the case-variant
+# analogue of a run's `links.playableBuild`. A bare directory path (resolved
+# against the version folder) holding a buildable web project, built with this
+# case's `[build]` install/build commands and deployed like a published run
+# build via `tcab publish-reference`, then shown on the case's "Reference" tab.
+# It is **never seeded into a run**. See base.toml for the fuller note.
+reference_implementation = "reference-impl/gyre"
+
+# The gyre-specific category, worth one point per item. It applies to the whole
+# game (both Solo and Versus). Its points pose the obstacles through the debug API's
+# setObstacleClock (which the gyre reference implementation exposes) and read their
+# live pose back: that they sway vertically, that they rotate, and that the ball's
+# bounce tracks their tilt. The `format` is inherited from the case manifest
+# (`[review] format = 2`).
+[[review.categories]]
+id = "gyre"
+title = "Gyre"
+[[review.categories.items]]
+id = "obstacles-sway"
+title = "Obstacles sway"
+description = "The two obstacles move — each sways vertically about its base center as time passes, and they sway in opposite directions so the field stays balanced."
+# Automated validation: pose the obstacle clock at two times and read each obstacle's
+# center back — both move well off their base y, in opposite directions. See
+# validation/gyre/obstacles-sway.mjs.
+validation = { script = "validation/gyre/obstacles-sway.mjs", outputs = [
+  { id = "sway", name = "The obstacles swaying vertically", kind = "video" },
+] }
+[[review.categories.items]]
+id = "obstacles-spin"
+title = "Obstacles spin"
+description = "The two obstacles rotate — each spins about its own center as time passes, presenting continuously tilting faces."
+# Automated validation: pose the obstacle clock at three times and read each
+# obstacle's rotation back — upright at the start, then rotating further as time
+# advances. See validation/gyre/obstacles-spin.mjs.
+validation = { script = "validation/gyre/obstacles-spin.mjs", outputs = [
+  { id = "spin", name = "The obstacles rotating about their centers", kind = "video" },
+] }
+[[review.categories.items]]
+id = "oriented-bounce"
+title = "Oriented bounces"
+description = "The ball bounces off the obstacles' tilted faces at oriented angles that track each obstacle's current orientation rather than axis-aligned reflections."
+# Automated validation: pose an obstacle upright then tilted ~45deg and fire the same
+# horizontal shot — the tilted face deflects it well off-axis while the upright face
+# returns it straight, proving the bounce tracks orientation. See
+# validation/gyre/oriented-bounce.mjs.
+validation = { script = "validation/gyre/oriented-bounce.mjs", outputs = [
+  { id = "oriented", name = "A shot deflecting off a tilted obstacle", kind = "video" },
+] }
+
+# Gyre serves toward the receiver exactly as base does, so — like base — it adds the
+# three serve-direction points to the case's COMMON `gameplay` category (reusing its
+# id) and drives the same shared serve scripts, rather than declaring points of its
+# own. See base.toml for the fuller note on a variant extending a common category.
+[[review.categories]]
+id = "gameplay"
+title = "Gameplay"
+[[review.categories.items]]
+id = "serve-initial"
+title = "Initial serve direction"
+description = "The very first serve of a match always travels toward player one."
+validation = { script = "validation/gameplay/serve-initial.mjs", outputs = [
+  { id = "serve", name = "First serve toward player one", kind = "video" },
+] }
+[[review.categories.items]]
+id = "serve-after-p1"
+title = "Serve after scoring on player one"
+description = "After a point is scored on player one (player two scores), the next serve travels toward player one, the receiver."
+validation = { script = "validation/gameplay/serve-after-p1.mjs", outputs = [
+  { id = "serve", name = "Serve toward player one after a point on player one", kind = "video" },
+] }
+[[review.categories.items]]
+id = "serve-after-p2"
+title = "Serve after scoring on player two"
+description = "After a point is scored on player two (player one scores), the next serve travels toward player two, the receiver."
+validation = { script = "validation/gameplay/serve-after-p2.mjs", outputs = [
+  { id = "serve", name = "Serve toward player two after a point on player two", kind = "video" },
+] }

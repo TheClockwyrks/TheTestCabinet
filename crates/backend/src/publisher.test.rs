@@ -43,6 +43,7 @@ fn record(id: &str) -> RunRecord {
         },
         game_jam_readme: None,
         tool_calls: Default::default(),
+        game_jam_prior_entries: Vec::new(),
     }
 }
 

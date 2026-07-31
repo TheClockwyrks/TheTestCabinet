@@ -218,7 +218,10 @@ pub async fn launch_gg(
         .await
         .map_err(ApiError::bad_request)?;
     let now = now_rfc3339()?;
-    let new = build_new_job(&launch, &now).map_err(ApiError::bad_request)?;
+    // The type comes from the manifest already read above, so a gg run's job row
+    // carries the same test type a conventional launch's does — which is what the
+    // queue serializes the must-not-overlap run types on.
+    let new = build_new_job(&launch, manifest.test_type, &now).map_err(ApiError::bad_request)?;
     let id = new.id.clone();
 
     state.db.enqueue_job(new).await.map_err(ApiError::from)?;

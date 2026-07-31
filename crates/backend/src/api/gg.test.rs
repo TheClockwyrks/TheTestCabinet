@@ -75,7 +75,12 @@ fn build_new_job_persists_the_capability_set_for_a_gg_run() {
     // Enqueue-time job minting lifts the gg capability set out of the launch request
     // into its own column, and stamps the harness as gg.
     let launch = sample_request().into_launch_body().unwrap();
-    let new = build_new_job(&launch, "2026-07-23T00:00:00Z").unwrap();
+    let new = build_new_job(
+        &launch,
+        test_cabinet_core::TestType::EndToEnd,
+        "2026-07-23T00:00:00Z",
+    )
+    .unwrap();
     assert_eq!(new.harness_slug, "gg");
     let json = new
         .gg_config_json
@@ -102,7 +107,12 @@ fn build_new_job_leaves_gg_config_null_for_a_conventional_run() {
         gg_model_windows: Default::default(),
         gg_model_modalities: Default::default(),
     };
-    let new = build_new_job(&launch, "2026-07-23T00:00:00Z").unwrap();
+    let new = build_new_job(
+        &launch,
+        test_cabinet_core::TestType::EndToEnd,
+        "2026-07-23T00:00:00Z",
+    )
+    .unwrap();
     assert!(new.gg_config_json.is_none());
 }
 
@@ -113,7 +123,12 @@ async fn enqueue_persists_and_retrieves_the_gg_capability_set() {
     // from the launch body the driver is handed on claim.
     let db = Db::connect_in_memory().await.unwrap();
     let launch = sample_request().into_launch_body().unwrap();
-    let new = build_new_job(&launch, "2026-07-23T00:00:00Z").unwrap();
+    let new = build_new_job(
+        &launch,
+        test_cabinet_core::TestType::EndToEnd,
+        "2026-07-23T00:00:00Z",
+    )
+    .unwrap();
     let id = new.id.clone();
     db.enqueue_job(new).await.unwrap();
 

@@ -3,10 +3,11 @@
 // The chase is posed instantly (`arrange`); the ink drop and the stretch afterwards that
 // proves nothing changed are the real sim, so they are `act` and are what the clip shows.
 import {
-  startPlaying,
-  findSightLine,
   denAllExcept,
+  findSightLine,
   pred,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -20,16 +21,14 @@ export default function item() {
       const snap = await startPlaying(api);
       const line = findSightLine(snap, 3);
       await denAllExcept(api, ["gloamfin"]);
-      await api.call("setForager", {
-        tx: line.forager.tx,
-        ty: line.forager.ty,
-      });
+      // The forager first, and PARKED: `chase` fixes on wherever it is standing when the
+      // mode is set.
+      await quietBoard(api, line.forager);
       await api.call("setPredator", "gloamfin", {
         tx: line.pred.tx,
         ty: line.pred.ty,
         mode: "chase",
       });
-      await api.call("poseLastPlankton");
     },
 
     async act(api) {

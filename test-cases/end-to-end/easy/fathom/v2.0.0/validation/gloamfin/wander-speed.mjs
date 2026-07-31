@@ -3,11 +3,12 @@
 // The lone wanderer is posed instantly (`arrange`); the two readings a second apart —
 // which is what "no wind-up over time" means — are the real sim, so they are `act`.
 import {
-  startPlaying,
+  PREDATOR_SPEED,
   denAllExcept,
   findFarTile,
   pred,
-  PREDATOR_SPEED,
+  quietBoard,
+  startPlaying,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -26,7 +27,7 @@ export default function item() {
         ty: far.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

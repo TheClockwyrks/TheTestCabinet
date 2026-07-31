@@ -14,22 +14,6 @@ export default function item() {
   return {
     id: "modes.deep-pockets",
 
-    // The still this item declares is the vault after the payout, and running wave 1
-    // out with nothing built takes tens of seconds of real time — past the 8 s default
-    // record budget, so the record pass would unwind before `screenshot` ever ran and
-    // the declared output would never land. The item declares no video, so this
-    // lengthens only the record pass, not any media it produces.
-    //
-    // Budget the CAP below, not the wave's typical length. How long wave 1 takes to
-    // clear is the build's own business — its unit speeds and spawn spacing — and a
-    // build whose wave runs a few seconds long is not thereby nonconformant. Sized to
-    // the 18 s the wave "usually" takes, this unwound at 36 s against a wave that
-    // cleared at 37.4 s, and a missing declared output fails the item wholesale
-    // (`ran = hardStopped || missing.length === 0` in the driver) with a message about
-    // the debug API — a verdict that would otherwise have passed on every assertion.
-    // So this covers the 2400-tick (40 s) sweep below with room to spare.
-    clipMs: 60000,
-
     // The opening balance is read first, then the balance is re-posed to a round 500
     // so the payout at the clear can be read as an exact number.
     async arrange(api) {
@@ -42,8 +26,20 @@ export default function item() {
     // Run wave 1 to its clear with nothing built, so the whole wave leaks past and
     // the only money that lands is the payout. 2400 ticks = the old 40s cap, polled
     // every 12 ticks (the old 0.2s chunk).
+    //
+    // Skipped, because the declared output is a STILL of the vault after the payout
+    // and this item records no video — the wave was being run in real time for nobody.
+    // It also had to carry a `clipMs` sized to the sweep's CAP rather than the wave's
+    // typical length, for a subtle reason worth keeping in mind: how long wave 1 takes
+    // to clear is the build's own business, and an earlier budget sized to the 18 s the
+    // wave "usually" took unwound at 36 s against a build whose wave cleared at 37.4 s.
+    // A missing declared output fails the item wholesale (`ran = hardStopped ||
+    // missing.length === 0` in the driver) with a message about the debug API — a
+    // verdict that would otherwise have passed on every assertion. Skipping removes the
+    // whole hazard: with no wall clock to run out, no conformant build can be failed
+    // for taking longer than another one.
     async act(api) {
-      r = await api.until((t) => t.wave >= 2, { max: 2400, poll: 12 });
+      r = await api.skipUntil((t) => t.wave >= 2, { max: 2400, poll: 12 });
       money = (await api.snapshot()).money;
       await api.settle(80);
       await api.screenshot("deep");

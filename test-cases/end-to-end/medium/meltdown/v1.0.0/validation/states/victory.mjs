@@ -14,13 +14,6 @@ export default function item() {
   return {
     id: "states.victory",
 
-    // The still this item declares is the Victory screen, and the final wave takes
-    // ~35 s of real time to run itself out — far past the 8 s default record budget,
-    // so the record pass would unwind before `screenshot` ever ran and the declared
-    // output would never land. The item declares no video, so this lengthens only the
-    // record pass, not any media it produces.
-    clipMs: 60000,
-
     // The final wave, with lives deep enough that the whole wave leaking past cannot
     // end the run before it is cleared.
     async arrange(api) {
@@ -30,11 +23,19 @@ export default function item() {
       await api.call("startWave");
     },
 
-    // Run the final wave out. 13200 ticks = the old 220s cap, polled every 30 ticks
-    // (the old 0.5s chunk) — the screen only changes once, at the clear, so a coarse
-    // sweep keeps this long drive cheap.
+    // Run the final wave out, unfilmed. 13200 ticks = the old 220s cap, polled every
+    // 30 ticks (the old 0.5s chunk) — the screen only changes once, at the clear, so
+    // a coarse sweep keeps this long drive cheap.
+    //
+    // The declared output here is a STILL of the Victory screen; this item records no
+    // video at all. So there is nothing for the wave to be filmed FOR — running it in
+    // real time only made the record pass sit through 35 s of units walking before it
+    // could take one screenshot, and forced a `clipMs` override to keep the budget
+    // from unwinding the pass before `screenshot` ran. Skipping it lands on the same
+    // Victory screen, reached the same way by the same clear-wave code, in no time at
+    // all. The `settle` stays real: a screenshot still needs a painted frame.
     async act(api) {
-      r = await api.until((s) => s.screen === "victory", {
+      r = await api.skipUntil((s) => s.screen === "victory", {
         max: 13200,
         poll: 30,
       });

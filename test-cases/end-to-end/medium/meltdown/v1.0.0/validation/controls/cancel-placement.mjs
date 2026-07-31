@@ -4,7 +4,7 @@
 // We arm a tower, press Esc, and confirm the held placement is cleared (and the match
 // is not paused).
 
-import { newGame, press } from "../_helpers.mjs";
+import { newGame, press, actTail } from "../_helpers.mjs";
 
 export default function item() {
   let held;
@@ -25,6 +25,11 @@ export default function item() {
       held = (await api.snapshot()).build.type;
       await press(api, "Escape");
       s = await api.snapshot();
+
+      // A key press and the state it leaves behind both resolve instantly, so without
+      // this the clip is a still frame of a game that never visibly does anything —
+      // three seconds of the result on screen is what makes it reviewable.
+      await actTail(api, 180);
     },
 
     async assert(api, check) {

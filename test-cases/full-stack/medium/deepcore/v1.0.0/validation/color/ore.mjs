@@ -9,6 +9,7 @@ import {
   newRun,
   solid,
   sampleTile,
+  settleTiles,
   tileMaxDistFrom,
   SPAWN_COL,
   TOPSOIL_ROW,
@@ -29,9 +30,15 @@ export default function item() {
       await solid(api, col + 3, row);
     },
 
-    // Sampling reads the painted canvas, so it runs here behind a real settle.
+    // Sampling reads the painted canvas, so it runs here behind a settle that POLLS until the
+    // vein and the plain rock beside it are actually painted — a fixed pause reads the previous
+    // frame on a loaded host, where both land on the same flat patch and the vein reads as
+    // indistinguishable from rock though the build drew it clearly.
     async act(api) {
-      await api.settle(120);
+      await settleTiles(api, [
+        [col + 2, row],
+        [col + 3, row],
+      ]);
       const rock = await sampleTile(api, col + 3, row);
       oreDist = await tileMaxDistFrom(api, col + 2, row, rock);
       await api.screenshot("ore");

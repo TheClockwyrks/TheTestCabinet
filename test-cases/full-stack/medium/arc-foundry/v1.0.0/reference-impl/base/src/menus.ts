@@ -45,3 +45,45 @@ export function menuItems(state: GameState, game: Game): MenuItem[] {
       return [];
   }
 }
+
+// The screens that ARE menus. `menuButtons()` reports nothing anywhere else — in match (building
+// or mid-wave) and during the in-place pause, which shows no menu (specs/instrumentation.md).
+const MENU_STATES: ReadonlySet<string> = new Set([
+  "title",
+  "mapselect",
+  "difficultyselect",
+  "howto",
+  "paused",
+  "victory",
+  "defeat",
+]);
+
+export function isMenuState(state: GameState): boolean {
+  return MENU_STATES.has(state);
+}
+
+// The debug API reports each menu choice under a FIXED identifier naming where it leads, so a
+// caller can find a choice without knowing this build's internal action names or where it drew
+// them (specs/instrumentation.md "menuButtons"). The internal names above are free to change;
+// this table is the contract.
+const DEBUG_ACTIONS: Readonly<Record<string, string>> = {
+  "menu:play": "salvage",
+  "menu:howto": "howto",
+  "map:substation": "map-substation",
+  "map:switchyard": "map-switchyard",
+  "map:transformer": "map-transformer",
+  "diff:easy": "difficulty-easy",
+  "diff:medium": "difficulty-medium",
+  "diff:hard": "difficulty-hard",
+  "menu:back": "back",
+  "menu:resume": "resume",
+  "menu:restart": "restart",
+  "menu:quit": "quit",
+  "menu:again": "again",
+  "menu:menu": "menu",
+};
+
+/** The contract identifier for an internal menu action, or null if it is not a menu choice. */
+export function debugMenuAction(action: string): string | null {
+  return DEBUG_ACTIONS[action] ?? null;
+}

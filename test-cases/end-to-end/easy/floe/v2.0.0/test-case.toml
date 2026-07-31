@@ -298,6 +298,11 @@ id = "mute"
 title = "M toggles mute"
 description = "Pressing M toggles mute on and off."
 validation = { script = "validation/controls/mute.mjs", outputs = [{ id = "title", name = "Title after toggling mute", kind = "image" }] }
+[[review.categories.items]]
+id = "advances-in-real-time"
+title = "The game advances itself in real time"
+description = "During normal play the game runs on its own: the animation loop drives the fixed tick from the wall clock, so a live crossing advances — simulation time accumulates and the lane traffic moves — without anything stepping it from outside."
+validation = { script = "validation/controls/advances-in-real-time.mjs", outputs = [{ id = "before", name = "The instant play begins", kind = "image" }, { id = "after", name = "Moments later, on the build's own clock", kind = "image" }] }
 
 # --- Movement (blocking rules) ------------------------------------------------
 # One-tile hops are refused — never fatal — when they would leave the strait, hit
@@ -522,8 +527,13 @@ title = "Respawn"
 [[review.categories.items]]
 id = "critter-after-death"
 title = "Respawns on the near shore after a death"
-description = "After a death (with lives to spare), a fresh critter respawns on the near shore, on solid footing, with the crossing timer reset — not mid-strait and not on the water."
-validation = { script = "validation/respawn/critter-after-death.mjs", outputs = [{ id = "respawn", name = "The critter respawning after a death", kind = "video" }] }
+description = "After a death (with lives to spare), a fresh critter respawns on the near shore, on solid footing, with the crossing timer reset — not mid-strait and not on the water. This holds whichever way the critter died: one inflicted on it (a vehicle sliding into it) and one it brought on itself (hopping off the median into open water) are both driven."
+validation = { script = "validation/respawn/critter-after-death.mjs", outputs = [{ id = "respawn", name = "The critter respawning after a crush and after a drowning", kind = "video" }] }
+[[review.categories.items]]
+id = "death-pause"
+title = "Every death pauses before the respawn"
+description = "A death holds the crossing for a brief pause of about one second — whatever caused it — before the fresh critter appears, and the critter is out of play for its duration. The snapshot reports the phase as dying throughout the pause."
+validation = { script = "validation/respawn/death-pause.mjs", outputs = [{ id = "pause", name = "The pause between a death and the respawn", kind = "video" }] }
 [[review.categories.items]]
 id = "critter-after-score"
 title = "Respawns on the near shore after a bay"
@@ -689,13 +699,72 @@ proof = "gameplay"
 reference = "gameplay"
 
 # --- Audio --------------------------------------------------------------------
+# All audio is synthesized with the Web Audio API (specs/ui.md — no audio files), so
+# the validator reads the sources a build starts and confirms a distinct cue fires on
+# each event. The build must not autoplay, so each check arms audio with a real gesture
+# (a key press and a corner click) first; the exact sound is the model's own, only that
+# a cue plays is scored. Each mandated cue is its own review item so a build fails
+# exactly the cue it omits. The muteable / never-fail-to-load / silent-until-interaction
+# properties are reviewed by a person from play (see `graceful`).
 [[review.categories]]
 id = "audio"
 title = "Audio"
 [[review.categories.items]]
-id = "cues"
-title = "Distinct synthesized cues"
-description = "Distinct short cues, synthesized with the Web Audio API (no audio files), play for a hop, a water splash, a hazard crush, the bear catching you, filling a bay, a level clear, and the Victory / Game-over stings."
+id = "hop"
+title = "Hop cue"
+description = "A distinct short cue, synthesized with the Web Audio API (no audio files), plays when the critter hops."
+validation = { script = "validation/audio/hop.mjs", outputs = [
+  { id = "hop", name = "The hop whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "splash"
+title = "Splash cue"
+description = "A distinct cue plays when the critter drops into open water and drowns."
+validation = { script = "validation/audio/splash.mjs", outputs = [
+  { id = "splash", name = "The drowning whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "crush"
+title = "Crush cue"
+description = "A distinct cue plays when a vehicle crushes the critter on the ice band."
+validation = { script = "validation/audio/crush.mjs", outputs = [
+  { id = "crush", name = "The crush whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "caught"
+title = "Caught cue"
+description = "A distinct cue plays when a hunter's bear catches the critter."
+validation = { script = "validation/audio/caught.mjs", outputs = [
+  { id = "caught", name = "The catch whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "bay"
+title = "Bay-fill cue"
+description = "A distinct cue plays when the critter fills a goal bay."
+validation = { script = "validation/audio/bay.mjs", outputs = [
+  { id = "bay", name = "The bay fill whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "level-clear"
+title = "Level-clear cue"
+description = "A distinct cue plays when a level is cleared (its last bay filled)."
+validation = { script = "validation/audio/level-clear.mjs", outputs = [
+  { id = "clear", name = "The level clear whose cue is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "victory"
+title = "Victory sting"
+description = "The Victory sting plays when the final level is cleared and the run is won."
+validation = { script = "validation/audio/victory.mjs", outputs = [
+  { id = "victory", name = "The victory whose sting is checked", kind = "video" },
+] }
+[[review.categories.items]]
+id = "game-over"
+title = "Game-over sting"
+description = "The Game-over sting plays when the last life is lost."
+validation = { script = "validation/audio/game-over.mjs", outputs = [
+  { id = "gameover", name = "The game over whose sting is checked", kind = "video" },
+] }
 [[review.categories.items]]
 id = "graceful"
 title = "Muteable and gracefully silent"

@@ -1,15 +1,27 @@
 // Automated validation for the Maps sub-item `path-styles`.
 //
 // The maps span two path styles: smooth curves and straight lines with right-angle
-// corners. The check reads each map's polyline and measures its sharpest turn: a curved
-// map turns gently everywhere (no near-90-degree corners), while a straight/right-angle
-// map turns at right angles and its runs are axis-aligned.
+// corners. specs/board.md requires both to appear SOMEWHERE in the set and leaves which
+// map takes which to the build — "The single-path, branching, and multiple-path maps above
+// may each pick either style, so long as both styles appear somewhere in the set" — so the
+// check asks the catalog which map is which (the `style` each map DECLARES in the
+// snapshot's `maps` list, specs/instrumentation.md) and then measures whether the geometry
+// bears that declaration out: a curved map turns gently everywhere (no near-90-degree
+// corners), a straight map turns at right angles and its runs are axis-aligned.
+//
+// Pairing a style with a topology instead — the curved map is the single-path one, the
+// straight map is the branching one — describes only one of the conformant arrangements,
+// and would fail a build that draws its single path straight and its fork in curves.
 //
 // TWO runs. The curved map is arranged; the straight map is posed inside `act` with
 // `poseRun`, the twin that selects a map with control ops alone — `api.reset` throws
 // there.
 
-import { startRun, poseRun, MAP } from "../_helpers.mjs";
+// A build that offers no map in one of the styles has broken the requirement this item
+// exists to check, so the catalog is read FIRST and each style is only selected if it is
+// there. Asking `poseRun` for a style the build does not have throws, which the runtime
+// reports as a broken debug API — the harshest signal there is, pinned on the wrong thing.
+import { poseRun, STYLE } from "../_helpers.mjs";
 
 function maxTurnDeg(points) {
   let maxTurn = 0;
@@ -43,15 +55,21 @@ function axisAlignedFrac(points) {
 }
 
 export default function item() {
+  let catalog;
   let curved;
   let straight;
 
   return {
     id: "maps.path-styles",
 
-    // A curved map: gentle, distributed turns — no right-angle corners.
+    // Read the catalog, then open a run on whichever map DECLARES the curved style —
+    // resolved from that catalog rather than assumed to be one particular topology.
     async arrange(api) {
-      curved = await startRun(api, MAP.single, { integrity: 100000 });
+      await api.reset({ seed: 1 });
+      catalog = (await api.snapshot()).maps;
+      if (catalog.some((m) => m.style === STYLE.curved)) {
+        curved = await poseRun(api, STYLE.curved, { integrity: 100000 });
+      }
     },
 
     // Both boards, each given a real repaint pause before it is captured. Nothing moves
@@ -60,26 +78,36 @@ export default function item() {
       await api.settle(120);
       await api.screenshot("curved");
 
-      // A straight map: axis-aligned runs with right-angle corners.
-      straight = await poseRun(api, MAP.branching, { integrity: 100000 });
+      // ...and whichever map declares the straight style.
+      if (catalog.some((m) => m.style === STYLE.straight)) {
+        straight = await poseRun(api, STYLE.straight, { integrity: 100000 });
+      }
       await api.settle(120);
       await api.screenshot("straight");
     },
 
     async assert(api, check) {
+      // Both styles must appear in the set at all; the geometry checks below then hold
+      // each map to the style it claims.
+      check.expectOk("the map set offers a curved-style map", curved != null);
+      check.expectOk(
+        "the map set offers a straight, right-angle map",
+        straight != null,
+      );
+
       check.expectLt(
         "the curved map's sharpest turn is gentle (deg)",
-        maxTurnDeg(curved.paths[0].points),
+        curved ? maxTurnDeg(curved.paths[0].points) : 180,
         45,
       );
       check.expectGt(
         "the straight map turns at right angles (deg)",
-        maxTurnDeg(straight.paths[0].points),
+        straight ? maxTurnDeg(straight.paths[0].points) : 0,
         70,
       );
       check.expectGt(
         "the straight map's runs are axis-aligned (fraction)",
-        axisAlignedFrac(straight.paths[0].points),
+        straight ? axisAlignedFrac(straight.paths[0].points) : 0,
         0.9,
       );
     },

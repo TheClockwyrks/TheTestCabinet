@@ -14,11 +14,23 @@ function offTile(px) {
   return Math.abs(t - Math.round(t));
 }
 
+// How far the bear must actually travel over the sampled span to count as gliding,
+// in px. A bear moving at its specified ~3 tiles/second (specs/hunter.md) covers
+// about 48 px in the 60 ticks sampled below, so half a tile is a wide margin for a
+// build that glides at all — while still failing a bear that only twitches.
+//
+// The threshold exists because "did it move?" cannot be a single non-zero sample: a
+// build whose bear jitters one sub-pixel step and is then dragged back to its tile
+// every step (so it never actually travels) produces exactly one moving sample and
+// passes a naive check, while sitting frozen for the whole clip. The path length walked,
+// accumulated over every tick, is what separates gliding from twitching.
+const MIN_PATH_PX = 16;
+
 export default function item() {
   // What the tick-by-tick sweep measured, for `assert` to read.
   let maxOffTile;
   let maxStep;
-  let moved;
+  let pathLength;
 
   return {
     id: "hunter.continuous",
@@ -40,7 +52,7 @@ export default function item() {
       let prev = (await api.snapshot()).bears[0];
       maxOffTile = 0; // worst simultaneous off-grid on BOTH axes at once (a diagonal)
       maxStep = 0; // largest jump between reads (a whole-tile teleport)
-      moved = false;
+      pathLength = 0; // total path length walked, not net displacement
       for (let k = 0; k < 60; k += 1) {
         await api.advance(TICK); // one fixed step, the old `FIXED` (1/120 s)
         const b = (await api.snapshot()).bears[0];
@@ -54,13 +66,14 @@ export default function item() {
         const dx = Math.abs(b.x - prev.x);
         const dy = Math.abs(b.y - prev.y);
         maxStep = Math.max(maxStep, dx, dy);
-        if (dx + dy > 1e-4) moved = true;
+        // Path length, so a bear that turns a corner still counts every step it took.
+        pathLength += Math.hypot(dx, dy);
         prev = b;
       }
     },
 
     async assert(api, check) {
-      check.expectOk("the bear actually glided", moved);
+      check.expectGt("the bear actually glided", pathLength, MIN_PATH_PX);
       check.expectLt(
         "every step moves along a single axis (never diagonal)",
         maxOffTile,

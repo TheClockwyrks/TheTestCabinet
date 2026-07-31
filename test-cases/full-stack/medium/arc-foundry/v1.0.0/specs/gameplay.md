@@ -43,8 +43,11 @@ real decision.
   is removed. Bounties are small (a basic unit pays `1` Charge), so kill income is
   thin.
 - Wave-clear bonus. Clearing a wave (its last unit dies or leaks) pays a small flat
-  bonus that starts at about `10` Charge on Wave 1 and grows only gently with the
-  wave number (the reference build pays `8 + 2 × waveNumber`).
+  bonus of `8 + 2 × waveNumber` Charge — `10` on Wave 1 — growing only gently across
+  the run. It is flat in the sense that matters: it is a function of the wave number
+  and of nothing else. It does not scale with how many units the wave held, nor with
+  how many of them you killed (each kill pays its own bounty, above), nor with how
+  much Charge you have banked.
 - No interest. Charge does not accrue interest; banking is not rewarded, so the only
   income is kill bounties and the wave-clear bonus.
 - Spending. Charge is spent on two things: UPGRADE QUALITY and upgrading combination

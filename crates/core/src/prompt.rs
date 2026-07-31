@@ -255,10 +255,10 @@ pub fn render_prompt(
 /// The distinctness section appended to a game-jam prompt when earlier entries have
 /// been seeded, telling the model to read them and build something clearly different.
 ///
-/// `count` is how many prior entries of the same jam (same harness, same model) were
-/// seeded into [`GAME_JAM_PRIOR_ENTRIES_DIR`]; it is only called with `count > 0`.
-/// The seeded folder is reference material, not part of the submission, so the model
-/// is told where it is and that it is git-ignored.
+/// `count` is how many prior entries of the same jam by the same model (under any
+/// harness) were seeded into [`GAME_JAM_PRIOR_ENTRIES_DIR`]; it is only called with
+/// `count > 0`. The seeded folder is reference material, not part of the submission,
+/// so the model is told where it is and that it is git-ignored.
 fn game_jam_distinctness_section(count: usize) -> String {
     let entries = if count == 1 {
         "one earlier entry".to_string()
@@ -266,7 +266,7 @@ fn game_jam_distinctness_section(count: usize) -> String {
         format!("{count} earlier entries")
     };
     format!(
-        "You have already built {entries} for this exact jam with this same harness and model. \
+        "You have already built {entries} for this exact jam. \
          The player-facing README from each is in the `{GAME_JAM_PRIOR_ENTRIES_DIR}/` folder at \
          your project root — reference material only, git-ignored and NOT part of your \
          submission. Read them before you design anything.\n\n\

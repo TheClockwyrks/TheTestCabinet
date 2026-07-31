@@ -1,8 +1,19 @@
 // Automated validation for the UI item `state-victory`: the victory screen is
 // reachable, and the debug API captures it. Level 8 is cleared through the real
 // flow (fill the fifth bay) and the victory screen read back and captured.
+//
+// The screen is WAITED FOR rather than sampled a fixed moment after the hop: nothing
+// in specs/gameplay.md or specs/ui.md pins how soon the Victory screen follows the
+// winning bay, so a build that runs a clearing flourish first is conformant and a
+// short fixed wait would score it as never reaching the screen at all. See
+// `validation/progression/victory.mjs`, which decides the same fact.
 
 import { WATER_TOP } from "../_helpers.mjs";
+
+// How long a build may spend between the winning hop and the Victory screen, and how
+// long the screen is then left to draw before it is captured.
+const WIN_TICKS = 600; // 5 s
+const DRAW_TICKS = 18; // 0.15 s
 
 export default function item() {
   // The screen after the clearing hop.
@@ -25,9 +36,13 @@ export default function item() {
     // capturing it.
     async act(api) {
       await api.call("press", "ArrowUp");
-      await api.advance(24); // 0.2 s, long enough for the fill and the win to resolve
-      screen = (await api.snapshot()).screen;
-      await api.advance(18); // 0.15 s, so the victory screen has drawn
+      screen = (
+        await api.until((s) => s.screen === "victory", {
+          max: WIN_TICKS,
+          poll: 6,
+        })
+      ).snap.screen;
+      await api.advance(DRAW_TICKS); // so the victory screen has drawn
       await api.screenshot("victory");
     },
 

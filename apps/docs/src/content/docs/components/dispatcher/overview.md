@@ -26,6 +26,10 @@ The dispatcher runs a single control loop forever:
    back a job whose harness has fewer than its configured limit of runs already in
    flight, holding the rest in the `pending` state until a slot frees (see
    [Harnesses → per-harness configuration](/components/core/harnesses/#per-harness-configuration)).
+   The backend also holds back a **game-jam** job while another run of the same jam
+   and model is in flight under any harness, so a model's jam entries run one at a
+   time and each is briefed with the previous one's README (see
+   [Game jam → repeated runs](/testing/game-jam/overview/#repeated-runs-build-something-distinct)).
 2. **Create one driver `Job`** for the claimed run through the Kubernetes API, with
    exactly the environment the [driver](/components/driver/overview/) reads: the
    backend URL, the job id and its per-job token, the serialized launch request,

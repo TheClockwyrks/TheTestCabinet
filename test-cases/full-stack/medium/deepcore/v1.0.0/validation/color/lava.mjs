@@ -8,6 +8,7 @@ import {
   newRun,
   solid,
   sampleTile,
+  settleTiles,
   colorDistance,
   SPAWN_COL,
   DEEPSTONE_ROW,
@@ -30,10 +31,16 @@ export default function item() {
       await solid(api, col + 3, row);
     },
 
-    // Pixel sampling reads the painted canvas, so it belongs here behind a real settle — the
-    // validate pass advances time instantly and paints no frame of its own.
+    // Pixel sampling reads the painted canvas, so it belongs here behind a settle — the validate
+    // pass advances time instantly and paints no frame of its own. The settle POLLS until the two
+    // tiles have actually been painted rather than pausing a fixed guess: a short guess that comes
+    // up on a loaded host reads the previous frame, where both points land on the same flat patch
+    // and the check reports a distance of 0 against a build that drew the lava correctly.
     async act(api) {
-      await api.settle(120);
+      await settleTiles(api, [
+        [col + 2, row],
+        [col + 3, row],
+      ]);
       lava = await sampleTile(api, col + 2, row);
       rock = await sampleTile(api, col + 3, row);
       await api.screenshot("lava");

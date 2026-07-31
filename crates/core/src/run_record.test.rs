@@ -96,6 +96,7 @@ fn sample_record() -> RunRecord {
         },
         game_jam_readme: None,
         tool_calls: BTreeMap::new(),
+        game_jam_prior_entries: Vec::new(),
     }
 }
 

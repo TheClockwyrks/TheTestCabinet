@@ -5,7 +5,7 @@
 // confirms the tower's reported heading points at the target's world position.
 
 import {
-  startRun,
+  startScenario,
   pathGeom,
   placeCovering,
   spawnAt,
@@ -24,7 +24,7 @@ export default function item() {
     id: "tower-art.aim",
 
     async arrange(api) {
-      const snap = await startRun(api, MAP.single);
+      const snap = await startScenario(api, MAP.single);
       const g = pathGeom(snap.paths[0]);
       const s0 = g.length * 0.2;
       t = await placeCovering(api, "emitter", g, s0);
@@ -46,7 +46,14 @@ export default function item() {
       check.expectOk("the tower acquires the target", r.hit);
       const tw = towerById(r.snap, t.id);
       const u = unitById(r.snap, id);
-      const expected = Math.atan2(u.y - (tw.y - 4), u.x - tw.x);
+      // The heading is measured from the tower's OWN reported position to the target's.
+      // Both are contract values (specs/instrumentation.md: a tower's `x`/`y` and `angle`,
+      // a unit's `x`/`y`), and specs/towers.md says only that "a damage tower's head
+      // rotates to face the unit it is firing at" — where a build puts the head's pivot
+      // inside its sprite is its own business, so nudging the expected origin by a fixed
+      // few pixels only matches the one build it was measured from. The 0.2 rad tolerance
+      // is what absorbs a pivot that does not sit dead centre.
+      const expected = Math.atan2(u.y - tw.y, u.x - tw.x);
       let d = Math.abs(tw.angle - expected);
       if (d > Math.PI) d = 2 * Math.PI - d;
       check.expectLt("the tower's head points at its target (radians)", d, 0.2);

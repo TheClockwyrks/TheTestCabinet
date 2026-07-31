@@ -2,9 +2,13 @@
 //
 // A produced particle burst fires when a heavy isotope decays and sheds a fragment. The
 // check cracks a heavy with a Reactor and runs on until a "split" burst appears in the
-// live effects list.
+// live effects list — then runs on past it, so the reviewer sees the burst PLAY rather than
+// a clip that cuts on the single frame it first appeared, and so the shed particle (born at
+// its parent's own position, specs/board.md) has separated from the nucleus by the end.
 
 import { coverAndSpawn, TICK } from "../_helpers.mjs";
+
+const TAIL_TICKS = 90; // 1.5 s, enough for the burst to play out and the fragment to clear
 
 export default function item() {
   let r;
@@ -25,6 +29,7 @@ export default function item() {
         max: 300,
         poll: TICK,
       });
+      await api.advance(TAIL_TICKS);
     },
 
     async assert(api, check) {

@@ -21,6 +21,13 @@ const ARM_TICKS = 6; // 6 ticks = the old 0.05 s to arm the dive systems
 const FLUX_POLL_TICKS = 2;
 const FLUX_MAX_TICKS = 360;
 
+// Each dive is measured over a tenth of a second and then left running for this
+// long, so a reviewer can actually watch the two dives and see the second one move
+// faster. Measured and dropped, the clip was two flickers a viewer could not
+// compare — the item's declared output is "a faster dive at a later stage", and a
+// tenth of a second of each shows nothing of the kind.
+const WATCH_TICKS = 180; // 1.5 s of the dive continuing after it is measured
+
 /**
  * Re-pose a stage WITHOUT resetting. `startStage` + `clearField` are control ops, so
  * they set the stage and empty the field without touching the step clock — which is
@@ -56,6 +63,10 @@ async function measureDiveSpeed(api) {
 // `reset` does), so the elapsed ticks `until` reports are used instead and converted
 // back to seconds. That measures the same quantity — time from spawn to shimmer —
 // and is what makes the four measurements composable in one uninterrupted phase.
+// The sweep uses `skipUntil` rather than `until`: it is the same exact stepping in
+// the validate pass — the measurement is identical — but instant in the record pass
+// too, so the clip is not padded with three seconds of a Flux sitting still. What
+// this item's clip is for is the two dives; the hold is a number, not a spectacle.
 async function measureFluxHold(api) {
   const id = await spawnDrone(api, {
     kind: "flux",
@@ -65,7 +76,7 @@ async function measureFluxHold(api) {
     phase: "formation",
     fluxClock: 0,
   });
-  const r = await api.until(
+  const r = await api.skipUntil(
     (s) => {
       const d = findDrone(s, id);
       return d !== null && d.shimmer === true;
@@ -97,9 +108,11 @@ export default function item() {
     // visibly faster stage-10 dive, which is the comparison the item is about.
     async act(api) {
       dive1 = await measureDiveSpeed(api);
+      await api.advance(WATCH_TICKS); // watch the stage-1 dive run
 
       await poseStage(api, 10);
       dive10 = await measureDiveSpeed(api);
+      await api.advance(WATCH_TICKS); // and the stage-10 one, for comparison
 
       await poseStage(api, 1);
       hold1 = await measureFluxHold(api);

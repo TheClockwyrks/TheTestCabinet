@@ -3,7 +3,13 @@
 //
 // The Flarefish is posed out in the dark instantly (`arrange`); the wait for its bloom is
 // the behavior under test, so it is `act` and is what the clip opens on.
-import { startPlaying, denAllExcept, findFarTile, pred } from "../_helpers.mjs";
+import {
+  denAllExcept,
+  findFarTile,
+  pred,
+  quietBoard,
+  startPlaying,
+} from "../_helpers.mjs";
 
 function revealedNear(s, tx, ty, rad) {
   let n = 0;
@@ -35,7 +41,7 @@ export default function item() {
         ty: far.ty,
         mode: "wander",
       });
-      await api.call("poseLastPlankton");
+      await quietBoard(api);
     },
 
     async act(api) {

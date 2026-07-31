@@ -12,7 +12,13 @@
 // the exposed nucleus, and confirms energy still cannot touch it — the exposed nucleus is
 // a heavy, not fodder for the strippers.
 
-import { unitById, towerById, placeCovering, TICK } from "../_helpers.mjs";
+import {
+  unitById,
+  towerById,
+  placeCovering,
+  poolSpent,
+  TICK,
+} from "../_helpers.mjs";
 import {
   bossUnderFire,
   clearBoard,
@@ -22,6 +28,9 @@ import {
 
 const MAX_POOL_TICKS = 5400; // 5400 ticks = the old 90 s cap — game time, not wall clock
 const ENERGY_TICKS = 240; // 240 ticks = the old 4 s — long enough for an Emitter to have fired repeatedly
+// What a guarded assertion reports when the scenario never reached the state it reads. It is
+// deliberately not a number or a null: those read as measurements.
+const UNREAD = "not measured — no exposed nucleus";
 
 export default function item() {
   let g;
@@ -52,14 +61,29 @@ export default function item() {
       // Chip the pool down and read the unit back the instant it breaks. Polling every
       // TICK because the break is a single-frame event and every following assertion
       // reads the state AT it.
+      //
+      // The break is detected off the POOL (`poolSpent`), not off `traits.bonded`. Both
+      // are requirements here, but only one of them can be the trigger: waiting on the
+      // flag meant that a build which empties the pool without clearing it never satisfied
+      // the predicate at all, so the sweep ran on to the boss's DEATH and every assertion
+      // below then read a corpse — a dozen failures, comparing against nulls, for one
+      // missing flag. The flag is asserted on its own a few lines down, where it belongs.
       r = await api.until(
         (s) => {
           const u = unitById(s, bossId);
-          return u == null || u.traits.bonded === false;
+          return u == null || poolSpent(u);
         },
         { max: MAX_POOL_TICKS, poll: TICK },
       );
       exposed = unitById(r.snap, bossId);
+
+      // A build whose towers never break the pool — or which removes the boss when they do —
+      // leaves nothing to put an energy tower over, which is the failure the assertions above
+      // report. Stop here rather than dereference it: an unguarded read threw out of `act`, and
+      // the runtime reports a throw as a BROKEN DEBUG API, so a build that simply cannot crack
+      // the boss was recorded as non-conformant instrumentation instead of as failing this
+      // requirement. The remaining assertions all tolerate the missing nucleus.
+      if (exposed == null) return;
 
       // Strip the board and put an ENERGY tower on the exposed nucleus: energy does
       // nothing to a heavy, so a nucleus that had wrongly become a free atom would give
@@ -100,38 +124,58 @@ export default function item() {
         BOSS_NUCLEUS,
       );
 
+      // A build that REMOVES the boss when its pool breaks (rather than exposing the nucleus)
+      // leaves nothing to read back — which is itself the failure this item is about, so every
+      // read below is guarded. Dereferencing a missing unit threw out of the item, and the
+      // runtime reports a throw as a broken debug API rather than as the failed requirement.
+      //
+      // A guard that trips reports UNREAD rather than a stand-in value. `exposed.electrons`
+      // used to fall back to `0`, which printed as "expected null, actual 0" — a number the
+      // build never produced, describing a measurement that never happened. A reviewer
+      // cannot tell that apart from a real reading, and it is what made a cascade of these
+      // unreadable.
       check.expectOk(
         "the containment pool was broken through",
         r.hit && exposed != null,
       );
       check.expectEq(
         "the same unit carries on past the break",
-        exposed.id,
+        exposed ? exposed.id : UNREAD,
         bossId,
       );
+      // specs/matter.md: "Bonded is a state, not a lineage" — a unit whose pool is spent is
+      // no longer bonded, and the snapshot must say so. This is asserted here rather than
+      // waited on above, so a build that empties the pool but keeps the flag fails exactly
+      // this line and every other property below is still measured on its merits.
       check.expectEq(
         "breaking the pool exposes the nucleus (no longer bonded)",
-        exposed.traits.bonded,
+        exposed ? exposed.traits.bonded : UNREAD,
         false,
       );
       check.expectEq(
         "the exposed nucleus is still heavy",
-        exposed.traits.heavy,
+        exposed ? exposed.traits.heavy : UNREAD,
         true,
       );
-      check.expectEq(
-        "it is still the boss, not a free atom",
-        exposed.type,
-        "macromass",
+      // specs/matter.md: "Breaking the containment pool exposes the nucleus, which carries
+      // on as the isotope it already is." What the exposed unit is NOT is the point — it is
+      // not the free atom an ordinary cluster becomes — and the spec leaves the label open
+      // between the two readings: the unit is still the Macromass, and it is also now
+      // travelling on as a bare heavy isotope. Both are conformant, so both are accepted;
+      // `electrons` and the untouched nucleus below are what actually pin it down.
+      check.expectOk(
+        "it is still the boss's heavy nucleus, not a free atom",
+        exposed != null &&
+          (exposed.type === "macromass" || exposed.type === "isotope"),
       );
       check.expectEq(
         "it has no electron count — it is not an atom",
-        exposed.electrons,
+        exposed ? exposed.electrons : UNREAD,
         null,
       );
       check.expectEq(
         "the nucleus behind the pool is untouched by the break",
-        exposed.hp,
+        exposed ? exposed.hp : UNREAD,
         BOSS_NUCLEUS,
       );
 
@@ -141,12 +185,14 @@ export default function item() {
       );
       check.expectOk(
         "the nucleus passed through the energy tower's range",
-        everInRange,
+        everInRange === true,
       );
-      check.expectEq(
+      // A bare boolean rather than a value pair: what this compares against is a baseline
+      // MEASURED in `act` (`hpBefore`), so when the scenario never got that far there is no
+      // honest "expected" to print — the old form showed `expected None`.
+      check.expectOk(
         "an energy tower cannot damage the exposed nucleus",
-        still.hp,
-        hpBefore,
+        still != null && hpBefore != null && still.hp === hpBefore,
       );
       check.expectOk(
         "the energy tower never even targets it",

@@ -134,6 +134,7 @@ fn queued_job(harness_slug: &str, gg_config_json: Option<&str>) -> job::Model {
         test_case_slug: "pong".to_string(),
         test_case_version: "v1.0.0".to_string(),
         variant: "base".to_string(),
+        test_type: TestType::EndToEnd.as_str().to_string(),
         harness_slug: harness_slug.to_string(),
         model_id: "claude-sonnet-4-5".to_string(),
         gg_config_json: gg_config_json.map(str::to_string),
