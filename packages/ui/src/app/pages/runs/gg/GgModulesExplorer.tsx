@@ -14,7 +14,15 @@ import type {
 } from "./useGgRunState";
 import { shortTokens } from "./useGgRunState";
 import type { GgModuleHolder, GgModuleInstance } from "./ggModules";
-import { isShared, moduleKindLabel, useGgModules } from "./ggModules";
+import {
+  concurrentHolders,
+  isCarried,
+  isShared,
+  moduleKindDescription,
+  moduleKindLabel,
+  moduleReportsContents,
+  useGgModules,
+} from "./ggModules";
 import {
   GgModuleHeader,
   ModuleContents,
@@ -22,7 +30,6 @@ import {
   moduleLifetimeLabel,
 } from "./GgModuleViews";
 import { MODULE_ICONS } from "./ggAgentEntries";
-import { MODULE_KINDS } from "./ggCatalog";
 import { cx } from "./ggFsTree";
 import { FsExplorer, FsFileRow, FsFolder, useFsFolders } from "./GgFsExplorer";
 import { useGgExplorerNav } from "./GgExplorerNav";
@@ -54,11 +61,6 @@ import { formatPercent } from "./GgOverviewWidgets";
 function kindKey(kind: GgModuleKind): string {
   return `kind:${kind}`;
 }
-
-// The per-kind prose the configuration editor already writes for its module pickers. It
-// is the same audience asking the same question ("what does carrying this actually
-// mean?"), so the answer is the same words rather than a second, drifting paraphrase.
-const KIND_HINTS = new Map(MODULE_KINDS.map((kind) => [kind.value, kind.hint]));
 
 // A selected entry: one kind's whole-run overview, or one module instance.
 //
@@ -304,14 +306,23 @@ function KindFolder({
           name={module.id}
           meta={
             <>
+              {/* The link glyph marks CONCURRENT holding only: a store handed on collects
+                  holders the same way and was never shared, and the count beside it is the
+                  number that held it at once. The title carries the whole chain. */}
               {isShared(module) && <LinkIcon className={panels.fsShared} />}
               <span
                 className={panels.fsMeta}
-                title={`held by ${module.holders
-                  .map((holder) => holder.agentId)
-                  .join(", ")}`}
+                title={
+                  isCarried(module)
+                    ? `passed through ${module.holders
+                        .map((holder) => holder.agentId)
+                        .join(" → ")}, one at a time`
+                    : `held by ${module.holders
+                        .map((holder) => holder.agentId)
+                        .join(", ")}`
+                }
               >
-                {`${module.holders.length} ${module.holders.length === 1 ? "holder" : "holders"}`}
+                {`${concurrentHolders(module).length} ${concurrentHolders(module).length === 1 ? "holder" : "holders"}`}
               </span>
               <span className={cx(panels.fsMeta, panels.fsMetaTrailing)}>
                 {whose(module)}
@@ -325,15 +336,21 @@ function KindFolder({
 }
 
 // Whose a module instance is, in the two words a tree row has room for: the profile that
-// shares it, "run-global" where it reaches across profiles, "(dropped)" where a succession
-// ended it, and the holding instance's own id where it is nobody's but one agent's.
+// shares it, "run-global" where it reaches across profiles, "handed on" where it went from
+// one instance to the next rather than being shared by both, "(dropped)" where every holder
+// has let go of it, and the holding instance's own id where it is nobody's but one agent's.
 function whose(module: GgModuleInstance): string {
+  // Only once EVERY holder has released it — a `dropped` disposition is one outgoing
+  // instance's release, and the run's board is dropped by somebody in most runs while the
+  // rest of the run keeps writing it.
   if (module.dropped) return "(dropped)";
   switch (module.scopeKind) {
     case "agent":
       return module.profile ?? "shared";
     case "run":
       return "run-global";
+    case "carried":
+      return "handed on";
     case "instance":
       return module.holders[0]?.agentId ?? "unheld";
   }
@@ -363,9 +380,13 @@ function KindOverview({
 }) {
   const holders = instances.flatMap((module) => module.holders);
   const live = instances.flatMap((module) => module.liveHolders);
+  // Shared means held at once — see {@link concurrentHolders}. Counted separately from the
+  // hand-offs, which look identical in a holder total and are the opposite finding: a store
+  // several instances *took turns* with says nothing about whether sharing was configured.
   const shared = instances.filter(isShared);
+  const carried = instances.filter(isCarried).length;
   const widest = instances.reduce(
-    (max, module) => Math.max(max, module.holders.length),
+    (max, module) => Math.max(max, concurrentHolders(module).length),
     0,
   );
   // The rent, summed the way it is actually paid: every live holder re-sends its copy of
@@ -389,9 +410,25 @@ function KindOverview({
     0,
   );
   const dropped = instances.filter((module) => module.dropped).length;
-  const empty = instances.filter(
-    (module) => moduleContentSummary(module) == null,
-  ).length;
+  // Only a kind that HAS contents can be "holding nothing". A window reports itself as a
+  // per-turn context breakdown rather than as a snapshot, so counting its missing snapshot
+  // as an untouched store would report every window in every run as never written to — the
+  // exact inverse of the truth about the fullest thing an agent holds.
+  const reportsContents = moduleReportsContents(kind);
+  const empty = reportsContents
+    ? instances.filter((module) => moduleContentSummary(module) == null).length
+    : 0;
+  // Whether the rent is a measured zero or simply not measurable/measured yet — three
+  // different findings that all render as "no tokens" unless they are told apart. The
+  // archive is out of the window by definition and has no band at all.
+  const perTurnSub =
+    perTurn > 0
+      ? `across ${paying} window${paying === 1 ? "" : "s"}`
+      : kind === "archive"
+        ? "no context band"
+        : paying > 0
+          ? "measured zero"
+          : "not measured yet";
 
   return (
     <div className={panels.panelBody}>
@@ -403,9 +440,11 @@ function KindOverview({
               {`${instances.length} instance${instances.length === 1 ? "" : "s"} · ${holders.length} holder${holders.length === 1 ? "" : "s"}`}
             </span>
           </div>
-          {KIND_HINTS.has(kind) && (
-            <p className={panels.moduleLine}>{KIND_HINTS.get(kind)}</p>
-          )}
+          {/* What this kind IS, across a run. Deliberately not the configuration editor's
+              transfer-list prose, which answers "what does carrying this into the next
+              state mean?" in the second person of a checkbox — referents this page has
+              none of. */}
+          <p className={panels.moduleLine}>{moduleKindDescription(kind)}</p>
           {!identified && (
             <p className={panels.moduleNote}>
               This run predates module identity, so every store below is
@@ -430,25 +469,33 @@ function KindOverview({
           <Stat
             label="shared"
             value={`${shared.length} of ${instances.length}`}
-            sub={widest > 1 ? `widest: ${widest} holders` : "none shared"}
-            title="How many of this kind's stores more than one instance ever held. A capability configured to share whose stores are all private is the divergence worth finding."
+            sub={
+              widest > 1
+                ? `widest: ${widest} holders`
+                : carried > 0
+                  ? `none shared · ${carried} handed on`
+                  : "none shared"
+            }
+            title="How many of this kind's stores more than one instance held AT ONCE. A store passed from one instance to its successor is counted as handed on rather than shared: it collects holders the same way and only ever had one. A capability configured to share whose stores are all private is the divergence worth finding."
           />
           <Stat
             label="per turn"
-            value={perTurn > 0 ? shortTokens(perTurn) : "—"}
-            sub={
-              perTurn > 0
-                ? `across ${paying} window${paying === 1 ? "" : "s"}`
-                : "no context band"
+            value={
+              perTurn > 0 || (paying > 0 && kind !== "archive")
+                ? shortTokens(perTurn)
+                : "—"
             }
+            sub={perTurnSub}
             title="What this kind costs the windows carrying it, every turn — an owned module's block is re-sent on every request its holder makes, so a store three running agents hold is paid for three times a turn."
           />
-          <Stat
-            label="holding nothing"
-            value={`${empty} of ${instances.length}`}
-            sub={empty > 0 ? "never written to" : "all in use"}
-            title="Stores whose contents never arrived — the capability was given, the tools were offered, and nothing was put in them."
-          />
+          {reportsContents && (
+            <Stat
+              label="holding nothing"
+              value={`${empty} of ${instances.length}`}
+              sub={empty > 0 ? "never written to" : "all in use"}
+              title="Stores whose contents never arrived — the capability was given, the tools were offered, and nothing was put in them."
+            />
+          )}
         </div>
 
         {/* The distribution: every store of this kind side by side, so "one shared or
@@ -479,8 +526,10 @@ function KindOverview({
                       .map((holder) => holder.agentId)
                       .join(" · ") || "—"}
                   </span>
+                  {/* An empty column would read the same for a store nobody wrote to and
+                      for a window, which has no contents to report at all. */}
                   <span className={panels.modDistContents}>
-                    {contents ?? "—"}
+                    {contents ?? (reportsContents ? "never written to" : "—")}
                   </span>
                   <span className={panels.modDistCost}>
                     {module.totalCost

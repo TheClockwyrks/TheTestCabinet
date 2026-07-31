@@ -193,6 +193,13 @@ export function GgRunPanels({
   // silently drop another that arrived in the same render.
   const [focusModule, setFocusModule] = useState<GgModuleFocus | null>(null);
   const [focusProfile, setFocusProfile] = useState<string | null>(null);
+  // Whether there is a Modules tab to hand anybody through to. Every instance of every run
+  // holds a `history` module — the window has no capability behind it — so a module file
+  // and a profile's module row both exist in runs this tab is (rightly) not offered for,
+  // and an unconditional link would switch to a tab the validity effect below immediately
+  // falls back out of. The two module openers are therefore withheld rather than dead: a
+  // caller with no `openModule` renders no button at all.
+  const hasModules = tabs.some((option) => option.value === "modules");
   const nav: GgExplorerNav = useMemo(
     () => ({
       openAgent: (agentId, entry) => {
@@ -200,21 +207,25 @@ export function GgRunPanels({
         setFocusAgent(agentId);
         setFocusEntry(entry ?? null);
       },
-      openModule: (moduleId) => {
-        setTab("modules");
-        setFocusModule({ kind: "module", moduleId });
-      },
-      openModuleKind: (moduleKind) => {
-        setTab("modules");
-        setFocusModule({ kind: "group", moduleKind });
-      },
+      openModule: hasModules
+        ? (moduleId) => {
+            setTab("modules");
+            setFocusModule({ kind: "module", moduleId });
+          }
+        : undefined,
+      openModuleKind: hasModules
+        ? (moduleKind) => {
+            setTab("modules");
+            setFocusModule({ kind: "group", moduleKind });
+          }
+        : undefined,
       openProfile: (name) => {
         setTab("agents");
         setFocusProfile(name);
       },
       openProject: () => setTab("project"),
     }),
-    [],
+    [hasModules],
   );
   const onAgentFocusHandled = useCallback(() => {
     setFocusAgent(null);

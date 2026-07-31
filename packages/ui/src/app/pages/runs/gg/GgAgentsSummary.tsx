@@ -17,7 +17,11 @@ import type {
 } from "./useGgRunState";
 import { callRatePhrase, shortTokens } from "./useGgRunState";
 import type { GgAgentModuleSharing, GgAgentModuleSummary } from "./ggModules";
-import { moduleKindLabel, useGgModules } from "./ggModules";
+import {
+  moduleKindLabel,
+  moduleReportsContents,
+  useGgModules,
+} from "./ggModules";
 import {
   GgModuleHeader,
   ModuleContents,
@@ -650,7 +654,9 @@ function AgentScopedStore({
                 nav.openAgent(agentId, { kind: "module", module: row.kind })
             : undefined
         }
-        onOpenModule={nav ? () => nav.openModule(module.id) : undefined}
+        onOpenModule={
+          nav?.openModule ? () => nav.openModule!(module.id) : undefined
+        }
       />
       <ModuleContents module={module} holder={null} state={null} />
     </section>
@@ -668,26 +674,35 @@ function PerInstanceStores({
   row: GgAgentModuleSummary;
   nav: GgExplorerNav | null;
 }) {
-  const untouched = row.instances.filter(
-    (hold) => moduleContentSummary(hold.module) == null,
-  ).length;
+  // "Never written to" is only a statement a kind that HAS contents can bear. A window
+  // reports itself per turn as a context breakdown rather than as a snapshot, so counting
+  // its absent snapshot would report every conversation window in the run as unused.
+  const reportsContents = moduleReportsContents(row.kind);
+  const untouched = reportsContents
+    ? row.instances.filter(
+        (hold) => moduleContentSummary(hold.module) == null,
+      ).length
+    : 0;
   const each =
     row.cost && row.holdingInstances > 0
       ? row.cost.latestTokens / row.holdingInstances
       : null;
+  const openModuleKind = nav?.openModuleKind;
   return (
     <div className={styles.moduleRowFoot}>
       <span className={styles.moduleRowMeta}>
-        {untouched > 0
-          ? `${untouched} of ${plural(row.instances.length, "store")} never written to`
-          : `all ${plural(row.instances.length, "store")} in use`}
+        {!reportsContents
+          ? plural(row.instances.length, "store")
+          : untouched > 0
+            ? `${untouched} of ${plural(row.instances.length, "store")} never written to`
+            : `all ${plural(row.instances.length, "store")} in use`}
         {each != null && ` · ~${shortTokens(Math.round(each))}/turn each`}
       </span>
-      {nav && (
+      {openModuleKind && (
         <button
           type="button"
           className={panels.projAgentLink}
-          onClick={() => nav.openModuleKind(row.kind)}
+          onClick={() => openModuleKind(row.kind)}
         >
           Compare in Modules
         </button>
@@ -706,18 +721,20 @@ function StoreList({
   row: GgAgentModuleSummary;
   nav: GgExplorerNav | null;
 }) {
+  const reportsContents = moduleReportsContents(row.kind);
+  const openModule = nav?.openModule;
   return (
     <ul className={styles.stores}>
       {row.instances.map(({ module, holdersInProfile }) => {
         const title = `${holdersInProfile} of this agent's instances hold it, ${plural(module.holders.length, "holder")} in all`;
         return (
           <li key={module.id} className={styles.storeRow}>
-            {nav ? (
+            {openModule ? (
               <button
                 type="button"
                 className={styles.storeId}
                 title={title}
-                onClick={() => nav.openModule(module.id)}
+                onClick={() => openModule(module.id)}
               >
                 {module.id}
               </button>
@@ -750,7 +767,8 @@ function StoreList({
               )}
             </span>
             <span className={styles.storeContents}>
-              {moduleContentSummary(module) ?? "nothing in it"}
+              {moduleContentSummary(module) ??
+                (reportsContents ? "nothing in it" : "—")}
             </span>
             <span className={styles.storeCost}>
               {module.totalCost

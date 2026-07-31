@@ -22,9 +22,10 @@ use super::*;
 use crate::client::MockClient;
 use crate::telemetry::{CollectingSink, Emitter};
 use test_cabinet_core::gg::{
-    ALL_SUBAGENT_SCOPES, CAPABILITY_MEMORIES, CAPABILITY_SUBAGENTS, GgAgentModule,
-    GgCapabilityConfig, GgMemoryScope, GgModuleKind, GgModuleOrigin, GgModuleOwnership,
-    GgSubagentRef, GgTelemetryEvent, MEMORY_PARAM_SCOPE, ROOT_AGENT,
+    ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_MEMORIES,
+    CAPABILITY_SUBAGENTS, GgAgentModule, GgCapabilityConfig, GgMemoryScope, GgModuleKind,
+    GgModuleOrigin, GgModuleOwnership, GgSubagentRef, GgTelemetryEvent, MEMORY_PARAM_SCOPE,
+    ROOT_AGENT,
 };
 
 use super::{ScriptedFactory, invocation};
@@ -313,4 +314,68 @@ async fn every_instance_opens_with_a_roster_and_its_state_snapshots() {
         .module_id,
         "a snapshot names the same instance the roster does, which is what joins them"
     );
+}
+
+/// The root's **first** incarnation opens with an `ArchiveState` too, like the other four
+/// snapshots — which it did not before.
+///
+/// `ModuleSet::state_events` is skipped for exactly one instance in a run (the root's first, whose
+/// modules `announce_configuration` introduces instead), and that function grew a `state_event()`
+/// arm per capability as each was added — except the archive, which arrived last. The result was
+/// that the one agent every run has emitted nothing at all for its archive until it happened to
+/// call `archive_thread`, against a documented contract (`gg/telemetry.md`) that says the snapshot
+/// arrives as an agent opens. An archive the model never uses is precisely the case worth reading
+/// — "the capability was given and nothing was put in it" — so it is also the case that must not be
+/// missing from the record.
+#[tokio::test]
+async fn the_root_opens_with_an_empty_archive_snapshot() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-archive".to_string()), Box::new(sink.clone()));
+    let mut root = GgAgentConfig {
+        model_id: "mock/primary".to_string(),
+        ..GgAgentConfig::root()
+    };
+    root.capabilities.push(GgCapabilityConfig::enabled(
+        CAPABILITY_AGENT_MANAGED_CONTEXT,
+    ));
+    let set = GgCapabilitySet {
+        agents: vec![root],
+        ..GgCapabilitySet::default()
+    };
+    let inv = invocation(dir.path(), set);
+    // One turn, and it archives nothing: the whole point is the snapshot that arrives anyway.
+    let factory = ScriptedFactory::new().slot(ROOT_AGENT, |b| {
+        Box::new(MockClient::new(&b.model_id, vec![stop_response()]))
+    });
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+    let events = sink.events();
+
+    let opening = events
+        .iter()
+        .find(|event| matches!(&event.kind, GgTelemetryKind::ArchiveState { .. }))
+        .expect("the root reports its archive as it opens, before archiving anything");
+    let GgTelemetryKind::ArchiveState {
+        module_id,
+        entries,
+        count,
+        total_len,
+    } = &opening.kind
+    else {
+        unreachable!("filtered above");
+    };
+    assert_eq!(*count, 0, "it opens empty, and says so");
+    assert_eq!(*total_len, 0);
+    assert!(entries.is_empty());
+    // And it names the same store the roster does, which is what joins a snapshot to a holder.
+    let roster = rosters(&events)
+        .into_iter()
+        .find(|(agent, _)| agent == ROOT_AGENT_ID)
+        .map(|(_, roster)| roster)
+        .expect("the root reports its roster");
+    assert_eq!(module_id, &row(&roster, GgModuleKind::Archive).module_id);
+    assert!(!module_id.is_empty());
 }

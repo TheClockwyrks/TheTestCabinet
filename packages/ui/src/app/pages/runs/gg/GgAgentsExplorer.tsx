@@ -37,7 +37,13 @@ import {
   type FsFolders,
 } from "./GgFsExplorer";
 import type { GgModuleIndex, GgModuleInstance } from "./ggModules";
-import { isShared, moduleKindLabel, useGgModules } from "./ggModules";
+import {
+  concurrentHolders,
+  isCarried,
+  isShared,
+  moduleKindLabel,
+  useGgModules,
+} from "./ggModules";
 import type { AgentEntry, AgentFileKind } from "./ggAgentEntries";
 import {
   FILE_ICONS,
@@ -629,7 +635,10 @@ function ModulesFolder({
             icon={<ModuleIcon className={panels.fsIcon} />}
             name={module.kind}
             meta={
-              isShared(module) && (
+              /* Shared means held AT ONCE. A store carried across a succession collects
+                 holders exactly the way a shared one does and was never shared by anybody,
+                 so it is annotated as the hand-off it is rather than counted. */
+              isShared(module) ? (
                 <>
                   <LinkIcon className={panels.fsShared} />
                   {/* The count reads at a glance and the title names the store and the
@@ -637,13 +646,26 @@ function ModulesFolder({
                       file that answers it in full is one click further. */}
                   <span
                     className={cx(panels.fsMeta, panels.fsMetaTrailing)}
-                    title={`${module.id} — held by ${module.holders
+                    title={`${module.id} — held at once by ${concurrentHolders(
+                      module,
+                    )
                       .map((holder) => holder.agentId)
                       .join(", ")}`}
                   >
-                    {module.holders.length} holders
+                    {concurrentHolders(module).length} holders
                   </span>
                 </>
+              ) : (
+                isCarried(module) && (
+                  <span
+                    className={cx(panels.fsMeta, panels.fsMetaTrailing)}
+                    title={`${module.id} — passed through ${module.holders
+                      .map((holder) => holder.agentId)
+                      .join(" → ")}, one at a time`}
+                  >
+                    handed on
+                  </span>
+                )
               )
             }
           />
@@ -682,6 +704,8 @@ function ModuleFile({
   // selection is the panels' state, and this file is rendered several components below
   // them.
   const nav = useGgExplorerNav();
+  // Withheld in a run with no Modules tab — see {@link GgExplorerNav.openModule}.
+  const openModule = nav?.openModule;
   const module = (modules.byAgent.get(agentId) ?? []).find(
     (held) => held.kind === kind,
   );
@@ -705,7 +729,7 @@ function ModuleFile({
           module={module}
           holder={holder}
           onOpenHolder={onOpenHolder}
-          onOpenModule={nav ? () => nav.openModule(module.id) : undefined}
+          onOpenModule={openModule ? () => openModule(module.id) : undefined}
         />
         <ModuleContents
           module={module}

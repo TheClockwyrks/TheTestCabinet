@@ -1399,3 +1399,102 @@ Decisions an implementer might otherwise relitigate:
 18. **The explorer primitives are extracted before the third explorer is
     written**, as its own no-behaviour-change stage, so the extraction is
     verified by the existing tests rather than by the new ones.
+
+---
+
+## 9. Review-fix stage as built (corrections to §§4–6 and decision 9)
+
+Three independent reviews of the finished branch produced seventeen findings (with
+heavy overlap). What they changed, and where this design was wrong:
+
+1. **Decision 9 was under-specified, and every surface but the Agents tab
+   implemented it wrongly.** "Derived from observed holders" is necessary but not
+   sufficient: a store handed from a predecessor to a successor collects holders
+   exactly the way a shared store does, and only ever had one. `isShared` and
+   `scopeKind` both read `holders.length`, so an `exec` — and every state of an
+   FSM run — rendered as agent-scoped sharing on the Instances tree, the module
+   file header, the Modules tab sidebar and its kind Overview, while the Agents
+   tab (which stage 7 had already fixed with `concurrentHolders`) correctly
+   called the same store *handed on*. **Now:** `isShared` and `scopeKind` both go
+   through `concurrentHolders`; `GgModuleScopeKind` gained a fourth value,
+   `carried`; a new `isCarried` predicate and a `handed on` badge/annotation
+   replace the link glyph and holder count wherever a store was only ever held
+   one instance at a time. `classifySharing` also now decides `agent` vs `run`
+   from the concurrent holders' profiles rather than from a holder-count
+   equality, which was wrong for a store that was both shared and later carried.
+2. **`dropped` was a fact about one holder presented as a fact about the store.**
+   `transfer` reports `Dropped` whenever a successor's profile does not enable
+   the capability, which says nothing about the store's other holders — so a
+   run-global board was permanently badged `(dropped)` from the first `exec` past
+   it while the Project tab rendered it live. **Now:** the derivation records
+   which holders *released* the store (a `dropped` disposition, an `initialized`
+   one, and the predecessor side of every `carried`), and `dropped` is true only
+   once every holder is in that set. `initialized` also gained the lifetime row
+   it was missing for the predecessor's abandoned store.
+3. **The legacy-roster fallback was per instance, not per record.** §7's stage 1
+   built it as "this instance reported no roster", which in a live stream is true
+   for every instance between its `agent_spawned` and its `agent_modules` — so
+   phantom `legacy:` stores flickered into the Modules tab's counts and briefly
+   reported a profile as diverging from its declared scope. **Now:**
+   `identified` is computed over the whole run *before* anything is folded, and
+   the fallback applies only when the record reported no rosters at all.
+4. **Declared-versus-observed notes were computed for synthesized holders.**
+   Their `origin: created` / `ownership: owned` are placeholders, so a
+   pre-identity record reported notes with no evidence behind them — on the
+   surface §5.3 calls the highest-value thing on the tab. **Now:** `foldByProfile`
+   takes `identified` and returns no divergences without it.
+5. **`moduleContentSummary() == null` was read as "never written to" by three
+   surfaces.** A window has no snapshot *by construction*, so the Modules tab's
+   "holding nothing" stat, its distribution column and both Agents-tab paths
+   reported every conversation window in every run as unused. **Now:**
+   `moduleReportsContents(kind)` distinguishes "reports none" from "was never
+   written to"; the stat is omitted entirely for `history`.
+6. **The cross-links into the Modules tab could be dead.** The tab is gated on a
+   module-backed capability (decision 15) while `history` has no capability
+   behind it, so an ordinary shell run's `modules/history` file and every
+   profile's History row offered links to a tab the validity effect immediately
+   fell back out of, dumping the reader on the Dashboard. **Now:**
+   `GgExplorerNav.openModule` and `openModuleKind` are **optional**, supplied by
+   `GgRunPanels` only when the tab is offered; a caller without them renders no
+   button. (Reversing the gate — always offering the tab — was rejected: it
+   contradicts decision 15 for a real reason.)
+7. **A synthesized `legacy:<agent>:<kind>` id was presented as the store's name.**
+   `identified` was consulted in exactly one place. **Now:** `GgModuleInstance`
+   carries `synthesized`, and the shared header strip badges it `inferred` and
+   explains it — so every surface that renders the id also says what it is.
+8. **A forked store's lifetime read "copied" before "created".** The synthesized
+   `created` row and the `copied` row describe one instant, and the fork's
+   transition is emitted on the spawner's stream *before* the child's
+   `agent_spawned`, so the copy sorted first. **Now:** the `created` row is
+   dropped when a `copied` row names the first holder, for the same reason
+   `initialized` never adds one.
+9. **`capabilityParam` had no callers and `observedScope` had no readers.**
+   `declaredModuleConfig` now reads through `capabilityParam` as §5.1 said it
+   did; `observedScope` is deleted (a holder's scope is its own profile's
+   declaration, so it added nothing the divergence check did not); and
+   `observedOwnership` is now what `moduleDivergences` decides ownership
+   agreement from, instead of recomputing it.
+10. **The kind Overview borrowed the FSM transfer-list prose.** Those hints are
+    written in the second person of a checkbox and refer to "this" and "the next
+    state", neither of which exists on that page. **Now:**
+    `moduleKindDescription(kind)` in `ggModules.ts`, written for the question the
+    tab asks.
+11. **A measured-zero per-turn cost said "no context band"**, which is the
+    archive's meaning. **Now:** three distinct sub-labels — `no context band`
+    (archive), `measured zero`, `not measured yet`.
+12. **The root's first incarnation never emitted its opening `ArchiveState`.**
+    `ModuleSet::state_events` is skipped for it and `announce_configuration` grew
+    one arm per capability, missing the archive (which arrived last) — against a
+    documented contract. **Now:** `announce_configuration` emits it, covered by
+    `agent.modules.test.rs::the_root_opens_with_an_empty_archive_snapshot`.
+
+Regression coverage added: five cases in `ggModules.test.ts` (carried ≠ shared, a
+store surviving one holder's release, a fork's lifetime ordering under realistic
+stamps, no synthesis for an in-flight roster, no divergences without rosters),
+four in `GgRunMonitorPage.test.tsx` (handed-on across three surfaces, a window
+never reported empty, no dead Modules link in a run with no Modules tab, the
+`inferred` badge), and one in `crates/gg/src/agent.modules.test.rs`.
+
+`gg/modules.md` was updated in the same commit for items 1, 2, 3(via 4), 5, 6 and
+7 — the design's own prose about the surfaces was wrong in the same places the
+code was.

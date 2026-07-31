@@ -3012,6 +3012,14 @@ fn announce_configuration(
         ));
         emitter.emit(state);
     }
+    // The archive opens empty, and says so. It has no operator-log line of its own — there is
+    // nothing to report until the agent puts something away — but the snapshot has to be emitted
+    // like the other four, because it is what tells the console the module exists at all: an
+    // archive that is never used would otherwise be the one module with no state event in the
+    // whole record, and the documented contract is that `archive_state` arrives as an agent opens.
+    if let Some(state) = modules.archive().state_event() {
+        emitter.emit(state);
+    }
     // Any module the agent holds but its prompt does **not** carry. Named on the operator log
     // because it is the one capability configuration whose effect is invisible in the toolset: the
     // tools are all there, and the model is simply never told what it is holding.

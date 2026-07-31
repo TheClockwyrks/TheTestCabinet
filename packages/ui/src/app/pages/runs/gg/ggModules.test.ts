@@ -27,6 +27,7 @@ import {
   concurrentHolders,
   declaredModuleConfig,
   deriveGgModules,
+  isCarried,
   isShared,
   moduleOriginLabel,
   moduleScopeLabel,
@@ -541,13 +542,14 @@ describe("deriveGgModules", () => {
     );
 
     // The copy's own list: a second store, with a copied-from pointer back to its origin.
+    // ONE row, not two: the fork's child is the store's first holder, so a synthesized
+    // `created` would describe the same instant as the `copied` — and, since the transition
+    // is emitted on the spawner's stream before the child's `agent_spawned`, would sort
+    // *after* it and read as a store copied before it existed.
     const copiedTasks = modules.byId.get("tasks-1")!;
     expect(copiedTasks.holders.map((h) => h.agentId)).toEqual(["agent-0"]);
-    expect(copiedTasks.lifetime.map((e) => e.kind)).toEqual([
-      "created",
-      "copied",
-    ]);
-    expect(copiedTasks.lifetime[1]!.copiedFromModuleId).toBe("tasks-0");
+    expect(copiedTasks.lifetime.map((e) => e.kind)).toEqual(["copied"]);
+    expect(copiedTasks.lifetime[0]!.copiedFromModuleId).toBe("tasks-0");
     expect(modules.byId.get("tasks-0")!.holders).toHaveLength(1);
 
     // The board: one store, two holders, and a `linked` row rather than a `copied` one.
@@ -833,6 +835,271 @@ describe("deriveGgModules", () => {
       kind: "memories",
       memory: expect.objectContaining({ scope: "shared" }),
     });
+  });
+
+  it("reads a store handed to a successor as carried, never as shared", () => {
+    // Two holders, and only one of them ever had it. Every module surface reads `isShared`
+    // and `scopeKind`, so deriving either from the raw holder count made an `exec` — and
+    // every state of an FSM run, which is a succession per state — indistinguishable from
+    // the agent-scoped sharing the whole feature exists to find.
+    const events = [
+      spawn("root", "Root"),
+      roster("root", [
+        held("history", "history-0"),
+        held("tasks", "tasks-0"),
+      ]),
+      transition("root", "agent-0", "exec", [
+        {
+          kind: "history",
+          disposition: "carried",
+          fromModuleId: "history-0",
+          toModuleId: "history-0",
+        },
+        {
+          kind: "tasks",
+          disposition: "carried",
+          fromModuleId: "tasks-0",
+          toModuleId: "tasks-0",
+        },
+      ]),
+      gg(
+        "agent-0",
+        {
+          type: "agent_spawned",
+          slot: "Root",
+          modelId: "acme/one",
+          depth: 0,
+        } as GgTelemetryKind,
+        undefined,
+        TS2,
+      ),
+      gg(
+        "agent-0",
+        {
+          type: "agent_modules",
+          modules: [
+            held("history", "history-0", { origin: "transferred" }),
+            held("tasks", "tasks-0", { origin: "transferred" }),
+          ],
+        } as GgTelemetryKind,
+        undefined,
+        TS2,
+      ),
+    ];
+
+    const modules = index(events, set([["Root", ["tasks"]]]));
+
+    for (const id of ["history-0", "tasks-0"]) {
+      const store = modules.byId.get(id)!;
+      expect(store.holders).toHaveLength(2);
+      expect(isShared(store)).toBe(false);
+      expect(isCarried(store)).toBe(true);
+      expect(store.scopeKind).toBe("carried");
+      expect(store.profile).toBeNull();
+      expect(moduleScopeLabel(store)).toBe(
+        "held one instance at a time, through 2 holders",
+      );
+    }
+    // And nobody is calling it dropped: the successor is holding it right now.
+    expect(modules.byId.get("tasks-0")!.dropped).toBe(false);
+  });
+
+  it("keeps a store alive while any holder still has it", () => {
+    // A `dropped` disposition is one OUTGOING instance's release, not the store's end. gg
+    // reports it whenever a successor's profile does not enable the capability — which says
+    // nothing about the run-global board every other instance is still writing.
+    const events = [
+      spawn("root", "Root"),
+      roster("root", [
+        held("history", "history-0"),
+        held("board", "board-0", { origin: "run" }),
+        held("memories", "memories-0"),
+      ]),
+      spawn("agent-0", "Implementer", "root"),
+      roster(
+        "agent-0",
+        [
+          held("history", "history-1"),
+          held("board", "board-0", { origin: "run" }),
+        ],
+        "root",
+      ),
+      // The root execs into a profile that has neither the board nor memories.
+      transition("root", "agent-1", "exec", [
+        {
+          kind: "history",
+          disposition: "carried",
+          fromModuleId: "history-0",
+          toModuleId: "history-0",
+        },
+        { kind: "board", disposition: "dropped", fromModuleId: "board-0" },
+        {
+          kind: "memories",
+          disposition: "dropped",
+          fromModuleId: "memories-0",
+        },
+      ]),
+      gg(
+        "agent-1",
+        {
+          type: "agent_spawned",
+          slot: "Plain",
+          modelId: "acme/one",
+          depth: 0,
+        } as GgTelemetryKind,
+        undefined,
+        TS2,
+      ),
+      gg(
+        "agent-1",
+        {
+          type: "agent_modules",
+          modules: [held("history", "history-0", { origin: "transferred" })],
+        } as GgTelemetryKind,
+        undefined,
+        TS2,
+      ),
+    ];
+
+    const modules = index(
+      events,
+      set([
+        ["Root", ["project-management", "memories"]],
+        ["Implementer", ["project-management"]],
+        ["Plain", []],
+      ]),
+    );
+
+    // The board: the root let go, the Implementer did not, so the store is still there.
+    const board = modules.byId.get("board-0")!;
+    expect(board.holders.map((h) => h.agentId)).toEqual(["root", "agent-0"]);
+    expect(board.dropped).toBe(false);
+    // The root's private notebook: its only holder let go, so it really is gone.
+    expect(modules.byId.get("memories-0")!.dropped).toBe(true);
+    // And the carried window is not dropped by the hand-off that moved it.
+    expect(modules.byId.get("history-0")!.dropped).toBe(false);
+  });
+
+  it("orders a forked store's life from the copy that made it", () => {
+    // The fork's `agent_transition` is emitted on the SPAWNER's stream as soon as the child
+    // is dispatched, and the child's `agent_spawned` — the source of a synthesized creation
+    // stamp — lands after it. A `created` row would therefore sort behind the `copied` one
+    // and the store would read as having been copied before it existed.
+    const events = [
+      spawn("root", "Root"),
+      roster("root", [held("tasks", "tasks-0")]),
+      transition(
+        "root",
+        "agent-0",
+        "fork",
+        [
+          {
+            kind: "tasks",
+            disposition: "copied",
+            fromModuleId: "tasks-0",
+            toModuleId: "tasks-1",
+          },
+        ],
+        TS,
+      ),
+      gg(
+        "agent-0",
+        {
+          type: "agent_spawned",
+          slot: "Root",
+          modelId: "acme/one",
+          depth: 1,
+        } as GgTelemetryKind,
+        "root",
+        TS2,
+      ),
+      gg(
+        "agent-0",
+        {
+          type: "agent_modules",
+          modules: [held("tasks", "tasks-1", { origin: "forked" })],
+        } as GgTelemetryKind,
+        "root",
+        TS2,
+      ),
+    ];
+
+    const modules = index(events, set([["Root", ["tasks"]]]));
+
+    expect(modules.byId.get("tasks-1")!.lifetime).toEqual([
+      expect.objectContaining({
+        kind: "copied",
+        toAgentId: "agent-0",
+        copiedFromModuleId: "tasks-0",
+      }),
+    ]);
+  });
+
+  it("does not invent stores for an instance whose roster is still in flight", () => {
+    // A live stream always has a window between an instance's `agent_spawned` and its
+    // `agent_modules`. Falling back per instance filled it with `legacy:` stores that
+    // flickered into every count and out again — and briefly reported a profile as having
+    // two stores where its configuration asked for one. The fallback is about a RECORD.
+    const events = [
+      spawn("root", "Root"),
+      roster("root", [
+        held("history", "history-0"),
+        held("memories", "memories-0", { origin: "profile" }),
+      ]),
+      // Spawned, roster not yet arrived.
+      spawn("agent-0", "Reviewer", "root"),
+    ];
+
+    const modules = index(
+      events,
+      set([
+        ["Root", ["memories"]],
+        ["Reviewer", ["memories"]],
+      ]),
+    );
+
+    expect(modules.identified).toBe(true);
+    expect(modules.byAgent.get("agent-0")).toEqual([]);
+    expect([...modules.byId.keys()]).toEqual(["history-0", "memories-0"]);
+    // And the profile that has not reported yet holds nothing rather than a phantom store.
+    expect(modules.byProfile.get("Reviewer")).toEqual([]);
+  });
+
+  it("reports no divergences for a record that never named its stores", () => {
+    // The synthesized holders' `origin: created` / `ownership: owned` are placeholders this
+    // module invented, not observations. Comparing them against a real declaration produced
+    // notes with no evidence behind them at all — and the design calls those notes the
+    // highest-value thing on the Agents tab.
+    const declared = {
+      agents: [
+        {
+          name: "Root",
+          modelId: "acme/one",
+          capabilities: [
+            {
+              id: "memories",
+              enabled: true,
+              params: { scope: "inherited", ownership: "unowned" },
+            },
+          ],
+          disabledTools: [],
+          subagents: [],
+          promptCacheTtl: "default",
+        },
+      ],
+      slots: [],
+    } as unknown as GgCapabilitySet;
+
+    const modules = index([spawn("root", "Root")], declared);
+
+    expect(modules.identified).toBe(false);
+    const memories = modules.byProfile
+      .get("Root")!
+      .find((row) => row.kind === "memories")!;
+    expect(memories.divergences).toEqual([]);
+    // The synthesized store still says, of itself, that it is inferred — so a surface can
+    // explain the `legacy:` id it is about to render.
+    expect(modules.byId.get("legacy:root:memories")!.synthesized).toBe(true);
   });
 
   it("marks a run that reported rosters as identified", () => {

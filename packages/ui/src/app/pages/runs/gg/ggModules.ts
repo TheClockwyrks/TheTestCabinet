@@ -52,6 +52,7 @@ import {
   MODULE_CAPABILITY_IDS,
   agentCapabilityOn,
   agentProfile,
+  capabilityParam,
 } from "./ggCatalog";
 import { agentProfileName } from "./ggAgentAggregate";
 import type {
@@ -71,8 +72,22 @@ export const MODULE_KIND_ORDER: readonly GgModuleKind[] = [
   "archive",
 ];
 
-/** Whether one module instance serves one agent instance, one agent profile, or the run. */
-export type GgModuleScopeKind = "instance" | "agent" | "run";
+/**
+ * Whether one module instance serves one agent instance, one agent profile, or the run —
+ * plus the fourth case a holder *count* alone always gets wrong.
+ *
+ * - `instance` — one holder, ever.
+ * - `carried` — several holders, but only ever one of them at a time: a succession handed
+ *   it on. It reads as sharing in a count and is not, and calling it sharing would invite a
+ *   reader to take one instance's contents for a whole profile's.
+ * - `agent` — several holders *at once*, all of one profile: agent-scoped state.
+ * - `run` — several holders at once, spanning profiles (the board; a spawner's notebook a
+ *   subagent of another profile inherits).
+ *
+ * Every one of these is read off {@link concurrentHolders} rather than off `holders.length`,
+ * which is the whole difference between the first pair and the second.
+ */
+export type GgModuleScopeKind = "instance" | "carried" | "agent" | "run";
 
 /**
  * What one module instance costs one holder's window, per turn.
@@ -138,14 +153,32 @@ export interface GgModuleInstance {
   holders: GgModuleHolder[];
   /** Holders whose instance has not finished — "who is reading this right now". */
   liveHolders: GgModuleHolder[];
-  /** instance | agent | run — derived from the holders, never from the declared scope. */
+  /**
+   * instance | carried | agent | run — derived from the {@link concurrentHolders}, never
+   * from the declared scope and never from the raw holder count.
+   */
   scopeKind: GgModuleScopeKind;
   /** The profile it belongs to, when `scopeKind === "agent"`; null otherwise. */
   profile: string | null;
   /** Created / carried / copied / linked / dropped, oldest first. */
   lifetime: GgModuleLifetimeEvent[];
-  /** Whether its last lifetime event was a drop — the store is gone. */
+  /**
+   * Whether **every** holder has let go of it — the store itself is gone.
+   *
+   * Deliberately not "its last lifetime event was a drop": a `dropped` disposition is a
+   * fact about one *outgoing instance*, and gg reports it whenever a successor's profile
+   * does not enable the capability. The run-global board and a profile-scoped notebook are
+   * held by every other instance at the same time, so reading one instance's release as the
+   * store's end would badge a live board `(dropped)` for the rest of the run.
+   */
   dropped: boolean;
+  /**
+   * Whether this instance was **inferred** rather than reported — a record written before
+   * module identity existed, whose id is a `legacy:` placeholder rather than a name the run
+   * ever used. A surface showing the id has to say so; presenting a placeholder as the
+   * store's name is worse than showing no name at all.
+   */
+  synthesized: boolean;
   /**
    * The latest snapshot of its contents, or null for a kind that reports none (history) or
    * one whose holders never emitted (a legacy record, or a store nobody touched).
@@ -226,10 +259,12 @@ export interface GgAgentModuleSummary {
    * for themselves.
    */
   agentScoped: GgModuleInstance | null;
-  /** What this profile's instances actually reported holding it as, when they agree. */
+  /**
+   * What this profile's instances actually reported holding it as, or null where they do
+   * not agree — which they only do when a store crossed profiles that configure it
+   * differently, and which is itself one of the {@link divergences}.
+   */
   observedOwnership: GgModuleOwnership | null;
-  /** The declared scope its instances reported, when they agree; null otherwise. */
-  observedScope: GgMemoryScope | null;
   /**
    * What the profile's configuration asked for, with the params' own defaults filled in.
    * Null for a kind with no capability behind it (the window) and for a profile the
@@ -287,9 +322,82 @@ export function moduleKindLabel(kind: GgModuleKind): string {
   }
 }
 
-/** Whether more than one agent instance ever held this module. */
+/**
+ * What a module kind *is*, across a run — the line a whole-kind read-out leads with.
+ *
+ * Deliberately not the prose the configuration editor's transfer-list pickers carry: those
+ * answer a different question ("what does carrying this into the next state mean?"), in the
+ * second person of a checkbox, with referents — "this", "the next state" — that do not
+ * exist on a page with no machine and no checkbox on it.
+ */
+export function moduleKindDescription(kind: GgModuleKind): string {
+  switch (kind) {
+    case "history":
+      return (
+        "The conversation window itself — every message, file view and pinned block an " +
+        "instance opens each request with. One per instance, always: it has no capability " +
+        "behind it, and the turn loop holds it exclusively."
+      );
+    case "memories":
+      return (
+        "The notes an agent keeps for itself between turns. The one kind with a scope, so " +
+        "it is the one whose stores can be private per instance, shared by every instance " +
+        "of a profile, or inherited from a spawner."
+      );
+    case "tasks":
+      return (
+        "The agent's own to-do list — a blocked-by DAG it ticks off as it works. Private " +
+        "unless a succession hands it on."
+      );
+    case "board":
+      return (
+        "The run's single epic/issue board. There is only ever one: every holder holds a " +
+        "handle on the same store, whatever profile it runs under."
+      );
+    case "skills":
+      return (
+        "Which of the skills offered to an agent it has actually read. A promise about the " +
+        "window, so it only means anything beside the history it refers to."
+      );
+    case "archive":
+      return (
+        "What an agent has put *out* of its window — the archived thread sections and their " +
+        "search index. It is the one kind with no context band, which is exactly what it is " +
+        "for."
+      );
+  }
+}
+
+/**
+ * Whether more than one agent instance held this module **at the same time**.
+ *
+ * Not `holders.length > 1`: a window carried across an `exec` has two holders and was never
+ * shared, and an FSM run — where every state is a succession — would otherwise turn one
+ * window into an N-holder "shared" store. See {@link concurrentHolders}.
+ */
 export function isShared(module: GgModuleInstance): boolean {
-  return module.holders.length > 1;
+  return concurrentHolders(module).length > 1;
+}
+
+/**
+ * Whether a store held several holders one after another rather than alongside one another
+ * — a hand-off, not sharing.
+ */
+export function isCarried(module: GgModuleInstance): boolean {
+  return module.holders.length > 1 && concurrentHolders(module).length <= 1;
+}
+
+/**
+ * Whether a kind reports its contents at all.
+ *
+ * The window does not: it *is* the request, and it reports itself per turn as a context
+ * breakdown rather than as a snapshot of a store. Every surface that counts stores "never
+ * written to" has to ask this first — a window is by construction the fullest thing an
+ * agent holds, and reporting all of them as empty inverts the one figure the module
+ * surfaces exist to produce.
+ */
+export function moduleReportsContents(kind: GgModuleKind): boolean {
+  return kind !== "history";
 }
 
 /**
@@ -321,11 +429,15 @@ export function coHolders(
 
 /** How a module instance's sharing reads in one phrase. */
 export function moduleScopeLabel(module: GgModuleInstance): string {
-  const holders = module.holders.length;
+  // The count that means "shared": how many held it at once, which for everything but a
+  // succession is the whole holder set.
+  const holders = concurrentHolders(module).length;
   const plural = holders === 1 ? "holder" : "holders";
   switch (module.scopeKind) {
     case "instance":
       return "held by one instance";
+    case "carried":
+      return `held one instance at a time, through ${module.holders.length} holders`;
     case "agent":
       return `shared by ${holders} ${plural} of ${module.profile ?? "one agent"}`;
     case "run":
@@ -429,17 +541,22 @@ function sumCosts(costs: Array<GgModuleCost | null>): GgModuleCost | null {
   };
 }
 
-// The roster an instance reported, or — for a record written before rosters existed — one
-// synthesized from what its profile's capabilities say it must have held. The synthetic ids
-// are private per (agent, kind), which is exactly the shape module state had back then.
-function rosterFor(
+// A roster synthesized from what an instance's profile's capabilities say it must have held,
+// for a record written before rosters existed. The synthetic ids are private per (agent,
+// kind), which is exactly the shape module state had back then.
+//
+// Used only when the run reported **no** rosters at all — never per instance. An instance
+// with no roster in a run that has them has simply not opened yet: in a live stream the
+// module `state_events` land before the `agent_modules` that names them, so several renders
+// happen with the node present and its roster still in flight. Synthesizing there would
+// invent `legacy:` stores that flicker into the Modules tab's counts and out again, and
+// would report a phantom second store as a profile diverging from its declared scope.
+function legacyRoster(
   node: AgentTreeNode,
   profile: string,
   state: DerivedGgState | undefined,
   set: GgCapabilitySet | null,
 ): GgAgentModule[] {
-  const reported = state?.modules ?? [];
-  if (reported.length > 0) return reported;
   return MODULE_KIND_ORDER.filter((kind) => {
     const capability = MODULE_CAPABILITY_IDS.get(kind);
     // Every agent has a window, always; the rest are their capability's.
@@ -537,14 +654,25 @@ export function deriveGgModules(
 
   const byId = new Map<string, GgModuleInstance>();
   const byAgent = new Map<string, GgModuleInstance[]>();
-  let identified = false;
+  // Whether the RECORD reports rosters — asked of the whole run before anything is folded,
+  // because it decides how to read every instance in it. An instance with no roster in an
+  // identified run is one that has not opened yet, not one from another era.
+  const identified = ordered.some(
+    (node) => (perAgent.get(node.id)?.modules?.length ?? 0) > 0,
+  );
 
   for (const node of ordered) {
     const profile = agentProfileName(node, capabilitySet);
     const state = perAgent.get(node.id);
-    if ((state?.modules?.length ?? 0) > 0) identified = true;
+    const reported = state?.modules ?? [];
+    const roster =
+      reported.length > 0
+        ? reported
+        : identified
+          ? []
+          : legacyRoster(node, profile, state, capabilitySet);
     const held: GgModuleInstance[] = [];
-    for (const entry of rosterFor(node, profile, state, capabilitySet)) {
+    for (const entry of roster) {
       // A disabled module has no store, so there is nothing to be a holder of.
       if (!entry.enabled || !entry.moduleId) continue;
       let module = byId.get(entry.moduleId);
@@ -558,6 +686,7 @@ export function deriveGgModules(
           profile: null,
           lifetime: [],
           dropped: false,
+          synthesized: !identified,
           content: moduleSnapshots.get(entry.moduleId) ?? null,
           totalCost: null,
         };
@@ -589,12 +718,16 @@ export function deriveGgModules(
     module.liveHolders = module.holders.filter(
       (holder) => holder.status === "running" || holder.status === "blocked",
     );
-    const profiles = new Set(module.holders.map((holder) => holder.profile));
-    if (module.holders.length <= 1) {
-      module.scopeKind = "instance";
+    // Sharing is a question about holders that held it AT ONCE, never about how many
+    // holders it collected: a store handed to a successor has two and was never shared,
+    // and every state of an FSM run is a succession. See {@link concurrentHolders}.
+    const concurrent = concurrentHolders(module);
+    const profiles = new Set(concurrent.map((holder) => holder.profile));
+    if (concurrent.length <= 1) {
+      module.scopeKind = module.holders.length > 1 ? "carried" : "instance";
     } else if (profiles.size === 1) {
       module.scopeKind = "agent";
-      module.profile = module.holders[0]!.profile;
+      module.profile = concurrent[0]!.profile;
     } else {
       module.scopeKind = "run";
     }
@@ -622,6 +755,17 @@ export function deriveGgModules(
       });
     }
   }
+  // Which holders LET GO of which store. A `dropped` disposition names one outgoing
+  // instance's release, never the store's end — the run-global board and a profile-scoped
+  // notebook are held by every other instance at the same moment — so the release is
+  // recorded per (store, holder) and the store is only gone once nobody is left in it.
+  const released = new Map<string, Set<string>>();
+  const release = (moduleId: string | null | undefined, agentId: string) => {
+    if (!moduleId) return;
+    const holders = released.get(moduleId) ?? new Set<string>();
+    holders.add(agentId);
+    released.set(moduleId, holders);
+  };
   for (const transition of orderedTransitions(transitions)) {
     for (const entry of transition.modules) {
       const base = {
@@ -636,6 +780,9 @@ export function deriveGgModules(
             ? byId.get(entry.toModuleId)
             : undefined;
           module?.lifetime.push({ ...base, kind: "carried" });
+          // Whatever it was handed, the predecessor is not holding it any more: the
+          // successor took its place rather than joining it.
+          release(entry.fromModuleId, transition.fromAgentId);
           // A store swap: the successor is holding a DIFFERENT instance than the one it was
           // handed, which is a legal outcome of a `shared` scope and worth reading as the
           // predecessor's instance being let go of.
@@ -669,11 +816,22 @@ export function deriveGgModules(
           byId
             .get(entry.fromModuleId)
             ?.lifetime.push({ ...base, kind: "dropped", toAgentId: null });
+          release(entry.fromModuleId, transition.fromAgentId);
           break;
         }
         case "initialized": {
           // The successor's fresh instance is already `created` by its own roster; a second
-          // row would say the same thing twice.
+          // row would say the same thing twice. What is worth a row is the OTHER half of the
+          // same fact — the predecessor's store, which the successor declined to take and
+          // which nobody carried anywhere.
+          if (entry.fromModuleId && entry.fromModuleId !== entry.toModuleId) {
+            byId.get(entry.fromModuleId)?.lifetime.push({
+              ...base,
+              kind: "dropped",
+              toAgentId: null,
+            });
+            release(entry.fromModuleId, transition.fromAgentId);
+          }
           break;
         }
         case "absent":
@@ -682,9 +840,27 @@ export function deriveGgModules(
     }
   }
   for (const module of byId.values()) {
+    // A copied store's first holder IS the fork's child, so the synthesized `created` row
+    // and the `copied` row describe one instant — and the transition is emitted on the
+    // spawner's stream *before* the child's `agent_spawned`, so the copy would sort ahead of
+    // the creation and the store would read as having been copied before it existed. The
+    // `copied` row says strictly more (it names the store it came from), so it is the one
+    // that survives. This is the same reason `initialized` never adds a row of its own.
+    const bornAsCopy = module.lifetime.some(
+      (event) =>
+        event.kind === "copied" && event.toAgentId === module.holders[0]?.agentId,
+    );
+    if (bornAsCopy) {
+      module.lifetime = module.lifetime.filter(
+        (event) => event.kind !== "created",
+      );
+    }
     module.lifetime.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+    // Gone only once EVERY holder has let go — see {@link GgModuleInstance.dropped}.
+    const gone = released.get(module.id);
     module.dropped =
-      module.lifetime[module.lifetime.length - 1]?.kind === "dropped";
+      module.holders.length > 0 &&
+      module.holders.every((holder) => gone?.has(holder.agentId) ?? false);
   }
 
   // Grouped by kind, in kind order, each group in first-seen order. An empty group is
@@ -699,7 +875,13 @@ export function deriveGgModules(
     byId,
     byKind,
     byAgent,
-    byProfile: foldByProfile(byId, byAgent, agentForest, capabilitySet),
+    byProfile: foldByProfile(
+      byId,
+      byAgent,
+      agentForest,
+      capabilitySet,
+      identified,
+    ),
     identified,
   };
 }
@@ -712,6 +894,8 @@ function foldByProfile(
   byAgent: ReadonlyMap<string, GgModuleInstance[]>,
   agentForest: readonly AgentTreeNode[],
   set: GgCapabilitySet | null,
+  /** Whether the holders below were REPORTED — see {@link GgModuleIndex.identified}. */
+  identified: boolean,
 ): Map<string, GgAgentModuleSummary[]> {
   // Instances grouped by the profile they ran under, in tree order.
   const instancesByProfile = new Map<string, AgentTreeNode[]>();
@@ -751,11 +935,12 @@ function foldByProfile(
             a.module.id.localeCompare(b.module.id),
         );
 
-      const agree = <T>(values: T[]): T | null => {
-        const distinct = new Set(values);
-        return distinct.size === 1 ? values[0]! : null;
-      };
-      const sharing = classifySharing(instances);
+      // What the instances agree they hold it as, or null where they do not — the
+      // disagreement itself being a finding rather than something to average away.
+      const ownerships = new Set(holders.map((holder) => holder.ownership));
+      const observedOwnership =
+        ownerships.size === 1 ? holders[0]!.ownership : null;
+      const sharing = classifySharing(profile, instances);
       // Only the one shape whose contents can honestly be shown at the profile's grain: one
       // store, held by every instance of the profile that holds this kind, all at once.
       const agentScoped =
@@ -770,10 +955,14 @@ function foldByProfile(
           0,
         ),
         agentScoped,
-        observedOwnership: agree(holders.map((holder) => holder.ownership)),
-        observedScope: agree(holders.map((holder) => holder.scope)),
+        observedOwnership,
         declared,
-        divergences: moduleDivergences(declared, instances, holders),
+        // A record with no rosters has no observations to compare a declaration against:
+        // its holders' origin and ownership are placeholders this module invented, so every
+        // note derived from them would be a finding about nothing. See `legacyRoster`.
+        divergences: identified
+          ? moduleDivergences(declared, instances, holders, observedOwnership)
+          : [],
         cost: sumCosts(holders.map((holder) => holder.cost)),
       });
     }
@@ -793,7 +982,10 @@ function foldByProfile(
 // two instances held one after the other is not shared, however much a count says it is, and
 // calling a succession "agent-scoped" would be the single most misleading thing this surface
 // could say (it would invite a reader to treat one instance's contents as the profile's).
-function classifySharing(holds: GgAgentModuleHold[]): GgAgentModuleSharing {
+function classifySharing(
+  profile: string,
+  holds: GgAgentModuleHold[],
+): GgAgentModuleSharing {
   if (holds.length > 1) {
     // Several stores. The question is only whether any of them is genuinely shared: that is
     // the profile that half-bound its shared store, which is worth opening.
@@ -803,12 +995,16 @@ function classifySharing(holds: GgAgentModuleHold[]): GgAgentModuleSharing {
   }
   const hold = holds[0];
   if (!hold) return "instance";
-  const { module, holdersInProfile } = hold;
-  if (concurrentHolders(module).length > 1) {
+  const { module } = hold;
+  const concurrent = concurrentHolders(module);
+  if (concurrent.length > 1) {
     // Shared. Whether it is the *agent's* turns on whether anybody outside the profile is in
     // it — a store the run's board or another profile's spawner also holds is not this
-    // agent's state, it is the run's.
-    return holdersInProfile === module.holders.length ? "agent" : "run";
+    // agent's state, it is the run's. Asked of the concurrent holders only: a predecessor of
+    // another profile that handed the store on is not in it any more.
+    return concurrent.every((holder) => holder.profile === profile)
+      ? "agent"
+      : "run";
   }
   return module.holders.length > 1 ? "carried" : "instance";
 }
@@ -847,6 +1043,8 @@ function moduleDivergences(
   declared: { ownership: string; scope: string | null } | null,
   holds: GgAgentModuleHold[],
   holders: GgModuleHolder[],
+  /** What the holders AGREE they hold it as, or null where they do not (see the summary). */
+  observedOwnership: GgModuleOwnership | null,
 ): GgModuleDivergence[] {
   if (!declared) return [];
   const out: GgModuleDivergence[] = [];
@@ -899,7 +1097,7 @@ function moduleDivergences(
     const owned = holders.filter(
       (holder) => holder.ownership === "owned",
     ).length;
-    if (owned > 0 && owned < holders.length) {
+    if (observedOwnership == null) {
       out.push({
         declared: declared.ownership,
         observed: `${owned} of ${holders.length} instances own it`,
@@ -957,12 +1155,13 @@ export function declaredModuleConfig(
   kind: GgModuleKind,
 ): { ownership: string; scope: string | null } {
   const capability = MODULE_CAPABILITY_IDS.get(kind);
-  const params = capability
-    ? (agentProfile(set, profile)?.capabilities.find((c) => c.id === capability)
-        ?.params as Record<string, unknown> | undefined)
-    : undefined;
+  // Read through `capabilityParam` rather than walking the profile again: where a param
+  // lives is the catalog's business, and two readers of one fact are exactly the drift the
+  // shared model layer exists to prevent.
   const read = (key: string): string | null => {
-    const value = params?.[key];
+    const value = capability
+      ? capabilityParam(set, profile, capability, key)
+      : null;
     return typeof value === "string" && value.trim() !== ""
       ? value.trim()
       : null;

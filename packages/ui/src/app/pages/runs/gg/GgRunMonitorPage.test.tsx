@@ -1297,7 +1297,10 @@ describe("GgRunMonitorPage", () => {
     // the other one was never written to at all, which is the other half of "is this
     // capability being used".
     expect(screen.getByText("widest: 2 holders")).toBeInTheDocument();
-    expect(screen.getByText("never written to")).toBeInTheDocument();
+    // Twice: the "holding nothing" stat's sub-label, and the untouched store's own row in
+    // the distribution — where an empty cell would read the same as a kind that reports no
+    // contents at all.
+    expect(screen.getAllByText("never written to")).toHaveLength(2);
     expect(screen.getAllByText("1 of 2")).toHaveLength(2);
     // The rent, summed the way it is actually paid: both live holders re-send the shared
     // block every turn, so it costs 800 + 600 — across the two windows that reported one,
@@ -2030,6 +2033,118 @@ describe("GgRunMonitorPage", () => {
     expect(
       screen.getByRole("button", { name: "history overview" }),
     ).toHaveAttribute("aria-current", "true");
+  });
+
+  it("reads a store handed to a successor as handed on, not as shared", () => {
+    // Two holders and only ever one of them at a time. Every surface but the Agents tab
+    // used to read the raw holder count, so an `exec` — and every state of an FSM run —
+    // rendered as the agent-scoped sharing the feature exists to find, three lines above
+    // the window file's own sentence saying a window is never shared.
+    renderMonitor(moduleRun());
+
+    // In the Instances tree: annotated as the hand-off it is, with no link glyph and no
+    // holder count to be read as sharing.
+    openTab("Instances");
+    openFolder("root modules");
+    const row = screen.getByRole("button", { name: "root modules tasks" });
+    expect(within(row).getByText("handed on")).toBeInTheDocument();
+    expect(within(row).queryByText(/holders/)).toBeNull();
+
+    // And in the file itself, which says so in both registers.
+    openFile("root modules tasks");
+    const file = screen.getByRole("region", { name: "Module" });
+    expect(within(file).getByText("handed on")).toBeInTheDocument();
+    expect(
+      within(file).getByText("held one instance at a time, through 2 holders", {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
+
+    // The Modules tab agrees with it — one concurrent holder, and "handed on" where a
+    // shared store names the profile sharing it.
+    openTab("Modules");
+    // Every group but history is open by default.
+    const store = screen.getByRole("button", { name: "module tasks-0" });
+    expect(within(store).getByText("1 holder")).toBeInTheDocument();
+    expect(within(store).getByText("handed on")).toBeInTheDocument();
+    // Its kind Overview counts it as a hand-off rather than as one of the shared stores.
+    fireEvent.click(screen.getByRole("button", { name: "tasks overview" }));
+    expect(screen.getByText("none shared · 1 handed on")).toBeInTheDocument();
+  });
+
+  it("never reports a conversation window as a store nobody wrote to", () => {
+    // A window has no snapshot by construction — it reports itself per turn as a context
+    // breakdown — and reading that absence as "never written to" inverted the one figure
+    // the tab exists to produce, about the fullest thing any agent holds, in every run.
+    renderMonitor(moduleRun());
+
+    openTab("Modules");
+    openFolder("history modules");
+    fireEvent.click(screen.getByRole("button", { name: "history overview" }));
+    // No "holding nothing" stat at all — an honest absence rather than a false zero.
+    expect(screen.queryByText("holding nothing")).toBeNull();
+    expect(screen.queryByText("never written to")).toBeNull();
+
+    // Nor on the Agents tab, where a profile's windows are one store per instance.
+    openTab("Agents");
+    openAgentRow("Reviewer");
+    const history = screen.getByRole("region", { name: "Reviewer history" });
+    // The usage line reads as a plain count of stores rather than as a verdict on how many
+    // of them went untouched (the facts line above it carries the same count).
+    expect(within(history).getAllByText(/^2 stores/).length).toBeGreaterThan(0);
+    expect(within(history).queryByText(/never written to/)).toBeNull();
+  });
+
+  it("offers no way into a Modules tab the run does not have", () => {
+    // Every instance of every run holds a window, and the window has no capability behind
+    // it — so a `modules/history` file exists in runs the Modules tab is (rightly) not
+    // offered for. An unconditional "Open in Modules" switched to a tab the selector
+    // immediately fell back out of, landing the reader on the Dashboard with their place in
+    // the tree lost.
+    renderMonitor([
+      sessionStarted(["shell", "filesystem"]),
+      gg({ type: "assistant_message", text: "Working." }),
+    ]);
+    expect(screen.queryByRole("radio", { name: "Modules" })).toBeNull();
+
+    openTab("Instances");
+    openFolder("root modules");
+    openFile("root modules history");
+    expect(
+      screen.queryByRole("button", { name: "Open in Modules" }),
+    ).toBeNull();
+    // The file itself is unharmed — it is only the dead exit that is withheld.
+    expect(
+      screen.getByRole("button", { name: "What filled it" }),
+    ).toBeInTheDocument();
+
+    openTab("Agents");
+    openAgentRow("Root");
+    expect(
+      screen.queryByRole("button", { name: "Compare in Modules" }),
+    ).toBeNull();
+  });
+
+  it("says a pre-identity run's store id is inferred rather than passing it off as a name", () => {
+    // A record written before module identity names no stores, so the console synthesizes
+    // one private instance per (agent, capability) with a `legacy:` id. Rendering that as
+    // the store's identity with nothing saying why sends a reader looking for it in a
+    // record that has never heard of it.
+    renderMonitor([
+      sessionStartedWith([
+        { name: "Root", capabilities: ["shell", "memories"] },
+      ]),
+      gg({ type: "assistant_message", text: "Working." }),
+    ]);
+    openTab("Instances");
+    openFolder("root modules");
+    openFile("root modules memories");
+
+    expect(screen.getByText("legacy:root:memories")).toBeInTheDocument();
+    expect(screen.getByText("inferred")).toBeInTheDocument();
+    expect(
+      screen.getByText(/This run predates module identity/),
+    ).toBeInTheDocument();
   });
 
   it("states a profile's and an instance's own generation rate in their Tokens read-out", () => {

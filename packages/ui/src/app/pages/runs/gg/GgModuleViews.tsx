@@ -9,6 +9,8 @@ import type {
 } from "./ggModules";
 import {
   coHolders,
+  concurrentHolders,
+  isCarried,
   isShared,
   moduleKindLabel,
   moduleOriginLabel,
@@ -86,7 +88,11 @@ export function GgModuleHeader({
   onOpenModule?: () => void;
 }) {
   const Icon = MODULE_ICONS[module.kind];
+  // Shared means held AT ONCE. A store handed to a successor collects holders exactly the
+  // way a shared one does, and badging that "2 holders 🔗" is the single most misleading
+  // thing this strip could say — so a hand-off gets its own badge instead.
   const shared = isShared(module);
+  const carried = isCarried(module);
   const others = holder ? coHolders(module, holder.agentId) : module.holders;
   return (
     <section className={panels.moduleHead} aria-label="Module">
@@ -106,9 +112,26 @@ export function GgModuleHeader({
           {ownershipLabel(module, holder)}
         </span>
         {shared && (
-          <span className={panels.moduleBadge} data-shared="">
+          <span
+            className={panels.moduleBadge}
+            data-shared=""
+            title={`held at once by ${concurrentHolders(module)
+              .map((other) => other.agentId)
+              .join(", ")}`}
+          >
             <LinkIcon className={panels.moduleBadgeIcon} />
-            {module.holders.length} holders
+            {concurrentHolders(module).length} holders
+          </span>
+        )}
+        {carried && (
+          <span
+            className={panels.moduleBadge}
+            data-carried=""
+            title={`passed through ${module.holders
+              .map((other) => other.agentId)
+              .join(" → ")} — only ever one of them held it`}
+          >
+            handed on
           </span>
         )}
         {module.dropped && (
@@ -116,7 +139,23 @@ export function GgModuleHeader({
             dropped
           </span>
         )}
+        {module.synthesized && (
+          <span className={panels.moduleBadge} data-inferred="">
+            inferred
+          </span>
+        )}
       </div>
+
+      {/* A `legacy:` id is a placeholder this console minted, not a name the run ever used.
+          Rendering one as the store's identity without saying so invites a reader to go
+          looking for it in the record. */}
+      {module.synthesized && (
+        <p className={panels.moduleNote}>
+          This run predates module identity, so it never named its stores. The
+          id above is inferred — one private store per agent and capability,
+          which is the shape module state had then.
+        </p>
+      )}
 
       {/* How this holder stands to it: how it came by it, whether it may write it, and
           — where it declared a scope — what it asked for. The declared scope is worth
@@ -152,7 +191,13 @@ export function GgModuleHeader({
       {detail === "full" && others.length > 0 && (
         <div className={panels.moduleHolders}>
           <span className={panels.moduleHoldersLabel}>
-            {holder ? "Also held by" : "Held by"}
+            {carried
+              ? holder
+                ? "Also passed through"
+                : "Passed through"
+              : holder
+                ? "Also held by"
+                : "Held by"}
           </span>
           {others.map((other) => (
             <HolderChip
@@ -261,8 +306,13 @@ export function moduleLifetimeLabel(event: GgModuleLifetimeEvent): string {
  *
  * It is what lets a *list* of module instances be compared without opening any of them,
  * which is the Modules tab's whole job: a capability whose four stores hold nothing is
- * being paid for and not used, and that is only visible side by side. Null where a kind
- * reports no contents at all (a window, whose size is its cost figure instead).
+ * being paid for and not used, and that is only visible side by side.
+ *
+ * Null means "nothing to summarize", which is TWO different things and a caller must tell
+ * them apart with {@link moduleReportsContents}: a store that was never written to (the
+ * finding) and a window, which reports no contents at all because it *is* the request. A
+ * caller that conflates them reports every window in every run as unused, which is the exact
+ * opposite of the truth about the fullest thing an agent holds.
  */
 export function moduleContentSummary(module: GgModuleInstance): string | null {
   const content = module.content;
@@ -329,8 +379,11 @@ function ModuleCost({
   if (module.kind === "archive") return null;
   const mine = holder?.cost ?? null;
   const total = module.totalCost;
-  if (!mine && !total) return null;
   const live = module.liveHolders.length;
+  // The summed figure means something only where several windows carry the store at the
+  // same time. A store handed on is paid for once, by whoever holds it now.
+  const summable = isShared(module);
+  if (!mine && !(total && summable)) return null;
   return (
     <p className={panels.moduleCost}>
       {mine && (
@@ -341,10 +394,8 @@ function ModuleCost({
             ` (peak ${shortTokens(mine.peakTokens)})`}
         </>
       )}
-      {mine && total && module.holders.length > 1 && (
-        <span className={panels.moduleSep}> · </span>
-      )}
-      {total && module.holders.length > 1 && (
+      {mine && total && summable && <span className={panels.moduleSep}> · </span>}
+      {total && summable && (
         <>
           <strong>{shortTokens(total.latestTokens)}</strong> across{" "}
           {live > 0

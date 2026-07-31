@@ -208,9 +208,16 @@ the same way on the other two.
 
 Every agent instance's folder gains a **`modules`** folder — closed by default, sitting
 after the agent's own files and before its successors and its `subagents` — with one file
-per module it holds, in kind order. A row whose store has more than one holder carries a
-link glyph and the holder count, so *is this shared?* is answered in the tree without
-opening anything.
+per module it holds, in kind order. A row whose store is held by more than one instance
+**at once** carries a link glyph and that count, so *is this shared?* is answered in the
+tree without opening anything; a store that merely passed from one instance to the next is
+annotated **handed on** instead, and is nowhere counted as shared.
+
+That distinction is the one thing a holder *count* can never make, and it is made the same
+way on all three surfaces: sharing is read off the holders whose origin is not
+`transferred` — the ones that *joined* the store rather than replacing its previous holder.
+Without it every `exec` looks like sharing, and an [FSM](/gg/fsm/) run, where each state is
+a succession, turns one conversation window into an N-holder "agent-scoped" store.
 
 What moved, and what did not, follows one rule: a file about the **agent** stayed where it
 was, and a file that was really a view onto a **module** moved in. So Overview, Prompt,
@@ -230,6 +237,18 @@ co-holder that opens that instance's same file. An **unowned** module says so in
 "this agent holds it but its prompt does not carry it" — because that configuration's
 effect is otherwise invisible everywhere.
 
+Two more things the strip says out loud rather than leaving to be inferred. A store every
+holder has let go of is badged **dropped** — *every* holder, not merely the one whose
+succession reported the drop, since the run-global board and a profile-scoped notebook are
+routinely dropped by one instance while the rest of the run keeps writing them. And a
+record written before module identity existed is badged **inferred**, because its store ids
+are placeholders this console minted rather than names the run ever used.
+
+The strip's way out to the Modules tab is offered only when the run *has* one. Every
+instance of every run holds a window, and the window has no capability behind it, so a
+`modules/history` file exists in runs that tab is not offered for; the link is withheld
+there rather than switching to a tab the selector immediately falls back out of.
+
 ### The Modules tab: the run read by the state it holds
 
 A new tab, between Instances and Project, offered whenever any profile enables a
@@ -238,11 +257,19 @@ four agents is **one** row however many hold it.
 
 Each kind's group leads with an **Overview** — the capability's whole-run read-out, and
 the thing to open first: how many stores exist, how many holders they have between them
-and how many are still running, how many of them are genuinely shared and how widely, what
-they cost every turn summed over the windows actually carrying them, how many were never
-written to at all, and every store side by side. "Twelve private notebooks holding two
-notes each" and "one store four agents curate" are the same capability configured two
-ways, and neither reads as anything one store at a time.
+and how many are still running, how many of them are genuinely shared (and how many were
+only handed on) and how widely, what they cost every turn summed over the windows actually
+carrying them, how many were never written to at all, and every store side by side.
+"Twelve private notebooks holding two notes each" and "one store four agents curate" are
+the same capability configured two ways, and neither reads as anything one store at a time.
+
+Two of those figures are deliberately withheld where they would be a lie rather than a
+zero. **History has no "holding nothing"** figure at all: a window reports itself per turn
+as a context breakdown rather than as a snapshot of a store, so counting its absent
+snapshot would report every conversation window in every run as unused — the inverse of the
+truth about the fullest thing an agent holds. And a **per-turn cost of zero** is
+distinguished from an unmeasured one and from the archive, which has no context band by
+construction because being out of the window is what it is *for*.
 
 Selecting a store reads it in five sections: its **identity**, its **holders** (each with
 its origin, read access, ownership and what the module costs that instance's window),
@@ -266,7 +293,7 @@ distributed:
 | --- | --- |
 | **agent-scoped** | One store, bound by every instance at once. The only shape whose contents belong to the *agent*, so they are shown inline, framed as the agent's. |
 | **per instance** | Every instance holds its own. Nothing is shown: any single rendering would be a lie about the others — **Compare in Modules** puts them side by side instead. |
-| **handed on** | One store, held one instance at a time — a succession carried it. It has several holders and is *not* sharing, which a holder count alone gets wrong. |
+| **handed on** | One store, held one instance at a time — a succession carried it. It has several holders and is *not* sharing, which a holder count alone gets wrong. The Instances and Modules tabs annotate the same store the same way. |
 | **run-global** | The store reaches beyond this profile — the board, or a store a spawner of another profile owns. |
 | **split** | Several stores, at least one genuinely shared: some instances bound it and some did not. Usually worth opening. |
 
@@ -277,3 +304,8 @@ succession, holders disagreeing about ownership after a transfer. Every one of t
 legal configuration, so it is a note and never an error; being loud about it is the point,
 because these are precisely the cases where a configuration reads as working while it is
 not.
+
+These notes are only written for a run that actually reported its rosters. A record from
+before module identity has no observations to compare a declaration against — its holders'
+origins and ownership are placeholders the console synthesized — so it gets no notes rather
+than notes with nothing behind them.

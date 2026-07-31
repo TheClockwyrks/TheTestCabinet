@@ -1826,6 +1826,13 @@ $spec-winner-hue: #f5c451;
     border-color: t.$color-negative;
     color: t.$color-negative;
   }
+  // A hand-off is NOT sharing, so it deliberately does not borrow the shared badge's
+  // accent: it is a neutral fact about a succession, and tinting it the same colour would
+  // reintroduce by eye the very confusion the two badges exist to separate.
+  &[data-carried],
+  &[data-inferred] {
+    border-style: dashed;
+  }
 }
 
 .moduleBadgeIcon {
