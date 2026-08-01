@@ -41,7 +41,8 @@ use test_cabinet_core::gg::{
     GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::gg_replay::{
-    GgClientRole, GgReplayEntry, GgReplayEntryKind, GgReplayPromptSlot, GgReplayRetention,
+    GG_REPLAY_BLOB_REF_KEY, GgClientRole, GgReplayEntry, GgReplayEntryKind, GgReplayModelErrorKind,
+    GgReplayPromptSlot, GgReplayRetention,
 };
 use test_cabinet_core::gg_replay_journal::{GG_REPLAY_JOURNAL_PATH, GgJournalLine};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
@@ -9053,5 +9054,84 @@ async fn a_handoff_compactions_summarizer_call_reaches_the_record() {
     assert!(
         roles.contains(&GgClientRole::Agent),
         "and the agent's own turns still are too: {roles:?}"
+    );
+}
+
+/// The vision-recovery sequence, in the record: `model_error → model_io → prompt_frame`.
+///
+/// All three parts are load-bearing and none of them existed in v1. The **error** is what the loop
+/// branched on, so a reconstruction that could not see it would send the images again and diverge
+/// for a reason that has nothing to do with any real change. The **call that followed** is what was
+/// actually sent. And the **frame** lands after that call rather than after the refused one — which
+/// is not an accident of ordering but the whole reason the frame is recorded where it is: the
+/// window it describes is the stripped one.
+#[tokio::test]
+async fn a_vision_refusal_records_the_error_the_retry_and_the_frame_in_that_order() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("ref.png"), TEST_PNG).unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-vision".to_string()), Box::new(sink.clone()));
+
+    let client = VisionRefusingClient::new("mock/text-only");
+    let produced = Arc::clone(&client);
+    let factory = Arc::new(ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
+        Box::new(SharedClient(Arc::clone(&produced)))
+    }));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/text-only"));
+    assert_eq!(
+        run_with_factory(&inv, &emitter, factory).await,
+        SessionOutcome::Ran
+    );
+
+    let lines = read_replay_journal(dir.path());
+    let entries = journal_entries(&lines);
+    // The refusal, and what the record says about it: the class the loop branched on, and the
+    // model that refused — not merely that something failed.
+    let refusal = entries
+        .iter()
+        .position(|entry| match &entry.kind {
+            GgReplayEntryKind::ModelError { error, .. } => {
+                assert_eq!(error.kind, GgReplayModelErrorKind::VisionUnsupported);
+                assert_eq!(error.model_id.as_deref(), Some("mock/text-only"));
+                true
+            }
+            _ => false,
+        })
+        .expect("the refused call is in the record");
+
+    // What follows it, in order, for the same agent.
+    let after: Vec<&GgReplayEntryKind> = entries[refusal + 1..]
+        .iter()
+        .map(|entry| &entry.kind)
+        .filter(|kind| {
+            matches!(
+                kind,
+                GgReplayEntryKind::ModelIo { .. } | GgReplayEntryKind::PromptFrame { .. }
+            )
+        })
+        .collect();
+    assert!(
+        matches!(after.first(), Some(GgReplayEntryKind::ModelIo { .. })),
+        "the stripped retry follows the refusal, got {:?}",
+        after.first()
+    );
+    let Some(GgReplayEntryKind::PromptFrame { items }) = after.get(1) else {
+        panic!(
+            "the frame follows the call that was sent, got {:?}",
+            after.get(1)
+        );
+    };
+
+    // And the frame describes the **stripped** window: the retry is what it attached to, so no
+    // item in it still carries an image payload.
+    let carries_image = items.iter().any(|item| {
+        let body = journal_message(&lines, item.message);
+        serde_json::to_string(&body)
+            .unwrap_or_default()
+            .contains(GG_REPLAY_BLOB_REF_KEY)
+    });
+    assert!(
+        !carries_image,
+        "the frame attached to the call that was actually sent, which carried no images"
     );
 }
