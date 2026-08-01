@@ -7,6 +7,7 @@
 // bloom begins.
 
 import {
+  FLARE_RADIUS,
   armAudio,
   audioCount,
   denAllExcept,
@@ -27,7 +28,12 @@ export default function item() {
     async arrange(api) {
       const snap = await startPlaying(api);
       await denAllExcept(api, ["flarefish"]);
-      const far = findFarTile(snap, snap.forager, 8); // far, so it flares harmlessly
+      const far = findFarTile(snap, snap.forager, 8, {
+        // "Far" here means OUTSIDE the bloom, which is a euclidean radius — a
+        // manhattan-8 tile can sit at 181 px, inside it. One tile of margin past
+        // FLARE_RADIUS so a Flarefish that has drifted a little is still clear.
+        minPx: FLARE_RADIUS + snap.grid.tile,
+      });
       await api.call("setPredator", "flarefish", {
         tx: far.tx,
         ty: far.ty,

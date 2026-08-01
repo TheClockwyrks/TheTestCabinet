@@ -114,6 +114,12 @@ simulation, never announced by the op itself.
   current tile and pursuing). After posing it, the predator's own AI runs when the
   simulation is stepped: it senses, acquires, chases, and searches through the real
   code, so a scenario poses the setup and reads what the AI then does.
+  - `"den"` HOLDS it there: the staggered release schedule (`specs/predators.md`) is
+    suspended for a predator posed this way, and it stays in the den chamber until a
+    later `setPredator` poses it out, however long the scenario runs. This is what
+    lets a caller quiet the board and read one predator's behavior undisturbed. A
+    scenario that needs a predator loose poses it to `"wander"` or `"chase"`
+    directly.
 - `spawnDrifter(state)` adds a bonus drifter. `state` may set `tx` and `ty` (a
   corridor tile it appears on); with no tile it spawns at the den gate as in normal
   play. It then wanders through the real drifter code.

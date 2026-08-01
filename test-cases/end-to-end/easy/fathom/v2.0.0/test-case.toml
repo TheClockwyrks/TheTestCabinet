@@ -797,6 +797,25 @@ validation = { script = "validation/flarefish/ink-breaks.mjs", outputs = [
   { id = "ink", name = "Ink breaking the Flarefish's fix", kind = "video" },
 ] }
 
+# --- The den and release ------------------------------------------------------
+[[review.categories]]
+id = "den"
+title = "The den and release"
+[[review.categories.items]]
+id = "stagger"
+title = "Predators leave the den 5 s apart, in order"
+description = "The predators leave the den one after another on a staggered schedule — the Lanternjaw immediately, then the Gloamfin, then the Flarefish, each 5 seconds after the one before it."
+validation = { script = "validation/den/stagger.mjs", outputs = [
+  { id = "stagger", name = "The three predators leaving the den in turn", kind = "video" },
+] }
+[[review.categories.items]]
+id = "re-release"
+title = "Losing a life restarts the schedule"
+description = "Losing a life returns every predator to the den, and they re-release on the same staggered schedule, giving you a moment to reorient."
+validation = { script = "validation/den/re-release.mjs", outputs = [
+  { id = "rerelease", name = "The den refilling on a death and emptying again in turn", kind = "video" },
+] }
+
 # --- Detection alert ----------------------------------------------------------
 [[review.categories]]
 id = "alert"

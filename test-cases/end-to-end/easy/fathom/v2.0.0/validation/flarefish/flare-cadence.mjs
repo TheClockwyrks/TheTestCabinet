@@ -16,6 +16,8 @@
 // not the one being timed. `act` is the gap itself, ending on the second bloom, which is
 // exactly the cadence a reviewer needs to see.
 import {
+  FLARE_RADIUS,
+  boardDisturbance,
   denAllExcept,
   findFarTile,
   pred,
@@ -39,6 +41,7 @@ const GAP_SLACK = 2.5;
 export default function item() {
   let first;
   let second;
+  let quiet;
 
   return {
     id: "flarefish.flare-cadence",
@@ -50,8 +53,13 @@ export default function item() {
 
     async arrange(api) {
       const snap = await startPlaying(api);
-      await denAllExcept(api, ["flarefish"]);
-      const far = findFarTile(snap, snap.forager, 8); // far, so it flares harmlessly
+      quiet = await denAllExcept(api, ["flarefish"]);
+      const far = findFarTile(snap, snap.forager, 8, {
+        // "Far" here means OUTSIDE the bloom, which is a euclidean radius — a
+        // manhattan-8 tile can sit at 181 px, inside it. One tile of margin past
+        // FLARE_RADIUS so a Flarefish that has drifted a little is still clear.
+        minPx: FLARE_RADIUS + snap.grid.tile,
+      });
       await api.call("setPredator", "flarefish", {
         tx: far.tx,
         ty: far.ty,
@@ -90,10 +98,19 @@ export default function item() {
       );
       const p = pred(second.snap, "flarefish");
       if (!p.flaring && p.state !== "wander") {
-        // Its own wander carried it onto the forager before the next flare was due. A
-        // property of where this build's maze and RNG sent it, not of its flare timing.
+        // Two very different things put the Flarefish somewhere other than its wander,
+        // and only one of them is about the Flarefish. Ask what actually happened before
+        // reporting: if the rest of the board stopped being quiet — a posed-den predator
+        // came out, or the forager was caught and every predator was re-denned — then the
+        // scenario broke, not the flare cycle, and saying "the Flarefish left its wander"
+        // sends a reader hunting through the wrong code.
+        const disturbed = boardDisturbance(second.snap, quiet);
         throw unmetPrecondition(
-          `the Flarefish left its wander (${p.state}) before flaring again, so there was no second flare to time`,
+          disturbed
+            ? `${disturbed}, so the Flarefish never got to its second flare and there was nothing to time`
+            : // Its own wander carried it onto the forager before the next flare was due. A
+              // property of where this build's maze and RNG sent it, not of its flare timing.
+              `the Flarefish left its wander (${p.state}) before flaring again, so there was no second flare to time`,
         );
       }
       await api.advance(60); // 60 ticks = half a second of the bloom, for the clip
