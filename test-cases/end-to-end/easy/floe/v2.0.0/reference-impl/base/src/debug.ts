@@ -15,9 +15,19 @@ interface LaneSpecInput {
   dir?: 1 | -1;
 }
 
+// A bear is placed either on a tile or at an exact strait-local pixel position —
+// it glides continuously, so it is normally part-way between two tiles and the
+// pixel form places it exactly there (specs/instrumentation.md).
 interface BearStateInput {
-  col: number;
-  row: number;
+  col?: number;
+  row?: number;
+  x?: number;
+  y?: number;
+}
+
+interface LaneMotionInput {
+  speed?: number;
+  dir?: 1 | -1;
 }
 
 export interface FloeDebugApi {
@@ -35,7 +45,10 @@ export interface FloeDebugApi {
   setBays(filled: boolean[]): void;
   placeCritter(col: number, row: number): void;
   setLane(row: number, spec: LaneSpecInput): void;
+  setLaneMotion(row: number, spec: LaneMotionInput): void;
   setBear(index: number, state: BearStateInput | null): void;
+  setBearAI(enabled: boolean): void;
+  moveBear(index: number, direction: string): void;
   keyDown(code: string): void;
   keyUp(code: string): void;
   press(code: string): void;
@@ -121,8 +134,30 @@ export function installDebugApi(game: Game): void {
       game.debugSetLane(row, spec);
     },
 
+    // Change a lane's motion while leaving its contents exactly where they are, so
+    // traffic can be laid out, left parked, and then released. Unlike setLane this
+    // never repopulates the lane.
+    setLaneMotion(row, spec) {
+      game.debugSetLaneMotion(row, spec);
+    },
+
     setBear(index, state) {
       game.debugSetBear(index, state);
+    },
+
+    // Suspend or resume the pursuit brain. With it off the bears hold their
+    // positions however far the sim is stepped, but the world still acts on them
+    // exactly as it otherwise would: hazards reset them, water carries them, they
+    // catch a critter that reaches them, and a reset bear re-emerges.
+    setBearAI(enabled) {
+      game.debugSetBearAI(enabled);
+    },
+
+    // Drive a bear one tile in a grid direction, using the real glide rather than a
+    // teleport, and without consulting the route the pursuit would have taken — so a
+    // caller can send it somewhere the pursuit would avoid and watch what happens.
+    moveBear(index, direction) {
+      game.debugMoveBear(index, direction);
     },
 
     // Inject keyboard input through the very same path the real keyboard feeds
