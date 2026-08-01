@@ -10,6 +10,7 @@
 // to the stacked Context graph — the graph shows the composition, this shows the
 // contents.
 
+import type { ReactNode } from "react";
 import type { GgContextSource } from "@test-cabinet/run-record/gg";
 import panels from "./GgPanels.module.scss";
 import type { PooledMessage, PromptTurn } from "./useGgRunState";
@@ -21,14 +22,30 @@ import {
 } from "./ContextFillGraph";
 import { ExpandablePre } from "./MessageOverlay";
 
-// The band a message occupies, resolved to its label and color. A request message
-// carries its `GgContextSource`; the response is an assistant reply not yet placed in a
-// band this turn, so it is shown in the assistant hue under a "Reply" tag.
-function band(source: GgContextSource | null): {
+/**
+ * Which band a {@link MessageRow} is tagged with: the context source a request message
+ * occupies, or one of two states that are not bands at all.
+ *
+ * The two non-band members are spelled out rather than left as `null` because they mean
+ * different things and read differently. `"reply"` is the model's answer — an assistant
+ * message not yet placed in a band this turn. `{ unattributed: role }` is a message whose
+ * band the *source* does not record: a [replay record](./replayModel) captured before
+ * format v2 pins the exact messages but carries no prompt frame, so there is no band to
+ * colour it by. It falls back to the message's own **role**, which is a different fact
+ * and is labelled as one — inferring a band from a role would put a colour on the row
+ * that the record never claimed.
+ */
+export type MessageBand = GgContextSource | "reply" | { unattributed: string };
+
+// The band a message occupies, resolved to its label and color.
+function band(source: MessageBand): {
   label: string;
   color: string;
 } {
-  if (source == null) {
+  if (typeof source === "object") {
+    return { label: source.unattributed, color: CONTEXT_SOURCE_COLORS.history };
+  }
+  if (source === "reply") {
     return { label: "Reply", color: CONTEXT_SOURCE_COLORS.assistant };
   }
   return {
@@ -61,26 +78,47 @@ function shortBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// One message in a turn's request or as its response, an expandable row. The whole row
-// aligns into fixed columns — a colored band tag, the content preview, and the token
-// count — so a request reads as a table, and the leading edge is tinted with the band's
-// color (the same palette the stacked Context graph uses) so the two line up.
-function MessageRow({
+/**
+ * One message in a turn's request or as its response, an expandable row. The whole row
+ * aligns into fixed columns — a colored band tag, the content preview, and the token
+ * count — so a request reads as a table, and the leading edge is tinted with the band's
+ * color (the same palette the stacked Context graph uses) so the two line up.
+ *
+ * Shared with the [Replay view](./GgReplayView), which resolves a replay record's pooled
+ * bodies into the same {@link PooledMessage} shape and renders them through this one
+ * component rather than a second, near-identical one: two renderers of the same thing
+ * drift, and the display narrowers the old Replay view needed existed only because it
+ * read opaque JSON. `context` is the extra column that view adds.
+ */
+export function MessageRow({
   message,
   source,
+  context,
 }: {
   message: PooledMessage | undefined;
-  source: GgContextSource | null;
+  source: MessageBand;
+  /**
+   * The Context column: where this message sat in the agent's window — its retention,
+   * the turn it was pushed on, and a paged file view's `path@offset+limit`. Only a
+   * replay record's prompt frame carries these, so the column exists only there and the
+   * row keeps its four ordinary columns everywhere else.
+   */
+  context?: ReactNode;
 }) {
   const { label, color } = band(source);
+  const hasContext = context != null;
   if (!message) {
     return (
       <li className={panels.reqMessage} style={{ borderLeftColor: color }}>
-        <div className={panels.reqRow}>
+        <div
+          className={panels.reqRow}
+          data-context={hasContext ? "" : undefined}
+        >
           <span className={panels.reqTag} style={{ color }}>
             {label}
           </span>
           <span className={panels.reqMissing}>message unavailable</span>
+          {hasContext && <span className={panels.reqContext}>{context}</span>}
         </div>
       </li>
     );
@@ -92,7 +130,10 @@ function MessageRow({
   return (
     <li className={panels.reqMessage} style={{ borderLeftColor: color }}>
       <details className={panels.reqMessageDetails}>
-        <summary className={panels.reqRow}>
+        <summary
+          className={panels.reqRow}
+          data-context={hasContext ? "" : undefined}
+        >
           <span className={panels.reqCaret} aria-hidden="true">
             ▸
           </span>
@@ -100,9 +141,12 @@ function MessageRow({
             {label}
           </span>
           <span className={panels.reqPreview}>{messagePreview(message)}</span>
+          {/* An empty cell, not a zero: a source that does not estimate tokens has not
+              told us this message was free. */}
           <span className={panels.reqTokens}>
-            {shortTokens(message.tokens)}
+            {message.tokens != null ? shortTokens(message.tokens) : ""}
           </span>
+          {hasContext && <span className={panels.reqContext}>{context}</span>}
         </summary>
         <div className={panels.reqMessageBody}>
           {/* The pairing back to the call this message answers is the one fact the
@@ -133,11 +177,24 @@ function MessageRow({
               ))}
             </ul>
           )}
+          {/* The picture itself where the source pooled its bytes (a replay record), and
+              the descriptor alone where it did not (the telemetry stream, which records
+              media type and size and never the payload). A caption rides along either
+              way, so the two read as the same row with more or less of the image in it. */}
           {message.images.length > 0 && (
             <ul className={panels.reqImages}>
               {message.images.map((image, i) => (
                 <li key={i} className={panels.reqImage}>
-                  {image.mediaType} · {shortBytes(image.bytes)}
+                  {image.dataBase64 != null && (
+                    <img
+                      className={panels.reqImageThumb}
+                      src={`data:${image.mediaType};base64,${image.dataBase64}`}
+                      alt={`Attached ${image.mediaType} image`}
+                    />
+                  )}
+                  <span className={panels.reqImageMeta}>
+                    {image.mediaType} · {shortBytes(image.bytes)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -217,7 +274,7 @@ function TurnEntry({
         <div className={panels.reqSectionLabel}>Response</div>
         {response ? (
           <ul className={panels.reqMessages}>
-            <MessageRow message={response} source={null} />
+            <MessageRow message={response} source="reply" />
           </ul>
         ) : (
           <p className={panels.reqEmptyResponse}>

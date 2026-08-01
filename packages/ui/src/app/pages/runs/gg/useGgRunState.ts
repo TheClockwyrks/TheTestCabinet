@@ -308,11 +308,23 @@ export interface ContextAction {
   detail: string;
 }
 
+// One image attached to a pooled message.
+//
+// The telemetry stream carries the *descriptor* alone — `context_message` records each
+// image's media type and decoded size and deliberately never its bytes, because the
+// stream is recorded with every run and a base64 payload re-sent on every turn it
+// survives is exactly the term that made the v1 replay record quadratic. A
+// [replay record](./replayModel) pools each image's bytes **once**, so a view backed by
+// one can show the picture itself; `dataBase64` is what tells the two sources apart.
+export interface PooledImage extends GgLoggedImage {
+  // The image's bytes, base64-encoded (no `data:` prefix), when the source carries them.
+  dataBase64?: string;
+}
+
 // One pooled message from the message log (`context_message`) — the full body of a
 // single message in the window, recorded once and referenced by id from each turn's
-// prompt (see gg/context-visibility). `tokens` is its estimated share of the window,
-// the same per-item estimate the context-breakdown bands are summed from. Images are
-// carried as descriptors (media type + size), never their bytes.
+// prompt (see gg/context-visibility). This is also the shape the Replay view resolves a
+// replay record's pooled bodies into, so one renderer serves both sources.
 export interface PooledMessage {
   id: string;
   // system | user | assistant | tool.
@@ -320,8 +332,14 @@ export interface PooledMessage {
   content?: string;
   toolCalls: GgLoggedToolCall[];
   toolCallId?: string;
-  images: GgLoggedImage[];
-  tokens: number;
+  images: PooledImage[];
+  // The message's estimated share of the window — the same per-item estimate the
+  // context-breakdown bands are summed from.
+  //
+  // Absent rather than zero when the source does not carry one: a replay record pins the
+  // exact message bodies but not gg's token estimate of them, and rendering that as `0`
+  // would report a real message as costing nothing.
+  tokens?: number;
   // The window item's selector tag, when it carried one — the workspace path a file view
   // shows. It is what makes the window's material attributable to a *file* rather than
   // only to the `file_view` band (see ggContextAttribution), and it survives a compaction
@@ -1045,10 +1063,13 @@ export function ggToolBreakdown(state: DerivedGgState): GgToolBreakdown {
   // Map each logged tool call's id to its tool name, then attribute each tool-result
   // message's tokens to the tool it answered. The pool is per agent and deduplicated,
   // so summing every message's tokens is the window's total distinct material.
+  // Both sums read the telemetry pool, where every message carries an estimate — the
+  // fallback covers the shared `PooledMessage` shape (a replay record pins bodies but
+  // not token estimates), not a case this fold can reach.
   const idToName = new Map<string, string>();
   let totalContextTokens = 0;
   for (const message of state.messagePool.values()) {
-    totalContextTokens += message.tokens;
+    totalContextTokens += message.tokens ?? 0;
     for (const call of message.toolCalls) idToName.set(call.id, call.name);
   }
   const outputTokens = new Map<string, number>();
@@ -1056,7 +1077,10 @@ export function ggToolBreakdown(state: DerivedGgState): GgToolBreakdown {
     if (message.toolCallId == null) continue;
     const name = idToName.get(message.toolCallId);
     if (name == null) continue;
-    outputTokens.set(name, (outputTokens.get(name) ?? 0) + message.tokens);
+    outputTokens.set(
+      name,
+      (outputTokens.get(name) ?? 0) + (message.tokens ?? 0),
+    );
   }
 
   const names = new Set<string>([...calls.keys(), ...outputTokens.keys()]);

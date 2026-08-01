@@ -150,7 +150,8 @@ function PromptMessage({
           {CONTEXT_SOURCE_LABELS[source]}
         </span>
         <span className={panels.promptMessageMeta}>
-          {message.role} · {shortTokens(message.tokens)} tokens
+          {message.role}
+          {message.tokens != null && ` · ${shortTokens(message.tokens)} tokens`}
         </span>
       </div>
       {message.content != null && message.content !== "" ? (

@@ -56,3 +56,33 @@ A per-run byte ceiling (`replayMaxBytes`, among the run's
 [execution limits](/gg/execution-limits/)) bounds the worst case. Crossing it stops
 capture and marks the record truncated: **capture degrades, it never fails the run it
 observes.**
+
+## Reading a record in the console
+
+Every finished gg run links to its **Replay** view, from the run's gg tab and from the
+live monitor's terminal outcome. It walks the record turn by turn — one step per model
+call of one agent — with the agents to filter by, arrow keys to step, and a jump slider.
+
+Each step shows what the agent **saw** and what it **did**, using the same message rows
+the [Requests](/gg/context-visibility/) view renders, so a message reads identically
+whether you reached it from the telemetry stream or from the record. Three things are
+only on this view:
+
+- the **Context column**, from the turn's [prompt frame](/gg/analysis/replay-records/) —
+  each message's band, whether it is pinned or ephemeral, the session turn it was pushed
+  on, and a paged file view's `path@offset+limit`. It is the only place gg's window
+  construction is visible after the fact;
+- **images**, resolved out of the blob pool and shown inline rather than as descriptors —
+  the telemetry stream deliberately records an image's media type and size and never its
+  bytes;
+- everything the turn consumed **besides** the model call: the tool outcomes, the
+  orchestrator's own `git`, a completion gate's validation commands, the cancel probe and
+  the deadline clock.
+
+Two notices lead the view where they apply, and both are statements about the *capture*
+rather than about the run. A record written before format v2 walks behind an
+**older-gg banner** — it pins model I/O and tool results and nothing else, so the Context
+column is empty, and saying so is what keeps a gap in the recording from reading as a
+gap in the run. A **truncated** record says why capture stopped and where it still holds
+(the byte ceiling above, a killed session, a damaged journal). A record from a **newer** gg is refused outright rather than walked: it can
+carry inputs the console has never heard of, and a partial walk would look complete.

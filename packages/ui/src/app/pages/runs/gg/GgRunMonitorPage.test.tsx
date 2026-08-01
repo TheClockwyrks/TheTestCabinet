@@ -11,6 +11,7 @@ import type {
   GgTelemetryKind,
   GgTransitionModule,
 } from "@test-cabinet/run-record/gg";
+import type { RunRecord } from "@test-cabinet/run-record";
 import type { HarnessEvent } from "../../../../client/types";
 import {
   WorkersProvider,
@@ -486,10 +487,48 @@ function workersValue(events: HarnessEvent[]): WorkersContextValue {
   } as unknown as WorkersContextValue;
 }
 
-function renderMonitor(events: HarnessEvent[] = EVENTS) {
+// The same worker, but the run finishes: it replays the events and then completes with
+// a produced run, so the page reaches its terminal-outcome notice.
+function completingWorkersValue(events: HarnessEvent[]): WorkersContextValue {
+  const client = {
+    subscribeToRun: (_runId: string, handlers: RunSubscription) => {
+      for (const event of events) handlers.onEvent(event);
+      // The notice reads only the produced run's id and state.
+      handlers.onDone({
+        kind: "completed",
+        record: {
+          id: "run-1",
+          status: { state: "passed" },
+        } as unknown as RunRecord,
+      });
+      return () => {};
+    },
+  } as unknown as WorkerClient;
+  return {
+    workers: [],
+    activeId: "local",
+    active: {
+      id: "local",
+      label: "Local",
+      url: null,
+      local: true,
+      client,
+      identity: null,
+      backendMatch: "unknown",
+    },
+    setActive: () => {},
+    addWorker: () => {},
+    removeWorker: () => {},
+  } as unknown as WorkersContextValue;
+}
+
+function renderMonitor(
+  events: HarnessEvent[] = EVENTS,
+  workers: (events: HarnessEvent[]) => WorkersContextValue = workersValue,
+) {
   return render(
     <MemoryRouter initialEntries={["/runs/gg/job-1/live"]}>
-      <WorkersProvider value={workersValue(events)}>
+      <WorkersProvider value={workers(events)}>
         <Routes>
           <Route path="/runs/gg/:jobId/live" element={<GgRunMonitorPage />} />
         </Routes>
@@ -2671,6 +2710,18 @@ describe("GgRunMonitorPage", () => {
     expect(
       screen.getByText(/Entered `explore`, running Explorer/),
     ).toBeInTheDocument();
+  });
+
+  it("offers the Replay step-through on a finished run whatever its capabilities", () => {
+    // Capture is unconditional (see gg/replay), so the link is not gated on the
+    // `replay` capability — which `ALL_CAPABILITIES` deliberately does not include.
+    // The gate it replaces read the root agent's set alone, so it was wrong even on
+    // its own terms: enabling replay on a subagent silently did nothing.
+    renderMonitor(EVENTS, completingWorkersValue);
+    const link = screen.getByRole("link", {
+      name: /step through what each agent saw and did/i,
+    });
+    expect(link).toHaveAttribute("href", "/runs/gg/run-1/replay");
   });
 
   it("shows empty states when no gg telemetry arrives", () => {

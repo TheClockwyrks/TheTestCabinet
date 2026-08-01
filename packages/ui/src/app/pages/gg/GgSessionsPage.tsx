@@ -26,8 +26,8 @@ const GG_HARNESS = "gg";
 //
 // It is the bridge from an aggregate to the individual sessions behind it: the
 // dashboard and Aggregate tabs answer "what happened across runs", and a row here
-// opens the one run — its verdict, its telemetry, and (when it captured one) its
-// step-through replay. The listing is the ordinary summary query narrowed to the gg
+// opens the one run — its verdict, its telemetry, and its step-through replay (every
+// gg run records one). The listing is the ordinary summary query narrowed to the gg
 // harness, so it stays in step with the runs list rather than duplicating its
 // paging.
 //

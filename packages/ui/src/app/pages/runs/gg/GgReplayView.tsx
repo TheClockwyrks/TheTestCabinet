@@ -1,36 +1,42 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
-import type {
-  GgCapabilitySet,
-  GgReplayRecordV1,
-  GgReplayStep,
-} from "@test-cabinet/run-record/gg";
+import type { GgCapabilitySet } from "@test-cabinet/run-record/gg";
 import { useBackend } from "../../../../client/context";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
 import { routes } from "../../../routes";
+import { formatCost } from "./GgOverviewWidgets";
+import { MessageRow } from "./RequestsView";
+import { ExpandablePre } from "./MessageOverlay";
 import {
-  deriveReplaySteps,
-  readCall,
-  readDid,
-  readOutcome,
-  readSaw,
-  type ReplayToolCall,
-} from "./replaySteps";
+  buildLegacyReplayWalk,
+  buildReplayWalk,
+  contextSummary,
+  truncationNotice,
+  type ReplayContextItem,
+  type ReplayStep,
+  type ReplayToolResult,
+  type ReplayWalk,
+} from "./replayModel";
+import panels from "./GgPanels.module.scss";
 import runExec from "../RunExec.module.scss";
 import styles from "./GgReplayView.module.scss";
 
-// The step-through replay debug view (`/runs/gg/:runId/replay`, consoles only). This
-// is DEBUG TOOLING, not a normal result surface: replay capture is opt-in and off by
-// default, so it is reached only from a finished gg run whose recorded capability set
-// had the `replay` capability on. It fetches the run's stored replay record
-// (`GET /runs/{id}/replay`), derives the per-agent step-through model
-// ({@link deriveReplaySteps}, the client mirror of the Rust `steps()` derivation),
-// and lets a developer walk exactly what each agent SAW (its model request — the
-// prompt/context) and DID (the model response + tool calls, each paired with its
-// recorded result), stepping forward/back, jumping, and filtering to one agent to
-// follow it through a deep agent tree. A dense, information-rich layout is right here:
-// clarity over polish.
+// The step-through Replay view (`/runs/gg/:runId/replay`, consoles only).
+//
+// Every gg run is captured (see gg/replay), so this is reachable from any gg run rather
+// than only from one somebody thought to switch recording on for — which was the whole
+// problem with the debug-only capture it replaces, since a surprising outcome is by
+// definition not one anybody predicted. It fetches the run's stored record
+// (`GET /runs/{id}/replay`), resolves it into the walk model (`replayModel`), and lets a
+// developer step through exactly what each agent SAW (the request, message by message,
+// with the window position gg recorded for each) and DID (the response and its tool
+// calls, each paired with the outcome the run's dispatch returned), stepping
+// forward/back, jumping, and filtering to one agent to follow it through a deep tree.
+//
+// The messages themselves render through the live monitor's own message row rather than
+// a second renderer: a replay record and the telemetry message log are the same material
+// captured at two fidelities, and two components drawing it would drift.
 
 const numberFmt = new Intl.NumberFormat("en-US");
 
@@ -39,12 +45,12 @@ type LoadState =
   | { kind: "unsupported" }
   | { kind: "empty" }
   // A record written by a newer gg than this app reads. Called out explicitly rather
-  // than walked: the two formats share their outer field names, so walking one anyway
-  // produces a plausible-looking session in which every agent saw nothing — a lie the
-  // reader has no way to detect. See `StoredGgReplay`.
+  // than walked: every format shares its outer field names, so walking one anyway
+  // produces a plausible-looking session the reader has no way to tell from a real one.
+  // See `StoredGgReplay`.
   | { kind: "newer"; formatVersion: number }
   | { kind: "error"; message: string }
-  | { kind: "ready"; record: GgReplayRecordV1 };
+  | { kind: "ready"; walk: ReplayWalk };
 
 export function GgReplayView() {
   const { runId } = useParams<{ runId: string }>();
@@ -68,8 +74,13 @@ export function GgReplayView() {
           setLoad({ kind: "empty" });
         } else if (stored.format === "newer") {
           setLoad({ kind: "newer", formatVersion: stored.formatVersion });
+        } else if (stored.format === "v1") {
+          setLoad({
+            kind: "ready",
+            walk: buildLegacyReplayWalk(stored.record),
+          });
         } else {
-          setLoad({ kind: "ready", record: stored.record });
+          setLoad({ kind: "ready", walk: buildReplayWalk(stored.record) });
         }
       })
       .catch((err: unknown) => {
@@ -85,18 +96,15 @@ export function GgReplayView() {
     <PageLayout>
       <PromptHeader
         command="--gg replay"
-        comment={<>// debug-only: step through what each agent saw and did</>}
+        comment={<>// step through what each agent saw and did</>}
         arg={runId ?? ""}
       />
 
       <p className={styles.debugNote}>
-        Debug tooling. Replay reconstructs a captured run step for step from its
-        recorded model I/O and tool results — it is not part of the run&apos;s
-        result surface.{" "}
-        {runId && (
-          <Link to={routes.runDetail(runId)}>Back to the run</Link>
-        )}
-        .
+        Every gg run records the inputs it consumed — each agent&apos;s model
+        I/O, every tool result, and the window gg built for each turn — so a
+        finished run can be walked step for step.{" "}
+        {runId && <Link to={routes.runDetail(runId)}>Back to the run</Link>}.
       </p>
 
       {load.kind === "loading" && (
@@ -109,16 +117,19 @@ export function GgReplayView() {
       )}
       {load.kind === "empty" && (
         <p className={`${runExec.notice} ${runExec.warn}`}>
-          No replay record for this run. Replay is a debug-only capability that is
-          off by default — this run was not captured for replay.
+          No replay record for this run. Capture became unconditional in gg
+          0.7.0 — a run from before that was recorded only if the{" "}
+          <code>replay</code> capability happened to be on.
         </p>
       )}
       {load.kind === "newer" && (
         <p className={`${runExec.notice} ${runExec.warn}`}>
-          This run&apos;s replay record is in format v{load.formatVersion}, which this
-          app cannot read yet — it was captured by a newer gg. Nothing is wrong with the
-          run or the record; walking it here would show you an empty session rather than
-          the one it holds, so it is not walked.
+          This run&apos;s replay record is in format v{load.formatVersion},
+          which this app cannot read yet — it was captured by a newer gg.
+          Nothing is wrong with the run or the record; a newer record can hold
+          inputs this build has never heard of, and walking it anyway would show
+          you a session that reads as complete while silently missing them, so
+          it is not walked.
         </p>
       )}
       {load.kind === "error" && (
@@ -126,25 +137,15 @@ export function GgReplayView() {
           Could not load the replay record: {load.message}
         </p>
       )}
-      {load.kind === "ready" && <ReplayStepper record={load.record} />}
+      {load.kind === "ready" && <ReplayStepper walk={load.walk} />}
     </PageLayout>
   );
 }
 
-// The loaded step-through surface: the capability-set header, the agent filter/tree,
-// the playback controls, and the current step (what one agent saw and did).
-function ReplayStepper({ record }: { record: GgReplayRecordV1 }) {
-  const steps = useMemo(() => deriveReplaySteps(record), [record]);
-
-  // The distinct agents in first-appearance (global-`seq`) order, each with its step
-  // count — the filter/tree that lets a developer follow one agent through the run.
-  const agents = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const step of steps) {
-      counts.set(step.agentId, (counts.get(step.agentId) ?? 0) + 1);
-    }
-    return [...counts.entries()].map(([id, count]) => ({ id, count }));
-  }, [steps]);
+// The loaded step-through surface: the record header, the agent filter/tree, the
+// playback controls, and the current step.
+function ReplayStepper({ walk }: { walk: ReplayWalk }) {
+  const steps = walk.steps;
 
   // The current agent filter (null = all agents, interleaved on the global timeline)
   // and the step cursor into the resulting filtered list.
@@ -190,10 +191,33 @@ function ReplayStepper({ record }: { record: GgReplayRecordV1 }) {
         }
       }}
     >
-      <ReplayHeader record={record} stepCount={steps.length} agentCount={agents.length} />
+      {/* What this record can and cannot tell you, before anything derived from it.
+          Both notices are statements about the capture rather than errors: the record
+          is served either way, and a reader who does not know the difference blames the
+          run for a gap in the recording. */}
+      {walk.capturedBeforeV2 && (
+        <p className={`${runExec.notice} ${runExec.warn}`}>
+          Captured by an older gg (record format v{walk.capturedFormatVersion}).
+          It pins each agent&apos;s model I/O and tool results, and nothing
+          else: there are no prompt frames, so the Context column is empty, and
+          no agent provenance, seed or compaction-client tagging. Everything
+          shown below is what that record holds.
+        </p>
+      )}
+      {walk.truncation && (
+        <p className={`${runExec.notice} ${runExec.warn}`}>
+          {truncationNotice(walk.truncation)}
+        </p>
+      )}
+
+      <ReplayHeader walk={walk} />
 
       {/* The agent filter/tree: All, then one entry per agent with its step count. */}
-      <div className={styles.agentBar} role="tablist" aria-label="Filter by agent">
+      <div
+        className={styles.agentBar}
+        role="tablist"
+        aria-label="Filter by agent"
+      >
         <button
           type="button"
           role="tab"
@@ -205,10 +229,9 @@ function ReplayStepper({ record }: { record: GgReplayRecordV1 }) {
             setCursor(0);
           }}
         >
-          All agents{" "}
-          <span className={styles.agentCount}>{steps.length}</span>
+          All agents <span className={styles.agentCount}>{steps.length}</span>
         </button>
-        {agents.map((a) => (
+        {walk.agents.map((a) => (
           <button
             key={a.id}
             type="button"
@@ -216,13 +239,17 @@ function ReplayStepper({ record }: { record: GgReplayRecordV1 }) {
             aria-selected={agentFilter === a.id}
             className={styles.agentChip}
             data-active={agentFilter === a.id ? "" : undefined}
+            title={agentTitle(a.profile, a.origin, a.terminalStatus)}
             onClick={() => {
               setAgentFilter(a.id);
               setCursor(0);
             }}
           >
-            {a.id === "root" ? "root" : a.id}{" "}
-            <span className={styles.agentCount}>{a.count}</span>
+            {a.id}
+            {a.profile && (
+              <span className={styles.agentProfile}>{a.profile}</span>
+            )}{" "}
+            <span className={styles.agentCount}>{a.steps}</span>
           </button>
         ))}
       </div>
@@ -280,32 +307,56 @@ function ReplayStepper({ record }: { record: GgReplayRecordV1 }) {
   );
 }
 
-// The record header: the session id and a compact read-out of the recorded capability
-// set (the run's exact configuration) — so a replay is self-describing.
-function ReplayHeader({
-  record,
-  stepCount,
-  agentCount,
-}: {
-  record: GgReplayRecordV1;
-  stepCount: number;
-  agentCount: number;
-}) {
+// An agent chip's tooltip: what the provenance table says about it, when the record
+// carries one at all.
+function agentTitle(
+  profile: string | null,
+  origin: string | null,
+  terminalStatus: string | null,
+): string | undefined {
+  const parts = [
+    profile && `profile ${profile}`,
+    origin,
+    terminalStatus && `ended ${terminalStatus}`,
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+// The record header: what was captured, by which build, at which fidelity, and the
+// recorded capability set (the run's exact configuration) — so a record is
+// self-describing.
+function ReplayHeader({ walk }: { walk: ReplayWalk }) {
+  const turns = walk.steps.length;
+  const agents = walk.agents.length;
   return (
     <div className={styles.header}>
       <div className={styles.headerRow}>
         <span className={styles.headerKey}>session</span>
-        <code className={styles.headerVal}>{record.sessionId}</code>
+        <code className={styles.headerVal}>{walk.sessionId}</code>
       </div>
       <div className={styles.headerRow}>
         <span className={styles.headerKey}>captured</span>
         <span className={styles.headerVal}>
-          {numberFmt.format(stepCount)} model turn
-          {stepCount === 1 ? "" : "s"} across {numberFmt.format(agentCount)} agent
-          {agentCount === 1 ? "" : "s"}
+          {numberFmt.format(turns)} model turn{turns === 1 ? "" : "s"} across{" "}
+          {numberFmt.format(agents)} agent{agents === 1 ? "" : "s"} ·{" "}
+          {walk.fidelity} fidelity
+          {walk.recorder.ggVersion ? ` · gg ${walk.recorder.ggVersion}` : ""}
+          {walk.recorder.commit ? ` (${walk.recorder.commit.slice(0, 8)})` : ""}
         </span>
       </div>
-      <CapabilityLine set={record.capabilitySet} />
+      <CapabilityLine set={walk.capabilitySet} />
+      {walk.prompt && (
+        <div className={styles.headerRow}>
+          <span className={styles.headerKey}>prompt</span>
+          <span className={styles.headerVal}>
+            <ExpandablePre
+              content={walk.prompt}
+              className={styles.seedPrompt}
+              label="the session's build prompt"
+            />
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -333,31 +384,41 @@ function CapabilityLine({ set }: { set: GgCapabilitySet }) {
   );
 }
 
-// One step: which agent, what it SAW (the model request — messages + offered tools),
-// what it DID (the response text + tool calls), and each tool call's recorded RESULT.
+// One step: which agent, what it SAW (the request — each message with the window
+// position recorded for it, plus the offered tools), what it DID (the response, or the
+// error the call failed with), each tool call's recorded RESULT, and any other input the
+// turn consumed.
 function StepView({
   step,
   showAgent,
 }: {
-  step: GgReplayStep;
+  step: ReplayStep;
   showAgent: boolean;
 }) {
-  const saw = readSaw(step.saw);
-  const did = readDid(step.did);
-  const synthetic = step.saw == null && step.did == null;
-
   return (
     <div className={styles.step}>
       <div className={styles.stepTitle}>
-        {showAgent && (
-          <span className={styles.stepAgent}>
-            {step.agentId === "root" ? "root" : step.agentId}
+        {showAgent && <span className={styles.stepAgent}>{step.agentId}</span>}
+        <span className={styles.stepSeq}>seq {step.seq}</span>
+        {step.role === "compaction" && (
+          <span
+            className={styles.stepFlag}
+            title="gg's compaction summarizer, not the agent's own turn loop"
+          >
+            compaction client
           </span>
         )}
-        <span className={styles.stepSeq}>seq {step.seq}</span>
-        {synthetic && (
+        {step.shape === "complete_requiring" && (
+          <span
+            className={styles.stepFlag}
+            title="the model was forced to call the one offered tool"
+          >
+            required tool
+          </span>
+        )}
+        {step.orphan && (
           <span className={styles.stepSynthetic}>
-            orphan tool result (no model turn)
+            orphan input (no model turn to attach to)
           </span>
         )}
       </div>
@@ -368,51 +429,32 @@ function StepView({
           <h3 className={styles.paneTitle}>
             Saw <span className={styles.paneSub}>the model request</span>
           </h3>
-          {step.saw == null ? (
-            <p className={styles.empty}>No request (synthetic step).</p>
+          {step.request.length === 0 ? (
+            <p className={styles.empty}>No request recorded for this step.</p>
           ) : (
             <>
-              <div className={styles.messages}>
-                {saw.messages.length === 0 ? (
-                  <p className={styles.empty}>No messages.</p>
-                ) : (
-                  saw.messages.map((m, i) => (
-                    <div
-                      key={i}
-                      className={styles.message}
-                      data-role={m.role}
-                    >
-                      <span className={styles.msgRole}>{m.role}</span>
-                      <div className={styles.msgBody}>
-                        {m.content != null && (
-                          <pre className={styles.msgContent}>{m.content}</pre>
-                        )}
-                        {m.toolCalls.map((tc, j) => (
-                          <ToolCallLine key={j} call={tc} />
-                        ))}
-                        {m.toolCallId && (
-                          <span className={styles.msgMeta}>
-                            answers call {m.toolCallId}
-                          </span>
-                        )}
-                        {m.content == null &&
-                          m.toolCalls.length === 0 &&
-                          !m.toolCallId && (
-                            <span className={styles.msgMeta}>(empty)</span>
-                          )}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-              {saw.tools.length > 0 && (
+              <ul className={panels.reqMessages}>
+                {step.request.map((row) => (
+                  <MessageRow
+                    key={row.key}
+                    message={row.message ?? undefined}
+                    source={
+                      row.context
+                        ? row.context.source
+                        : { unattributed: row.message?.role ?? "message" }
+                    }
+                    context={<ContextCell item={row.context} />}
+                  />
+                ))}
+              </ul>
+              {step.tools.length > 0 && (
                 <details className={styles.tools}>
                   <summary>
-                    {saw.tools.length} tool
-                    {saw.tools.length === 1 ? "" : "s"} offered
+                    {step.tools.length} tool
+                    {step.tools.length === 1 ? "" : "s"} offered
                   </summary>
                   <ul className={styles.toolList}>
-                    {saw.tools.map((t) => (
+                    {step.tools.map((t) => (
                       <li key={t.name}>
                         <code>{t.name}</code>
                         {t.description && (
@@ -430,46 +472,58 @@ function StepView({
           )}
         </section>
 
-        {/* DID: the response the model produced this turn. */}
+        {/* DID: the response the model produced this turn — or the error it failed
+            with, which v1 dropped entirely even though a vision refusal and a retry
+            exhaustion both change what the loop does next. */}
         <section className={styles.pane}>
           <h3 className={styles.paneTitle}>
             Did <span className={styles.paneSub}>the model response</span>
           </h3>
-          {did == null ? (
-            <p className={styles.empty}>No response (synthetic step).</p>
-          ) : (
-            <div className={styles.response}>
-              {did.text ? (
-                <pre className={styles.msgContent}>{did.text}</pre>
-              ) : (
-                <p className={styles.empty}>No assistant text.</p>
-              )}
-              {did.toolCalls.length > 0 && (
-                <div className={styles.respCalls}>
-                  <span className={styles.respCallsLabel}>
-                    called {did.toolCalls.length} tool
-                    {did.toolCalls.length === 1 ? "" : "s"}
-                  </span>
-                  {did.toolCalls.map((tc, i) => (
-                    <ToolCallLine key={i} call={tc} />
-                  ))}
-                </div>
-              )}
-              <div className={styles.respMeta}>
-                {did.finishReason && (
-                  <span>
-                    <span className={styles.respMetaKey}>finish</span>
-                    {did.finishReason}
+          {step.error ? (
+            <div className={styles.modelError}>
+              <div className={styles.resultHead}>
+                <span className={styles.resultStatus}>{step.error.kind}</span>
+                {step.error.status != null && (
+                  <span className={styles.msgMeta}>
+                    HTTP {step.error.status}
                   </span>
                 )}
-                {typeof did.usage?.totalTokens === "number" && (
+                {step.error.attempts != null && (
+                  <span className={styles.msgMeta}>
+                    {step.error.attempts} attempt
+                    {step.error.attempts === 1 ? "" : "s"}
+                  </span>
+                )}
+                {step.error.modelId && (
+                  <code className={styles.resultName}>
+                    {step.error.modelId}
+                  </code>
+                )}
+              </div>
+              <pre className={styles.output}>{step.error.message}</pre>
+            </div>
+          ) : step.response ? (
+            <div className={styles.response}>
+              <ul className={panels.reqMessages}>
+                <MessageRow message={step.response.message} source="reply" />
+              </ul>
+              <div className={styles.respMeta}>
+                {step.response.finishReason && (
                   <span>
-                    <span className={styles.respMetaKey}>tokens</span>
-                    {numberFmt.format(did.usage.totalTokens)}
+                    <span className={styles.respMetaKey}>finish</span>
+                    {step.response.finishReason}
+                  </span>
+                )}
+                {step.response.cost != null && (
+                  <span>
+                    <span className={styles.respMetaKey}>cost</span>
+                    {formatCost(step.response.cost)}
                   </span>
                 )}
               </div>
             </div>
+          ) : (
+            <p className={styles.empty}>No response recorded for this step.</p>
           )}
         </section>
       </div>
@@ -483,62 +537,151 @@ function StepView({
         {step.toolResults.length === 0 ? (
           <p className={styles.empty}>No tool results this turn.</p>
         ) : (
-          step.toolResults.map((tr, i) => {
-            const call = readCall(tr.call);
-            const outcome = readOutcome(tr.outcome);
-            return (
-              <div key={i} className={styles.result}>
-                <div className={styles.resultHead}>
-                  <span
-                    className={styles.resultStatus}
-                    data-ok={outcome.ok === false ? undefined : ""}
-                  >
-                    {outcome.ok === false ? "error" : "ok"}
-                  </span>
-                  <code className={styles.resultName}>{call.name}</code>
-                  {call.id && (
-                    <span className={styles.msgMeta}>{call.id}</span>
-                  )}
-                </div>
-                {call.arguments != null &&
-                  !(
-                    typeof call.arguments === "object" &&
-                    Object.keys(call.arguments as object).length === 0
-                  ) && (
-                    <pre className={styles.args}>
-                      {JSON.stringify(call.arguments, null, 2)}
-                    </pre>
-                  )}
-                {outcome.summary && (
-                  <p className={styles.resultSummary}>{outcome.summary}</p>
-                )}
-                <pre className={styles.output}>{outcome.output}</pre>
-              </div>
-            );
-          })
+          step.toolResults.map((result) => (
+            <ToolResultView key={result.key} result={result} />
+          ))
         )}
       </section>
+
+      {/* Everything else the turn consumed: the orchestrator's own `git`, a shell
+          command that bypassed tool dispatch, the cancel probe, the deadline clock.
+          Each of these changes control flow, and each was invisible in v1. */}
+      {step.side.length > 0 && (
+        <section className={styles.results}>
+          <h3 className={styles.paneTitle}>
+            Other inputs{" "}
+            <span className={styles.paneSub}>what else this turn consumed</span>
+          </h3>
+          <ul className={styles.sideList}>
+            {step.side.map((entry) => (
+              <li key={entry.key} className={styles.sideEntry}>
+                {entry.kind === "cancel_probe" ? (
+                  <span>
+                    <span className={styles.sideKind}>cancel probe</span>
+                    {entry.canceled ? "canceled" : "still running"}
+                  </span>
+                ) : entry.kind === "clock" ? (
+                  <span>
+                    <span className={styles.sideKind}>clock</span>
+                    {numberFmt.format(entry.elapsedMs)} ms elapsed
+                    {entry.remainingMs != null &&
+                      `, ${numberFmt.format(entry.remainingMs)} ms left`}
+                  </span>
+                ) : (
+                  <>
+                    <span>
+                      <span className={styles.sideKind}>
+                        {entry.kind === "git" ? "git" : entry.origin}
+                      </span>
+                      <code className={styles.resultName}>
+                        {entry.command.command}
+                      </code>
+                      <span className={styles.msgMeta}>
+                        exit {entry.command.exitCode}
+                        {entry.command.cwd ? ` · in ${entry.command.cwd}` : ""}
+                      </span>
+                    </span>
+                    {entry.command.stdout && (
+                      <ExpandablePre
+                        content={entry.command.stdout}
+                        className={styles.output}
+                        label={`${entry.command.command} stdout`}
+                      />
+                    )}
+                    {entry.command.stderr && (
+                      <ExpandablePre
+                        content={entry.command.stderr}
+                        className={styles.output}
+                        label={`${entry.command.command} stderr`}
+                      />
+                    )}
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }
 
-// A single tool call line: the tool name and its arguments, shown inline under an
-// assistant message or a response's called-tools list.
-function ToolCallLine({ call }: { call: ReplayToolCall }) {
+// The Context column's cell: where this message sat in the agent's window. Ellipsized
+// to one line with the whole of it in the row's tooltip, since a paged file view's
+// `path@offset+limit` is routinely longer than the column.
+//
+// A message with no frame behind it gets an em dash rather than a blank — a pre-v2
+// record carries no prompt frames at all, and the banner above says so, but a blank cell
+// still reads as a rendering gap where a stated absence does not.
+function ContextCell({ item }: { item: ReplayContextItem | null }) {
+  if (!item) {
+    return (
+      <span
+        className={styles.contextMissing}
+        title="this record carries no prompt frame for the turn"
+      >
+        —
+      </span>
+    );
+  }
+  const summary = contextSummary(item);
+  return <span title={summary}>{summary}</span>;
+}
+
+// One tool call and the outcome the run's dispatch returned for it — the call's
+// arguments, its summary line, its output, and any images it produced.
+function ToolResultView({ result }: { result: ReplayToolResult }) {
   const hasArgs =
-    call.arguments != null &&
+    result.arguments != null &&
     !(
-      typeof call.arguments === "object" &&
-      Object.keys(call.arguments as object).length === 0
+      typeof result.arguments === "object" &&
+      Object.keys(result.arguments as object).length === 0
     );
   return (
-    <div className={styles.callLine}>
-      <span className={styles.callName}>
-        <code>{call.name}</code>
-      </span>
+    <div className={styles.result}>
+      <div className={styles.resultHead}>
+        <span
+          className={styles.resultStatus}
+          data-ok={result.ok ? "" : undefined}
+        >
+          {result.ok ? "ok" : "error"}
+        </span>
+        <code className={styles.resultName}>{result.name}</code>
+        {result.id && <span className={styles.msgMeta}>{result.id}</span>}
+        {result.cwd && <span className={styles.msgMeta}>in {result.cwd}</span>}
+      </div>
       {hasArgs && (
         <pre className={styles.args}>
-          {JSON.stringify(call.arguments, null, 2)}
+          {JSON.stringify(result.arguments, null, 2)}
+        </pre>
+      )}
+      {result.summary && (
+        <p className={styles.resultSummary}>{result.summary}</p>
+      )}
+      <ExpandablePre
+        content={result.output}
+        className={styles.output}
+        label={`${result.name} output`}
+      />
+      {result.images.length > 0 && (
+        <ul className={panels.reqImages}>
+          {result.images.map((image, i) => (
+            <li key={i} className={panels.reqImage}>
+              {image.dataBase64 != null && (
+                <img
+                  className={panels.reqImageThumb}
+                  src={`data:${image.mediaType};base64,${image.dataBase64}`}
+                  alt={`${result.name} produced a ${image.mediaType} image`}
+                />
+              )}
+              <span className={panels.reqImageMeta}>{image.mediaType}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {result.failure && (
+        <pre className={styles.args}>
+          {JSON.stringify(result.failure, null, 2)}
         </pre>
       )}
     </div>

@@ -53,6 +53,7 @@ import type {
   VersionInfo,
   WorkerIdentity,
 } from "../client";
+import { GG_REPLAY_FORMAT_V1, GG_REPLAY_FORMAT_VERSION } from "../client";
 import type {
   AssetSheet,
   ModelSpec,
@@ -72,6 +73,7 @@ import type {
   GgConfigInput,
   GgReplayRecordV1,
 } from "@test-cabinet/run-record/gg";
+import type { GgReplayRecord } from "@test-cabinet/run-record/gg-replay";
 import type {
   CoverageGroup,
   CoverageGroupInput,
@@ -812,10 +814,13 @@ export function createHttpBackend(baseUrl: string): BackendClient {
     },
 
     async readGgReplay(id: string): Promise<StoredGgReplay | null> {
-      // The backend serves the stored replay record as JSON, and 404s when the run
-      // captured none (replay was off) — the common case, since replay is debug-only.
-      // A raw fetch lets that 404 resolve to `null` (a tidy "no replay" state) while
-      // any other non-2xx still surfaces as an error.
+      // The backend serves the stored replay record as JSON, and 404s for a run that
+      // has none — every gg run is captured from 0.7.0 on, so that is now an older run
+      // rather than the ordinary case. A raw fetch lets the 404 resolve to `null` (a
+      // tidy "no replay" state) while any other non-2xx still surfaces as an error.
+      //
+      // The request advertises no `accept-encoding` of its own: the browser always sends
+      // one, and the route negotiates the stored gzip against the *request's* header.
       const res = await fetch(
         joinUrl(baseUrl, `/runs/${encodeURIComponent(id)}/replay`),
         { headers: { accept: "application/json" } },
@@ -824,15 +829,18 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       if (!res.ok) {
         throw new Error(`replay fetch failed: ${res.status} ${res.statusText}`);
       }
-      // Tagged, never assumed. The slot is versioned and a newer record's outer field
-      // names are the same ones this app's v1 walk reads, so an untagged cast would
-      // render a full session as an empty one with nothing raised anywhere. An absent
-      // `formatVersion` is v1, which is what the records stored before the field existed
-      // carry.
+      // Tagged, never assumed — see `StoredGgReplay`. An absent `formatVersion` is 1,
+      // which is what every record stored before the field existed carries; anything
+      // past the version this app knows is refused rather than walked, because a newer
+      // record may hold entry kinds this build has never heard of and a partial walk of
+      // one is a plausible-looking lie.
       const body = (await res.json()) as { formatVersion?: number };
-      const formatVersion = body.formatVersion ?? 1;
-      return formatVersion > 1
-        ? { format: "newer", formatVersion }
+      const formatVersion = body.formatVersion ?? GG_REPLAY_FORMAT_V1;
+      if (formatVersion > GG_REPLAY_FORMAT_VERSION) {
+        return { format: "newer", formatVersion };
+      }
+      return formatVersion >= GG_REPLAY_FORMAT_VERSION
+        ? { format: "v2", record: body as GgReplayRecord }
         : { format: "v1", record: body as GgReplayRecordV1 };
     },
   };

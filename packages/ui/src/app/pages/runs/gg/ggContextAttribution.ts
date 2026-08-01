@@ -179,7 +179,9 @@ function credit(
 ): void {
   if (!bucket.messages.has(message.id)) {
     bucket.messages.add(message.id);
-    bucket.tokens += message.tokens;
+    // Every message this fold ever sees comes off the telemetry pool, which always
+    // carries an estimate; the fallback is for the type, not for a case that arises.
+    bucket.tokens += message.tokens ?? 0;
   }
   if (bucket.lastTurn !== turn) {
     bucket.lastTurn = turn;
@@ -306,7 +308,9 @@ export function attributeGgContext(
     for (const ref of prompt.request) {
       const message = pool.get(ref.id);
       if (!message) continue;
-      const share = message.tokens / estimated;
+      // As in `credit`: this fold only ever reads the telemetry pool, which always
+      // carries an estimate. The fallback is for the type.
+      const share = (message.tokens ?? 0) / estimated;
       const shareBilled = billed * share;
       const shareCost = cost == null ? null : cost * share;
 

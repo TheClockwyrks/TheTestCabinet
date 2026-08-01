@@ -1,10 +1,12 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
 
-// The step-through replay debug view. This is DEBUG tooling — a dense,
-// information-rich, monospace-leaning layout is right: two panes (Saw / Did) over a
-// tool-results strip, driven by playback controls and an agent filter. It reuses the
-// shared run-execution notices/buttons for chrome and owns the stepper layout here.
+// The step-through Replay view. A dense, information-rich, monospace-leaning layout is
+// right here — this is a developer reading a captured session: two panes (Saw / Did)
+// over a tool-results strip, driven by playback controls and an agent filter. It reuses
+// the shared run-execution notices/buttons for chrome, renders the messages themselves
+// through the run monitor's own message rows (GgPanels' `req*` classes), and owns only
+// the stepper layout here.
 
 .debugNote {
   margin: t.$space-sm 0 t.$space-md;
@@ -50,7 +52,22 @@
   font-size: t.$font-sm;
   color: t.$color-text;
   min-width: 0;
+  flex: 1 1 auto;
   overflow-wrap: anywhere;
+}
+
+// The build prompt the session was invoked with, from the record's seed. Bounded so a
+// long case prompt does not push the whole walk below the fold; the expand button the
+// shared `ExpandablePre` draws opens the rest.
+.seedPrompt {
+  margin: 0;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: t.$color-text-muted;
+  max-height: 8rem;
+  overflow: auto;
 }
 
 // --- Agent filter/tree -------------------------------------------------------
@@ -88,6 +105,17 @@
 .agentCount {
   font-size: t.$font-sm;
   opacity: 0.7;
+}
+
+// The agent's profile, beside its id: the same agent id means nothing on its own in a
+// deep tree, and the profile is what a reader recognizes it by.
+.agentProfile {
+  font-size: t.$font-sm;
+  opacity: 0.7;
+
+  &::before {
+    content: " · ";
+  }
 }
 
 // --- Playback controls -------------------------------------------------------
@@ -180,6 +208,18 @@
   color: t.$color-warning;
 }
 
+// A property of the call itself rather than of its content — which client issued it,
+// whether the offered tool was required. Both change what the turn means, and neither is
+// visible anywhere in the messages.
+.stepFlag {
+  font-family: monospace;
+  font-size: t.$font-sm;
+  padding: t.$space-2xs t.$space-sm;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-sm;
+  color: t.$color-text-muted;
+}
+
 .panes {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -219,60 +259,10 @@
 }
 
 // --- Messages (what the agent saw) -------------------------------------------
-
-.messages {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-}
-
-.message {
-  display: flex;
-  gap: t.$space-sm;
-  padding: t.$space-xs;
-  border-left: 2px solid t.$color-border;
-  min-width: 0;
-
-  &[data-role="system"] {
-    border-left-color: t.$color-text-muted;
-  }
-  &[data-role="user"] {
-    border-left-color: t.$color-accent-2;
-  }
-  &[data-role="assistant"] {
-    border-left-color: t.$color-accent;
-  }
-  &[data-role="tool"] {
-    border-left-color: t.$color-positive;
-  }
-}
-
-.msgRole {
-  flex: 0 0 4.5rem;
-  font-family: monospace;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  text-transform: uppercase;
-}
-
-.msgBody {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-2xs;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.msgContent {
-  margin: 0;
-  font-family: monospace;
-  font-size: t.$font-sm;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  color: t.$color-text;
-  max-height: 24rem;
-  overflow: auto;
-}
+//
+// The message rows themselves are the run monitor's (`GgPanels`' `req*` block) — one
+// renderer for one thing, whether it came off the telemetry stream or a replay record.
+// What remains here is the chrome around them.
 
 .msgMeta {
   font-size: t.$font-sm;
@@ -280,23 +270,13 @@
   font-style: italic;
 }
 
-// --- Tool calls / args -------------------------------------------------------
-
-.callLine {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-2xs;
-  padding: t.$space-2xs t.$space-xs;
-  border: t.$border-hairline dashed t.$color-border;
-  border-radius: t.$radius-sm;
-  min-width: 0;
+// The Context cell of a message with no prompt frame behind it — an em dash rather than
+// a blank, so "not recorded" reads as a stated fact rather than as a rendering gap.
+.contextMissing {
+  color: t.$color-text-muted;
 }
 
-.callName {
-  font-family: monospace;
-  font-size: t.$font-sm;
-  color: t.$color-accent;
-}
+// --- Tool call arguments -----------------------------------------------------
 
 .args {
   margin: 0;
@@ -334,21 +314,11 @@
 
 // --- Response (what the model did) -------------------------------------------
 
-.response {
+.response,
+.modelError {
   display: flex;
   flex-direction: column;
   gap: t.$space-sm;
-}
-
-.respCalls {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-}
-
-.respCallsLabel {
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
 }
 
 .respMeta {
@@ -418,6 +388,37 @@
   color: t.$color-text-muted;
   max-height: 20rem;
   overflow: auto;
+}
+
+// --- Other inputs (git, shell, the probe, the clock) -------------------------
+
+.sideList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.sideEntry {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+}
+
+.sideKind {
+  display: inline-block;
+  min-width: 7rem;
+  margin-right: t.$space-sm;
+  font-family: monospace;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .empty {

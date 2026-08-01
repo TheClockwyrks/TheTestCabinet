@@ -28,14 +28,8 @@ export function GgRunMonitorPage() {
   const { active: worker } = useWorkers();
   const runs = useRunsRuntime();
   const state = useGgRunState(jobId);
-  const {
-    status,
-    error,
-    sawSession,
-    sessionEndStatus,
-    usage,
-    capabilitySet,
-  } = state;
+  const { status, error, sawSession, sessionEndStatus, usage, capabilitySet } =
+    state;
   const live = status.kind === "running";
 
   // The run's two clocks. The wall clock ticks while the stream is live and settles on the
@@ -56,15 +50,6 @@ export function GgRunMonitorPage() {
     launched?.testCaseSlug ?? null,
     launched?.testCaseVersion ?? null,
   );
-
-  // Whether this run was captured for replay — the debug-only `replay` capability was
-  // on. Only then does a stored replay record exist to step through, so the Replay
-  // link on the terminal outcome is shown only in that case (it is debug tooling, not
-  // a normal result surface).
-  const replayCaptured =
-    capabilitySet?.agents?.[0]?.capabilities.some(
-      (c) => c.id === "replay" && c.enabled,
-    ) ?? false;
 
   const dashboardStatus: GgDashboardStatus = {
     ...statusPhase(status, sawSession),
@@ -128,16 +113,14 @@ export function GgRunMonitorPage() {
                   see its metrics
                 </Link>
                 .
-                {replayCaptured && (
-                  <>
-                    {" "}
-                    This run was captured for replay —{" "}
-                    <Link to={routes.ggReplay(status.outcome.record.id)}>
-                      step through what each agent saw and did
-                    </Link>{" "}
-                    (debug).
-                  </>
-                )}
+                {/* Unconditional, because capture is: every gg run records the inputs
+                    it consumed (see gg/replay), so this is offered on any finished run
+                    rather than only where a debug capability happened to be set. */}{" "}
+                You can also{" "}
+                <Link to={routes.ggReplay(status.outcome.record.id)}>
+                  step through what each agent saw and did
+                </Link>
+                .
               </p>
             )}
             {status.kind === "done" && status.outcome.kind === "canceled" && (
@@ -163,7 +146,12 @@ export function GgRunMonitorPage() {
                     <Link to={routes.runMetrics(status.outcome.record.id)}>
                       see its metrics
                     </Link>
-                    .
+                    . The replay journal is salvaged before teardown, so you can
+                    also{" "}
+                    <Link to={routes.ggReplay(status.outcome.record.id)}>
+                      step through what each agent saw and did
+                    </Link>{" "}
+                    up to the kill.
                   </>
                 ) : (
                   jobId && (

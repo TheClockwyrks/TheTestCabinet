@@ -87,13 +87,6 @@ function RunGgBody({ run }: { run: RunRecord }) {
     );
   }
 
-  // Whether the run was captured for replay — the debug-only `replay` capability was
-  // on, so a stored replay record exists to step through.
-  const replayCaptured =
-    capabilitySet?.agents?.[0]?.capabilities.some(
-      (c) => c.id === "replay" && c.enabled,
-    ) ?? false;
-
   return (
     <section className={`${styles.section} ${styles.sectionFill}`}>
       <GgRunPanels
@@ -115,15 +108,17 @@ function RunGgBody({ run }: { run: RunRecord }) {
             runtime={runtime}
             timeoutSeconds={timeoutSeconds}
           >
-            {replayCaptured && (
-              <p className={styles.notice}>
-                This run was captured for replay —{" "}
-                <Link to={routes.ggReplay(run.id)}>
-                  step through what each agent saw and did
-                </Link>{" "}
-                (debug).
-              </p>
-            )}
+            {/* Offered on every gg run, not on the ones somebody thought to switch
+                recording on for: capture is unconditional (see gg/replay), and the old
+                capability gate read the root agent alone, so it was wrong even on its
+                own terms. A run recorded before always-on capture has no record, and the
+                Replay view says exactly that rather than being unreachable. */}
+            <p className={styles.notice}>
+              <Link to={routes.ggReplay(run.id)}>
+                Step through what each agent saw and did
+              </Link>{" "}
+              — every input this run consumed, turn by turn.
+            </p>
           </GgDashboard>
         }
       />
