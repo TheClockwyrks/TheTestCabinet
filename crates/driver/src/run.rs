@@ -291,6 +291,13 @@ where
         harnesses: Box::new(DefaultHarnessRegistry::new()),
         orchestrators: OrchestratorCatalog::new(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references)),
+        // No post-run analysis stage is wired yet: the replay assembly and the
+        // static code analysis both land in this seam, and until they do a run
+        // simply produces no analysis artifacts. Wiring one here is all it takes —
+        // the seam runs it on the host, after the tree is collected and before
+        // validation, so neither can cost a run its runtime budget.
+        replay_assembler: None,
+        analyzer: None,
         validator: DispatchValidator::new(screenshot_dir),
         prices: OpenRouterPrices::new(),
         output_dir: out_dir.to_path_buf(),

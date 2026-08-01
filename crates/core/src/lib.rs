@@ -37,6 +37,7 @@ pub mod model_id;
 pub mod orchestrator;
 pub mod performance_validator;
 pub mod playable;
+pub mod post_run;
 pub mod preview;
 pub mod pricing;
 pub mod prompt;
@@ -122,6 +123,7 @@ pub use playable::{
     find_build_output, proof_published_extension, proof_served_extension, serve_asset_file,
     serve_build_file, serve_proof_file, serve_validation_file,
 };
+pub use post_run::{PostRunContext, PostRunReport, PostRunStage};
 pub use preview::{AssetPreview, LivePreview, LivePreviewEndpoint, PreviewSink};
 pub use pricing::{MODALITY_IMAGE, ModelDetails, ModelLaunchFacts, ModelListing, OpenRouterPrices};
 pub use prompt::{render_prompt, render_prompt_from_template, render_spec_from_template};
@@ -368,6 +370,22 @@ where
     pub orchestrators: OrchestratorCatalog,
     /// Renders reference mockups to screenshots for seeding and validation.
     pub renderer: Box<dyn ReferenceRenderer>,
+    /// Assembles a **gg** run's streamed replay journal into the run's replay
+    /// record, at the [post-run stage seam](crate::post_run).
+    ///
+    /// `None` — the default for every host that has no use for it, and for every
+    /// test — runs no assembly, which simply leaves the run without a replay
+    /// artifact.
+    pub replay_assembler: Option<Box<dyn PostRunStage>>,
+    /// Statically analyses the code the model wrote, at the [post-run stage
+    /// seam](crate::post_run), after the replay assembly has lifted gg's journal
+    /// out of the tree.
+    ///
+    /// Injected rather than called directly because the analyzer crate depends on
+    /// this one for its contract types — depending back would be a cycle — and
+    /// because keeping it out of core keeps its parser dependencies out of every
+    /// binary that links core. `None` runs no analysis.
+    pub analyzer: Option<Box<dyn PostRunStage>>,
     /// Runs the validation pass.
     pub validator: V,
     /// Looks up model prices for the comparable cost.
@@ -1267,6 +1285,51 @@ where
             }
         };
         let metrics = self.collect_metrics(&outcome, run_time_seconds, &prices)?;
+
+        // The post-run stage seam: the single place any host-side analysis of a
+        // finished run happens (see [`crate::post_run`]). Its position is the whole
+        // point of it, and all three neighbours matter.
+        //
+        // *After collection*, so the tree it reads is on the host and the container
+        // is already gone. *Before validation*, because the validator runs the case's
+        // install and build commands **in the produced tree itself** — after it, the
+        // tree carries build output, a rewritten lockfile and toolchain caches, and
+        // carries different amounts of them depending on how far validation got, so
+        // this is the only placement under which "the code the model wrote" is
+        // literally true. And *outside `with_runtime_cap`* — which wraps only the
+        // harness session, inside `execute` — with the run's measured duration
+        // already frozen above, so no analysis can ever eat into the test case's
+        // `max_runtime_hours` or inflate what the run is scored on.
+        //
+        // Note this runs for a **canceled** run too, unlike the validation below.
+        // Validation is skipped for a cancellation because it is fresh work that
+        // judges output an operator chose to stop; analysis is not that — it reads
+        // bytes that already exist and renders no verdict.
+        let run_dir = self.output_dir.join(&run_id);
+        std::fs::create_dir_all(&run_dir)?;
+        let post_run = post_run::run_stages(
+            [self.replay_assembler.as_deref(), self.analyzer.as_deref()]
+                .into_iter()
+                .flatten(),
+            &post_run::PostRunContext {
+                run_id: &run_id,
+                run_dir: &run_dir,
+                artifacts: &artifacts,
+                seed_commit: &seeded.initial_commit,
+                test_case,
+                variant: &variant,
+                request,
+                canceled: outcome.canceled,
+            },
+        )
+        .await;
+        if !post_run.artifacts.is_empty() {
+            tracing::info!(
+                artifacts = ?post_run.artifacts,
+                "post-run analysis wrote the run's artifacts",
+            );
+        }
+
         // The proof-of-implementation artifacts requested for this variant; the
         // validator records whether each turned up in the produced tree.
         let proofs = test_case.proofs_for(&variant);
