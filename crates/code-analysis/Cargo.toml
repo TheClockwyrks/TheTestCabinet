@@ -1,0 +1,62 @@
+[package]
+name = "test-cabinet-code-analysis"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The static code analyzer: a deterministic, execute-nothing read of the source tree a
+# run produced. It walks the tree honouring its ignore files, resolves which files the
+# *model* wrote, parses TypeScript through `oxc` and Rust through `syn`, builds the module
+# graph, detects clones, and rolls the whole thing up into the `CodeAnalysisSummary` /
+# `CodeAnalysisDocument` contract that `test-cabinet-core` owns.
+#
+# The dependency on core is deliberately **one-way**. Core owns the contract types; this
+# crate produces them; core must never depend back. That is not stylistic — it is what
+# keeps `oxc` and `syn` out of every binary that links core, the desktop shell included,
+# and it is why the analyzer reaches the run pipeline through core's `PostRunStage` trait
+# rather than by a direct call. `cargo tree -p test-cabinet-core` must never mention this
+# crate or either parser.
+[lib]
+name = "test_cabinet_code_analysis"
+path = "src/lib.rs"
+
+[dependencies]
+# The code-analysis contract (`CodeAnalysisSummary`, `CodeAnalysisDocument`, the basis
+# enums, the metric catalog), the seeding commit message the authored-set ladder's middle
+# rung matches on, and the build-output directory names the walk's hardcoded floor removes.
+test-cabinet-core = { path = "../core" }
+# The `.gitignore`-honouring directory walk. A hardcoded list of output directory names is
+# both too narrow (a model-configured output directory, a framework cache) and
+# unnecessary, because a case's own ignore file already declares where its build output
+# goes — and the ignore files are content of the tree being measured, so honouring them
+# stays deterministic. `ignore` is the walker behind ripgrep and handles nested ignore
+# files, `.git/info/exclude` and the parent-directory rules for us.
+ignore = "0.4"
+# The TypeScript/JSX front end. Pinned to the same 0.141 line `crates/gg`'s sandbox
+# transpiler is written against so the workspace compiles one parser, not two; `ast_visit`
+# adds the generated `Visit` trait this crate walks the tree with.
+oxc = { workspace = true, features = ["ast_visit"] }
+# The Rust front end. `full` is required to parse whole files (items, expressions and
+# statements, not just the derive-macro subset); `visit` supplies the generated read-only
+# visitor; `extra-traits` is not needed. Line numbers come from `proc-macro2`'s
+# `span-locations`, which is what makes a span outside a proc-macro invocation carry a
+# real line and column.
+syn = { version = "2", features = ["full", "visit", "parsing", "printing"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+# Content addressing for the clone detector's window hashes. `DefaultHasher` is explicitly
+# not stable across releases or platforms, and this analysis has to be a pure function of
+# the tree's bytes, so the hash has to be one whose value is specified.
+sha2 = { workspace = true }
+# Manifest reading, for the module graph. A Rust `use other_crate::…` is an intra-tree
+# edge only if `other_crate` is one of the tree's own crates, and the only way to know
+# that without resolving the dependency graph (which needs the registry, and therefore the
+# network) is to read the `[package] name` out of each `Cargo.toml` directly.
+toml = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

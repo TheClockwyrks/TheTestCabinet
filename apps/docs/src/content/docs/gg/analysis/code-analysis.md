@@ -125,8 +125,10 @@ The graph metrics are where the "did the model think about layering?" signal liv
   codebase of leaves from a codebase of tangles.
 - **Fan-out and fan-in distributions** — a file importing thirty others is a
   god-module by another name.
-- **Orphans** — files reachable from no entry point: dead modules the model wrote
-  and abandoned.
+- **Orphans** — files nothing imports and no entry point declares: dead modules the
+  model wrote and abandoned. Deliberately *not* transitive reachability, which
+  collapses on a library: one stray fixture HTML naming one module makes every other
+  module unreachable, and a healthy tree reports almost all of itself as dead.
 - **Dependency depth** and **external package count**.
 
 ### API surface and type discipline

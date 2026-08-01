@@ -30,7 +30,12 @@ use crate::validation::{
 };
 
 /// Candidate output directories a static build may produce.
-const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
+///
+/// Public because the [code analyzer](crate::code_analysis) removes exactly these names
+/// from the tree it measures, and the two must agree: a directory this validator will
+/// serve a build out of is, by definition, build output rather than code the model wrote.
+/// One list, read from both sides, so adding a fourth cannot silently start counting it.
+pub const BUILD_OUTPUTS: [&str; 3] = ["dist", "build", "out"];
 
 /// A validator that builds the implementation and load-checks it in a browser.
 #[derive(Debug, Clone)]

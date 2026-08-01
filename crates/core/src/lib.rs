@@ -16,6 +16,7 @@ pub mod auth;
 pub mod backend_client;
 pub mod browser;
 pub mod cancel;
+pub mod code_analysis;
 pub mod comparison;
 pub mod comparison_aggregate;
 pub mod comparison_stats;
@@ -95,6 +96,13 @@ pub use backend_client::{
     PublishedRun, ResolvedArtifact, ResolvedReference, RunPage, materialize_version,
 };
 pub use cancel::RunCancellation;
+pub use code_analysis::{
+    CODE_ANALYZER_VERSION, CODE_METRICS, CodeAnalysisDocument, CodeAnalysisNotes,
+    CodeAnalysisSummary, CodeApiSummary, CodeAuthoredBasis, CodeCloneGroup, CodeCloneInstance,
+    CodeComplexitySummary, CodeDuplicationSummary, CodeFileEntry, CodeGraphSummary, CodeImportEdge,
+    CodeLanguage, CodeMetricDef, CodeMetricUnit, CodeRustSummary, CodeSizeSummary, CodeSymbolEntry,
+    CodeTestSummary, CodeTreeBasis, CodeTruncationCap, CodeTypeScriptSummary,
+};
 pub use container::{CliArtifactCollector, CliContainerRuntime};
 pub use error::{Error, Result};
 pub use event::{

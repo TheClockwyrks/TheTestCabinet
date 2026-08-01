@@ -971,6 +971,18 @@ fn seed_adversarial(test_case: &crate::TestCaseVersion, _repo: &Path) -> Result<
     Ok(())
 }
 
+/// The message on the commit the seeder makes after laying the workspace down.
+///
+/// Exported because it is a **contract with the code analyzer**, not an implementation
+/// detail. When a run record carries no seed commit, the analyzer's authored-set ladder
+/// falls back to the tree's single root commit — and this message is the *only* thing
+/// distinguishing a seed root from one the model created with its own `git init`. Taking
+/// the root unconditionally would fail in the worst direction: the seeded set would
+/// swallow the model's own work and the run would report near-zero authored code, stamped
+/// as an exact measurement. Changing this string retires that fallback for every tree
+/// seeded afterwards, so it lives in one place where both sides can see it.
+pub const SEED_COMMIT_MESSAGE: &str = "Seed test case";
+
 /// Initialize a fresh git repository with a single commit and no remote, and
 /// return the initial commit hash.
 fn init_repo(repo: &Path) -> Result<String> {
@@ -1007,7 +1019,10 @@ fn init_repo(repo: &Path) -> Result<String> {
     if repo.join(crate::test_case::TCAB_VENDOR_DIR).is_dir() {
         git(repo, &["add", "--force", crate::test_case::TCAB_VENDOR_DIR])?;
     }
-    git(repo, &["commit", "--quiet", "--message", "Seed test case"])?;
+    git(
+        repo,
+        &["commit", "--quiet", "--message", SEED_COMMIT_MESSAGE],
+    )?;
     let output = git(repo, &["rev-parse", "HEAD"])?;
     Ok(output.trim().to_string())
 }
