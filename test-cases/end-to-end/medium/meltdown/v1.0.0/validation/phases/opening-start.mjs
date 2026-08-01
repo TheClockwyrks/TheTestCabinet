@@ -30,7 +30,19 @@ export default function item() {
     // "Start begins wave 1" is a claim about that moment, and a snapshot taken a few
     // seconds later could not tell a build that entered wave 1 on the press from one
     // that drifted into it on its own.
+    // A beat runs BEFORE the press too. `act` is where the record pass starts filming,
+    // so with `startWave` as its first statement the clip opened on the frame the wave
+    // began — the opening phase this item is about never appeared, and what a reviewer
+    // got was a wave already running with nothing to say it had just been started. The
+    // lead-in shows the state being left: the untimed opening phase, WAVE 0, the wave
+    // control reading Start. Then it is pressed, on screen, and the wave arrives.
+    //
+    // It costs the verdict nothing. The opening phase "never starts on its own"
+    // (specs/gameplay.md) — which is `phases.opening-untimed`'s claim, checked there
+    // over thirty times this long — so the two seconds change nothing about the state
+    // `startWave` is pressed from, and `s` is still read on the press itself.
     async act(api) {
+      await actTail(api, 120); // 2 s of the untimed opening phase before the press
       await api.call("startWave");
       s = await api.snapshot();
       await actTail(api, 240); // 4 s — the wave visibly under way

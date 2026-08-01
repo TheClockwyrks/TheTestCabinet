@@ -30,6 +30,10 @@ import {
   TICK,
 } from "../_helpers.mjs";
 
+// A Mote's base speed in px/s (specs/surge.md). Speeds do not scale with the wave
+// (specs/gameplay.md), so this is exact for the wave-1 Mote spawned below.
+const MOTE_BASE_SPEED = 60;
+
 export default function item() {
   let rimeId;
   let coldCeiling;
@@ -89,7 +93,7 @@ export default function item() {
       check.expectLt(
         "the slowed speed is well below the Mote's base speed",
         m.speed,
-        60 * 0.5,
+        MOTE_BASE_SPEED * 0.5,
       );
 
       // The slow the surge actually took. A unit's `speed` "reflect[s] any active slow"
@@ -97,9 +101,19 @@ export default function item() {
       // (specs/instrumentation.md), so a unit reporting `slowed` must already be
       // reporting the reduced speed. The tolerance admits one shot of self-heating,
       // per the note at the top of this file.
+      //
+      // Measured against the Mote's PUBLISHED base speed (60, specs/surge.md) and not
+      // against the build's own `baseSpeed` read. The claim is how much speed the slow
+      // removed, and dividing the build's `speed` by the build's `baseSpeed` cannot
+      // state it: a build reporting both as 7 satisfies the ratio while its Mote crawls,
+      // and one that omits `baseSpeed` yields NaN and fails the item for a missing field
+      // rather than for an absent slow. Nothing scales the figure here — this is a
+      // wave-1 Mote, and "speeds, bounties, and leak values do not scale"
+      // (specs/gameplay.md) — so 60 is exact. Whether `baseSpeed` is reported at all is
+      // `surge.stats`'s claim, and it is checked there.
       check.expectClose(
         "the applied slow is the cold Rime's near-full ceiling",
-        1 - m.speed / m.baseSpeed,
+        1 - m.speed / MOTE_BASE_SPEED,
         0.55,
         0.05,
       );
