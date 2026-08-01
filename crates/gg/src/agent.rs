@@ -2566,8 +2566,9 @@ async fn run_agent(
 
         // Announce the run's configuration once, on the root's stream, so the console shows the
         // enabled capabilities from the start; subagents inherit the same configuration and stay
-        // quiet. A later incarnation stays quiet too: these are the run's **durable ablation
-        // facets**, and a facet with two values is a facet nothing can be sliced by.
+        // quiet. A later incarnation stays quiet too: this is the run's **durable
+        // configuration**, and a field with two values in one run is one nothing can be
+        // sliced by.
         if is_root && first_incarnation {
             announce_configuration(
                 emitter,

@@ -164,6 +164,8 @@ precedent). It stores:
 
 Backend storage follows the existing SeaORM entity pattern
 (`crates/entities/`), and the aggregation contract can follow
-[gg's aggregation](/gg/result-aggregation/) (`crates/core/src/gg_aggregate.rs`) —
-group-by-arm, aggregate-metric — extended with the dispersion statistics gg's
-avg/min/max/sum set lacks.
+[gg's query language](/gg/analysis/query-language/) (`crates/core/src/gg_query.rs`) —
+a `stats` stage that is group-by plus aggregate functions, over a flat run document. Its
+`count`/`distinct`/`avg`/`sum`/`min`/`max`/`median`/`p90`/`p95` set already covers the
+central tendency and the tail; what a comparison adds on top is the *inferential* half —
+standard deviation, confidence intervals, and the significance test between two arms.
