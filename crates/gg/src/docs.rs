@@ -19,7 +19,7 @@
 //! [`DocsRuntime`] that remembers what it has already emitted, and a fresh doc block is pinned into
 //! the agent's context exactly as a read skill is, so the model keeps it across turns.
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use crate::ending::EndingRole;
 use crate::sandbox::{CatalogueFunction, FunctionSummary, catalogue_functions, type_declaration};
@@ -64,17 +64,17 @@ pub struct DocRead {
 pub struct DocsRuntime {
     /// The run's enabled gg tool names — the gate on which catalogue functions are bound, and so on
     /// which functions a directory lists and a lookup will document.
-    enabled: HashSet<String>,
+    enabled: BTreeSet<String>,
     /// This agent's [ending role](EndingRole), the second gate: an ending call belonging to another
     /// role is not in this agent's scope, so documenting it would describe a function the model
     /// cannot call. The catalogue's `ending` tag is what this is matched against.
     role: &'static str,
     /// Type names already emitted in a doc block this session, so a later lookup omits a declaration
     /// the model has already seen — the dedup the guest cannot do because only gg knows the context.
-    shown_types: HashSet<String>,
+    shown_types: BTreeSet<String>,
     /// Function names whose docs have already been pinned this session, so a repeat read pins
     /// nothing while still handing the text back.
-    shown_functions: HashSet<String>,
+    shown_functions: BTreeSet<String>,
 }
 
 impl DocsRuntime {
@@ -87,8 +87,8 @@ impl DocsRuntime {
                 EndingRole::Review => "review",
                 EndingRole::Judge { .. } => "judge",
             },
-            shown_types: HashSet::new(),
-            shown_functions: HashSet::new(),
+            shown_types: BTreeSet::new(),
+            shown_functions: BTreeSet::new(),
         }
     }
 

@@ -6,12 +6,12 @@ use super::*;
 
 /// No [exclusivity key](ExclusiveKey) held — the state every case that is not about persistence
 /// exercises the grant policy under.
-fn none() -> HashSet<String> {
-    HashSet::new()
+fn none() -> BTreeSet<String> {
+    BTreeSet::new()
 }
 
 /// The [exclusivity keys](ExclusiveKey) in `keys`, held by running agents.
-fn held(keys: &[&str]) -> HashSet<String> {
+fn held(keys: &[&str]) -> BTreeSet<String> {
     keys.iter().map(|key| key.to_string()).collect()
 }
 

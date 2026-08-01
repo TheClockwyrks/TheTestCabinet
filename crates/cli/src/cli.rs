@@ -196,11 +196,12 @@ pub struct RunArgs {
 }
 
 /// Arguments for `tcab gg-replay` — a local, debug-only reconstruction of a gg run from its
-/// captured [replay record](test_cabinet_core::gg::GgReplayRecordV1).
+/// captured [replay record](test_cabinet_core::gg_replay::GgReplayRecord).
 #[derive(Debug, Args)]
 pub struct GgReplayArgs {
-    /// Path to the JSON replay record to reconstruct — a format-v1 record, which is what
-    /// `GET /runs/{id}/replay` serves for any run captured before format v2.
+    /// Path to the JSON replay record to reconstruct. Either format: a v1 record — what
+    /// `GET /runs/{id}/replay` serves for any run captured before format v2 — is upgraded as it is
+    /// read.
     #[arg(long, value_name = "FILE")]
     pub record: std::path::PathBuf,
 

@@ -6,7 +6,7 @@ use std::time::Instant;
 use serde_json::json;
 use tempfile::TempDir;
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use super::*;
 use crate::archive::ArchiveRuntime;
@@ -5478,10 +5478,10 @@ async fn subagents_recurse_within_the_depth_cap() {
     let events = sink.events();
     let spawns = agent_spawns(&events);
     assert_eq!(spawns.len(), 3, "root, child, grandchild");
-    let depths: HashSet<u64> = spawns.iter().map(|(_, _, _, depth, _)| *depth).collect();
+    let depths: BTreeSet<u64> = spawns.iter().map(|(_, _, _, depth, _)| *depth).collect();
     assert_eq!(
         depths,
-        HashSet::from([0, 1, 2]),
+        BTreeSet::from([0, 1, 2]),
         "one agent at each depth 0..=2"
     );
 
@@ -8608,7 +8608,7 @@ async fn replay_capture_interleaves_a_multi_agent_run() {
     let entries = journal_entries(&lines);
 
     // Both the root and the spawned subagent (`agent-0`) recorded entries.
-    let agents: std::collections::HashSet<&str> = entries
+    let agents: std::collections::BTreeSet<&str> = entries
         .iter()
         .map(|entry| entry.agent_id.as_str())
         .collect();

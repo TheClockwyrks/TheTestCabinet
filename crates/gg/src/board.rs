@@ -100,7 +100,7 @@
 //! [`disabled`](BoardRuntime::disabled) runtime, so there are no board tools, no prompt
 //! text, no context block, no telemetry, and no auto-dispatch — the feature vanishes.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, Mutex};
 
@@ -788,7 +788,7 @@ pub struct BoardStore {
     /// the issues on the board, so removing an issue never lets its id be handed out a second time —
     /// an id already quoted in a log, a brief, or an agent's name must not come back meaning
     /// something else.
-    next_number: HashMap<String, u32>,
+    next_number: BTreeMap<String, u32>,
 }
 
 impl BoardStore {
@@ -806,7 +806,7 @@ impl BoardStore {
             caps,
             epics: Vec::new(),
             issues: Vec::new(),
-            next_number: HashMap::new(),
+            next_number: BTreeMap::new(),
         }
     }
 

@@ -27,7 +27,7 @@
 //! The registry is shared (`Arc`) by the orchestrator across every agent in the run,
 //! which is what makes point 2's "any agent using the same model" scope real.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use test_cabinet_core::MODALITY_IMAGE;
@@ -45,7 +45,7 @@ pub struct VisionSupport {
     declared: BTreeMap<String, Vec<String>>,
     /// Model ids a provider refused an image for. Guarded rather than atomic because
     /// the set is keyed by model id and written at most once per model per run.
-    denied: Mutex<HashSet<String>>,
+    denied: Mutex<BTreeSet<String>>,
 }
 
 impl VisionSupport {
@@ -53,7 +53,7 @@ impl VisionSupport {
     pub fn new(declared: BTreeMap<String, Vec<String>>) -> Self {
         Self {
             declared,
-            denied: Mutex::new(HashSet::new()),
+            denied: Mutex::new(BTreeSet::new()),
         }
     }
 
@@ -103,7 +103,7 @@ impl VisionSupport {
         let mut denied = match self.denied.lock() {
             Ok(denied) => denied,
             // A poisoned lock means another thread panicked mid-update; the set is a
-            // plain `HashSet` with no invariant to corrupt, so recovering it is safe
+            // plain `BTreeSet` with no invariant to corrupt, so recovering it is safe
             // and strictly better than panicking a second time and losing the run.
             Err(poisoned) => poisoned.into_inner(),
         };

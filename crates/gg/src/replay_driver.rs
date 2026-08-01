@@ -1,28 +1,33 @@
 //! The gg **replay driver**: re-running a session from its
-//! [replay record](test_cabinet_core::gg::GgReplayRecordV1) so it reconstructs
+//! [replay record](GgReplayRecord) so it reconstructs
 //! [exactly](https://docs.testcabinet.ai/gg/replay/), deterministically, with **no live model and
 //! no real tools**.
 //!
-//! Replay capture (`crate::replay`) pins a run's two non-deterministic inputs — each agent's model
-//! I/O and every tool result — into a record. This driver plays that record back: it replaces the
-//! live model with the agent's recorded responses, in order, and tool dispatch with its recorded
-//! outcomes instead of executing anything, then walks the run turn by turn, re-emitting the
-//! telemetry the run produced and yielding the per-agent
-//! [step-through](test_cabinet_core::gg::GgReplayStep) list a developer walks.
+//! Replay capture (`crate::replay`) pins a run's non-deterministic inputs — each agent's model I/O,
+//! every tool result, gg's own subprocesses, the turn-boundary probes — into a record. This driver
+//! plays that record back: it draws each agent's inputs from the
+//! [shared index](crate::replay_inputs) instead of from a provider and a shell, then walks the run
+//! turn by turn, re-emitting the telemetry the run produced and yielding the per-agent
+//! [step-through](GgReplayStep) list a developer walks.
 //!
 //! # Why a dedicated walk, not the production orchestrator
 //!
 //! The record pins exactly what a faithful re-run needs, and the interleaving of concurrent agents
 //! is recoverable by ordering the entries on their globally-monotonic
-//! [`seq`](test_cabinet_core::gg::GgReplayEntryV1::seq). Re-invoking the real
+//! [`seq`](test_cabinet_core::gg_replay::GgReplayEntry::seq). Re-invoking the real
 //! orchestrator (`crate::agent`) would instead drive the scheduler, git, and worktree machinery for
 //! real — spawning child tasks, adding/merging worktrees — which is precisely the *side-effecting,
-//! non-deterministic* behavior replay exists to avoid. So the driver reconstructs the run from the
-//! record directly: it drives each agent's turn loop from the recorded queues, reproducing the same
-//! per-turn telemetry the real loop emits ([`TurnStarted`](test_cabinet_core::gg::GgTelemetryKind::TurnStarted),
-//! usage, the assistant message, and each tool call's [`ToolCall`](test_cabinet_core::gg::GgTelemetryKind::ToolCall)
-//! /[`ToolResult`](test_cabinet_core::gg::GgTelemetryKind::ToolResult) pair) and interleaving the
-//! agents in recorded `seq` order.
+//! non-deterministic* behavior this passive reconstruction exists to avoid. So the driver
+//! reconstructs the run from the record directly: it drives each agent's turn loop from the recorded
+//! queues, reproducing the same per-turn telemetry the real loop emits
+//! ([`TurnStarted`](GgTelemetryKind::TurnStarted), usage, the assistant message, and each tool
+//! call's [`ToolCall`](GgTelemetryKind::ToolCall)/[`ToolResult`](GgTelemetryKind::ToolResult) pair)
+//! and interleaving the agents in recorded `seq` order.
+//!
+//! That is also why the driver never [awaits its turn](crate::replay_inputs::ReplayInputs::await_turn):
+//! it *is* the global order, walking one entry at a time. The barrier exists for a **driving**
+//! playback, whose agents run concurrently on the real loop and must be constrained back into the
+//! recorded interleaving.
 //!
 //! # Completeness is proven, not guessed
 //!
@@ -32,6 +37,13 @@
 //! tool result has no model turn that called it, the reconstruction stops with a precise
 //! [`ReplayError`] naming the agent, the `seq`, and the tool — the exact gap the record failed to
 //! pin. A record that reconstructs without error is *provably complete* for the run it captured.
+//!
+//! # What a v1 record does here
+//!
+//! Nothing special, and deliberately: [`GgReplayRecord`] **upgrades** a v1 body to the v2 shape as
+//! it deserializes, so the driver sees one format. A pre-v2 record simply carries none of the four
+//! input categories v1 had no seam for — no model errors, no subprocesses, no probes — and
+//! reconstructs from the two it does have.
 //!
 //! # A program's calls are attributed by their id prefix, not matched to a request
 //!
@@ -43,7 +55,7 @@
 //! would be reported as an [`ExtraToolResult`](ReplayError::ExtraToolResult), which is exactly what
 //! a code-mode record did before this rule existed.
 //!
-//! So in a run the record's own [capability set](GgReplayRecordV1::capability_set) says was in code
+//! So in a run the record's own [capability set](GgReplayRecord::capability_set) says was in code
 //! mode, a recorded call whose id carries the sandbox's synthetic `program:{ordinal}:{tool}` prefix
 //! is attributed to the open turn's *program*: it does not consume one of the turn's requested
 //! calls, and it is not matched on `id` or `name`, because there is no requested call for it to
@@ -70,157 +82,57 @@
 //! and therefore what makes two live runs comparable. It is not what makes this reconstruction
 //! faithful.
 
-use std::collections::HashMap;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
+use std::sync::Arc;
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_RESPONSES_AS_CODE, GgReplayEntryKindV1, GgReplayEntryV1, GgReplayRecordV1,
-    GgReplayStep, GgReplayToolStep, GgTelemetryKind,
+    CAPABILITY_RESPONSES_AS_CODE, GgReplayStep, GgReplayToolStep, GgTelemetryKind,
 };
+use test_cabinet_core::gg_replay::{GgReplayEntry, GgReplayEntryKind, GgReplayRecord};
 use test_cabinet_core::metrics::TokenCounts;
 
 use crate::model::{ModelResponse, ToolCall};
+use crate::replay_inputs::{RecordedModelOutcome, ReplayInputs};
 use crate::sandbox::PROGRAM_CALL_ID_PREFIX;
 use crate::telemetry::{Emitter, EventSink, StdoutSink};
-use crate::tools::ToolOutcome;
 
-/// A divergence found while reconstructing a run from its [replay record](GgReplayRecordV1) — the gap
-/// replay exists to expose.
-///
-/// Every variant means the record is **not** a faithful, complete capture of the run: an input a
-/// turn needed was not pinned, or the pinned inputs do not line up with the turn structure. Rather
-/// than silently guess, the driver stops and reports exactly which agent, turn, and tool the
-/// reconstruction diverged at.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum ReplayError {
-    /// A turn's model response requested a tool call for which the record holds **no** outcome — the
-    /// capture is incomplete (truncated mid-turn, or a tool result was never recorded).
-    #[error(
-        "replay gap: agent `{agent_id}` turn (seq {seq}) called `{tool}` (id `{call_id}`) but the \
-         record has no recorded outcome for it — the capture is incomplete"
-    )]
-    MissingToolResult {
-        /// The agent whose turn is missing an outcome.
-        agent_id: String,
-        /// The `seq` of that turn's model call.
-        seq: u64,
-        /// The name of the tool whose outcome is missing.
-        tool: String,
-        /// The id of the unanswered tool call.
-        call_id: String,
-    },
-
-    /// A recorded tool result exists for an agent that has **no open model turn** — the record is
-    /// missing the model call that would have requested it, or (in
-    /// [code mode](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)) the turn whose program
-    /// composed it.
-    #[error(
-        "replay divergence: agent `{agent_id}` (seq {seq}) has a recorded result for `{tool}` with \
-         no open model turn — the record is missing the model call that requested it"
-    )]
-    ToolResultWithoutTurn {
-        /// The agent the orphan result is tagged with.
-        agent_id: String,
-        /// The `seq` of the orphan tool-result entry.
-        seq: u64,
-        /// The tool the orphan result is for.
-        tool: String,
-    },
-
-    /// An agent recorded **more** native tool results in a turn than its model response requested
-    /// calls. (Program-composed results answer no requested call by construction and are attributed
-    /// by their id prefix instead, so they can never raise this.)
-    #[error(
-        "replay divergence: agent `{agent_id}` (seq {seq}) recorded more tool results (`{tool}`) \
-         than its turn requested calls"
-    )]
-    ExtraToolResult {
-        /// The agent the surplus result is tagged with.
-        agent_id: String,
-        /// The `seq` of the surplus tool-result entry.
-        seq: u64,
-        /// The tool the surplus result is for.
-        tool: String,
-    },
-
-    /// A recorded **native** tool result does not match the call the model made at that point in the
-    /// turn — the record's tool results are misaligned with its model I/O.
-    #[error(
-        "replay divergence: agent `{agent_id}` (seq {seq}) recorded a result for `{recorded}` but \
-         the model called `{expected}` at this point"
-    )]
-    ToolResultMismatch {
-        /// The agent whose turn diverged.
-        agent_id: String,
-        /// The `seq` of the mismatched tool-result entry.
-        seq: u64,
-        /// The tool call the model actually made next.
-        expected: String,
-        /// The tool the recorded result claims to answer.
-        recorded: String,
-    },
-
-    /// The record scheduled a model turn for an agent but held no recorded response for it (the
-    /// model-I/O queue underflowed) — a structurally broken record.
-    #[error(
-        "replay: agent `{agent_id}` (seq {seq}) has no recorded model response for a turn the \
-         record scheduled"
-    )]
-    MissingModelResponse {
-        /// The agent whose model response is missing.
-        agent_id: String,
-        /// The `seq` of the model-I/O entry that could not be replayed.
-        seq: u64,
-    },
-
-    /// A record entry's payload did not deserialize into the gg type a replay feeds the loop.
-    #[error("replay: agent `{agent_id}` entry (seq {seq}) is malformed: {detail}")]
-    MalformedEntry {
-        /// The agent the malformed entry is tagged with.
-        agent_id: String,
-        /// The `seq` of the malformed entry.
-        seq: u64,
-        /// What failed to parse.
-        detail: String,
-    },
-}
+pub use crate::replay_inputs::ReplayError;
 
 /// The result of [reconstructing](reconstruct) a run from its replay record.
 ///
-/// Carries the ordered, per-agent [step-through](GgReplayStep) list the UI consumes, alongside a few
-/// totals for the debug entrypoint's summary line.
+/// Carries the ordered, per-agent [step-through](GgReplayStep) list the debug entrypoint writes out,
+/// alongside a few totals for its summary line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReplayReconstruction {
     /// The session id of the reconstructed run (the record's).
     pub session_id: String,
-    /// The reconstructed steps, in global `seq` order across the whole agent tree — the same
-    /// derivation [`GgReplayRecordV1::steps`] produces, but driven through the replay seams and
-    /// validated for completeness.
+    /// The reconstructed steps, in global `seq` order across the whole agent tree — driven through
+    /// the replay seams and validated for completeness.
     pub steps: Vec<GgReplayStep>,
     /// How many distinct agents the run's record spans.
     pub agent_count: usize,
     /// How many model turns were replayed across all agents.
     pub model_calls: usize,
+    /// How many model calls the record captured as **failed** — the calls the loop branched on
+    /// rather than answered from. Zero for every v1 record, which had no seam for them.
+    pub model_errors: usize,
     /// How many tool results were replayed across all agents.
     pub tool_calls: usize,
+    /// How many of gg's own subprocesses — `sh -c` commands and `git` invocations — the record
+    /// pinned. They produce no step: they are inputs a *driving* playback stubs, and here they are
+    /// walked only to prove the record accounts for them.
+    pub commands: usize,
 }
 
 /// An agent's live reconstruction state during the [walk](reconstruct_with_sink).
 ///
-/// The two queues are plain [`VecDeque`]s rather than dressed-up "seams". They were once a
-/// `ModelClient` and a matching invoker, but the walk pops from them directly — the client's
-/// `complete` was never called by anything — so the trait impl was a second, competing notion of a
-/// replay seam that no code path reached. The real ones belong to a *driving* playback, which
-/// re-runs the production loop rather than reconstructing around it.
+/// Only the turn-shape bookkeeping lives here now. The recorded inputs themselves — parsed,
+/// per-agent, per-category — belong to the [shared index](ReplayInputs), so this driver and a
+/// driving playback read one record exactly one way.
 struct AgentReplay {
     /// The agent-scoped emitter its reconstructed telemetry streams on.
     emitter: Emitter,
-    /// The agent's recorded responses, in `seq` order, consumed one per turn.
-    responses: VecDeque<ModelResponse>,
-    /// The agent's recorded `(call, outcome)` pairs, in `seq` order, consumed as the turn's calls
-    /// are serviced.
-    results: VecDeque<(ToolCall, ToolOutcome)>,
     /// The turn currently awaiting tool results, if any.
     pending: Option<PendingTurn>,
 }
@@ -247,23 +159,30 @@ struct PendingTurn {
     code_turn: bool,
 }
 
-/// Reconstruct a run from its [replay record](GgReplayRecordV1), streaming the reconstructed telemetry
+/// Reconstruct a run from its [replay record](GgReplayRecord), streaming the reconstructed telemetry
 /// to **stdout** (the same NDJSON channel a live gg run emits on).
 ///
 /// Returns the per-agent [step-through](GgReplayStep) list on success, or the precise
 /// [`ReplayError`] the reconstruction diverged at — the gap the record failed to pin. The
 /// reconstruction is fully deterministic: the same record always produces the same steps and the
 /// same telemetry (modulo the emitter's wall-clock timestamps), with no live model or tool calls.
-pub fn reconstruct(record: &GgReplayRecordV1) -> Result<ReplayReconstruction, ReplayError> {
+pub fn reconstruct(
+    record: impl Into<Arc<GgReplayRecord>>,
+) -> Result<ReplayReconstruction, ReplayError> {
     reconstruct_with_sink(record, Box::new(StdoutSink))
 }
 
 /// [`reconstruct`], but writing the reconstructed telemetry to an arbitrary `sink` — so a test can
 /// capture the exact stream the reconstruction re-emits.
 pub(crate) fn reconstruct_with_sink(
-    record: &GgReplayRecordV1,
+    record: impl Into<Arc<GgReplayRecord>>,
     sink: Box<dyn EventSink>,
 ) -> Result<ReplayReconstruction, ReplayError> {
+    let record: Arc<GgReplayRecord> = record.into();
+
+    // The index parses every pinned payload up front, so a malformed or dangling entry is reported
+    // before a single telemetry event is emitted for a session that cannot finish.
+    let inputs = ReplayInputs::new(Arc::clone(&record))?;
     let base = Emitter::with_sink(Some(record.session_id.clone()), sink);
 
     // Whether the recorded run answered its turns with **programs** rather than with native tool
@@ -275,74 +194,51 @@ pub(crate) fn reconstruct_with_sink(
         .is_enabled(CAPABILITY_RESPONSES_AS_CODE);
 
     // The entries in true recording order — sorting on the globally-monotonic `seq` recovers the
-    // exact interleaving of concurrently-running agents.
-    let mut order: Vec<&GgReplayEntryV1> = record.entries.iter().collect();
+    // exact interleaving of concurrently-running agents. This walk *is* the barrier: each entry is
+    // served in seq order, so no agent can read ahead of another.
+    let mut order: Vec<&GgReplayEntry> = record.entries.iter().collect();
     order.sort_by_key(|entry| entry.seq);
 
-    // Pre-pass: build each agent's replay seams (parsing the pinned payloads into the gg types a
-    // replay feeds the loop), so a malformed entry is reported before any telemetry is emitted.
-    let mut responses: HashMap<String, Vec<ModelResponse>> = HashMap::new();
-    let mut results: HashMap<String, Vec<(ToolCall, ToolOutcome)>> = HashMap::new();
-    let mut agent_order: Vec<String> = Vec::new();
-    for entry in &order {
-        if !responses.contains_key(&entry.agent_id) {
-            agent_order.push(entry.agent_id.clone());
-            responses.insert(entry.agent_id.clone(), Vec::new());
-            results.insert(entry.agent_id.clone(), Vec::new());
-        }
-        match &entry.kind {
-            GgReplayEntryKindV1::ModelIo { response, .. } => {
-                let parsed = parse::<ModelResponse>(entry, response, "model response")?;
-                responses
-                    .get_mut(&entry.agent_id)
-                    .expect("agent bucket")
-                    .push(parsed);
-            }
-            GgReplayEntryKindV1::ToolResult { call, outcome } => {
-                let call = parse::<ToolCall>(entry, call, "tool call")?;
-                let outcome = parse::<ToolOutcome>(entry, outcome, "tool outcome")?;
-                results
-                    .get_mut(&entry.agent_id)
-                    .expect("agent bucket")
-                    .push((call, outcome));
-            }
-        }
-    }
-
-    let mut states: HashMap<String, AgentReplay> = HashMap::new();
-    for agent_id in &agent_order {
-        states.insert(
-            agent_id.clone(),
-            AgentReplay {
-                emitter: base.for_agent(agent_id.clone(), None),
-                responses: responses.remove(agent_id).unwrap_or_default().into(),
-                results: results.remove(agent_id).unwrap_or_default().into(),
-                pending: None,
-            },
-        );
-    }
+    let mut states: BTreeMap<&str, AgentReplay> = inputs
+        .agent_ids()
+        .iter()
+        .map(|agent_id| {
+            (
+                agent_id.as_str(),
+                AgentReplay {
+                    emitter: base.for_agent(agent_id.clone(), None),
+                    pending: None,
+                },
+            )
+        })
+        .collect();
 
     base.emit(GgTelemetryKind::Log {
         level: "info".to_string(),
         message: format!(
             "replay: reconstructing session `{}` — {} agent(s), {} recorded input(s).",
             record.session_id,
-            agent_order.len(),
+            inputs.agent_ids().len(),
             order.len(),
         ),
     });
 
-    // Walk the entries in `seq` order, driving each agent's turn through its replay seams and
-    // re-emitting the per-turn telemetry the real loop produced.
+    // Walk the entries in `seq` order, drawing each one through the shared index and re-emitting the
+    // per-turn telemetry the real loop produced.
     let mut steps: Vec<GgReplayStep> = Vec::new();
     let mut model_calls = 0usize;
+    let mut model_errors = 0usize;
     let mut tool_calls = 0usize;
+    let mut commands = 0usize;
     for entry in &order {
-        let state = states.get_mut(&entry.agent_id).expect("agent state");
+        let agent_id = entry.agent_id.as_str();
+        let state = states.get_mut(agent_id).expect("agent state");
         match &entry.kind {
-            GgReplayEntryKindV1::ModelIo { request, .. } => {
-                // A new model turn must not open while the previous one still has calls awaiting a
-                // recorded outcome — that would be a truncated capture.
+            GgReplayEntryKind::ModelIo { .. } | GgReplayEntryKind::ModelError { .. } => {
+                // A new model call must not be issued while the previous turn still has calls
+                // awaiting a recorded outcome — that would be a truncated capture. It holds for a
+                // *failed* call too: the loop only asks again once the turn it is on is finished
+                // with its tools.
                 if let Some(pending) = &state.pending
                     && let Some(next) = pending.remaining.front()
                 {
@@ -354,13 +250,27 @@ pub(crate) fn reconstruct_with_sink(
                     });
                 }
 
-                // Pull this turn's response from the model seam (in place of a live model call).
-                let response = state.responses.pop_front().ok_or_else(|| {
-                    ReplayError::MissingModelResponse {
-                        agent_id: entry.agent_id.clone(),
-                        seq: entry.seq,
+                // Pull this call from the model seam (in place of a live provider call).
+                let call = inputs.next_model(agent_id)?;
+                let response = match call.outcome {
+                    RecordedModelOutcome::Response(response) => *response,
+                    RecordedModelOutcome::Failed(error) => {
+                        // A failed call opens no turn: the loop recovered (a vision refusal strips
+                        // images and re-asks, and the retry is its own recorded call) or gave up.
+                        // Which arm it took is loop behaviour a *driving* playback re-runs; a
+                        // passive reconstruction reports the failure the record pinned and moves on
+                        // rather than inventing the branch.
+                        state.emitter.emit(GgTelemetryKind::Log {
+                            level: "error".to_string(),
+                            message: format!(
+                                "replay: the recorded model call at seq {} failed ({:?}): {}",
+                                entry.seq, error.kind, error.message,
+                            ),
+                        });
+                        model_errors += 1;
+                        continue;
                     }
-                })?;
+                };
 
                 // Re-emit exactly what the real loop emits at a turn: the turn marker, usage (under
                 // the same "unreported is silent" guard), and the assistant message when present.
@@ -372,13 +282,14 @@ pub(crate) fn reconstruct_with_sink(
                         .emit(GgTelemetryKind::AssistantMessage { text: text.clone() });
                 }
 
-                // Open this turn's step: what the agent saw (the recorded request) and did (the
-                // response, re-serialized from the seam so `did` flows through the model seam).
+                // Open this turn's step: what the agent saw (the recorded request, resolved out of
+                // the message pool) and did (the response, re-serialized from the seam so `did`
+                // flows through the model seam).
                 let step_index = steps.len();
                 steps.push(GgReplayStep {
                     agent_id: entry.agent_id.clone(),
                     seq: entry.seq,
-                    saw: request.clone(),
+                    saw: inputs.request_view(&call.request),
                     did: serde_json::to_value(&response).unwrap_or(Value::Null),
                     tool_results: Vec::new(),
                 });
@@ -398,17 +309,10 @@ pub(crate) fn reconstruct_with_sink(
                 });
                 model_calls += 1;
             }
-            GgReplayEntryKindV1::ToolResult { .. } => {
+            GgReplayEntryKind::ToolResult { .. } => {
                 // Pull the recorded call + outcome from the tool seam (in place of dispatching).
-                let (call, outcome) = state.results.pop_front().ok_or_else(|| {
-                    // The seam was built from exactly these entries, so this is unreachable in
-                    // practice; report it as a structural gap rather than panic.
-                    ReplayError::ToolResultWithoutTurn {
-                        agent_id: entry.agent_id.clone(),
-                        seq: entry.seq,
-                        tool: "<unknown>".to_string(),
-                    }
-                })?;
+                let served = inputs.next_tool(agent_id)?;
+                let (call, outcome) = (served.call, served.outcome);
 
                 let Some(pending) = state.pending.as_mut() else {
                     return Err(ReplayError::ToolResultWithoutTurn {
@@ -465,12 +369,43 @@ pub(crate) fn reconstruct_with_sink(
                     });
                 tool_calls += 1;
             }
+            // gg's own subprocesses are drawn through their seams so the record is proven to
+            // account for every one of them, but they open no step and re-emit nothing: neither
+            // path produced telemetry of its own in the run being reconstructed.
+            GgReplayEntryKind::Shell { .. } => {
+                inputs.next_shell(agent_id)?;
+                commands += 1;
+            }
+            GgReplayEntryKind::Git { .. } => {
+                inputs.next_git(agent_id)?;
+                commands += 1;
+            }
+            GgReplayEntryKind::Clock { .. } => {
+                inputs.next_clock(agent_id)?;
+            }
+            GgReplayEntryKind::CancelProbe { .. } => {
+                let probe = inputs.next_probe(agent_id)?;
+                // The one probe reading worth saying out loud: it is why the session stopped.
+                if probe.canceled {
+                    state.emitter.emit(GgTelemetryKind::Log {
+                        level: "warn".to_string(),
+                        message: format!(
+                            "replay: the recorded run was canceled at seq {}.",
+                            entry.seq,
+                        ),
+                    });
+                }
+            }
+            // Not an input: a prompt frame is gg's record of the window it *built* for the turn
+            // just sent, which the console renders from the record directly.
+            GgReplayEntryKind::PromptFrame { .. } => {}
         }
     }
 
     // Any turn still holding an unanswered call at the end of the record is a truncated capture.
-    for agent_id in &agent_order {
-        let state = states.get(agent_id).expect("agent state");
+    // Swept in first-appearance order so the reported gap is the earliest agent's.
+    for agent_id in inputs.agent_ids() {
+        let state = states.get(agent_id.as_str()).expect("agent state");
         if let Some(pending) = &state.pending
             && let Some(next) = pending.remaining.front()
         {
@@ -491,30 +426,18 @@ pub(crate) fn reconstruct_with_sink(
             steps.len(),
             model_calls,
             tool_calls,
-            agent_order.len(),
+            inputs.agent_ids().len(),
         ),
     });
 
     Ok(ReplayReconstruction {
         session_id: record.session_id.clone(),
         steps,
-        agent_count: agent_order.len(),
+        agent_count: inputs.agent_ids().len(),
         model_calls,
+        model_errors,
         tool_calls,
-    })
-}
-
-/// Deserialize a record entry's JSON payload into the gg type `T` a replay feeds the loop, turning a
-/// parse failure into a located [`ReplayError::MalformedEntry`].
-fn parse<T: serde::de::DeserializeOwned>(
-    entry: &GgReplayEntryV1,
-    value: &Value,
-    what: &str,
-) -> Result<T, ReplayError> {
-    serde_json::from_value(value.clone()).map_err(|err| ReplayError::MalformedEntry {
-        agent_id: entry.agent_id.clone(),
-        seq: entry.seq,
-        detail: format!("{what}: {err}"),
+        commands,
     })
 }
 

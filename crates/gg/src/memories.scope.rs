@@ -9,7 +9,7 @@
 //! about *whose it is*, which is the whole of what changed when one store could be curated by
 //! several agents at once.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
@@ -38,7 +38,7 @@ type BoundInstance = (Arc<Mutex<MemoryStore>>, Arc<str>);
 pub struct MemoryRegistry {
     /// The store bound to each profile name, with its [module id](crate::modules::ModuleIdMint),
     /// created lazily.
-    entries: Mutex<HashMap<String, BoundInstance>>,
+    entries: Mutex<BTreeMap<String, BoundInstance>>,
 }
 
 impl MemoryRegistry {
@@ -247,7 +247,7 @@ pub(super) fn notice_entries(
     strategy: MemoryStrategy,
 ) -> Vec<MemoryNoticeEntry> {
     let mut order: Vec<String> = Vec::new();
-    let mut latest: HashMap<String, MemoryNoticeEntry> = HashMap::new();
+    let mut latest: BTreeMap<String, MemoryNoticeEntry> = BTreeMap::new();
     for entry in fresh {
         if entry.author == holder {
             continue;

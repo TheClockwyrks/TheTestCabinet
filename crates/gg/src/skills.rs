@@ -28,7 +28,7 @@
 //! ([`SkillsRuntime::disabled`]), so there is no `read_skill` tool, no prompt listing, and
 //! no telemetry — the feature vanishes.
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -200,7 +200,7 @@ pub struct SkillsRuntime {
     library: Arc<SkillLibrary>,
     /// The names of skills the model has read this session — behind a lock so linked holders of one
     /// window agree on what is already pinned in it.
-    read: Arc<Mutex<HashSet<String>>>,
+    read: Arc<Mutex<BTreeSet<String>>>,
     /// The [identity](crate::modules::ModuleIdMint) of that read set. The *library* is immutable
     /// and shared by everything, so it identifies nothing; what one holder can be said to hold, and
     /// another to share, is the promise about a window that the read set is.
@@ -240,7 +240,7 @@ impl SkillsRuntime {
             enabled: true,
             ownership: Ownership::Owned,
             library,
-            read: Arc::new(Mutex::new(HashSet::new())),
+            read: Arc::new(Mutex::new(BTreeSet::new())),
             id: ids.next(ModuleKind::Skills),
             ids: Arc::clone(ids),
             origin: GgModuleOrigin::Created,

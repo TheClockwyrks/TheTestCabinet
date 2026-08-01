@@ -44,7 +44,7 @@
 //! agent at [`max_depth`](SubagentConfig::max_depth) is refused, not queued); see
 //! [`crate::agent`].
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
@@ -252,10 +252,10 @@ pub struct ParentWait {
 /// The guarded interior of a [`ParentWait`].
 struct ParentWaitInner {
     /// Ids of children that have finished (whether or not the parent has collected them yet).
-    finished: HashSet<String>,
+    finished: BTreeSet<String>,
     /// While the parent is blocked in `wait_for_subagents`, the still-outstanding subset of the
     /// awaited ids; `None` when the parent is not currently waiting.
-    waiting_on: Option<HashSet<String>>,
+    waiting_on: Option<BTreeSet<String>>,
     /// The parent's blocked scheduler waiter, set while it is waiting so the last child to finish
     /// can mark it ready.
     token: Option<WaiterToken>,
@@ -266,7 +266,7 @@ impl ParentWait {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(ParentWaitInner {
-                finished: HashSet::new(),
+                finished: BTreeSet::new(),
                 waiting_on: None,
                 token: None,
             }),
@@ -311,11 +311,11 @@ impl ParentWait {
     pub fn begin_wait(
         &self,
         scheduler: &Scheduler,
-        awaited: &HashSet<String>,
+        awaited: &BTreeSet<String>,
         key: ExclusiveKey<'_>,
     ) -> Option<oneshot::Receiver<()>> {
         let mut inner = self.inner.lock().expect("parent wait lock");
-        let outstanding: HashSet<String> = awaited
+        let outstanding: BTreeSet<String> = awaited
             .iter()
             .filter(|id| !inner.finished.contains(*id))
             .cloned()
@@ -365,7 +365,7 @@ struct SchedulerState {
     /// The [exclusivity keys](ExclusiveKey) currently held by running agents — at most one running
     /// agent per key, which is what caps a persistent profile at one instance. A slot taken under no
     /// key adds nothing here.
-    held: HashSet<String>,
+    held: BTreeSet<String>,
     /// The next FCFS ticket to hand out.
     next_ticket: u64,
     /// Queued waiters (fresh and blocked), in arrival order.
@@ -391,7 +391,7 @@ impl Scheduler {
             state: Mutex::new(SchedulerState {
                 max_parallel: max_parallel.max(1),
                 running: 0,
-                held: HashSet::new(),
+                held: BTreeSet::new(),
                 next_ticket: 0,
                 waiters: Vec::new(),
             }),
@@ -631,7 +631,7 @@ pub fn select_grant_index(
     waiters: &[WaiterView<'_>],
     running: usize,
     max: usize,
-    held: &HashSet<String>,
+    held: &BTreeSet<String>,
 ) -> Option<usize> {
     if running >= max {
         return None;

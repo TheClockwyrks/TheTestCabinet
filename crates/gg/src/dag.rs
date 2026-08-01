@@ -15,7 +15,7 @@
 //! caller to refuse the mutation with its own error), or `None` when the edges are all
 //! acyclic.
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 /// A node of a blocked-by DAG: it has a stable id and a set of ids it is blocked by.
 ///
@@ -35,7 +35,7 @@ pub trait DagNode {
 /// somehow inconsistent (a defensive guard; the stores keep it acyclic).
 pub fn depends_on<N: DagNode>(nodes: &[N], from: &str, target: &str) -> bool {
     let mut stack: Vec<&str> = vec![from];
-    let mut seen: HashSet<&str> = HashSet::new();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
     while let Some(current) = stack.pop() {
         if current == target {
             return true;

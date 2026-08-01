@@ -36,7 +36,7 @@
 //! **run** ended. Folding that event would report a child's ceiling as the run's outcome, so the
 //! binary records the root loop's own breach and this module never looks at the event.
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::sync::Mutex;
 
 use test_cabinet_core::gg::{
@@ -103,9 +103,9 @@ struct SummaryState {
     /// tool-calling until set.
     execution_mode: Option<String>,
     /// Every distinct issue id observed on the board.
-    issues_created: HashSet<String>,
+    issues_created: BTreeSet<String>,
     /// Every distinct issue id observed at [`Done`](GgIssueStatus::Done) on the board.
-    issues_completed: HashSet<String>,
+    issues_completed: BTreeSet<String>,
     /// One entry per [`SlotUsage`](GgTelemetryKind::SlotUsage) rollup, captured in emission order.
     slot_costs: Vec<GgSlotCost>,
     /// The [effective toolset](GgSessionSummary::effective_tools) — the exact tool names offered to

@@ -81,7 +81,7 @@
 //! for any other reason is a *run outcome* recorded in the telemetry, not a process
 //! failure, and exits `0`.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -1100,12 +1100,12 @@ struct Orchestrator {
     /// issue reaches a terminal state, as its branch is merged back or discarded. Empty when git
     /// isolation is unavailable, in which case issues share the main tree. Guarded so
     /// concurrently-dispatching agents can record.
-    issue_worktrees: Mutex<HashMap<String, Worktree>>,
+    issue_worktrees: Mutex<BTreeMap<String, Worktree>>,
     /// The [review verdicts](ReviewRecord) each [issue](crate::board) has already collected, keyed
     /// by issue id and in the order they were rendered. Every round's reviewers are shown the
     /// history, so a second reviewer knows what a first one already asked for and a re-review can
     /// tell whether its own earlier items were addressed.
-    issue_reviews: Mutex<HashMap<String, Vec<ReviewRecord>>>,
+    issue_reviews: Mutex<BTreeMap<String, Vec<ReviewRecord>>>,
     /// The run's **single, global** [project-management board](crate::board) — one
     /// [`BoardRuntime`] shared by every agent (each agent's board tools mutate this same store),
     /// and the queue the [dispatcher](Self::pump_dispatch) reads. [`disabled`](BoardRuntime::disabled)
@@ -1146,7 +1146,12 @@ struct Orchestrator {
     /// on that issue; when the issue reaches a terminal state they are all
     /// [marked ready](Scheduler::mark_ready). Guarded so a completing agent and a fresh waiter can
     /// touch it concurrently.
-    issue_waits: Mutex<HashMap<String, Vec<WaiterToken>>>,
+    ///
+    /// **Ordered**, and that is load-bearing rather than tidy:
+    /// [`wake_ready_issue_waiters`](Self::wake_ready_issue_waiters) walks the whole table on every
+    /// board change, so under a hash map the order blocked agents were woken in was reseeded every
+    /// process — a per-run coin flip in a harness whose product is a *comparable* recorded run.
+    issue_waits: Mutex<BTreeMap<String, Vec<WaiterToken>>>,
     /// Serializes every **single-step** git operation on the shared repository (worktree
     /// add/remove, a review's diff), since concurrently-finishing agents would otherwise race on
     /// `.git` and the main working tree. See [`merge_lock`](Self::merge_lock) for the multi-step
@@ -1393,8 +1398,8 @@ impl Orchestrator {
                 healing: healing.config,
                 assistant_messages: healing::resolve_assistant_messages(set.root()).mode,
             },
-            issue_worktrees: Mutex::new(HashMap::new()),
-            issue_reviews: Mutex::new(HashMap::new()),
+            issue_worktrees: Mutex::new(BTreeMap::new()),
+            issue_reviews: Mutex::new(BTreeMap::new()),
             board: resolve_board(set, &module_ids),
             memory_registry: MemoryRegistry::new(),
             module_ids,
@@ -1404,7 +1409,7 @@ impl Orchestrator {
             // to parse simply declares nothing and its shell runs as an ordinary agent, which the
             // launch warnings above have already said.
             machines: crate::fsm::machines(set).unwrap_or_default(),
-            issue_waits: Mutex::new(HashMap::new()),
+            issue_waits: Mutex::new(BTreeMap::new()),
             git_lock: tokio::sync::Mutex::new(()),
             merge_lock: tokio::sync::Mutex::new(()),
             config: SubagentConfig::resolve(set),
@@ -1927,6 +1932,10 @@ impl Orchestrator {
 
     /// Wake every agent whose awaited issue has reached a terminal state. Called on any board
     /// change; idempotent (an already-woken issue has no waiters left).
+    ///
+    /// The walk is in issue-id order, because [`issue_waits`](Self::issue_waits) is ordered — see
+    /// the note there. This is the one place gg's own state was walked rather than looked up, and
+    /// so the one place a hasher's seed reached a run's behaviour.
     fn wake_ready_issue_waiters(&self) {
         // Snapshot the awaited ids without holding the waits lock across the board lock.
         let awaited: Vec<String> = {
@@ -3744,7 +3753,7 @@ async fn await_children(
 ) -> Vec<(String, Option<AgentReturn>)> {
     // `begin_wait` returns `None` when every awaited child has already finished, in which case
     // there is nothing to block on.
-    let awaited: HashSet<String> = awaited_ids.iter().cloned().collect();
+    let awaited: BTreeSet<String> = awaited_ids.iter().cloned().collect();
     let exclusive = sub.ctx.exclusive.clone();
     if let Some(rx) = sub
         .ctx
@@ -4672,7 +4681,7 @@ async fn handle_speculate(
     // each attempt's outcome and its diff against the baseline.
     let ids: Vec<String> = fanned.iter().map(|a| a.id.clone()).collect();
     let collected = await_children(sub, emitter, &ids).await;
-    let mut returns: HashMap<String, AgentReturn> = collected
+    let mut returns: BTreeMap<String, AgentReturn> = collected
         .into_iter()
         .filter_map(|(id, ret)| ret.map(|ret| (id, ret)))
         .collect();
@@ -8070,13 +8079,13 @@ fn api_views(registry: &ToolRegistry, role: EndingRole) -> Vec<ApiView> {
         ),
         ("judge", "name the attempt that wins"),
     ];
-    let enabled: HashSet<String> = scope_tools(registry).into_iter().collect();
+    let enabled: BTreeSet<String> = scope_tools(registry).into_iter().collect();
     let ending = match role {
         EndingRole::Standard => "standard",
         EndingRole::Review => "review",
         EndingRole::Judge { .. } => "judge",
     };
-    let present: HashSet<&'static str> = crate::sandbox::catalogue_functions()
+    let present: BTreeSet<&'static str> = crate::sandbox::catalogue_functions()
         .into_iter()
         .filter(|function| match (function.gate, function.ending) {
             (Some(tool), _) => enabled.contains(tool),

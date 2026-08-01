@@ -37,7 +37,7 @@
 //! in its window at all (a program's reads are consumed inside the program), so a persistent code-mode
 //! profile records and restores nothing. Its one-instance-at-a-time half still applies.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use serde_json::json;
@@ -87,7 +87,7 @@ pub struct AgentPersistence {
     /// The open [file views](OpenFileView) recorded against each profile, replaced wholesale each time
     /// one of its instances finishes. Guarded because instances of *different* persistent profiles run
     /// concurrently.
-    views: Mutex<HashMap<String, Vec<OpenFileView>>>,
+    views: Mutex<BTreeMap<String, Vec<OpenFileView>>>,
 }
 
 impl AgentPersistence {
@@ -207,7 +207,7 @@ pub async fn restore_file_views(
     if views.is_empty() {
         return 0;
     }
-    let already_open: HashSet<String> = context
+    let already_open: BTreeSet<String> = context
         .open_file_views()
         .into_iter()
         .map(|open| open.path)

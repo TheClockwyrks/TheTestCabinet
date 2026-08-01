@@ -8,12 +8,13 @@
 //!   scoreable artifact while streaming a first-party
 //!   [`GgTelemetryEvent`](test_cabinet_core::gg::GgTelemetryEvent) stream on stdout; and
 //! - the [`replay_driver`], a **debug-only** native reconstruction: given a
-//!   [`GgReplayRecordV1`](test_cabinet_core::gg::GgReplayRecordV1) captured from a run — every run
-//!   is captured; the [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) capability only escalates
-//!   the [fidelity](test_cabinet_core::gg_replay::GgReplayFidelity) — it re-runs the session's turn
-//!   loop from the pinned model I/O and tool results — no live model, no real tools — reproducing
-//!   the telemetry step for step and yielding the per-agent [step-through](test_cabinet_core::gg::GgReplayStep)
-//!   list a developer walks. It is exposed as a library so `tcab gg-replay` can drive it in-process.
+//!   [`GgReplayRecord`](test_cabinet_core::gg_replay::GgReplayRecord) captured from a run — every
+//!   run is captured; the [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) capability only
+//!   escalates the [fidelity](test_cabinet_core::gg_replay::GgReplayFidelity) — it re-runs the
+//!   session's turn loop from the pinned inputs, drawn through the
+//!   [shared index](replay_inputs) — no live model, no real tools — reproducing the telemetry step
+//!   for step and yielding the per-agent [step-through](test_cabinet_core::gg::GgReplayStep) list a
+//!   developer walks. It is exposed as a library so `tcab gg-replay` can drive it in-process.
 //!
 //! Everything else — the model client, the agent turn loop, tool dispatch, and the telemetry
 //! emitter — is internal to this crate; the binary and the replay driver are the only public
@@ -43,6 +44,7 @@ mod persistence;
 mod prompts;
 mod replay;
 pub mod replay_driver;
+pub mod replay_inputs;
 mod sandbox;
 mod skills;
 mod subagents;

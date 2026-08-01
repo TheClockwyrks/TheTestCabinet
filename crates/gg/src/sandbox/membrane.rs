@@ -50,7 +50,7 @@
 //! behind — the roster, the refusals, the logs, the pictures — and the caps that bound each of
 //! them, all of which are charged to the next turn's context window.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{BTreeSet, VecDeque};
 use std::time::{Duration, Instant};
 
 use super::invoker::{SandboxRefusal, SandboxToolCall, ToolApi};
@@ -101,7 +101,7 @@ pub(crate) struct MembraneState<A: ToolApi> {
     api: A,
     /// The gg tools this run offers. The guest binds only these into a program's scope, so this is
     /// a defensive backstop rather than the primary gate.
-    enabled: HashSet<String>,
+    enabled: BTreeSet<String>,
     /// The linear-memory ceiling, and its record of having denied a growth.
     limiter: MemoryLimiter,
     /// The run's wall-clock budget, consulted before every bridged call. `None` for a run with no

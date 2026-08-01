@@ -11,13 +11,15 @@
 
 use serde_json::json;
 use test_cabinet_core::gg::{
-    CAPABILITY_RESPONSES_AS_CODE, GgCapabilityConfig, GgCapabilitySet, GgReplayEntryKindV1,
-    GgReplayEntryV1, GgReplayRecordV1, GgTelemetryEvent, GgTelemetryKind,
+    CAPABILITY_RESPONSES_AS_CODE, GgCapabilityConfig, GgCapabilitySet, GgTelemetryEvent,
+    GgTelemetryKind,
 };
 
+use super::tests::RecordBuilder;
 use super::*;
 use crate::model::{FinishReason, ToolCall};
 use crate::telemetry::CollectingSink;
+use crate::tools::ToolOutcome;
 
 // ---------------------------------------------------------------------------
 // Record builders — a code turn, hand-built exactly as the run would have recorded it
@@ -82,54 +84,24 @@ fn resp_calling(text: &str, tool: ToolCall) -> ModelResponse {
     }
 }
 
-fn model_io(agent: &str, seq: u64, response: &ModelResponse) -> GgReplayEntryV1 {
-    GgReplayEntryV1 {
-        agent_id: agent.to_string(),
-        seq,
-        kind: GgReplayEntryKindV1::ModelIo {
-            request: json!({ "messages": [{ "role": "user", "content": "leave a note" }], "tools": [] }),
-            response: serde_json::to_value(response).unwrap(),
-        },
-    }
-}
-
-fn tool_result(agent: &str, seq: u64, tool: &ToolCall, outcome: &ToolOutcome) -> GgReplayEntryV1 {
-    GgReplayEntryV1 {
-        agent_id: agent.to_string(),
-        seq,
-        kind: GgReplayEntryKindV1::ToolResult {
-            call: serde_json::to_value(tool).unwrap(),
-            outcome: serde_json::to_value(outcome).unwrap(),
-        },
-    }
-}
-
-/// A record of a run that answered its turns with **programs**.
+/// A builder for a run that answered its turns with **programs**.
 ///
 /// The capability set is what says so, and it is what the driver reads: responses-as-code is
 /// configured for the whole session, so the record itself carries the shape of every one of its
 /// turns. Building it here rather than inferring "code turn" from an empty `toolCalls` list is the
 /// difference between a rule scoped to a run and a rule that fires on any id that looks right.
-fn code_record(entries: Vec<GgReplayEntryV1>) -> GgReplayRecordV1 {
+fn code_record() -> RecordBuilder {
     let mut caps = GgCapabilitySet::minimal("mock/echo");
     caps.agents[0]
         .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
-    GgReplayRecordV1 {
-        session_id: "run-replay-code".to_string(),
-        capability_set: caps,
-        entries,
-    }
+    RecordBuilder::new("run-replay-code", caps)
 }
 
-/// A record of an ordinary **tool-calling** run, for the guards that prove the prefix exemption did
-/// not loosen the native path.
-fn native_record(entries: Vec<GgReplayEntryV1>) -> GgReplayRecordV1 {
-    GgReplayRecordV1 {
-        session_id: "run-replay-native".to_string(),
-        capability_set: GgCapabilitySet::minimal("mock/echo"),
-        entries,
-    }
+/// A builder for an ordinary **tool-calling** run, for the guards that prove the prefix exemption
+/// did not loosen the native path.
+fn native_record() -> RecordBuilder {
+    RecordBuilder::new("run-replay-native", GgCapabilitySet::minimal("mock/echo"))
 }
 
 /// The core, replayable telemetry kinds of one agent's stream, as compact `(tag, detail)` pairs —
@@ -180,37 +152,34 @@ fn a_code_mode_run_replays_end_to_end() {
         "write_file",
         json!({ "path": "notes.md", "contents": "19 bytes" }),
     );
-    let rec = code_record(vec![
-        model_io("root", 0, &resp_code_turn(PROGRAM)),
-        tool_result("root", 1, &list, &ToolOutcome::ok("main.ts", "listed src")),
-        tool_result(
+    let rec = code_record()
+        .model_io("root", 0, &resp_code_turn(PROGRAM))
+        .tool_result("root", 1, &list, &ToolOutcome::ok("main.ts", "listed src"))
+        .tool_result(
             "root",
             2,
             &read,
             &ToolOutcome::ok("export const x = 1;", "read src/main.ts"),
-        ),
-        tool_result(
+        )
+        .tool_result(
             "root",
             3,
             &write,
             &ToolOutcome::ok("wrote notes.md (8 bytes)", "wrote notes.md"),
-        ),
+        )
         // A second turn opens with the previous one still holding no unanswered *requested* call —
         // the code turn requested none — so the truncated-capture guard must stay silent.
-        model_io("root", 4, &resp_code_turn("Done — one source file.")),
-    ]);
+        .model_io("root", 4, &resp_code_turn("Done — one source file."))
+        .build();
 
     let sink = CollectingSink::new();
-    let out = reconstruct_with_sink(&rec, Box::new(sink.clone())).expect("a code run reconstructs");
+    let out = reconstruct_with_sink(rec, Box::new(sink.clone())).expect("a code run reconstructs");
 
     // Two model turns, three program-composed calls, one agent.
     assert_eq!(out.model_calls, 2);
     assert_eq!(out.tool_calls, 3);
     assert_eq!(out.agent_count, 1);
 
-    // The driver's steps still equal the pure derivation the UI consumes — the seam-driven walk and
-    // the record's own `steps()` agree on a code turn exactly as they do on a tool-calling one.
-    assert_eq!(out.steps, rec.steps());
     assert_eq!(out.steps.len(), 2);
 
     // The turn really did request no native calls: `toolCalls` is absent from what it `did`. This is
@@ -263,23 +232,23 @@ fn a_code_mode_run_replays_end_to_end() {
 fn a_program_calling_one_tool_twice_replays_both_calls() {
     let first = program_call(0, "write_file", json!({ "path": "a.txt", "contents": "a" }));
     let second = program_call(1, "write_file", json!({ "path": "b.txt", "contents": "b" }));
-    let rec = code_record(vec![
-        model_io("root", 0, &resp_code_turn(PROGRAM)),
-        tool_result(
+    let rec = code_record()
+        .model_io("root", 0, &resp_code_turn(PROGRAM))
+        .tool_result(
             "root",
             1,
             &first,
             &ToolOutcome::ok("wrote a.txt", "wrote a"),
-        ),
-        tool_result(
+        )
+        .tool_result(
             "root",
             2,
             &second,
             &ToolOutcome::ok("wrote b.txt", "wrote b"),
-        ),
-    ]);
+        )
+        .build();
 
-    let out = reconstruct_with_sink(&rec, Box::new(CollectingSink::new()))
+    let out = reconstruct_with_sink(rec, Box::new(CollectingSink::new()))
         .expect("both calls reconstruct");
 
     assert_eq!(out.tool_calls, 2);
@@ -305,14 +274,16 @@ fn a_program_calling_one_tool_twice_replays_both_calls() {
 #[test]
 fn a_program_result_without_an_open_turn_is_still_a_divergence() {
     let write = program_call(0, "write_file", json!({ "path": "a.txt", "contents": "a" }));
-    let rec = code_record(vec![tool_result(
-        "root",
-        0,
-        &write,
-        &ToolOutcome::ok("wrote a.txt", "wrote a"),
-    )]);
+    let rec = code_record()
+        .tool_result(
+            "root",
+            0,
+            &write,
+            &ToolOutcome::ok("wrote a.txt", "wrote a"),
+        )
+        .build();
 
-    let err = reconstruct_with_sink(&rec, Box::new(CollectingSink::new())).unwrap_err();
+    let err = reconstruct_with_sink(rec, Box::new(CollectingSink::new())).unwrap_err();
     assert_eq!(
         err,
         ReplayError::ToolResultWithoutTurn {
@@ -330,13 +301,13 @@ fn a_program_result_without_an_open_turn_is_still_a_divergence() {
 fn a_native_tool_result_still_requires_a_matching_pending_call() {
     let called = native_call("call_abc", "write_file", json!({ "path": "a.txt" }));
     let surplus = native_call("call_def", "shell", json!({ "command": "ls" }));
-    let rec = native_record(vec![
-        model_io("root", 0, &resp_calling("writing", called.clone())),
-        tool_result("root", 1, &called, &ToolOutcome::ok("wrote a.txt", "wrote")),
-        tool_result("root", 2, &surplus, &ToolOutcome::ok("a.txt", "listed")),
-    ]);
+    let rec = native_record()
+        .model_io("root", 0, &resp_calling("writing", called.clone()))
+        .tool_result("root", 1, &called, &ToolOutcome::ok("wrote a.txt", "wrote"))
+        .tool_result("root", 2, &surplus, &ToolOutcome::ok("a.txt", "listed"))
+        .build();
 
-    let err = reconstruct_with_sink(&rec, Box::new(CollectingSink::new())).unwrap_err();
+    let err = reconstruct_with_sink(rec, Box::new(CollectingSink::new())).unwrap_err();
     assert_eq!(
         err,
         ReplayError::ExtraToolResult {
@@ -354,12 +325,12 @@ fn a_native_tool_result_still_requires_a_matching_pending_call() {
 fn a_native_id_that_merely_contains_the_prefix_is_still_matched() {
     let called = native_call("call_program:7", "write_file", json!({ "path": "a.txt" }));
     let recorded = native_call("call_program:7", "shell", json!({ "command": "ls" }));
-    let rec = native_record(vec![
-        model_io("root", 0, &resp_calling("writing", called)),
-        tool_result("root", 1, &recorded, &ToolOutcome::ok("a.txt", "listed")),
-    ]);
+    let rec = native_record()
+        .model_io("root", 0, &resp_calling("writing", called))
+        .tool_result("root", 1, &recorded, &ToolOutcome::ok("a.txt", "listed"))
+        .build();
 
-    let err = reconstruct_with_sink(&rec, Box::new(CollectingSink::new())).unwrap_err();
+    let err = reconstruct_with_sink(rec, Box::new(CollectingSink::new())).unwrap_err();
     assert_eq!(
         err,
         ReplayError::ToolResultMismatch {
@@ -381,18 +352,18 @@ fn a_native_id_that_merely_contains_the_prefix_is_still_matched() {
 fn a_program_result_inside_a_native_turn_is_a_divergence() {
     let called = native_call("call_abc", "shell", json!({ "command": "ls" }));
     let composed = program_call(0, "write_file", json!({ "path": "a.txt", "contents": "a" }));
-    let rec = native_record(vec![
-        model_io("root", 0, &resp_calling("listing", called.clone())),
-        tool_result(
+    let rec = native_record()
+        .model_io("root", 0, &resp_calling("listing", called.clone()))
+        .tool_result(
             "root",
             1,
             &composed,
             &ToolOutcome::ok("wrote a.txt", "wrote"),
-        ),
-        tool_result("root", 2, &called, &ToolOutcome::ok("a.txt", "listed")),
-    ]);
+        )
+        .tool_result("root", 2, &called, &ToolOutcome::ok("a.txt", "listed"))
+        .build();
 
-    let err = reconstruct_with_sink(&rec, Box::new(CollectingSink::new())).unwrap_err();
+    let err = reconstruct_with_sink(rec, Box::new(CollectingSink::new())).unwrap_err();
     assert_eq!(
         err,
         ReplayError::ToolResultMismatch {
@@ -414,18 +385,18 @@ fn a_program_result_inside_a_native_turn_is_a_divergence() {
 fn a_code_turn_ignores_a_tool_call_its_response_carried() {
     let hallucinated = native_call("call_abc", "shell", json!({ "command": "ls" }));
     let composed = program_call(0, "write_file", json!({ "path": "a.txt", "contents": "a" }));
-    let rec = code_record(vec![
-        model_io("root", 0, &resp_calling(PROGRAM, hallucinated)),
-        tool_result(
+    let rec = code_record()
+        .model_io("root", 0, &resp_calling(PROGRAM, hallucinated))
+        .tool_result(
             "root",
             1,
             &composed,
             &ToolOutcome::ok("wrote a.txt", "wrote"),
-        ),
-        model_io("root", 2, &resp_code_turn("Done.")),
-    ]);
+        )
+        .model_io("root", 2, &resp_code_turn("Done."))
+        .build();
 
-    let out = reconstruct_with_sink(&rec, Box::new(CollectingSink::new()))
+    let out = reconstruct_with_sink(rec, Box::new(CollectingSink::new()))
         .expect("the ignored call is not a gap");
     assert_eq!(out.tool_calls, 1);
     assert_eq!(

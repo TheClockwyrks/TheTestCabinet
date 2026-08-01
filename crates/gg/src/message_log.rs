@@ -26,7 +26,7 @@
 //!
 //! [per-agent reduction]: https://docs.testcabinet.ai/gg/telemetry/
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
@@ -144,7 +144,7 @@ pub fn context_message_event(
 /// behind the shared `&Emitter` the async loop holds.
 #[derive(Default)]
 pub struct MessagePool {
-    seen: Mutex<HashSet<String>>,
+    seen: Mutex<BTreeSet<String>>,
 }
 
 impl MessagePool {
