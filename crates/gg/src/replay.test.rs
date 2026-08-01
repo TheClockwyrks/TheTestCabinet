@@ -15,6 +15,7 @@ use test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH;
 use test_cabinet_core::metrics::TokenCounts;
 
 use super::*;
+use crate::context::{ContextModel, FileRegion, HeuristicTokenEstimator, UsageSignalOptions};
 use crate::model::{FinishReason, ImageContent, Message, ModelResponse, Role, ToolCall};
 
 /// A trivial [`ModelClient`] that returns a fixed response and records how many times it was
@@ -429,6 +430,188 @@ fn a_turn_that_offered_no_tools_records_no_toolset_at_all() {
     assert_eq!(request.toolset, None);
     assert_eq!(request.fingerprint.tools, None);
     assert!(pool_indices(&lines, "toolset").is_empty());
+}
+
+// --- the prompt frame -------------------------------------------------------
+
+/// A window holding one of each thing the frame has to distinguish: the system prompt, a build
+/// prompt, a **paged** file view pushed on a numbered turn, and the rebuilt usage signal.
+fn framed_window() -> ContextModel {
+    let mut ctx = ContextModel::new(Arc::new(HeuristicTokenEstimator), Some(10_000), false);
+    ctx.set_system("you are gg");
+    ctx.push_user_prompt("build it");
+    ctx.begin_turn(2);
+    ctx.push_file_view(
+        Some("src/main.rs".to_string()),
+        Some(FileRegion {
+            offset: 40,
+            limit: 25,
+        }),
+        "c1",
+        "fn main() {}",
+        Vec::new(),
+    );
+    ctx.refresh_context_usage_signal(UsageSignalOptions {
+        can_evict: true,
+        can_archive: true,
+        top_file_views: 5,
+    });
+    ctx
+}
+
+/// The four typed fields the frame exists for reach the journal: each item's slot, its retention,
+/// the turn it was pushed on, and a paged view's region — none of which the flat message array the
+/// client sent carries.
+#[test]
+fn a_prompt_frame_records_the_window_model_fields_the_request_cannot_carry() {
+    let (dir, recorder) = recorder_in(None);
+    let ctx = framed_window();
+    let items: Vec<PromptItem<'_>> = ctx.prompt_items().collect();
+    recorder.record_prompt_frame("root", &items);
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let GgReplayEntryKind::PromptFrame { items } = &entries(&lines)[0].kind else {
+        panic!("expected a prompt-frame entry");
+    };
+    assert_eq!(items.len(), 4);
+    assert_eq!(
+        items.iter().map(|item| item.slot).collect::<Vec<_>>(),
+        vec![
+            GgReplayPromptSlot::System,
+            GgReplayPromptSlot::Thread,
+            GgReplayPromptSlot::Thread,
+            GgReplayPromptSlot::ContextUsage,
+        ]
+    );
+    assert_eq!(
+        items.iter().map(|item| item.retention).collect::<Vec<_>>(),
+        vec![
+            GgReplayRetention::Pinned,
+            GgReplayRetention::Pinned,
+            GgReplayRetention::Ephemeral,
+            GgReplayRetention::Pinned,
+        ]
+    );
+    assert_eq!(
+        items.iter().map(|item| item.turn).collect::<Vec<_>>(),
+        vec![0, 0, 2, 2]
+    );
+    assert_eq!(
+        items[2].label.as_deref(),
+        Some("src/main.rs"),
+        "the file view keeps the selector tag its band is attributed through"
+    );
+    assert_eq!(
+        items[2].region,
+        Some(GgReplayFileRegion {
+            offset: 40,
+            limit: 25
+        }),
+        "a paged read records the window it covers, not the whole file"
+    );
+    assert!(
+        items
+            .iter()
+            .enumerate()
+            .all(|(position, item)| (position == 2) == item.region.is_some()),
+        "only the paged view carries a region"
+    );
+    // The items index the message pool in send order, so the frame reconstructs the window
+    // rather than merely describing it.
+    assert_eq!(
+        items.iter().map(|item| item.message).collect::<Vec<_>>(),
+        vec![0, 1, 2, 3]
+    );
+}
+
+/// Why the frame is nearly free: every message in it was interned moments earlier for the same
+/// turn's model I/O, so the frame writes **no** new message bodies and is a list of small integers
+/// pointing at the ones already on disk.
+#[test]
+fn a_prompt_frame_reuses_the_bodies_its_turns_model_io_already_pooled() {
+    let (dir, recorder) = recorder_in(None);
+    let ctx = framed_window();
+    recorder.record_model_io(
+        "root",
+        GgClientRole::Agent,
+        GgReplayRequestShape::Complete,
+        &ctx.messages(),
+        &[],
+        &stop_response("ok"),
+    );
+    let items: Vec<PromptItem<'_>> = ctx.prompt_items().collect();
+    recorder.record_prompt_frame("root", &items);
+    recorder.finish();
+
+    let lines = journal(&dir);
+    assert_eq!(
+        pool_indices(&lines, "message"),
+        vec![0, 1, 2, 3],
+        "the frame writes no message body the model-io entry had not already written"
+    );
+    let entries = entries(&lines);
+    let GgReplayEntryKind::ModelIo { request, .. } = &entries[0].kind else {
+        panic!("expected a model-io entry");
+    };
+    let GgReplayEntryKind::PromptFrame { items } = &entries[1].kind else {
+        panic!("expected a prompt-frame entry");
+    };
+    // Identical indices, because both seams intern through the one `GgReplayInterner` — which is
+    // what lets a reconstruction line the frame's items up with the request's messages at all.
+    assert_eq!(
+        items.iter().map(|item| item.message).collect::<Vec<_>>(),
+        request.messages
+    );
+}
+
+/// The frame lands **after** the model call it describes and before that agent's next one — the
+/// attachment rule tool results already follow, and the one that makes a vision-recovery retry
+/// (`model_error → model_io → prompt_frame`) attach the frame to the call that was actually sent.
+#[test]
+fn a_prompt_frame_follows_the_turn_it_describes_at_the_next_sequence() {
+    let (dir, recorder) = recorder_in(None);
+    let ctx = framed_window();
+    recorder.record_model_io(
+        "root",
+        GgClientRole::Agent,
+        GgReplayRequestShape::Complete,
+        &ctx.messages(),
+        &[],
+        &stop_response("ok"),
+    );
+    let items: Vec<PromptItem<'_>> = ctx.prompt_items().collect();
+    recorder.record_prompt_frame("agent_2", &items);
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let entries = entries(&lines);
+    assert!(matches!(entries[0].kind, GgReplayEntryKind::ModelIo { .. }));
+    assert!(matches!(
+        entries[1].kind,
+        GgReplayEntryKind::PromptFrame { .. }
+    ));
+    assert_eq!(entries[1].seq, entries[0].seq + 1);
+    assert_eq!(
+        entries[1].agent_id, "agent_2",
+        "the frame is stamped with the agent whose window it is, like every other entry"
+    );
+}
+
+/// Capture stops for the whole run, and that includes this seam: a frame recorded after a stop
+/// writes nothing, so the pools on disk stay a contiguous prefix.
+#[test]
+fn a_stopped_capture_records_no_prompt_frame() {
+    let (dir, recorder) = recorder_in(Some(1));
+    let ctx = framed_window();
+    let items: Vec<PromptItem<'_>> = ctx.prompt_items().collect();
+    recorder.record_prompt_frame("root", &items);
+    let report = recorder.finish();
+
+    assert_eq!(report.entries, 0);
+    let lines = journal(&dir);
+    assert!(entries(&lines).is_empty());
+    assert!(pool_indices(&lines, "message").is_empty());
 }
 
 // --- capture stops atomically -----------------------------------------------

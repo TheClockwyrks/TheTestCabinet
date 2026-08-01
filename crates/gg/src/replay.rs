@@ -57,6 +57,12 @@
 //!   serviced-call completion), by calling [`GgRecorder::record_tool_result`] — so an intercepted
 //!   delegation/speculate/review tool and a code-program-composed call are all captured alongside
 //!   ordinary registry dispatch.
+//! - **The prompt frame** is captured at the one place the loop holds the turn's
+//!   [`PromptItem`] stream — the same call site that emits the telemetry
+//!   [`Prompt`](test_cabinet_core::gg::GgTelemetryKind::Prompt) event — by calling
+//!   [`GgRecorder::record_prompt_frame`]. The recorder deliberately does **not** thread through
+//!   the [telemetry emitter](crate::telemetry) to get there: telemetry is a summary stream and
+//!   stays unaware of replay.
 //!
 //! Every entry is stamped with the recording agent's id and a **globally monotonic** sequence minted
 //! across all agents from one counter, so ordering the entries by sequence reconstructs the true
@@ -72,12 +78,14 @@ use std::thread::JoinHandle;
 use serde_json::Value;
 use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::gg_replay::{
-    GG_REPLAY_FORMAT_VERSION, GgClientRole, GgReplayEntry, GgReplayEntryKind, GgReplayInterner,
-    GgReplayRecorder, GgReplayRequestShape, GgReplayToolCall, GgReplayToolOutcome,
+    GG_REPLAY_FORMAT_VERSION, GgClientRole, GgReplayEntry, GgReplayEntryKind, GgReplayFileRegion,
+    GgReplayInterner, GgReplayPromptItem, GgReplayPromptSlot, GgReplayRecorder,
+    GgReplayRequestShape, GgReplayRetention, GgReplayToolCall, GgReplayToolOutcome,
     GgReplayTruncation, GgReplayTruncationReason,
 };
 use test_cabinet_core::gg_replay_journal::{GgJournalInterner, GgJournalLine};
 
+use crate::context::{PromptItem, PromptSlot, Retention};
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
 use crate::tools::ToolOutcome;
 
@@ -395,6 +403,67 @@ impl GgRecorder {
                 },
             },
         );
+    }
+
+    /// Record one agent's **prompt frame**: the window as it stood for the turn just sent, each
+    /// item carrying the four window-model fields a rendered message does not — its
+    /// [slot](PromptSlot), its [retention](Retention), the [turn](PromptItem::turn) it was pushed
+    /// on, and a paged file view's [region](crate::context::FileRegion).
+    ///
+    /// # Why this is a separate entry rather than fields on the request
+    ///
+    /// The request is what the *client* sent — a flat message array. Everything above is gg's own
+    /// window model, and it is recoverable from nowhere else: not from that array, not from the
+    /// telemetry stream, not from the raw output. Recording it is what lets a reconstruction
+    /// compare the window it **builds** against the one the record pinned, so a drift in what a
+    /// compaction kept, or in which page of a file a view covers, is caught where it happens
+    /// rather than several turns later when it changes what the model says.
+    ///
+    /// # It costs almost nothing
+    ///
+    /// Every message here was interned moments ago by the [`RecordingClient`] for this same turn's
+    /// [`ModelIo`](GgReplayEntryKind::ModelIo) entry — same bodies, same content addresses, so the
+    /// pool does not grow and the frame is a list of small integers. That holds only because both
+    /// go through one [interner](GgReplayInterner); it is not an assumption the frame makes about
+    /// the client's behavior, and a body this seam somehow sees first is simply interned here.
+    ///
+    /// Called **after** the model call it describes and before that agent's next one — the same
+    /// attachment rule tool results follow. That ordering handles vision recovery for free: a
+    /// refused image turn records `model_error → model_io → prompt_frame`, so the frame attaches
+    /// to the call that was actually sent rather than to the one that was refused.
+    pub fn record_prompt_frame(&self, agent_id: &str, items: &[PromptItem<'_>]) {
+        // Serialized outside the lock, like every other seam: this is the bulk of the work, and the
+        // one lock is shared by every agent in the run.
+        let bodies: Vec<Value> = items.iter().map(|item| to_value(item.message)).collect();
+
+        let mut capture = self.capture.lock().expect("replay capture lock");
+        if capture.stopped.is_some() {
+            return;
+        }
+        let items: Vec<GgReplayPromptItem> = items
+            .iter()
+            .zip(bodies.iter())
+            .map(|(item, body)| GgReplayPromptItem {
+                message: capture.interner.intern_message(body),
+                slot: match item.slot {
+                    PromptSlot::System => GgReplayPromptSlot::System,
+                    PromptSlot::Thread => GgReplayPromptSlot::Thread,
+                    PromptSlot::ContextUsage => GgReplayPromptSlot::ContextUsage,
+                },
+                source: item.source,
+                retention: match item.retention {
+                    Retention::Pinned => GgReplayRetention::Pinned,
+                    Retention::Ephemeral => GgReplayRetention::Ephemeral,
+                },
+                turn: item.turn,
+                label: item.label.map(str::to_string),
+                region: item.region.map(|region| GgReplayFileRegion {
+                    offset: region.offset,
+                    limit: region.limit,
+                }),
+            })
+            .collect();
+        capture.push(agent_id, GgReplayEntryKind::PromptFrame { items });
     }
 
     /// Close the journal: write the mandatory [`End`](GgJournalLine::End) line, drop the writer's

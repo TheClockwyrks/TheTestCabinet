@@ -214,13 +214,48 @@ pub struct OpenFileView {
     pub region: Option<FileRegion>,
 }
 
-/// One item of the live window as [`prompt_items`](ContextModel::prompt_items) hands it to
-/// the [message log](crate::message_log): the message that is sent, the band it occupies,
-/// what it is estimated to cost, and its [selector tag](ContextItem::label).
+/// Which position of the window a [`PromptItem`] was rendered from — the structure the
+/// [rendered order](ContextModel::messages) imposes, made legible to a consumer that only ever
+/// sees the flattened list.
 ///
-/// A borrowed, read-only view of a [`ContextItem`] rather than the item itself — the log
-/// records what was *sent*, so it needs no access to the item's retention class or its
-/// mutability.
+/// The window is not one list: two of its three positions are **slots** that are assigned
+/// rather than appended ([`set_system`](ContextModel::set_system) and
+/// [`refresh_context_usage_signal`](ContextModel::refresh_context_usage_signal)), precisely so
+/// they cannot accumulate duplicates. Which slot an item came from is otherwise unrecoverable
+/// downstream, and it distinguishes two things that are identical on the wire: a system prompt
+/// and a rebuilt context-usage signal are both [`System`](GgContextSource::System)-sourced,
+/// both unlabelled and both pinned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptSlot {
+    /// The [system-prompt slot](ContextModel::set_system), always first.
+    System,
+    /// The conversation thread itself — everything [pushed](ContextModel::push) into it, in
+    /// the order it entered.
+    Thread,
+    /// The [context-usage signal](ContextModel::refresh_context_usage_signal) slot, rebuilt and
+    /// re-assigned after every turn, always last.
+    ContextUsage,
+}
+
+/// One item of the live window as [`prompt_items`](ContextModel::prompt_items) hands it to
+/// the [message log](crate::message_log) and to [replay capture](crate::replay): the message
+/// that is sent, the band it occupies, what it is estimated to cost, its
+/// [selector tag](ContextItem::label), and the four typed fields describing *where in the
+/// window model it came from*.
+///
+/// A borrowed, read-only view of a [`ContextItem`] rather than the item itself — both
+/// consumers record what was *sent*, so neither needs the item's mutability.
+///
+/// # Why the window-model fields are here
+///
+/// [`slot`](Self::slot), [`retention`](Self::retention), [`turn`](Self::turn) and
+/// [`region`](Self::region) are recoverable from **nowhere else** once a turn has gone out:
+/// not from the rendered `Vec<Message>`, not from the telemetry stream, not from gg's raw
+/// output. They are what lets a
+/// [reconstruction](https://docs.testcabinet.ai/gg/analysis/replay-records/) compare the window
+/// it *builds* against the one the record pinned — a drift in which items a compaction kept, or
+/// which page of a file a view covers, is otherwise invisible until it changes what the model
+/// says.
 #[derive(Debug, Clone, Copy)]
 pub struct PromptItem<'a> {
     /// The band this message occupies in the window this turn.
@@ -233,6 +268,16 @@ pub struct PromptItem<'a> {
     /// fullness signal's sentinel. This is what lets the console attribute a window's
     /// tokens to the *file* that filled it rather than only to the `file_view` band.
     pub label: Option<&'a str>,
+    /// Which [slot](PromptSlot) of the window this item was rendered from.
+    pub slot: PromptSlot,
+    /// Whether the item survives a compaction boundary verbatim.
+    pub retention: Retention,
+    /// The [session turn](ContextModel::begin_turn) it was pushed on — `0` for everything
+    /// seeded before the first turn.
+    pub turn: u64,
+    /// The `offset`/`limit` window a **paged** [file view](GgContextSource::FileView) covers,
+    /// when this item is one and the read was paged.
+    pub region: Option<FileRegion>,
 }
 
 /// Estimates the token cost of context items. A trait so the estimator is **swappable**:
@@ -960,10 +1005,25 @@ impl ContextModel {
     /// The two ends are slots rather than thread items, so their position is a property of this
     /// iterator rather than something the pushes have to maintain.
     fn window_items(&self) -> impl Iterator<Item = &ContextItem> {
+        self.slotted_window_items().map(|(_, item)| item)
+    }
+
+    /// [`window_items`](Self::window_items), each item paired with the [slot](PromptSlot) it was
+    /// rendered from.
+    ///
+    /// The window's order is defined **here**, once, and `window_items` drops the tags — rather
+    /// than the two iterators chaining the same three sources side by side, where a later change
+    /// to one could silently mis-tag every item of the other.
+    fn slotted_window_items(&self) -> impl Iterator<Item = (PromptSlot, &ContextItem)> {
         self.system
             .iter()
-            .chain(self.items.iter())
-            .chain(self.usage_signal.iter())
+            .map(|item| (PromptSlot::System, item))
+            .chain(self.items.iter().map(|item| (PromptSlot::Thread, item)))
+            .chain(
+                self.usage_signal
+                    .iter()
+                    .map(|item| (PromptSlot::ContextUsage, item)),
+            )
     }
 
     /// The items the window's **own** figures are computed over: the
@@ -983,23 +1043,32 @@ impl ContextModel {
             .collect()
     }
 
-    /// The per-item view of the current prompt for the [message log](crate::message_log):
-    /// each item's [`source`](GgContextSource) band, its [`Message`], its cached token
-    /// estimate, and its [selector tag](ContextItem::label), in the order they are sent.
+    /// The per-item view of the current prompt for the [message log](crate::message_log) and
+    /// for [replay capture](crate::replay): each item's [`source`](GgContextSource) band, its
+    /// [`Message`], its cached token estimate, its [selector tag](ContextItem::label), and the
+    /// [slot](PromptSlot), [retention](Retention), [turn](Self::begin_turn) and
+    /// [region](FileRegion) it carries in the window model — in the order they are sent.
     /// This is the itemized form of [`messages`](Self::messages) — the same messages the
     /// client consumes, each carrying the band, token estimate, and tag the console needs
     /// to line a request's messages up with the per-source
     /// [breakdown](Self::breakdown_event) and attribute a file view to its path.
     ///
+    /// The last four are the window-model fields a rendered message no longer carries; see
+    /// [`PromptItem`] for why they are worth the width. The message log ignores them.
+    ///
     /// The [context-usage signal](Self::refresh_context_usage_signal) is included, last, because it
     /// is part of the request that went out — a log that omitted it would not add up to the prompt
     /// the provider was billed for.
     pub fn prompt_items(&self) -> impl Iterator<Item = PromptItem<'_>> {
-        self.window_items().map(|item| PromptItem {
+        self.slotted_window_items().map(|(slot, item)| PromptItem {
             source: item.source,
             message: &item.message,
             tokens: item.tokens,
             label: item.label.as_deref(),
+            slot,
+            retention: item.retention,
+            turn: item.turn,
+            region: item.region,
         })
     }
 

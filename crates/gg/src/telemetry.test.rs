@@ -3,6 +3,8 @@ use super::*;
 // emitter itself never names has to be named here.
 use test_cabinet_core::gg::{GgContextSource, GgLimitKind};
 
+use crate::context::{PromptSlot, Retention};
+
 /// One untagged request item, the shape most of these tests log: a message in its band at a
 /// given estimate, carrying no selector tag (see [`tagged`] for the file-view case).
 fn item<'a>(source: GgContextSource, message: &'a Message, tokens: usize) -> PromptItem<'a> {
@@ -11,6 +13,12 @@ fn item<'a>(source: GgContextSource, message: &'a Message, tokens: usize) -> Pro
         message,
         tokens,
         label: None,
+        // The window-model fields belong to replay's prompt frame, not to the message log, which
+        // reads none of them; a thread item on the opening turn is the neutral shape here.
+        slot: PromptSlot::Thread,
+        retention: Retention::Ephemeral,
+        turn: 0,
+        region: None,
     }
 }
 
@@ -26,6 +34,10 @@ fn tagged<'a>(
         message,
         tokens,
         label: Some(label),
+        slot: PromptSlot::Thread,
+        retention: Retention::Ephemeral,
+        turn: 0,
+        region: None,
     }
 }
 

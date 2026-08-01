@@ -6054,6 +6054,20 @@ impl Agent {
                 Some(model_call_ms),
             );
 
+            // Replay capture: pin the same window as this turn's *prompt frame*, carrying the four
+            // typed fields the flat message array the client sent does not — each item's slot, its
+            // retention, the turn it was pushed on, and a paged file view's region. This is the one
+            // place the loop holds them, and they are recoverable from nowhere else afterward.
+            //
+            // Recorded here rather than inside `log_prompt` because the recorder does not thread
+            // through the telemetry emitter — and here rather than at the model call, so the frame
+            // lands *after* the `model_io` entry it describes. A vision-recovery retry therefore
+            // records `model_error → model_io → prompt_frame` and the frame attaches to the call
+            // that was actually sent.
+            if let Some(recorder) = &replay {
+                recorder.record_prompt_frame(&self.id, &request);
+            }
+
             context.push_assistant(
                 assistant_text,
                 if code.enabled {

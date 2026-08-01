@@ -40,7 +40,9 @@ use test_cabinet_core::gg::{
     GgSessionSummary, GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent,
     GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
-use test_cabinet_core::gg_replay::{GgReplayEntry, GgReplayEntryKind};
+use test_cabinet_core::gg_replay::{
+    GgReplayEntry, GgReplayEntryKind, GgReplayPromptSlot, GgReplayRetention,
+};
 use test_cabinet_core::gg_replay_journal::{GG_REPLAY_JOURNAL_PATH, GgJournalLine};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
@@ -8378,6 +8380,82 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
     );
 }
 
+/// Every model turn a captured run takes is followed by that agent's **prompt frame**: the window
+/// it was sent, carrying the four typed fields the flat message array does not — each item's slot,
+/// its retention, the turn it was pushed on, and a paged file view's region.
+///
+/// The wiring is what this proves. The recorder's own tests show the entry is well-formed; only a
+/// driven run shows the loop reaches the seam at all, at the one place it holds the
+/// [`PromptItem`](crate::context::PromptItem) stream, and *after* the call it describes.
+#[tokio::test]
+async fn replay_capture_records_a_prompt_frame_for_every_model_turn() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-frames".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), minimal_with_replay("mock/echo"));
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    let lines = read_replay_journal(dir.path());
+    let entries = journal_entries(&lines);
+    let frames: Vec<_> = entries
+        .iter()
+        .filter(|entry| matches!(entry.kind, GgReplayEntryKind::PromptFrame { .. }))
+        .collect();
+    let model_ios: Vec<_> = entries
+        .iter()
+        .filter(|entry| matches!(entry.kind, GgReplayEntryKind::ModelIo { .. }))
+        .collect();
+    assert_eq!(
+        frames.len(),
+        model_ios.len(),
+        "one frame per model turn, got {} frames for {} turns",
+        frames.len(),
+        model_ios.len()
+    );
+
+    // Each frame follows the turn it describes and pins the *same* window: identical pooled
+    // message indices, because both seams intern through the one interner. That is also why the
+    // frame writes no new bodies — it is a list of small integers.
+    let mut pending: Option<(u64, &Vec<u32>)> = None;
+    let mut checked = 0;
+    for entry in &entries {
+        match &entry.kind {
+            GgReplayEntryKind::ModelIo { request, .. } => {
+                pending = Some((entry.seq, &request.messages));
+            }
+            GgReplayEntryKind::PromptFrame { items } => {
+                let (call_seq, messages) = pending.take().expect("a frame follows a model call");
+                assert!(call_seq < entry.seq, "the frame lands after its call");
+                assert_eq!(
+                    items.iter().map(|item| item.message).collect::<Vec<_>>(),
+                    *messages,
+                    "the frame pins the window the call was sent"
+                );
+                // The system prompt is the window's first item, held in its own slot and carried
+                // across a compaction verbatim — and it is unnumbered, since it is seeded before
+                // the first turn opens.
+                let system = items.first().expect("a window has a system prompt");
+                assert_eq!(system.slot, GgReplayPromptSlot::System);
+                assert_eq!(system.retention, GgReplayRetention::Pinned);
+                assert_eq!(system.turn, 0);
+                // Everything after it this run is thread material: the mock takes no paged read
+                // and the minimal set arms no context-usage signal.
+                assert!(
+                    items[1..]
+                        .iter()
+                        .all(|item| item.slot == GgReplayPromptSlot::Thread),
+                    "the rest of the window is the thread"
+                );
+                checked += 1;
+            }
+            _ => {}
+        }
+    }
+    assert!(checked > 0, "at least one frame was checked");
+}
+
 /// With the replay capability **off** (the default), nothing extra is captured — no
 /// `.gg/replay.ndjson` journal is written. Zero overhead.
 #[tokio::test]
@@ -8531,6 +8609,11 @@ async fn a_captured_run_journals_an_outcome_for_every_call_it_made() {
                 journaled.push(("result", format!("{}:{}", call.name, outcome.ok)));
                 tool_calls += 1;
             }
+            // The prompt frame describes the window the turn just recorded was sent, so it lands
+            // between a call and the results answering it and is no part of that pairing. Skipped
+            // rather than removed from the walk: the `other` arm below is what proves the capture
+            // emits nothing this reconstruction would not understand.
+            GgReplayEntryKind::PromptFrame { .. } => {}
             other => panic!("unexpected entry kind {other:?}"),
         }
     }

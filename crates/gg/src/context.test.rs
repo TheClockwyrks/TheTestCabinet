@@ -77,6 +77,94 @@ fn prompt_items_expose_source_message_tokens_and_label_in_order() {
     );
 }
 
+/// The four window-model fields [replay capture](crate::replay) records as a prompt frame, and
+/// the only place they are observable once a turn has gone out: the slot an item was rendered
+/// from, its retention class, the turn it was pushed on, and a paged file view's region.
+#[test]
+fn prompt_items_carry_the_window_model_fields_a_rendered_message_loses() {
+    let mut ctx = model(Some(10_000));
+    ctx.set_system("system");
+    ctx.push_user_prompt("build a game");
+    ctx.begin_turn(3);
+    ctx.push_file_view(
+        Some("index.html".to_string()),
+        Some(FileRegion {
+            offset: 40,
+            limit: 25,
+        }),
+        "c1",
+        "<html></html>",
+        Vec::new(),
+    );
+    ctx.refresh_context_usage_signal(signal_options());
+
+    let items: Vec<_> = ctx.prompt_items().collect();
+    assert_eq!(items.len(), 4);
+
+    // The two ends are slots; everything between them is thread material. The signal is last
+    // because it reports figures computed over the rest.
+    assert_eq!(
+        items.iter().map(|i| i.slot).collect::<Vec<_>>(),
+        vec![
+            PromptSlot::System,
+            PromptSlot::Thread,
+            PromptSlot::Thread,
+            PromptSlot::ContextUsage,
+        ]
+    );
+    // The system prompt and the build prompt survive a compaction; the file view and the
+    // rebuilt signal are what compaction and eviction act on / replace.
+    assert_eq!(
+        items.iter().map(|i| i.retention).collect::<Vec<_>>(),
+        vec![
+            Retention::Pinned,
+            Retention::Pinned,
+            Retention::Ephemeral,
+            Retention::Pinned,
+        ]
+    );
+    // The opening context is unnumbered; everything pushed after `begin_turn(3)` carries it,
+    // the re-assigned signal included.
+    assert_eq!(
+        items.iter().map(|i| i.turn).collect::<Vec<_>>(),
+        vec![0, 0, 3, 3]
+    );
+    // Only the paged read carries a region — the window it actually covers, which is what a
+    // reconstruction has to re-open to hold the same view.
+    assert_eq!(
+        items.iter().map(|i| i.region).collect::<Vec<_>>(),
+        vec![
+            None,
+            None,
+            Some(FileRegion {
+                offset: 40,
+                limit: 25
+            }),
+            None,
+        ]
+    );
+}
+
+/// Why the slot is worth recording at all: the system prompt and the rebuilt context-usage
+/// signal are **identical** on every other axis — same band, same retention, no label, both
+/// `system`-role messages — so nothing but the slot tells them apart downstream.
+#[test]
+fn the_slot_is_the_only_thing_separating_the_system_prompt_from_the_usage_signal() {
+    let mut ctx = model(Some(10_000));
+    ctx.set_system("the base system prompt");
+    ctx.push_user_prompt("build a game");
+    ctx.refresh_context_usage_signal(signal_options());
+
+    let items: Vec<_> = ctx.prompt_items().collect();
+    let first = items.first().expect("the system prompt is rendered first");
+    let last = items.last().expect("the signal is rendered last");
+    assert_eq!(first.source, last.source);
+    assert_eq!(first.retention, last.retention);
+    assert_eq!(first.label, last.label);
+    assert_eq!(first.message.role, last.message.role);
+    assert_ne!(first.slot, last.slot);
+}
+
 #[test]
 fn estimate_matches_the_models_estimator() {
     let ctx = model(Some(1000));
