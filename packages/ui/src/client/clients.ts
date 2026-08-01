@@ -133,6 +133,26 @@ export interface ComparisonPublishOutcome {
 // references, and published results. Every runner and reporter resolves the
 // catalog from here — never from a worker. Mirrors the backend HTTP API
 // (components/backend/api.md).
+/**
+ * What the run's replay slot (`GET /runs/{id}/replay`) held, tagged by the format it is in.
+ *
+ * The stored document is **versioned**, and this app reads exactly one version of it. A gg run
+ * recorded by a build newer than this console writes a `formatVersion` this walk does not
+ * understand — pooled message/toolset/text arrays that entries reference by index, rather than the
+ * inline bodies {@link GgReplayRecordV1} carries. The two shapes share their outer field names, so
+ * a newer record deserializes without complaint and then renders as a run in which every agent saw
+ * nothing: an empty step-through with no error anywhere. Tagging the read is what turns that
+ * silence into a statement the reader can act on.
+ */
+export type StoredGgReplay =
+  /** A record this app can walk. */
+  | { format: "v1"; record: GgReplayRecordV1 }
+  /**
+   * A record from a newer recorder. Carries only the version, because nothing else in it can be
+   * trusted to mean what this app would take it to mean.
+   */
+  | { format: "newer"; formatVersion: number };
+
 export interface BackendClient {
   /** Identify and health-check the backend (`GET /healthz`). */
   identity(): Promise<BackendIdentity>;
@@ -243,8 +263,11 @@ export interface BackendClient {
    * exactly what each agent saw and did. Optional so a transport that cannot reach
    * per-run debug media (the static site) omits it and the console hides the
    * affordance — the same pattern the other console-only reads use.
+   *
+   * Resolves to a {@link StoredGgReplay} rather than a bare record because the slot is
+   * versioned and this app reads exactly one version of it — see that type.
    */
-  readGgReplay?(id: string): Promise<GgReplayRecordV1 | null>;
+  readGgReplay?(id: string): Promise<StoredGgReplay | null>;
 
   /**
    * The reviewer checklist items a case declares for a variant (`commonReviewItems`

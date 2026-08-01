@@ -104,7 +104,7 @@ function renderView(readGgReplay: BackendClient["readGgReplay"]) {
 
 describe("GgReplayView", () => {
   it("renders a small record and steps forward and back", async () => {
-    const readGgReplay = vi.fn().mockResolvedValue(RECORD);
+    const readGgReplay = vi.fn().mockResolvedValue({ format: "v1", record: RECORD });
     renderView(readGgReplay);
 
     // It fetches the run's replay record by id.
@@ -146,7 +146,7 @@ describe("GgReplayView", () => {
   });
 
   it("filters the steps to one agent", async () => {
-    renderView(vi.fn().mockResolvedValue(RECORD));
+    renderView(vi.fn().mockResolvedValue({ format: "v1", record: RECORD }));
     await waitFor(() =>
       expect(screen.getByTestId("replay-counter")).toHaveTextContent(
         "step 1 / 2",
@@ -168,5 +168,16 @@ describe("GgReplayView", () => {
     expect(
       await screen.findByText(/No replay record for this run/i),
     ).toBeInTheDocument();
+  });
+
+  // A newer recorder's record shares its outer field names with the v1 shape this view
+  // walks, so the failure it guards against is silent: every step would render an empty
+  // "saw" and the reader would blame the run. Say so instead.
+  it("refuses a record from a newer recorder instead of walking it", async () => {
+    renderView(vi.fn().mockResolvedValue({ format: "newer", formatVersion: 2 }));
+    expect(
+      await screen.findByText(/format v2, which this\s+app cannot read yet/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("replay-counter")).not.toBeInTheDocument();
   });
 });

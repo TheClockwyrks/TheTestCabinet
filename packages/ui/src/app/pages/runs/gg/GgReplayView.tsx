@@ -38,6 +38,11 @@ type LoadState =
   | { kind: "loading" }
   | { kind: "unsupported" }
   | { kind: "empty" }
+  // A record written by a newer gg than this app reads. Called out explicitly rather
+  // than walked: the two formats share their outer field names, so walking one anyway
+  // produces a plausible-looking session in which every agent saw nothing — a lie the
+  // reader has no way to detect. See `StoredGgReplay`.
+  | { kind: "newer"; formatVersion: number }
   | { kind: "error"; message: string }
   | { kind: "ready"; record: GgReplayRecordV1 };
 
@@ -57,9 +62,15 @@ export function GgReplayView() {
     setLoad({ kind: "loading" });
     client
       .readGgReplay(runId)
-      .then((record) => {
+      .then((stored) => {
         if (cancelled) return;
-        setLoad(record ? { kind: "ready", record } : { kind: "empty" });
+        if (!stored) {
+          setLoad({ kind: "empty" });
+        } else if (stored.format === "newer") {
+          setLoad({ kind: "newer", formatVersion: stored.formatVersion });
+        } else {
+          setLoad({ kind: "ready", record: stored.record });
+        }
       })
       .catch((err: unknown) => {
         if (cancelled) return;
@@ -100,6 +111,14 @@ export function GgReplayView() {
         <p className={`${runExec.notice} ${runExec.warn}`}>
           No replay record for this run. Replay is a debug-only capability that is
           off by default — this run was not captured for replay.
+        </p>
+      )}
+      {load.kind === "newer" && (
+        <p className={`${runExec.notice} ${runExec.warn}`}>
+          This run&apos;s replay record is in format v{load.formatVersion}, which this
+          app cannot read yet — it was captured by a newer gg. Nothing is wrong with the
+          run or the record; walking it here would show you an empty session rather than
+          the one it holds, so it is not walked.
         </p>
       )}
       {load.kind === "error" && (

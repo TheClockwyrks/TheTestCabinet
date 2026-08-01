@@ -246,8 +246,11 @@ pub fn router(state: AppState) -> Router {
         )
         // A gg run's debug-only replay record (the capture of its non-deterministic
         // inputs — each agent's model I/O and every tool result): mirrored in by the
-        // driver from the run's `.gg/replay.json` sidecar (POST) and served so a replay
-        // driver can re-run the session step for step (GET).
+        // driver from the `replay.json.gz` the post-run assembly stage folds the run's
+        // capture journal into (POST), and served so a replay driver can re-run the
+        // session step for step (GET). Stored opaquely: the bytes are gzipped and the
+        // record is versioned, so what a reader may branch on is the document's own
+        // `formatVersion`, never the route.
         .route(
             "/runs/{id}/replay",
             get(test_cases::run_replay)

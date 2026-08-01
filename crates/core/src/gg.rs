@@ -1114,8 +1114,8 @@ pub const CAPABILITY_RESPONSES_AS_CODE: &str = "responses-as-code";
 pub const CAPABILITY_REPLAY: &str = "replay";
 
 /// The workspace-relative dotdir gg keeps **its own** files in during a run: the replay
-/// [journal](crate::gg_replay_journal::GG_REPLAY_JOURNAL_PATH) and sidecar
-/// ([`GG_REPLAY_ARTIFACT_PATH`]), and the [skills](CAPABILITY_SKILLS) library.
+/// [journal](crate::gg_replay_journal::GG_REPLAY_JOURNAL_PATH) and the
+/// [skills](CAPABILITY_SKILLS) library.
 ///
 /// Everything under it is gg's bookkeeping, never the model's work, so seeding adds `/.gg/`
 /// to the seeded repository's `.git/info/exclude`
@@ -1127,14 +1127,15 @@ pub const CAPABILITY_REPLAY: &str = "replay";
 /// seed time because no publish-time filter can undo a commit the model already made.
 pub const GG_WORKSPACE_DIR: &str = ".gg";
 
-/// The workspace-relative path a [replay](CAPABILITY_REPLAY)-captured run writes its
+/// The workspace-relative path a [replay](CAPABILITY_REPLAY)-captured run **used to** write its
 /// [`GgReplayRecordV1`] to: a `.gg/replay.json` sidecar.
 ///
-/// Deliberately a dotdir under the run workspace so the record is **kept out of the produced game
-/// artifact** while still riding the run tree `core` collects — from which the driver mirrors it into
-/// the backend store (`POST /runs/{id}/replay`), served per run at `GET /runs/{id}/replay`. Both the
-/// `gg` binary (which writes it) and the driver (which reads it back out of the collected tree) key
-/// off this one constant so the paths never drift.
+/// **Nothing writes or reads this any more.** A capturing run now streams a
+/// [journal](crate::gg_replay_journal) that the host folds into the run tree's
+/// [`replay.json.gz`](crate::gg_replay_assembly::GG_REPLAY_TREE_ARTIFACT) after the container is
+/// gone, which is what the driver mirrors into the backend store (`POST /runs/{id}/replay`) and what
+/// `GET /runs/{id}/replay` serves. The constant is retained only alongside [`GgReplayRecordV1`]
+/// itself, for the stored records captured before the change; it is removed with that type.
 pub const GG_REPLAY_ARTIFACT_PATH: &str = ".gg/replay.json";
 
 /// The stable id of the **completion** capability: the external check that gates a run's ending.

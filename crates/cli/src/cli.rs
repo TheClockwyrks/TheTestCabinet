@@ -33,7 +33,7 @@ pub enum Command {
     Validate(ValidateArgs),
 
     /// Reconstruct a **gg** run from a captured replay record — a debug-only tool. Loads a
-    /// `.gg/replay.json` record (written by a run with the `replay` capability on) and re-runs the
+    /// stored replay record (captured by a run with the `replay` capability on) and re-runs the
     /// session from its pinned model I/O and tool results, with no live model and no real tools,
     /// re-emitting the reconstructed telemetry and (optionally) the per-agent step-through. It does
     /// not produce a scored run.
@@ -191,8 +191,8 @@ pub struct RunArgs {
 /// captured [replay record](test_cabinet_core::gg::GgReplayRecordV1).
 #[derive(Debug, Args)]
 pub struct GgReplayArgs {
-    /// Path to the JSON replay record to reconstruct (a run's `.gg/replay.json`, or the
-    /// `GET /runs/{id}/replay` payload the backend serves).
+    /// Path to the JSON replay record to reconstruct — a format-v1 record, which is what
+    /// `GET /runs/{id}/replay` serves for any run captured before format v2.
     #[arg(long, value_name = "FILE")]
     pub record: std::path::PathBuf,
 

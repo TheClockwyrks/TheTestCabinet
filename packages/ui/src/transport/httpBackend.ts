@@ -45,6 +45,7 @@ import type {
   RunSummaryPage,
   Specification,
   SpecRole,
+  StoredGgReplay,
   StoredReview,
   StoredRun,
   TestCase,
@@ -810,7 +811,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return { events, raw: null };
     },
 
-    async readGgReplay(id: string): Promise<GgReplayRecordV1 | null> {
+    async readGgReplay(id: string): Promise<StoredGgReplay | null> {
       // The backend serves the stored replay record as JSON, and 404s when the run
       // captured none (replay was off) — the common case, since replay is debug-only.
       // A raw fetch lets that 404 resolve to `null` (a tidy "no replay" state) while
@@ -823,7 +824,16 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       if (!res.ok) {
         throw new Error(`replay fetch failed: ${res.status} ${res.statusText}`);
       }
-      return (await res.json()) as GgReplayRecordV1;
+      // Tagged, never assumed. The slot is versioned and a newer record's outer field
+      // names are the same ones this app's v1 walk reads, so an untagged cast would
+      // render a full session as an empty one with nothing raised anywhere. An absent
+      // `formatVersion` is v1, which is what the records stored before the field existed
+      // carry.
+      const body = (await res.json()) as { formatVersion?: number };
+      const formatVersion = body.formatVersion ?? 1;
+      return formatVersion > 1
+        ? { format: "newer", formatVersion }
+        : { format: "v1", record: body as GgReplayRecordV1 };
     },
   };
 }
