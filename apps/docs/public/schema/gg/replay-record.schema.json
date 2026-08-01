@@ -859,7 +859,7 @@
         },
         {
           "const": "corrupt_journal",
-          "description": "The journal was readable but malformed — a torn final line, a pool index that\nskips, or an entry referencing a body past its pool's end. Everything before the\nlast complete entry is kept.",
+          "description": "The journal was readable up to a point and then was not — a line torn off\nmid-write, or a terminating marker whose entry count disagrees with what the\nassembly actually walked. Everything before the last complete entry is kept.\n\nDeliberately *not* what a mis-indexed pool produces. A journal whose indices do\nnot line up would assemble into a record that reads as complete and describes a\nconversation that never happened, so\n[assembly](crate::gg_replay_assembly) refuses it outright and the run carries no\nrecord at all. This reason is for damage whose extent is known.",
           "type": "string"
         },
         {

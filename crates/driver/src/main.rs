@@ -527,12 +527,13 @@ async fn finalize_validation_backend_upload(
     }
 }
 
-/// Mirror a gg run's [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) record into the **backend
-/// store**, so `GET /runs/{id}/replay` can serve it to a replay driver.
+/// Mirror a gg run's replay record into the **backend store**, so `GET /runs/{id}/replay` can serve
+/// it to a replay driver.
 ///
-/// A no-op for any run that captured no replay (the sidecar absent — replay is opt-in and debug-only).
-/// Reads the record from the produced tree the driver still holds on disk; an upload failure is
-/// logged but never fatal, exactly like the proof and validation uploads.
+/// A no-op for any run with no assembled record at the run tree's root (every non-gg run, and a gg
+/// run whose journal never reached the host). Reads the record from the produced tree the driver
+/// still holds on disk; an upload failure is logged but never fatal, exactly like the proof and
+/// validation uploads.
 async fn finalize_replay_backend_upload(config: &Config, record: &test_cabinet_core::RunRecord) {
     let out_dir = config.work_dir.join("out");
     if let Err(err) = test_cabinet_driver::artifacts::upload_replay_to_backend(

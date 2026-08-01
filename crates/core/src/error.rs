@@ -281,6 +281,24 @@ pub enum Error {
     #[error("gg executor is not yet wired (Stage D2): {0}")]
     GgExecutorUnimplemented(String),
 
+    /// A **gg** run's replay [journal](crate::gg_replay_journal) could not be
+    /// folded into a [record](crate::gg_replay::GgReplayRecord).
+    ///
+    /// Only for the damage that cannot be *reported* — a pool index that skips,
+    /// an entry naming a body that was never written, a format this build does
+    /// not assemble. A journal that merely stops early is not an error: it
+    /// assembles into a record carrying a
+    /// [truncation](crate::gg_replay::GgReplayTruncation). Assembly runs at the
+    /// [post-run seam](crate::post_run), so this never fails the run it
+    /// describes — it costs the run its replay artifact and nothing else.
+    #[error("gg replay journal `{path}` {detail}")]
+    GgReplayJournal {
+        /// The journal that could not be assembled.
+        path: String,
+        /// What was wrong with it, as a predicate completing the message.
+        detail: String,
+    },
+
     /// Failed to (de)serialize a value, typically the run record.
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),

@@ -15,6 +15,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use test_cabinet_core::gg_replay_assembly::GgReplayAssembler;
 use test_cabinet_core::{
     ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
     CredBytesSource, DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HttpBackendClient,
@@ -291,12 +292,15 @@ where
         harnesses: Box::new(DefaultHarnessRegistry::new()),
         orchestrators: OrchestratorCatalog::new(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references)),
-        // No post-run analysis stage is wired yet: the replay assembly and the
-        // static code analysis both land in this seam, and until they do a run
-        // simply produces no analysis artifacts. Wiring one here is all it takes —
-        // the seam runs it on the host, after the tree is collected and before
-        // validation, so neither can cost a run its runtime budget.
-        replay_assembler: None,
+        // gg's replay journal is folded into the run tree's `replay.json.gz` here,
+        // on the host, after the tree is collected and before validation — so a
+        // record that can run to hundreds of megabytes of journal costs the test
+        // case none of its runtime budget and the driver pod none of its memory
+        // (the assembly streams through segment files). A no-op for a
+        // third-party-harness run, which has no journal.
+        replay_assembler: Some(Box::new(GgReplayAssembler)),
+        // The static code analysis lands in the same seam; until it does a run
+        // simply produces no analysis artifact.
         analyzer: None,
         validator: DispatchValidator::new(screenshot_dir),
         prices: OpenRouterPrices::new(),

@@ -6912,6 +6912,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "cuid2",
+ "flate2",
  "foray-core",
  "foray-host",
  "handlebars",

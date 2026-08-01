@@ -961,9 +961,15 @@ pub enum GgReplayTruncationReason {
     /// killed gg cannot write a truncation marker either. This is the reason the
     /// terminating marker is mandatory on the normal exit path.
     SessionKilled,
-    /// The journal was readable but malformed — a torn final line, a pool index that
-    /// skips, or an entry referencing a body past its pool's end. Everything before the
-    /// last complete entry is kept.
+    /// The journal was readable up to a point and then was not — a line torn off
+    /// mid-write, or a terminating marker whose entry count disagrees with what the
+    /// assembly actually walked. Everything before the last complete entry is kept.
+    ///
+    /// Deliberately *not* what a mis-indexed pool produces. A journal whose indices do
+    /// not line up would assemble into a record that reads as complete and describes a
+    /// conversation that never happened, so
+    /// [assembly](crate::gg_replay_assembly) refuses it outright and the run carries no
+    /// record at all. This reason is for damage whose extent is known.
     CorruptJournal,
     /// The journal writer failed (a stalled disk, a dead writer thread), which stops
     /// capture for the whole run.
