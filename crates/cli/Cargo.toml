@@ -15,6 +15,11 @@ test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
 # gg's harness library — `tcab gg-replay` drives its debug-only replay driver
 # (`replay_driver`) in-process to reconstruct a run from a captured replay record.
 test-cabinet-gg = { path = "../gg" }
+# The static code analyzer — `tcab analyze` runs it in-process over a directory. The
+# dependency lives here rather than in core on purpose: core owns the contract types, and
+# keeping the parsers out of it is what stops `oxc` and `syn` from being linked into every
+# binary that touches a run record.
+test-cabinet-code-analysis = { path = "../code-analysis" }
 clap = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }

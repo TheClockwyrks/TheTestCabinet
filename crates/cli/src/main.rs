@@ -32,11 +32,18 @@ use crate::cli::{Cli, Command};
 async fn main() -> anyhow::Result<()> {
     load_dotenv()?;
 
-    let _telemetry = test_cabinet_telemetry::init(test_cabinet_telemetry::Config::new(
-        "tcab-cli",
-        env!("CARGO_PKG_VERSION"),
-        "info,test_cabinet_cli=info",
-    ))?;
+    // Logs go to standard error, not standard output: `tcab` is a command line tool whose
+    // stdout is data — a run record, a prompt, an analysis document — and a log line
+    // interleaved into `tcab analyze --json | jq` makes that data unparseable. The services
+    // keep logging to stdout, where a collector reads both streams alike.
+    let _telemetry = test_cabinet_telemetry::init(
+        test_cabinet_telemetry::Config::new(
+            "tcab-cli",
+            env!("CARGO_PKG_VERSION"),
+            "info,test_cabinet_cli=info",
+        )
+        .with_stderr_logging(),
+    )?;
 
     let cli = Cli::parse();
 
@@ -64,6 +71,7 @@ async fn dispatch(command: Command) -> anyhow::Result<()> {
         Command::Prompt(args) => commands::prompt::execute(args).await,
         Command::PublishReference(args) => commands::publish_reference::execute(args).await,
         Command::CaptureBaselines(args) => commands::capture_baselines::execute(args).await,
+        Command::Analyze(args) => commands::analyze::execute(args).await,
     }
 }
 
@@ -84,6 +92,7 @@ fn command_name(command: &Command) -> &'static str {
         Command::Prompt(_) => "prompt",
         Command::PublishReference(_) => "publish-reference",
         Command::CaptureBaselines(_) => "capture-baselines",
+        Command::Analyze(_) => "analyze",
     }
 }
 

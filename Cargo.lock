@@ -6928,6 +6928,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "test-cabinet-code-analysis",
  "test-cabinet-core",
  "test-cabinet-gg",
  "test-cabinet-telemetry",

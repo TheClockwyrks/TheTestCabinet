@@ -643,3 +643,57 @@ fn capture_baselines_requires_a_slug() {
         "the case slug is required"
     );
 }
+
+#[test]
+fn analyze_parses_a_bare_directory() {
+    let cli = Cli::try_parse_from(["tcab", "analyze", "crates/gg"])
+        .expect("a directory is the only required argument");
+
+    match cli.command {
+        Command::Analyze(args) => {
+            assert_eq!(args.path, "crates/gg");
+            assert!(args.seed_commit.is_none());
+            assert!(!args.json);
+            assert_eq!(args.top, 10);
+            // An arbitrary directory cannot honestly claim nothing has built in it, so the
+            // recorded basis defaults to the conservative one.
+            assert_eq!(args.tree_basis, TreeBasisArg::PostValidation);
+        }
+        other => panic!("expected an analyze command, got {other:?}"),
+    }
+}
+
+#[test]
+fn analyze_parses_its_options() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "analyze",
+        "/runs/abc/implementation",
+        "--seed-commit",
+        "6f03bfee",
+        "--tree-basis",
+        "pre-validation",
+        "--top",
+        "3",
+        "--json",
+    ])
+    .expect("a fully specified analyze invocation should parse");
+
+    match cli.command {
+        Command::Analyze(args) => {
+            assert_eq!(args.seed_commit.as_deref(), Some("6f03bfee"));
+            assert_eq!(args.tree_basis, TreeBasisArg::PreValidation);
+            assert_eq!(args.top, 3);
+            assert!(args.json);
+        }
+        other => panic!("expected an analyze command, got {other:?}"),
+    }
+}
+
+#[test]
+fn analyze_requires_a_directory() {
+    assert!(
+        Cli::try_parse_from(["tcab", "analyze"]).is_err(),
+        "the directory is required — there is no useful default tree to analyse"
+    );
+}

@@ -4,6 +4,7 @@
 //! easy to test in isolation (see `cli.test.rs`).
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use test_cabinet_core::CodeTreeBasis;
 use test_cabinet_core::run_record::HarnessSlug;
 
 /// The Test Cabinet command line interface.
@@ -82,6 +83,13 @@ pub enum Command {
     /// browser.
     #[command(name = "capture-baselines")]
     CaptureBaselines(CaptureBaselinesArgs),
+
+    /// Run the static code analyzer over a directory and print what it found.
+    ///
+    /// The same analysis a run records about its produced tree, pointed at any tree on
+    /// disk — no run, no container, no backend, no credentials. It executes nothing in the
+    /// tree it reads.
+    Analyze(AnalyzeArgs),
 }
 
 /// The agent harness to drive, selectable on the command line.
@@ -477,6 +485,67 @@ pub struct CaptureBaselinesArgs {
     /// building or writing anything.
     #[arg(long)]
     pub dry_run: bool,
+}
+
+/// Arguments for `tcab analyze`.
+///
+/// `disable_version_flag` frees `--version`/`-V`, which would otherwise be clap's
+/// binary-version flag and is confusing next to the *analyzer* version this command prints.
+#[derive(Debug, Args)]
+#[command(disable_version_flag = true)]
+pub struct AnalyzeArgs {
+    /// Root of the source tree to analyse (for example, `crates/gg`).
+    #[arg(value_name = "DIR")]
+    pub path: String,
+
+    /// The commit that laid the workspace down, if this tree is a seeded run workspace.
+    ///
+    /// This is the exact top rung of the authored-set ladder: with it, the analysis measures
+    /// only what was written *after* that commit. Omit it for an ordinary source tree, where
+    /// every file is authored by definition.
+    #[arg(long, value_name = "SHA")]
+    pub seed_commit: Option<String>,
+
+    /// Which state of the tree this is, recorded on the result so a mixed corpus stays
+    /// sliceable.
+    ///
+    /// Defaults to `post-validation`, which is the only honest answer for a directory this
+    /// command was simply pointed at: `pre-validation` is a claim that nothing has built in
+    /// the tree yet, and only the run path can make it truthfully.
+    #[arg(long, value_name = "BASIS", default_value = "post-validation")]
+    pub tree_basis: TreeBasisArg,
+
+    /// How many rows to show in each of the specific sections — the complex functions, the
+    /// largest files, the cycles, the duplicate blocks.
+    #[arg(long, value_name = "N", default_value_t = 10)]
+    pub top: usize,
+
+    /// Print the full analysis document as JSON instead of the report: every file, symbol,
+    /// import edge, cycle and clone group, with the summary embedded.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// Which state of a tree `tcab analyze` is being pointed at.
+///
+/// Mirrors [`CodeTreeBasis`] so the CLI's accepted values stay in lockstep with the value
+/// recorded in the analysis document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum TreeBasisArg {
+    /// The tree as a run left it, with validation not yet run.
+    PreValidation,
+    /// The tree after something built in it — the safe assumption for any directory.
+    PostValidation,
+}
+
+impl From<TreeBasisArg> for CodeTreeBasis {
+    fn from(value: TreeBasisArg) -> Self {
+        match value {
+            TreeBasisArg::PreValidation => Self::PreValidation,
+            TreeBasisArg::PostValidation => Self::PostValidation,
+        }
+    }
 }
 
 #[cfg(test)]

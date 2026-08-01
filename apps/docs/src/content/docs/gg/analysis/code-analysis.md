@@ -209,6 +209,23 @@ post-validation** tree, which tree was measured is itself recorded and queryable
 backfill refuses to overwrite a pristine result with a post-validation one without
 an explicit flag, and a bucket spanning both says so.
 
+### Offline, against any directory
+
+The analyzer is a library with a one-way dependency on the core, so nothing about
+it needs a run. [`tcab analyze <dir>`](/components/cli/overview/#commands) points
+the very same pass at any tree on disk and prints the result — no run, no
+container, no backend, no credentials, and nothing executed in the tree it reads.
+
+That is not a convenience wrapper; it is what makes the analyzer *reviewable*. A
+figure a run reports can be reproduced, questioned and improved by anyone with the
+tree, and a change to the analyzer can be judged against real trees — this
+repository's own crates included — before it is stamped onto a corpus. The
+`--seed-commit` flag supplies the exact top rung of the
+[authored-set ladder](#which-files-did-the-model-write) when the directory *is* a
+seeded run workspace; without it the whole tree is treated as authored, which is
+the correct answer for an ordinary source tree and is stated on the report rather
+than assumed.
+
 ## Deterministic means deterministic
 
 The analysis is a pure function of the tree's bytes. That claim has teeth, and one

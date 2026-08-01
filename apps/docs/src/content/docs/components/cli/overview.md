@@ -115,6 +115,23 @@ including:
   case's toolchain and a browser. This is the command to run while authoring or
   revising debug scripts; `publish-reference` is only for the deploy.
 - **`harnesses`** — inspect the supported agent harnesses.
+- **`analyze`** — run the
+  [static code analyzer](/gg/analysis/code-analysis/) over a directory and print
+  what it found: `tcab analyze <dir> [--seed-commit <sha>] [--tree-basis
+  <pre-validation|post-validation>] [--top <n>] [--json]`. This is the same
+  analysis a run records about its produced tree, pointed at any tree on disk, so
+  it needs **no run, no container, no backend and no credentials** — and it
+  executes nothing in the tree it reads. The report leads with the figures that
+  characterise a tree in one line, lays the rest out by family in the order of the
+  analyzer's own metric catalog (so a metric added to the summary appears here
+  automatically, with its label, unit and `approximate` flag), and finishes with
+  the specifics worth acting on: the most complex functions with their file and
+  line, the largest files, the import cycles, and the largest duplicated blocks.
+  `--seed-commit` is what makes the *authored set* exact when the directory is a
+  seeded run workspace; without it every file in the tree is treated as authored,
+  which is the right answer for an ordinary source tree. `--json` prints the full
+  analysis document — every file, symbol, import edge, cycle and clone group — for
+  piping onward.
 
 ## Authentication
 
