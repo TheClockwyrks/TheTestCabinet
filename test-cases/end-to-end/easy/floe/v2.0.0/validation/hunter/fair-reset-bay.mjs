@@ -14,6 +14,17 @@ import { startCrossing, ROW_MEDIAN, WATER_TOP } from "../_helpers.mjs";
 const BAY_COL = 20;
 const BAY_INDEX = 2;
 
+// A beat on the posed scene before the hop that ends the crossing.
+//
+// `act` is the recording, and it used to open ON the press — so the completed crossing,
+// which is the event the whole fairness rule hangs off, was over before a reviewer could
+// see what it was. The lead shows the arrangement first: the critter on its floe under
+// the open bay, the bear closing from the median, the bays not yet filled. Then the hop
+// means something. It is camera time only — nothing is read during it — and it is short
+// enough that the bear, eight rows below and closing at about 3 tiles/second
+// (specs/hunter.md), cannot reach the critter inside it.
+const LEAD_TICKS = 120; // 1 s
+
 export default function item() {
   // The bay fill that ends the crossing, the fresh crossing after it, the idle
   // period, and the bear's return once the critter advances.
@@ -31,6 +42,15 @@ export default function item() {
     async arrange(api) {
       await startCrossing(api);
       await api.call("setLives", 3);
+      // The pursuit is suspended. What this item reads is entirely about a bear being
+      // PRESENT or not — removed when the crossing ends, absent while the fresh critter
+      // idles, back once it advances — and none of that is the pursuit, which
+      // specs/instrumentation.md leaves the rest of a bear's life running without. With
+      // the brain on, a bear that re-emerges during these sweeps can reach the critter and
+      // catch it, which starts yet another crossing and removes it again: the fairness
+      // rule would then be judged on a board that had moved on twice while it was being
+      // read. Frozen, every reading is of the bear this item posed.
+      await api.call("setBearAI", false);
       await api.call("setLane", WATER_TOP, { cols: [BAY_COL], speed: 0 }); // floe under the bay
       await api.call("placeCritter", BAY_COL, WATER_TOP);
       await api.call("setBear", 0, { col: BAY_COL, row: ROW_MEDIAN }); // a live bear to be removed
@@ -42,6 +62,7 @@ export default function item() {
     // (`setLane` / `placeCritter`), never `startCrossing`, whose reset would freeze the
     // recording.
     async act(api) {
+      await api.advance(LEAD_TICKS); // camera only: the posed scene, before the hop
       await api.call("press", "ArrowUp");
       filled = await api.until((s) => s.bays[BAY_INDEX] === true, {
         max: 60,
