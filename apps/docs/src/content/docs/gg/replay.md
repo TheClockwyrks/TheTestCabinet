@@ -57,6 +57,46 @@ A per-run byte ceiling (`replayMaxBytes`, among the run's
 capture and marks the record truncated: **capture degrades, it never fails the run it
 observes.**
 
+## Replaying from the command line
+
+Two binaries reconstruct records, and they say the same things because they share one
+front end.
+
+```sh
+tcab gg-replay <RUN_ID>                     # fetch the record from the backend
+tcab gg-replay --record <FILE>              # or read one off disk
+tcab gg-replay <RUN_ID> --steps steps.json  # also write the per-agent step-through
+gg replay --record <FILE>                   # gg reconstructing a record itself
+```
+
+A record is read however it was obtained: a run tree's copy is `replay.json.gz`,
+`GET /runs/{id}/replay` serves plain JSON, and both shapes — in either format version —
+are accepted, so nothing has to be unpacked or converted first.
+
+`--record` names a **file** and the run id is a **positional**, which is not an
+arbitrary split: the flag shipped first, and quietly respelling an existing invocation
+breaks every script that used it. The same reasoning is why `gg --config <PATH>` — the
+only way `core` has ever launched gg — stays valid now that gg has subcommands, as an
+implied `gg run`.
+
+### `--gg`, and reconstructing with the build that recorded
+
+`tcab gg-replay --gg <VERSION|PATH>` hands the whole reconstruction to a *different* gg —
+a published release resolved by version (downloaded once and cached), or a binary already
+on disk — and `tcab` becomes a pass-through for its output.
+
+This is the escape hatch for the direction `formatVersion` cannot rescue. A record from a
+**newer** gg is refused outright, and a record from a much **older** one may pin inputs the
+current build no longer models; the build that wrote a record can always read it, and the
+record's own `recorder` block names it — which is why the banner prints that version before
+delegating. It is also why `gg replay` exists on every release rather than only in `tcab`:
+the delegation *is* `gg replay --record <FILE>`, so a build that cannot be asked to replay
+cannot be delegated to.
+
+`--gg` never guesses. A spec that names a path which does not exist is an error rather than
+a version, because reinterpreting a typo'd path as a release is how a 404 ends up being
+reported as the wrong problem.
+
 ## Reading a record in the console
 
 Every finished gg run links to its **Replay** view, from the run's gg tab and from the

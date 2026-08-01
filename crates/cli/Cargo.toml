@@ -21,6 +21,10 @@ test-cabinet-gg = { path = "../gg" }
 # binary that touches a run record.
 test-cabinet-code-analysis = { path = "../code-analysis" }
 clap = { workspace = true }
+# Downloading an older `gg` release for `tcab gg-replay --gg <VERSION>`. The backend client in
+# `core` already links this exact client, so this is a direct dependency on a crate `tcab` carries
+# either way — not a second HTTP or TLS stack.
+reqwest = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }

@@ -307,6 +307,24 @@ pub trait BackendClient: Send + Sync {
         Ok(())
     }
 
+    /// Fetch a gg run's stored replay record. (`GET /runs/{id}/replay`) Used by
+    /// `tcab gg-replay <RUN_ID>` to reconstruct a published run without first hunting down its
+    /// run tree.
+    ///
+    /// The bytes are whatever the route served. It content-negotiates on `Accept-Encoding`, and
+    /// this client is built without `reqwest`'s `gzip` feature so it neither advertises nor decodes
+    /// the encoding — meaning it receives plain JSON. The reader sniffs the gzip magic anyway,
+    /// because a record obtained any other way (out of a run tree, through a proxy that ignored
+    /// `Vary`) may well be compressed, and guessing from the transport is how that breaks.
+    ///
+    /// Defaults to an error so a backend without replay support (or a test stub) is explicit about
+    /// not serving one; the HTTP client overrides it.
+    async fn run_replay(&self, run_id: &str) -> Result<Vec<u8>> {
+        Err(Error::Publish(format!(
+            "this backend client cannot serve the replay record for run `{run_id}`"
+        )))
+    }
+
     /// Fetch a pushed adversarial run's controller wasm module.
     /// (`GET /runs/{id}/controller.wasm`) Used by the arena to resolve a
     /// [`ControllerKind::PushedRun`](crate::match_play::ControllerKind::PushedRun).
@@ -1134,6 +1152,11 @@ impl BackendClient for HttpBackendClient {
             .map_err(|err| backend_err(&url, err))?;
         error_for_status(&url, response).await?;
         Ok(())
+    }
+
+    async fn run_replay(&self, run_id: &str) -> Result<Vec<u8>> {
+        self.get_bytes(&format!("/runs/{}/replay", encode(run_id)))
+            .await
     }
 
     async fn controller_artifact(&self, run_id: &str) -> Result<Vec<u8>> {

@@ -112,3 +112,123 @@ fn no_unordered_map_or_set_survives_in_ggs_own_code() {
         offenders.join("\n"),
     );
 }
+
+// ---------------------------------------------------------------------------
+// The command-line surface — the bare `--config` form is a compatibility contract
+// ---------------------------------------------------------------------------
+
+use clap::{CommandFactory, Parser};
+
+use super::{Cli, Command};
+
+/// Catches structural mistakes in the derive (duplicate args, bad groups) — including the
+/// `args_conflicts_with_subcommands`/`subcommand_negates_reqs` pair that lets a required top-level
+/// `--config` coexist with subcommands.
+#[test]
+fn the_command_line_definition_is_valid() {
+    Cli::command().debug_assert();
+}
+
+/// **`gg --config <PATH>` must keep working, forever.**
+///
+/// This is the entire invocation contract `core` has ever used — `gg_exec` launches exactly
+/// `gg --config <path>` — so every released gg accepts it and every deployment's baked binary is
+/// invoked by it. Adding subcommands is only safe because the bare form stays an implied `run`; if
+/// this test ever fails, every cluster run whose driver and binary are a generation apart dies at
+/// the launch step.
+#[test]
+fn the_bare_config_form_is_an_implied_run() {
+    let cli = Cli::try_parse_from(["gg", "--config", "/tmp/invocation.json"])
+        .expect("the bare form parses");
+    assert!(cli.command.is_none(), "no subcommand was named");
+    assert_eq!(
+        cli.config,
+        Some(std::path::PathBuf::from("/tmp/invocation.json")),
+    );
+}
+
+/// The explicit spelling parses to the same thing, so a caller may say what it means.
+#[test]
+fn the_run_subcommand_takes_the_same_config() {
+    let cli = Cli::try_parse_from(["gg", "run", "--config", "/tmp/invocation.json"])
+        .expect("`gg run --config` parses");
+    match cli.command {
+        Some(Command::Run(args)) => {
+            assert_eq!(
+                args.config,
+                std::path::PathBuf::from("/tmp/invocation.json")
+            );
+        }
+        other => panic!("expected the run subcommand, got {other:?}"),
+    }
+}
+
+/// `gg` with nothing at all is an error naming the missing `--config`, not a silent no-op — the
+/// required flag survives the subcommands being added around it.
+#[test]
+fn a_bare_gg_still_requires_a_config() {
+    let err = Cli::try_parse_from(["gg"]).expect_err("`gg` alone is not a valid invocation");
+    assert_eq!(
+        err.kind(),
+        clap::error::ErrorKind::MissingRequiredArgument,
+        "{err}"
+    );
+}
+
+/// `gg replay --record <FILE>` parses, with `--steps` optional.
+///
+/// This subcommand is what makes `tcab gg-replay --gg <VERSION|PATH>` possible: the delegation is
+/// literally `gg replay --record <FILE>`, so a release that cannot be asked to replay cannot be
+/// delegated to. The flag names are therefore part of a cross-version contract, not a local choice.
+#[test]
+fn the_replay_subcommand_takes_a_record_and_optional_steps() {
+    let cli = Cli::try_parse_from(["gg", "replay", "--record", "/tmp/replay.json"])
+        .expect("`gg replay --record` parses");
+    match cli.command {
+        Some(Command::Replay(args)) => {
+            assert_eq!(args.record, std::path::PathBuf::from("/tmp/replay.json"));
+            assert!(args.steps.is_none());
+        }
+        other => panic!("expected the replay subcommand, got {other:?}"),
+    }
+
+    let cli = Cli::try_parse_from([
+        "gg",
+        "replay",
+        "--record",
+        "/tmp/replay.json",
+        "--steps",
+        "/tmp/steps.json",
+    ])
+    .expect("`--steps` parses");
+    match cli.command {
+        Some(Command::Replay(args)) => {
+            assert_eq!(
+                args.steps,
+                Some(std::path::PathBuf::from("/tmp/steps.json"))
+            );
+        }
+        other => panic!("expected the replay subcommand, got {other:?}"),
+    }
+}
+
+/// A subcommand and a top-level `--config` are mutually exclusive rather than both-applied: naming
+/// both is a mistake, and a parse error is the only reading of it that cannot silently run the
+/// wrong thing.
+#[test]
+fn a_subcommand_and_a_bare_config_conflict() {
+    let err = Cli::try_parse_from([
+        "gg",
+        "--config",
+        "/tmp/invocation.json",
+        "replay",
+        "--record",
+        "/tmp/replay.json",
+    ])
+    .expect_err("a bare --config alongside a subcommand is rejected");
+    assert_eq!(
+        err.kind(),
+        clap::error::ErrorKind::ArgumentConflict,
+        "{err}"
+    );
+}

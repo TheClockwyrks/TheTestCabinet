@@ -697,3 +697,55 @@ fn analyze_requires_a_directory() {
         "the directory is required — there is no useful default tree to analyse"
     );
 }
+
+/// `tcab gg-replay` accepts its whole flag set alongside the run-id positional.
+///
+/// The parser file carries this because the surface is a *contract with another binary*: `--record`
+/// and `--steps` are forwarded verbatim to `gg replay` when `--gg` resolves an older release, so a
+/// rename here silently breaks a delegation that has no other way to fail.
+#[test]
+fn gg_replay_parses_a_run_id_with_steps_and_an_older_gg() {
+    let cli = Cli::try_parse_from([
+        "tcab",
+        "gg-replay",
+        "run-abc",
+        "--steps",
+        "/tmp/steps.json",
+        "--gg",
+        "0.6.9",
+    ])
+    .expect("a fully specified gg-replay invocation should parse");
+
+    match cli.command {
+        Command::GgReplay(args) => {
+            assert_eq!(args.run_id.as_deref(), Some("run-abc"));
+            assert!(args.record.is_none());
+            assert_eq!(
+                args.steps,
+                Some(std::path::PathBuf::from("/tmp/steps.json"))
+            );
+            assert_eq!(args.gg.as_deref(), Some("0.6.9"));
+        }
+        other => panic!("expected a gg-replay command, got {other:?}"),
+    }
+}
+
+/// The shipped `--record` spelling still parses on its own, with everything else defaulted.
+#[test]
+fn gg_replay_still_parses_the_record_flag_alone() {
+    let cli = Cli::try_parse_from(["tcab", "gg-replay", "--record", "/tmp/replay.json"])
+        .expect("the shipped spelling should keep parsing");
+
+    match cli.command {
+        Command::GgReplay(args) => {
+            assert_eq!(
+                args.record,
+                Some(std::path::PathBuf::from("/tmp/replay.json"))
+            );
+            assert!(args.run_id.is_none());
+            assert!(args.steps.is_none());
+            assert!(args.gg.is_none());
+        }
+        other => panic!("expected a gg-replay command, got {other:?}"),
+    }
+}

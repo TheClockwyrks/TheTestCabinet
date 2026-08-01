@@ -75,6 +75,12 @@ tiktoken-rs = { workspace = true }
 # the picture to its tool result as a base64 `data:` URL, which is how every provider
 # behind OpenRouter takes an inline image (`src/tools/filesystem.rs`, `src/client.rs`).
 base64 = { workspace = true }
+# Reading a gzipped replay record (`src/replay_cli.rs`). A run tree's copy of a record is
+# `replay.json.gz` — the run-tree artifact convention compresses it once, where it is written —
+# so `gg replay --record <FILE>` sniffs the gzip magic and decompresses rather than making a
+# developer unpack the file first. Same crate `core` compresses it with, so there is one
+# compression stack in the workspace.
+flate2 = { workspace = true }
 
 [dev-dependencies]
 # A scratch workspace root for the tool tests (shell + filesystem): tools operate on

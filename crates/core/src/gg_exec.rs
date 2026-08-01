@@ -202,21 +202,10 @@ fn resolve_install_with(
         let version = env(ENV_RELEASE_VERSION)
             .filter(|v| !v.trim().is_empty())
             .unwrap_or_else(|| default_version.to_string());
-        let repo = env(ENV_RELEASE_REPO)
-            .filter(|r| !r.trim().is_empty())
-            .unwrap_or_else(|| DEFAULT_RELEASE_REPO.to_string());
-        // Default to the fully static musl target: gg is published and installed as a
-        // static binary (see `.cargo/config.toml`'s `build-portable-gg` and
-        // `scripts/build-gg-static.sh`) precisely so one asset runs across every
-        // run-container image (glibc bookworm and the Ubuntu blender image alike). An
-        // operator can override the triple via `TCAB_GG_RELEASE_TARGET`.
-        let target = env(ENV_RELEASE_TARGET)
-            .filter(|t| !t.trim().is_empty())
-            .unwrap_or_else(|| format!("{default_target_arch}-unknown-linux-musl"));
         GgInstall::Release {
-            repo,
+            repo: release_repo_with(env),
             version,
-            target,
+            target: release_target_with(env, default_target_arch),
             container_path: GG_BINARY_PATH.to_string(),
         }
     };
@@ -291,6 +280,42 @@ fn default_local_candidates() -> Vec<PathBuf> {
     .into_iter()
     .map(PathBuf::from)
     .collect()
+}
+
+/// The `owner/repo` a `gg` release is fetched from: `TCAB_GG_RELEASE_REPO` when set,
+/// otherwise `TheClockwyrks/test-cabinet`.
+///
+/// Public because the run path is not the only thing that resolves a release: `tcab gg-replay
+/// --gg <VERSION>` downloads an *older* gg to reconstruct a record that gg wrote, and it has to
+/// look in the same place a run would. Two independent copies of "which repo" is precisely the
+/// drift that makes one of them fetch from a repository nothing is published to.
+pub fn release_repo() -> String {
+    release_repo_with(&|key| std::env::var(key).ok())
+}
+
+/// The release asset's target triple: `TCAB_GG_RELEASE_TARGET` when set, otherwise the
+/// static-musl triple for the host architecture. Public for the same reason as [`release_repo`].
+pub fn release_target() -> String {
+    release_target_with(&|key| std::env::var(key).ok(), std::env::consts::ARCH)
+}
+
+/// [`release_repo`] with the environment injected, so the pure install resolution can share it.
+fn release_repo_with(env: &dyn Fn(&str) -> Option<String>) -> String {
+    env(ENV_RELEASE_REPO)
+        .filter(|r| !r.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_RELEASE_REPO.to_string())
+}
+
+/// [`release_target`] with the environment and host architecture injected.
+///
+/// Defaults to the fully static musl target: gg is published and installed as a static binary
+/// (see `.cargo/config.toml`'s `build-portable-gg` and `scripts/build-gg-static.sh`) precisely so
+/// one asset runs across every run-container image (glibc bookworm and the Ubuntu blender image
+/// alike). An operator can override the triple via `TCAB_GG_RELEASE_TARGET`.
+fn release_target_with(env: &dyn Fn(&str) -> Option<String>, default_arch: &str) -> String {
+    env(ENV_RELEASE_TARGET)
+        .filter(|t| !t.trim().is_empty())
+        .unwrap_or_else(|| format!("{default_arch}-unknown-linux-musl"))
 }
 
 /// The URL a published `gg` release asset lives at.

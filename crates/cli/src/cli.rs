@@ -33,11 +33,11 @@ pub enum Command {
     /// Run validation over a produced implementation.
     Validate(ValidateArgs),
 
-    /// Reconstruct a **gg** run from a captured replay record — a debug-only tool. Loads a
-    /// stored replay record (captured by a run with the `replay` capability on) and re-runs the
-    /// session from its pinned model I/O and tool results, with no live model and no real tools,
-    /// re-emitting the reconstructed telemetry and (optionally) the per-agent step-through. It does
-    /// not produce a scored run.
+    /// Reconstruct a **gg** run from a captured replay record — a debug-only tool. Loads the
+    /// record, by run id from the backend or from a local file, and re-runs the session from its
+    /// pinned model I/O and tool results, with no live model and no real tools, re-emitting the
+    /// reconstructed telemetry and (optionally) the per-agent step-through. It does not produce a
+    /// scored run.
     #[command(name = "gg-replay")]
     GgReplay(GgReplayArgs),
 
@@ -197,19 +197,47 @@ pub struct RunArgs {
 
 /// Arguments for `tcab gg-replay` — a local, debug-only reconstruction of a gg run from its
 /// captured [replay record](test_cabinet_core::gg_replay::GgReplayRecord).
+///
+/// The record is named **either** by run id (fetched from the backend) or by `--record` (a local
+/// file), and exactly one of the two is required — a clap group, so naming both is a parse error
+/// rather than a silent precedence rule.
+///
+/// `--record` remains a flag. The run-id form was *added* as a positional; demoting the shipped
+/// flag to a positional would break every script and shell history that already uses it, which is
+/// the same class of break `gg --config` is deliberately protected from.
 #[derive(Debug, Args)]
+#[command(group(
+    clap::ArgGroup::new("gg_replay_record_source")
+        .required(true)
+        .args(["run_id", "record"])
+))]
 pub struct GgReplayArgs {
-    /// Path to the JSON replay record to reconstruct. Either format: a v1 record — what
-    /// `GET /runs/{id}/replay` serves for any run captured before format v2 — is upgraded as it is
-    /// read.
+    /// The id of a published run to fetch the replay record for (`GET /runs/{id}/replay` against
+    /// `TCAB_BACKEND_URL`). Mutually exclusive with `--record`.
+    #[arg(value_name = "RUN_ID")]
+    pub run_id: Option<String>,
+
+    /// Path to the replay record to reconstruct, plain JSON or gzipped (a run tree's copy is
+    /// `replay.json.gz`). Either format version: a v1 record — what `GET /runs/{id}/replay` serves
+    /// for any run captured before format v2 — is upgraded as it is read.
     #[arg(long, value_name = "FILE")]
-    pub record: std::path::PathBuf,
+    pub record: Option<std::path::PathBuf>,
 
     /// Optional path to write the reconstructed per-agent step-through list to, as JSON — what a
     /// debugging UI renders (each step: which agent, what it saw, and what it did with each tool
     /// result). Omit to only stream the reconstructed telemetry and a summary.
     #[arg(long, value_name = "FILE")]
     pub steps: Option<std::path::PathBuf>,
+
+    /// Reconstruct with an **older** `gg` instead of this build: a released version (`0.6.9`, or
+    /// `v0.6.9`) to resolve from the published releases, or a path to a `gg` binary.
+    ///
+    /// A record's `formatVersion` says whether *this* build can parse it, and a record from a newer
+    /// gg is refused outright. This is the other direction: a record written by a build whose
+    /// inputs this one no longer models is best reconstructed by the build that wrote it, and the
+    /// record's own `recorder` block names it.
+    #[arg(long, value_name = "VERSION|PATH")]
+    pub gg: Option<String>,
 }
 
 /// Arguments for `tcab validate`.

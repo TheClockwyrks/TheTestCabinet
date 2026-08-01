@@ -115,6 +115,10 @@ including:
   case's toolchain and a browser. This is the command to run while authoring or
   revising debug scripts; `publish-reference` is only for the deploy.
 - **`harnesses`** — inspect the supported agent harnesses.
+- **`gg-replay`** — reconstruct a **gg** run from its captured
+  [replay record](/gg/replay/): `tcab gg-replay <RUN_ID> | --record <FILE>
+  [--steps <FILE>] [--gg <VERSION|PATH>]`. See
+  [replaying from the command line](/gg/replay/#replaying-from-the-command-line).
 - **`analyze`** — run the
   [static code analyzer](/gg/analysis/code-analysis/) over a directory and print
   what it found: `tcab analyze <dir> [--seed-commit <sha>] [--tree-basis
