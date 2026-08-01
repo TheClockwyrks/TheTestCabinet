@@ -18,6 +18,8 @@
 use super::*;
 use crate::model::Role;
 use test_cabinet_core::gg::SHELL_OUTPUT_OFFLOAD;
+use test_cabinet_core::gg_replay::GgReplayEntryKind;
+use test_cabinet_core::gg_replay_journal::GgJournalLine;
 
 /// A client that answers the first turn with `program` — its whole reply, exactly as this protocol
 /// asks — and then ends the session by calling `finish`.
@@ -625,8 +627,8 @@ async fn code_execution_tool_calls_equals_the_telemetry_pair_count() {
 }
 
 /// A program that calls one tool repeatedly must not mint one id twice: the synthetic id is
-/// ordinal-keyed, and anything recorded against it (the replay driver most of all) is keyed by that
-/// id. This asserts against the **replay record**, which is the consumer that would be corrupted.
+/// ordinal-keyed, and anything recorded against it (a reconstruction most of all) is keyed by that
+/// id. This asserts against the **capture journal**, which is the consumer that would be corrupted.
 #[tokio::test]
 async fn the_synthetic_call_ids_are_unique_within_a_turn() {
     let dir = TempDir::new().unwrap();
@@ -644,18 +646,17 @@ async fn the_synthetic_call_ids_are_unique_within_a_turn() {
     .await;
     assert_eq!(outcome, SessionOutcome::Ran);
 
-    let record: GgReplayRecordV1 = serde_json::from_str(
-        &std::fs::read_to_string(dir.path().join(GG_REPLAY_ARTIFACT_PATH)).unwrap(),
-    )
-    .unwrap();
-    let ids: Vec<String> = record
-        .entries
-        .iter()
-        .filter_map(|entry| match &entry.kind {
-            GgReplayEntryKindV1::ToolResult { call, .. } => {
-                Some(call["id"].as_str().expect("a recorded call id").to_string())
+    let journal = std::fs::read_to_string(dir.path().join(GG_REPLAY_JOURNAL_PATH)).unwrap();
+    let ids: Vec<String> = journal
+        .lines()
+        .filter_map(|line| {
+            match serde_json::from_str::<GgJournalLine>(line).expect("a journal line") {
+                GgJournalLine::Entry { entry } => match entry.kind {
+                    GgReplayEntryKind::ToolResult { call, .. } => Some(call.id),
+                    _ => None,
+                },
+                _ => None,
             }
-            _ => None,
         })
         .collect();
     assert_eq!(

@@ -20,6 +20,7 @@ fn cancelable(max_turns: usize, sentinel: PathBuf) -> LimitsSetup {
             max_consecutive_errors: None,
             error_rate: None,
             max_cost: None,
+            replay_max_bytes: None,
         },
         deadline: None,
         spend: Arc::new(RunSpend::default()),

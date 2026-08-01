@@ -64,6 +64,7 @@ fn bare_limits() -> RunLimits {
         max_consecutive_errors: None,
         error_rate: None,
         max_cost: None,
+        replay_max_bytes: None,
     }
 }
 
@@ -123,6 +124,7 @@ fn every_declared_ceiling_resolves_when_it_is_usable() {
         max_error_rate: Some(0.5),
         error_rate_window: Some(10),
         max_cost: Some(25.0),
+        replay_max_bytes: Some(1_024),
     });
 
     assert_eq!(limits.max_turns, Some(60));
@@ -372,6 +374,7 @@ fn resolution_never_fails_a_launch() {
             max_error_rate: Some(-3.0),
             error_rate_window: Some(0),
             max_cost: Some(-1.0),
+            replay_max_bytes: Some(0),
         },
         ..GgCapabilitySet::default()
     };
@@ -380,7 +383,7 @@ fn resolution_never_fails_a_launch() {
     let limits = resolve_run_limits(&set, &mut warnings);
 
     assert_eq!(limits, bare_limits());
-    assert_eq!(warnings.len(), 5, "{warnings:?}");
+    assert_eq!(warnings.len(), 6, "{warnings:?}");
 }
 
 #[test]
@@ -393,6 +396,7 @@ fn the_armed_summary_names_every_ceiling_in_force() {
         max_error_rate: Some(0.5),
         error_rate_window: Some(10),
         max_cost: Some(25.0),
+        replay_max_bytes: None,
     });
 
     assert_eq!(

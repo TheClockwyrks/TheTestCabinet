@@ -1,21 +1,57 @@
-//! gg **replay capture**: recording the non-deterministic inputs of a run so it can be
-//! [replayed exactly](https://docs.testcabinet.ai/gg/replay/) afterward.
+//! gg **replay capture**: streaming the non-deterministic inputs of a run into an on-disk
+//! [journal](test_cabinet_core::gg_replay_journal) so the session can be
+//! [reconstructed](https://docs.testcabinet.ai/gg/replay/) afterward.
 //!
 //! The [telemetry stream](crate::telemetry) is already most of the capture, but it carries
-//! *summaries*, not the exact inputs a faithful re-run needs. When the
-//! [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) capability is on, gg additionally pins the two
-//! things a run's own logic cannot reproduce — each agent's **model I/O** and every **tool result** —
-//! into a [`GgRecorder`], and writes the accumulated [`GgReplayRecordV1`] to a sidecar the backend
-//! serves per run.
+//! *summaries*, not the exact inputs a faithful re-run needs. So gg additionally pins each agent's
+//! **model I/O** and every **tool result** into a [`GgRecorder`], which appends them to
+//! [`.gg/replay.ndjson`](test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH) as the run
+//! proceeds. The host folds that journal into the served
+//! [record](test_cabinet_core::gg_replay::GgReplayRecord) after it collects the run tree — gg
+//! assembles nothing.
+//!
+//! # Why a journal and a writer thread
+//!
+//! The predecessor held every entry as an owned JSON value in a mutex for the whole run and
+//! serialized the lot in one shot at the end, which made a record's peak memory the record's whole
+//! size — with full base64 image payloads re-serialized once per turn they survived. Streaming
+//! removes that term outright: a body is written the first time it is seen and referenced by index
+//! thereafter, and this process never holds one.
+//!
+//! The writing happens on a **dedicated OS thread** rather than inline, because gg runs every agent
+//! on one `current_thread` runtime (`crate::lib`): a synchronous file write on that runtime stalls
+//! every other agent and skews the very turn timings the run is measured on.
+//!
+//! # Capture stops atomically — it never drops a line
+//!
+//! A dropped pool line leaves a hole that positional assembly silently shifts, substituting the
+//! wrong message body into a reconstructed prompt. So nothing is ever dropped individually:
+//!
+//! - minting a pool index and queueing its line happen under **one** critical section;
+//! - a turn's newly interned bodies and the entry that references them are queued as **one
+//!   indivisible batch**, so a batch either lands whole or not at all;
+//! - and any failure — the byte ceiling, a queue the writer cannot keep up with, a dead writer —
+//!   stops capture for the **whole run**, permanently.
+//!
+//! Together those make the written pools always a contiguous prefix, with no entry able to
+//! reference a body that was never written. **Capture degrades; it never fails the run it
+//! observes** — every stop is a recorded fact, and the run is untouched.
+//!
+//! # A record can never lie about being complete
+//!
+//! [`finish`](GgRecorder::finish) writes a mandatory [`End`](GgJournalLine::End) line. Its absence
+//! is the only reliable signal that a session died mid-capture, because a killed gg cannot write a
+//! self-reported truncation marker either — so assembly reads the *absence* rather than waiting for
+//! a report.
 //!
 //! # The recording seams (decorators, not scattered calls)
 //!
-//! Capture is deliberately a **decorator around the existing choke points**, never a spray of record
-//! calls through the [turn loop](crate::agent):
+//! Capture is deliberately a **decorator around the existing choke points**, never a spray of
+//! record calls through the [turn loop](crate::agent):
 //!
 //! - **Model I/O** is captured by wrapping the [`ModelClient`] in a [`RecordingClient`]: every
-//!   `complete` a wrapped agent makes — including the summarizer's compaction calls, which use the
-//!   same client — records its request (the messages and offered tool definitions) and the response.
+//!   `complete` a wrapped agent makes records its request (the conversation and the offered tool
+//!   definitions, both pooled) and the response.
 //! - **Tool results** are captured at the one point every dispatched call funnels through as its
 //!   outcome is finalized (the loop's per-call completion, and the responses-as-code program's
 //!   serviced-call completion), by calling [`GgRecorder::record_tool_result`] — so an intercepted
@@ -26,139 +62,444 @@
 //! across all agents from one counter, so ordering the entries by sequence reconstructs the true
 //! interleaving of concurrently-running agents.
 
+use std::fs::File;
+use std::io::Write;
+use std::path::Path;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
+use std::thread::JoinHandle;
 
-use serde::Serialize;
 use serde_json::Value;
-use test_cabinet_core::gg::{
-    GgCapabilitySet, GgReplayEntryKindV1, GgReplayEntryV1, GgReplayRecordV1,
+use test_cabinet_core::gg::GgCapabilitySet;
+use test_cabinet_core::gg_replay::{
+    GG_REPLAY_FORMAT_VERSION, GgClientRole, GgReplayEntry, GgReplayEntryKind, GgReplayInterner,
+    GgReplayRecorder, GgReplayRequestShape, GgReplayToolCall, GgReplayToolOutcome,
+    GgReplayTruncation, GgReplayTruncationReason,
 };
+use test_cabinet_core::gg_replay_journal::{GgJournalInterner, GgJournalLine};
 
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
 use crate::tools::ToolOutcome;
 
-/// The serializable shape of one recorded model **request** — the conversation and the offered tool
-/// definitions passed to [`ModelClient::complete`]. Serialized (camelCase) into the
-/// [`ModelIo`](GgReplayEntryKindV1::ModelIo)`.request` value so a replay driver can reconstruct exactly
-/// what the agent saw this turn.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ReplayModelRequest<'a> {
-    /// The conversation sent to the model this turn.
-    messages: &'a [Message],
-    /// The tool definitions offered to the model this turn.
-    tools: &'a [ToolDefinition],
+/// How many queued batches the writer thread may fall behind by before capture stops.
+///
+/// A bound rather than an unbounded queue because an unbounded one turns a stalled disk into
+/// unbounded memory growth *inside the run container* — which would take the run down, and the one
+/// rule capture obeys is that it never does that. Sized for the shape of the traffic rather than for
+/// throughput: a batch is queued per model turn and per tool result, the writer's work per batch is
+/// one `write_all`, and a writer that is 64 batches behind is not slow, it is stuck.
+const JOURNAL_QUEUE_DEPTH: usize = 64;
+
+/// What a run's [capture](GgRecorder) achieved, reported once at
+/// [`finish`](GgRecorder::finish) so the run's operator log can say so.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GgCaptureReport {
+    /// How many [entries](GgReplayEntry) reached the journal.
+    pub entries: u64,
+    /// How many bytes of pinned input reached the journal — what the
+    /// [ceiling](test_cabinet_core::gg::GgRunLimits::replay_max_bytes) is measured against, so it
+    /// excludes the terminating line, which is written whatever the ceiling says.
+    pub bytes: u64,
+    /// Why capture stopped short of the session, when it did.
+    pub truncation: Option<GgReplayTruncation>,
+    /// The writer thread's own I/O failure, when it had one. Distinct from
+    /// [`truncation`](Self::truncation): a writer that died could not record why, so this is the
+    /// only place the reason exists at all.
+    pub write_error: Option<String>,
 }
 
-/// The run-wide recorder every [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) entry is appended
-/// to.
+/// The mutable half of a capture, holding everything that must move together.
 ///
-/// Held behind an [`Arc`](std::sync::Arc) on the orchestrator and shared across every agent (the root
-/// and each subagent), so all agents' model I/O and tool results accumulate into one ordered log. The
-/// [`seq`](GgReplayEntryV1::seq) counter is global — minted here across all agents — so the interleaving
-/// of concurrent agents is reconstructable by sorting on it. Guarded by a [`Mutex`] since
-/// concurrently-running agents record into it.
-#[derive(Default)]
+/// One mutex over the interner, the sequence counter and the queue is the whole of
+/// [R12](https://docs.testcabinet.ai/gg/analysis/replay-records/): an index minted without its line
+/// queued, or a line queued out of index order, is a hole in a pool — and a hole is not a missing
+/// entry, it is *every later entry referencing the wrong body*.
+struct Capture {
+    /// Pool ids and the lines each newly seen body produces. Holds no bodies.
+    interner: GgJournalInterner,
+    /// The queue to the writer thread. `None` once [`finish`](GgRecorder::finish) has closed it.
+    queue: Option<SyncSender<String>>,
+    /// The next globally monotonic [`seq`](GgReplayEntry::seq).
+    next_seq: u64,
+    /// How many entries have been queued.
+    entries: u64,
+    /// The `seq` of the last entry that made it into the journal.
+    last_seq: Option<u64>,
+    /// How many bytes have been queued, which is what the ceiling is measured against.
+    bytes: u64,
+    /// The per-run byte ceiling, or `None` for unbounded capture.
+    max_bytes: Option<u64>,
+    /// Why capture stopped, once it has. Set exactly once; capture never resumes.
+    stopped: Option<GgReplayTruncationReason>,
+    /// Whether the terminating [`End`](GgJournalLine::End) line has been written.
+    finished: bool,
+}
+
+impl Capture {
+    /// Queue the bodies interned for this entry and the entry itself as one batch, at the next
+    /// global sequence.
+    ///
+    /// The bodies go first, so a reader walking the journal in order never meets a reference to a
+    /// body it has not yet seen.
+    fn push(&mut self, agent_id: &str, kind: GgReplayEntryKind) {
+        let seq = self.next_seq;
+        self.next_seq += 1;
+        let mut lines = self.interner.take_pending();
+        lines.push(GgJournalLine::Entry {
+            entry: Box::new(GgReplayEntry {
+                agent_id: agent_id.to_string(),
+                seq,
+                kind,
+            }),
+        });
+        if self.queue_batch(lines) {
+            self.entries += 1;
+            self.last_seq = Some(seq);
+        }
+    }
+
+    /// Queue `lines` as one indivisible batch, returning whether it landed.
+    ///
+    /// Everything that can stop capture is decided here, in this order:
+    ///
+    /// 1. capture already stopped — nothing further is ever written;
+    /// 2. the batch would cross the [byte ceiling](Capture::max_bytes) — the ceiling is exact
+    ///    rather than approximate, because writing *part* of a batch is precisely the hole the
+    ///    whole scheme exists to prevent;
+    /// 3. the queue is full or the writer is gone — a stalled disk, which stops capture rather
+    ///    than blocking the runtime every agent shares.
+    ///
+    /// A batch that does not land leaves the interner holding indices for bodies that were never
+    /// written. That is harmless *because* capture is now stopped: no later entry can reference
+    /// them, so what is on disk remains a contiguous prefix.
+    fn queue_batch(&mut self, lines: Vec<GgJournalLine>) -> bool {
+        if self.stopped.is_some() {
+            return false;
+        }
+        let Some(queue) = self.queue.as_ref() else {
+            return false;
+        };
+        let mut batch = String::new();
+        for line in &lines {
+            match serde_json::to_string(line) {
+                Ok(json) => {
+                    batch.push_str(&json);
+                    batch.push('\n');
+                }
+                // Unreachable for the shapes this module builds (every payload is already a
+                // `Value` or a plain scalar), and stopping is the only safe response if it ever
+                // happens: the entry that named those bodies would otherwise never be written.
+                Err(_) => {
+                    self.stop(GgReplayTruncationReason::WriteFailed);
+                    return false;
+                }
+            }
+        }
+        let size = batch.len() as u64;
+        if let Some(max) = self.max_bytes
+            && self.bytes + size > max
+        {
+            self.stop(GgReplayTruncationReason::ByteCeiling);
+            return false;
+        }
+        match queue.try_send(batch) {
+            Ok(()) => {
+                self.bytes += size;
+                true
+            }
+            Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {
+                self.stop(GgReplayTruncationReason::WriteFailed);
+                false
+            }
+        }
+    }
+
+    /// Stop capture for the whole run, recording `reason` if nothing has stopped it yet.
+    fn stop(&mut self, reason: GgReplayTruncationReason) {
+        self.stopped.get_or_insert(reason);
+    }
+
+    /// The truncation the record should carry, given what stopped capture.
+    fn truncation(&self) -> Option<GgReplayTruncation> {
+        self.stopped.map(|reason| GgReplayTruncation {
+            reason,
+            last_seq: self.last_seq,
+            bytes: Some(self.bytes),
+        })
+    }
+}
+
+/// The run-wide recorder every replay entry is streamed through.
+///
+/// Held behind an [`Arc`](std::sync::Arc) on the orchestrator and shared across every agent (the
+/// root and each subagent), so all agents' model I/O and tool results accumulate into one ordered
+/// journal. The [`seq`](GgReplayEntry::seq) counter is global — minted here across all agents — so
+/// the interleaving of concurrent agents is reconstructable by sorting on it.
 pub struct GgRecorder {
-    /// The recorded entries, in recording order (which is already `seq` order).
-    entries: Mutex<Vec<GgReplayEntryV1>>,
-    /// The global monotonic sequence counter minting each entry's [`seq`](GgReplayEntryV1::seq).
-    next_seq: AtomicU64,
+    /// Everything the capture mutates, behind the one lock described on [`Capture`].
+    capture: Mutex<Capture>,
+    /// The writer thread, joined by [`finish`](Self::finish). Behind its own lock because the
+    /// recorder is shared immutably and joining consumes the handle.
+    writer: Mutex<Option<JoinHandle<WriterReport>>>,
 }
 
 impl GgRecorder {
-    /// A fresh, empty recorder.
-    pub fn new() -> Self {
-        Self::default()
+    /// Open `journal_path` and start capturing `session_id`'s inputs into it, bounded by
+    /// `max_bytes`.
+    ///
+    /// Writes the [header](GgJournalLine::Header) line before returning, so that even a journal
+    /// with no entries at all identifies the session it belongs to and the build that wrote it.
+    /// The parent directory is created if it does not exist.
+    ///
+    /// Fails only when the journal cannot be opened — the one condition under which there is
+    /// nothing to capture *into*. The caller reports that as a launch warning and runs without
+    /// capture rather than failing the run over a debugging artifact.
+    pub fn start(
+        journal_path: &Path,
+        session_id: &str,
+        capability_set: &GgCapabilitySet,
+        max_bytes: Option<u64>,
+    ) -> std::io::Result<Self> {
+        if let Some(parent) = journal_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let file = File::create(journal_path)?;
+        let (queue, lines) = sync_channel::<String>(JOURNAL_QUEUE_DEPTH);
+        let writer = std::thread::Builder::new()
+            .name("gg-replay-journal".to_string())
+            .spawn(move || write_journal(file, &lines))?;
+
+        let recorder = Self {
+            capture: Mutex::new(Capture {
+                interner: GgJournalInterner::new(),
+                queue: Some(queue),
+                next_seq: 0,
+                entries: 0,
+                last_seq: None,
+                bytes: 0,
+                max_bytes,
+                stopped: None,
+                finished: false,
+            }),
+            writer: Mutex::new(Some(writer)),
+        };
+        recorder
+            .capture
+            .lock()
+            .expect("replay capture lock")
+            .queue_batch(vec![GgJournalLine::Header {
+                format_version: GG_REPLAY_FORMAT_VERSION,
+                session_id: session_id.to_string(),
+                capability_set: Box::new(capability_set.clone()),
+                recorder: GgReplayRecorder {
+                    // This binary's own version, not the release version `core` resolves a
+                    // download from: the record's question is "which build wrote this?".
+                    gg_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                    commit: None,
+                },
+            }]);
+        Ok(recorder)
     }
 
     /// Record one agent turn's **model I/O**: the `messages`/`tools` request sent to the model and
-    /// the `response` it returned, tagged with the recording `agent_id` and the next global sequence.
+    /// the `response` it returned, tagged with the recording `agent_id` and the next global
+    /// sequence.
+    ///
+    /// `role` says which of gg's two model clients issued it and `shape` whether the offered tool
+    /// was *required*; both are what keep a compaction turn from consuming an agent's next real
+    /// turn, and a required call from being silently replayed as an offered one.
+    ///
+    /// An **empty** `tools` slice records no toolset at all rather than an empty one: the contract
+    /// distinguishes "offered nothing" from "offered an empty array", and a turn that offers no
+    /// tools is the former.
     pub fn record_model_io(
         &self,
         agent_id: &str,
+        role: GgClientRole,
+        shape: GgReplayRequestShape,
         messages: &[Message],
         tools: &[ToolDefinition],
         response: &ModelResponse,
     ) {
-        let request =
-            serde_json::to_value(ReplayModelRequest { messages, tools }).unwrap_or(Value::Null);
-        let response = serde_json::to_value(response).unwrap_or(Value::Null);
-        self.push(agent_id, GgReplayEntryKindV1::ModelIo { request, response });
+        // Serialized outside the lock: this is the bulk of the per-turn work, and holding the one
+        // lock every agent shares across it would serialize the fleet on the recorder.
+        let messages: Vec<Value> = messages.iter().map(to_value).collect();
+        let tools = (!tools.is_empty()).then(|| to_value(&tools));
+        let response = to_value(response);
+
+        let mut capture = self.capture.lock().expect("replay capture lock");
+        if capture.stopped.is_some() {
+            return;
+        }
+        let request = capture
+            .interner
+            .intern_request(role, shape, &messages, tools.as_ref());
+        capture.push(agent_id, GgReplayEntryKind::ModelIo { request, response });
     }
 
     /// Record one **tool result**: the `call` the agent (or a code program) made and the exact
     /// `outcome` the dispatch returned, tagged with the recording `agent_id` and the next global
     /// sequence.
     ///
+    /// The outcome's bulky payloads are interned rather than inlined, and that is not only a size
+    /// win: a tool's output is quoted **verbatim** into the `tool` message that carries it into the
+    /// window, so the outcome and that message body are duplicates of one another and one table
+    /// collapses the pair.
+    ///
     /// A program-composed call arrives here under the synthetic id the loop minted for it
     /// ([`PROGRAM_CALL_ID_PREFIX`](crate::sandbox::PROGRAM_CALL_ID_PREFIX)), and that prefix is the
-    /// only thing distinguishing the two in the record — it is what lets the
-    /// [replay driver](crate::replay_driver) attribute the entry to the open turn's *program*
-    /// instead of to a native tool call the model never made.
+    /// only thing distinguishing the two in the record — it is what lets a reconstruction attribute
+    /// the entry to the open turn's *program* instead of to a native tool call the model never
+    /// made.
     pub fn record_tool_result(&self, agent_id: &str, call: &ToolCall, outcome: &ToolOutcome) {
-        let call = serde_json::to_value(call).unwrap_or(Value::Null);
-        let outcome = serde_json::to_value(outcome).unwrap_or(Value::Null);
-        self.push(agent_id, GgReplayEntryKindV1::ToolResult { call, outcome });
-    }
+        let arguments = call.arguments.clone();
+        let data = outcome.data.as_ref().map(to_value);
+        let failure = outcome.failure.as_ref().map(to_value);
 
-    /// Append `kind` under `agent_id` at the next global sequence number.
-    fn push(&self, agent_id: &str, kind: GgReplayEntryKindV1) {
-        let seq = self.next_seq.fetch_add(1, Ordering::SeqCst);
-        self.entries
-            .lock()
-            .expect("replay recorder lock")
-            .push(GgReplayEntryV1 {
-                agent_id: agent_id.to_string(),
-                seq,
-                kind,
-            });
-    }
-
-    /// Assemble the final [`GgReplayRecordV1`] for a run: its `session_id`, `capability_set`, and every
-    /// recorded entry in `seq` order (recording order already is `seq` order, but the entries are
-    /// sorted defensively so the record is well-ordered regardless of lock arrival order).
-    pub fn to_record(
-        &self,
-        session_id: impl Into<String>,
-        capability_set: GgCapabilitySet,
-    ) -> GgReplayRecordV1 {
-        let mut entries = self.entries.lock().expect("replay recorder lock").clone();
-        entries.sort_by_key(|entry| entry.seq);
-        GgReplayRecordV1 {
-            session_id: session_id.into(),
-            capability_set,
-            entries,
+        let mut capture = self.capture.lock().expect("replay capture lock");
+        if capture.stopped.is_some() {
+            return;
         }
+        let output = capture.interner.intern_text(&outcome.output);
+        let summary = outcome
+            .summary
+            .as_deref()
+            .map(|summary| capture.interner.intern_text(summary));
+        let images: Vec<u32> = outcome
+            .images
+            .iter()
+            .map(|image| {
+                capture
+                    .interner
+                    .intern_blob(&image.media_type, image.bytes, &image.data_base64)
+            })
+            .collect();
+        capture.push(
+            agent_id,
+            GgReplayEntryKind::ToolResult {
+                call: GgReplayToolCall {
+                    id: call.id.clone(),
+                    name: call.name.clone(),
+                    arguments,
+                    // The working directory is not observable at this seam yet; recording
+                    // `Workspace` would assert something the capture does not know.
+                    cwd: None,
+                },
+                outcome: GgReplayToolOutcome {
+                    ok: outcome.ok,
+                    output,
+                    summary,
+                    images,
+                    data,
+                    failure,
+                },
+            },
+        );
     }
 
-    /// A snapshot of the recorded entries so far, in `seq` order — for tests asserting on capture.
-    #[cfg(test)]
-    pub fn entries(&self) -> Vec<GgReplayEntryV1> {
-        let mut entries = self.entries.lock().expect("replay recorder lock").clone();
-        entries.sort_by_key(|entry| entry.seq);
-        entries
+    /// Close the journal: write the mandatory [`End`](GgJournalLine::End) line, drop the writer's
+    /// queue and join the writer thread.
+    ///
+    /// The `End` line is written even when capture has already stopped — that is *how* the record
+    /// says why — and is deliberately exempt from the byte ceiling, since a ceiling that suppressed
+    /// the marker would turn a deliberate truncation into an indistinguishable one.
+    ///
+    /// Idempotent: a second call reports the same figures and writes nothing.
+    pub fn finish(&self) -> GgCaptureReport {
+        let mut capture = self.capture.lock().expect("replay capture lock");
+        let truncation = capture.truncation();
+        if !capture.finished {
+            capture.finished = true;
+            let end = GgJournalLine::End {
+                entries: capture.entries,
+                truncation: truncation.clone(),
+            };
+            // Queued directly rather than through `queue_batch`, which would refuse it: capture
+            // is often already stopped by the time this runs, and that is exactly the case whose
+            // reason has to reach the record.
+            if let Some(queue) = capture.queue.as_ref()
+                && let Ok(line) = serde_json::to_string(&end)
+            {
+                let _ = queue.try_send(format!("{line}\n"));
+            }
+            // Dropping the queue closes the channel, which is what ends the writer's loop.
+            capture.queue = None;
+        }
+        let entries = capture.entries;
+        let bytes = capture.bytes;
+        drop(capture);
+
+        let handle = self.writer.lock().expect("replay writer lock").take();
+        let write_error = handle
+            .and_then(|handle| handle.join().ok())
+            .and_then(|report| report.error);
+        GgCaptureReport {
+            entries,
+            bytes,
+            truncation,
+            write_error,
+        }
     }
 }
 
-/// A [`ModelClient`] decorator that records each turn's **model I/O** into a [`GgRecorder`].
+/// What the [writer thread](write_journal) did, reported back on join.
+struct WriterReport {
+    /// The I/O failure that ended it early, when one did.
+    error: Option<String>,
+}
+
+/// The writer thread's loop: append each queued batch to the journal until the recorder closes the
+/// channel.
+///
+/// A batch is already a run of complete, newline-terminated lines, so one `write_all` per batch is
+/// both the whole of the work and the unit of atomicity. On an I/O error the loop **returns** rather
+/// than draining on: that disconnects the channel, so the recorder's next send fails and capture
+/// stops for the whole run — which is the honest outcome, since anything it wrote after the failure
+/// would be unreachable from a journal whose earlier bytes are missing.
+fn write_journal(mut file: File, lines: &std::sync::mpsc::Receiver<String>) -> WriterReport {
+    for batch in lines {
+        if let Err(err) = file.write_all(batch.as_bytes()) {
+            return WriterReport {
+                error: Some(err.to_string()),
+            };
+        }
+    }
+    WriterReport {
+        error: file.flush().err().map(|err| err.to_string()),
+    }
+}
+
+/// Serialize `value` for the journal, falling back to `null` rather than failing the run.
+///
+/// Unreachable for every type this module serializes (none has a map with non-string keys or a
+/// failing `Serialize`), and a `null` payload is a visible defect in a record rather than a silent
+/// one — which is the right shape for a capture that must never abort what it observes.
+fn to_value<T: serde::Serialize>(value: &T) -> Value {
+    serde_json::to_value(value).unwrap_or(Value::Null)
+}
+
+/// A [`ModelClient`] decorator that streams each turn's **model I/O** into a [`GgRecorder`].
 ///
 /// It wraps the agent's real client and is the sole model-I/O recording seam: every `complete` the
-/// agent makes — an ordinary turn or a summarizer compaction call — flows through here, so the
-/// recorded request/response pairs pin every non-deterministic model step for a faithful replay. The
-/// `model_id` and error behavior pass straight through, so wrapping is invisible to the loop.
+/// agent makes flows through here, so the recorded request/response pairs pin every
+/// non-deterministic model step for a faithful replay. The `model_id` and error behavior pass
+/// straight through, so wrapping is invisible to the loop.
 pub struct RecordingClient {
     /// The wrapped real client.
     inner: Box<dyn ModelClient>,
-    /// The shared recorder this client's I/O is appended to.
+    /// The shared recorder this client's I/O is streamed into.
     recorder: std::sync::Arc<GgRecorder>,
     /// The id of the agent this client drives, stamped onto every recorded entry.
     agent_id: String,
+    /// Which of gg's two model clients this one is, stamped onto every recorded request so a
+    /// compaction turn and the agent's own next turn cannot interleave into one indistinguishable
+    /// queue.
+    role: GgClientRole,
 }
 
 impl RecordingClient {
-    /// Wrap `inner` so each of its `complete` calls is recorded under `agent_id` into `recorder`.
+    /// Wrap `inner` so each of its `complete` calls is recorded under `agent_id` into `recorder`,
+    /// as the agent's own turn loop.
     pub fn new(
         inner: Box<dyn ModelClient>,
         recorder: std::sync::Arc<GgRecorder>,
@@ -168,6 +509,7 @@ impl RecordingClient {
             inner,
             recorder,
             agent_id: agent_id.into(),
+            role: GgClientRole::Agent,
         }
     }
 }
@@ -179,19 +521,25 @@ impl ModelClient for RecordingClient {
         messages: &[Message],
         tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
-        // Only a *successful* turn is a replayable input: an errored turn ends the session, and a
-        // `ModelError` is not a `ModelResponse` a replay could feed back. Record on the way out so the
-        // captured response is exactly what the loop consumed.
+        // Only a *successful* turn is recorded here: a failed one is a different entry kind, and
+        // recording it belongs to the seam that can also see what the loop did about it. Recorded
+        // on the way out so the captured response is exactly what the loop consumed.
         let response = self.inner.complete(messages, tools).await?;
-        self.recorder
-            .record_model_io(&self.agent_id, messages, tools, &response);
+        self.recorder.record_model_io(
+            &self.agent_id,
+            self.role,
+            GgReplayRequestShape::Complete,
+            messages,
+            tools,
+            &response,
+        );
         Ok(response)
     }
 
-    /// Recorded exactly as an ordinary turn is, and delegated to the inner client's own
-    /// implementation rather than to the trait default — otherwise wrapping a run in replay capture
-    /// would quietly downgrade a required tool call to an offered one, and the recorded run would
-    /// not be the run that happened.
+    /// Recorded as a **required** call, and delegated to the inner client's own implementation
+    /// rather than to the trait default — otherwise wrapping a run in replay capture would quietly
+    /// downgrade a required tool call to an offered one, and the recorded run would not be the run
+    /// that happened.
     async fn complete_requiring(
         &self,
         messages: &[Message],
@@ -200,6 +548,8 @@ impl ModelClient for RecordingClient {
         let response = self.inner.complete_requiring(messages, tool).await?;
         self.recorder.record_model_io(
             &self.agent_id,
+            self.role,
+            GgReplayRequestShape::CompleteRequiring,
             messages,
             std::slice::from_ref(tool),
             &response,

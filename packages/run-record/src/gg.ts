@@ -1328,6 +1328,25 @@ export type GgRunLimits = {
    * stop a run with.
    */
   maxCost?: number;
+  /**
+   * The per-run ceiling, in bytes, on the
+   * [replay capture journal](crate::gg_replay_journal) gg writes as it runs. **Absent means
+   * gg's default of 256 MiB.**
+   *
+   * The odd one out here, and deliberately so: every other ceiling **stops the run**, and
+   * this one stops only the *observation* of it. Crossing it stops capture and marks the
+   * record [truncated](crate::gg_replay::GgReplayTruncationReason::ByteCeiling) — capture
+   * degrades, it never fails the run it observes, because a debugging artifact that can end
+   * a paid run is worse than no artifact. It lives on this type rather than on the
+   * [replay](CAPABILITY_REPLAY) capability's params because capture is on for every run
+   * regardless of what that capability escalates, so a ceiling parked on the capability
+   * would be unreadable by exactly the runs that need it.
+   *
+   * `0` cannot bound anything (it would stop capture before its first line) and is read as
+   * "no ceiling", with a startup warning, on the same terms as
+   * [`max_consecutive_errors`](Self::max_consecutive_errors)`: 0`.
+   */
+  replayMaxBytes?: number;
 };
 
 /**

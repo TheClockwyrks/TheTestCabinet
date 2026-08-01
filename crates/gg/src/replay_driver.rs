@@ -5,11 +5,10 @@
 //!
 //! Replay capture (`crate::replay`) pins a run's two non-deterministic inputs — each agent's model
 //! I/O and every tool result — into a record. This driver plays that record back: it replaces the
-//! live model with a [`ReplayClient`] (which returns an agent's recorded responses in order) and
-//! tool dispatch with a [`ReplayInvoker`] (which returns the recorded outcomes instead of executing
-//! anything), then walks the run turn by turn, re-emitting the telemetry the run
-//! produced and yielding the per-agent [step-through](test_cabinet_core::gg::GgReplayStep) list a
-//! developer walks.
+//! live model with the agent's recorded responses, in order, and tool dispatch with its recorded
+//! outcomes instead of executing anything, then walks the run turn by turn, re-emitting the
+//! telemetry the run produced and yielding the per-agent
+//! [step-through](test_cabinet_core::gg::GgReplayStep) list a developer walks.
 //!
 //! # Why a dedicated walk, not the production orchestrator
 //!
@@ -19,7 +18,7 @@
 //! orchestrator (`crate::agent`) would instead drive the scheduler, git, and worktree machinery for
 //! real — spawning child tasks, adding/merging worktrees — which is precisely the *side-effecting,
 //! non-deterministic* behavior replay exists to avoid. So the driver reconstructs the run from the
-//! record directly: it drives each agent's turn loop through the replay seams, reproducing the same
+//! record directly: it drives each agent's turn loop from the recorded queues, reproducing the same
 //! per-turn telemetry the real loop emits ([`TurnStarted`](test_cabinet_core::gg::GgTelemetryKind::TurnStarted),
 //! usage, the assistant message, and each tool call's [`ToolCall`](test_cabinet_core::gg::GgTelemetryKind::ToolCall)
 //! /[`ToolResult`](test_cabinet_core::gg::GgTelemetryKind::ToolResult) pair) and interleaving the
@@ -73,7 +72,6 @@
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::sync::Mutex;
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
@@ -82,7 +80,7 @@ use test_cabinet_core::gg::{
 };
 use test_cabinet_core::metrics::TokenCounts;
 
-use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
+use crate::model::{ModelResponse, ToolCall};
 use crate::sandbox::PROGRAM_CALL_ID_PREFIX;
 use crate::telemetry::{Emitter, EventSink, StdoutSink};
 use crate::tools::ToolOutcome;
@@ -188,85 +186,6 @@ pub enum ReplayError {
     },
 }
 
-/// The **model seam** of the replay: a `ModelClient` that returns an agent's recorded responses in
-/// order, in place of a live model.
-///
-/// It is a genuine `ModelClient` — a drop-in replacement for the credentialed client the run used
-/// — so the reconstruction feeds each turn its recorded response exactly where the real loop would
-/// have called the model. The driver pops responses directly (the walk is synchronous); the
-/// `ModelClient` impl exists so the seam is a true client and its underflow behavior is explicit.
-pub struct ReplayClient {
-    /// The agent's recorded responses, in `seq` order, consumed one per turn.
-    responses: Mutex<VecDeque<ModelResponse>>,
-}
-
-impl ReplayClient {
-    /// A client that will replay `responses` (an agent's recorded turns, in order).
-    fn new(responses: Vec<ModelResponse>) -> Self {
-        Self {
-            responses: Mutex::new(responses.into()),
-        }
-    }
-
-    /// Take the next recorded response for this agent, or `None` once the record is exhausted.
-    fn pop(&self) -> Option<ModelResponse> {
-        self.responses
-            .lock()
-            .expect("replay client lock")
-            .pop_front()
-    }
-}
-
-#[async_trait::async_trait]
-impl ModelClient for ReplayClient {
-    async fn complete(
-        &self,
-        _messages: &[Message],
-        _tools: &[ToolDefinition],
-    ) -> Result<ModelResponse, ModelError> {
-        // A replay ignores the live conversation: the response is whatever the run recorded for this
-        // turn. Underflow means the record scheduled more turns than it captured responses for.
-        self.pop().ok_or_else(|| {
-            ModelError::Parse("replay: no recorded response remains for this agent".to_string())
-        })
-    }
-
-    fn model_id(&self) -> &str {
-        "replay"
-    }
-}
-
-/// The **tool seam** of the replay: returns an agent's recorded tool `(call, outcome)` pairs in
-/// order, in place of dispatching (and running) a real tool.
-///
-/// Where the real loop dispatched a call against the workspace, the reconstruction pulls the exact
-/// outcome the run recorded — so a filesystem or shell result is reproduced, never re-executed. The
-/// paired `call` lets the driver verify the record's tool results line up with the model calls that
-/// requested them.
-pub struct ReplayInvoker {
-    /// The agent's recorded `(call, outcome)` pairs, in `seq` order, consumed as the turn's calls are
-    /// serviced.
-    results: Mutex<VecDeque<(ToolCall, ToolOutcome)>>,
-}
-
-impl ReplayInvoker {
-    /// An invoker that will replay `results` (an agent's recorded tool calls + outcomes, in order).
-    fn new(results: Vec<(ToolCall, ToolOutcome)>) -> Self {
-        Self {
-            results: Mutex::new(results.into()),
-        }
-    }
-
-    /// Take the next recorded `(call, outcome)` for this agent, or `None` once the record is
-    /// exhausted.
-    fn next(&self) -> Option<(ToolCall, ToolOutcome)> {
-        self.results
-            .lock()
-            .expect("replay invoker lock")
-            .pop_front()
-    }
-}
-
 /// The result of [reconstructing](reconstruct) a run from its replay record.
 ///
 /// Carries the ordered, per-agent [step-through](GgReplayStep) list the UI consumes, alongside a few
@@ -288,13 +207,20 @@ pub struct ReplayReconstruction {
 }
 
 /// An agent's live reconstruction state during the [walk](reconstruct_with_sink).
+///
+/// The two queues are plain [`VecDeque`]s rather than dressed-up "seams". They were once a
+/// `ModelClient` and a matching invoker, but the walk pops from them directly — the client's
+/// `complete` was never called by anything — so the trait impl was a second, competing notion of a
+/// replay seam that no code path reached. The real ones belong to a *driving* playback, which
+/// re-runs the production loop rather than reconstructing around it.
 struct AgentReplay {
     /// The agent-scoped emitter its reconstructed telemetry streams on.
     emitter: Emitter,
-    /// The model seam feeding this agent its recorded responses.
-    client: ReplayClient,
-    /// The tool seam feeding this agent its recorded outcomes.
-    invoker: ReplayInvoker,
+    /// The agent's recorded responses, in `seq` order, consumed one per turn.
+    responses: VecDeque<ModelResponse>,
+    /// The agent's recorded `(call, outcome)` pairs, in `seq` order, consumed as the turn's calls
+    /// are serviced.
+    results: VecDeque<(ToolCall, ToolOutcome)>,
     /// The turn currently awaiting tool results, if any.
     pending: Option<PendingTurn>,
 }
@@ -389,8 +315,8 @@ pub(crate) fn reconstruct_with_sink(
             agent_id.clone(),
             AgentReplay {
                 emitter: base.for_agent(agent_id.clone(), None),
-                client: ReplayClient::new(responses.remove(agent_id).unwrap_or_default()),
-                invoker: ReplayInvoker::new(results.remove(agent_id).unwrap_or_default()),
+                responses: responses.remove(agent_id).unwrap_or_default().into(),
+                results: results.remove(agent_id).unwrap_or_default().into(),
                 pending: None,
             },
         );
@@ -429,14 +355,12 @@ pub(crate) fn reconstruct_with_sink(
                 }
 
                 // Pull this turn's response from the model seam (in place of a live model call).
-                let response =
-                    state
-                        .client
-                        .pop()
-                        .ok_or_else(|| ReplayError::MissingModelResponse {
-                            agent_id: entry.agent_id.clone(),
-                            seq: entry.seq,
-                        })?;
+                let response = state.responses.pop_front().ok_or_else(|| {
+                    ReplayError::MissingModelResponse {
+                        agent_id: entry.agent_id.clone(),
+                        seq: entry.seq,
+                    }
+                })?;
 
                 // Re-emit exactly what the real loop emits at a turn: the turn marker, usage (under
                 // the same "unreported is silent" guard), and the assistant message when present.
@@ -476,7 +400,7 @@ pub(crate) fn reconstruct_with_sink(
             }
             GgReplayEntryKindV1::ToolResult { .. } => {
                 // Pull the recorded call + outcome from the tool seam (in place of dispatching).
-                let (call, outcome) = state.invoker.next().ok_or_else(|| {
+                let (call, outcome) = state.results.pop_front().ok_or_else(|| {
                     // The seam was built from exactly these entries, so this is unreachable in
                     // practice; report it as a structural gap rather than panic.
                     ReplayError::ToolResultWithoutTurn {
@@ -598,9 +522,9 @@ fn parse<T: serde::de::DeserializeOwned>(
 /// when nothing was reported (usage is default and no cost), so the reconstructed stream matches the
 /// original turn for turn.
 ///
-/// Unattributed: a reconstruction has no live model binding (its seam reports the synthetic
-/// [`ReplayClient::model_id`]), and naming a model the replay did not call would be a fabricated
-/// attribution on a stream whose whole point is fidelity to what was recorded.
+/// Unattributed: a reconstruction never calls a model at all, and naming one the replay did not
+/// call would be a fabricated attribution on a stream whose whole point is fidelity to what was
+/// recorded.
 fn emit_usage(response: &ModelResponse, emitter: &Emitter) {
     if response.usage == TokenCounts::default() && response.cost.is_none() {
         return;

@@ -101,6 +101,7 @@ use test_cabinet_core::gg::{
     GgSubagentScope, GgTelemetryKind, GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
     SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
 };
+use test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH;
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -908,12 +909,12 @@ pub(crate) async fn run_with_factory(
         summary: Box::new(summary),
     });
 
-    // Replay capture (debug-only): when the capability recorded a session, assemble the run's
-    // `GgReplayRecordV1` from the shared recorder and write it to the `.gg/replay.json` sidecar `core`
-    // collects, so the backend can serve it per run. Best-effort — a write failure is reported on the
-    // stream (never fatal), like any telemetry, since replay is a debugging aid, not a run result.
+    // Close the replay capture journal: write its mandatory terminating line and join the writer
+    // thread, so the journal `core` collects and folds into the served record is complete. Reported
+    // on the stream (never fatal) — a capture that degraded is a fact about the recording, not a
+    // run result.
     if let Some(recorder) = &orch.replay {
-        write_replay_record(recorder, invocation, &root_emitter);
+        report_replay_capture(recorder, &root_emitter);
     }
 
     root_emitter.emit(session_ended(end.status));
@@ -927,45 +928,70 @@ pub(crate) async fn run_with_factory(
     SessionOutcome::Ran
 }
 
-/// Write a [replay](CAPABILITY_REPLAY)-captured run's
-/// [`GgReplayRecordV1`](test_cabinet_core::gg::GgReplayRecordV1) to the
-/// [`.gg/replay.json`](test_cabinet_core::gg::GG_REPLAY_ARTIFACT_PATH) sidecar under the run
-/// workspace.
+/// Start [replay capture](crate::replay) for this run, when the
+/// [capability](CAPABILITY_REPLAY) asks for it, opening the
+/// [journal](test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH) under the run workspace.
 ///
-/// Assembles the record (the session id, the run's capability set, and every recorded model-I/O and
-/// tool-result entry in global sequence order), creates the `.gg/` directory, and writes the record
-/// pretty-printed. Best-effort: any I/O or serialization failure is logged on the root stream rather
-/// than failing the run, since the record is a debugging aid that must never abort the run it observes.
-fn write_replay_record(recorder: &GgRecorder, invocation: &GgInvocation, emitter: &Emitter) {
-    let record = recorder.to_record(
-        invocation.session_id.clone(),
-        invocation.capability_set.clone(),
-    );
-    let path = invocation
-        .workspace_dir
-        .join(test_cabinet_core::gg::GG_REPLAY_ARTIFACT_PATH);
-    let write = (|| -> std::io::Result<()> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+/// A journal that cannot be opened is a launch **warning**, not a failure: the run proceeds without
+/// capture, because a debugging artifact must never be the reason a paid run does not happen.
+fn start_replay_capture(
+    invocation: &GgInvocation,
+    limits: &RunLimits,
+    warnings: &mut Vec<String>,
+) -> Option<Arc<GgRecorder>> {
+    let path = invocation.workspace_dir.join(GG_REPLAY_JOURNAL_PATH);
+    match GgRecorder::start(
+        &path,
+        &invocation.session_id,
+        &invocation.capability_set,
+        limits.replay_max_bytes,
+    ) {
+        Ok(recorder) => Some(Arc::new(recorder)),
+        Err(err) => {
+            warnings.push(format!(
+                "replay capture: could not open the journal `{}`: {err}. The run proceeds with no \
+                 replay record.",
+                path.display()
+            ));
+            None
         }
-        let json = serde_json::to_vec_pretty(&record)
-            .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))?;
-        std::fs::write(&path, json)
-    })();
-    match write {
-        Ok(()) => emitter.emit(log(
+    }
+}
+
+/// Close the run's [replay capture](crate::replay) journal and say on the root stream what it
+/// achieved.
+///
+/// The `info` line is emitted even for a complete capture, for the same reason the armed-ceiling
+/// line is: "how much of this run was recorded?" should be answerable from the operator log rather
+/// than by opening the artifact. A capture that stopped early says why, at `warn`, because the
+/// record it produced is not the whole session.
+fn report_replay_capture(recorder: &GgRecorder, emitter: &Emitter) {
+    let report = recorder.finish();
+    match (&report.truncation, &report.write_error) {
+        (None, None) => emitter.emit(log(
             "info",
             format!(
-                "replay capture: wrote {} entries to `{}`.",
-                record.entries.len(),
-                path.display()
+                "replay capture: journaled {} input(s) in {} byte(s).",
+                report.entries, report.bytes
             ),
         )),
-        Err(err) => emitter.emit(log(
+        _ => emitter.emit(log(
             "warn",
             format!(
-                "replay capture: could not write the replay record to `{}`: {err}",
-                path.display()
+                "replay capture: stopped after {} input(s) ({} byte(s)){}{}. The record is marked \
+                 truncated.",
+                report.entries,
+                report.bytes,
+                report
+                    .truncation
+                    .as_ref()
+                    .map(|truncation| format!(" — {:?}", truncation.reason))
+                    .unwrap_or_default(),
+                report
+                    .write_error
+                    .as_ref()
+                    .map(|error| format!(": {error}"))
+                    .unwrap_or_default(),
             ),
         )),
     }
@@ -1361,11 +1387,12 @@ impl Orchestrator {
             tasks: Mutex::new(Vec::new()),
             next_seq: AtomicU64::new(0),
             next_workflow_seq: AtomicU64::new(0),
-            // Replay capture is opt-in and debug-only: allocate the shared recorder only when the
-            // capability is on, so an ordinary run captures nothing extra.
+            // Replay capture is opt-in and debug-only: open the journal only when the capability is
+            // on, so an ordinary run captures nothing extra.
             replay: set
                 .is_enabled(CAPABILITY_REPLAY)
-                .then(|| Arc::new(GgRecorder::new())),
+                .then(|| start_replay_capture(invocation, &limits, warnings))
+                .flatten(),
         }
     }
 
@@ -7055,6 +7082,10 @@ fn recorded_limits(limits: &RunLimits, max_parallel: usize) -> GgRunLimits {
         max_error_rate: limits.error_rate.map(|rate| rate.max_rate),
         error_rate_window: limits.error_rate.map(|rate| rate.window as u64),
         max_cost: limits.max_cost,
+        // Recorded on the same terms as the error ceilings: the capture ceiling in force is a fact
+        // about the run, and a truncated record is far easier to read beside the number that
+        // truncated it.
+        replay_max_bytes: limits.replay_max_bytes,
     }
 }
 

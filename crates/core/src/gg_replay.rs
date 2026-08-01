@@ -1184,112 +1184,46 @@ fn blob_ref_index(value: &Value) -> Option<u32> {
 // Interning
 // ---------------------------------------------------------------------------
 
-/// The interner every pooled body goes through — the **one** place a content address is
-/// computed.
+/// The pooling operations every content address in this format is minted through — the
+/// **one** place the addressing, the blob substitution and the
+/// [turn fingerprint](GgTurnFingerprint) fold are written.
 ///
-/// Both ends of the format use it, and that is the point. The recorder interns as it
-/// captures; the [v1 upgrade](self#reading-a-v1-record) interns as it reads; a playback
-/// interns the *live* request it is about to issue in order to recompute a
-/// [fingerprint](GgTurnFingerprint) and compare. Because all three call
-/// [`intern_request`](Self::intern_request), a fingerprint mismatch can only ever mean
-/// the request really changed — never that two implementations of one hash drifted.
-#[derive(Debug, Default)]
-pub struct GgReplayPools {
-    messages: Vec<GgReplayMessage>,
-    message_index: HashMap<String, u32>,
-    toolsets: Vec<GgReplayToolset>,
-    toolset_index: HashMap<String, u32>,
-    texts: Vec<String>,
-    text_index: HashMap<String, u32>,
-    blobs: Vec<GgReplayBlob>,
-    blob_index: HashMap<String, u32>,
-}
-
-impl GgReplayPools {
-    /// An empty set of pools.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Intern one message body, returning its index.
+/// It is a trait rather than a set of methods on [`GgReplayPools`] because the two
+/// consumers store pooled bodies differently and must not therefore compute addresses
+/// differently. `GgReplayPools` **retains** every body, which is what an assembled record
+/// and a playback recomputing a fingerprint both need; gg's capture journal retains only
+/// ids, streaming each body to disk the moment it is first seen, because a recorder that
+/// held the bodies would be the quadratic memory term the format exists to remove. Both
+/// implement the six primitives below and inherit
+/// [`intern_request`](Self::intern_request) — so a fingerprint mismatch can only ever mean
+/// the request really changed, never that two implementations of one hash drifted.
+pub trait GgReplayInterner {
+    /// Intern one message body, returning its index into the message pool.
     ///
     /// The [id](GgReplayMessage::id) is addressed over `body` **as given**, including any
     /// inline image payloads; the *stored* body then has those payloads replaced by
-    /// [blob references](GG_REPLAY_BLOB_REF_KEY). Addressing before substitution is what
+    /// [blob references](GG_REPLAY_BLOB_REF_KEY) via
+    /// [`substitute_blobs`](Self::substitute_blobs). Addressing before substitution is what
     /// keeps the id position-independent — a substituted body embeds pool indices, which
     /// depend on insertion order, so an id over it would differ between a recorder and a
     /// playback that interned the same message in a different order and the whole
     /// fingerprint scheme would collapse.
-    pub fn intern_message(&mut self, body: &Value) -> u32 {
-        let id = fingerprint_json(body);
-        if let Some(&index) = self.message_index.get(&id) {
-            return index;
-        }
-        let mut stored = body.clone();
-        self.substitute_blobs(&mut stored);
-        let index = self.messages.len() as u32;
-        self.messages.push(GgReplayMessage {
-            id: id.clone(),
-            body: stored,
-        });
-        self.message_index.insert(id, index);
-        index
-    }
+    fn intern_message(&mut self, body: &Value) -> u32;
 
     /// The [id](GgReplayMessage::id) of the pooled message at `index`.
-    pub fn message_id(&self, index: u32) -> Option<&str> {
-        self.messages.get(index as usize).map(|m| m.id.as_str())
-    }
+    fn message_id(&self, index: u32) -> Option<&str>;
 
     /// Intern one offered tool-definition array, returning its index.
-    pub fn intern_toolset(&mut self, tools: &Value) -> u32 {
-        let id = fingerprint_json(tools);
-        if let Some(&index) = self.toolset_index.get(&id) {
-            return index;
-        }
-        let index = self.toolsets.len() as u32;
-        self.toolsets.push(GgReplayToolset {
-            id: id.clone(),
-            tools: tools.clone(),
-        });
-        self.toolset_index.insert(id, index);
-        index
-    }
+    fn intern_toolset(&mut self, tools: &Value) -> u32;
 
     /// The [id](GgReplayToolset::id) of the pooled toolset at `index`.
-    pub fn toolset_id(&self, index: u32) -> Option<&str> {
-        self.toolsets.get(index as usize).map(|t| t.id.as_str())
-    }
+    fn toolset_id(&self, index: u32) -> Option<&str>;
 
-    /// Intern one string payload, returning its index. Keyed on the text itself rather
-    /// than on a digest of it: the pool is the map, so a second table would only add a
-    /// way for the two to disagree.
-    pub fn intern_text(&mut self, text: &str) -> u32 {
-        if let Some(&index) = self.text_index.get(text) {
-            return index;
-        }
-        let index = self.texts.len() as u32;
-        self.texts.push(text.to_string());
-        self.text_index.insert(text.to_string(), index);
-        index
-    }
+    /// Intern one string payload, returning its index.
+    fn intern_text(&mut self, text: &str) -> u32;
 
     /// Intern one image, returning its index.
-    pub fn intern_blob(&mut self, media_type: &str, bytes: u64, data_base64: &str) -> u32 {
-        let id = fingerprint_exact(data_base64.as_bytes());
-        if let Some(&index) = self.blob_index.get(&id) {
-            return index;
-        }
-        let index = self.blobs.len() as u32;
-        self.blobs.push(GgReplayBlob {
-            id: id.clone(),
-            media_type: media_type.to_string(),
-            bytes,
-            data_base64: data_base64.to_string(),
-        });
-        self.blob_index.insert(id, index);
-        index
-    }
+    fn intern_blob(&mut self, media_type: &str, bytes: u64, data_base64: &str) -> u32;
 
     /// Intern a whole model request and fold its [fingerprint](GgTurnFingerprint) — the
     /// single call a recorder, the v1 upgrade and a playback all make, so none of them
@@ -1298,7 +1232,7 @@ impl GgReplayPools {
     ///
     /// `messages` are the serialized message bodies in send order; `tools` is the
     /// serialized offered tool array, or `None` for a call that offered none.
-    pub fn intern_request(
+    fn intern_request(
         &mut self,
         role: GgClientRole,
         shape: GgReplayRequestShape,
@@ -1329,18 +1263,6 @@ impl GgReplayPools {
             toolset,
             fingerprint,
         }
-    }
-
-    /// The four pools, in the order the [record](GgReplayRecord) carries them.
-    pub fn into_parts(
-        self,
-    ) -> (
-        Vec<GgReplayMessage>,
-        Vec<GgReplayToolset>,
-        Vec<String>,
-        Vec<GgReplayBlob>,
-    ) {
-        (self.messages, self.toolsets, self.texts, self.blobs)
     }
 
     /// Replace every inline image payload in `value` with a
@@ -1378,6 +1300,114 @@ impl GgReplayPools {
         let data_base64 = map.get("dataBase64")?.as_str()?;
         let bytes = map.get("bytes").and_then(Value::as_u64).unwrap_or(0);
         Some(self.intern_blob(media_type, bytes, data_base64))
+    }
+}
+
+/// The **body-retaining** [interner](GgReplayInterner): the four pools of an assembled
+/// record, held in memory.
+///
+/// Used by the [v1 upgrade](self#reading-a-v1-record) as it reads and by a playback
+/// interning the *live* request it is about to issue in order to recompute a
+/// [fingerprint](GgTurnFingerprint) and compare. gg's capture journal deliberately does
+/// **not** use it — see [`GgReplayInterner`] for why.
+#[derive(Debug, Default)]
+pub struct GgReplayPools {
+    messages: Vec<GgReplayMessage>,
+    message_index: HashMap<String, u32>,
+    toolsets: Vec<GgReplayToolset>,
+    toolset_index: HashMap<String, u32>,
+    texts: Vec<String>,
+    text_index: HashMap<String, u32>,
+    blobs: Vec<GgReplayBlob>,
+    blob_index: HashMap<String, u32>,
+}
+
+impl GgReplayPools {
+    /// An empty set of pools.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The four pools, in the order the [record](GgReplayRecord) carries them.
+    pub fn into_parts(
+        self,
+    ) -> (
+        Vec<GgReplayMessage>,
+        Vec<GgReplayToolset>,
+        Vec<String>,
+        Vec<GgReplayBlob>,
+    ) {
+        (self.messages, self.toolsets, self.texts, self.blobs)
+    }
+}
+
+impl GgReplayInterner for GgReplayPools {
+    fn intern_message(&mut self, body: &Value) -> u32 {
+        let id = fingerprint_json(body);
+        if let Some(&index) = self.message_index.get(&id) {
+            return index;
+        }
+        let mut stored = body.clone();
+        self.substitute_blobs(&mut stored);
+        let index = self.messages.len() as u32;
+        self.messages.push(GgReplayMessage {
+            id: id.clone(),
+            body: stored,
+        });
+        self.message_index.insert(id, index);
+        index
+    }
+
+    fn message_id(&self, index: u32) -> Option<&str> {
+        self.messages.get(index as usize).map(|m| m.id.as_str())
+    }
+
+    fn intern_toolset(&mut self, tools: &Value) -> u32 {
+        let id = fingerprint_json(tools);
+        if let Some(&index) = self.toolset_index.get(&id) {
+            return index;
+        }
+        let index = self.toolsets.len() as u32;
+        self.toolsets.push(GgReplayToolset {
+            id: id.clone(),
+            tools: tools.clone(),
+        });
+        self.toolset_index.insert(id, index);
+        index
+    }
+
+    fn toolset_id(&self, index: u32) -> Option<&str> {
+        self.toolsets.get(index as usize).map(|t| t.id.as_str())
+    }
+
+    /// Keyed on the text itself rather than on a digest of it: this pool already holds
+    /// every body, so the pool *is* the map and a second table would only add a way for
+    /// the two to disagree. (gg's streaming journal, which holds no bodies at all, keys
+    /// on the address instead — the indices it hands out are identical either way.)
+    fn intern_text(&mut self, text: &str) -> u32 {
+        if let Some(&index) = self.text_index.get(text) {
+            return index;
+        }
+        let index = self.texts.len() as u32;
+        self.texts.push(text.to_string());
+        self.text_index.insert(text.to_string(), index);
+        index
+    }
+
+    fn intern_blob(&mut self, media_type: &str, bytes: u64, data_base64: &str) -> u32 {
+        let id = fingerprint_exact(data_base64.as_bytes());
+        if let Some(&index) = self.blob_index.get(&id) {
+            return index;
+        }
+        let index = self.blobs.len() as u32;
+        self.blobs.push(GgReplayBlob {
+            id: id.clone(),
+            media_type: media_type.to_string(),
+            bytes,
+            data_base64: data_base64.to_string(),
+        });
+        self.blob_index.insert(id, index);
+        index
     }
 }
 

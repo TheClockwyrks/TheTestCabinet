@@ -250,6 +250,7 @@ fn run_limits_round_trip_camel_case_and_omit_every_unset_ceiling() {
         max_error_rate: Some(0.5),
         error_rate_window: Some(10),
         max_cost: Some(25.0),
+        replay_max_bytes: Some(268_435_456),
     };
     let value = serde_json::to_value(limits).expect("serialize");
     assert_eq!(
@@ -262,6 +263,7 @@ fn run_limits_round_trip_camel_case_and_omit_every_unset_ceiling() {
             "maxErrorRate": 0.5,
             "errorRateWindow": 10,
             "maxCost": 25.0,
+            "replayMaxBytes": 268_435_456,
         })
     );
     let back: GgRunLimits = serde_json::from_value(value).expect("deserialize");

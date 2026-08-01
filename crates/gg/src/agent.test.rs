@@ -35,12 +35,13 @@ use test_cabinet_core::gg::{
     CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_READ_FILE, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL,
     CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
-    CAPABILITY_WORKFLOWS, GG_REPLAY_ARTIFACT_PATH, GgAgentConfig, GgAgentStatus,
-    GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource, GgIssueReviewPhase,
-    GgIssueStatus, GgPromptCacheTtl, GgReplayEntryKindV1, GgReplayRecordV1, GgSessionSummary,
-    GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind,
-    GgWorkflowPhase, ROOT_AGENT,
+    CAPABILITY_WORKFLOWS, GgAgentConfig, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet,
+    GgContextAction, GgContextSource, GgIssueReviewPhase, GgIssueStatus, GgPromptCacheTtl,
+    GgSessionSummary, GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent,
+    GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
+use test_cabinet_core::gg_replay::{GgReplayEntry, GgReplayEntryKind};
+use test_cabinet_core::gg_replay_journal::{GG_REPLAY_JOURNAL_PATH, GgJournalLine};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 /// The context window these tests run every scripted model against. gg has no fallback —
@@ -133,6 +134,7 @@ fn no_limits(max_turns: usize) -> LimitsSetup {
             max_consecutive_errors: None,
             error_rate: None,
             max_cost: None,
+            replay_max_bytes: None,
         },
         deadline: None,
         cancel: CancelWatch::disabled(),
@@ -8214,17 +8216,47 @@ fn minimal_with_replay(model: &str) -> GgCapabilitySet {
     set
 }
 
-/// Read and deserialize the `.gg/replay.json` sidecar a replay-captured run writes under `dir`.
-fn read_replay_record(dir: &Path) -> GgReplayRecordV1 {
-    let path = dir.join(GG_REPLAY_ARTIFACT_PATH);
-    let bytes = std::fs::read(&path)
-        .unwrap_or_else(|err| panic!("replay record at {}: {err}", path.display()));
-    serde_json::from_slice(&bytes)
-        .unwrap_or_else(|err| panic!("replay record is valid GgReplayRecordV1 JSON: {err}"))
+/// Read and parse the `.gg/replay.ndjson` capture journal a replay-captured run writes under
+/// `dir`, one [line](GgJournalLine) per record.
+fn read_replay_journal(dir: &Path) -> Vec<GgJournalLine> {
+    let path = dir.join(GG_REPLAY_JOURNAL_PATH);
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|err| panic!("replay journal at {}: {err}", path.display()));
+    text.lines()
+        .map(|line| {
+            serde_json::from_str(line)
+                .unwrap_or_else(|err| panic!("replay journal line `{line}`: {err}"))
+        })
+        .collect()
 }
 
-/// A replay-captured run writes a `.gg/replay.json` record that pins every model call (request +
-/// response) and every tool result, tagged by agent + a globally monotonic sequence, in order.
+/// The pinned inputs a journal carries, in write order.
+fn journal_entries(lines: &[GgJournalLine]) -> Vec<&GgReplayEntry> {
+    lines
+        .iter()
+        .filter_map(|line| match line {
+            GgJournalLine::Entry { entry } => Some(entry.as_ref()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The pooled message body at `index`, as the journal wrote it.
+fn journal_message(lines: &[GgJournalLine], index: u32) -> serde_json::Value {
+    lines
+        .iter()
+        .find_map(|line| match line {
+            GgJournalLine::Message { index: at, message } if *at == index => {
+                Some(message.body.clone())
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("the journal pooled a message at index {index}"))
+}
+
+/// A replay-captured run streams a `.gg/replay.ndjson` journal that pins every model call
+/// (pooled request + response) and every tool result, tagged by agent + a globally monotonic
+/// sequence, in order.
 #[tokio::test]
 async fn replay_capture_records_model_io_and_tool_results_in_order() {
     let dir = TempDir::new().unwrap();
@@ -8235,89 +8267,119 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
-    let record = read_replay_record(dir.path());
-    // The record's session id is the invocation's (what `core` stamps as the run id).
-    assert_eq!(record.session_id, inv.session_id);
-    assert!(record.capability_set.is_enabled(CAPABILITY_REPLAY));
+    let lines = read_replay_journal(dir.path());
+    // The header identifies the session (what `core` stamps as the run id) and the configuration.
+    let GgJournalLine::Header {
+        session_id,
+        capability_set,
+        ..
+    } = &lines[0]
+    else {
+        panic!("the journal opens with its header, got {:?}", lines[0]);
+    };
+    assert_eq!(session_id, &inv.session_id);
+    assert!(capability_set.is_enabled(CAPABILITY_REPLAY));
+    // And it terminates, so the record is provably not a session that died mid-capture.
+    assert!(
+        matches!(
+            lines.last(),
+            Some(GgJournalLine::End {
+                truncation: None,
+                ..
+            })
+        ),
+        "a completed run terminates its journal, got {:?}",
+        lines.last()
+    );
 
+    let entries = journal_entries(&lines);
     // The sequence is globally monotonic and strictly increasing in recording order.
-    let seqs: Vec<u64> = record.entries.iter().map(|e| e.seq).collect();
+    let seqs: Vec<u64> = entries.iter().map(|entry| entry.seq).collect();
     assert!(!seqs.is_empty(), "a captured run records entries");
     assert!(
         seqs.windows(2).all(|w| w[0] < w[1]),
         "sequence is strictly increasing, got {seqs:?}"
     );
 
-    // Every model turn was recorded (request + response). The default mock takes at least two turns:
-    // one that writes the file and one that stops.
-    let model_ios: Vec<_> = record
-        .entries
+    // Every model turn was recorded (request + response). The default mock takes at least two
+    // turns: one that writes the file and one that stops.
+    let model_ios: Vec<_> = entries
         .iter()
-        .filter(|e| matches!(e.kind, GgReplayEntryKindV1::ModelIo { .. }))
+        .filter(|entry| matches!(entry.kind, GgReplayEntryKind::ModelIo { .. }))
         .collect();
     assert!(
         model_ios.len() >= 2,
         "at least two model turns recorded, got {}",
         model_ios.len()
     );
-    // Each model-io entry carries a well-formed request (with messages) and a response.
     for entry in &model_ios {
-        let GgReplayEntryKindV1::ModelIo { request, response } = &entry.kind else {
+        let GgReplayEntryKind::ModelIo { request, response } = &entry.kind else {
             unreachable!()
         };
+        // A request is pool references plus the fingerprint of the question it asked, and every
+        // reference resolves to a body the journal actually wrote.
         assert!(
-            request.get("messages").is_some(),
-            "a model request carries its messages"
+            !request.messages.is_empty(),
+            "a request carries its messages"
         );
-        assert!(request.get("tools").is_some(), "and its offered tools");
+        for index in &request.messages {
+            assert!(journal_message(&lines, *index).is_object());
+        }
+        assert!(
+            request.toolset.is_some(),
+            "and the toolset it offered, pooled once for the whole run"
+        );
+        assert_eq!(
+            request.fingerprint.messages as usize,
+            request.messages.len()
+        );
         assert!(
             response.get("finishReason").is_some(),
             "a recorded response carries its finish reason"
         );
     }
+    // The toolset really is pooled once rather than once per turn.
+    let toolsets = lines
+        .iter()
+        .filter(|line| matches!(line, GgJournalLine::Toolset { .. }))
+        .count();
+    assert_eq!(toolsets, 1, "the offered toolset is written once");
 
     // The scripted `write_file` tool result was recorded with its exact call + outcome.
-    let write_result = record.entries.iter().find_map(|e| match &e.kind {
-        GgReplayEntryKindV1::ToolResult { call, outcome } if call["name"] == "write_file" => {
-            Some((call.clone(), outcome.clone()))
+    let write_result = entries.iter().find_map(|entry| match &entry.kind {
+        GgReplayEntryKind::ToolResult { call, outcome } if call.name == "write_file" => {
+            Some((entry.seq, outcome.clone()))
         }
         _ => None,
     });
-    let (call, outcome) = write_result.expect("the write_file tool result was recorded");
-    assert_eq!(call["name"], "write_file");
-    assert_eq!(outcome["ok"], true, "the write succeeded");
+    let (result_seq, outcome) = write_result.expect("the write_file tool result was recorded");
+    assert!(outcome.ok, "the write succeeded");
 
     // Single-agent run: every entry is tagged with the root agent.
     assert!(
-        record.entries.iter().all(|e| e.agent_id == ROOT_AGENT_ID),
+        entries.iter().all(|entry| entry.agent_id == ROOT_AGENT_ID),
         "a single-agent run tags every replay entry with the root"
     );
 
     // The model call that requested `write_file` precedes the recorded `write_file` tool result.
     let call_seq = model_ios
         .iter()
-        .find(|e| match &e.kind {
-            GgReplayEntryKindV1::ModelIo { response, .. } => {
+        .find(|entry| match &entry.kind {
+            GgReplayEntryKind::ModelIo { response, .. } => {
                 response.to_string().contains("write_file")
             }
             _ => false,
         })
-        .map(|e| e.seq)
+        .map(|entry| entry.seq)
         .expect("a model turn that requested write_file");
-    let result_seq = record
-        .entries
-        .iter()
-        .find(|e| matches!(&e.kind, GgReplayEntryKindV1::ToolResult { call, .. } if call["name"] == "write_file"))
-        .map(|e| e.seq)
-        .unwrap();
     assert!(
         call_seq < result_seq,
         "the model call precedes the tool result it requested"
     );
 }
 
-/// With the replay capability **off** (the default), nothing extra is captured — no `.gg/replay.json`
-/// sidecar is written. Zero overhead.
+/// With the replay capability **off** (the default), nothing extra is captured — no
+/// `.gg/replay.ndjson` journal is written. Zero overhead.
 #[tokio::test]
 async fn replay_capture_writes_nothing_when_the_capability_is_off() {
     let dir = TempDir::new().unwrap();
@@ -8330,14 +8392,14 @@ async fn replay_capture_writes_nothing_when_the_capability_is_off() {
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
     assert!(
-        !dir.path().join(GG_REPLAY_ARTIFACT_PATH).exists(),
-        "no replay record is written when the capability is off"
+        !dir.path().join(GG_REPLAY_JOURNAL_PATH).exists(),
+        "no replay journal is written when the capability is off"
     );
 }
 
-/// A multi-agent replay-captured run records entries from the root **and** its subagent, interleaved
-/// under one globally monotonic sequence, so the record reconstructs the concurrent tree
-/// deterministically.
+/// A multi-agent replay-captured run records entries from the root **and** its subagent,
+/// interleaved under one globally monotonic sequence, so the record reconstructs the concurrent
+/// tree deterministically.
 #[tokio::test]
 async fn replay_capture_interleaves_a_multi_agent_run() {
     let dir = TempDir::new().unwrap();
@@ -8362,11 +8424,14 @@ async fn replay_capture_interleaves_a_multi_agent_run() {
         SessionOutcome::Ran
     );
 
-    let record = read_replay_record(dir.path());
+    let lines = read_replay_journal(dir.path());
+    let entries = journal_entries(&lines);
 
     // Both the root and the spawned subagent (`agent-0`) recorded entries.
-    let agents: std::collections::HashSet<&str> =
-        record.entries.iter().map(|e| e.agent_id.as_str()).collect();
+    let agents: std::collections::HashSet<&str> = entries
+        .iter()
+        .map(|entry| entry.agent_id.as_str())
+        .collect();
     assert!(
         agents.contains(ROOT_AGENT_ID),
         "the root recorded replay entries"
@@ -8377,7 +8442,7 @@ async fn replay_capture_interleaves_a_multi_agent_run() {
     );
 
     // One global sequence spans both agents, strictly increasing across the interleaving.
-    let seqs: Vec<u64> = record.entries.iter().map(|e| e.seq).collect();
+    let seqs: Vec<u64> = entries.iter().map(|entry| entry.seq).collect();
     assert!(
         seqs.windows(2).all(|w| w[0] < w[1]),
         "the global sequence is strictly increasing across agents, got {seqs:?}"
@@ -8385,11 +8450,8 @@ async fn replay_capture_interleaves_a_multi_agent_run() {
 
     // The subagent's own model I/O was captured (its turns ran through a RecordingClient too).
     assert!(
-        record
-            .entries
-            .iter()
-            .any(|e| e.agent_id == "agent-0"
-                && matches!(e.kind, GgReplayEntryKindV1::ModelIo { .. })),
+        entries.iter().any(|entry| entry.agent_id == "agent-0"
+            && matches!(entry.kind, GgReplayEntryKind::ModelIo { .. })),
         "the subagent's model I/O was recorded"
     );
 }
@@ -8415,12 +8477,16 @@ fn core_turns(events: &[GgTelemetryEvent], agent: &str) -> Vec<(&'static str, St
         .collect()
 }
 
-/// The end-to-end round trip: capture a real run, then reconstruct it from the written record with
-/// the [replay driver](crate::replay_driver) — no live model, no real tools — and assert the
-/// reconstruction reproduces the original run's per-turn telemetry step for step and yields the same
-/// step-through the pure derivation gives.
+/// The end-to-end completeness proof: capture a real run, then check the written journal pins an
+/// outcome for **every** tool call its recorded model responses requested, in order, and that the
+/// pinned pairs are exactly the ones the run's own telemetry stream showed.
+///
+/// That is the guarantee replay exists for — a record that reconstructs without a gap is provably
+/// complete for the run it captured — asserted directly against the journal. Driving the
+/// production loop back through it (rather than checking it is complete) is
+/// [playback](https://docs.testcabinet.ai/gg/analysis/playback/)'s job, and arrives with it.
 #[tokio::test]
-async fn a_captured_run_reconstructs_from_its_record() {
+async fn a_captured_run_journals_an_outcome_for_every_call_it_made() {
     let dir = TempDir::new().unwrap();
     seed_default_skill(dir.path());
     let sink = CollectingSink::new();
@@ -8429,32 +8495,61 @@ async fn a_captured_run_reconstructs_from_its_record() {
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
-    // Reconstruct from the captured record on a fresh sink.
-    let record = read_replay_record(dir.path());
-    let replay_sink = CollectingSink::new();
-    let out = crate::replay_driver::reconstruct_with_sink(&record, Box::new(replay_sink.clone()))
-        .expect("the captured record reconstructs without gaps");
+    let lines = read_replay_journal(dir.path());
+    let entries = journal_entries(&lines);
 
-    // The reconstruction yields the same step-through the pure derivation gives, and covers the run.
-    assert_eq!(out.steps, record.steps());
+    // Walk the journal exactly as a reconstruction would: each model turn opens with the calls its
+    // response requested, and each recorded tool result must answer the next one, by id and name.
+    let mut awaiting: std::collections::VecDeque<(String, String)> = Default::default();
+    let mut model_calls = 0usize;
+    let mut tool_calls = 0usize;
+    let mut journaled: Vec<(&'static str, String)> = Vec::new();
+    for entry in &entries {
+        match &entry.kind {
+            GgReplayEntryKind::ModelIo { response, .. } => {
+                assert!(
+                    awaiting.is_empty(),
+                    "turn at seq {} opened with {awaiting:?} still unanswered — the capture would \
+                     be incomplete",
+                    entry.seq
+                );
+                let response: crate::model::ModelResponse =
+                    serde_json::from_value(response.clone()).expect("a recorded response");
+                awaiting = response
+                    .tool_calls
+                    .iter()
+                    .map(|call| (call.id.clone(), call.name.clone()))
+                    .collect();
+                model_calls += 1;
+            }
+            GgReplayEntryKind::ToolResult { call, outcome } => {
+                let expected = awaiting
+                    .pop_front()
+                    .unwrap_or_else(|| panic!("seq {} answers a call no turn made", entry.seq));
+                assert_eq!((call.id.clone(), call.name.clone()), expected);
+                journaled.push(("call", call.name.clone()));
+                journaled.push(("result", format!("{}:{}", call.name, outcome.ok)));
+                tool_calls += 1;
+            }
+            other => panic!("unexpected entry kind {other:?}"),
+        }
+    }
     assert!(
-        out.model_calls >= 2,
-        "the run took at least two model turns"
+        awaiting.is_empty(),
+        "the record left {awaiting:?} unanswered"
     );
-    assert!(out.tool_calls >= 1, "and made at least one tool call");
-    assert_eq!(out.agent_count, 1, "a single-agent run");
+    assert!(model_calls >= 2, "the run took at least two model turns");
+    assert!(tool_calls >= 1, "and made at least one tool call");
 
-    // The reconstructed telemetry reproduces the original run's per-turn model/tool sequence for the
-    // root agent, step for step.
-    let original = core_turns(&sink.events(), ROOT_AGENT_ID);
-    let replayed = core_turns(&replay_sink.events(), ROOT_AGENT_ID);
-    assert!(
-        !original.is_empty(),
-        "the original run emitted a core turn sequence"
-    );
+    // And the pinned pairs are the ones the run streamed, in the same order.
+    let streamed: Vec<(&'static str, String)> = core_turns(&sink.events(), ROOT_AGENT_ID)
+        .into_iter()
+        .filter(|(tag, _)| *tag == "call" || *tag == "result")
+        .collect();
+    assert!(!streamed.is_empty(), "the run streamed calls and results");
     assert_eq!(
-        replayed, original,
-        "the reconstruction reproduces the original telemetry step for step"
+        journaled, streamed,
+        "the journal pins exactly the calls and results the run made"
     );
 }
 

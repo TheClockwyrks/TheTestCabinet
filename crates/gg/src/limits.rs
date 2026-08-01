@@ -27,6 +27,12 @@
 //! | [`error_rate`](RunLimits::error_rate) | per agent | ends **that agent** | `limit_exceeded` |
 //! | [`max_cost`](RunLimits::max_cost) | **run-wide** ([`RunSpend`]) | ends **every agent** at its next boundary | `limit_exceeded` |
 //!
+//! [`RunLimits`] carries one further ceiling that is **not** in that table and never ends a run:
+//! [`replay_max_bytes`](RunLimits::replay_max_bytes) bounds the
+//! [capture journal](crate::replay) that observes the run. It is resolved here because there is
+//! one resolver for everything an operator can declare under `capabilitySet.limits`, not because
+//! it is an execution ceiling.
+//!
 //! Three of them are new; the turn ceiling and the wall-clock budget predate them and are folded in
 //! **unchanged in behaviour**, so there is one home, one [resolver](resolve_run_limits), one
 //! [breach record](test_cabinet_core::gg::GgLimitBreach) and one aggregation facet for every
@@ -237,6 +243,18 @@ pub const DEFAULT_MAX_ERROR_RATE: f64 = 0.4;
 /// the minimum sample, so the default ceiling cannot fire before an agent's fiftieth turn.
 pub const DEFAULT_ERROR_RATE_WINDOW: usize = 50;
 
+/// The per-run ceiling on the [replay capture journal](crate::replay) when a run declares none:
+/// **256 MiB**.
+///
+/// Sized to be unreachable by any run that is behaving, and reachable by one that is not. A pooled
+/// record of a 200-turn session projects to a few megabytes, so this is roughly two orders of
+/// magnitude of headroom; what it actually bounds is the pathological case — a model that keeps
+/// producing megabytes of distinct output — where the alternative is a journal that fills the run
+/// container's disk and takes the run down with it. Capture is the thing that gives way, never the
+/// run: crossing the ceiling stops capture and marks the record
+/// [truncated](test_cabinet_core::gg_replay::GgReplayTruncationReason::ByteCeiling).
+pub const DEFAULT_REPLAY_MAX_BYTES: u64 = 256 * 1024 * 1024;
+
 /// The resolved [execution ceilings](test_cabinet_core::gg::GgRunLimits) one run is bounded by.
 ///
 /// The turn ceiling and the two error ceilings carry gg's [defaults](self) when the run declared
@@ -260,6 +278,15 @@ pub struct RunLimits {
     /// The run's accumulated-cost ceiling, when configured. Measured against the run-wide
     /// [spend](RunSpend), never against one agent's share of it.
     pub max_cost: Option<f64>,
+    /// The per-run byte ceiling on the [replay capture journal](crate::replay), defaulting to
+    /// [`DEFAULT_REPLAY_MAX_BYTES`] and `None` only when the run explicitly declared a ceiling
+    /// that cannot bound anything.
+    ///
+    /// Resolved here because there is one resolver, one declaration site and one warning path for
+    /// every ceiling gg reads — but it is deliberately **absent from
+    /// [`armed_summary`](RunLimits::armed_summary)**, which names the ceilings that can end a run.
+    /// This one ends only the recording of one.
+    pub replay_max_bytes: Option<u64>,
 }
 
 /// A recent-error-rate ceiling and the lookback it is measured over.
@@ -321,7 +348,11 @@ impl RunLimits {
         })
     }
 
-    /// The one `info` line a run logs at launch, naming every ceiling actually in force.
+    /// The one `info` line a run logs at launch, naming every **execution** ceiling actually in
+    /// force — the ones that can end the run. The
+    /// [replay ceiling](Self::replay_max_bytes) is deliberately not among them: it bounds the
+    /// journal that observes the run, and reporting it here would tell an operator reading "why
+    /// might this run stop early?" about something that cannot stop it.
     ///
     /// Emitted even when nothing is armed at all — a run bounded only by the host's clock is exactly
     /// as much a fact about the configuration as a list of ceilings is, and a study reading the
@@ -387,6 +418,8 @@ const LEGACY_CAPABILITY_PARAMS: [&str; 2] = ["maxTurns", "maxRuntimeSecs"];
 /// | `errorRateWindow: 0` | off | it has no turns to measure |
 /// | `errorRateWindow >= maxTurns` (when a turn ceiling is set) | **armed** | it can only ever fire on the run's last turn |
 /// | `maxCost` ≤ 0, or not finite | off | it must be greater than zero |
+/// | `replayMaxBytes` absent | [`DEFAULT_REPLAY_MAX_BYTES`] | — |
+/// | `replayMaxBytes: 0` | off (capture unbounded) | it would stop capture before its first line |
 /// | `maxTurns`/`maxRuntimeSecs` in any capability's params | ignored | move it to `capabilitySet.limits` |
 ///
 /// The warnings are the caller's to emit: this function is pure, and the loop logs them on the
@@ -435,6 +468,23 @@ pub fn resolve_run_limits(set: &GgCapabilitySet, warnings: &mut Vec<String>) -> 
         None => None,
     };
 
+    // The one ceiling here that bounds the *observation* of a run rather than the run. `0` is
+    // treated exactly as `maxConsecutiveErrors: 0` is — a declaration that cannot bound anything,
+    // warned about and disarmed — rather than as "capture nothing", because a ceiling read as its
+    // own opposite is the kind of silent inversion this resolver exists to prevent.
+    let replay_max_bytes = match declared.replay_max_bytes {
+        Some(0) => {
+            warnings.push(
+                "replayMaxBytes: 0 cannot bound anything (it would stop replay capture before its \
+                 first line); the ceiling is off and capture is unbounded."
+                    .to_string(),
+            );
+            None
+        }
+        Some(max) => Some(max),
+        None => Some(DEFAULT_REPLAY_MAX_BYTES),
+    };
+
     warn_about_legacy_params(set, warnings);
 
     RunLimits {
@@ -443,6 +493,7 @@ pub fn resolve_run_limits(set: &GgCapabilitySet, warnings: &mut Vec<String>) -> 
         max_consecutive_errors,
         error_rate,
         max_cost,
+        replay_max_bytes,
     }
 }
 
