@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use test_cabinet_core::job_api::JobState;
-use test_cabinet_core::{RunCancellation, write_failed_record};
+use test_cabinet_core::{RunCancellation, mint_run_id, write_failed_record};
 use time::OffsetDateTime;
 
 use test_cabinet_driver::client::JobClient;
@@ -64,9 +64,19 @@ async fn main() -> ExitCode {
     };
 
     let request = config.run_request();
+
+    // The run's identity, minted here rather than inside the engine. The driver has to
+    // be able to record the run *itself* when the engine cannot hand a record back — a
+    // session that hung, outran its cap, or would not wind down for a cancellation — and
+    // by then the engine has already written into `out/<run_id>/`, salvaged replay record
+    // and all. Minting it here is what makes the record the driver builds name the same
+    // run tree the engine wrote, instead of an empty directory beside it.
+    let run_id = mint_run_id();
+
     tracing::info!(
         backend = %config.backend_url,
         job_id = %config.job_id,
+        run_id = %run_id,
         test_case = %request.test_case_slug,
         variant = %request.variant,
         harness = request.harness.as_str(),
@@ -123,7 +133,7 @@ async fn main() -> ExitCode {
     // a driver pod that polls its backend job here.
     let cancel = RunCancellation::new();
     let outcome = {
-        let run = drive(&config, &request, &tx, &client, &resolved, &cancel);
+        let run = drive(&config, &run_id, &request, &tx, &client, &resolved, &cancel);
         tokio::pin!(run);
         let observed = tokio::select! {
             outcome = &mut run => Some(outcome),
@@ -175,7 +185,15 @@ async fn main() -> ExitCode {
             // exists so a session that stops responding cannot cost the operator
             // everything the run had streamed.
             let test_case = resolved.lock().ok().and_then(|slot| slot.clone());
-            report_canceled(&client, &config, &request, started_at, test_case.as_ref()).await;
+            report_canceled(
+                &client,
+                &config,
+                &run_id,
+                &request,
+                started_at,
+                test_case.as_ref(),
+            )
+            .await;
             teardown_sandbox(&config).await;
             ExitCode::SUCCESS
         }
@@ -262,6 +280,7 @@ async fn main() -> ExitCode {
                 report_canceled(
                     &client,
                     &config,
+                    &run_id,
                     &request,
                     started_at,
                     failure.test_case.as_ref(),
@@ -270,7 +289,7 @@ async fn main() -> ExitCode {
                 teardown_sandbox(&config).await;
                 return ExitCode::SUCCESS;
             }
-            report_failure(&client, &config, &request, started_at, failure).await
+            report_failure(&client, &config, &run_id, &request, started_at, failure).await
         }
     }
 }
@@ -318,9 +337,11 @@ const CANCELED_DETAIL: &str = "canceled by operator";
 /// backend's hands, and without a record to attach it to the killed run never reaches the
 /// run list at all. Everything here is best-effort — the job is already terminal and the
 /// sandbox teardown still has to happen, so a failure to record is logged, never fatal.
+#[allow(clippy::too_many_arguments)]
 async fn report_canceled(
     client: &JobClient,
     config: &Config,
+    run_id: &str,
     request: &test_cabinet_core::RunRequest,
     started_at: OffsetDateTime,
     test_case: Option<&test_cabinet_core::TestCaseVersion>,
@@ -330,7 +351,7 @@ async fn report_canceled(
     // `report_failure` passes.
     let record = match write_failed_record(
         &config.work_dir.join("out"),
-        &config.job_id,
+        run_id,
         request,
         test_case,
         started_at,
@@ -592,6 +613,7 @@ async fn finalize_asset_backend_upload(config: &Config, record: &test_cabinet_co
 async fn report_failure(
     client: &JobClient,
     config: &Config,
+    run_id: &str,
     request: &test_cabinet_core::RunRequest,
     started_at: OffsetDateTime,
     failure: RunFailure,
@@ -599,7 +621,7 @@ async fn report_failure(
     tracing::warn!(detail = %failure.detail, "run failed; reporting to the backend");
     let record = match write_failed_record(
         &config.work_dir.join("out"),
-        &config.job_id,
+        run_id,
         request,
         failure.test_case.as_ref(),
         started_at,

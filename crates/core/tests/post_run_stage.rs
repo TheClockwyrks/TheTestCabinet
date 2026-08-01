@@ -357,6 +357,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
     let wall_clock = Instant::now();
     let record = engine
         .run_resolved(
+            &test_cabinet_core::mint_run_id(),
             &request,
             &test_case,
             &mut NoopEventSink,

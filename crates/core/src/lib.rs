@@ -1168,7 +1168,7 @@ where
         cancel: &RunCancellation,
     ) -> Result<RunRecord> {
         let test_case = self.resolve(request)?;
-        self.run_resolved(request, &test_case, events, preview, cancel)
+        self.run_resolved(&mint_run_id(), request, &test_case, events, preview, cancel)
             .await
     }
 
@@ -1183,6 +1183,23 @@ where
     /// [`crate::PrerenderedReferenceRenderer`] over the backend's screenshots in
     /// that case, so this method reuses them instead of re-rendering mockup HTML
     /// the runner never receives.
+    ///
+    /// # Why the caller supplies the run id
+    ///
+    /// `run_id` is the identity **everything** about this run is keyed by: the record
+    /// it produces, the `<output_dir>/<run_id>` tree it writes, the artifacts the
+    /// [post-run stages](crate::post_run) drop at that tree's root, and the telemetry
+    /// the harness stamps as it runs. [`Self::run`] mints one with [`mint_run_id`] and
+    /// most callers should do the same — but a host that has to *report* a run this
+    /// method never returns from cannot. A run that hangs or outruns its cap ends in an
+    /// [`Err`], after the engine has already
+    /// [salvaged](crate::salvage) its replay journal into `<output_dir>/<run_id>`; the
+    /// host then builds the failure record itself with
+    /// [`write_failed_record`]. Were the id minted privately here, that record would
+    /// carry a *different* id, and everything the failing run left on disk — the
+    /// salvaged replay above all — would be orphaned under an id nothing else knows.
+    /// Taking it as a parameter is what keeps the failure path and the success path
+    /// naming the same run.
     #[instrument(
         name = "run",
         skip_all,
@@ -1200,6 +1217,7 @@ where
     )]
     pub async fn run_resolved(
         &self,
+        run_id: &str,
         request: &RunRequest,
         test_case: &TestCaseVersion,
         events: &mut dyn EventSink,
@@ -1209,15 +1227,14 @@ where
         let started_at = OffsetDateTime::now_utc();
         let timer = Instant::now();
 
-        // Mint the run's identity up front rather than when the record is built at
-        // the end. Nothing here depends on the run's outcome — it is just a v4 UUID
-        // — and having it before the harness starts is what lets the harness tag its
-        // OWN telemetry with the run (see `harness_telemetry::TelemetrySubject`).
-        // Minted late, the harness's spans could not be correlated to the run that
-        // produced them: they would land in Tempo describing tool calls and model
-        // turns with no way to tie them back to anything.
-        let run_id = cuid2::create_id();
-        tracing::Span::current().record("run.id", run_id.as_str());
+        // The run's identity is known before anything is executed rather than when the
+        // record is built at the end. Nothing here depends on the run's outcome, and
+        // having it before the harness starts is what lets the harness tag its OWN
+        // telemetry with the run (see `harness_telemetry::TelemetrySubject`). Known
+        // late, the harness's spans could not be correlated to the run that produced
+        // them: they would land in Tempo describing tool calls and model turns with no
+        // way to tie them back to anything.
+        tracing::Span::current().record("run.id", run_id);
 
         // Enforce the gg configuration invariant before anything is set up: a gg run
         // must carry a capability set and a non-gg run must not. A mismatch here
@@ -1340,7 +1357,7 @@ where
                 &orchestrator,
                 events,
                 live.is_some(),
-                &run_id,
+                run_id,
                 cancel,
             )
             .await?;
@@ -1412,14 +1429,14 @@ where
         // Validation is skipped for a cancellation because it is fresh work that
         // judges output an operator chose to stop; analysis is not that — it reads
         // bytes that already exist and renders no verdict.
-        let run_dir = self.output_dir.join(&run_id);
+        let run_dir = self.output_dir.join(run_id);
         std::fs::create_dir_all(&run_dir)?;
         let post_run = post_run::run_stages(
             [self.replay_assembler.as_deref(), self.analyzer.as_deref()]
                 .into_iter()
                 .flatten(),
             &post_run::PostRunContext {
-                run_id: &run_id,
+                run_id,
                 run_dir: &run_dir,
                 artifacts: &artifacts,
                 seed_commit: &seeded.initial_commit,
@@ -1465,7 +1482,7 @@ where
             completed_state(test_case.test_type, &validation)
         };
         let record = RunRecord {
-            id: run_id,
+            id: run_id.to_string(),
             started_at: started_at.format(&Rfc3339).unwrap_or_default(),
             finished_at: finished_at.format(&Rfc3339).unwrap_or_default(),
             subject: RunSubject {
@@ -1603,8 +1620,25 @@ fn completed_state(test_type: TestType, validation: &ValidationSummary) -> RunSt
     }
 }
 
+/// Mint a fresh run id.
+///
+/// One place, so every host names runs the same way. A host that drives a run through
+/// [`RunEngine::run_resolved`] mints the id *before* the run and keeps it: it is what the
+/// engine writes the run tree under, and what the host must reuse when it has to
+/// [record the run's failure itself](write_failed_record) — otherwise the two halves of a
+/// failed run are filed under different ids and everything the engine salvaged is
+/// orphaned.
+pub fn mint_run_id() -> String {
+    cuid2::create_id()
+}
+
 /// Build and persist the record for a run that failed before producing an
 /// implementation, under `output_dir`, and return it.
+///
+/// The `id` must be the same one the run was driven under (see [`mint_run_id`]) whenever
+/// the run reached the engine at all: the engine may already have written into
+/// `<output_dir>/<id>` — a hung gg run's [salvaged](crate::salvage) replay record lands
+/// there — and a record filed under a different id leaves all of it unreachable.
 ///
 /// A run that errors before [`RunEngine::run_resolved`] reaches its success path
 /// never writes a [`RunRecord`], so it vanishes from the produced-runs listing

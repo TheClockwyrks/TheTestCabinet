@@ -331,8 +331,15 @@ async fn a_hung_gg_run_keeps_the_replay_journal_it_had_written() {
         gg_model_modalities: Default::default(),
     };
 
+    // The id the *host* would drive this run under and would then file its own failure
+    // record under. Asserting the artifact lands here — rather than discovering whatever
+    // directory the engine happened to create — is what pins the property the driver
+    // depends on: the salvaged record is reachable from the id the failure is reported
+    // with. An engine that minted its own id would leave it orphaned.
+    let run_id = test_cabinet_core::mint_run_id();
     let error = engine
         .run_resolved(
+            &run_id,
             &request,
             &test_case,
             &mut NoopEventSink,
@@ -361,13 +368,9 @@ async fn a_hung_gg_run_keeps_the_replay_journal_it_had_written() {
     );
 
     // (1): the artifact exists, at the run tree's root, for a run that produced no
-    // record of its own. The run id is minted inside the engine, so the run directory is
-    // discovered rather than predicted.
-    let run_dir = std::fs::read_dir(out_dir.path())
-        .expect("read the output directory")
-        .map(|entry| entry.expect("entry").path())
-        .find(|path| path.is_dir())
-        .expect("the failed run should still have a run directory");
+    // record of its own — under the id the caller supplied, which is the only id the
+    // failure path knows.
+    let run_dir = out_dir.path().join(&run_id);
     let artifact = run_dir.join(GG_REPLAY_TREE_ARTIFACT);
     assert!(
         artifact.is_file(),

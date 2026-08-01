@@ -79,8 +79,14 @@ impl RunFailure {
 /// one path that never gets a return value: an operator cancellation drops this
 /// future mid-flight, and the caller still needs the run's real case identity and
 /// test type to build the killed run's record.
+///
+/// `run_id` is minted by the caller and handed to the engine, so the run tree the
+/// engine writes — including a hung run's salvaged replay record — is keyed by the same
+/// id the caller's own failure/cancellation record will carry. See
+/// [`RunEngine::run_resolved`](test_cabinet_core::RunEngine::run_resolved).
 pub async fn drive(
     config: &Config,
+    run_id: &str,
     request: &RunRequest,
     outbound: &UnboundedSender<Outbound>,
     job_client: &JobClient,
@@ -203,6 +209,7 @@ pub async fn drive(
             let collector = CliArtifactCollector::new(runtime.clone(), artifact_dir);
             drive_engine(
                 &out_dir,
+                run_id,
                 request,
                 &test_case,
                 references,
@@ -227,6 +234,7 @@ pub async fn drive(
             let collector = KubernetesArtifactCollector::new(runtime.clone(), artifact_dir);
             drive_engine(
                 &out_dir,
+                run_id,
                 request,
                 &test_case,
                 references,
@@ -261,6 +269,7 @@ pub async fn drive(
 #[allow(clippy::too_many_arguments)]
 async fn drive_engine<R, C>(
     out_dir: &Path,
+    run_id: &str,
     request: &RunRequest,
     test_case: &TestCaseVersion,
     references: Vec<RenderedReference>,
@@ -333,7 +342,14 @@ where
     }
 
     engine
-        .run_resolved(request, test_case, &mut events, Some(preview), cancel)
+        .run_resolved(
+            run_id,
+            request,
+            test_case,
+            &mut events,
+            Some(preview),
+            cancel,
+        )
         .await
 }
 

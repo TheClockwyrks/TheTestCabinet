@@ -23,7 +23,7 @@ use test_cabinet_core::validation::*;
 
 use super::{
     upload_adversarial_to_backend, upload_assets_to_backend, upload_proofs_to_backend,
-    upload_validation_to_backend,
+    upload_replay_to_backend, upload_validation_to_backend,
 };
 
 /// One upload the stub backend received: its request path and body byte length.
@@ -887,5 +887,68 @@ async fn non_asset_run_uploads_no_asset_media() {
     assert!(
         received.lock().unwrap().is_empty(),
         "a non-asset-generation run makes no asset upload",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The gg replay mirror
+// ---------------------------------------------------------------------------
+//
+// This mirror is the whole reason a backend-driven gg run's replay is reachable at all:
+// `GET /runs/{id}/replay` serves what this POSTs, and the read it does is deliberately
+// silent about a missing file (a run that captured nothing is the common case). That
+// silence is what makes a wrong path an *unconditional* no-op with no signal anywhere, so
+// the path is pinned here rather than left to the `else { return Ok(()) }` arm.
+
+/// Write `bytes` to `{out_dir}/run-1/replay.json.gz` — the run tree root, where the
+/// assembly stage puts the record.
+fn write_replay_artifact(out_dir: &std::path::Path, bytes: &[u8]) {
+    let path = out_dir
+        .join("run-1")
+        .join(test_cabinet_core::gg_replay_assembly::GG_REPLAY_TREE_ARTIFACT);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, bytes).unwrap();
+}
+
+#[tokio::test]
+async fn uploads_the_assembled_replay_record_from_the_run_tree_root() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // Gzip magic + arbitrary payload: the mirror uploads the bytes as they are, so the
+    // body must come back byte for byte rather than re-encoded.
+    let bytes = b"\x1f\x8b\x08\x00assembled-replay".to_vec();
+    write_replay_artifact(out.path(), &bytes);
+
+    upload_replay_to_backend(&backend_url, &record(None), out.path())
+        .await
+        .expect("the replay upload succeeds");
+
+    let uploads = received.lock().unwrap().clone();
+    assert_eq!(
+        uploads.iter().map(|u| u.path.clone()).collect::<Vec<_>>(),
+        vec!["/runs/run-1/replay".to_string()],
+        "the record is POSTed to the run's replay slot; got {uploads:?}",
+    );
+    assert_eq!(
+        uploads[0].body_len,
+        bytes.len(),
+        "the gzipped record is uploaded verbatim, not re-encoded",
+    );
+}
+
+#[tokio::test]
+async fn a_run_that_assembled_no_replay_uploads_nothing() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // The common case by far: replay capture is off, so the assembly stage wrote nothing.
+    upload_replay_to_backend(&backend_url, &record(None), out.path())
+        .await
+        .expect("no-op succeeds");
+
+    assert!(
+        received.lock().unwrap().is_empty(),
+        "a run with no assembled replay record makes no request",
     );
 }
