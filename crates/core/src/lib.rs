@@ -1346,6 +1346,11 @@ where
                     finished_at: entry.finished_at.clone(),
                 })
                 .collect(),
+            // The seed commit computed when this run's workspace was seeded, carried
+            // through so anything measuring the produced tree can tell the scaffolding
+            // the run was given from the code the model actually wrote — exactly,
+            // rather than by guessing at the tree's root commit.
+            seed_commit: Some(seeded.initial_commit.clone()),
         };
 
         self.write_record(&record, &artifacts)?;
@@ -1553,6 +1558,11 @@ fn build_failed_record(
         // tool activity.
         tool_calls: std::collections::BTreeMap::new(),
         game_jam_prior_entries: Vec::new(),
+        // A failed record is built from the request alone — the seeded workspace, when
+        // there even was one, belongs to the engine call that failed — so there is no
+        // seed commit to name. Left absent rather than empty so a consumer can tell "no
+        // seed was recorded" from "the seed was the empty hash".
+        seed_commit: None,
     }
 }
 

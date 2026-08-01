@@ -627,6 +627,33 @@ pub struct RunRecord {
     /// so records written before the field existed still deserialize.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub game_jam_prior_entries: Vec<PriorGameJamEntryRef>,
+    /// The commit hash of the run's **seed** commit — the single commit
+    /// [`RepoSeeder::seed`](crate::execution::RepoSeeder::seed) makes after laying
+    /// down the specs, assets, and rendered reference images, before the container
+    /// ever starts. Everything reachable from it is scaffolding the run was given;
+    /// everything else in the produced tree is the model's own work.
+    ///
+    /// Recorded because it is the only *exact* answer to "which files did the model
+    /// write?", and it is computed host-side where nothing the model does can affect
+    /// it. The obvious substitute — treat the produced tree's root commit as the seed
+    /// — fails in the worst direction: a model that amends, squashes, rebases, or
+    /// re-runs `git init` folds its own work into the root commit, so the seeded set
+    /// swallows the authored files and the run reports near-zero authored code
+    /// *stamped as an exact measurement*. See
+    /// [code analysis](https://docs.testcabinet.ai/gg/analysis/code-analysis/) for the
+    /// basis ladder that falls back when this field is absent.
+    ///
+    /// Distinct from, and authoritative over, a gg replay's `baselineCommit`: that is
+    /// gg's own in-container observation of the same commit, and a mismatch between
+    /// them is diagnostic rather than redundant.
+    ///
+    /// Defaulted and omitted when absent so records written before the field existed
+    /// still deserialize, and a run that failed before its workspace was seeded — which
+    /// has no seed commit to name — serializes without the key rather than with an
+    /// empty string that would read as a real hash.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub seed_commit: Option<String>,
 }
 
 /// A pointer to one earlier game-jam entry a run was seeded with: which run it was

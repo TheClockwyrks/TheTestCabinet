@@ -537,6 +537,10 @@ fn failed_record_captures_subject_and_reason_from_a_resolved_run() {
     assert_eq!(record.metrics, super::RunMetrics::default());
     assert!(!record.validation.loaded);
     assert!(!record.started_at.is_empty() && !record.finished_at.is_empty());
+    // …and it names no seed commit: a failed record is built from the request alone,
+    // so claiming one would point anything measuring the tree at a commit this record
+    // has no evidence for.
+    assert!(record.seed_commit.is_none());
 }
 
 /// A failure before the version could be resolved still records a `failed` run,

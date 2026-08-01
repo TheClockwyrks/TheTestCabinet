@@ -97,6 +97,7 @@ fn sample_record() -> RunRecord {
         game_jam_readme: None,
         tool_calls: BTreeMap::new(),
         game_jam_prior_entries: Vec::new(),
+        seed_commit: None,
     }
 }
 
@@ -189,6 +190,31 @@ fn tool_calls_round_trip_and_default_empty_for_older_records() {
     assert!(empty.get("toolCalls").is_none());
     let parsed: RunRecord = serde_json::from_value(empty).expect("deserialize");
     assert!(parsed.tool_calls.is_empty());
+}
+
+#[test]
+fn seed_commit_round_trips_and_is_absent_for_older_records() {
+    // A recorded seed commit serializes under `seedCommit` and round-trips verbatim —
+    // it is a git hash, so any normalization would break the tree lookups that use it.
+    let mut record = sample_record();
+    record.seed_commit = Some("9f1c0a3b2d4e5f60718293a4b5c6d7e8f9012345".to_string());
+    let value = serde_json::to_value(&record).expect("serialize");
+    assert_eq!(
+        value["seedCommit"],
+        json!("9f1c0a3b2d4e5f60718293a4b5c6d7e8f9012345")
+    );
+    let parsed: RunRecord = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(parsed.seed_commit, record.seed_commit);
+
+    // A run with no seed commit writes no key at all, so nothing downstream can
+    // mistake an empty string for a real hash…
+    let absent = serde_json::to_value(sample_record()).expect("serialize");
+    assert!(absent.get("seedCommit").is_none());
+
+    // …and a record written before the field existed — every record in the corpus
+    // today — still deserializes, with the field absent rather than failing the parse.
+    let parsed: RunRecord = serde_json::from_value(absent).expect("deserialize");
+    assert!(parsed.seed_commit.is_none());
 }
 
 #[test]
