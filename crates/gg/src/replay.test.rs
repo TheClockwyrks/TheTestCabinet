@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use serde_json::json;
-use test_cabinet_core::gg::{GgCapabilitySet, GgReplayEntryKind, GgReplayRecord};
+use test_cabinet_core::gg::{GgCapabilitySet, GgReplayEntryKindV1, GgReplayRecordV1};
 use test_cabinet_core::metrics::TokenCounts;
 
 use super::*;
@@ -80,12 +80,18 @@ fn records_entries_in_global_sequence_tagged_by_agent() {
     assert_eq!(entries[0].agent_id, "root");
     assert_eq!(entries[1].agent_id, "root");
     assert_eq!(entries[2].agent_id, "agent-0");
-    assert!(matches!(entries[0].kind, GgReplayEntryKind::ModelIo { .. }));
+    assert!(matches!(
+        entries[0].kind,
+        GgReplayEntryKindV1::ModelIo { .. }
+    ));
     assert!(matches!(
         entries[1].kind,
-        GgReplayEntryKind::ToolResult { .. }
+        GgReplayEntryKindV1::ToolResult { .. }
     ));
-    assert!(matches!(entries[2].kind, GgReplayEntryKind::ModelIo { .. }));
+    assert!(matches!(
+        entries[2].kind,
+        GgReplayEntryKindV1::ModelIo { .. }
+    ));
 }
 
 /// A recorded model-I/O entry carries the full request (messages + offered tool definitions) and the
@@ -112,7 +118,7 @@ fn model_io_entry_captures_the_full_request_and_response() {
     recorder.record_model_io("root", &[Message::user("build it")], &tools, &response);
 
     let entries = recorder.entries();
-    let GgReplayEntryKind::ModelIo {
+    let GgReplayEntryKindV1::ModelIo {
         request,
         response: recorded,
     } = &entries[0].kind
@@ -141,7 +147,7 @@ fn tool_result_entry_captures_the_exact_call_and_outcome() {
     recorder.record_tool_result("agent-1", &call, &outcome);
 
     let entries = recorder.entries();
-    let GgReplayEntryKind::ToolResult {
+    let GgReplayEntryKindV1::ToolResult {
         call: recorded_call,
         outcome: recorded_outcome,
     } = &entries[0].kind
@@ -179,16 +185,16 @@ async fn recording_client_delegates_and_records_each_turn() {
     assert!(
         entries
             .iter()
-            .all(|e| matches!(e.kind, GgReplayEntryKind::ModelIo { .. }))
+            .all(|e| matches!(e.kind, GgReplayEntryKindV1::ModelIo { .. }))
     );
     // The captured requests are the exact messages each turn was called with.
-    let GgReplayEntryKind::ModelIo { request, .. } = &entries[0].kind else {
+    let GgReplayEntryKindV1::ModelIo { request, .. } = &entries[0].kind else {
         unreachable!()
     };
     assert_eq!(request["messages"][0]["content"], "first");
 }
 
-/// The assembled [`GgReplayRecord`] carries the session id, the capability set, and the entries in
+/// The assembled [`GgReplayRecordV1`] carries the session id, the capability set, and the entries in
 /// sequence order, and round-trips through JSON (serialize → deserialize) unchanged.
 #[test]
 fn to_record_round_trips_through_json() {
@@ -214,6 +220,6 @@ fn to_record_round_trips_through_json() {
     assert_eq!(record.entries[1].seq, 1);
 
     let json = serde_json::to_string(&record).unwrap();
-    let back: GgReplayRecord = serde_json::from_str(&json).unwrap();
+    let back: GgReplayRecordV1 = serde_json::from_str(&json).unwrap();
     assert_eq!(back, record);
 }

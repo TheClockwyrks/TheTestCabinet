@@ -49,7 +49,7 @@ import type {
 import type {
   GgConfig,
   GgConfigInput,
-  GgReplayRecord,
+  GgReplayRecordV1,
 } from "@test-cabinet/run-record/gg";
 import type {
   CoverageGroup,
@@ -244,7 +244,7 @@ export interface BackendClient {
    * per-run debug media (the static site) omits it and the console hides the
    * affordance — the same pattern the other console-only reads use.
    */
-  readGgReplay?(id: string): Promise<GgReplayRecord | null>;
+  readGgReplay?(id: string): Promise<GgReplayRecordV1 | null>;
 
   /**
    * The reviewer checklist items a case declares for a variant (`commonReviewItems`

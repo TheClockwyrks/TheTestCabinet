@@ -5,7 +5,7 @@
 //! *summaries*, not the exact inputs a faithful re-run needs. When the
 //! [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) capability is on, gg additionally pins the two
 //! things a run's own logic cannot reproduce — each agent's **model I/O** and every **tool result** —
-//! into a [`GgRecorder`], and writes the accumulated [`GgReplayRecord`] to a sidecar the backend
+//! into a [`GgRecorder`], and writes the accumulated [`GgReplayRecordV1`] to a sidecar the backend
 //! serves per run.
 //!
 //! # The recording seams (decorators, not scattered calls)
@@ -31,14 +31,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::Serialize;
 use serde_json::Value;
-use test_cabinet_core::gg::{GgCapabilitySet, GgReplayEntry, GgReplayEntryKind, GgReplayRecord};
+use test_cabinet_core::gg::{
+    GgCapabilitySet, GgReplayEntryKindV1, GgReplayEntryV1, GgReplayRecordV1,
+};
 
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
 use crate::tools::ToolOutcome;
 
 /// The serializable shape of one recorded model **request** — the conversation and the offered tool
 /// definitions passed to [`ModelClient::complete`]. Serialized (camelCase) into the
-/// [`ModelIo`](GgReplayEntryKind::ModelIo)`.request` value so a replay driver can reconstruct exactly
+/// [`ModelIo`](GgReplayEntryKindV1::ModelIo)`.request` value so a replay driver can reconstruct exactly
 /// what the agent saw this turn.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,14 +56,14 @@ struct ReplayModelRequest<'a> {
 ///
 /// Held behind an [`Arc`](std::sync::Arc) on the orchestrator and shared across every agent (the root
 /// and each subagent), so all agents' model I/O and tool results accumulate into one ordered log. The
-/// [`seq`](GgReplayEntry::seq) counter is global — minted here across all agents — so the interleaving
+/// [`seq`](GgReplayEntryV1::seq) counter is global — minted here across all agents — so the interleaving
 /// of concurrent agents is reconstructable by sorting on it. Guarded by a [`Mutex`] since
 /// concurrently-running agents record into it.
 #[derive(Default)]
 pub struct GgRecorder {
     /// The recorded entries, in recording order (which is already `seq` order).
-    entries: Mutex<Vec<GgReplayEntry>>,
-    /// The global monotonic sequence counter minting each entry's [`seq`](GgReplayEntry::seq).
+    entries: Mutex<Vec<GgReplayEntryV1>>,
+    /// The global monotonic sequence counter minting each entry's [`seq`](GgReplayEntryV1::seq).
     next_seq: AtomicU64,
 }
 
@@ -83,7 +85,7 @@ impl GgRecorder {
         let request =
             serde_json::to_value(ReplayModelRequest { messages, tools }).unwrap_or(Value::Null);
         let response = serde_json::to_value(response).unwrap_or(Value::Null);
-        self.push(agent_id, GgReplayEntryKind::ModelIo { request, response });
+        self.push(agent_id, GgReplayEntryKindV1::ModelIo { request, response });
     }
 
     /// Record one **tool result**: the `call` the agent (or a code program) made and the exact
@@ -98,33 +100,33 @@ impl GgRecorder {
     pub fn record_tool_result(&self, agent_id: &str, call: &ToolCall, outcome: &ToolOutcome) {
         let call = serde_json::to_value(call).unwrap_or(Value::Null);
         let outcome = serde_json::to_value(outcome).unwrap_or(Value::Null);
-        self.push(agent_id, GgReplayEntryKind::ToolResult { call, outcome });
+        self.push(agent_id, GgReplayEntryKindV1::ToolResult { call, outcome });
     }
 
     /// Append `kind` under `agent_id` at the next global sequence number.
-    fn push(&self, agent_id: &str, kind: GgReplayEntryKind) {
+    fn push(&self, agent_id: &str, kind: GgReplayEntryKindV1) {
         let seq = self.next_seq.fetch_add(1, Ordering::SeqCst);
         self.entries
             .lock()
             .expect("replay recorder lock")
-            .push(GgReplayEntry {
+            .push(GgReplayEntryV1 {
                 agent_id: agent_id.to_string(),
                 seq,
                 kind,
             });
     }
 
-    /// Assemble the final [`GgReplayRecord`] for a run: its `session_id`, `capability_set`, and every
+    /// Assemble the final [`GgReplayRecordV1`] for a run: its `session_id`, `capability_set`, and every
     /// recorded entry in `seq` order (recording order already is `seq` order, but the entries are
     /// sorted defensively so the record is well-ordered regardless of lock arrival order).
     pub fn to_record(
         &self,
         session_id: impl Into<String>,
         capability_set: GgCapabilitySet,
-    ) -> GgReplayRecord {
+    ) -> GgReplayRecordV1 {
         let mut entries = self.entries.lock().expect("replay recorder lock").clone();
         entries.sort_by_key(|entry| entry.seq);
-        GgReplayRecord {
+        GgReplayRecordV1 {
             session_id: session_id.into(),
             capability_set,
             entries,
@@ -133,7 +135,7 @@ impl GgRecorder {
 
     /// A snapshot of the recorded entries so far, in `seq` order — for tests asserting on capture.
     #[cfg(test)]
-    pub fn entries(&self) -> Vec<GgReplayEntry> {
+    pub fn entries(&self) -> Vec<GgReplayEntryV1> {
         let mut entries = self.entries.lock().expect("replay recorder lock").clone();
         entries.sort_by_key(|entry| entry.seq);
         entries

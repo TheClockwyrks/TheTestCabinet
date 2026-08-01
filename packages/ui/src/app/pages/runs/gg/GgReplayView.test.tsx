@@ -7,7 +7,7 @@ import {
   type BackendContextValue,
 } from "../../../../client/context";
 import type { BackendClient } from "../../../../client/clients";
-import type { GgReplayRecord } from "@test-cabinet/run-record/gg";
+import type { GgReplayRecordV1 } from "@test-cabinet/run-record/gg";
 import { GgReplayView } from "./GgReplayView";
 
 // The logic under test is the record fetch + step-through, not the app shell.
@@ -20,7 +20,7 @@ vi.mock("../../../components/PromptHeader", () => ({
 
 // A small two-agent record: the root turn calls a tool (with its recorded result),
 // then a subagent takes its own turn. Ordered by the global `seq`.
-const RECORD: GgReplayRecord = {
+const RECORD: GgReplayRecordV1 = {
   sessionId: "run-xyz",
   capabilitySet: {
     preset: "full",

@@ -31,6 +31,10 @@
       "types": "./dist/gg.d.ts",
       "default": "./dist/gg.js"
     },
+    "./gg-replay": {
+      "types": "./dist/gg-replay.d.ts",
+      "default": "./dist/gg-replay.js"
+    },
     "./gg-system-prompt": {
       "types": "./dist/gg-system-prompt.d.ts",
       "default": "./dist/gg-system-prompt.js"

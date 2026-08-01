@@ -188,7 +188,7 @@ pub struct RunArgs {
 }
 
 /// Arguments for `tcab gg-replay` — a local, debug-only reconstruction of a gg run from its
-/// captured [replay record](test_cabinet_core::gg::GgReplayRecord).
+/// captured [replay record](test_cabinet_core::gg::GgReplayRecordV1).
 #[derive(Debug, Args)]
 pub struct GgReplayArgs {
     /// Path to the JSON replay record to reconstruct (a run's `.gg/replay.json`, or the

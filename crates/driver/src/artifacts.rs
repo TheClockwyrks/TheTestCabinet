@@ -314,7 +314,7 @@ pub async fn upload_validation_to_backend(
 /// store**, keyed by run id — the debug-only counterpart to [`upload_validation_to_backend`], for
 /// the same reason.
 ///
-/// A [replay](test_cabinet_core::gg::CAPABILITY_REPLAY)-captured gg run writes its `GgReplayRecord`
+/// A [replay](test_cabinet_core::gg::CAPABILITY_REPLAY)-captured gg run writes its `GgReplayRecordV1`
 /// to a `.gg/replay.json` sidecar in its workspace (kept out of the produced game artifact), which is
 /// collected into the run tree at
 /// `{out_dir}/{id}/implementation/`[`.gg/replay.json`](test_cabinet_core::gg::GG_REPLAY_ARTIFACT_PATH).

@@ -1418,10 +1418,10 @@ fn healing_records_written_before_the_shape_split_still_deserialize() {
 
 #[test]
 fn replay_entry_flattens_its_kind_inline_with_the_agent_and_seq() {
-    let entry = GgReplayEntry {
+    let entry = GgReplayEntryV1 {
         agent_id: "root".to_string(),
         seq: 3,
-        kind: GgReplayEntryKind::ToolResult {
+        kind: GgReplayEntryKindV1::ToolResult {
             call: json!({ "id": "c1", "name": "shell", "arguments": { "command": "ls" } }),
             outcome: json!({ "ok": true, "output": "a.txt", "summary": "listed" }),
         },
@@ -1441,22 +1441,22 @@ fn replay_entry_flattens_its_kind_inline_with_the_agent_and_seq() {
 
 #[test]
 fn replay_record_round_trips_through_json() {
-    let record = GgReplayRecord {
+    let record = GgReplayRecordV1 {
         session_id: "run-xyz".to_string(),
         capability_set: GgCapabilitySet::minimal("mock/echo"),
         entries: vec![
-            GgReplayEntry {
+            GgReplayEntryV1 {
                 agent_id: "root".to_string(),
                 seq: 0,
-                kind: GgReplayEntryKind::ModelIo {
+                kind: GgReplayEntryKindV1::ModelIo {
                     request: json!({ "messages": [], "tools": [] }),
                     response: json!({ "finishReason": "stop" }),
                 },
             },
-            GgReplayEntry {
+            GgReplayEntryV1 {
                 agent_id: "agent-0".to_string(),
                 seq: 1,
-                kind: GgReplayEntryKind::ToolResult {
+                kind: GgReplayEntryKindV1::ToolResult {
                     call: json!({ "id": "c1", "name": "list_dir", "arguments": {} }),
                     outcome: json!({ "ok": true, "output": "", "summary": "listed" }),
                 },
@@ -1464,7 +1464,7 @@ fn replay_record_round_trips_through_json() {
         ],
     };
     let json = serde_json::to_string(&record).unwrap();
-    let back: GgReplayRecord = serde_json::from_str(&json).unwrap();
+    let back: GgReplayRecordV1 = serde_json::from_str(&json).unwrap();
     assert_eq!(back, record);
 }
 

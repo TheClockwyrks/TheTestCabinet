@@ -1,16 +1,283 @@
 {
   "$defs": {
-    "GgReplayEntry": {
-      "description": "One entry in a [replay](CAPABILITY_REPLAY) record — a single pinned non-deterministic input,\ntagged so the multi-agent interleaving reconstructs deterministically.\n\nEvery entry carries the [`agent_id`](Self::agent_id) of the [agent](GgTelemetryEvent::agent_id)\nwhose loop produced it and a globally monotonic [`seq`](Self::seq) minted across the whole run\n(not per agent), so ordering the entries by `seq` recovers the exact order the run's agents —\ninterleaved as they run concurrently — issued their model calls and consumed their tool results.\nThe [`kind`](Self::kind) is the pinned input itself, flattened inline so the `type` discriminator\nand its fields sit alongside `agentId`/`seq`.",
+    "GgAgentStatus": {
+      "description": "The lifecycle status of an agent in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/),\nreported by an [`AgentStatus`](GgTelemetryKind::AgentStatus) transition so the console can\ncolour each node of the live tree (running vs waiting) and mark it done or failed.\n\nAn agent is [`Running`](Self::Running) while it drives its turn loop, [`Blocked`](Self::Blocked)\nwhile it has **freed its running slot to wait on its subagents** (the scheduler's\nblocked-frees-slot state — distinct from merely queuing for a slot), and terminally either\n[`Done`](Self::Done) (its loop ended normally) or [`Failed`](Self::Failed) (its loop ended in a\nmodel error). Like [`AgentSpawned`](GgTelemetryKind::AgentSpawned), the agent's identity rides\non the event's own [`agent_id`](GgTelemetryEvent::agent_id), so the payload carries only the\nstatus.",
       "oneOf": [
         {
-          "description": "One model turn's I/O: the request sent to the model and the response it returned.\n\nThe [`request`](Self::ModelIo::request) is the object `{ messages, tools }` — the\nconversation and the offered tool definitions passed to the model client — and the\n[`response`](Self::ModelIo::response) is the `ModelResponse` the turn yielded (its `text`,\n`toolCalls`, `finishReason`, `usage`, and `cost`). Together they pin the one non-deterministic\nstep of a turn: a re-run feeds the recorded response instead of calling the live model.",
+          "const": "running",
+          "description": "The agent is actively driving its turn loop (holds a running slot).",
+          "type": "string"
+        },
+        {
+          "const": "blocked",
+          "description": "The agent has freed its running slot and is waiting on one or more of its subagents to\nreturn (the scheduler's blocked-with-a-wait-condition state).",
+          "type": "string"
+        },
+        {
+          "const": "done",
+          "description": "The agent's turn loop ended normally (completed, exhausted, or timed out).",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "The agent's turn loop ended in a model error.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgClientRole": {
+      "description": "Which of gg's two model clients issued a request.\n\nThe discriminator is what makes a **second queue** representable. Without it a\n[handoff-compaction](https://docs.testcabinet.ai/gg/compaction/) summarizer call and\nthe agent's own next turn interleave into one indistinguishable queue, and a\nreconstruction consumes the wrong one. `#[serde(default)]` to\n[`Agent`](Self::Agent), which is what every request in a\n[v1 record](self#reading-a-v1-record) was.",
+      "oneOf": [
+        {
+          "const": "agent",
+          "description": "The agent's own turn loop.",
+          "type": "string"
+        },
+        {
+          "const": "compaction",
+          "description": "The compaction summarizer, which rewrites the whole window rather than advancing\nthe conversation.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgReplayAgent": {
+      "description": "One agent the record captured, and how it came to exist — the table a driving replay\nbinds live agents through. **One row per agent, not per turn**: repeating a\nprovenance tuple on every entry would defeat the pooling thesis outright.",
+      "properties": {
+        "agentId": {
+          "description": "The id the recorded run minted for this agent (`\"root\"` for the root agent).\nEvery [entry](GgReplayEntry::agent_id) is stamped with it.",
+          "type": "string"
+        },
+        "limitHit": {
+          "anyOf": [
+            {
+              "$ref": "https://docs.testcabinet.ai/schema/gg/session-summary.schema.json#/$defs/GgLimitBreach"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The ceiling that stopped this agent, when one did. Cost and turn ceilings are\nhonored as recorded by a playback — reproducing a limit-hit is a feature — so this\nis both an input and something to compare against."
+        },
+        "origin": {
+          "$ref": "#/$defs/GgReplayAgentOrigin",
+          "description": "How the agent came to exist, carrying the keys it is bound by. This — not\n[`agent_id`](Self::agent_id) — is what a reconstruction matches on, because\nsubagent ids come off a global counter in the order agents reach their spawn and a\nplayback removes model latency entirely, so the live interleaving of two\nconcurrent agents *will* differ from the recorded one."
+        },
+        "profile": {
+          "description": "The name of the [agent profile](crate::gg::GgAgentConfig) it ran under.",
+          "type": "string"
+        },
+        "terminalStatus": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GgAgentStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The status the agent's turn loop ended in, when it ended. Compared against the\nreconstructed one and reported as terminal drift when they differ."
+        }
+      },
+      "required": ["agentId", "profile", "origin"],
+      "type": "object"
+    },
+    "GgReplayAgentOrigin": {
+      "description": "How an [agent](GgReplayAgent) was created, carrying the keys that identify it\ndeterministically.\n\nEvery variant's payload is a key that is a function of something the reconstruction\nre-derives on its own — a parent's own ordered turn loop, or board state — and never\nof the global agent counter, whose values a playback legitimately assigns differently.\n\nThe three board-dispatched variants are why this is an enum rather than a flat\n`(parent, ordinal)` pair: an [issue attempt](Self::IssueAttempt), a\n[reviewer](Self::Reviewer) and a [merge agent](Self::Merge) are all created with **no\nparent**, and a reviewer needs three keys rather than two, so a parent-keyed scheme\nleaves every one of them unbindable — and an unbound agent dies on its first turn.",
+      "oneOf": [
+        {
+          "description": "The run's root agent. Bound trivially — there is exactly one.",
+          "properties": {
+            "type": {
+              "const": "root",
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "description": "Spawned by another agent: a delegated subagent, a workflow step, a\n[speculation](https://docs.testcabinet.ai/gg/speculative-execution/) arm, or a\n[fork](https://docs.testcabinet.ai/gg/fork-and-exec/).",
+          "properties": {
+            "ordinal": {
+              "description": "The spawn's position in the parent's own strictly-ordered turn loop, counted\nacross **all** spawn kinds rather than per profile — a fork runs the forker's\nown profile, so a fork child and a same-profile delegated subagent from one\nparent would otherwise compete for the same queue.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "parent": {
+              "description": "The [`agent_id`](GgReplayAgent::agent_id) of the spawner.",
+              "type": "string"
+            },
+            "type": {
+              "const": "spawn",
+              "type": "string"
+            }
+          },
+          "required": ["type", "parent", "ordinal"],
+          "type": "object"
+        },
+        {
+          "description": "Succeeded another agent (the agent-transition path), which is likewise strictly\nordered within the predecessor.",
+          "properties": {
+            "ordinal": {
+              "description": "The succession's position within that predecessor.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "predecessor": {
+              "description": "The [`agent_id`](GgReplayAgent::agent_id) of the agent it succeeded.",
+              "type": "string"
+            },
+            "type": {
+              "const": "succession",
+              "type": "string"
+            }
+          },
+          "required": ["type", "predecessor", "ordinal"],
+          "type": "object"
+        },
+        {
+          "description": "Dispatched to implement a board [issue](crate::gg::GgBoardIssue).",
+          "properties": {
+            "attempt": {
+              "description": "Which attempt at that issue this is — a function of board state, not of the\nagent counter.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "issue": {
+              "description": "The issue's id.",
+              "type": "string"
+            },
+            "type": {
+              "const": "issue_attempt",
+              "type": "string"
+            }
+          },
+          "required": ["type", "issue", "attempt"],
+          "type": "object"
+        },
+        {
+          "description": "Dispatched to review a board issue's attempt.",
+          "properties": {
+            "issue": {
+              "description": "The issue's id.",
+              "type": "string"
+            },
+            "position": {
+              "description": "The reviewer's position within that round, so two reviewers of one round are\ndistinguishable.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "round": {
+              "description": "The review round.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "reviewer",
+              "type": "string"
+            }
+          },
+          "required": ["type", "issue", "round", "position"],
+          "type": "object"
+        },
+        {
+          "description": "Dispatched to merge a board issue's accepted work. The row that proves why\nprovenance keying is necessary: its live id comes straight off the **global\ncounter**, so it can only be bound by what it was dispatched *for*.",
+          "properties": {
+            "issue": {
+              "description": "The issue's id.",
+              "type": "string"
+            },
+            "ordinal": {
+              "description": "Which merge of that issue this is.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "merge",
+              "type": "string"
+            }
+          },
+          "required": ["type", "issue", "ordinal"],
+          "type": "object"
+        }
+      ]
+    },
+    "GgReplayBlob": {
+      "description": "One image in the [blob pool](GgReplayRecord::blobs).\n\nThe catastrophic case v1 had no answer for: a view's base64 payload was re-serialized\non every turn it survived, so one 500 KB PNG cost ~67 MB across 100 turns. Pooled, it\ncosts 500 KB once, flat.",
+      "properties": {
+        "bytes": {
+          "default": 0,
+          "description": "The decoded size in bytes — what the file on disk measured.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "dataBase64": {
+          "description": "The image's bytes, base64-encoded (no `data:` prefix).",
+          "type": "string"
+        },
+        "id": {
+          "description": "The blob's [content address](fingerprint_exact) over its base64 bytes.",
+          "type": "string"
+        },
+        "mediaType": {
+          "description": "The IANA media type (`image/png`, `image/jpeg`, …).",
+          "type": "string"
+        }
+      },
+      "required": ["id", "mediaType", "dataBase64"],
+      "type": "object"
+    },
+    "GgReplayCommand": {
+      "description": "One subprocess gg ran, with its bulky streams pooled.",
+      "properties": {
+        "command": {
+          "description": "The command line, inline rather than pooled: it is short, and it is the **check**\nhalf of a recorded-command lookup (position is the key), so it is worth being able\nto read without resolving a pool.",
+          "type": "string"
+        },
+        "cwd": {
+          "$ref": "#/$defs/GgShellCwd",
+          "description": "Where it ran."
+        },
+        "exitCode": {
+          "description": "The exit status it returned.",
+          "format": "int32",
+          "type": "integer"
+        },
+        "stderr": {
+          "description": "Its standard error, as an index into [`texts`](GgReplayRecord::texts).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stdout": {
+          "description": "Its standard output, as an index into [`texts`](GgReplayRecord::texts).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["command", "cwd", "exitCode", "stdout", "stderr"],
+      "type": "object"
+    },
+    "GgReplayEntry": {
+      "description": "One entry in the input log: a single pinned non-deterministic input, tagged so the\nmulti-agent interleaving reconstructs deterministically.",
+      "oneOf": [
+        {
+          "description": "One model turn's I/O: the pooled request and the response it returned.",
           "properties": {
             "request": {
-              "description": "The request sent to the model — a JSON object `{ messages, tools }` (the `gg` binary's\n`Message[]` and `ToolDefinition[]`, camelCase). Captured verbatim so a re-run reconstructs\nexactly what the agent saw this turn."
+              "$ref": "#/$defs/GgReplayRequest",
+              "description": "What was sent."
             },
             "response": {
-              "description": "The response the turn returned — a JSON object matching the `gg` binary's `ModelResponse`\n(`text`, `toolCalls`, `finishReason`, `usage`, `cost`). Fed back in place of a live model\ncall during replay."
+              "description": "The response the turn yielded — the `gg` binary's `ModelResponse` (`text`,\n`toolCalls`, `finishReason`, `usage`, `cost`), carried as free-form JSON\nbecause its shape is owned by the binary. Its recorded `usage` is what makes a\ncost ceiling trip at the same turn under a reconstruction."
             },
             "type": {
               "const": "model_io",
@@ -21,13 +288,34 @@
           "type": "object"
         },
         {
-          "description": "One tool call's result: the call the agent made and the exact outcome the dispatch returned.\n\nThe [`call`](Self::ToolResult::call) is the `ToolCall` (`id`, `name`, `arguments`) — including\na call a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program composed — and the\n[`outcome`](Self::ToolResult::outcome) is the exact `ToolOutcome` (`ok`, `output`, `summary`,\nplus the optional `images`, `data` and `failure`) it returned. A re-run feeds the recorded\noutcome instead of actually running the tool, so a filesystem/shell result is reproduced\nrather than re-executed.",
+          "description": "One model call that **failed**. Both the request and the error are kept: the\nrequest is what identifies the turn, and the error is what the loop branched on.",
+          "properties": {
+            "error": {
+              "$ref": "#/$defs/GgReplayModelError",
+              "description": "Why it failed."
+            },
+            "request": {
+              "$ref": "#/$defs/GgReplayRequest",
+              "description": "What was sent."
+            },
+            "type": {
+              "const": "model_error",
+              "type": "string"
+            }
+          },
+          "required": ["type", "request", "error"],
+          "type": "object"
+        },
+        {
+          "description": "One tool call and the exact outcome the dispatch returned for it.",
           "properties": {
             "call": {
-              "description": "The tool call the agent (or a code program) made — a JSON object matching the `gg`\nbinary's `ToolCall` (`id`, `name`, `arguments`)."
+              "$ref": "#/$defs/GgReplayToolCall",
+              "description": "The call."
             },
             "outcome": {
-              "description": "The exact outcome the dispatch returned — a JSON object matching the `gg` binary's\n`ToolOutcome`: `ok`, `output` and `summary`, plus the optional `images` and the\nstructured `data`/`failure` a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program\nbranches on. Those optional members are defaulted on the way back in, so a record\ncaptured before they existed still deserializes and replays. Replayed in place of\nrunning the tool."
+              "$ref": "#/$defs/GgReplayToolOutcome",
+              "description": "The outcome."
             },
             "type": {
               "const": "tool_result",
@@ -36,15 +324,105 @@
           },
           "required": ["type", "call", "outcome"],
           "type": "object"
+        },
+        {
+          "description": "One agent's context window as it stood for the turn just recorded.\n\nThe frame lands **after** the model call it describes and before that agent's next\none — the same attachment rule tool results already follow — which handles vision\nrecovery correctly for free: a refused image turn produces\n`model_error → model_io → prompt_frame`, so the frame attaches to the call that was\nactually sent.",
+          "properties": {
+            "items": {
+              "description": "The window's items, in the order they were rendered to the client.",
+              "items": {
+                "$ref": "#/$defs/GgReplayPromptItem"
+              },
+              "type": "array"
+            },
+            "type": {
+              "const": "prompt_frame",
+              "type": "string"
+            }
+          },
+          "required": ["type", "items"],
+          "type": "object"
+        },
+        {
+          "description": "One shell command gg ran on the agent's behalf. **Stubbed** under a playback:\n`sh -c` reaches the network, the clock and the machine's toolchain.",
+          "properties": {
+            "command": {
+              "$ref": "#/$defs/GgReplayCommand",
+              "description": "The command and its result."
+            },
+            "origin": {
+              "$ref": "#/$defs/GgShellOrigin",
+              "description": "Which of the three command paths issued it."
+            },
+            "type": {
+              "const": "shell",
+              "type": "string"
+            }
+          },
+          "required": ["type", "origin", "command"],
+          "type": "object"
+        },
+        {
+          "description": "One `git` subprocess gg's own orchestration ran — a worktree add, a commit, a\nmerge, a diff.\n\nRecorded even though a playback **re-runs it for real**: it is gg's own\nbookkeeping rather than model-visible non-determinism, and a merge conflict\nchanges the run, so the recorded result is what a reconstruction is compared\nagainst. In v1 it bypassed tool dispatch entirely and was captured nowhere.",
+          "properties": {
+            "command": {
+              "$ref": "#/$defs/GgReplayCommand",
+              "description": "The command and its result."
+            },
+            "type": {
+              "const": "git",
+              "type": "string"
+            }
+          },
+          "required": ["type", "command"],
+          "type": "object"
+        },
+        {
+          "description": "One read of the cancel file. It **ends the session**, so a reconstruction that\ncould not see it would run past the point the run stopped.",
+          "properties": {
+            "canceled": {
+              "description": "Whether the probe found the session canceled.",
+              "type": "boolean"
+            },
+            "type": {
+              "const": "cancel_probe",
+              "type": "string"
+            }
+          },
+          "required": ["type", "canceled"],
+          "type": "object"
+        },
+        {
+          "description": "One read of the wall-clock deadline. Recorded because it changes control flow; a\nplayback deliberately does **not** honor it (it takes seconds), and reports the\nresulting terminal difference rather than faking a clock.",
+          "properties": {
+            "elapsedMs": {
+              "description": "Milliseconds elapsed since the session began, as the run observed them.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "remainingMs": {
+              "description": "Milliseconds remaining before the run's ceiling, when one was configured.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": ["integer", "null"]
+            },
+            "type": {
+              "const": "clock",
+              "type": "string"
+            }
+          },
+          "required": ["type", "elapsedMs"],
+          "type": "object"
         }
       ],
       "properties": {
         "agentId": {
-          "description": "The id of the [agent](GgTelemetryEvent::agent_id) whose turn loop produced this entry (the\nroot agent's id `\"root\"`, or a subagent's minted id). What lets a replay driver route each\nrecorded input to the right node of the [subagent tree](https://docs.testcabinet.ai/gg/subagents/).",
+          "description": "The [agent](GgReplayAgent::agent_id) whose loop consumed this input.",
           "type": "string"
         },
         "seq": {
-          "description": "The globally monotonic sequence number this entry was recorded at, minted across **all**\nagents from one counter. Ordering entries by `seq` reconstructs the run's true interleaving —\nthe order concurrent agents actually issued model calls and consumed tool results.",
+          "description": "The globally monotonic sequence number this entry was recorded at, minted across\n**all** agents from one counter.\n\nIt is not merely an ordering hint: because a gg run holds run-global mutable state\n(the [board](https://docs.testcabinet.ai/gg/project-management/), inter-agent\nmessages, collected subagent results) that is rendered into every agent's pinned\nprompt each turn, the recorded interleaving **is** an input. A reconstruction\nserves a recorded input only once every lower `seq` has been served, which is what\nkeeps the conversation component of the fingerprint stable across a playback that\nremoves model latency entirely.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -52,27 +430,632 @@
       },
       "required": ["agentId", "seq"],
       "type": "object"
+    },
+    "GgReplayFileRegion": {
+      "description": "The `offset`/`limit` window a paged file view covers.",
+      "properties": {
+        "limit": {
+          "description": "How many lines it returned.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "offset": {
+          "description": "The 1-based first line the read returned.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["offset", "limit"],
+      "type": "object"
+    },
+    "GgReplayMessage": {
+      "description": "One distinct message body in the [message pool](GgReplayRecord::messages).\n\nA single message is typically re-sent on every turn it survives — the measured\nredundancy on a 12-turn single-agent session was 6.4× — so pooling it is the largest\nsingle win in the format after the toolset.",
+      "properties": {
+        "body": {
+          "description": "The message as the client sent it — the `gg` binary's `Message`, camelCase, with\nevery inline image payload replaced by a\n[blob reference](GG_REPLAY_BLOB_REF_KEY). Carried as free-form JSON because its\nconcrete shape is owned by the `gg` binary rather than by this contract crate."
+        },
+        "id": {
+          "description": "The message's [content address](fingerprint_exact), computed over the body\n**including its exact image payloads** — before those payloads were replaced by\n[blob references](GG_REPLAY_BLOB_REF_KEY). Computing it over the pre-substitution\nbody is what makes it position-independent: two runs that interned the same\nmessage into differently-ordered pools still produce the same id, which is the\nproperty the [turn fingerprint](GgTurnFingerprint) rests on.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "body"],
+      "type": "object"
+    },
+    "GgReplayModalities": {
+      "description": "Which input modalities a bound model slot was resolved to accept.",
+      "properties": {
+        "vision": {
+          "default": false,
+          "description": "Whether the slot's model accepts image input. `false` once a provider has\nrefused an image for this model and the loop has stripped images from the\ncontext.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "GgReplayModelError": {
+      "description": "Why a model call failed.\n\nv1 dropped model errors entirely, which is a straight defect rather than an omission:\na vision refusal strips images and re-runs the turn, and a retry exhaustion counts\nagainst an error ceiling, so **both change control flow** — and a reconstruction\ndiverged precisely where a developer was most likely to be looking.",
+      "properties": {
+        "attempts": {
+          "description": "How many attempts were made before giving up, for a retry exhaustion.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "kind": {
+          "$ref": "#/$defs/GgReplayModelErrorKind",
+          "description": "The error's class — what the loop branched on."
+        },
+        "message": {
+          "default": "",
+          "description": "The message the loop saw, which for a provider error is a truncated copy of its\nbody.",
+          "type": "string"
+        },
+        "modelId": {
+          "description": "The model that produced the error, for an error that names one (a vision\nrefusal).",
+          "type": ["string", "null"]
+        },
+        "status": {
+          "description": "The HTTP status, for an error that carried one.",
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["kind"],
+      "type": "object"
+    },
+    "GgReplayModelErrorKind": {
+      "description": "The class of a recorded [model error](GgReplayModelError) — a mirror of the `gg`\nbinary's `ModelError` variants, carried in the contract because the *class* is what\nthe turn loop branches on.",
+      "oneOf": [
+        {
+          "const": "missing_api_key",
+          "description": "The provider credential was not present in the environment. Fatal, and no request\nwas attempted.",
+          "type": "string"
+        },
+        {
+          "const": "fatal",
+          "description": "The provider returned a non-retryable status. Fatal.",
+          "type": "string"
+        },
+        {
+          "const": "retry_exhausted",
+          "description": "Every retry of a transient failure was exhausted. Retryable at the turn level, and\ncounted against the run's error ceiling.",
+          "type": "string"
+        },
+        {
+          "const": "vision_unsupported",
+          "description": "The request carried an image and the model has no route accepting image input.\nRecoverable in a way no other error is — the loop records that the model cannot\nsee images, strips them, and re-runs the same turn — which is why the\n[seed's resolved modalities](GgReplaySeed::model_modalities) matter.",
+          "type": "string"
+        },
+        {
+          "const": "parse",
+          "description": "A `2xx` response could not be parsed into a model response. Fatal.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgReplayPromptItem": {
+      "description": "One item of an agent's context window as it stood for a recorded turn.\n\nThese four typed fields exist in gg's window model and are recoverable from\n**nowhere else** — not the telemetry stream, not the raw output, not a v1 record. The\n[`slot`](Self::slot) matters more than it looks: a system prompt and a rebuilt\ncontext-usage signal are otherwise indistinguishable on the wire, since both are\n[`System`](GgContextSource::System)-sourced, unlabelled and pinned.",
+      "properties": {
+        "label": {
+          "description": "The item's selector tag, when it carries one — a file view's workspace path, or\nthe fullness signal's sentinel.",
+          "type": ["string", "null"]
+        },
+        "message": {
+          "description": "The item's message, as an index into [`messages`](GgReplayRecord::messages).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GgReplayFileRegion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "For a file view produced by a **paged** read, the window it covers."
+        },
+        "retention": {
+          "$ref": "#/$defs/GgReplayRetention",
+          "description": "Whether it survives a compaction boundary verbatim."
+        },
+        "slot": {
+          "$ref": "#/$defs/GgReplayPromptSlot",
+          "description": "Which slot of the window model it came from."
+        },
+        "source": {
+          "$ref": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json#/$defs/GgContextSource",
+          "description": "The band it is attributed to in the per-source breakdown."
+        },
+        "turn": {
+          "description": "The session turn it was pushed on. `0` for everything seeded before the first\nturn, which is why the turn numbering the model sees starts at `1`.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["message", "slot", "source", "retention", "turn"],
+      "type": "object"
+    },
+    "GgReplayPromptSlot": {
+      "description": "Which slot of gg's window model a [prompt item](GgReplayPromptItem) came from.\n\nThe window is not a flat list: two of its three positions are *slots* that are\nassigned rather than appended, precisely so they cannot accumulate duplicates.",
+      "oneOf": [
+        {
+          "const": "system",
+          "description": "The system-prompt slot, held apart from the thread and never inherited.",
+          "type": "string"
+        },
+        {
+          "const": "thread",
+          "description": "The conversation thread itself.",
+          "type": "string"
+        },
+        {
+          "const": "context_usage",
+          "description": "The context-usage signal slot, rebuilt and re-assigned after every turn.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgReplayRecorder": {
+      "description": "Which build of gg wrote a record — the *explanatory* half of the record's\n[three-part identity](self#identity-and-what-a-reader-may-branch-on).\n\nCarried once on the record rather than per turn: it is a property of the capture, not\nof any individual input. Both members are optional because a\n[v1 record](self#reading-a-v1-record) predates them and an upgraded one honestly\nreports \"unknown\" instead of inventing a version.",
+      "properties": {
+        "commit": {
+          "description": "The exact commit the capturing build was made from, when it is known. The only\nthing that can tell an uncommitted prompt edit *within* one version from the\nreleased build of that version, so it is what a playback checks when it resolves\na binary to reconstruct with.",
+          "type": ["string", "null"]
+        },
+        "ggVersion": {
+          "description": "The `gg --version` of the build that captured this record (for example `0.7.0`).\nExplanatory only — never the compatibility gate.",
+          "type": ["string", "null"]
+        }
+      },
+      "type": "object"
+    },
+    "GgReplayRequest": {
+      "description": "One model request, as pool references plus the [fingerprint](GgTurnFingerprint) that\nsays what question was being asked.",
+      "properties": {
+        "fingerprint": {
+          "$ref": "#/$defs/GgTurnFingerprint",
+          "description": "The content fingerprint of this request, so a reconstruction can prove a recorded\nresponse is still an answer to the question the loop is asking."
+        },
+        "messages": {
+          "default": [],
+          "description": "The conversation sent this turn, as ordered indices into\n[`messages`](GgReplayRecord::messages).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "role": {
+          "$ref": "#/$defs/GgClientRole",
+          "default": "agent",
+          "description": "Which client issued it. Absent in a [v1 record](self#reading-a-v1-record), where\nit reads as [`Agent`](GgClientRole::Agent)."
+        },
+        "shape": {
+          "$ref": "#/$defs/GgReplayRequestShape",
+          "default": "complete",
+          "description": "Whether the offered tool was required."
+        },
+        "toolset": {
+          "description": "The offered tool definitions, as an index into\n[`toolsets`](GgReplayRecord::toolsets). `None` for a call that offered no tools\nat all.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["fingerprint"],
+      "type": "object"
+    },
+    "GgReplayRequestShape": {
+      "description": "Which model-client call shape a [request](GgReplayRequest) was issued under.\n\nRecorded because the two shapes are not interchangeable: `complete_requiring` forces\nthe model to call the one offered tool. Without this field a driver replaying a\nrequired tool call silently downgrades it to an ordinary offered one, and the\nreconstructed run is not the run that happened.",
+      "oneOf": [
+        {
+          "const": "complete",
+          "description": "`ModelClient::complete` — the tools were *offered*.",
+          "type": "string"
+        },
+        {
+          "const": "complete_requiring",
+          "description": "`ModelClient::complete_requiring` — the single pooled tool was *required*.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgReplayRetention": {
+      "description": "Whether a [prompt item](GgReplayPromptItem) is retained verbatim across a compaction\nboundary or is ephemeral thread material.",
+      "oneOf": [
+        {
+          "const": "pinned",
+          "description": "Carried across compaction unchanged and never evicted.",
+          "type": "string"
+        },
+        {
+          "const": "ephemeral",
+          "description": "Thread material compaction may summarize and agent-managed context may evict.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgReplaySeed": {
+      "description": "The **fixed identity** a recorded session started from: everything a reconstruction\nneeds before it consumes its first [entry](GgReplayEntry).\n\nRecording the seed is what makes a record self-contained rather than only meaningful\nbeside the run tree it came from. It costs almost nothing: an\n[autoloaded](https://docs.testcabinet.ai/gg/autoload-specifications/) case's reference\nmockups are *already* in the [blob pool](GgReplayRecord::blobs) — they were sent to\nthe model — so [`provided_files`](Self::provided_files) references them rather than\ncarrying a second copy.",
+      "properties": {
+        "baselineCommit": {
+          "description": "The commit gg observed the seeded workspace at, in the container, before the\nsession made any change.\n\nDeliberately kept alongside — not merged with — the host-side\n[`RunRecord::seed_commit`](crate::run_record::RunRecord::seed_commit). The host's\nvalue is harness-agnostic and authoritative; this one is gg's own observation.\nThey should be equal, and a mismatch is a *diagnostic* rather than redundancy.",
+          "type": ["string", "null"]
+        },
+        "modelModalities": {
+          "additionalProperties": {
+            "$ref": "#/$defs/GgReplayModalities"
+          },
+          "description": "The **final, resolved** modality state of each bound slot.\n\nResolved, not initial, and that distinction is load-bearing: vision recovery can\ncall the model twice for one turn and only the successful stripped call is\nrecorded, so a reconstruction that started from an un-denied vision state would\nsend images on the first image turn and drift for a reason that has nothing to do\nwith any real change.",
+          "type": "object"
+        },
+        "modelWindows": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "The context window, in tokens, resolved for each bound model slot. Recorded\nbecause the window is what the fullness signal and compaction thresholds are\ncomputed against, so a reconstruction that guessed it would compact at a\ndifferent turn than the run did.",
+          "type": "object"
+        },
+        "prompt": {
+          "default": "",
+          "description": "The build prompt the session was invoked with — the rendered test-case\ninstruction the root agent was given.",
+          "type": "string"
+        },
+        "providedFiles": {
+          "description": "Files placed into the workspace before the session began — a case's seeded\ninputs and autoloaded specification images — each referencing the\n[blob pool](GgReplayRecord::blobs).",
+          "items": {
+            "$ref": "#/$defs/GgReplaySeedFile"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "GgReplaySeedFile": {
+      "description": "One file the workspace was [seeded](GgReplaySeed::provided_files) with, as a\nreference into the [blob pool](GgReplayRecord::blobs).",
+      "properties": {
+        "blob": {
+          "description": "The index into [`blobs`](GgReplayRecord::blobs) holding the file's bytes.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "description": "The workspace-relative path the file was placed at.",
+          "type": "string"
+        }
+      },
+      "required": ["path", "blob"],
+      "type": "object"
+    },
+    "GgReplayToolCall": {
+      "description": "A tool call the agent (or a [responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE)\nprogram) made.",
+      "properties": {
+        "arguments": {
+          "description": "The call's arguments — free-form JSON, since each tool owns its own schema."
+        },
+        "cwd": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GgShellCwd"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The directory the call was dispatched in, for a tool that runs a subprocess.\nTyped rather than an absolute path string so a reconstruction in a different\nworkspace can still compare it — see [`GgShellCwd`]."
+        },
+        "id": {
+          "description": "The call id the loop minted. A program-composed call arrives under a synthetic id\ncarrying the program prefix, which is the only thing distinguishing the two.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The tool's name.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "name", "arguments"],
+      "type": "object"
+    },
+    "GgReplayToolOutcome": {
+      "description": "The exact outcome a tool dispatch returned, with its bulky payloads pooled.\n\nInterning the output against the [text pool](GgReplayRecord::texts) is not merely a\nsize win: a tool's output is quoted **verbatim** into the `tool` message that carries\nit into the window, so the outcome and the message body are duplicates of one another.\nOne table collapses the pair.",
+      "properties": {
+        "data": {
+          "description": "The structured facts a responses-as-code program branches on, when the tool\nproduced them."
+        },
+        "failure": {
+          "description": "Why the call failed, when it failed and the failure was classified."
+        },
+        "images": {
+          "description": "Images the call produced, as indices into [`blobs`](GgReplayRecord::blobs).",
+          "items": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "ok": {
+          "description": "Whether the call succeeded.",
+          "type": "boolean"
+        },
+        "output": {
+          "description": "The text fed back to the model, as an index into\n[`texts`](GgReplayRecord::texts).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "summary": {
+          "description": "The short human-readable summary, when the call recorded one, as an index into\n[`texts`](GgReplayRecord::texts).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
+      "required": ["ok", "output"],
+      "type": "object"
+    },
+    "GgReplayToolset": {
+      "description": "One distinct offered tool-definition array in the\n[toolset pool](GgReplayRecord::toolsets).\n\nThe finding that reshaped this format: on a real record the re-serialized tool array\nwas **52%** of the bytes — larger than the messages — and its redundancy is exactly\nthe turn count, because a run's offered toolset almost never changes. Pooling\ncollapses `N` copies to one.",
+      "properties": {
+        "id": {
+          "description": "The toolset's [content address](fingerprint_exact) over the serialized array.\nUsed verbatim as the [`tools`](GgTurnFingerprint::tools) component of every turn\nfingerprint that offered it.",
+          "type": "string"
+        },
+        "tools": {
+          "description": "The tool definitions offered, in the order they were offered — the `gg` binary's\n`ToolDefinition[]`, camelCase."
+        }
+      },
+      "required": ["id", "tools"],
+      "type": "object"
+    },
+    "GgReplayTruncation": {
+      "description": "What a record is missing, when it is missing something.",
+      "properties": {
+        "bytes": {
+          "description": "How many bytes had been written when capture stopped, for a ceiling breach.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "lastSeq": {
+          "description": "The [`seq`](GgReplayEntry::seq) of the last entry that made it into the record.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "reason": {
+          "$ref": "#/$defs/GgReplayTruncationReason",
+          "description": "Why capture stopped."
+        }
+      },
+      "required": ["reason"],
+      "type": "object"
+    },
+    "GgReplayTruncationReason": {
+      "description": "Why a record stops short of the session it observed.\n\nCapture **degrades, it never fails the run it observes** — so every one of these is a\nrecorded fact rather than an error, and the record is still served.",
+      "oneOf": [
+        {
+          "const": "byte_ceiling",
+          "description": "The run's per-run byte ceiling was crossed and capture stopped.",
+          "type": "string"
+        },
+        {
+          "const": "session_killed",
+          "description": "The session died mid-capture: the journal has no terminating marker.\n\nDetected by the marker's **absence** rather than by a self-report, because a\nkilled gg cannot write a truncation marker either. This is the reason the\nterminating marker is mandatory on the normal exit path.",
+          "type": "string"
+        },
+        {
+          "const": "corrupt_journal",
+          "description": "The journal was readable but malformed — a torn final line, a pool index that\nskips, or an entry referencing a body past its pool's end. Everything before the\nlast complete entry is kept.",
+          "type": "string"
+        },
+        {
+          "const": "write_failed",
+          "description": "The journal writer failed (a stalled disk, a dead writer thread), which stops\ncapture for the whole run.\n\nCapture is never dropped *per line*: a hole in a pool would leave positional\nassembly silently shifting the wrong message body into a reconstructed prompt.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgShellCwd": {
+      "description": "Where a recorded command ran, expressed **relative to the workspace** wherever\npossible.\n\nAn absolute path is not portable across a reconstruction: a playback builds in a\ndifferent (and deliberately empty) directory, so a recorded `/work/impl/web` would\nnever match the live one and every command would fall through to a cross-agent search\nor a miss. Recording the *relationship* instead makes a directory mismatch — which is\na real signal, since the same command in a different tree is a different command —\ndetectable rather than universal.",
+      "oneOf": [
+        {
+          "description": "The agent's workspace root itself.",
+          "properties": {
+            "type": {
+              "const": "workspace",
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "description": "A path beneath the agent's workspace root (an issue worktree, a subdirectory the\nmodel `cd`-ed into).",
+          "properties": {
+            "path": {
+              "description": "The workspace-relative path, with `/` separators and no leading `./`.",
+              "type": "string"
+            },
+            "type": {
+              "const": "relative",
+              "type": "string"
+            }
+          },
+          "required": ["type", "path"],
+          "type": "object"
+        },
+        {
+          "description": "A path outside the workspace entirely. Recorded verbatim because there is nothing\nto relativize it against, and reported on comparison rather than silently matched.",
+          "properties": {
+            "path": {
+              "description": "The absolute path.",
+              "type": "string"
+            },
+            "type": {
+              "const": "absolute",
+              "type": "string"
+            }
+          },
+          "required": ["type", "path"],
+          "type": "object"
+        }
+      ]
+    },
+    "GgShellOrigin": {
+      "description": "Which of gg's three command paths issued a recorded shell command.\n\nAll three reach one command line, and the only thing they share is the tool context —\nwhich is why the seam belongs there. Recording *which* path asked is what keeps a\n[completion](https://docs.testcabinet.ai/gg/completion/) gate's validation commands\n(which bypass the recorder entirely today) off the agent's ordinary queue.",
+      "oneOf": [
+        {
+          "const": "tool",
+          "description": "The `shell` tool, called by the model.",
+          "type": "string"
+        },
+        {
+          "const": "program",
+          "description": "A [responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE) program's\n`system.shell(…)`.",
+          "type": "string"
+        },
+        {
+          "const": "completion_validation",
+          "description": "A completion gate's validation command.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgTurnFingerprint": {
+      "description": "A **fold over pool ids** proving what a turn asked — the staleness detector a\nreconstruction compares its live request against.\n\nA recorded model response is only a valid input while gg's prompt construction is\nunchanged: edit a system-prompt template and every recorded response becomes an\nanswer to a question gg no longer asks, silently, if nothing checks.\n\n# Why it is a fold, not a second hash\n\nThe pooled [message](GgReplayMessage::id) and [toolset](GgReplayToolset::id) ids\n**already are** SHA-256 content addresses, computed at intern time by\n[`GgReplayPools`]. Folding over them costs a hash of a few hundred bytes of hex per\nturn instead of a second pass over the whole conversation, and — the property that\nactually matters — it makes recorder-side and playback-side computation *trivially*\nidentical, because both go through [`GgReplayPools::intern_request`]. Two\nimplementations of one fingerprint would drift, and the detector would become the bug.",
+      "properties": {
+        "conversation": {
+          "description": "A [content address](fingerprint_exact) over the **ordered message-pool id\nstrings** — the whole conversation, including the system message, reduced to one\nvalue.",
+          "type": "string"
+        },
+        "messages": {
+          "description": "How many messages the request carried. The cheapest and most informative\ncomponent: if it moved, the loop is asking a different *number* of questions and\nnothing after it is worth reading.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "system": {
+          "description": "The pooled id of the **first `system`-role message**, or `None` for a request\nthat carried none. Isolated from the conversation because the system prompt is\nwhat a template edit moves, and naming it separately is what lets a report say\n\"your system prompt changed\" rather than \"something changed\".",
+          "type": ["string", "null"]
+        },
+        "tools": {
+          "description": "The [toolset's pooled id](GgReplayToolset::id), verbatim, or `None` when no tools\nwere offered.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["messages", "conversation"],
+      "type": "object"
     }
   },
   "$id": "https://docs.testcabinet.ai/schema/gg/replay-record.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "A gg run's **deterministic replay record**: enough of a [replay](CAPABILITY_REPLAY)-captured run\nto reconstruct it step for step.\n\nRecorded only when the [replay](CAPABILITY_REPLAY) capability is on (a debugging tool, not a\nnormal result surface), written to a `.gg/replay.json` sidecar the backend serves per run\n(`GET /runs/{id}/replay`). It pairs the run's *configuration* — its [`capability_set`](Self::capability_set),\nthe same slice-by dimension the [session summary](GgSessionSummary) carries — with the ordered\n[`entries`](Self::entries) that pin every non-deterministic input (each agent's model I/O and every\ntool result). A [replay driver](https://docs.testcabinet.ai/gg/replay/) re-runs the session from\nthis record, feeding each agent the recorded response and each tool call the recorded outcome, so\na developer can step through exactly what each agent saw and did. The record is *additive* to the\ntelemetry: the stream is identical whether replay was captured or not.",
+  "description": "A gg run's **replay record**: the fixed seed, four content-addressed pools, the agent\nprovenance table, and the ordered log of every non-deterministic input the session\nconsumed.\n\nSee the [module documentation](self) for the shape and for how a\n[v1 record](self#reading-a-v1-record) is upgraded on read. `Deserialize` accepts both\nformats and always yields this shape, so every consumer has exactly one code path.",
   "properties": {
+    "agents": {
+      "default": [],
+      "description": "Every agent the session created, and how. One row per agent.",
+      "items": {
+        "$ref": "#/$defs/GgReplayAgent"
+      },
+      "type": "array"
+    },
+    "blobs": {
+      "default": [],
+      "description": "The image-blob pool.",
+      "items": {
+        "$ref": "#/$defs/GgReplayBlob"
+      },
+      "type": "array"
+    },
     "capabilitySet": {
       "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
-      "description": "The [capability set](GgCapabilitySet) the run was configured with — recorded so a replay is\nself-describing (a driver knows which capabilities were on) and so the record carries the same\nslice-by configuration the [session summary](GgSessionSummary) does."
+      "description": "The [capability set](GgCapabilitySet) the run was configured with, so a\nreconstruction runs under the recorded configuration verbatim rather than under\none assembled to suit it."
     },
     "entries": {
       "default": [],
-      "description": "Every pinned non-deterministic input the run produced, in globally monotonic\n[`seq`](GgReplayEntry::seq) order — the model I/O of each agent turn and every tool result,\ninterleaved across the agent tree exactly as the run issued them.",
+      "description": "Every pinned non-deterministic input, in globally monotonic\n[`seq`](GgReplayEntry::seq) order.",
       "items": {
         "$ref": "#/$defs/GgReplayEntry"
       },
       "type": "array"
     },
+    "formatVersion": {
+      "default": 1,
+      "description": "The format **this document** is in. The compatibility contract, and the only\nidentity a reader may branch on. Absent ⇒ [1](GG_REPLAY_FORMAT_V1).\n\nA [v1 body](self#reading-a-v1-record) is upgraded as it is read, so the record in\nhand is always in the v2 shape and reports\n[`GG_REPLAY_FORMAT_VERSION`] once it has been. What the *recorder* wrote is\n[`upgraded_from`](Self::upgraded_from), and that — not this — is what says whether\nthe turns carry recorder-stamped fingerprints. Keeping the two apart is what makes\nthe record round-trip: a document that said `1` while carrying pooled entries would\nbe re-upgraded on the next read, and positional re-interning would substitute pool\nindices for message bodies.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "messages": {
+      "default": [],
+      "description": "The message pool. [Entries](GgReplayEntry) reference it by index.",
+      "items": {
+        "$ref": "#/$defs/GgReplayMessage"
+      },
+      "type": "array"
+    },
+    "recorder": {
+      "$ref": "#/$defs/GgReplayRecorder",
+      "default": {},
+      "description": "Which build captured it. Explanatory; never a gate."
+    },
+    "seed": {
+      "$ref": "#/$defs/GgReplaySeed",
+      "default": {
+        "prompt": ""
+      },
+      "description": "The fixed identity the session started from."
+    },
     "sessionId": {
-      "description": "The gg session id this record replays — the run id, matching the\n[telemetry](GgTelemetryEvent::session_id) stream's.",
+      "description": "The gg session id this record replays — the run id, matching the\n[telemetry](crate::gg::GgTelemetryEvent::session_id) stream's.",
       "type": "string"
+    },
+    "texts": {
+      "default": [],
+      "description": "The text pool: every large string payload — a tool outcome's output, a `git`\ninvocation's stdout, a probe body.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "toolsets": {
+      "default": [],
+      "description": "The offered-toolset pool.",
+      "items": {
+        "$ref": "#/$defs/GgReplayToolset"
+      },
+      "type": "array"
+    },
+    "truncation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/GgReplayTruncation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What the record is missing, when it is missing something. Absent on a complete\ncapture."
+    },
+    "upgradedFrom": {
+      "description": "The format the recorder actually wrote, when this record reached the v2 shape\nthrough the [upgrade](self#reading-a-v1-record) rather than being captured in it.\nAbsent for a record captured at [`format_version`](Self::format_version).\n\nThis is what a *driving* reconstruction refuses on: an upgraded record's\nfingerprints were derived from its transcript rather than stamped by the recorder,\nand it has no [provenance table](Self::agents), no [seed](Self::seed) and no\n[client role](GgClientRole). A passive walk of one is fine.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": ["integer", "null"]
     }
   },
   "required": ["sessionId", "capabilitySet"],

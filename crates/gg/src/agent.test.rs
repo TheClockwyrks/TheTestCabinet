@@ -37,7 +37,7 @@ use test_cabinet_core::gg::{
     CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
     CAPABILITY_WORKFLOWS, GG_REPLAY_ARTIFACT_PATH, GgAgentConfig, GgAgentStatus,
     GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource, GgIssueReviewPhase,
-    GgIssueStatus, GgPromptCacheTtl, GgReplayEntryKind, GgReplayRecord, GgSessionSummary,
+    GgIssueStatus, GgPromptCacheTtl, GgReplayEntryKindV1, GgReplayRecordV1, GgSessionSummary,
     GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind,
     GgWorkflowPhase, ROOT_AGENT,
 };
@@ -8215,12 +8215,12 @@ fn minimal_with_replay(model: &str) -> GgCapabilitySet {
 }
 
 /// Read and deserialize the `.gg/replay.json` sidecar a replay-captured run writes under `dir`.
-fn read_replay_record(dir: &Path) -> GgReplayRecord {
+fn read_replay_record(dir: &Path) -> GgReplayRecordV1 {
     let path = dir.join(GG_REPLAY_ARTIFACT_PATH);
     let bytes = std::fs::read(&path)
         .unwrap_or_else(|err| panic!("replay record at {}: {err}", path.display()));
     serde_json::from_slice(&bytes)
-        .unwrap_or_else(|err| panic!("replay record is valid GgReplayRecord JSON: {err}"))
+        .unwrap_or_else(|err| panic!("replay record is valid GgReplayRecordV1 JSON: {err}"))
 }
 
 /// A replay-captured run writes a `.gg/replay.json` record that pins every model call (request +
@@ -8253,7 +8253,7 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
     let model_ios: Vec<_> = record
         .entries
         .iter()
-        .filter(|e| matches!(e.kind, GgReplayEntryKind::ModelIo { .. }))
+        .filter(|e| matches!(e.kind, GgReplayEntryKindV1::ModelIo { .. }))
         .collect();
     assert!(
         model_ios.len() >= 2,
@@ -8262,7 +8262,7 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
     );
     // Each model-io entry carries a well-formed request (with messages) and a response.
     for entry in &model_ios {
-        let GgReplayEntryKind::ModelIo { request, response } = &entry.kind else {
+        let GgReplayEntryKindV1::ModelIo { request, response } = &entry.kind else {
             unreachable!()
         };
         assert!(
@@ -8278,7 +8278,7 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
 
     // The scripted `write_file` tool result was recorded with its exact call + outcome.
     let write_result = record.entries.iter().find_map(|e| match &e.kind {
-        GgReplayEntryKind::ToolResult { call, outcome } if call["name"] == "write_file" => {
+        GgReplayEntryKindV1::ToolResult { call, outcome } if call["name"] == "write_file" => {
             Some((call.clone(), outcome.clone()))
         }
         _ => None,
@@ -8297,7 +8297,7 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
     let call_seq = model_ios
         .iter()
         .find(|e| match &e.kind {
-            GgReplayEntryKind::ModelIo { response, .. } => {
+            GgReplayEntryKindV1::ModelIo { response, .. } => {
                 response.to_string().contains("write_file")
             }
             _ => false,
@@ -8307,7 +8307,7 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
     let result_seq = record
         .entries
         .iter()
-        .find(|e| matches!(&e.kind, GgReplayEntryKind::ToolResult { call, .. } if call["name"] == "write_file"))
+        .find(|e| matches!(&e.kind, GgReplayEntryKindV1::ToolResult { call, .. } if call["name"] == "write_file"))
         .map(|e| e.seq)
         .unwrap();
     assert!(
@@ -8385,8 +8385,11 @@ async fn replay_capture_interleaves_a_multi_agent_run() {
 
     // The subagent's own model I/O was captured (its turns ran through a RecordingClient too).
     assert!(
-        record.entries.iter().any(|e| e.agent_id == "agent-0"
-            && matches!(e.kind, GgReplayEntryKind::ModelIo { .. })),
+        record
+            .entries
+            .iter()
+            .any(|e| e.agent_id == "agent-0"
+                && matches!(e.kind, GgReplayEntryKindV1::ModelIo { .. })),
         "the subagent's model I/O was recorded"
     );
 }

@@ -27,6 +27,7 @@ pub mod execution;
 pub mod gg;
 pub mod gg_aggregate;
 pub mod gg_exec;
+pub mod gg_replay;
 pub mod harness;
 pub mod harness_registry;
 pub mod harness_telemetry;

@@ -8,7 +8,7 @@
 //!   scoreable artifact while streaming a first-party
 //!   [`GgTelemetryEvent`](test_cabinet_core::gg::GgTelemetryEvent) stream on stdout; and
 //! - the [`replay_driver`], a **debug-only** native reconstruction: given a
-//!   [`GgReplayRecord`](test_cabinet_core::gg::GgReplayRecord) captured by the
+//!   [`GgReplayRecordV1`](test_cabinet_core::gg::GgReplayRecordV1) captured by the
 //!   [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) capability, it re-runs the session's turn
 //!   loop from the pinned model I/O and tool results — no live model, no real tools — reproducing
 //!   the telemetry step for step and yielding the per-agent [step-through](test_cabinet_core::gg::GgReplayStep)

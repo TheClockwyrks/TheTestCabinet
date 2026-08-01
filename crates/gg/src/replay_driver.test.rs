@@ -1,6 +1,6 @@
 use serde_json::json;
 use test_cabinet_core::gg::{
-    GgCapabilitySet, GgReplayEntry, GgReplayEntryKind, GgReplayRecord, GgTelemetryEvent,
+    GgCapabilitySet, GgReplayEntryKindV1, GgReplayEntryV1, GgReplayRecordV1, GgTelemetryEvent,
     GgTelemetryKind,
 };
 
@@ -42,30 +42,30 @@ fn resp_stop(text: &str) -> ModelResponse {
     }
 }
 
-fn model_io(agent: &str, seq: u64, response: &ModelResponse) -> GgReplayEntry {
-    GgReplayEntry {
+fn model_io(agent: &str, seq: u64, response: &ModelResponse) -> GgReplayEntryV1 {
+    GgReplayEntryV1 {
         agent_id: agent.to_string(),
         seq,
-        kind: GgReplayEntryKind::ModelIo {
+        kind: GgReplayEntryKindV1::ModelIo {
             request: json!({ "messages": [{ "role": "user", "content": "build it" }], "tools": [] }),
             response: serde_json::to_value(response).unwrap(),
         },
     }
 }
 
-fn tool_result(agent: &str, seq: u64, tool: &ToolCall, outcome: &ToolOutcome) -> GgReplayEntry {
-    GgReplayEntry {
+fn tool_result(agent: &str, seq: u64, tool: &ToolCall, outcome: &ToolOutcome) -> GgReplayEntryV1 {
+    GgReplayEntryV1 {
         agent_id: agent.to_string(),
         seq,
-        kind: GgReplayEntryKind::ToolResult {
+        kind: GgReplayEntryKindV1::ToolResult {
             call: serde_json::to_value(tool).unwrap(),
             outcome: serde_json::to_value(outcome).unwrap(),
         },
     }
 }
 
-fn record(entries: Vec<GgReplayEntry>) -> GgReplayRecord {
-    GgReplayRecord {
+fn record(entries: Vec<GgReplayEntryV1>) -> GgReplayRecordV1 {
+    GgReplayRecordV1 {
         session_id: "run-replay".to_string(),
         capability_set: GgCapabilitySet::minimal("mock/echo"),
         entries,
@@ -95,7 +95,7 @@ fn core_stream(events: &[GgTelemetryEvent], agent: &str) -> Vec<(&'static str, S
 // ---------------------------------------------------------------------------
 
 /// A complete single-agent record reconstructs: the driver reproduces the same steps the pure
-/// [`GgReplayRecord::steps`] derivation gives, and re-emits the run's per-turn telemetry in order.
+/// [`GgReplayRecordV1::steps`] derivation gives, and re-emits the run's per-turn telemetry in order.
 #[test]
 fn reconstructs_a_single_agent_run_and_reproduces_its_telemetry() {
     let write = call("c1", "write_file", json!({ "path": "index.html" }));
@@ -323,10 +323,10 @@ fn detects_a_mismatched_tool_result() {
 /// location before any telemetry is emitted, rather than crashing the driver.
 #[test]
 fn detects_a_malformed_entry() {
-    let rec = record(vec![GgReplayEntry {
+    let rec = record(vec![GgReplayEntryV1 {
         agent_id: "root".to_string(),
         seq: 0,
-        kind: GgReplayEntryKind::ModelIo {
+        kind: GgReplayEntryKindV1::ModelIo {
             request: json!({ "messages": [], "tools": [] }),
             response: json!("not a model response"),
         },

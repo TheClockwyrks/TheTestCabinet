@@ -11,8 +11,8 @@
 
 use serde_json::json;
 use test_cabinet_core::gg::{
-    CAPABILITY_RESPONSES_AS_CODE, GgCapabilityConfig, GgCapabilitySet, GgReplayEntry,
-    GgReplayEntryKind, GgReplayRecord, GgTelemetryEvent, GgTelemetryKind,
+    CAPABILITY_RESPONSES_AS_CODE, GgCapabilityConfig, GgCapabilitySet, GgReplayEntryKindV1,
+    GgReplayEntryV1, GgReplayRecordV1, GgTelemetryEvent, GgTelemetryKind,
 };
 
 use super::*;
@@ -82,22 +82,22 @@ fn resp_calling(text: &str, tool: ToolCall) -> ModelResponse {
     }
 }
 
-fn model_io(agent: &str, seq: u64, response: &ModelResponse) -> GgReplayEntry {
-    GgReplayEntry {
+fn model_io(agent: &str, seq: u64, response: &ModelResponse) -> GgReplayEntryV1 {
+    GgReplayEntryV1 {
         agent_id: agent.to_string(),
         seq,
-        kind: GgReplayEntryKind::ModelIo {
+        kind: GgReplayEntryKindV1::ModelIo {
             request: json!({ "messages": [{ "role": "user", "content": "leave a note" }], "tools": [] }),
             response: serde_json::to_value(response).unwrap(),
         },
     }
 }
 
-fn tool_result(agent: &str, seq: u64, tool: &ToolCall, outcome: &ToolOutcome) -> GgReplayEntry {
-    GgReplayEntry {
+fn tool_result(agent: &str, seq: u64, tool: &ToolCall, outcome: &ToolOutcome) -> GgReplayEntryV1 {
+    GgReplayEntryV1 {
         agent_id: agent.to_string(),
         seq,
-        kind: GgReplayEntryKind::ToolResult {
+        kind: GgReplayEntryKindV1::ToolResult {
             call: serde_json::to_value(tool).unwrap(),
             outcome: serde_json::to_value(outcome).unwrap(),
         },
@@ -110,12 +110,12 @@ fn tool_result(agent: &str, seq: u64, tool: &ToolCall, outcome: &ToolOutcome) ->
 /// configured for the whole session, so the record itself carries the shape of every one of its
 /// turns. Building it here rather than inferring "code turn" from an empty `toolCalls` list is the
 /// difference between a rule scoped to a run and a rule that fires on any id that looks right.
-fn code_record(entries: Vec<GgReplayEntry>) -> GgReplayRecord {
+fn code_record(entries: Vec<GgReplayEntryV1>) -> GgReplayRecordV1 {
     let mut caps = GgCapabilitySet::minimal("mock/echo");
     caps.agents[0]
         .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
-    GgReplayRecord {
+    GgReplayRecordV1 {
         session_id: "run-replay-code".to_string(),
         capability_set: caps,
         entries,
@@ -124,8 +124,8 @@ fn code_record(entries: Vec<GgReplayEntry>) -> GgReplayRecord {
 
 /// A record of an ordinary **tool-calling** run, for the guards that prove the prefix exemption did
 /// not loosen the native path.
-fn native_record(entries: Vec<GgReplayEntry>) -> GgReplayRecord {
-    GgReplayRecord {
+fn native_record(entries: Vec<GgReplayEntryV1>) -> GgReplayRecordV1 {
+    GgReplayRecordV1 {
         session_id: "run-replay-native".to_string(),
         capability_set: GgCapabilitySet::minimal("mock/echo"),
         entries,

@@ -909,7 +909,7 @@ pub(crate) async fn run_with_factory(
     });
 
     // Replay capture (debug-only): when the capability recorded a session, assemble the run's
-    // `GgReplayRecord` from the shared recorder and write it to the `.gg/replay.json` sidecar `core`
+    // `GgReplayRecordV1` from the shared recorder and write it to the `.gg/replay.json` sidecar `core`
     // collects, so the backend can serve it per run. Best-effort — a write failure is reported on the
     // stream (never fatal), like any telemetry, since replay is a debugging aid, not a run result.
     if let Some(recorder) = &orch.replay {
@@ -928,7 +928,7 @@ pub(crate) async fn run_with_factory(
 }
 
 /// Write a [replay](CAPABILITY_REPLAY)-captured run's
-/// [`GgReplayRecord`](test_cabinet_core::gg::GgReplayRecord) to the
+/// [`GgReplayRecordV1`](test_cabinet_core::gg::GgReplayRecordV1) to the
 /// [`.gg/replay.json`](test_cabinet_core::gg::GG_REPLAY_ARTIFACT_PATH) sidecar under the run
 /// workspace.
 ///
@@ -1188,7 +1188,7 @@ struct Orchestrator {
     /// The shared [replay recorder](GgRecorder) every agent's model I/O and tool results are pinned
     /// into, `Some` only when the [replay](CAPABILITY_REPLAY) capability is on. `None` (the default)
     /// means nothing extra is captured — zero overhead. Shared (`Arc`) so the root and every subagent
-    /// record into one globally-ordered log; the assembled [`GgReplayRecord`](test_cabinet_core::gg::GgReplayRecord)
+    /// record into one globally-ordered log; the assembled [`GgReplayRecordV1`](test_cabinet_core::gg::GgReplayRecordV1)
     /// is written to a sidecar at session end.
     replay: Option<Arc<GgRecorder>>,
 }

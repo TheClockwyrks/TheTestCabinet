@@ -1099,7 +1099,7 @@
           "type": ["string", "null"]
         },
         "slot": {
-          "description": "The [agent profile](GgAgentConfig) that spent this — the same name\n[`AgentSpawned::slot`](Self::AgentSpawned::slot) and\n[`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded\nbefore gg attributed its deltas, or on a [replay](GgReplayRecord) reconstruction,\nwhich has no live model binding to name.",
+          "description": "The [agent profile](GgAgentConfig) that spent this — the same name\n[`AgentSpawned::slot`](Self::AgentSpawned::slot) and\n[`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded\nbefore gg attributed its deltas, or on a [replay](crate::gg_replay::GgReplayRecord) reconstruction,\nwhich has no live model binding to name.",
           "type": ["string", "null"]
         },
         "tokens": {

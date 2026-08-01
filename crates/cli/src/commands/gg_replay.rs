@@ -13,7 +13,7 @@
 //! expose.
 
 use anyhow::{Context, bail};
-use test_cabinet_core::gg::GgReplayRecord;
+use test_cabinet_core::gg::GgReplayRecordV1;
 
 use crate::cli::GgReplayArgs;
 
@@ -22,7 +22,7 @@ use crate::cli::GgReplayArgs;
 pub async fn execute(args: GgReplayArgs) -> anyhow::Result<()> {
     let raw = std::fs::read_to_string(&args.record)
         .with_context(|| format!("reading the replay record at {}", args.record.display()))?;
-    let record: GgReplayRecord = serde_json::from_str(&raw)
+    let record: GgReplayRecordV1 = serde_json::from_str(&raw)
         .with_context(|| format!("parsing the replay record at {}", args.record.display()))?;
 
     println!(

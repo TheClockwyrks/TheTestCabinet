@@ -23,8 +23,8 @@ use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_c
 use test_cabinet_backend::{api as bapi, error as berr, relay, snapshot as snap};
 use test_cabinet_core::{
     accounts as acct, comparison as cmp, comparison_stats as cstats, event as ev, gg,
-    gg_aggregate as gga, match_play as mp, metrics as m, review as rv, run_record as rr,
-    test_case as tc, validation as val,
+    gg_aggregate as gga, gg_replay as ggr, match_play as mp, metrics as m, review as rv,
+    run_record as rr, test_case as tc, validation as val,
 };
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
@@ -212,9 +212,34 @@ fn main() -> Result<()> {
                 gg::GgResponseHealing, gg::GgHealingSummary,
                 gg::GgSlotCost, gg::GgSessionSummary,
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
-                gg::GgReplayEntryKind, gg::GgReplayEntry, gg::GgReplayRecord,
+                gg::GgReplayEntryKindV1, gg::GgReplayEntryV1, gg::GgReplayRecordV1,
                 gg::GgReplayToolStep, gg::GgReplayStep,
                 bapi::GgConfig, bapi::GgConfigInput,
+            ],
+        },
+        // The gg replay record, format v2: the content-addressed input log a recorded
+        // session is reconstructed from. Its own module rather than more of `gg.ts`
+        // because it is a self-contained document with its own pools, provenance table
+        // and entry vocabulary, and because the console loads it only on the Replay tab.
+        // `GgCapabilitySet`, `GgAgentStatus`, `GgLimitBreach` and `GgContextSource` are
+        // owned by `gg.ts`, so those imports resolve cross-module.
+        TsModule {
+            file: "gg-replay.ts",
+            decls: ts_decls![&cfg;
+                ggr::GgReplayRecorder, ggr::GgReplayModalities, ggr::GgReplaySeedFile,
+                ggr::GgReplaySeed,
+                ggr::GgReplayMessage, ggr::GgReplayToolset, ggr::GgReplayBlob,
+                ggr::GgReplayAgentOrigin, ggr::GgReplayAgent,
+                ggr::GgClientRole, ggr::GgReplayRequestShape, ggr::GgTurnFingerprint,
+                ggr::GgFingerprintComponent, ggr::GgReplayRequest,
+                ggr::GgReplayModelErrorKind, ggr::GgReplayModelError,
+                ggr::GgShellCwd, ggr::GgShellOrigin, ggr::GgReplayCommand,
+                ggr::GgReplayToolCall, ggr::GgReplayToolOutcome,
+                ggr::GgReplayPromptSlot, ggr::GgReplayRetention, ggr::GgReplayFileRegion,
+                ggr::GgReplayPromptItem,
+                ggr::GgReplayEntryKind, ggr::GgReplayEntry,
+                ggr::GgReplayTruncationReason, ggr::GgReplayTruncation,
+                ggr::GgReplayRecord,
             ],
         },
         // The gg result-aggregation query contract: the Kibana-style query over many
@@ -433,16 +458,58 @@ fn main() -> Result<()> {
             ],
             schema: root_schema::<gg::GgTelemetryEvent>(),
         },
-        // The gg deterministic replay record: the debug-only capture of a run's
-        // non-deterministic inputs (each agent's model I/O and every tool result). Its
-        // `capabilitySet` references `GgCapabilitySet`, owned by the capability-set
-        // document above, so that ref is rewritten to a cross-document URL; the entry
-        // payloads are free-form JSON (the gg binary owns their concrete shapes).
+        // The gg replay record, format v2: the seed, the four content-addressed pools,
+        // the agent provenance table and the ordered input log. Its `capabilitySet`
+        // references `GgCapabilitySet`, and its agent rows reference `GgAgentStatus` /
+        // `GgLimitBreach`, all owned by the gg documents above, so those refs are
+        // rewritten to cross-document URLs; the pooled message/toolset/response bodies
+        // are free-form JSON (the gg binary owns their concrete shapes).
         SchemaDoc {
             rel_path: "gg/replay-record.schema.json",
             root: Some("GgReplayRecord"),
-            owns: &["GgReplayEntry", "GgReplayEntryKind"],
-            schema: root_schema::<gg::GgReplayRecord>(),
+            owns: &[
+                "GgReplayRecorder",
+                "GgReplaySeed",
+                "GgReplayModalities",
+                "GgReplaySeedFile",
+                "GgReplayMessage",
+                "GgReplayToolset",
+                "GgReplayBlob",
+                "GgReplayAgent",
+                "GgReplayAgentOrigin",
+                "GgReplayRequest",
+                "GgClientRole",
+                "GgReplayRequestShape",
+                "GgTurnFingerprint",
+                // `GgFingerprintComponent` is deliberately absent: it is the *result* of
+                // comparing two fingerprints, not a member of the document, so claiming
+                // it here would register an owner for a `$def` that is never emitted.
+                "GgReplayEntry",
+                "GgReplayEntryKind",
+                "GgReplayModelError",
+                "GgReplayModelErrorKind",
+                "GgReplayToolCall",
+                "GgReplayToolOutcome",
+                "GgShellCwd",
+                "GgShellOrigin",
+                "GgReplayCommand",
+                "GgReplayPromptItem",
+                "GgReplayPromptSlot",
+                "GgReplayRetention",
+                "GgReplayFileRegion",
+                "GgReplayTruncation",
+                "GgReplayTruncationReason",
+            ],
+            schema: root_schema::<ggr::GgReplayRecord>(),
+        },
+        // The superseded format v1 record: the flat transcript every record captured
+        // before v2 is in. Kept published because those records are stored as opaque
+        // bytes and are still served verbatim; the v2 reader upgrades them on read.
+        SchemaDoc {
+            rel_path: "gg/replay-record-v1.schema.json",
+            root: Some("GgReplayRecordV1"),
+            owns: &["GgReplayEntryV1", "GgReplayEntryKindV1"],
+            schema: root_schema::<gg::GgReplayRecordV1>(),
         },
         // The gg replay step-through view: the per-agent, per-turn "what the agent saw
         // and did" data model a debugging UI renders, derived from the record above. Its

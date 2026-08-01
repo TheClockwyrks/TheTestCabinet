@@ -644,7 +644,7 @@ async fn the_synthetic_call_ids_are_unique_within_a_turn() {
     .await;
     assert_eq!(outcome, SessionOutcome::Ran);
 
-    let record: GgReplayRecord = serde_json::from_str(
+    let record: GgReplayRecordV1 = serde_json::from_str(
         &std::fs::read_to_string(dir.path().join(GG_REPLAY_ARTIFACT_PATH)).unwrap(),
     )
     .unwrap();
@@ -652,7 +652,7 @@ async fn the_synthetic_call_ids_are_unique_within_a_turn() {
         .entries
         .iter()
         .filter_map(|entry| match &entry.kind {
-            GgReplayEntryKind::ToolResult { call, .. } => {
+            GgReplayEntryKindV1::ToolResult { call, .. } => {
                 Some(call["id"].as_str().expect("a recorded call id").to_string())
             }
             _ => None,

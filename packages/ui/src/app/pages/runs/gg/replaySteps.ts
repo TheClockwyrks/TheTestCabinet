@@ -1,12 +1,12 @@
 import type {
-  GgReplayEntry,
-  GgReplayRecord,
+  GgReplayEntryV1,
+  GgReplayRecordV1,
   GgReplayStep,
   GgReplayToolStep,
 } from "@test-cabinet/run-record/gg";
 
 // The step-through data model the replay debug view renders, derived on the client
-// from a run's raw replay record. This mirrors the Rust `GgReplayRecord::steps()`
+// from a run's raw replay record. This mirrors the Rust `GgReplayRecordV1::steps()`
 // derivation exactly (crates/core `gg.rs`) — the backend serves the raw record, and
 // this is the same *lenient* walk the driver's step model uses: a model-I/O entry
 // opens a step for its agent (what it SAW: the request; what it DID: the response),
@@ -19,10 +19,10 @@ import type {
 
 /**
  * Derive the ordered, per-agent {@link GgReplayStep} list from a raw
- * {@link GgReplayRecord} — the mirror of the Rust `GgReplayRecord::steps()`.
+ * {@link GgReplayRecordV1} — the mirror of the Rust `GgReplayRecordV1::steps()`.
  */
-export function deriveReplaySteps(record: GgReplayRecord): GgReplayStep[] {
-  const entries: GgReplayEntry[] = [...record.entries].sort(
+export function deriveReplaySteps(record: GgReplayRecordV1): GgReplayStep[] {
+  const entries: GgReplayEntryV1[] = [...record.entries].sort(
     (a, b) => a.seq - b.seq,
   );
 

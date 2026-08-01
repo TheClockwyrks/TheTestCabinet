@@ -1908,7 +1908,7 @@ export type GgTelemetryKind =
        * The [agent profile](GgAgentConfig) that spent this — the same name
        * [`AgentSpawned::slot`](Self::AgentSpawned::slot) and
        * [`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded
-       * before gg attributed its deltas, or on a [replay](GgReplayRecord) reconstruction,
+       * before gg attributed its deltas, or on a [replay](crate::gg_replay::GgReplayRecord) reconstruction,
        * which has no live model binding to name.
        */
       slot?: string;
@@ -2791,7 +2791,7 @@ export type GgTelemetryEvent = {
        * The [agent profile](GgAgentConfig) that spent this — the same name
        * [`AgentSpawned::slot`](Self::AgentSpawned::slot) and
        * [`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded
-       * before gg attributed its deltas, or on a [replay](GgReplayRecord) reconstruction,
+       * before gg attributed its deltas, or on a [replay](crate::gg_replay::GgReplayRecord) reconstruction,
        * which has no live model binding to name.
        */
       slot?: string;
@@ -3575,8 +3575,13 @@ export type GgTelemetryEvent = {
 );
 
 /**
- * Which non-deterministic input one [`GgReplayEntry`] pins — the discriminated payload of a
- * [replay](CAPABILITY_REPLAY) record entry.
+ * Which non-deterministic input one [`GgReplayEntryV1`] pins — the discriminated payload of a
+ * **format v1** [replay](CAPABILITY_REPLAY) record entry.
+ *
+ * Superseded by [`GgReplayEntryKind`](crate::gg_replay::GgReplayEntryKind). Retained while the
+ * recorder, the replay driver and the console's Replay tab are moved onto
+ * [format v2](crate::gg_replay); v2's reader upgrades a v1 body on its own, so nothing new should
+ * be written against this type.
  *
  * A faithful re-run needs exactly two things a run's own logic cannot reproduce: what the **model**
  * returned, and what each **tool** returned. This enum is those two kinds. The payloads are carried
@@ -3587,7 +3592,7 @@ export type GgTelemetryEvent = {
  * those types. The variant tag is the `type` field (`model_io` / `tool_result`), inline with the
  * entry's `agentId`/`seq` envelope.
  */
-export type GgReplayEntryKind =
+export type GgReplayEntryKindV1 =
   | {
       type: "model_io";
       /**
@@ -3632,7 +3637,7 @@ export type GgReplayEntryKind =
  * The [`kind`](Self::kind) is the pinned input itself, flattened inline so the `type` discriminator
  * and its fields sit alongside `agentId`/`seq`.
  */
-export type GgReplayEntry = {
+export type GgReplayEntryV1 = {
   /**
    * The id of the [agent](GgTelemetryEvent::agent_id) whose turn loop produced this entry (the
    * root agent's id `"root"`, or a subagent's minted id). What lets a replay driver route each
@@ -3681,8 +3686,13 @@ export type GgReplayEntry = {
 );
 
 /**
- * A gg run's **deterministic replay record**: enough of a [replay](CAPABILITY_REPLAY)-captured run
- * to reconstruct it step for step.
+ * A gg run's **deterministic replay record**, format v1: enough of a
+ * [replay](CAPABILITY_REPLAY)-captured run to reconstruct it step for step.
+ *
+ * Superseded by [`GgReplayRecord`](crate::gg_replay::GgReplayRecord), the pooled
+ * [format v2](crate::gg_replay) whose reader upgrades a v1 body on read — so a v1 record stays
+ * readable forever without this type. It is retained only until the recorder, the replay driver
+ * and the console's Replay tab are moved across; nothing new should be written against it.
  *
  * Recorded only when the [replay](CAPABILITY_REPLAY) capability is on (a debugging tool, not a
  * normal result surface), written to a `.gg/replay.json` sidecar the backend serves per run
@@ -3694,7 +3704,7 @@ export type GgReplayEntry = {
  * a developer can step through exactly what each agent saw and did. The record is *additive* to the
  * telemetry: the stream is identical whether replay was captured or not.
  */
-export type GgReplayRecord = {
+export type GgReplayRecordV1 = {
   /**
    * The gg session id this record replays — the run id, matching the
    * [telemetry](GgTelemetryEvent::session_id) stream's.
@@ -3708,17 +3718,17 @@ export type GgReplayRecord = {
   capabilitySet: GgCapabilitySet;
   /**
    * Every pinned non-deterministic input the run produced, in globally monotonic
-   * [`seq`](GgReplayEntry::seq) order — the model I/O of each agent turn and every tool result,
+   * [`seq`](GgReplayEntryV1::seq) order — the model I/O of each agent turn and every tool result,
    * interleaved across the agent tree exactly as the run issued them.
    */
-  entries: Array<GgReplayEntry>;
+  entries: Array<GgReplayEntryV1>;
 };
 
 /**
  * One tool call within a [replay step](GgReplayStep): the call the model made and the exact outcome
  * the run's dispatch returned for it.
  *
- * The payloads are carried as JSON [`Value`]s for the same reason the [record entries](GgReplayEntryKind)
+ * The payloads are carried as JSON [`Value`]s for the same reason the [record entries](GgReplayEntryKindV1)
  * are — their concrete shapes (`ToolCall`, `ToolOutcome`) are owned by the `gg` binary, not this
  * contract crate.
  */
@@ -3737,8 +3747,8 @@ export type GgReplayToolStep = {
 };
 
 /**
- * One step in the per-agent walk of a [replay record](GgReplayRecord) — the debugging view's data
- * model, [derived from the record](GgReplayRecord::steps).
+ * One step in the per-agent walk of a [replay record](GgReplayRecordV1) — the debugging view's data
+ * model, [derived from the record](GgReplayRecordV1::steps).
  *
  * A step is one **model turn** of one **agent**: what the agent [`saw`](Self::saw) (the
  * `{ messages, tools }` request it was given) and what it [`did`](Self::did) (the model response),
@@ -3746,7 +3756,7 @@ export type GgReplayToolStep = {
  * outcome the run's dispatch returned. A [replay driver](https://docs.testcabinet.ai/gg/replay/)
  * walks the agent tree turn by turn and produces exactly this sequence, so a developer can step
  * through what each agent saw and did without re-deriving it from the raw
- * [entries](GgReplayRecord::entries).
+ * [entries](GgReplayRecordV1::entries).
  */
 export type GgReplayStep = {
   /**
@@ -3755,14 +3765,14 @@ export type GgReplayStep = {
    */
   agentId: string;
   /**
-   * The [`seq`](GgReplayEntry::seq) the turn's model call was recorded at — the step's position on
+   * The [`seq`](GgReplayEntryV1::seq) the turn's model call was recorded at — the step's position on
    * the global timeline, so steps from concurrently-running agents order deterministically.
    */
   seq: number;
   /**
    * What the agent **saw** this turn: the model request — a JSON object `{ messages, tools }`
    * (the `gg` binary's `Message[]` and `ToolDefinition[]`, camelCase). [`Value::Null`] only for a
-   * synthetic step holding an orphan tool result (see [`GgReplayRecord::steps`]).
+   * synthetic step holding an orphan tool result (see [`GgReplayRecordV1::steps`]).
    */
   saw: Record<string, unknown> | null;
   /**

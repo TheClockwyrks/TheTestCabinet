@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import type {
   GgCapabilitySet,
-  GgReplayRecord,
+  GgReplayRecordV1,
   GgReplayStep,
 } from "@test-cabinet/run-record/gg";
 import { useBackend } from "../../../../client/context";
@@ -39,7 +39,7 @@ type LoadState =
   | { kind: "unsupported" }
   | { kind: "empty" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; record: GgReplayRecord };
+  | { kind: "ready"; record: GgReplayRecordV1 };
 
 export function GgReplayView() {
   const { runId } = useParams<{ runId: string }>();
@@ -114,7 +114,7 @@ export function GgReplayView() {
 
 // The loaded step-through surface: the capability-set header, the agent filter/tree,
 // the playback controls, and the current step (what one agent saw and did).
-function ReplayStepper({ record }: { record: GgReplayRecord }) {
+function ReplayStepper({ record }: { record: GgReplayRecordV1 }) {
   const steps = useMemo(() => deriveReplaySteps(record), [record]);
 
   // The distinct agents in first-appearance (global-`seq`) order, each with its step
@@ -268,7 +268,7 @@ function ReplayHeader({
   stepCount,
   agentCount,
 }: {
-  record: GgReplayRecord;
+  record: GgReplayRecordV1;
   stepCount: number;
   agentCount: number;
 }) {
