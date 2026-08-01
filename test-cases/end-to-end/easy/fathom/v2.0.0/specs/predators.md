@@ -85,6 +85,13 @@ immediately (release time `0`), the first Gloamfin at `5 s`, the first Flarefish
 When you lose a life, all surviving predators return to the den and re-release on the
 same schedule, giving you a moment to reorient.
 
+The schedule is timed from live play. Release time `0` is the moment the dive
+countdown ends and play begins, not the moment the countdown starts: the countdown
+does not count against the schedule, and no predator leaves the den while it is
+running. The same holds for the countdown after a life is lost — it is the start of
+the moment you get to reorient, not part of it. So a dive always opens with the full
+staggered release ahead of it, whatever the countdown's length.
+
 ## How many predators: deeper mazes add hunters
 
 Deeper mazes are more dangerous because they hold more hunters, not faster ones

@@ -6,6 +6,7 @@
 // re-pose behind a wall, and the lock that follows are all `act`. Re-posing there uses
 // `setForager`, a control op — `reset` would take the clock back and freeze the clip.
 import {
+  FLARE_RADIUS,
   denAllExcept,
   findFarTile,
   losClear,
@@ -41,7 +42,12 @@ export default function item() {
     async arrange(api) {
       const snap = await startPlaying(api);
       await denAllExcept(api, ["flarefish"]);
-      const far = findFarTile(snap, snap.forager, 8);
+      const far = findFarTile(snap, snap.forager, 8, {
+        // "Far" here means OUTSIDE the bloom, which is a euclidean radius — a
+        // manhattan-8 tile can sit at 181 px, inside it. One tile of margin past
+        // FLARE_RADIUS so a Flarefish that has drifted a little is still clear.
+        minPx: FLARE_RADIUS + snap.grid.tile,
+      });
       await api.call("setPredator", "flarefish", {
         tx: far.tx,
         ty: far.ty,

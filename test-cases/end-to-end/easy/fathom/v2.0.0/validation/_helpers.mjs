@@ -497,13 +497,35 @@ export function findSonarSenseTiles(snap, from, count = 1) {
   return cand.slice(0, count);
 }
 
-/** An open tile at least `minMan` tiles (manhattan) from `from` ({tx, ty}). */
-export function findFarTile(snap, from, minMan) {
+/**
+ * An open tile at least `minMan` tiles (manhattan) from `from` ({tx, ty}) — and, when
+ * `minPx` is given, at least that far in a straight line as well.
+ *
+ * WHY THERE IS A PIXEL FLOOR AS WELL AS A TILE ONE. A manhattan count and a sensing
+ * RADIUS are different shapes, so a caller that means "outside the Flarefish's `192 px`
+ * flare" cannot say so in tiles: a tile 8 apart on the manhattan grid sits as close as
+ * `8 / sqrt(2)` ≈ 5.66 tiles ≈ `181 px` when the offset is diagonal, which is INSIDE the
+ * bloom. A check that poses a predator "far, so it flares harmlessly" and picks the tile
+ * by manhattan alone is therefore betting on where the maze happened to leave its open
+ * tiles — it holds on one layout and quietly stops holding on the next, which is the
+ * worst way for a precondition to fail. Every radius the spec fixes (the flare, the
+ * light detection ranges, the Kindle vision circle) is euclidean, so a caller that means
+ * one of them passes it here in px and gets a tile that is actually outside it.
+ */
+export function findFarTile(snap, from, minMan, { minPx = 0 } = {}) {
+  const a = tileCenter(snap.grid, from.tx, from.ty);
   for (const [c, r] of openTiles(snap)) {
-    if (Math.abs(c - from.tx) + Math.abs(r - from.ty) >= minMan)
-      return { tx: c, ty: r };
+    if (Math.abs(c - from.tx) + Math.abs(r - from.ty) < minMan) continue;
+    if (minPx > 0) {
+      const p = tileCenter(snap.grid, c, r);
+      if (Math.hypot(p.x - a.x, p.y - a.y) < minPx) continue;
+    }
+    return { tx: c, ty: r };
   }
-  throw unmetPrecondition(`no open tile at least ${minMan} tiles away`);
+  throw unmetPrecondition(
+    `no open tile at least ${minMan} tiles away` +
+      (minPx > 0 ? ` and ${minPx} px clear in a straight line` : ""),
+  );
 }
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -927,12 +949,63 @@ export async function quietBoard(api, tile) {
 /**
  * Park every predator in the den (a clean baseline), except the ones named in
  * `except`. Used so a scenario reads one predator's behavior undisturbed.
+ *
+ * `setPredator(kind, { mode: "den" })` HOLDS a predator there for as long as the
+ * scenario runs (specs/instrumentation.md), so this is what makes the rest of the board
+ * quiet. Returns a token to hand to `boardDisturbance` — the kinds it denned, and the
+ * lives and screen it left behind — so a scenario that later finds its subject in an
+ * unexpected state can say WHICH predator broke the quiet rather than blaming the one
+ * it was watching.
  */
 export async function denAllExcept(api, except = []) {
+  const denned = [];
   for (const kind of ["lanternjaw", "gloamfin", "flarefish"]) {
-    if (!except.includes(kind))
+    if (!except.includes(kind)) {
       await api.call("setPredator", kind, { mode: "den" });
+      denned.push(kind);
+    }
   }
+  const snap = await api.snapshot();
+  return { denned, lives: snap.lives, screen: snap.screen };
+}
+
+/**
+ * What broke the quiet board `denAllExcept` posed, as a sentence, or null if nothing
+ * did. `quiet` is that helper's return value and `snap` the state to judge.
+ *
+ * WHY A SCENARIO NEEDS THIS. When a long-running item finds its subject somewhere
+ * unexpected, the honest question is whether the SUBJECT did something or whether the
+ * scenario stopped holding. A predator that was posed into the den and is now loose has
+ * broken the precondition; a life lost re-dens every predator at once
+ * (specs/predators.md), which drops the subject into `den` through no fault of its own.
+ * Reported as "the subject left its wander", both of those read as a finding about the
+ * subject, which is exactly the wrong diagnosis — so an item that is about to give up
+ * asks this first and names the real cause.
+ */
+export function boardDisturbance(snap, quiet) {
+  if (!quiet) return null;
+  if (snap.lives < quiet.lives) {
+    const held = quiet.denned.filter((k) => pred(snap, k));
+    return (
+      `the forager was caught and lost a life mid-measurement, which returned every ` +
+      `predator to the den` +
+      (held.length
+        ? ` — and the ${held.join(" and ")} had been posed into the den, so nothing ` +
+          `should have been loose to catch it`
+        : "")
+    );
+  }
+  const out = quiet.denned.filter((k) => {
+    const p = pred(snap, k);
+    return p && p.state !== "den";
+  });
+  if (out.length) {
+    return `the ${out.join(" and ")} left the den it was posed into and disturbed the scenario`;
+  }
+  if (snap.screen !== quiet.screen) {
+    return `the dive left ${quiet.screen} for ${snap.screen} mid-measurement`;
+  }
+  return null;
 }
 
 /**
@@ -1218,6 +1291,165 @@ export function movedAlong(before, after, dir, grid) {
   const min = grid.tile / 2;
   if (dc !== 0) return (after.x - before.x) * dc >= min;
   return (after.y - before.y) * dr >= min;
+}
+
+// The staggered den release (specs/predators.md): the order the predators leave in, and
+// the gap between one leaving and the next.
+export const DEN_ORDER = ["lanternjaw", "gloamfin", "flarefish"];
+export const DEN_RELEASE_GAP = 5;
+
+/**
+ * How far a measured release gap may sit from `DEN_RELEASE_GAP`.
+ *
+ * The spec states the `5 s` flatly, so the band is not there to admit a different
+ * schedule — it is sampling slack (a sweep resolves an event to its poll chunk) plus room
+ * for a build that arms its timers a beat off. It still fails the two ways a build
+ * actually breaks this: releasing everything at once (gap ~0, which is what an absolute
+ * release time compared against a clock that is never reset produces after a life is
+ * lost), or spacing them out on some other schedule entirely.
+ */
+export const DEN_RELEASE_SLACK = 1;
+
+/**
+ * How soon after live play is running the FIRST predator must be out to count as leaving
+ * "immediately" (specs/predators.md: release time `0`).
+ *
+ * This is what stops a build passing on the gaps alone. Gaps fix the SPACING but leave
+ * the origin free, and a den that holds everyone for half a minute and then lets them out
+ * `5 s` apart has the spacing exactly right and the schedule entirely wrong. Anchoring the
+ * first release closes that: with the head pinned and each gap pinned, the whole schedule
+ * is pinned.
+ *
+ * HALF A SLOT, not a second. Leaving the den is a journey rather than a flag, and builds
+ * differ on when they stop calling a predator denned — mid-walk, or once it is clear of
+ * the gate. The reference takes about `0.7 s` over that walk and another build could
+ * reasonably take longer without being late in any sense the spec cares about, so a
+ * one-second bound would fail a conforming build for the pace of its gate animation. Half
+ * a slot is the widest bound that still cannot be confused with the NEXT predator's slot
+ * at `5 s`, which is the only thing this needs to tell apart.
+ */
+export const DEN_IMMEDIATE = DEN_RELEASE_GAP / 2;
+
+/** The sweep resolution the den watch runs at, in ticks. */
+export const DEN_POLL = 6;
+
+/**
+ * How far BEFORE live play resuming the first release may land: ONE SAMPLE, and nothing
+ * more.
+ *
+ * No predator leaves the den while the countdown runs (`specs/predators.md`), so there is
+ * no behaviour to be lenient about here — a predator loose before play resumes has spent
+ * the player's reorientation moment hunting, and that is the whole point of the check.
+ * This is purely the measurement's own resolution: the resume and each release are dated
+ * to the first sweep that caught them, so two events one tick apart can be read in either
+ * order across a sweep boundary. A build that flips its screen the tick after it starts
+ * play would otherwise read as jumping the gun by a hundredth of a second.
+ *
+ * Deriving it from the poll rather than picking a round number keeps it honest: it can
+ * only ever be as large as the uncertainty it exists to absorb.
+ */
+export const DEN_RESUME_TOLERANCE = DEN_POLL / TICK_HZ;
+
+/**
+ * ACT half of the den-release checks: watch the den and return
+ * `{ releases, resumedAt }` — the moment each predator left, as `[{ kind, t }]` in the
+ * order they came out (`t` is the snapshot's simTime), and the simTime at which live play
+ * was first seen running. Stops once all three are out, or once a release is overdue.
+ *
+ * WHY THE RESUME IS MEASURED ALONGSIDE. The callers assert the GAPS between releases
+ * rather than their absolute instants, because the spec fixes the spacing (`5 s` apart, in
+ * a fixed order) while leaving one thing open: whether the countdown that precedes live
+ * play counts against the first timer. Both readings are conforming and they differ by the
+ * whole countdown, so an assertion anchored to the death would fail half of them for a
+ * choice the spec never made.
+ *
+ * But gaps alone under-check the schedule, and it is worth being precise about how: they
+ * pin the spacing and leave the ORIGIN free, so a den that holds every predator for half a
+ * minute and then releases them `5 s` apart satisfies every gap while breaking the
+ * schedule outright. What closes that without re-importing the countdown question is this
+ * resume time: whichever way a build reads the countdown, once live play is actually
+ * running the first predator is due (release time `0`), so the head of the schedule is
+ * anchored to `resumedAt` and every following release to the one before it. A build that
+ * releases during its countdown reads as a NEGATIVE offset from the resume, which is
+ * early, not late, and passes — as it should.
+ *
+ * HOW LONG IT WAITS, AND WHY THAT IS NOT A WINDOW. Each release is waited for against its
+ * OWN deadline, taken from the schedule: the first until `DEN_RELEASE_GAP` past the resume
+ * (if a whole slot goes by with the den still shut, nothing is coming), and each one after
+ * it until two slots past the release before it. Miss a deadline and the watch stops
+ * there, so `releases` ends where the schedule broke down.
+ *
+ * The deadlines are deliberately LOOSER than the assertions the callers make — a slot
+ * where the check allows a second, two slots where it allows one gap plus slack. That gap
+ * between the two is the point. A deadline exists only to stop the watch when nothing is
+ * ever coming; if it were tight enough to judge, then a build that releases a little late
+ * would trip the deadline instead of the assertion, and the item would report "the
+ * Gloamfin never left the den" about a Gloamfin that left a second after the check would
+ * have liked. The deadline says whether there is anything to measure; the assertion says
+ * whether it was right.
+ */
+export async function actDenReleases(api, { poll = DEN_POLL, resumeMax } = {}) {
+  const releases = [];
+  const seen = new Set();
+  let resumedAt = null;
+  const note = (s) => {
+    if (resumedAt === null && s.screen === "playing") resumedAt = s.simTime;
+    for (const kind of DEN_ORDER) {
+      const p = pred(s, kind);
+      if (p && p.state !== "den" && !seen.has(kind)) {
+        seen.add(kind);
+        releases.push({ kind, t: s.simTime });
+      }
+    }
+  };
+
+  // To live play, so the first slot has something to be due from. A predator that leaves
+  // during a build's countdown is caught here too, and reads as early rather than late.
+  let last = await api.snapshot();
+  note(last);
+  let waited = 0;
+  const resumeBudget = resumeMax ?? ticksFor(2 * DEN_RELEASE_GAP);
+  while (resumedAt === null && waited < resumeBudget) {
+    await api.advance(poll);
+    waited += poll;
+    last = await api.snapshot();
+    note(last);
+  }
+  if (resumedAt === null) return { releases, resumedAt };
+
+  while (releases.length < DEN_ORDER.length) {
+    const due =
+      releases.length === 0
+        ? resumedAt + DEN_RELEASE_GAP
+        : releases[releases.length - 1].t + 2 * DEN_RELEASE_GAP;
+    const had = releases.length;
+    while (releases.length === had) {
+      if (last.simTime > due) return { releases, resumedAt };
+      await api.advance(poll);
+      last = await api.snapshot();
+      note(last);
+    }
+  }
+  return { releases, resumedAt };
+}
+
+/**
+ * ACT half of the den-release checks: park the forager clear of the den, so it is a
+ * bystander to a measurement that is about the den's own clock.
+ *
+ * The forager is not what is being timed here, but it is what a released predator hunts,
+ * and a forager caught mid-measurement re-dens every predator and restarts the very
+ * schedule being read (specs/predators.md). Standing it well away from the gate — and
+ * facing a wall, so it does not drift or graze (see `parkForager`) — leaves the release
+ * timers untouched and simply keeps the scenario alive long enough to read them.
+ */
+export async function parkClearOfDen(api) {
+  const snap = await api.snapshot();
+  const gate = gateTiles(snap)[0];
+  const away = gate
+    ? findFarTile(snap, { tx: gate[0], ty: gate[1] }, 10)
+    : undefined;
+  return parkForager(api, away);
 }
 
 /**
