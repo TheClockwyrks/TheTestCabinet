@@ -22,7 +22,7 @@ import { launchBatch } from "../runs/launchBatch";
 import { bindModelSlots } from "../runs/gg/ggConfigDraft";
 import { useGgConfigs } from "../runs/gg/useGgConfigs";
 import { routes } from "../../routes";
-import { categoricalColor } from "./armColors";
+import { categoricalColor } from "../../../primitives/plot/palette";
 import {
   appendRunIds,
   harnessArmLaunchItems,

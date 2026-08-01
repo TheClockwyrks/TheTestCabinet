@@ -543,6 +543,157 @@ export function priceHistoryChart(
   };
 }
 
+/** One observation on a {@link timeSeriesChart}: one series' value at one bucket
+ * start. */
+export interface TimeSeriesPoint {
+  /**
+   * The instant this observation belongs to — for a date histogram, the bucket's
+   * floored **start**, not its midpoint or its label.
+   *
+   * A `Date` and not a string, and that is the whole point of this type. A date
+   * histogram's buckets arrive as epoch milliseconds; the tempting shortcut is to
+   * format them once for the axis and plot the formatted string on a band scale.
+   * That silently swaps a *chronological* axis for a *categorical* one, and a
+   * categorical axis draws its points in input order — so buckets that arrive in
+   * any order but time order (TCQ's default bucket order is count descending, and
+   * only a date-histogram first key overrides it) render as a zigzag between
+   * unrelated instants rather than as a time series. Keeping the instant an
+   * instant makes the axis chronological by construction and makes the sort below
+   * meaningful.
+   */
+  time: Date;
+  /** The series this point belongs to; drives its color and legend entry via the
+   * chart's `series` list. */
+  series: string;
+  /** The value at that instant. */
+  value: number;
+  /**
+   * Text shown in an interactive tooltip when this observation is hovered — the
+   * figures behind the plotted value (a denominator, the bucket's `n`), which the
+   * point itself cannot show. Newlines break the tip into lines. Omit to leave the
+   * chart without tooltips; a chart shows them only when at least one point
+   * carries one.
+   */
+  title?: string;
+}
+
+/** Labels and framing for a {@link timeSeriesChart}. */
+export interface TimeSeriesLabels {
+  /** The y-axis label (e.g. the aggregation's column name). Omit for none. */
+  y?: string;
+  /** d3-format specifier (or function) for the y-axis ticks — e.g. `"~s"` for large
+   * counts, `"$~f"` for money. */
+  yTickFormat?: string | ((value: number) => string);
+  /** An explicit top of the y scale, so a bounded metric frames to its natural
+   * ceiling rather than to the tallest observation. Omit to let the data size it. */
+  yMax?: number;
+}
+
+// Sorts a time series into chronological order without mutating the caller's array.
+//
+// `Plot.line` connects its points in **input order** (unlike `Plot.lineY`, which
+// carries an implicit sort by x), so the order this returns is literally the order
+// the polyline is drawn in. Sorting here rather than relying on a mark default keeps
+// the guarantee in one readable place and keeps it testable off the returned spec.
+// `Array.prototype.sort` is stable, so points sharing an instant (one per series)
+// keep the order they were given.
+function chronological(
+  data: readonly TimeSeriesPoint[],
+): readonly TimeSeriesPoint[] {
+  return [...data].sort((a, b) => a.time.getTime() - b.time.getTime());
+}
+
+// A metric over a UTC time axis: one line per series with a dot at each observation,
+// so a one- or two-bucket history still reads (the dots carry it where the line is a
+// single segment or absent). This is the chart a **date histogram** gets — an
+// ordered progression of instants, which is exactly what a line is for and exactly
+// what a bar chart over formatted date strings is not.
+//
+// Two properties are load-bearing rather than stylistic:
+//
+// - **The axis is chronological** (`type: "utc"`) and the data is sorted into
+//   chronological order before it is drawn, so a bucket list that arrives in any
+//   other order (count descending, say) draws left-to-right in time rather than
+//   zigzagging between unrelated instants.
+// - **A legend appears only for two or more series.** One series is named by the
+//   chart's own title, and a legend box repeating that name is noise; two or more
+//   need identity carried somewhere other than the color itself.
+//
+// y starts at 0 (`ruleY([0])`) so magnitudes aren't exaggerated by a floating
+// baseline. Callers drop absent values rather than passing zero for them — a bucket
+// that carried no value is not a bucket that measured zero.
+export function timeSeriesChart(
+  data: readonly TimeSeriesPoint[],
+  palette: ChartPalette,
+  series: readonly StackedSeries[],
+  labels: TimeSeriesLabels = {},
+): PlotOptions {
+  const ordered = chronological(data);
+  const order = series.map((s) => s.name);
+  const yMax = labels.yMax;
+  const hasTips = ordered.some((d) => d.title != null);
+  return {
+    ...basePlotOptions(palette),
+    x: { label: null, type: "utc" },
+    y: {
+      label: labels.y ?? null,
+      grid: true,
+      zero: true,
+      tickFormat: labels.yTickFormat,
+      ...(yMax != null ? { domain: [0, yMax] } : {}),
+    },
+    color: {
+      // One series is already named by the chart's title; two or more need a key.
+      legend: series.length > 1,
+      domain: order,
+      range: series.map((s) => s.color),
+    },
+    marks: [
+      Plot.ruleY([0], { stroke: palette.border }),
+      Plot.line(ordered as TimeSeriesPoint[], {
+        x: "time",
+        y: "value",
+        stroke: "series",
+        // Group into one line per series explicitly. Left implicit, Plot infers z
+        // from `stroke` and warns about a high-cardinality implicit channel whenever
+        // the series count exceeds half the point count — which a two-bucket history
+        // across several series always trips.
+        z: "series",
+        strokeWidth: 2,
+      }),
+      Plot.dot(ordered as TimeSeriesPoint[], {
+        x: "time",
+        y: "value",
+        fill: "series",
+        // A surface-colored ring so two series crossing at one instant stay
+        // separable, and so a lone dot reads against the plot fill.
+        stroke: palette.surface,
+        strokeWidth: 1,
+        r: 3,
+        ...(hasTips
+          ? { title: (d: TimeSeriesPoint) => d.title, tip: tipBox(palette) }
+          : {}),
+      }),
+      // The hover affordance: a crosshair at the pointer-selected instant, so which
+      // bucket the tip describes is unmistakable in a dense series. Same pointer and
+      // radius as the tip, so the two always agree.
+      ...(hasTips
+        ? [
+            Plot.ruleX(
+              ordered as TimeSeriesPoint[],
+              Plot.pointerX({
+                x: "time",
+                stroke: palette.text,
+                strokeOpacity: 0.45,
+                maxRadius: POINTER_RADIUS,
+              }),
+            ),
+          ]
+        : []),
+    ],
+  };
+}
+
 /** One raw run behind a distribution box, so the chart can plot every observation
  * — never just its summary — the way small-`n` honesty requires. Omit the whole
  * list on a {@link DistributionGroup} when the caller only has the aggregated
@@ -578,9 +729,25 @@ export interface DistributionGroup {
   max: number;
   q1: number;
   q3: number;
-  /** Bootstrap confidence interval on the median. */
-  ciLow: number;
-  ciHigh: number;
+  /**
+   * Bootstrap confidence interval on the median, **when the caller has one**.
+   *
+   * Optional because not every producer of a distribution computes one, and the
+   * honest rendering of "no interval" is *no mark*, never a zero-width one at the
+   * median (which reads as a suspiciously precise estimate) and never a silent
+   * fallback to the whiskers (which are the raw min/max and mean something else
+   * entirely). A group missing either bound is drawn without the CI layer; the box,
+   * whiskers, median, points, and `n` are unaffected.
+   *
+   * The producer this exists for is [TCQ](/gg/analysis/query-language/)'s `dist()`,
+   * which deliberately carries no interval: reproducing a seeded bootstrap
+   * bit-for-bit across the Rust evaluator and its browser twin would be the most
+   * drift-prone construct in a mirrored engine, for a decoration on an exploratory
+   * chart. The comparisons surface — where inferential claims are actually made —
+   * keeps its interval and still passes both bounds.
+   */
+  ciLow?: number;
+  ciHigh?: number;
 }
 
 interface DistributionLabels {
@@ -617,6 +784,13 @@ export function distributionChart(
   const points = groups.flatMap((g) =>
     g.points.map((p) => ({ label: g.label, color: colorOf(g), ...p })),
   );
+
+  // Only the groups that actually carry an interval get the CI layer, so a
+  // distribution with no bootstrap behind it (TCQ's `dist()`) draws its box and
+  // whiskers with nothing beside them rather than a fabricated tick at the median.
+  const withCi = groups.filter(
+    (g) => g.ciLow != null && g.ciHigh != null,
+  ) as DistributionGroup[];
 
   return {
     ...basePlotOptions(palette),
@@ -661,29 +835,33 @@ export function distributionChart(
       }),
       // Bootstrap CI on the median: a thin offset vertical rule with end ticks,
       // distinct from the whisker (which is the raw min/max, not a confidence
-      // interval).
-      Plot.ruleX(groups as DistributionGroup[], {
-        x: "label",
-        y1: "ciLow",
-        y2: "ciHigh",
-        stroke: palette.muted,
-        strokeWidth: 2,
-        dx: CI_DX,
-      }),
-      Plot.tickY(groups as DistributionGroup[], {
-        x: "label",
-        y: "ciLow",
-        stroke: palette.muted,
-        strokeWidth: 1,
-        dx: CI_DX,
-      }),
-      Plot.tickY(groups as DistributionGroup[], {
-        x: "label",
-        y: "ciHigh",
-        stroke: palette.muted,
-        strokeWidth: 1,
-        dx: CI_DX,
-      }),
+      // interval). Drawn only over the groups that have one — see `withCi`.
+      ...(withCi.length
+        ? [
+            Plot.ruleX(withCi, {
+              x: "label",
+              y1: "ciLow",
+              y2: "ciHigh",
+              stroke: palette.muted,
+              strokeWidth: 2,
+              dx: CI_DX,
+            }),
+            Plot.tickY(withCi, {
+              x: "label",
+              y: "ciLow",
+              stroke: palette.muted,
+              strokeWidth: 1,
+              dx: CI_DX,
+            }),
+            Plot.tickY(withCi, {
+              x: "label",
+              y: "ciHigh",
+              stroke: palette.muted,
+              strokeWidth: 1,
+              dx: CI_DX,
+            }),
+          ]
+        : []),
       // Every raw run as its own point — the data a box/median only summarizes,
       // shown plainly so a small `n` never hides behind an aggregate.
       Plot.dot(points, {

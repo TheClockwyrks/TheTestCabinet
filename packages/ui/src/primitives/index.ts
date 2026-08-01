@@ -28,6 +28,7 @@ export {
   stackedAreaChart,
   priceHistoryChart,
   metricLineChart,
+  timeSeriesChart,
   distributionChart,
   type BarPoint,
   type StackedBarSegment,
@@ -37,6 +38,8 @@ export {
   type PricePoint,
   type MetricPoint,
   type MetricLineLabels,
+  type TimeSeriesPoint,
+  type TimeSeriesLabels,
   type DistributionPoint,
   type DistributionGroup,
 } from "./plot/charts";
@@ -45,3 +48,4 @@ export {
   readChartPalette,
   type ChartPalette,
 } from "./plot/theme";
+export { CATEGORICAL_COLORS, categoricalColor } from "./plot/palette";

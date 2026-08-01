@@ -6,6 +6,8 @@ import {
   metricLineChart,
   stackedAreaChart,
   stackedBarChart,
+  timeSeriesChart,
+  type TimeSeriesPoint,
 } from "./charts";
 import type { ChartPalette } from "./theme";
 
@@ -241,6 +243,182 @@ describe("metricLineChart", () => {
   });
 });
 
+describe("timeSeriesChart", () => {
+  const day = (n: number) => new Date(Date.UTC(2026, 6, n));
+  const oneSeries = [{ name: "", color: "#ff9d2f" }];
+
+  // The x coordinates of a drawn polyline, in the order the path visits them. This
+  // is the only way to see what a line actually did: the mark's own data can be
+  // sorted correctly and still be drawn in input order if the sort never reached the
+  // mark, so the assertion has to read the geometry.
+  function lineXs(node: Element): number[][] {
+    return [...node.querySelectorAll('[aria-label="line"] path')].map((path) => {
+      const d = path.getAttribute("d") ?? "";
+      const coords = [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)];
+      return coords.map((m) => Number(m[1]));
+    });
+  }
+
+  it("draws a line and a dot per observation", () => {
+    const node = render(
+      timeSeriesChart(
+        [
+          { time: day(1), series: "", value: 4 },
+          { time: day(2), series: "", value: 9 },
+          { time: day(3), series: "", value: 2 },
+        ],
+        palette,
+        oneSeries,
+      ),
+    );
+    expect(node.querySelectorAll("circle").length).toBeGreaterThanOrEqual(3);
+    expect(lineXs(node)).toHaveLength(1);
+  });
+
+  // The failure this chart exists to prevent. A date histogram's buckets do not
+  // arrive in time order in general — TCQ's default bucket order is count descending
+  // — and a chart that plots them on a categorical axis in input order draws a
+  // zigzag between unrelated instants instead of a time series. Feeding the builder
+  // a deliberately shuffled, count-descending bucket list must still produce a
+  // strictly left-to-right polyline.
+  it("draws chronologically from an out-of-order (count-descending) input", () => {
+    const shuffled: TimeSeriesPoint[] = [
+      { time: day(4), series: "", value: 90 },
+      { time: day(1), series: "", value: 50 },
+      { time: day(6), series: "", value: 30 },
+      { time: day(2), series: "", value: 10 },
+      { time: day(5), series: "", value: 5 },
+    ];
+    const node = render(timeSeriesChart(shuffled, palette, oneSeries));
+    const [xs] = lineXs(node);
+    expect(xs).toHaveLength(shuffled.length);
+    for (let i = 1; i < xs!.length; i += 1) {
+      expect(xs![i]).toBeGreaterThan(xs![i - 1]!);
+    }
+  });
+
+  // The same guarantee has to hold per series, not just globally: a histogram nested
+  // under a second group key interleaves two series' buckets, and each line must
+  // still run forward in time.
+  it("keeps every series chronological when two are interleaved", () => {
+    const node = render(
+      timeSeriesChart(
+        [
+          { time: day(3), series: "b", value: 1 },
+          { time: day(1), series: "a", value: 2 },
+          { time: day(3), series: "a", value: 3 },
+          { time: day(1), series: "b", value: 4 },
+          { time: day(2), series: "a", value: 5 },
+          { time: day(2), series: "b", value: 6 },
+        ],
+        palette,
+        [
+          { name: "a", color: "#ff9d2f" },
+          { name: "b", color: "#22d3ee" },
+        ],
+      ),
+    );
+    const lines = lineXs(node);
+    expect(lines).toHaveLength(2);
+    for (const xs of lines) {
+      expect(xs).toHaveLength(3);
+      for (let i = 1; i < xs.length; i += 1) {
+        expect(xs[i]).toBeGreaterThan(xs[i - 1]!);
+      }
+    }
+  });
+
+  // A time axis, not a band scale over formatted strings — the substitution that
+  // causes the zigzag in the first place. A UTC scale emits date ticks; a band scale
+  // over these points would emit one tick per raw label.
+  it("puts the observations on a chronological axis", () => {
+    const node = render(
+      timeSeriesChart(
+        [
+          { time: day(1), series: "", value: 1 },
+          { time: day(20), series: "", value: 2 },
+        ],
+        palette,
+        oneSeries,
+      ),
+    );
+    const ticks = [
+      ...node.querySelectorAll('[aria-label="x-axis tick label"] text'),
+    ].map((t) => t.textContent);
+    // Fewer ticks than a categorical axis would draw is not the assertion — the
+    // assertion is that the axis chose its own date ticks rather than echoing the
+    // data, which a band scale can never do.
+    expect(ticks.length).toBeGreaterThan(0);
+    expect(ticks).not.toEqual(["Jul 1", "Jul 20"]);
+  });
+
+  it("draws no legend for a single series and one for two", () => {
+    const lone = render(
+      timeSeriesChart(
+        [{ time: day(1), series: "", value: 1 }],
+        palette,
+        oneSeries,
+      ),
+    );
+    expect(lone.querySelector(".-plot-swatches")).toBeNull();
+
+    const pair = render(
+      timeSeriesChart(
+        [
+          { time: day(1), series: "a", value: 1 },
+          { time: day(2), series: "b", value: 2 },
+        ],
+        palette,
+        [
+          { name: "a", color: "#ff9d2f" },
+          { name: "b", color: "#22d3ee" },
+        ],
+      ),
+    );
+    expect(pair.textContent).toContain("a");
+    expect(pair.textContent).toContain("b");
+  });
+
+  it("wires up hover tips and the crosshair when points carry titles", () => {
+    const node = render(
+      timeSeriesChart(
+        [
+          { time: day(1), series: "", value: 1, title: "Jul 1\n1 run" },
+          { time: day(2), series: "", value: 2, title: "Jul 2\n2 runs" },
+        ],
+        palette,
+        oneSeries,
+        { y: "runs", yTickFormat: "~s" },
+      ),
+    );
+    const tip = node.querySelector('[aria-label="tip"]');
+    expect(tip).not.toBeNull();
+    expect(tip!.getAttribute("fill")).toBe(palette.surface);
+    expect(node.querySelector('[stroke-opacity="0.45"]')).not.toBeNull();
+  });
+
+  it("renders a single-bucket series without throwing", () => {
+    expect(() =>
+      render(
+        timeSeriesChart(
+          [{ time: day(9), series: "", value: 3 }],
+          palette,
+          oneSeries,
+        ),
+      ),
+    ).not.toThrow();
+  });
+
+  it("does not mutate the caller's array", () => {
+    const data: TimeSeriesPoint[] = [
+      { time: day(3), series: "", value: 1 },
+      { time: day(1), series: "", value: 2 },
+    ];
+    timeSeriesChart(data, palette, oneSeries);
+    expect(data[0]!.time).toEqual(day(3));
+  });
+});
+
 describe("distributionChart", () => {
   const groups = [
     {
@@ -287,6 +465,61 @@ describe("distributionChart", () => {
   it("wires up hover tips on the raw points", () => {
     const node = render(distributionChart(groups, palette));
     expect(node.querySelector('[aria-label="tip"]')).not.toBeNull();
+  });
+
+  // The CI is a separate layer offset to the left of the box, drawn in the muted
+  // ink. Counting marks in that color is how we tell "the interval was drawn" from
+  // "the interval was omitted" without depending on Plot's internal ordering.
+  const mutedMarks = (node: Element) =>
+    node.querySelectorAll(`[stroke="${palette.muted}"]`).length;
+
+  it("draws the confidence interval for groups that carry one", () => {
+    expect(mutedMarks(render(distributionChart(groups, palette)))).toBeGreaterThan(
+      0,
+    );
+  });
+
+  // TCQ's `dist()` deliberately carries no bootstrap interval, so its groups arrive
+  // without one. The honest rendering of that is *no mark* — never a zero-width
+  // interval pinned at the median, which reads as a suspiciously precise estimate.
+  it("omits the interval entirely when no group carries one", () => {
+    const noCi = groups.map(({ ciLow: _low, ciHigh: _high, ...rest }) => rest);
+    const node = render(distributionChart(noCi, palette));
+    expect(mutedMarks(node)).toBe(0);
+    // ...and the rest of the box plot is unaffected: every raw point is still
+    // plotted and every group still labelled.
+    expect(node.querySelectorAll("circle").length).toBeGreaterThanOrEqual(5);
+    expect(node.textContent).toContain("pi");
+    expect(node.textContent).toContain("kilo");
+  });
+
+  it("draws the interval only over the groups that have one", () => {
+    const { ciLow: _low, ciHigh: _high, ...bare } = groups[1]!;
+    const mixed = [groups[0]!, bare];
+    // One group's interval draws (a rule plus two end ticks); the group without one
+    // contributes nothing rather than collapsing to a tick at its median.
+    expect(mutedMarks(render(distributionChart(mixed, palette)))).toBe(
+      mutedMarks(render(distributionChart([groups[0]!], palette))),
+    );
+  });
+
+  it("renders a summary-only group with no raw points and no interval", () => {
+    const summaryOnly = [
+      {
+        label: "anthropic/*",
+        n: 42,
+        points: [],
+        median: 7,
+        mean: 7.4,
+        min: 1,
+        max: 10,
+        q1: 5,
+        q3: 9,
+      },
+    ];
+    const node = render(distributionChart(summaryOnly, palette));
+    expect(node.textContent).toContain("anthropic/*");
+    expect(mutedMarks(node)).toBe(0);
   });
 
   it("renders with a single arm (n=1) without throwing", () => {

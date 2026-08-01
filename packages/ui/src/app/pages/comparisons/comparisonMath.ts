@@ -9,7 +9,7 @@ import type { StackedBarSegment, StackedSeries } from "../../../primitives";
 import { OPENROUTER_PROVIDER, resolveLaunchModel } from "../../data/providers";
 import { DEFAULT_ORCHESTRATOR_SLUG } from "../../data/orchestrators";
 import type { LaunchItem } from "../runs/launchBatch";
-import { categoricalColor } from "./armColors";
+import { categoricalColor } from "../../../primitives/plot/palette";
 
 /**
  * How many more runs an arm still needs to reach the comparison's `N`, counted

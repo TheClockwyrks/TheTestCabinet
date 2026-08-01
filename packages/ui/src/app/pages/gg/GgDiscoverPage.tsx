@@ -3,9 +3,9 @@
 // One filter row (the time range), the editor, the field sidebar, and either the matching
 // **documents** or the aggregated **buckets**. Which of the two is shown is not a
 // preference: a query either has a `stats` stage or it does not, so the result shape
-// follows from the query rather than from a toggle. The visualization panel — which *is*
-// a choice, since a bucket table and a chart show the same rows — lands beside the bucket
-// table with the chart work; the table is the surface that is always reachable.
+// follows from the query rather than from a toggle. An aggregated result gets its
+// visualization *above* the bucket table rather than instead of it — a chart drops what
+// it cannot honestly draw, so the table underneath is always reachable and is the record.
 //
 // Three pieces of state, and each lives exactly where it does for a reason:
 //
@@ -38,6 +38,7 @@ import { compileQuery, parseQuery } from "./query";
 import { GgBucketTable } from "./discover/GgBucketTable";
 import { GgDocTable } from "./discover/GgDocTable";
 import { GgFieldSidebar } from "./discover/GgFieldSidebar";
+import { GgVizPanel } from "./discover/GgVizPanel";
 import { QueryEditor } from "./discover/QueryEditor";
 import {
   DEFAULT_RANGE,
@@ -230,11 +231,18 @@ export function GgDiscoverPage() {
               themselves. Both are first-class: a great deal of what this surface is for is
               *finding sessions*, not only counting them. */}
           {aggregated ? (
-            <GgBucketTable
-              buckets={result.buckets ?? []}
-              columns={result.columns ?? []}
-              groupBy={compiled.stats?.groupBy}
-            />
+            <>
+              <GgVizPanel
+                buckets={result.buckets ?? []}
+                columns={result.columns ?? []}
+                groupBy={compiled.stats?.groupBy}
+              />
+              <GgBucketTable
+                buckets={result.buckets ?? []}
+                columns={result.columns ?? []}
+                groupBy={compiled.stats?.groupBy}
+              />
+            </>
           ) : (
             <GgDocTable
               documents={result.documents ?? []}

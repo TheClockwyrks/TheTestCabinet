@@ -495,6 +495,27 @@
   font-size: t.$font-sm;
 }
 
+// --- The visualization panel --------------------------------------------------------
+
+// One card per aggregated column, stacked down the panel. Stacked and never
+// side-by-side: two aggregations of different scale share a page, never a frame, and
+// a single column of full-width cards is also what keeps the charts legible on the
+// narrow viewport where a two-up grid would halve them.
+.viz {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+// The single-bucket case: labelled figures rather than a one-bar chart. Sized so a
+// row of two or three fills the width and a row of six wraps instead of shrinking
+// its digits.
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: t.$space-sm;
+}
+
 // A wide result (several group-by columns plus aggregations) scrolls inside its own
 // container so the page body never scrolls horizontally.
 .tableWrap {
