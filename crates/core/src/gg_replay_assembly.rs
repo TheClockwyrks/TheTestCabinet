@@ -63,8 +63,8 @@ use tempfile::TempDir;
 use crate::error::{Error, Result};
 use crate::gg::GgCapabilitySet;
 use crate::gg_replay::{
-    GG_REPLAY_FORMAT_VERSION, GgReplayAgent, GgReplayEntry, GgReplayEntryKind, GgReplayRecorder,
-    GgReplaySeed, GgReplayTruncation, GgReplayTruncationReason,
+    GG_REPLAY_FORMAT_VERSION, GgReplayAgent, GgReplayEntry, GgReplayEntryKind, GgReplayFidelity,
+    GgReplayRecorder, GgReplaySeed, GgReplayTruncation, GgReplayTruncationReason,
 };
 use crate::gg_replay_journal::{GG_REPLAY_JOURNAL_PATH, GgJournalLine};
 use crate::post_run::{PostRunContext, PostRunReport, PostRunStage};
@@ -162,6 +162,7 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
                 session_id,
                 capability_set,
                 recorder,
+                fidelity,
             } => {
                 if format_version != GG_REPLAY_FORMAT_VERSION {
                     return Err(journal_error(
@@ -184,6 +185,7 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
                     session_id,
                     capability_set,
                     recorder,
+                    fidelity,
                 });
             }
             GgJournalLine::Message { index, message } => {
@@ -324,6 +326,9 @@ struct JournalHeader {
     capability_set: Box<GgCapabilitySet>,
     /// Which build captured.
     recorder: GgReplayRecorder,
+    /// How completely it captured — copied through from the journal, never re-derived
+    /// from the capability set.
+    fidelity: GgReplayFidelity,
 }
 
 /// What the terminating line reported, kept apart from the walk's own figures so the two
@@ -596,6 +601,8 @@ fn write_record(
     write_field(&mut out, "formatVersion", &header.format_version)?;
     out.write_all(b",")?;
     write_field(&mut out, "recorder", &header.recorder)?;
+    out.write_all(b",")?;
+    write_field(&mut out, "fidelity", &header.fidelity)?;
     out.write_all(b",")?;
     write_field(&mut out, "sessionId", &header.session_id)?;
     out.write_all(b",")?;

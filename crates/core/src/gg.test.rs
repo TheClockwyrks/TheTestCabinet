@@ -97,6 +97,33 @@ fn the_legacy_filesystem_capability_stands_in_for_the_per_tool_ones() {
     assert!(!GgCapabilitySet::default().is_enabled(CAPABILITY_FILESYSTEM));
 }
 
+/// [`any_agent_enabled`](GgCapabilitySet::any_agent_enabled) answers about the whole set,
+/// where [`is_enabled`](GgCapabilitySet::is_enabled) answers only about the root. The two are
+/// not interchangeable, and reaching for the root-only one to decide a **run-wide** fact is
+/// exactly the defect the replay gate shipped with.
+#[test]
+fn a_run_wide_read_asks_every_agent_where_the_root_read_asks_one() {
+    let mut set = root_set(vec![]);
+    set.agents.push(GgAgentConfig {
+        name: "Reviewer".to_string(),
+        capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_REPLAY)],
+        ..GgAgentConfig::root()
+    });
+
+    assert!(
+        !set.is_enabled(CAPABILITY_REPLAY),
+        "the root itself does not declare it"
+    );
+    assert!(
+        set.any_agent_enabled(CAPABILITY_REPLAY),
+        "but an agent in the set does, and that is what a run-wide read must see"
+    );
+
+    // Present-but-disabled is not enabled, here as everywhere else.
+    set.agents[1].capabilities = vec![GgCapabilityConfig::disabled(CAPABILITY_REPLAY)];
+    assert!(!set.any_agent_enabled(CAPABILITY_REPLAY));
+}
+
 /// A capability set stored in the legacy **flat** shape (top-level `capabilities`/`slots`) still
 /// deserializes: the migration folds it into a single [Root](ROOT_AGENT) agent.
 #[test]

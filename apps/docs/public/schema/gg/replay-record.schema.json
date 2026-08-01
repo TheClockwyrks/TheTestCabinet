@@ -431,6 +431,21 @@
       "required": ["agentId", "seq"],
       "type": "object"
     },
+    "GgReplayFidelity": {
+      "description": "How completely a capture pinned the session it observed.\n\nCapture is **always on**: pooling collapsed a projected 200-turn record from ~187 MB to\nwell under a megabyte gzipped, and at that price gating it buys nothing while costing\nthe one thing that matters — an opt-in capture is, by construction, never armed for the\nsurprising run it exists to explain. So the\n[`replay`](crate::gg::CAPABILITY_REPLAY) capability stopped being the switch that\ndecides *whether* a run is recorded and became the one that decides *how much*.\n\nIt is recorded on the record rather than re-derived from the\n[capability set](GgReplayRecord::capability_set) because a reader that cannot tell the\ntwo fidelities apart reads an absent full-only input as evidence the session never had\none — which is exactly the inference a record exists to make safe.",
+      "oneOf": [
+        {
+          "const": "standard",
+          "description": "Every input that **changes control flow**: model I/O and model errors, tool\noutcomes, the orchestrator's own `git`, the cancel probe, the deadline clock, the\nprompt frame. This is what a reconstruction needs, and it is what every run gets\nfor free.",
+          "type": "string"
+        },
+        {
+          "const": "full",
+          "description": "Standard, plus what is only worth its bytes when someone is going to reconstruct\nor audit the run in detail: every latency clock read, the startup filesystem loads\n(skills, memories, autoloaded files, templates) verbatim rather than digested, and\nno payload truncation.\n\nSelected by enabling [`replay`](crate::gg::CAPABILITY_REPLAY) on **any** agent —\nsee [`resolve`](Self::resolve) for why the root alone is not enough.\n\nThe seams that produce the full-only categories are being built out; one that does\nnot exist yet contributes nothing at *either* fidelity, so a `full` record from\nsuch a build carries the standard set. That is a statement about the build, not\nabout the session — which is the other reason\n[`recorder`](GgReplayRecord::recorder) is on the record beside this.",
+          "type": "string"
+        }
+      ]
+    },
     "GgReplayFileRegion": {
       "description": "The `offset`/`limit` window a paged file view covers.",
       "properties": {
@@ -992,6 +1007,11 @@
         "$ref": "#/$defs/GgReplayEntry"
       },
       "type": "array"
+    },
+    "fidelity": {
+      "$ref": "#/$defs/GgReplayFidelity",
+      "default": "standard",
+      "description": "How completely the session was captured. Absent ⇒\n[`Standard`](GgReplayFidelity::Standard), which is the honest floor for a\n[v1 record](self#reading-a-v1-record): v1 capture was opt-in, so every one of them\n*was* opted into, but none of them carries a full-only input — v1 recorded none of\nthose categories at all — and reporting it as `full` would invite a reader to\nconclude the session had no clock reads rather than that the build had no clock\ncapture."
     },
     "formatVersion": {
       "default": 1,

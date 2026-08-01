@@ -41,8 +41,8 @@ use serde_json::Value;
 
 use crate::gg::GgCapabilitySet;
 use crate::gg_replay::{
-    GgReplayBlob, GgReplayEntry, GgReplayInterner, GgReplayMessage, GgReplayRecorder,
-    GgReplayToolset, GgReplayTruncation, fingerprint_exact, fingerprint_json,
+    GgReplayBlob, GgReplayEntry, GgReplayFidelity, GgReplayInterner, GgReplayMessage,
+    GgReplayRecorder, GgReplayToolset, GgReplayTruncation, fingerprint_exact, fingerprint_json,
 };
 
 /// Where a recording gg session writes its [journal](self), relative to the run workspace.
@@ -80,6 +80,13 @@ pub enum GgJournalLine {
         capability_set: Box<GgCapabilitySet>,
         /// Which build is capturing.
         recorder: GgReplayRecorder,
+        /// How completely this session is being captured. Carried on the header rather
+        /// than left for assembly to re-derive from the capability set: what the record
+        /// must report is what the recorder *did*, and a host that re-resolved would
+        /// paper over exactly the disagreement worth seeing — a build whose capture seams
+        /// do not yet cover everything the set asked for.
+        #[serde(default)]
+        fidelity: GgReplayFidelity,
     },
     /// One newly interned message body, at the message pool index it occupies.
     Message {

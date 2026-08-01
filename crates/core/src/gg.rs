@@ -1088,27 +1088,30 @@ pub const CAPABILITY_SPECULATIVE: &str = "speculative-execution";
 /// [responses-as-code]: https://docs.testcabinet.ai/gg/responses-as-code/
 pub const CAPABILITY_RESPONSES_AS_CODE: &str = "responses-as-code";
 
-/// The stable id of the Phase 7 [replay] capability: recording a **deterministic replay
-/// record** — enough of a run to reconstruct it step for step afterward.
+/// The stable id of the [replay] capability: escalating a run's capture to
+/// [full fidelity](crate::gg_replay::GgReplayFidelity::Full).
 ///
-/// gg's [telemetry stream](GgTelemetryEvent) is already most of the capture, but it carries
-/// *summaries* (a tool's short summary line, an assistant message, per-turn usage), not the
-/// exact non-deterministic **inputs** a faithful re-run needs. When this capability is on, gg
-/// additionally records, per agent and in a globally monotonic order, the two things that make a
-/// run non-deterministic: each agent's **model I/O** — the request sent to the model (the messages
-/// and the offered tool definitions) and the [`ModelResponse`](../../gg/model/struct.ModelResponse.html)
-/// it returned — and each **tool result** — the tool call the agent made and the exact outcome the
-/// dispatch returned (including the tool calls a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
-/// program composes). The accumulated [`GgReplayRecordV1`] is written to a `.gg/replay.json` sidecar in
-/// the run workspace (kept out of the produced game artifact) that `core` collects and the backend
-/// serves per run (`GET /runs/{id}/replay`), so a **replay driver** can re-run the session offline,
-/// feeding each agent the recorded response and each tool call the recorded result, and step through
-/// exactly what every agent saw and did — the same record-then-replay instinct as The Test Cabinet's
-/// [Foray](https://docs.testcabinet.ai/testing/adversarial/foray/architecture/) replays.
+/// **This is no longer the switch that decides whether a run is recorded.** gg captures a
+/// [replay record](crate::gg_replay) on *every* run — enough of the session to reconstruct it step
+/// for step — because [format v2](crate::gg_replay)'s content-addressed pools collapsed a projected
+/// 200-turn record from ~187 MB to well under a megabyte gzipped. Below that price the old gate
+/// bought nothing and cost the thing that mattered: an opt-in capture is never armed for the
+/// surprising run it exists to explain, and the record is now the only artifact from which gg's own
+/// window model — an item's retention, slot, turn and paged region — is recoverable at all.
 ///
-/// This is a **debugging tool only** — not part of a normal run's result surface and not for
-/// everyday use — so it is opt-in and, when off, nothing extra is captured (zero overhead). The
-/// record is *additive* to the telemetry schema: the stream is unchanged whether replay is on or off.
+/// What the capability now buys is the
+/// [full-fidelity](crate::gg_replay::GgReplayFidelity::Full) escalation: every latency clock read,
+/// the startup filesystem loads verbatim rather than digested, and no payload truncation. It is read
+/// across [every agent](GgCapabilitySet::any_agent_enabled), not just the root — the gate it
+/// replaced read the root alone, so enabling it on the one subagent under suspicion silently did
+/// nothing.
+///
+/// A capturing run streams a [journal](crate::gg_replay_journal) into the workspace, which the host
+/// folds into the run tree's [`replay.json.gz`](crate::gg_replay_assembly::GG_REPLAY_TREE_ARTIFACT)
+/// once the container is gone; the backend serves it per run (`GET /runs/{id}/replay`). The record
+/// is *additive* to the telemetry schema — the stream is identical whichever fidelity a run captured
+/// at — and capture **degrades, it never fails the run it observes**: a journal that cannot be
+/// opened is a warning and the run proceeds without one.
 ///
 /// [replay]: https://docs.testcabinet.ai/gg/replay/
 pub const CAPABILITY_REPLAY: &str = "replay";
@@ -1281,6 +1284,21 @@ impl GgCapabilitySet {
     /// The agent profile with the given `name`, or `None` when this set declares none.
     pub fn agent(&self, name: &str) -> Option<&GgAgentConfig> {
         self.agents.iter().find(|a| a.name == name)
+    }
+
+    /// Whether **any** agent in this set has the capability with `id` enabled.
+    ///
+    /// Deliberately not one of the [root conveniences](Self::is_enabled) below, and not a
+    /// substitute for them: a capability that grants a *tool* is scoped to the agent that
+    /// declares it, and reading it run-wide would hand the tool to profiles that were
+    /// configured without it. This is for the handful of capabilities that are
+    /// **run-wide facts** rather than per-agent powers — where enabling it anywhere
+    /// changes the run, so asking only the root silently ignores the configuration. The
+    /// [replay fidelity](crate::gg_replay::GgReplayFidelity::resolve) escalation is the
+    /// first, and it is here because the root-only read it replaced was a real defect:
+    /// enabling `replay` on the one subagent under suspicion did nothing at all.
+    pub fn any_agent_enabled(&self, id: &str) -> bool {
+        self.agents.iter().any(|agent| agent.is_enabled(id))
     }
 
     // --- Root-agent conveniences ------------------------------------------------

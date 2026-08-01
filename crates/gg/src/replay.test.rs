@@ -70,11 +70,18 @@ fn capability_set() -> GgCapabilitySet {
 /// A recorder writing into a fresh temporary workspace, returning both so the journal can be read
 /// back after [`finish`](GgRecorder::finish).
 fn recorder_in(max_bytes: Option<u64>) -> (TempDir, GgRecorder) {
+    recorder_at(GgReplayFidelity::Standard, max_bytes)
+}
+
+/// The same, at an explicit [fidelity](GgReplayFidelity) — the axis the `replay` capability now
+/// selects, in place of the gate that used to decide whether any of this happened at all.
+fn recorder_at(fidelity: GgReplayFidelity, max_bytes: Option<u64>) -> (TempDir, GgRecorder) {
     let dir = TempDir::new().expect("a temporary workspace");
     let recorder = GgRecorder::start(
         &dir.path().join(GG_REPLAY_JOURNAL_PATH),
         "run_1",
         &capability_set(),
+        fidelity,
         max_bytes,
     )
     .expect("the journal opens");
@@ -156,6 +163,31 @@ fn the_journal_opens_with_a_header_naming_the_session_and_the_build() {
         Some(env!("CARGO_PKG_VERSION")),
         "the record says which build wrote it — explanatory, never the compatibility gate"
     );
+}
+
+/// The header states the [fidelity](GgReplayFidelity) the run is being captured at, and the
+/// recorder answers with the same one for the life of the run.
+///
+/// Both halves matter. The header is what tells a reader whether an absent full-only input means
+/// "the session had none" or "this run was not recorded that closely"; the accessor is what the
+/// full-only seams ask before spending bytes, and it is deliberately not a second read of the
+/// capability set, which could disagree with what the journal already published.
+#[test]
+fn the_header_states_the_fidelity_the_run_is_captured_at() {
+    for fidelity in [GgReplayFidelity::Standard, GgReplayFidelity::Full] {
+        let (dir, recorder) = recorder_at(fidelity, None);
+        assert_eq!(recorder.fidelity(), fidelity);
+        recorder.finish();
+
+        let lines = journal(&dir);
+        let GgJournalLine::Header {
+            fidelity: written, ..
+        } = &lines[0]
+        else {
+            panic!("the first line is the header, got {:?}", lines[0]);
+        };
+        assert_eq!(*written, fidelity);
+    }
 }
 
 /// The property assembly rests on: a complete capture terminates with an `End` line, so its

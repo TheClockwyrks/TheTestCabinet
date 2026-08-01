@@ -93,14 +93,15 @@ use serde_json::{Value, json};
 use test_cabinet_core::gg::{
     AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AUTOLOAD_SPECS,
     CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, GgAgentConfig,
-    GgAgentStatus, GgAgentTransitionKind, GgCandidateShape, GgCapabilitySet, GgContextAction,
-    GgContextSource, GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach, GgLimitKind,
-    GgNotAProgram, GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding, GgSpeculationPhase,
-    GgSubagentScope, GgTelemetryKind, GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
-    SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
+    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
+    CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, GgAgentConfig, GgAgentStatus,
+    GgAgentTransitionKind, GgCandidateShape, GgCapabilitySet, GgContextAction, GgContextSource,
+    GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgNotAProgram,
+    GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgSubagentScope,
+    GgTelemetryKind, GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE,
+    SHELL_OUTPUT_MODES,
 };
+use test_cabinet_core::gg_replay::GgReplayFidelity;
 use test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH;
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -901,6 +902,20 @@ pub(crate) async fn run_with_factory(
     // did not end the run, and reporting its breach as the run's outcome would misattribute the one
     // field a study reads to find out why runs stop.
     root_emitter.record_limit_hit(end.limit.clone());
+    // Close the replay capture journal: write its mandatory terminating line and join the writer
+    // thread, so the journal `core` collects and folds into the served record is complete. Reported
+    // on the stream (never fatal) — a capture that degraded is a fact about the recording, not a
+    // run result.
+    //
+    // Ahead of the summary rather than after it, now that every run captures: the summary must stay
+    // the *last* event before `SessionEnded` — that adjacency is what lets `core` lift it without
+    // re-parsing the stream — and a line emitted between the two would break it on every run rather
+    // than on the rare configured one. Nothing here feeds the summary: the tracker folds typed
+    // events, and this emits a `Log`.
+    if let Some(recorder) = &orch.replay {
+        report_replay_capture(recorder, &root_emitter);
+    }
+
     // Compute and emit the run's aggregatable session summary from the telemetry the run emitted
     // (the per-slot rollups above are now folded in), right before the terminal `SessionEnded`, so
     // `core` can lift it onto the run record and result aggregation need not re-parse the stream.
@@ -908,14 +923,6 @@ pub(crate) async fn run_with_factory(
     root_emitter.emit(GgTelemetryKind::SessionSummary {
         summary: Box::new(summary),
     });
-
-    // Close the replay capture journal: write its mandatory terminating line and join the writer
-    // thread, so the journal `core` collects and folds into the served record is complete. Reported
-    // on the stream (never fatal) — a capture that degraded is a fact about the recording, not a
-    // run result.
-    if let Some(recorder) = &orch.replay {
-        report_replay_capture(recorder, &root_emitter);
-    }
 
     root_emitter.emit(session_ended(end.status));
     // A session whose credential was refused reached no model, so it is not a run
@@ -928,9 +935,14 @@ pub(crate) async fn run_with_factory(
     SessionOutcome::Ran
 }
 
-/// Start [replay capture](crate::replay) for this run, when the
-/// [capability](CAPABILITY_REPLAY) asks for it, opening the
+/// Start [replay capture](crate::replay) for this run, opening the
 /// [journal](test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH) under the run workspace.
+///
+/// Called for **every** run: capture is no longer gated on a capability, because
+/// [format v2](test_cabinet_core::gg_replay)'s pooling made it cost well under a megabyte and an
+/// opt-in capture is never armed for the run that surprises you. The
+/// [`replay`](test_cabinet_core::gg::CAPABILITY_REPLAY) capability instead escalates the
+/// [fidelity](GgReplayFidelity), and is read across every agent rather than off the root alone.
 ///
 /// A journal that cannot be opened is a launch **warning**, not a failure: the run proceeds without
 /// capture, because a debugging artifact must never be the reason a paid run does not happen.
@@ -944,6 +956,7 @@ fn start_replay_capture(
         &path,
         &invocation.session_id,
         &invocation.capability_set,
+        GgReplayFidelity::resolve(&invocation.capability_set),
         limits.replay_max_bytes,
     ) {
         Ok(recorder) => Some(Arc::new(recorder)),
@@ -963,23 +976,29 @@ fn start_replay_capture(
 ///
 /// The `info` line is emitted even for a complete capture, for the same reason the armed-ceiling
 /// line is: "how much of this run was recorded?" should be answerable from the operator log rather
-/// than by opening the artifact. A capture that stopped early says why, at `warn`, because the
-/// record it produced is not the whole session.
+/// than by opening the artifact. Now that capture is always on, the line also names the
+/// [fidelity](GgReplayFidelity) — which is the only place an operator finds out that a `replay`
+/// capability set on some agent did in fact escalate the run. A capture that stopped early says why,
+/// at `warn`, because the record it produced is not the whole session.
 fn report_replay_capture(recorder: &GgRecorder, emitter: &Emitter) {
+    let fidelity = match recorder.fidelity() {
+        GgReplayFidelity::Standard => "standard",
+        GgReplayFidelity::Full => "full",
+    };
     let report = recorder.finish();
     match (&report.truncation, &report.write_error) {
         (None, None) => emitter.emit(log(
             "info",
             format!(
-                "replay capture: journaled {} input(s) in {} byte(s).",
+                "replay capture ({fidelity} fidelity): journaled {} input(s) in {} byte(s).",
                 report.entries, report.bytes
             ),
         )),
         _ => emitter.emit(log(
             "warn",
             format!(
-                "replay capture: stopped after {} input(s) ({} byte(s)){}{}. The record is marked \
-                 truncated.",
+                "replay capture ({fidelity} fidelity): stopped after {} input(s) ({} \
+                 byte(s)){}{}. The record is marked truncated.",
                 report.entries,
                 report.bytes,
                 report
@@ -1211,11 +1230,15 @@ struct Orchestrator {
     /// A monotonic counter minting unique [workflow](run_workflow) ids, so each `run_workflow`
     /// invocation's stages group under one id in the telemetry.
     next_workflow_seq: AtomicU64,
-    /// The shared [replay recorder](GgRecorder) every agent's model I/O and tool results are pinned
-    /// into, `Some` only when the [replay](CAPABILITY_REPLAY) capability is on. `None` (the default)
-    /// means nothing extra is captured — zero overhead. Shared (`Arc`) so the root and every subagent
-    /// record into one globally-ordered log; the assembled [`GgReplayRecordV1`](test_cabinet_core::gg::GgReplayRecordV1)
-    /// is written to a sidecar at session end.
+    /// The shared [replay recorder](GgRecorder) every agent's model I/O, tool results and prompt
+    /// frames are pinned into. Present on **every** run — capture is not a capability any more, only
+    /// its [fidelity](GgReplayFidelity) is — so `None` means the journal could not be opened, which
+    /// the launch warnings say out loud.
+    ///
+    /// Shared (`Arc`) so the root and every subagent stream into one globally-ordered
+    /// [journal](test_cabinet_core::gg_replay_journal), which the host folds into the run tree's
+    /// [`replay.json.gz`](test_cabinet_core::gg_replay_assembly::GG_REPLAY_TREE_ARTIFACT) after the
+    /// container is gone.
     replay: Option<Arc<GgRecorder>>,
 }
 
@@ -1387,12 +1410,9 @@ impl Orchestrator {
             tasks: Mutex::new(Vec::new()),
             next_seq: AtomicU64::new(0),
             next_workflow_seq: AtomicU64::new(0),
-            // Replay capture is opt-in and debug-only: open the journal only when the capability is
-            // on, so an ordinary run captures nothing extra.
-            replay: set
-                .is_enabled(CAPABILITY_REPLAY)
-                .then(|| start_replay_capture(invocation, &limits, warnings))
-                .flatten(),
+            // Capture is always on. `None` here means the journal could not be opened, never that
+            // the run declined to be recorded.
+            replay: start_replay_capture(invocation, &limits, warnings),
         }
     }
 

@@ -78,8 +78,8 @@ use std::thread::JoinHandle;
 use serde_json::Value;
 use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::gg_replay::{
-    GG_REPLAY_FORMAT_VERSION, GgClientRole, GgReplayEntry, GgReplayEntryKind, GgReplayFileRegion,
-    GgReplayInterner, GgReplayPromptItem, GgReplayPromptSlot, GgReplayRecorder,
+    GG_REPLAY_FORMAT_VERSION, GgClientRole, GgReplayEntry, GgReplayEntryKind, GgReplayFidelity,
+    GgReplayFileRegion, GgReplayInterner, GgReplayPromptItem, GgReplayPromptSlot, GgReplayRecorder,
     GgReplayRequestShape, GgReplayRetention, GgReplayToolCall, GgReplayToolOutcome,
     GgReplayTruncation, GgReplayTruncationReason,
 };
@@ -263,6 +263,10 @@ impl Capture {
 /// journal. The [`seq`](GgReplayEntry::seq) counter is global — minted here across all agents — so
 /// the interleaving of concurrent agents is reconstructable by sorting on it.
 pub struct GgRecorder {
+    /// How completely this run is being captured. Immutable for the life of the run: the
+    /// escalation is resolved once at launch, so a seam consulting it mid-run cannot get a
+    /// different answer from the one the journal header published.
+    fidelity: GgReplayFidelity,
     /// Everything the capture mutates, behind the one lock described on [`Capture`].
     capture: Mutex<Capture>,
     /// The writer thread, joined by [`finish`](Self::finish). Behind its own lock because the
@@ -271,12 +275,12 @@ pub struct GgRecorder {
 }
 
 impl GgRecorder {
-    /// Open `journal_path` and start capturing `session_id`'s inputs into it, bounded by
-    /// `max_bytes`.
+    /// Open `journal_path` and start capturing `session_id`'s inputs into it at `fidelity`,
+    /// bounded by `max_bytes`.
     ///
     /// Writes the [header](GgJournalLine::Header) line before returning, so that even a journal
-    /// with no entries at all identifies the session it belongs to and the build that wrote it.
-    /// The parent directory is created if it does not exist.
+    /// with no entries at all identifies the session it belongs to, the build that wrote it, and
+    /// how much of it was being captured. The parent directory is created if it does not exist.
     ///
     /// Fails only when the journal cannot be opened — the one condition under which there is
     /// nothing to capture *into*. The caller reports that as a launch warning and runs without
@@ -285,6 +289,7 @@ impl GgRecorder {
         journal_path: &Path,
         session_id: &str,
         capability_set: &GgCapabilitySet,
+        fidelity: GgReplayFidelity,
         max_bytes: Option<u64>,
     ) -> std::io::Result<Self> {
         if let Some(parent) = journal_path.parent() {
@@ -297,6 +302,7 @@ impl GgRecorder {
             .spawn(move || write_journal(file, &lines))?;
 
         let recorder = Self {
+            fidelity,
             capture: Mutex::new(Capture {
                 interner: GgJournalInterner::new(),
                 queue: Some(queue),
@@ -324,8 +330,20 @@ impl GgRecorder {
                     gg_version: Some(env!("CARGO_PKG_VERSION").to_string()),
                     commit: None,
                 },
+                fidelity,
             }]);
         Ok(recorder)
+    }
+
+    /// How completely this capture is pinning the session — what the
+    /// [full-only](GgReplayFidelity::Full) seams consult before spending bytes on an input
+    /// nobody asked for.
+    ///
+    /// Read off the recorder rather than off the capability set at each seam so there is exactly
+    /// one resolution of the escalation per run, and so the answer a seam acts on is the same one
+    /// the journal header already told the reader to expect.
+    pub fn fidelity(&self) -> GgReplayFidelity {
+        self.fidelity
     }
 
     /// Record one agent turn's **model I/O**: the `messages`/`tools` request sent to the model and

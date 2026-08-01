@@ -105,6 +105,95 @@ fn the_recorder_carries_the_other_two_identities() {
     assert_eq!(round_tripped.recorder.commit.as_deref(), Some("4af242d9"));
 }
 
+// --- fidelity ---------------------------------------------------------------
+
+/// A capability set whose agents are named by `agents`, with `replay` enabled on exactly
+/// the ones in `escalating`. The first agent is the root, by position.
+fn set_with_replay_on(agents: &[&str], escalating: &[&str]) -> GgCapabilitySet {
+    let agents: Vec<Value> = agents
+        .iter()
+        .map(|name| {
+            json!({
+                "name": name,
+                "modelId": "some/model",
+                "capabilities": if escalating.contains(name) {
+                    json!([{ "id": crate::gg::CAPABILITY_REPLAY, "enabled": true }])
+                } else {
+                    json!([])
+                },
+            })
+        })
+        .collect();
+    serde_json::from_value(json!({ "agents": agents })).expect("the capability set deserializes")
+}
+
+#[test]
+fn a_run_that_asked_for_nothing_is_still_captured_at_standard_fidelity() {
+    // The whole point of removing the gate: the default configuration records.
+    assert_eq!(
+        GgReplayFidelity::resolve(&capability_set()),
+        GgReplayFidelity::Standard
+    );
+    assert_eq!(
+        GgReplayFidelity::resolve(&set_with_replay_on(&["Root", "Reviewer"], &[])),
+        GgReplayFidelity::Standard
+    );
+}
+
+#[test]
+fn the_replay_capability_escalates_from_any_agent_not_just_the_root() {
+    // The defect this replaced: the old gate read `agents[0]` alone, so enabling `replay`
+    // on the one subagent whose turns were under suspicion did nothing whatsoever.
+    assert_eq!(
+        GgReplayFidelity::resolve(&set_with_replay_on(&["Root", "Reviewer"], &["Reviewer"])),
+        GgReplayFidelity::Full,
+        "a non-root agent asking for full fidelity escalates the run"
+    );
+    assert_eq!(
+        GgReplayFidelity::resolve(&set_with_replay_on(&["Root", "Reviewer"], &["Root"])),
+        GgReplayFidelity::Full
+    );
+}
+
+#[test]
+fn a_record_without_a_fidelity_reads_as_standard_not_as_the_set_implies() {
+    // Absent means standard even when the set says `replay`, because what the field
+    // reports is what the *recorder* did — and a build with no full-only seams captured
+    // the standard set however the run was configured.
+    let mut value = serde_json::to_value(GgReplayRecord::new(
+        "run_1",
+        set_with_replay_on(&["Root"], &["Root"]),
+    ))
+    .expect("serializes");
+    assert_eq!(value["fidelity"], json!("full"), "a v2 record states it");
+    value.as_object_mut().expect("an object").remove("fidelity");
+    assert_eq!(read(value).fidelity, GgReplayFidelity::Standard);
+}
+
+#[test]
+fn an_upgraded_v1_record_is_standard_however_it_was_configured() {
+    // Every v1 record was opted into — capture was the capability — but not one of them
+    // carries a full-only input, because v1 recorded none of those categories at all.
+    // Reporting them as `full` would invite a reader to conclude the session had no clock
+    // reads rather than that the build had no clock capture.
+    let mut value = v1_record(vec![]);
+    value["capabilitySet"] =
+        serde_json::to_value(set_with_replay_on(&["Root"], &["Root"])).expect("the set serializes");
+    let record = read(value);
+    assert!(record.captured_before_v2());
+    assert_eq!(record.fidelity, GgReplayFidelity::Standard);
+}
+
+#[test]
+fn the_fidelity_survives_a_round_trip() {
+    let record = GgReplayRecord::new("run_1", set_with_replay_on(&["Root"], &["Root"]));
+    assert_eq!(record.fidelity, GgReplayFidelity::Full);
+    assert_eq!(
+        read(serde_json::to_value(&record).expect("serializes")).fidelity,
+        GgReplayFidelity::Full
+    );
+}
+
 // --- pooling ----------------------------------------------------------------
 
 #[test]

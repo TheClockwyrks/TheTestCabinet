@@ -252,6 +252,7 @@ fn killed_session_journal() -> Vec<u8> {
             gg_version: Some("0.7.0".to_string()),
             commit: None,
         },
+        fidelity: test_cabinet_core::gg_replay::GgReplayFidelity::Standard,
     };
     let mut journal = serde_json::to_vec(&header).expect("serialize the header line");
     journal.push(b'\n');

@@ -14,8 +14,8 @@ use serde_json::{Value, json};
 use super::*;
 use crate::gg::GgCapabilitySet;
 use crate::gg_replay::{
-    GgClientRole, GgReplayCommand, GgReplayInterner, GgReplayRecord, GgReplayRequestShape,
-    GgReplayToolCall, GgReplayToolOutcome, GgShellCwd, GgShellOrigin,
+    GgClientRole, GgReplayCommand, GgReplayFidelity, GgReplayInterner, GgReplayRecord,
+    GgReplayRequestShape, GgReplayToolCall, GgReplayToolOutcome, GgShellCwd, GgShellOrigin,
 };
 use crate::gg_replay_journal::GgJournalInterner;
 
@@ -25,8 +25,13 @@ fn message(role: &str, content: &str) -> Value {
     json!({ "role": role, "content": content })
 }
 
-/// The header a recording session writes first.
+/// The header a recording session writes first, for an ordinary always-on capture.
 fn header() -> GgJournalLine {
+    header_at(GgReplayFidelity::Standard)
+}
+
+/// The same, for a run the `replay` capability escalated.
+fn header_at(fidelity: GgReplayFidelity) -> GgJournalLine {
     GgJournalLine::Header {
         format_version: GG_REPLAY_FORMAT_VERSION,
         session_id: "run-1".to_string(),
@@ -35,6 +40,7 @@ fn header() -> GgJournalLine {
             gg_version: Some("0.7.0".to_string()),
             commit: None,
         },
+        fidelity,
     }
 }
 
@@ -234,6 +240,122 @@ fn the_document_carries_every_field_the_record_serializes() {
 }
 
 #[test]
+fn the_fidelity_the_recorder_captured_at_is_what_the_record_reports() {
+    // Copied through from the journal, never re-derived from the capability set the record
+    // also carries: what a reader needs is what the *recorder* did, and the interesting
+    // case — a build whose full-only seams do not yet cover what the set asked for — is
+    // precisely the one a re-derivation would paper over.
+    let dir = tempfile::tempdir().expect("scratch");
+    let mut lines = vec![header_at(GgReplayFidelity::Full)];
+    lines.extend(session().into_iter().skip(1));
+    lines.push(end(2));
+    let journal = write_journal(dir.path(), &lines);
+    let output = output_in(dir.path());
+
+    assemble_journal_to_gz(&journal, &output).expect("assemble");
+
+    let record = read_record(&output);
+    assert_eq!(record.fidelity, GgReplayFidelity::Full);
+    assert_eq!(
+        record.capability_set,
+        GgCapabilitySet::minimal("some/model"),
+        "and it did not come from the set, which declares no `replay` at all",
+    );
+}
+
+/// Deterministic filler of `bytes` characters, seeded on `seed`.
+///
+/// Not `"x".repeat(n)`: a run's real payloads are prose and source, and a body that gzip
+/// erases to nothing would make the measurement below flattering rather than informative.
+/// This compresses roughly as poorly as anything realistic can, so the figure it produces is
+/// a **ceiling** on what a real session of the same shape costs.
+fn filler(seed: u64, bytes: usize) -> String {
+    let mut state = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) | 1;
+    (0..bytes)
+        .map(|_| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            char::from(b'a' + (state % 26) as u8)
+        })
+        .collect()
+}
+
+/// Always-on capture rests on one measured claim: with the conversation, the toolset and the
+/// payloads content-addressed, a session costs so little to record that gating it buys
+/// nothing. This is that measurement, end to end through the real interner, the real
+/// assembly and the real gzip.
+///
+/// The shape under test is the one that made v1 unaffordable — a **growing** conversation
+/// re-sent in full on every turn, with a large tool array offered alongside it — so the
+/// quadratic term is present and is exactly what pooling has to remove. The v1 figure is
+/// computed the way v1 actually wrote it (whole conversation plus whole toolset, per turn)
+/// rather than taken from the design note, so the collapse is measured here rather than
+/// asserted from memory.
+#[test]
+fn an_always_on_capture_of_a_realistic_session_costs_a_fraction_of_a_megabyte() {
+    const TURNS: u64 = 30;
+    const MEGABYTE: u64 = 1024 * 1024;
+
+    let dir = tempfile::tempdir().expect("scratch");
+    let mut interner = GgJournalInterner::new();
+    let mut lines = vec![header()];
+    // gg's system prompt and its offered tool array: large, identical on every turn, and
+    // together the single biggest thing v1 re-serialized 30 times over.
+    let tools = json!([{ "name": "shell", "schema": filler(1, 20_000) }]);
+    let mut conversation = vec![message("system", &filler(2, 12_000))];
+    let mut v1_bytes: u64 = 0;
+
+    for turn in 0..TURNS {
+        conversation.push(message("user", &filler(100 + turn, 3_000)));
+        // What v1 wrote for this turn: the whole conversation and the whole tool array.
+        v1_bytes += serde_json::to_vec(&conversation).expect("serialize").len() as u64
+            + serde_json::to_vec(&tools).expect("serialize").len() as u64;
+
+        let request = interner.intern_request(
+            GgClientRole::Agent,
+            GgReplayRequestShape::Complete,
+            &conversation,
+            Some(&tools),
+        );
+        lines.extend(interner.take_pending());
+        let reply = filler(200 + turn, 1_500);
+        lines.push(entry(
+            turn,
+            GgReplayEntryKind::ModelIo {
+                request,
+                response: json!({ "text": reply, "toolCalls": [] }),
+            },
+        ));
+        conversation.push(message("assistant", &reply));
+    }
+    lines.push(end(TURNS));
+
+    let journal = write_journal(dir.path(), &lines);
+    let output = output_in(dir.path());
+    let assembly = assemble_journal_to_gz(&journal, &output).expect("assemble");
+
+    assert_eq!(assembly.entries, TURNS);
+    assert!(
+        assembly.compressed_bytes < MEGABYTE,
+        "a {TURNS}-turn session assembles to {} bytes, which is not well under a megabyte",
+        assembly.compressed_bytes,
+    );
+    assert!(
+        v1_bytes / assembly.compressed_bytes >= 10,
+        "pooling should collapse the transcript by an order of magnitude or better; v1 would \
+         have written {v1_bytes} bytes and this record is {} bytes",
+        assembly.compressed_bytes,
+    );
+    // Each distinct body once, not once per turn it survived: the system prompt, one user
+    // message per turn, and each turn's reply except the last — which was appended after
+    // the final request and so was never sent to anything.
+    let record = read_record(&output);
+    assert_eq!(record.messages.len() as u64, TURNS * 2);
+    assert_eq!(record.toolsets.len(), 1, "the tool array is pooled once");
+}
+
+#[test]
 fn a_reported_ceiling_truncation_survives_assembly() {
     // Capture that stopped deliberately is not damage: the journal is well-formed, and
     // the reason the recorder gave is the record's own explanation of why it is short.
@@ -412,6 +534,7 @@ fn a_journal_from_a_newer_gg_is_refused() {
         session_id: "run-1".to_string(),
         capability_set: Box::new(GgCapabilitySet::default()),
         recorder: GgReplayRecorder::default(),
+        fidelity: GgReplayFidelity::Standard,
     }];
     let journal = write_journal(dir.path(), &lines);
     let output = output_in(dir.path());

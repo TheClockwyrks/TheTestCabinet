@@ -193,6 +193,7 @@ fn every_line_round_trips_through_ndjson() {
                 gg_version: Some("0.7.0".to_string()),
                 commit: None,
             },
+            fidelity: GgReplayFidelity::Full,
         },
         GgJournalLine::Text {
             index: 0,

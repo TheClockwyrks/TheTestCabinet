@@ -39,6 +39,23 @@ export type GgReplayRecorder = {
 };
 
 /**
+ * How completely a capture pinned the session it observed.
+ *
+ * Capture is **always on**: pooling collapsed a projected 200-turn record from ~187 MB to
+ * well under a megabyte gzipped, and at that price gating it buys nothing while costing
+ * the one thing that matters — an opt-in capture is, by construction, never armed for the
+ * surprising run it exists to explain. So the
+ * [`replay`](crate::gg::CAPABILITY_REPLAY) capability stopped being the switch that
+ * decides *whether* a run is recorded and became the one that decides *how much*.
+ *
+ * It is recorded on the record rather than re-derived from the
+ * [capability set](GgReplayRecord::capability_set) because a reader that cannot tell the
+ * two fidelities apart reads an absent full-only input as evidence the session never had
+ * one — which is exactly the inference a record exists to make safe.
+ */
+export type GgReplayFidelity = "standard" | "full";
+
+/**
  * Which input modalities a bound model slot was resolved to accept.
  */
 export type GgReplayModalities = {
@@ -929,6 +946,16 @@ export type GgReplayRecord = {
    * Which build captured it. Explanatory; never a gate.
    */
   recorder: GgReplayRecorder;
+  /**
+   * How completely the session was captured. Absent ⇒
+   * [`Standard`](GgReplayFidelity::Standard), which is the honest floor for a
+   * [v1 record](self#reading-a-v1-record): v1 capture was opt-in, so every one of them
+   * *was* opted into, but none of them carries a full-only input — v1 recorded none of
+   * those categories at all — and reporting it as `full` would invite a reader to
+   * conclude the session had no clock reads rather than that the build had no clock
+   * capture.
+   */
+  fidelity: GgReplayFidelity;
   /**
    * The gg session id this record replays — the run id, matching the
    * [telemetry](crate::gg::GgTelemetryEvent::session_id) stream's.

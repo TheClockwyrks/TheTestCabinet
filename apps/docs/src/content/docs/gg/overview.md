@@ -291,4 +291,5 @@ saved, launched, and analyzed in the console is
 - [Telemetry](/gg/telemetry/) — the custom, first-party stream the console renders.
 - [Result aggregation](/gg/result-aggregation/) — Kibana-style queries across many
   gg sessions.
-- [Replay](/gg/replay/) — deterministic session replay, for debugging only.
+- [Replay](/gg/replay/) — always-on capture of every run's non-deterministic inputs,
+  so a session can be replayed exactly.

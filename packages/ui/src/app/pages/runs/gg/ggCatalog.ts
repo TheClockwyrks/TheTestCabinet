@@ -1204,10 +1204,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   // --- Debugging --------------------------------------------------------------
   {
     id: "replay",
-    name: "Replay capture",
+    name: "Full-fidelity replay",
     group: "Debugging",
+    // Not the switch that turns capture on: every run is recorded. Enabling this on *any*
+    // agent escalates the whole run, which is why the copy says "the run" rather than
+    // "this agent" — the previous gate read the root alone and silently did nothing here.
     purpose:
-      "Debug-only: record every agent's model I/O and tool results to a per-run replay record so the run can be re-run and stepped through exactly. Adds no tools; zero overhead when off.",
+      "Every run already records a replay record — every agent's model I/O, tool results and prompt frames — so it can be stepped through afterwards. This escalates the whole run to full fidelity: every latency clock read, verbatim startup file loads instead of digests, and no payload truncation. Adds no tools.",
   },
 ];
 

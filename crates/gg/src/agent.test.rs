@@ -8209,13 +8209,93 @@ async fn speculate_offline_e2e_through_the_default_factory() {
 // Replay capture (Phase 7a) — recording the non-deterministic inputs
 // ---------------------------------------------------------------------------
 
-/// The minimal set with the (debug-only) [replay](CAPABILITY_REPLAY) capability enabled on top.
+/// The minimal set with the [replay](CAPABILITY_REPLAY) capability — the escalation to
+/// [full](GgReplayFidelity::Full) fidelity — enabled on the root.
+///
+/// Capture itself needs nothing enabled; these tests use the escalated set only because it is
+/// the configuration a reader of them most expects to see recorded.
 fn minimal_with_replay(model: &str) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal(model);
     set.agents[0]
         .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_REPLAY));
     set
+}
+
+/// The [fidelity](GgReplayFidelity) the journal `dir` holds says it was captured at.
+fn journal_fidelity(dir: &Path) -> GgReplayFidelity {
+    match read_replay_journal(dir).first() {
+        Some(GgJournalLine::Header { fidelity, .. }) => *fidelity,
+        other => panic!("the journal opens with its header, got {other:?}"),
+    }
+}
+
+/// A run that asked for **nothing** is still recorded. This is the always-on property, and the
+/// only way to see it is to drive a session with a bare configuration and find a journal.
+///
+/// It matters because the capability it replaced could not be armed retroactively: replay exists
+/// for surprising outcomes, and an outcome is surprising precisely when nobody predicted it.
+#[tokio::test]
+async fn a_run_with_no_capabilities_configured_is_still_captured() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-default".to_string()), Box::new(sink.clone()));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
+    assert!(
+        !inv.capability_set.any_agent_enabled(CAPABILITY_REPLAY),
+        "the point of the test: nothing asked to be recorded"
+    );
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    let lines = read_replay_journal(dir.path());
+    assert!(
+        !journal_entries(&lines).is_empty(),
+        "an unconfigured run pins its inputs anyway",
+    );
+    assert_eq!(
+        journal_fidelity(dir.path()),
+        GgReplayFidelity::Standard,
+        "at standard fidelity, which is what the capability now escalates from",
+    );
+    // And the operator log says so, naming the fidelity — the only place a reader finds out
+    // whether a `replay` set somewhere in the configuration actually took effect.
+    let logs = sink.lines();
+    assert!(
+        logs.iter()
+            .any(|line| line.contains("replay capture (standard fidelity): journaled")),
+        "the close-out line reports the capture and its fidelity, got {logs:?}",
+    );
+}
+
+/// `replay` on a **non-root** agent escalates the run.
+///
+/// The gate this replaced read `agents[0]` alone, so enabling it on the one profile whose turns
+/// were under suspicion silently did nothing at all — the run recorded neither at full fidelity
+/// nor, back then, at all.
+#[tokio::test]
+async fn the_replay_capability_escalates_from_a_non_root_agent() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-escalated".to_string()), Box::new(sink.clone()));
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents.push(GgAgentConfig {
+        name: "Reviewer".to_string(),
+        model_id: "mock/echo".to_string(),
+        capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_REPLAY)],
+        ..GgAgentConfig::root()
+    });
+    assert!(
+        !set.is_enabled(CAPABILITY_REPLAY),
+        "the root does not declare it — a root-only read would see nothing"
+    );
+    let inv = invocation(dir.path(), set);
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    assert_eq!(journal_fidelity(dir.path()), GgReplayFidelity::Full);
 }
 
 /// Read and parse the `.gg/replay.ndjson` capture journal a replay-captured run writes under
@@ -8456,22 +8536,40 @@ async fn replay_capture_records_a_prompt_frame_for_every_model_turn() {
     assert!(checked > 0, "at least one frame was checked");
 }
 
-/// With the replay capability **off** (the default), nothing extra is captured — no
-/// `.gg/replay.ndjson` journal is written. Zero overhead.
+/// The capture close-out sits **before** the session summary, so the summary stays the last
+/// event before the terminal `SessionEnded`.
+///
+/// That adjacency is what lets `core` lift the summary onto the run record without re-parsing the
+/// stream, and it is the one thing always-on capture could have quietly broken: a close-out line
+/// emitted after the summary would have separated the pair on *every* run instead of on the rare
+/// configured one.
 #[tokio::test]
-async fn replay_capture_writes_nothing_when_the_capability_is_off() {
+async fn the_capture_close_out_does_not_separate_the_summary_from_session_ended() {
     let dir = TempDir::new().unwrap();
     seed_default_skill(dir.path());
     let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-no-replay".to_string()), Box::new(sink.clone()));
-    // The plain minimal set does not enable replay.
+    let emitter = Emitter::with_sink(Some("run-epilogue".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
-    assert!(
-        !dir.path().join(GG_REPLAY_JOURNAL_PATH).exists(),
-        "no replay journal is written when the capability is off"
+    let events = sink.events();
+    let capture_pos = events
+        .iter()
+        .position(|event| match &event.kind {
+            GgTelemetryKind::Log { message, .. } => message.starts_with("replay capture ("),
+            _ => false,
+        })
+        .expect("every run reports its capture");
+    let summary_pos = events
+        .iter()
+        .position(|event| matches!(event.kind, GgTelemetryKind::SessionSummary { .. }))
+        .expect("a session summary was emitted");
+    assert!(capture_pos < summary_pos);
+    assert_eq!(
+        summary_pos + 1,
+        events.len() - 1,
+        "the summary is still the last thing before SessionEnded"
     );
 }
 

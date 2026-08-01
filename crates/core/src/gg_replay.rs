@@ -148,6 +148,62 @@ pub struct GgReplayRecorder {
     pub commit: Option<String>,
 }
 
+/// How completely a capture pinned the session it observed.
+///
+/// Capture is **always on**: pooling collapsed a projected 200-turn record from ~187 MB to
+/// well under a megabyte gzipped, and at that price gating it buys nothing while costing
+/// the one thing that matters — an opt-in capture is, by construction, never armed for the
+/// surprising run it exists to explain. So the
+/// [`replay`](crate::gg::CAPABILITY_REPLAY) capability stopped being the switch that
+/// decides *whether* a run is recorded and became the one that decides *how much*.
+///
+/// It is recorded on the record rather than re-derived from the
+/// [capability set](GgReplayRecord::capability_set) because a reader that cannot tell the
+/// two fidelities apart reads an absent full-only input as evidence the session never had
+/// one — which is exactly the inference a record exists to make safe.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgReplayFidelity {
+    /// Every input that **changes control flow**: model I/O and model errors, tool
+    /// outcomes, the orchestrator's own `git`, the cancel probe, the deadline clock, the
+    /// prompt frame. This is what a reconstruction needs, and it is what every run gets
+    /// for free.
+    #[default]
+    Standard,
+    /// Standard, plus what is only worth its bytes when someone is going to reconstruct
+    /// or audit the run in detail: every latency clock read, the startup filesystem loads
+    /// (skills, memories, autoloaded files, templates) verbatim rather than digested, and
+    /// no payload truncation.
+    ///
+    /// Selected by enabling [`replay`](crate::gg::CAPABILITY_REPLAY) on **any** agent —
+    /// see [`resolve`](Self::resolve) for why the root alone is not enough.
+    ///
+    /// The seams that produce the full-only categories are being built out; one that does
+    /// not exist yet contributes nothing at *either* fidelity, so a `full` record from
+    /// such a build carries the standard set. That is a statement about the build, not
+    /// about the session — which is the other reason
+    /// [`recorder`](GgReplayRecord::recorder) is on the record beside this.
+    Full,
+}
+
+impl GgReplayFidelity {
+    /// The fidelity a run configured with `capability_set` captures at.
+    ///
+    /// Reads [`replay`](crate::gg::CAPABILITY_REPLAY) across **every** agent, not just the
+    /// [root](GgCapabilitySet::root). The gate this replaced was a root-only read, so
+    /// enabling `replay` on a subagent profile — the natural thing to do when it is one
+    /// specific worker whose turns are under suspicion — silently did nothing at all. An
+    /// escalation is a property of the run, so any agent asking for it escalates the run.
+    pub fn resolve(capability_set: &GgCapabilitySet) -> Self {
+        if capability_set.any_agent_enabled(crate::gg::CAPABILITY_REPLAY) {
+            Self::Full
+        } else {
+            Self::Standard
+        }
+    }
+}
+
 /// The **fixed identity** a recorded session started from: everything a reconstruction
 /// needs before it consumes its first [entry](GgReplayEntry).
 ///
@@ -1038,6 +1094,15 @@ pub struct GgReplayRecord {
     /// Which build captured it. Explanatory; never a gate.
     #[serde(default)]
     pub recorder: GgReplayRecorder,
+    /// How completely the session was captured. Absent ⇒
+    /// [`Standard`](GgReplayFidelity::Standard), which is the honest floor for a
+    /// [v1 record](self#reading-a-v1-record): v1 capture was opt-in, so every one of them
+    /// *was* opted into, but none of them carries a full-only input — v1 recorded none of
+    /// those categories at all — and reporting it as `full` would invite a reader to
+    /// conclude the session had no clock reads rather than that the build had no clock
+    /// capture.
+    #[serde(default)]
+    pub fidelity: GgReplayFidelity,
     /// The gg session id this record replays — the run id, matching the
     /// [telemetry](crate::gg::GgTelemetryEvent::session_id) stream's.
     pub session_id: String,
@@ -1081,13 +1146,20 @@ fn format_version_v1() -> u32 {
 }
 
 impl GgReplayRecord {
-    /// An empty v2 record for `session_id` under `capability_set` — the starting point
-    /// journal assembly folds entries into.
+    /// An empty v2 record for `session_id` under `capability_set`.
+    ///
+    /// [`fidelity`](Self::fidelity) is [resolved](GgReplayFidelity::resolve) from the set,
+    /// so a record built here cannot contradict the configuration it names.
+    /// [Streaming assembly](crate::gg_replay_assembly) does not come through here — it
+    /// copies the fidelity the journal's own header recorded, which is what the recorder
+    /// actually captured at rather than what a set implies it should have.
     pub fn new(session_id: impl Into<String>, capability_set: GgCapabilitySet) -> Self {
+        let fidelity = GgReplayFidelity::resolve(&capability_set);
         Self {
             format_version: GG_REPLAY_FORMAT_VERSION,
             upgraded_from: None,
             recorder: GgReplayRecorder::default(),
+            fidelity,
             session_id: session_id.into(),
             capability_set,
             seed: GgReplaySeed::default(),
@@ -1438,6 +1510,8 @@ struct GgReplayRecordRaw {
     #[serde(default)]
     recorder: GgReplayRecorder,
     #[serde(default)]
+    fidelity: GgReplayFidelity,
+    #[serde(default)]
     session_id: String,
     capability_set: GgCapabilitySet,
     #[serde(default)]
@@ -1489,6 +1563,7 @@ impl<'de> Deserialize<'de> for GgReplayRecord {
                 format_version: raw.format_version,
                 upgraded_from: raw.upgraded_from,
                 recorder: raw.recorder,
+                fidelity: raw.fidelity,
                 session_id: raw.session_id,
                 capability_set: raw.capability_set,
                 seed: raw.seed,
@@ -1515,6 +1590,10 @@ impl<'de> Deserialize<'de> for GgReplayRecord {
             format_version: GG_REPLAY_FORMAT_VERSION,
             upgraded_from: Some(raw.format_version),
             recorder: raw.recorder,
+            // Not re-resolved from the upgraded record's capability set. A v1 record was
+            // captured *because* `replay` was on, so resolving would report every one of
+            // them as `full` while none of them carries a single full-only input.
+            fidelity: raw.fidelity,
             session_id: raw.session_id,
             capability_set: raw.capability_set,
             seed: raw.seed,

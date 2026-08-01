@@ -226,7 +226,8 @@ fn main() -> Result<()> {
         TsModule {
             file: "gg-replay.ts",
             decls: ts_decls![&cfg;
-                ggr::GgReplayRecorder, ggr::GgReplayModalities, ggr::GgReplaySeedFile,
+                ggr::GgReplayRecorder, ggr::GgReplayFidelity,
+                ggr::GgReplayModalities, ggr::GgReplaySeedFile,
                 ggr::GgReplaySeed,
                 ggr::GgReplayMessage, ggr::GgReplayToolset, ggr::GgReplayBlob,
                 ggr::GgReplayAgentOrigin, ggr::GgReplayAgent,
@@ -469,6 +470,7 @@ fn main() -> Result<()> {
             root: Some("GgReplayRecord"),
             owns: &[
                 "GgReplayRecorder",
+                "GgReplayFidelity",
                 "GgReplaySeed",
                 "GgReplayModalities",
                 "GgReplaySeedFile",
