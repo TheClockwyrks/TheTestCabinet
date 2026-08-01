@@ -74,6 +74,7 @@ pub async fn ingest(
             request,
             protected,
             state.publisher.clone(),
+            state.gg_docs.clone(),
         ));
     }
 
@@ -95,6 +96,11 @@ pub async fn ingest(
     // gallery frozen on whatever was built while the store was momentarily empty.
     if scan_changed_store(&report) {
         state.publisher.queue_refresh();
+        // ...and the gg document index holds a `score` per run that is a fraction of the
+        // case manifest's checklist weights. A re-ingest can change those weights (or an
+        // erratum's `exclude_from_score`) without touching a single `run` row, which is
+        // precisely the change the index's per-id freshness rule cannot observe.
+        state.gg_docs.invalidate_all().await;
     }
 
     Ok(Json(IngestResponse::from(report)).into_response())
@@ -269,6 +275,7 @@ fn ingest_streaming(
     request: IngestRequest,
     protected: std::collections::HashSet<(String, String)>,
     publisher: Publisher,
+    gg_docs: crate::gg_docs::GgDocIndex,
 ) -> Response {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Bytes>();
 
@@ -286,6 +293,14 @@ fn ingest_streaming(
                 // `scan_changed_store`).
                 if scan_changed_store(&report) {
                     publisher.queue_refresh();
+                    // ...and, also as the non-streaming path, drop the gg document
+                    // index: a manifest's checklist weights are an input to every gg
+                    // run's `score` and are invisible to that index's per-run
+                    // freshness rule. Blocking on it rather than spawning it keeps the
+                    // invalidation ordered *before* the `done` line, so a client that
+                    // queries the moment ingest reports finished cannot be served the
+                    // pre-ingest scores.
+                    tokio::runtime::Handle::current().block_on(gg_docs.invalidate_all());
                 }
                 StreamEvent::done(&report)
             }

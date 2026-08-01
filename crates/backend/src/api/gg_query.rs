@@ -135,7 +135,12 @@ pub async fn gg_fields(
 
 /// Resolve the document corpus, refreshing the index if its last reconcile has aged
 /// out.
-async fn corpus(state: &AppState) -> Result<Arc<Vec<GgRunDoc>>, ApiError> {
+///
+/// Two layers of [`Arc`], both load-bearing. The outer one is the snapshot: a query
+/// evaluates after the index lock is released and never sees the corpus change under it.
+/// The inner ones are the documents, so the index can rebuild that vector after a single
+/// run changed without deep-copying every document in it.
+async fn corpus(state: &AppState) -> Result<Arc<Vec<Arc<GgRunDoc>>>, ApiError> {
     let mut scores = CatalogScores::new(&state.store);
     state
         .gg_docs

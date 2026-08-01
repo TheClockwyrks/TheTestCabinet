@@ -22,6 +22,23 @@
 //! index holds: reload the ids whose stamp moved, evict the ids that are gone, leave
 //! everything else alone. No monotonicity is assumed and deletion falls out for free.
 //!
+//! ## The one thing that rule cannot see
+//!
+//! It is sound for everything that lives on the `run` row, and **one document field does
+//! not**: `score` is a fraction of the *case manifest's* checklist weights. An ingest that
+//! changes those weights — or an erratum that marks a checklist item excluded from scoring
+//! — changes what every affected document must contain while stamping no run at all. Every
+//! entry stays fresh, `pending` comes back empty, and the index serves the pre-change score
+//! for the life of the process.
+//!
+//! There is no timestamp to compare against for that, because the manifests are files in a
+//! definition store rather than rows. So the definition side pushes instead of the index
+//! polling: [`GgDocIndex::invalidate_all`] drops the whole ledger, and the ingest endpoint —
+//! the only writer of manifests and errata in this process — calls it whenever a scan
+//! actually re-ingested a version. Coarse on purpose: a re-ingest is rare, human-triggered
+//! and already the most expensive thing the backend does, so paying one full rebuild for it
+//! is cheaper in every sense than carrying a per-manifest generation counter.
+//!
 //! ## Why the reviewer score is injected
 //!
 //! A document's `score` field is a fraction of the case's **checklist weights**,
@@ -84,7 +101,13 @@ struct GgIndexEntry {
     /// absent from the index, look new on the very next reconcile, and be reloaded
     /// (and fail to parse) forever. Remembering the stamp it failed at means the
     /// next attempt happens when — and only when — the row is written again.
-    doc: Option<GgRunDoc>,
+    ///
+    /// Behind an [`Arc`] so the corpus rebuild below is a refcount bump per document
+    /// rather than a deep copy of every string in it. One review on one run rebuilds
+    /// the shared vector, and at the tens-of-thousands-of-runs scale this module sizes
+    /// itself for, cloning the documents to propagate one changed entry would be a
+    /// hundred-megabyte memcpy every time a reviewer pressed save.
+    doc: Option<Arc<GgRunDoc>>,
 }
 
 /// The index's contents, behind the lock.
@@ -94,8 +117,9 @@ struct GgIndexState {
     entries: BTreeMap<String, GgIndexEntry>,
     /// The immutable corpus handed to every query between reconciles. Rebuilt only
     /// when the ledger changes, and shared by [`Arc`] so a query neither clones the
-    /// corpus nor holds the lock while it evaluates.
-    corpus: Arc<Vec<GgRunDoc>>,
+    /// corpus nor holds the lock while it evaluates. The rebuild itself clones only
+    /// the per-document handles, never the documents.
+    corpus: Arc<Vec<Arc<GgRunDoc>>>,
     /// When the last reconcile finished, or `None` before the first one.
     reconciled_at: Option<Instant>,
     /// What the last reconcile did — surfaced for tests and diagnostics.
@@ -152,7 +176,7 @@ impl GgDocIndex {
         &self,
         db: &Db,
         score_of: &mut (dyn FnMut(&StoredRun) -> Option<f64> + Send),
-    ) -> Result<Arc<Vec<GgRunDoc>>> {
+    ) -> Result<Arc<Vec<Arc<GgRunDoc>>>> {
         let mut state = self.state.lock().await;
         if self.is_stale(&state) {
             reconcile_into(&mut state, db, score_of).await?;
@@ -172,6 +196,23 @@ impl GgDocIndex {
     ) -> Result<GgIndexDelta> {
         let mut state = self.state.lock().await;
         reconcile_into(&mut state, db, score_of).await
+    }
+
+    /// Drop the whole ledger, so the next read rebuilds every document from scratch.
+    ///
+    /// The escape hatch for the one input the per-id freshness rule cannot observe: a
+    /// document's `score` is derived from its case manifest's checklist weights, which live
+    /// in the definition store and change without any `run` row being written. See the
+    /// module documentation — this is called from the ingest path, not on a timer.
+    ///
+    /// Clears the tombstones along with everything else. A record that failed to
+    /// deserialize will be attempted once more and re-tombstoned at the same stamp, which
+    /// is the right trade for a call site this rare.
+    pub async fn invalidate_all(&self) {
+        let mut state = self.state.lock().await;
+        state.entries.clear();
+        state.corpus = Arc::new(Vec::new());
+        state.reconciled_at = None;
     }
 
     /// What the most recent reconcile did, or the zero delta before the first one.
@@ -237,7 +278,7 @@ async fn reconcile_into(
         for run in &runs {
             let doc = build_run_doc(&run.record, &lifecycle_of(run, score_of(run)));
             if let Some(entry) = state.entries.get_mut(&run.record.id) {
-                entry.doc = Some(doc);
+                entry.doc = Some(Arc::new(doc));
             }
         }
     }
@@ -286,6 +327,12 @@ fn lifecycle_of(run: &StoredRun, score: Option<f64>) -> GgDocLifecycle {
 
 /// The production reviewer-score resolver: the run's aggregate score as a `0.0..=1.0`
 /// fraction of its case's declared checklist weight, read from the definition store.
+///
+/// **This is the input the index's per-id freshness rule cannot see.** Nothing here is
+/// keyed to a `run` row, so a re-ingest that changes a checklist weight, or an erratum
+/// that excludes an item from scoring, moves every affected run's score without moving any
+/// run's `updated_at`. [`GgDocIndex::invalidate_all`] is the remedy, and the ingest path is
+/// where it is called from.
 ///
 /// Caches the manifest per `(slug, version)` — including the *absence* of one, so an
 /// un-ingested case is not re-read per run — because a reconcile of a whole corpus

@@ -226,8 +226,8 @@ fn ingested_store() -> (TempDir, DefinitionStore) {
 }
 
 /// The document for `id`, or `None` when the index does not hold one.
-fn doc_of<'a>(docs: &'a [GgRunDoc], id: &str) -> Option<&'a GgRunDoc> {
-    docs.iter().find(|doc| doc.id() == id)
+fn doc_of<'a>(docs: &'a [Arc<GgRunDoc>], id: &str) -> Option<&'a GgRunDoc> {
+    docs.iter().map(Arc::as_ref).find(|doc| doc.id() == id)
 }
 
 #[tokio::test]
@@ -301,6 +301,83 @@ async fn a_review_added_after_indexing_changes_the_documents_score_rating_and_re
         "score should be the mean earned weight over the total, got {score}",
     );
     assert_eq!(doc.get("reviewCount"), Some(&GgValue::Number(2.0)));
+}
+
+/// **The hole in the per-id freshness rule, and the thing that closes it.**
+///
+/// A document's `score` is a fraction of the case manifest's checklist weights, and those
+/// live in the definition store rather than on the `run` row. Re-ingesting a case with
+/// different weights — or writing an erratum that excludes an item from scoring — changes
+/// what every affected document must say while stamping no run at all, so the reconcile
+/// sees nothing pending and serves the pre-change number indefinitely.
+///
+/// The first half of this asserts that hole exists, deliberately: it is the behaviour that
+/// makes [`GgDocIndex::invalidate_all`] necessary rather than decorative, and a future
+/// change that made the reconcile notice manifests on its own should fail here and be
+/// re-read, not silently pass.
+#[tokio::test]
+async fn a_manifest_reweighting_is_invisible_until_the_index_is_invalidated() {
+    let db = Db::connect_in_memory().await.unwrap();
+    let (_dir, store) = ingested_store();
+    let index = GgDocIndex::with_ttl(Duration::ZERO);
+
+    db.push(&gg_record("r1", "mock/echo"), &RunLinks::default(), None)
+        .await
+        .unwrap();
+    // One review earning the heavy item and failing the light one: 2 of 3.
+    db.add_review("r1", &review("u1", Rating::Great, &["heavy"]), None)
+        .await
+        .unwrap();
+
+    let mut scores = CatalogScores::new(&store);
+    let docs = index
+        .documents(&db, &mut |run| scores.score(run))
+        .await
+        .unwrap();
+    let before = doc_of(&docs, "r1")
+        .and_then(|doc| doc.get("score"))
+        .and_then(GgValue::as_number)
+        .expect("a reviewed run has a score");
+    assert!((before - 2.0 / 3.0).abs() < 1e-9, "got {before}");
+
+    // Re-ingest the case with the light item excluded from scoring — the denominator
+    // drops to the heavy item alone, so the same review now earns everything. No `run`
+    // row is written by this.
+    let mut reweighted = manifest();
+    reweighted.common_review_items = vec![item("heavy", 2)];
+    store
+        .write_manifest(&reweighted)
+        .expect("re-write manifest");
+
+    let mut scores = CatalogScores::new(&store);
+    let docs = index
+        .documents(&db, &mut |run| scores.score(run))
+        .await
+        .unwrap();
+    let stale = doc_of(&docs, "r1")
+        .and_then(|doc| doc.get("score"))
+        .and_then(GgValue::as_number)
+        .expect("still scored");
+    assert!(
+        (stale - before).abs() < 1e-9,
+        "the per-id rule cannot see a manifest change; this must still be the old score",
+    );
+
+    // The ingest path's push. Now the whole ledger is rebuilt and the score moves.
+    index.invalidate_all().await;
+    let mut scores = CatalogScores::new(&store);
+    let docs = index
+        .documents(&db, &mut |run| scores.score(run))
+        .await
+        .unwrap();
+    let after = doc_of(&docs, "r1")
+        .and_then(|doc| doc.get("score"))
+        .and_then(GgValue::as_number)
+        .expect("still scored");
+    assert!(
+        (after - 1.0).abs() < 1e-9,
+        "invalidating must re-resolve every score from the current manifest, got {after}",
+    );
 }
 
 #[tokio::test]

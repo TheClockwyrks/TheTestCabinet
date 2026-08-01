@@ -7,6 +7,7 @@
 //! together; **a change to any rule below must arrive with a fixture case that would
 //! have caught the drift.**
 
+use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -102,8 +103,8 @@ impl PartialOrd for KeyVec {
 /// 4. **Sort**, by the explicit stage when there is one and by the default order
 ///    otherwise.
 /// 5. **Limit**, recording [`truncated`](GgQueryResponse::truncated).
-pub fn evaluate(docs: &[GgRunDoc], query: &GgQuery) -> GgQueryResponse {
-    let mut ordered: Vec<&GgRunDoc> = docs.iter().collect();
+pub fn evaluate<D: Borrow<GgRunDoc>>(docs: &[D], query: &GgQuery) -> GgQueryResponse {
+    let mut ordered: Vec<&GgRunDoc> = docs.iter().map(Borrow::borrow).collect();
     ordered.sort_by(|a, b| document_order(a, b));
 
     let matched: Vec<&GgRunDoc> = ordered
@@ -618,12 +619,12 @@ fn compare_optional(a: Option<GgValue>, b: Option<GgValue>, desc: bool) -> Order
 /// anywhere. A drift between the two implementations here is a one-host-only
 /// autocomplete regression — far quieter than a wrong number — so the conformance
 /// fixture pins this too.
-pub fn field_catalog(docs: &[GgRunDoc]) -> GgFieldCatalog {
+pub fn field_catalog<D: Borrow<GgRunDoc>>(docs: &[D]) -> GgFieldCatalog {
     // Ordered maps throughout, so the output is a pure function of the corpus rather
     // than of hash iteration order.
     let mut fields: BTreeMap<&str, FieldStats> = BTreeMap::new();
     for doc in docs {
-        for (name, value) in &doc.fields {
+        for (name, value) in &doc.borrow().fields {
             let stats = fields.entry(name.as_str()).or_default();
             stats.documents += 1;
             stats.observe(value);
