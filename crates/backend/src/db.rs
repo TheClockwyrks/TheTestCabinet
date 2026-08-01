@@ -88,6 +88,22 @@ pub struct StoredRun {
     pub events_json: Option<String>,
 }
 
+/// One row of [`Db::gg_run_versions`]: a gg run's id paired with its **mutation
+/// timestamp**, and nothing else.
+///
+/// The deliberately tiny shape the [document index](crate::gg_docs::GgDocIndex)
+/// reconciles against. Everything the index needs to decide what to do with a run
+/// — is it new, did it change, is it gone — is in these two strings, so the common
+/// case (nothing changed) costs one narrow scan and no deserialization at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GgRunVersion {
+    /// The run id (`RunRecord.id`).
+    pub id: String,
+    /// RFC 3339 of the last write that changed anything observable about the row.
+    /// Compared for **inequality only**; see the `run.updated_at` column docs.
+    pub updated_at: String,
+}
+
 /// A published tournament as stored: the full record plus its first-publish
 /// timestamp. This is the shape `GET /tournaments/{id}` is built from.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1000,33 +1016,68 @@ impl Db {
         self.assemble(rows).await
     }
 
-    /// Load every stored **gg** run (harness `gg`), pending and published,
-    /// newest-first by `finished_at`, optionally narrowed to a single test-case
-    /// slug — the population [gg result aggregation] slices across.
+    /// The `(id, updated_at)` projection of every stored **gg** run (harness `gg`),
+    /// pending and published — the whole cost of a steady-state
+    /// [document index](crate::gg_docs::GgDocIndex) reconcile.
     ///
-    /// A gg run carries its
-    /// [capability set](test_cabinet_core::run_record::RunSubject::gg_capability_set)
-    /// (the slice-by dimension) and its
-    /// [session summary](test_cabinet_core::run_record::RunSubject::gg_summary) (the
-    /// outcome) on the record, so an aggregate query is answered by loading these,
-    /// grouping, and aggregating in memory rather than pushing the shape into SQL — the
-    /// simplest, most flexible path at gg's scale (a per-test-case narrowing keeps the
-    /// working set small when a study holds the case fixed). Unpublished runs are
-    /// included: a gg study analyzes runs the moment they land, before any publish.
+    /// Deliberately selects **two columns and no record blob**. The index this feeds
+    /// holds one built document per gg run and refreshes on a timer; if that refresh
+    /// re-read `record_json` it would deserialize the entire corpus every cycle,
+    /// which is precisely the per-query cost the index exists to stop paying. So the
+    /// projection answers only "which runs exist, and which of them changed", and
+    /// [`gg_runs_by_id`](Self::gg_runs_by_id) then loads just the changed ones.
     ///
-    /// [gg result aggregation]: https://docs.testcabinet.ai/gg/result-aggregation/
-    pub async fn list_gg_runs(&self, test_case: Option<&str>) -> Result<Vec<StoredRun>> {
-        let mut query =
-            run::Entity::find().filter(run::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()));
-        if let Some(slug) = test_case {
-            query = query.filter(run::Column::TestCaseSlug.eq(slug.to_string()));
-        }
-        let rows = query
-            .order_by_desc(run::Column::FinishedAt)
-            .order_by_desc(run::Column::Id)
+    /// `updated_at` is compared for **inequality**, never ordered — see the column's
+    /// own documentation on `run::Model`, whose RFC 3339 rendering drops a zero
+    /// fractional part and so does not sort reliably between two stamps less than a
+    /// second apart.
+    pub async fn gg_run_versions(&self) -> Result<Vec<GgRunVersion>> {
+        let rows: Vec<(String, String)> = run::Entity::find()
+            .select_only()
+            .column(run::Column::Id)
+            .column(run::Column::UpdatedAt)
+            .filter(run::Column::HarnessSlug.eq(HarnessSlug::Gg.as_str()))
+            .order_by_asc(run::Column::Id)
+            .into_tuple()
             .all(&self.conn())
             .await?;
-        self.assemble(rows).await
+        Ok(rows
+            .into_iter()
+            .map(|(id, updated_at)| GgRunVersion { id, updated_at })
+            .collect())
+    }
+
+    /// Load the named runs in full (record, reviews, links, publish state). The
+    /// result is keyed by [`RunRecord::id`] rather than positional — order is
+    /// unspecified beyond being deterministic — because its caller indexes the runs
+    /// by id anyway.
+    ///
+    /// The companion to [`gg_run_versions`](Self::gg_run_versions): the document
+    /// index reconciles per id, so this is called with **only the ids whose
+    /// `updated_at` moved**, not with the corpus. Ids are looked up in chunks so the
+    /// bound parameter count stays well inside every backend's ceiling (SQLite's
+    /// 32 766, PostgreSQL's 65 535) no matter how many runs changed in one cycle —
+    /// a first, cold reconcile passes every id there is.
+    ///
+    /// A run whose stored record no longer deserializes is **omitted** rather than
+    /// failing the load, exactly as every other listing here treats it; the caller
+    /// sees fewer runs than ids and must not mistake that for "not yet loaded".
+    pub async fn gg_runs_by_id(&self, ids: &[String]) -> Result<Vec<StoredRun>> {
+        /// Ids per lookup round. Comfortably under every backend's bound-parameter
+        /// ceiling while keeping a cold reconcile of tens of thousands of runs to a
+        /// modest number of round trips.
+        const CHUNK: usize = 500;
+
+        let mut out = Vec::with_capacity(ids.len());
+        for chunk in ids.chunks(CHUNK) {
+            let rows = run::Entity::find()
+                .filter(run::Column::Id.is_in(chunk.to_vec()))
+                .order_by_asc(run::Column::Id)
+                .all(&self.conn())
+                .await?;
+            out.extend(self.assemble(rows).await?);
+        }
+        Ok(out)
     }
 
     /// The gameplay READMEs of earlier game-jam runs of jam `slug` built by
@@ -2296,8 +2347,9 @@ pub enum SummaryState {
     /// Every recorded run, whatever its terminal state and whether or not it is
     /// published — the union of every slice above. This is what a listing scoped to
     /// something *other* than the publish lifecycle wants (the gg analysis section's
-    /// Sessions tab, which must show exactly the runs `list_gg_runs` aggregates,
-    /// most of which are never published).
+    /// Sessions tab, which must show exactly the runs the
+    /// [document index](crate::gg_docs::GgDocIndex) holds, most of which are never
+    /// published).
     Any,
 }
 

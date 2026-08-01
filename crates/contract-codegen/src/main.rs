@@ -247,7 +247,9 @@ fn main() -> Result<()> {
         // over, the compiled query the client sends, the results it produces, and the
         // field catalog the editor's completer and sidebar read. The parser/compiler
         // are TypeScript-only by design, so this module is what they compile *to*; the
-        // evaluator is mirrored against these same shapes.
+        // evaluator is mirrored against these same shapes. The batch envelope is the
+        // backend's own (a dashboard answers all its panels from one index read); the
+        // public static site evaluates locally and has no use for it.
         TsModule {
             file: "gg-query.ts",
             decls: ts_decls![&cfg;
@@ -259,6 +261,7 @@ fn main() -> Result<()> {
                 ggq::GgDistribution, ggq::GgAggValue, ggq::GgBucketKeyPart, ggq::GgBucket,
                 ggq::GgAggColumn, ggq::GgQueryResponse,
                 ggq::GgFieldKind, ggq::GgFieldValueCount, ggq::GgFieldInfo, ggq::GgFieldCatalog,
+                bapi::GgQueryBatch, bapi::GgQueryBatchResponse,
             ],
         },
         // The harness-comparison (A/B) contract: the stored config (controls and the
@@ -580,6 +583,17 @@ fn main() -> Result<()> {
             owns: &["GgFieldInfo", "GgFieldKind", "GgFieldValueCount"],
             schema: root_schema::<ggq::GgFieldCatalog>(),
         },
+        // `POST /gg/query/batch` — a dashboard's panels answered from one index read.
+        // Both envelopes are pure wrappers around the query and response documents
+        // above, so every ref in them is cross-document.
+        anon(
+            "gg/query-batch-request.schema.json",
+            root_schema::<bapi::GgQueryBatch>(),
+        ),
+        anon(
+            "gg/query-batch-response.schema.json",
+            root_schema::<bapi::GgQueryBatchResponse>(),
+        ),
         // The backend's run-queue (`/jobs`) control plane. These reference the core
         // run-record document by URL (the launch request, the claimed job, and the
         // driver's status update all carry or echo a `RunRecord`); any type local to

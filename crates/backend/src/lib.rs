@@ -25,6 +25,7 @@ pub mod bootstrap;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod gg_docs;
 pub mod ingest;
 pub mod logo;
 pub mod metrics;
@@ -192,6 +193,7 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         config: Arc::new(config),
         http: reqwest::Client::new(),
         prices,
+        gg_docs: crate::gg_docs::GgDocIndex::new(),
     };
     let router = api::router(state);
 

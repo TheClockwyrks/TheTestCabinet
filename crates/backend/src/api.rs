@@ -26,6 +26,7 @@ mod coverage;
 mod game_jams;
 mod gg;
 mod gg_config;
+mod gg_query;
 mod harness_config;
 mod ingest_api;
 mod jobs;
@@ -47,6 +48,7 @@ pub use coverage::{
 };
 pub use gg::GgRunRequest;
 pub use gg_config::{GgConfig, GgConfigInput};
+pub use gg_query::{GG_QUERY_MAX_BATCH, GG_QUERY_MAX_ROWS, GgQueryBatch, GgQueryBatchResponse};
 pub use jobs::{
     ActiveJobOut, ClaimedJob, DriverState, JobState, JobStatusOut, LaunchAck, LaunchBatchAck,
     LaunchBatchBody, LaunchBatchItem, LaunchBody, StatusUpdate,
@@ -86,6 +88,10 @@ pub struct AppState {
     /// The OpenRouter price source used to record a model's price history when a
     /// run completes and on the periodic refresh.
     pub prices: test_cabinet_core::OpenRouterPrices,
+    /// The in-memory gg [document index](crate::gg_docs::GgDocIndex) the analysis
+    /// query endpoints run over. Loaded lazily on the first query and reconciled per
+    /// id thereafter, so a deployment that never opens Discover never pays for it.
+    pub gg_docs: crate::gg_docs::GgDocIndex,
 }
 
 /// The maximum body size, in bytes, accepted on the run-media and tournament-replay
@@ -304,6 +310,16 @@ pub fn router(state: AppState) -> Router {
             "/gg/configs/{id}",
             put(gg_config::update_config).delete(gg_config::delete_config),
         )
+        // The gg analysis query surface (auth-gated, like the rest of `/gg`, though
+        // the corpus itself is deployment-wide rather than per-account): evaluate one
+        // TCQ query, evaluate a dashboard's worth of them against a single index
+        // read, or read the field catalog the editor's completer and sidebar are
+        // built from. `/gg/query/batch` is a child of the static `/gg/query`, and
+        // `/gg/fields` is static, so none of the three collides with `/gg/runs` or
+        // `/gg/configs`.
+        .route("/gg/query", post(gg_query::run_query))
+        .route("/gg/query/batch", post(gg_query::run_query_batch))
+        .route("/gg/fields", get(gg_query::gg_fields))
         // The operator's saved harness comparisons (auth-gated; keyed to the token's
         // account): named A/B experiments whose per-arm distributions are computed on
         // read from the arms' runs. `/comparisons` is static and `/comparisons/{id}`

@@ -517,3 +517,31 @@ export type GgFieldCatalog = {
    */
   fields: Array<GgFieldInfo>;
 };
+
+/**
+ * The body of `POST /gg/query/batch`: several queries answered from **one** read of
+ * the document index.
+ *
+ * A dashboard's panels almost always share a filter and differ only in their
+ * aggregation, so answering them one request at a time re-resolves the same corpus
+ * N times and — because the index refreshes on a timer — can even answer two panels
+ * of the same board from two different corpora, which reads as a data bug. One
+ * batch, one snapshot, one consistent board.
+ */
+export type GgQueryBatch = {
+  /**
+   * The queries to evaluate, at most [`GG_QUERY_MAX_BATCH`] of them.
+   */
+  queries: Array<GgQuery>;
+};
+
+/**
+ * The response to `POST /gg/query/batch`.
+ */
+export type GgQueryBatchResponse = {
+  /**
+   * One result per requested query, **in request order** — the only binding
+   * between a panel and its answer, so the list is never filtered or reordered.
+   */
+  results: Array<GgQueryResponse>;
+};

@@ -1,0 +1,334 @@
+//! The in-memory **gg document index**: one [`GgRunDoc`] per stored gg run, kept
+//! fresh by a per-id reconcile, and the corpus every [TCQ](test_cabinet_core::gg_query)
+//! query on this backend runs over.
+//!
+//! The endpoint this replaced answered each aggregate query by loading *every* gg
+//! run, deserializing every `record_json`, resolving every case manifest, and folding
+//! the lot — per request. That is the work this module does too; it just does it
+//! **once** and then only for the runs that changed. At a corpus of tens of thousands
+//! of runs at roughly two kilobytes per document the index is a few tens of
+//! megabytes, and a dashboard of eight panels costs one index read instead of eight
+//! full scans.
+//!
+//! ## Why the freshness rule is per id
+//!
+//! The obvious scheme — a high-water mark on the record's own `finished_at` — is
+//! unsound here, and quietly so. Adding a review, publishing, and re-pushing a run
+//! all change what the run's document must contain, and **none of them move that
+//! timestamp**; a run pushed out of order lands below the mark and is never indexed
+//! at all; and a deleted run has no timestamp to notice. So the `run` row carries its
+//! own [mutation timestamp](crate::db::GgRunVersion) that every mutator stamps, and
+//! reconciliation compares the whole `(id, updated_at)` projection against what the
+//! index holds: reload the ids whose stamp moved, evict the ids that are gone, leave
+//! everything else alone. No monotonicity is assumed and deletion falls out for free.
+//!
+//! ## Why the reviewer score is injected
+//!
+//! A document's `score` field is a fraction of the case's **checklist weights**,
+//! which live in the definition store's manifest rather than on the run or its
+//! reviews. Rather than reach into the store from here, the reconcile takes a
+//! resolver: production passes [`CatalogScores`] (which caches a manifest per
+//! `(slug, version)`, so a case is read once per reconcile rather than once per run),
+//! and a test passes a closure. That is the same seam the endpoint this replaced
+//! used, kept for the same reason.
+
+#[cfg(test)]
+#[path = "gg_docs.test.rs"]
+mod tests;
+
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use test_cabinet_core::gg_query::{GgDocLifecycle, GgRunDoc, build_run_doc};
+
+use crate::db::{Db, StoredRun};
+use crate::error::Result;
+use crate::snapshot::run_summary_score;
+use crate::store::{DefinitionStore, StoredManifest};
+
+/// How long a reconcile's result is trusted before the next read re-checks the
+/// store.
+///
+/// The tradeoff is entirely about *lag*, not correctness: a review added through the
+/// console is visible in a query within this window. Thirty seconds keeps the steady
+/// state to two cheap column reads a minute against a corpus nothing is writing to,
+/// while being short enough that an operator who reviews a run and switches to
+/// Discover does not notice the delay.
+pub const GG_DOC_INDEX_TTL: Duration = Duration::from_secs(30);
+
+/// What one [reconcile](GgDocIndex::reconcile) did — the shape that makes "per id,
+/// not a full rebuild" an assertable property rather than a claim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct GgIndexDelta {
+    /// How many runs were loaded and rebuilt: the ones the index had never seen plus
+    /// the ones whose mutation timestamp moved. **Zero on a reconcile of an unchanged
+    /// corpus**, which is the steady state.
+    pub reloaded: usize,
+    /// How many entries were dropped because their row is no longer in the store.
+    pub evicted: usize,
+    /// How many documents the index holds afterwards.
+    pub documents: usize,
+}
+
+/// One indexed run: its mutation timestamp, and the document built at that stamp.
+#[derive(Debug, Clone)]
+struct GgIndexEntry {
+    /// The `run.updated_at` this entry was built from. The reconcile reloads the run
+    /// when the store reports a different one.
+    updated_at: String,
+    /// The built document, or `None` for a run whose stored record no longer
+    /// deserializes against the current `RunRecord` schema.
+    ///
+    /// Held as a **tombstone** rather than simply skipped: a skipped id would be
+    /// absent from the index, look new on the very next reconcile, and be reloaded
+    /// (and fail to parse) forever. Remembering the stamp it failed at means the
+    /// next attempt happens when — and only when — the row is written again.
+    doc: Option<GgRunDoc>,
+}
+
+/// The index's contents, behind the lock.
+#[derive(Debug, Default)]
+struct GgIndexState {
+    /// The reconciliation ledger, by run id.
+    entries: BTreeMap<String, GgIndexEntry>,
+    /// The immutable corpus handed to every query between reconciles. Rebuilt only
+    /// when the ledger changes, and shared by [`Arc`] so a query neither clones the
+    /// corpus nor holds the lock while it evaluates.
+    corpus: Arc<Vec<GgRunDoc>>,
+    /// When the last reconcile finished, or `None` before the first one.
+    reconciled_at: Option<Instant>,
+    /// What the last reconcile did — surfaced for tests and diagnostics.
+    last_delta: GgIndexDelta,
+}
+
+/// The gg document index. Cheap to clone (it is a handle to shared state), so it
+/// lives on the API's shared state like any other.
+#[derive(Debug, Clone)]
+pub struct GgDocIndex {
+    /// The shared contents.
+    ///
+    /// A single async mutex rather than a read/write pair, deliberately. A query's
+    /// time under the lock is one [`Arc`] clone; the only long hold is a reconcile,
+    /// and serializing *those* is the point — two requests arriving together against
+    /// a cold index must not both load the whole corpus.
+    state: Arc<tokio::sync::Mutex<GgIndexState>>,
+    /// How long a reconcile's result is trusted. [`GG_DOC_INDEX_TTL`] in production;
+    /// a test sets it to zero to reconcile on every read.
+    ttl: Duration,
+}
+
+impl Default for GgDocIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl GgDocIndex {
+    /// An empty index with the production [refresh interval](GG_DOC_INDEX_TTL). The
+    /// corpus is loaded lazily on the first query, so constructing one costs nothing
+    /// and a backend that is never asked a gg query never pays for the index at all.
+    pub fn new() -> Self {
+        Self::with_ttl(GG_DOC_INDEX_TTL)
+    }
+
+    /// An empty index that trusts a reconcile for `ttl`. [`Duration::ZERO`] makes
+    /// every read reconcile, which is what a test asserting the reconcile's own
+    /// behaviour wants.
+    pub fn with_ttl(ttl: Duration) -> Self {
+        Self {
+            state: Arc::new(tokio::sync::Mutex::new(GgIndexState::default())),
+            ttl,
+        }
+    }
+
+    /// The corpus, reconciling first if the last one is older than the
+    /// [TTL](Self::with_ttl).
+    ///
+    /// Returns a shared snapshot: the caller evaluates against it after the lock is
+    /// released, so a long query never blocks a concurrent one and never sees the
+    /// corpus change underneath it mid-evaluation.
+    pub async fn documents(
+        &self,
+        db: &Db,
+        score_of: &mut (dyn FnMut(&StoredRun) -> Option<f64> + Send),
+    ) -> Result<Arc<Vec<GgRunDoc>>> {
+        let mut state = self.state.lock().await;
+        if self.is_stale(&state) {
+            reconcile_into(&mut state, db, score_of).await?;
+        }
+        Ok(Arc::clone(&state.corpus))
+    }
+
+    /// Reconcile unconditionally, ignoring the TTL, and report what changed.
+    ///
+    /// Separate from [`documents`](Self::documents) so a caller that has just written
+    /// a run — or a test — can force the refresh, and so the delta is observable
+    /// without threading it through every query response.
+    pub async fn reconcile(
+        &self,
+        db: &Db,
+        score_of: &mut (dyn FnMut(&StoredRun) -> Option<f64> + Send),
+    ) -> Result<GgIndexDelta> {
+        let mut state = self.state.lock().await;
+        reconcile_into(&mut state, db, score_of).await
+    }
+
+    /// What the most recent reconcile did, or the zero delta before the first one.
+    pub async fn last_delta(&self) -> GgIndexDelta {
+        self.state.lock().await.last_delta
+    }
+
+    /// Whether the index is due a refresh. A never-reconciled index always is, so the
+    /// first query loads the corpus.
+    fn is_stale(&self, state: &GgIndexState) -> bool {
+        match state.reconciled_at {
+            Some(at) => at.elapsed() >= self.ttl,
+            None => true,
+        }
+    }
+}
+
+/// The reconcile itself, factored out of the two entry points so both hold the lock
+/// across exactly the same work.
+async fn reconcile_into(
+    state: &mut GgIndexState,
+    db: &Db,
+    score_of: &mut (dyn FnMut(&StoredRun) -> Option<f64> + Send),
+) -> Result<GgIndexDelta> {
+    let versions = db.gg_run_versions().await?;
+
+    // Split the projection into the ids that need reloading (with the stamp to record
+    // them under) and the full set of ids that still exist.
+    let mut pending: BTreeMap<String, String> = BTreeMap::new();
+    let mut live: BTreeSet<String> = BTreeSet::new();
+    for version in versions {
+        let fresh = state
+            .entries
+            .get(&version.id)
+            .is_some_and(|entry| entry.updated_at == version.updated_at);
+        if !fresh {
+            pending.insert(version.id.clone(), version.updated_at);
+        }
+        live.insert(version.id);
+    }
+
+    // Evict first, so a corpus that only shrank does no loading at all.
+    let before = state.entries.len();
+    state.entries.retain(|id, _| live.contains(id));
+    let evicted = before - state.entries.len();
+
+    let reloaded = pending.len();
+    if !pending.is_empty() {
+        let ids: Vec<String> = pending.keys().cloned().collect();
+        let runs = db.gg_runs_by_id(&ids).await?;
+        // Seed an entry at the new stamp for **every** id asked for, then fill in the
+        // documents that built. An id whose record no longer deserializes keeps its
+        // seeded entry and so stays tombstoned rather than looking new next cycle.
+        for (id, updated_at) in pending {
+            state.entries.insert(
+                id,
+                GgIndexEntry {
+                    updated_at,
+                    doc: None,
+                },
+            );
+        }
+        for run in &runs {
+            let doc = build_run_doc(&run.record, &lifecycle_of(run, score_of(run)));
+            if let Some(entry) = state.entries.get_mut(&run.record.id) {
+                entry.doc = Some(doc);
+            }
+        }
+    }
+
+    // Rebuild the shared corpus only when the ledger actually moved; an unchanged
+    // reconcile leaves every reader's `Arc` pointing at the same allocation.
+    if reloaded > 0 || evicted > 0 {
+        state.corpus = Arc::new(
+            state
+                .entries
+                .values()
+                .filter_map(|entry| entry.doc.clone())
+                .collect(),
+        );
+    }
+
+    let delta = GgIndexDelta {
+        reloaded,
+        evicted,
+        documents: state.corpus.len(),
+    };
+    state.reconciled_at = Some(Instant::now());
+    state.last_delta = delta;
+    if reloaded > 0 || evicted > 0 {
+        tracing::debug!(
+            reloaded = delta.reloaded,
+            evicted = delta.evicted,
+            documents = delta.documents,
+            "reconciled the gg document index",
+        );
+    }
+    Ok(delta)
+}
+
+/// The store-side lifecycle facts a document carries, which the record itself does
+/// not: whether the run is published, what its reviewers concluded, and how many of
+/// them there were.
+fn lifecycle_of(run: &StoredRun, score: Option<f64>) -> GgDocLifecycle {
+    GgDocLifecycle {
+        published: run.published,
+        rating: crate::db::aggregate_review_rating(&run.reviews),
+        score,
+        review_count: run.reviews.len() as u64,
+    }
+}
+
+/// The production reviewer-score resolver: the run's aggregate score as a `0.0..=1.0`
+/// fraction of its case's declared checklist weight, read from the definition store.
+///
+/// Caches the manifest per `(slug, version)` — including the *absence* of one, so an
+/// un-ingested case is not re-read per run — because a reconcile of a whole corpus
+/// otherwise reads the same few manifests thousands of times. The cache is per
+/// resolver, so it never outlives one reconcile and cannot serve a stale manifest
+/// after a re-ingest.
+pub struct CatalogScores<'a> {
+    /// The definition store the checklist weights are read from.
+    store: &'a DefinitionStore,
+    /// `(slug, version)` → the manifest, or `None` when the case is not ingested.
+    manifests: HashMap<(String, String), Option<StoredManifest>>,
+}
+
+impl<'a> CatalogScores<'a> {
+    /// A resolver reading from `store`, with an empty cache.
+    pub fn new(store: &'a DefinitionStore) -> Self {
+        Self {
+            store,
+            manifests: HashMap::new(),
+        }
+    }
+
+    /// The run's score fraction, or `None` when it has no reviews, its case is not
+    /// ingested, or that case declares no weighted checklist at all (a zero
+    /// denominator is an absent score, never a zero one — see
+    /// [rule 1](test_cabinet_core::gg_query#the-seven-semantic-rules), which a
+    /// stored `0` would violate by dragging every average down).
+    pub fn score(&mut self, run: &StoredRun) -> Option<f64> {
+        let subject = &run.record.subject;
+        let key = (
+            subject.test_case_slug.clone(),
+            subject.test_case_version.clone(),
+        );
+        let store = self.store;
+        let manifest = self.manifests.entry(key).or_insert_with(|| {
+            store
+                .read_manifest(&subject.test_case_slug, &subject.test_case_version)
+                .ok()
+        });
+        manifest.as_ref().and_then(|manifest| {
+            run_summary_score(manifest, &subject.variant, &run.reviews)
+                .filter(|score| score.total > 0)
+                .map(|score| score.earned / score.total as f64)
+        })
+    }
+}
