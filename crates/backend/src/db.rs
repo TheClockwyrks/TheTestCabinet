@@ -38,6 +38,8 @@ use test_cabinet_entities::{
     gg_config, harness_config, job, model, model_alias, model_price, publish_job, review,
     review_plan, review_revision, run, run_link, snapshot_state, tournament,
 };
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
 
 use crate::error::{BackendError, Result};
 
@@ -342,6 +344,12 @@ impl Db {
             published: Set(was_published),
             record_json: Set(record_json),
             events_json: Set(events_json.map(|s| s.to_string())),
+            // `NotSet` on both paths: the mutation timestamp is stamped by
+            // `touch_run` below, inside this same transaction, so that exactly one
+            // place in the store decides its value. The insert therefore lands on
+            // the column's `''` default for an instant, and the upsert leaves the
+            // prior value alone, but neither is ever committed.
+            updated_at: NotSet,
         })
         .on_conflict(
             // Re-push updates the record and its lifted record-derived columns but
@@ -388,6 +396,8 @@ impl Db {
         )
         .exec(&txn)
         .await?;
+
+        touch_run(&txn, &record.id).await?;
 
         // Re-pushing an already-published run changes its public record, so mark
         // the snapshot dirty; pushing a pending run does not (it is not public).
@@ -537,6 +547,8 @@ impl Db {
         active.review_count = Set(review_count);
         active.update(&txn).await?;
 
+        touch_run(&txn, run_id).await?;
+
         // A new/updated review changes a published run's aggregate rating and
         // score, so refresh the snapshot; a pending run is not public.
         if published {
@@ -581,6 +593,8 @@ impl Db {
         active.published = Set(true);
         active.published_at = Set(Some(effective_published_at));
         active.update(&txn).await?;
+
+        touch_run(&txn, run_id).await?;
 
         set_dirty(&txn).await?;
 
@@ -1355,6 +1369,34 @@ async fn set_dirty<C: ConnectionTrait>(conn: &C) -> Result<()> {
     )
     .exec(conn)
     .await?;
+    Ok(())
+}
+
+/// Stamp `run.updated_at` for `run_id` with the current time — the row's
+/// **mutation timestamp**, and the one signal a cache or index can key on to learn
+/// that a stored run now means something different.
+///
+/// **Every mutator of a `run` row must call this**, and none may write the column
+/// any other way. That obligation is enforced by convention alone: the in-memory
+/// document index behind the gg query language reconciles per id against a narrow
+/// `(id, updated_at)` projection, so a mutation that forgets to stamp does not
+/// fail — it silently serves the pre-mutation document forever. Concentrating the
+/// write here at least makes the obligation one call, greppable and identical
+/// everywhere, rather than a field assignment to be remembered at each new site.
+///
+/// Deliberately a separate `UPDATE` rather than a field on each mutator's
+/// `ActiveModel`: [`Db::push`] writes its row through an upsert whose conflict
+/// clause would otherwise have to list the column too (a second, easily forgotten
+/// obligation), and an update-many keyed on the id is uniform across the insert and
+/// update paths alike. Callers inside a transaction pass the transaction, so the
+/// stamp commits or rolls back with the mutation it describes.
+async fn touch_run<C: ConnectionTrait>(conn: &C, run_id: &str) -> Result<()> {
+    let now = OffsetDateTime::now_utc().format(&Rfc3339)?;
+    run::Entity::update_many()
+        .col_expr(run::Column::UpdatedAt, Expr::value(now))
+        .filter(run::Column::Id.eq(run_id))
+        .exec(conn)
+        .await?;
     Ok(())
 }
 
@@ -3049,6 +3091,8 @@ impl Db {
         active.record_json = Set(record_json);
         active.update(&txn).await?;
 
+        touch_run(&txn, run_id).await?;
+
         // Upsert the links sibling, exactly like `push`.
         run_link::Entity::insert(run_link::ActiveModel {
             run_id: Set(run_id.to_string()),
@@ -3452,12 +3496,14 @@ impl Db {
             };
             let record_json = serde_json::to_string(&record)?;
 
+            let id = row.id.clone();
             let mut active = row.into_active_model();
             active.model_id = Set(base);
             // Keep the lifted cost column in step with the record's recomputed cost.
             active.cost_comparable = Set(comparable);
             active.record_json = Set(record_json);
             active.update(&self.conn()).await?;
+            touch_run(&self.conn(), &id).await?;
             rewritten += 1;
         }
         Ok(rewritten)
@@ -3515,6 +3561,7 @@ impl Db {
             let rating = lifted_rating(reviews);
             let review_count = reviews.len() as i64;
 
+            let id = row.id.clone();
             let mut active = row.into_active_model();
             active.test_type = Set(lifted.test_type);
             active.run_time_seconds = Set(lifted.run_time_seconds);
@@ -3524,6 +3571,7 @@ impl Db {
             active.review_count = Set(review_count);
             active.gg_preset = Set(lifted.gg_preset);
             active.update(&self.conn()).await?;
+            touch_run(&self.conn(), &id).await?;
             backfilled += 1;
         }
         Ok(backfilled)
@@ -3558,9 +3606,11 @@ impl Db {
             let Some(preset) = lifted_gg_preset(&record) else {
                 continue;
             };
+            let id = row.id.clone();
             let mut active = row.into_active_model();
             active.gg_preset = Set(Some(preset));
             active.update(&self.conn()).await?;
+            touch_run(&self.conn(), &id).await?;
             backfilled += 1;
         }
         Ok(backfilled)

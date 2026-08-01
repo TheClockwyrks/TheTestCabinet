@@ -77,6 +77,22 @@ pub struct Model {
     /// The run's recorded normalized event stream as a JSON array, or `NULL`.
     #[sea_orm(column_type = "Text", nullable)]
     pub events_json: Option<String>,
+    /// RFC 3339 of the last write that changed anything observable about this row
+    /// — the **mutation timestamp**, distinct from `finished_at` (when the run
+    /// stopped executing) and `published_at` (when it went public).
+    ///
+    /// **Every mutator of a `run` row must stamp this**, and the only supported way
+    /// to do so is the backend store's `touch_run` helper (the one writer of this
+    /// column, beside [`Db`](../../test_cabinet_backend/db/struct.Db.html)'s
+    /// mutators in `crates/backend/src/db.rs`): a mutation that forgets it silently
+    /// reinstates a stale document in the in-memory index that reconciles against
+    /// this column, and nothing fails loudly when it does. Do not set the field on
+    /// an `ActiveModel` by hand.
+    ///
+    /// Compared for **inequality**, never ordered: the RFC 3339 rendering drops the
+    /// fractional part when it is exactly zero, so string ordering is unreliable
+    /// between two stamps less than a second apart.
+    pub updated_at: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

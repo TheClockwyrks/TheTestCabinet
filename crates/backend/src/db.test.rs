@@ -490,6 +490,134 @@ async fn publish_marks_snapshot_dirty_but_pushing_a_pending_run_does_not() {
     assert_eq!(state.last_uploaded.as_deref(), Some("2026-06-17T10:05:00Z"));
 }
 
+/// Parse a stored mutation stamp back to an instant. Comparing parsed instants
+/// rather than the raw strings is deliberate: the RFC 3339 rendering omits the
+/// fractional part when it happens to be exactly zero, so two stamps a fraction of
+/// a second apart do not reliably compare lexicographically.
+fn stamp(raw: &str) -> time::OffsetDateTime {
+    assert!(!raw.is_empty(), "the mutation stamp was never written");
+    time::OffsetDateTime::parse(raw, &time::format_description::well_known::Rfc3339)
+        .expect("the mutation stamp is RFC 3339")
+}
+
+#[tokio::test]
+async fn every_run_mutation_moves_updated_at() {
+    // The mutation timestamp is the *only* signal a cache or index can key on to
+    // learn that a stored run now means something different: none of these three
+    // writes moves `finished_at`, and only the last moves `published_at`. If any
+    // one of them stops stamping, an index reconciling on this column serves the
+    // pre-mutation document forever, silently.
+    let db = Db::connect_in_memory().await.unwrap();
+
+    db.push(&record("r1"), &links(), None).await.unwrap();
+    let pushed = stamp(&lifted(&db, "r1").await.updated_at);
+
+    db.add_review("r1", &review(), None).await.unwrap();
+    let reviewed = stamp(&lifted(&db, "r1").await.updated_at);
+
+    db.publish("r1", "2026-06-17T21:40:00Z").await.unwrap();
+    let published = stamp(&lifted(&db, "r1").await.updated_at);
+
+    assert!(
+        pushed < reviewed,
+        "add_review must move the stamp: {pushed} !< {reviewed}"
+    );
+    assert!(
+        reviewed < published,
+        "publish must move the stamp: {reviewed} !< {published}"
+    );
+
+    // A re-push rewrites the record blob without changing when the run finished,
+    // so it too must move the stamp.
+    db.push(&record("r1"), &links(), None).await.unwrap();
+    let repushed = stamp(&lifted(&db, "r1").await.updated_at);
+    assert!(
+        published < repushed,
+        "a re-push must move the stamp: {published} !< {repushed}"
+    );
+
+    // The stamp is the row's own, not the store's: mutating one run leaves every
+    // other run's stamp exactly where it was.
+    db.push(&record("r2"), &links(), None).await.unwrap();
+    let other = lifted(&db, "r2").await.updated_at;
+    db.add_review("r1", &review_by("u2", Rating::Broken), None)
+        .await
+        .unwrap();
+    assert_eq!(lifted(&db, "r2").await.updated_at, other);
+}
+
+#[tokio::test]
+async fn the_updated_at_migration_seeds_existing_rows_from_finished_at() {
+    // Rolling the column's migration back and forward again reproduces exactly what
+    // a deployment sees on the release that introduces it: rows that already exist
+    // and have never been stamped. They must come out of the migration carrying the
+    // run's finish time — the best evidence the row itself holds of when it last
+    // meant something different — rather than the `''` the column defaults to,
+    // which reads as a lie to anything that displays the value.
+    use test_cabinet_migration::MigratorTrait;
+
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record("r1"), &links(), None).await.unwrap();
+    let conn = db.connection();
+
+    test_cabinet_migration::Migrator::down(&conn, Some(1))
+        .await
+        .unwrap();
+    test_cabinet_migration::Migrator::up(&conn, Some(1))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        lifted(&db, "r1").await.updated_at,
+        record("r1").finished_at,
+        "the migration must seed an existing row's stamp from its finish time"
+    );
+}
+
+#[tokio::test]
+async fn the_startup_backfills_move_updated_at_on_the_rows_they_rewrite() {
+    // The backfills rewrite lifted columns on rows that predate them, which is a
+    // mutation like any other — and they are also what replaces the migration's
+    // empty-string default on the rows they touch.
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut named = gg_record("gg1");
+    named.subject.gg_capability_set.as_mut().unwrap().preset = Some("planning-A".to_string());
+    db.push(&named, &links(), None).await.unwrap();
+    db.push(&record_with_metrics("r1"), &links(), None)
+        .await
+        .unwrap();
+
+    // Reset both rows to how the migrations left a row written before these
+    // columns existed: no lifted test type, no lifted preset, and no stamp.
+    for id in ["gg1", "r1"] {
+        let mut active = lifted(&db, id).await.into_active_model();
+        active.test_type = Set(String::new());
+        active.gg_preset = Set(None);
+        active.updated_at = Set(String::new());
+        active.update(&db.connection()).await.unwrap();
+    }
+
+    assert_eq!(db.backfill_sort_columns().await.unwrap(), 2);
+    let sorted = stamp(&lifted(&db, "r1").await.updated_at);
+    let gg_after_sort = stamp(&lifted(&db, "gg1").await.updated_at);
+
+    // `backfill_sort_columns` also fills `gg_preset`, so clear it again to give the
+    // preset backfill a candidate of its own.
+    let mut active = lifted(&db, "gg1").await.into_active_model();
+    active.gg_preset = Set(None);
+    active.update(&db.connection()).await.unwrap();
+
+    assert_eq!(db.backfill_gg_presets().await.unwrap(), 1);
+    let gg_after_preset = stamp(&lifted(&db, "gg1").await.updated_at);
+    assert!(
+        gg_after_sort < gg_after_preset,
+        "the preset backfill must move the stamp: {gg_after_sort} !< {gg_after_preset}"
+    );
+    // The non-gg row is outside the preset backfill's candidate set, so its stamp
+    // stands where the sort backfill left it.
+    assert_eq!(stamp(&lifted(&db, "r1").await.updated_at), sorted);
+}
+
 #[tokio::test]
 async fn all_published_returns_only_published_runs_newest_first() {
     let db = Db::connect_in_memory().await.unwrap();
@@ -1598,6 +1726,7 @@ async fn complete_publish_job_attaches_links_flips_published_and_marks_the_job()
     db.enqueue_publish_job(new_publish_job("p1", "r1", "2026-06-27T00:00:00Z"))
         .await
         .unwrap();
+    let before = stamp(&lifted(&db, "r1").await.updated_at);
 
     let outcome = db
         .complete_publish_job(
@@ -1626,6 +1755,15 @@ async fn complete_publish_job_attaches_links_flips_published_and_marks_the_job()
         "the record blob's links agree with the sibling"
     );
     assert!(db.snapshot_state().await.unwrap().dirty);
+
+    // This is the publish path the queue actually takes, and it rewrites the record
+    // blob as well as flipping the run, so it stamps the mutation timestamp exactly
+    // as the synchronous `publish` does.
+    let after = stamp(&lifted(&db, "r1").await.updated_at);
+    assert!(
+        before < after,
+        "completing a publish job must move the stamp: {before} !< {after}"
+    );
 
     // The publish job is marked succeeded with the same links.
     let job = db.get_publish_job("p1").await.unwrap().unwrap();
@@ -2023,8 +2161,20 @@ async fn normalize_free_model_ids_reprices_openrouter_runs_only() {
             output: Some(0.000_006),
         },
     );
+    let untouched = lifted(&db, "codex-run").await.updated_at;
+    let before = stamp(&lifted(&db, "free-run").await.updated_at);
+
     let rewritten = db.normalize_free_model_ids(&base_prices).await.unwrap();
     assert_eq!(rewritten, 1);
+
+    // Re-pricing rewrites the record blob, so the rewritten row's mutation stamp
+    // moves; the row this startup routine skipped keeps its stamp untouched.
+    let after = stamp(&lifted(&db, "free-run").await.updated_at);
+    assert!(
+        before < after,
+        "re-pricing must move the stamp: {before} !< {after}"
+    );
+    assert_eq!(lifted(&db, "codex-run").await.updated_at, untouched);
 
     let run = db.get_run("free-run").await.unwrap().unwrap();
     assert_eq!(run.record.subject.model_id, "deepseek/deepseek-v4");
