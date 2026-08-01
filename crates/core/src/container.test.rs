@@ -108,28 +108,83 @@ fn host_mappings_become_add_host_flags() {
 
 // ── artifact salvage ────────────────────────────────────────────────────────
 
+#[test]
+fn salvaging_copies_one_container_file_to_a_verbatim_host_path() {
+    // `cp` is handled by the runtime CLI on the *host*, so the destination goes through
+    // untranslated — the same rule the whole-tree collection follows. Only the source is
+    // container-qualified.
+    assert_eq!(
+        copy_out_args(
+            &ContainerHandle {
+                id: "c1".to_string(),
+            },
+            "/work/.gg/replay.ndjson",
+            "/runs/abc/replay.ndjson",
+        ),
+        vec![
+            "cp".to_string(),
+            "c1:/work/.gg/replay.ndjson".to_string(),
+            "/runs/abc/replay.ndjson".to_string(),
+        ],
+    );
+}
+
 #[tokio::test]
-async fn the_cli_collector_salvages_nothing_yet() {
-    // `collect_file` is the seam a `hung`/`timed_out` run's sidecars are rescued
-    // through; the CLI collector has not learned to copy one out yet, so it takes the
-    // trait's default. Pinning that here makes the day it *does* implement it a
-    // deliberate change to this test rather than a silent behavior swap — and proves
-    // the default is reached without ever invoking the runtime binary (the fake
-    // `no-such-runtime` below is never executed).
+async fn salvaging_reports_nothing_recovered_when_the_runtime_cannot_be_invoked() {
+    // `collect_file` is the seam a `hung`/`timed_out` run's replay journal is rescued
+    // through, and it runs on a path that is *already* failing a run. A runtime binary
+    // that cannot even be spawned must therefore report "nothing salvaged" rather than
+    // an error: a salvage attempt is never allowed to turn a diagnosable timeout into an
+    // unexplained collection failure.
+    let dest_dir = tempfile::tempdir().expect("scratch");
+    let dest = dest_dir.path().join(".gg/replay.ndjson");
     let collector = CliArtifactCollector::new(
         CliContainerRuntime::with_binary("no-such-runtime"),
-        std::path::PathBuf::from("/tmp"),
+        dest_dir.path().to_path_buf(),
     );
     let salvaged = collector
         .collect_file(
             &ContainerHandle {
                 id: "c1".to_string(),
             },
-            "/work/implementation/.gg/replay.json",
-            std::path::Path::new("/tmp/tcab-salvage-never-written.json"),
+            "/work/.gg/replay.ndjson",
+            &dest,
         )
         .await
-        .unwrap();
+        .expect("an unreachable runtime is not an error");
     assert!(!salvaged);
-    assert!(!std::path::Path::new("/tmp/tcab-salvage-never-written.json").exists());
+    assert!(
+        !dest.exists(),
+        "a failed salvage must leave no file behind for assembly to read",
+    );
+}
+
+#[tokio::test]
+async fn salvaging_reports_nothing_recovered_when_the_copy_produces_no_file() {
+    // The runtime *runs* and exits zero, but writes nothing — the shape a `cp` of a
+    // directory, or of a path the runtime silently no-ops on, would take. The collector
+    // claims a salvage only when a plain file actually landed, because the caller's next
+    // move is to hand that path to the assembler.
+    let dest_dir = tempfile::tempdir().expect("scratch");
+    let dest = dest_dir.path().join("nested/replay.ndjson");
+    let collector = CliArtifactCollector::new(
+        // `true` ignores its arguments and exits zero.
+        CliContainerRuntime::with_binary("true"),
+        dest_dir.path().to_path_buf(),
+    );
+    let salvaged = collector
+        .collect_file(
+            &ContainerHandle {
+                id: "c1".to_string(),
+            },
+            "/work/.gg/replay.ndjson",
+            &dest,
+        )
+        .await
+        .expect("a successful-but-empty copy is not an error");
+    assert!(!salvaged);
+    assert!(
+        dest.parent().expect("parent").is_dir(),
+        "the destination's directory is prepared before the copy is attempted",
+    );
 }

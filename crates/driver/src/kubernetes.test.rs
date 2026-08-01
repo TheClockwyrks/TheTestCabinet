@@ -388,6 +388,24 @@ fn collect_tar_command_excludes_regenerable_dependency_dirs() {
 }
 
 #[test]
+fn the_salvage_read_command_streams_one_file_without_a_shell() {
+    // Salvaging a `hung` run's replay journal out of a pod has no filesystem-layer
+    // channel to use — the only way to read a byte out of a pod is to run something in
+    // it — so this is the exec the salvage rides. Passed as argv rather than through
+    // `sh -c`, with `--` terminating options, so nothing in the path is ever
+    // interpreted.
+    let cmd = salvage_read_command("/work/.gg/replay.ndjson");
+    assert_eq!(
+        cmd,
+        ["cat", "--", "/work/.gg/replay.ndjson"].map(String::from)
+    );
+    assert!(
+        !cmd.iter().any(|arg| arg == "sh" || arg == "-c"),
+        "the salvage must not go through a shell: {cmd:?}",
+    );
+}
+
+#[test]
 fn extract_tar_command_bounds_the_read_by_byte_count() {
     // `head -c {len}` is what lets the remote pipeline terminate without relying
     // on stdin-EOF, so the exit Status survives on a v4 exec WebSocket.

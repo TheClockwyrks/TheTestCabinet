@@ -344,6 +344,10 @@ async fn report_canceled(
             // run that errored *after* collecting has a tree worth keeping, and the
             // upload is a no-op when there is nothing there.
             finalize_artifacts(config, &mut record).await;
+            // Same for a gg run's replay record: a cancellation that could not wind down
+            // cleanly still leaves a salvaged, truncated record in the run tree, and this
+            // is the only path that would mirror it.
+            finalize_replay_backend_upload(config, &record).await;
             record
         }
         Err(err) => {
@@ -609,6 +613,12 @@ async fn report_failure(
             // inspection — upload them and stamp any build link, the same as a
             // succeeded run, before the terminal status is posted.
             finalize_artifacts(config, &mut record).await;
+            // A `hung` or `timed_out` gg run never reaches artifact collection, but the
+            // engine salvages its replay journal out of the container before teardown and
+            // assembles it into the run tree all the same — so this is the one upload that
+            // routinely has something to do on the failure path. Without it the replay of
+            // exactly the run most worth replaying would stop at the driver pod.
+            finalize_replay_backend_upload(config, &record).await;
             Some(record)
         }
         Err(err) => {

@@ -794,6 +794,82 @@ impl ArtifactCollector for KubernetesArtifactCollector {
         }
         unreachable!("the collection loop returns on the final attempt")
     }
+
+    async fn collect_file(
+        &self,
+        container: &ContainerHandle,
+        container_path: &str,
+        dest: &std::path::Path,
+    ) -> Result<bool> {
+        // Preparing the host destination is the one part of this that is ours; a failure
+        // there is a real error, everything beyond it is best-effort.
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| Error::ArtifactCollection(err.to_string()))?;
+        }
+        let mut file = tokio::fs::File::create(dest).await.map_err(|err| {
+            Error::ArtifactCollection(format!(
+                "creating the salvage destination `{}`: {err}",
+                dest.display()
+            ))
+        })?;
+
+        // Unlike the CLI runtime's `cp`, there is no filesystem-layer channel into a pod:
+        // the only way to read a byte out of one is to run something inside it. So the
+        // pod must still be **up** — which is exactly why the caller salvages *before*
+        // `stop`, while a hung or over-cap run's container is wedged but alive. A pod that
+        // has already terminated cannot be salvaged from and reports nothing recovered.
+        let result = self
+            .runtime
+            .exec_stream_stdout(
+                &container.id,
+                &salvage_read_command(container_path),
+                &mut file,
+            )
+            .await;
+        drop(file);
+
+        match result {
+            Ok((0, _)) => Ok(true),
+            Ok((exit_code, stderr)) => {
+                // Almost always `cat: … : No such file or directory` — a run that never
+                // wrote the sidecar. Debug, not warn: nothing is wrong.
+                tracing::debug!(
+                    pod = %container.id,
+                    path = %container_path,
+                    exit_code,
+                    stderr = %stderr.trim(),
+                    "salvaging a file from the run pod found nothing",
+                );
+                let _ = std::fs::remove_file(dest);
+                Ok(false)
+            }
+            Err(err) => {
+                tracing::warn!(
+                    pod = %container.id,
+                    path = %container_path,
+                    error = %err,
+                    "could not exec into the run pod to salvage a file",
+                );
+                let _ = std::fs::remove_file(dest);
+                Ok(false)
+            }
+        }
+    }
+}
+
+/// The argv that streams one in-pod file to stdout for salvage.
+///
+/// `--` guards a path that begins with a dash from being read as an option, and the
+/// command is passed as argv rather than through a shell so nothing in the path can be
+/// interpreted. Split out so the shape is unit-testable without a cluster — the exec
+/// itself needs a live `kube::Client` and cannot be.
+fn salvage_read_command(container_path: &str) -> Vec<String> {
+    vec![
+        "cat".to_string(),
+        "--".to_string(),
+        container_path.to_string(),
+    ]
 }
 
 /// Build the `Pod` manifest for a run. Pure given the spec and config, so the

@@ -52,6 +52,7 @@ pub mod reference;
 pub mod reference_lock;
 pub mod review;
 pub mod run_record;
+pub mod salvage;
 pub mod seeding;
 pub mod test_case;
 pub mod validation;
@@ -928,9 +929,106 @@ where
         match outcome {
             Ok(outcome) => Ok((handle, outcome, environment, scheduling_wait)),
             Err(err) => {
+                // The session failed, so this run never reaches artifact collection or
+                // the post-run seam — the caller returns straight out of `run_resolved`
+                // with this error. Rescue gg's replay journal first, while the container
+                // still exists, because a run that hung or ran past its cap is exactly
+                // the run whose replay is worth reading (see [`crate::salvage`]). Only
+                // the journal: the produced tree is deliberately left behind.
+                self.salvage_replay(
+                    &handle,
+                    run_id,
+                    test_case,
+                    variant,
+                    seeded,
+                    request,
+                    cancel.is_canceled(),
+                )
+                .await;
                 let _ = self.runtime.stop(&handle).await;
                 Err(err)
             }
+        }
+    }
+
+    /// Assemble a replay record for a run whose session ended in an error, from the
+    /// journal [salvaged](crate::salvage) out of the container it is about to lose.
+    ///
+    /// This is the failure-path counterpart to the [post-run seam](crate::post_run) in
+    /// [`run_resolved`](Self::run_resolved), and it runs the *same* wired stage against
+    /// the *same* run directory — so a hung run's `replay.json.gz` is indistinguishable
+    /// from a completed run's, except for the truncation the record itself reports. What
+    /// differs is the tree the stage is pointed at: a scratch directory holding nothing
+    /// but the journal, never the implementation, so nothing a hung run half-wrote can be
+    /// mistaken for output it produced.
+    ///
+    /// Deliberately runs **only** the replay assembler and not the code analyzer. Code
+    /// analysis measures the code the model wrote, and there is no collected tree here to
+    /// measure; a figure computed from an empty scratch directory would be a
+    /// convincing-looking zero rather than an absence.
+    ///
+    /// Entirely best-effort, and silent about it: this is called while a run is already
+    /// failing, and the failure being reported accurately outranks the diagnostic.
+    #[allow(clippy::too_many_arguments)]
+    async fn salvage_replay(
+        &self,
+        handle: &ContainerHandle,
+        run_id: &str,
+        test_case: &TestCaseVersion,
+        variant: &Variant,
+        seeded: &SeededRepo,
+        request: &RunRequest,
+        canceled: bool,
+    ) {
+        // Nothing to assemble into, and nothing to assemble: a host that wires no
+        // assembler wants no replay artifact, and only gg writes a journal at all. Both
+        // are checked before the copy so a failing third-party run is never asked to hand
+        // over a file it could not have written.
+        let Some(stage) = self.replay_assembler.as_deref() else {
+            return;
+        };
+        if !request.is_gg() {
+            return;
+        }
+        let Some(scratch) = salvage::salvage_journal_tree(&self.collector, handle).await else {
+            return;
+        };
+
+        // The run directory the failed record will be written into by
+        // `write_failed_record`, which builds the same `<output_dir>/<run_id>` path. The
+        // stage writes its artifact at that tree's root, exactly where a completed run's
+        // is, so the driver's mirror and the artifact-service upload find it unchanged.
+        let run_dir = self.output_dir.join(run_id);
+        if let Err(err) = std::fs::create_dir_all(&run_dir) {
+            tracing::warn!(
+                error = %err,
+                run_dir = %run_dir.display(),
+                "could not create the run directory to assemble a salvaged replay into",
+            );
+            return;
+        }
+        let artifacts = ArtifactCollection {
+            repo_path: scratch.path().to_path_buf(),
+        };
+        let report = post_run::run_stages(
+            std::iter::once(stage),
+            &post_run::PostRunContext {
+                run_id,
+                run_dir: &run_dir,
+                artifacts: &artifacts,
+                seed_commit: &seeded.initial_commit,
+                test_case,
+                variant,
+                request,
+                canceled,
+            },
+        )
+        .await;
+        if !report.artifacts.is_empty() {
+            tracing::info!(
+                artifacts = ?report.artifacts,
+                "assembled a replay record salvaged from the failed run's container",
+            );
         }
     }
 

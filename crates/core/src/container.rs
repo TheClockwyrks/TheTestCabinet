@@ -573,4 +573,73 @@ impl ArtifactCollector for CliArtifactCollector {
         }
         Ok(ArtifactCollection { repo_path: dest })
     }
+
+    async fn collect_file(
+        &self,
+        container: &ContainerHandle,
+        container_path: &str,
+        dest: &Path,
+    ) -> Result<bool> {
+        // The one thing on this path that is genuinely ours to get right: the salvage
+        // writes to a host directory we chose, so a failure to prepare it is a real error
+        // rather than "nothing to recover".
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| Error::ArtifactCollection(err.to_string()))?;
+        }
+        let dest_str = dest
+            .to_str()
+            .ok_or_else(|| Error::ArtifactCollection("dest path is not valid UTF-8".to_string()))?;
+
+        // `cp` reads the container's filesystem layer rather than execing inside it, so
+        // this works against a container that is stopped, wedged, or has no usable shell
+        // left — which is the whole point, since the caller reaches here because the run
+        // stopped responding.
+        let output = match self
+            .runtime
+            .run(&copy_out_args(container, container_path, dest_str))
+            .await
+        {
+            Ok(output) => output,
+            Err(err) => {
+                // The runtime binary itself could not be run. Best-effort by contract:
+                // report nothing salvaged rather than turning a diagnosable timeout into
+                // an unexplained collection failure.
+                tracing::debug!(
+                    container = %container.id,
+                    path = %container_path,
+                    error = %err,
+                    "could not invoke the container runtime to salvage a file",
+                );
+                return Ok(false);
+            }
+        };
+        if !output.status.success() {
+            // Overwhelmingly this is "no such file in the container" — a run that simply
+            // never wrote the sidecar — so it is a debug line, not a warning.
+            tracing::debug!(
+                container = %container.id,
+                path = %container_path,
+                stderr = %String::from_utf8_lossy(&output.stderr).trim(),
+                "salvaging a file from the container failed",
+            );
+            return Ok(false);
+        }
+        // A `cp` of a *directory* onto `dest` would also exit zero, so confirm a plain
+        // file actually landed before claiming the salvage succeeded.
+        Ok(dest.is_file())
+    }
+}
+
+/// The argv that copies one file out of a container onto the host.
+///
+/// Split out so the command shape is unit-testable without a container runtime: `cp` is
+/// handled by the runtime CLI on the host, so — exactly as in [`ArtifactCollector::collect`]
+/// — the destination is used verbatim rather than translated to a container-side path.
+fn copy_out_args(container: &ContainerHandle, container_path: &str, dest: &str) -> Vec<String> {
+    vec![
+        "cp".to_string(),
+        format!("{}:{container_path}", container.id),
+        dest.to_string(),
+    ]
 }
