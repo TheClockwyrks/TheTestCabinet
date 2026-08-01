@@ -1,7 +1,14 @@
 [package]
 name = "test-cabinet-gg"
 edition.workspace = true
-version.workspace = true
+# A REAL version, deliberately not `version.workspace = true` (which is `0.0.0`).
+# `gg --version` prints this, `core` reads it out of the run container, and it is
+# recorded as every gg run's `subject.harnessVersion` — the field that says which
+# harness build produced a result. Left at the workspace `0.0.0` it is a constant,
+# and the whole recorded corpus claims to come from one indistinguishable build.
+# Kept in lockstep with `crates/core` (see the note there, and the
+# `the_default_release_version_matches_this_binary` test in `src/lib.test.rs`).
+version = "0.7.0"
 license.workspace = true
 publish.workspace = true
 

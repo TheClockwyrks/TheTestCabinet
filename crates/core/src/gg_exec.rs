@@ -88,7 +88,11 @@ const ENV_BINARY: &str = "TCAB_GG_BINARY";
 const ENV_INSTALL_MODE: &str = "TCAB_GG_INSTALL";
 
 /// Env override: the gg release version to download in [release](GgInstall::Release)
-/// mode. Defaults to this crate's version (the workspace version gg is built at).
+/// mode. Defaults to [`DEFAULT_RELEASE_VERSION`].
+///
+/// This is also how a *prerelease* is pulled: the release pipeline tags candidates
+/// `v0.7.0-rc1`, which no crate version ever equals, so exercising one means naming
+/// it here (`TCAB_GG_RELEASE_VERSION=0.7.0-rc1`).
 const ENV_RELEASE_VERSION: &str = "TCAB_GG_RELEASE_VERSION";
 
 /// Env override: the `owner/repo` the gg release is published under.
@@ -99,6 +103,21 @@ const ENV_RELEASE_TARGET: &str = "TCAB_GG_RELEASE_TARGET";
 
 /// The default `owner/repo` gg releases are published under.
 const DEFAULT_RELEASE_REPO: &str = "TheClockwyrks/test-cabinet";
+
+/// The `gg` release version a [`GgInstall::Release`] defaults to — this crate's own
+/// package version.
+///
+/// The two sides of that equality are worth spelling out, because nothing at the type
+/// level ties them together: *this* crate is what runs in the driver and decides which
+/// release asset to fetch, while the asset itself is built from `crates/gg`, whose
+/// version is what `gg --version` reports and what is recorded as a run's
+/// [`harness_version`](crate::run_record::RunSubject::harness_version). If the two
+/// package versions drift the failure is silent in the worst way — the driver requests
+/// a tag that does not exist (a run that dies at the install step), or one that does
+/// and holds a *different* build than the corpus is about to be labelled with. So they
+/// are pinned to the same string, and `crates/gg`'s
+/// `the_default_release_version_matches_this_binary` test asserts it.
+pub const DEFAULT_RELEASE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// How the `gg` binary is put into the run container.
 ///
@@ -151,7 +170,7 @@ pub fn resolve_install() -> Result<GgInstall> {
     resolve_install_with(
         |key| std::env::var(key).ok(),
         |path| path.exists(),
-        env!("CARGO_PKG_VERSION"),
+        DEFAULT_RELEASE_VERSION,
         std::env::consts::ARCH,
     )
 }
@@ -274,11 +293,32 @@ fn default_local_candidates() -> Vec<PathBuf> {
     .collect()
 }
 
+/// The URL a published `gg` release asset lives at.
+///
+/// Two conventions are encoded here, and both are owned by
+/// `.github/workflows/release.yml` — change one without the other and every cluster
+/// run that installs gg from a release dies at the download step:
+///
+/// - **the tag is `v{version}`**, the single tag a release is cut under (the `tcab`
+///   CLI, the services, the desktop installers and gg all hang off it). An earlier
+///   `gg-v{version}` scheme named a tag the workflow has never created, so no URL this
+///   function produced had ever resolved.
+/// - **the asset is a bare executable named `gg-{target}`**, not an archive like the
+///   other binaries. The container-side install is one `curl` with no unpack step, in
+///   an image that is not guaranteed to have `tar` — and the target triple in the name
+///   is what lets one release serve both the `x86_64` and `aarch64` musl builds.
+///
+/// Public so `crates/gg` can assert that the URL resolved for a default install names
+/// the version that binary actually reports.
+pub fn release_asset_url(repo: &str, version: &str, target: &str) -> String {
+    format!("https://github.com/{repo}/releases/download/v{version}/gg-{target}")
+}
+
 /// Build the shell script that downloads a release binary into the container and marks
 /// it executable. Pure and unit-tested so the URL and command shape are verified
 /// without a published release.
 fn release_download_command(repo: &str, version: &str, target: &str, dest: &str) -> String {
-    let url = format!("https://github.com/{repo}/releases/download/gg-v{version}/gg-{target}");
+    let url = release_asset_url(repo, version, target);
     format!(
         "set -e\ncurl --fail --silent --show-error --location {url} --output {dest}\nchmod 0755 {dest}\n"
     )

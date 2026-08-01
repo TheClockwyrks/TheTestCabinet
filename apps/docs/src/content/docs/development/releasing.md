@@ -30,9 +30,12 @@ so artifacts are tested before they reach users:
    (static musl — see
    [Portable builds](/development/building/#portable-static-builds)), Windows,
    and macOS it builds:
-   - the three headless binaries — the `tcab` CLI, the `tcab-driver` run executor, and
-     the `tcab-backend` store/API — as archives, smoke-testing each platform's
-     `tcab` with `scripts/ci/smoke-binary.sh`;
+   - the headless binaries — the `tcab` CLI, the `tcab-backend` store/API, and the
+     `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts` services — as archives,
+     smoke-testing each platform's `tcab` with `scripts/ci/smoke-binary.sh`;
+   - [`gg`](/gg/overview/), the in-container coding harness, as a **bare static-musl
+     executable** for `x86_64` **and** `aarch64` (see
+     [Releasing `gg`](#releasing-gg) below);
    - the [Tauri desktop app](/components/tauri/overview/) as the platform's
      installer (a `.deb` on Linux, a `.dmg` on macOS, an `.msi` and an NSIS
      `.exe` on Windows).
@@ -44,6 +47,35 @@ so artifacts are tested before they reach users:
    (`.github/workflows/release-promote.yml`) with the same tag to flip the
    prerelease into the latest full release. It does **not** rebuild, so the exact
    artifacts you tested are the ones published.
+
+### Releasing `gg`
+
+[`gg`](/gg/overview/) is released differently from the other binaries, because it is
+consumed differently: it is not downloaded by a person, it is fetched **by a running
+deployment** into a run container. Three consequences, all of which the workflow's
+`gg` job encodes:
+
+- **Two architectures, both native.** `core` (running in the driver) picks the asset
+  triple from *its own* architecture, so an arm64 deployment asks for
+  `gg-aarch64-unknown-linux-musl` and an amd64 one for the `x86_64` asset. Each leg
+  builds on a runner of that architecture via `scripts/build-gg-static.sh` — the same
+  script the [driver image](/deployment/overview/) runs to bake gg in, so the release
+  asset and the image's binary come off one build path.
+- **A bare executable, not an archive.** The install inside a run container is a single
+  `curl` of
+  `https://github.com/<owner>/<repo>/releases/download/v<version>/gg-<target>`
+  (`core::gg_exec::release_asset_url`), so the asset is uploaded under exactly that
+  name with no packaging around it.
+- **The crate version is the release version.** `gg --version` is read out of the run
+  container and recorded as a run's `subject.harnessVersion`, and `core` derives the
+  release tag it fetches from its own package version. So **bump both `crates/gg` and
+  `crates/core` to the release version before running the workflow** — they are pinned
+  to each other by a test, and the `gg` job additionally fails the release if the tag
+  and the binary's reported version disagree.
+
+A **prerelease** tag (`v0.7.0-rc1`) does not equal any crate version, so nothing
+resolves it by default; point a deployment at one explicitly with
+`TCAB_GG_RELEASE_VERSION=0.7.0-rc1`.
 
 ### macOS: the desktop app is unsigned
 

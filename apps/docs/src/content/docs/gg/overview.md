@@ -207,6 +207,13 @@ from a local build. **In k8s**, it is **published as a GitHub release and
 downloaded from there** at run time — the same shape as the third-party harnesses'
 install step, but pulling our own release rather than a public registry.
 
+The release asset is a bare static-musl executable named `gg-<target>`, hanging off
+the release tag `v<version>`, published for both `x86_64` and `aarch64` (the
+architecture is chosen by the *driver* asking, not by the run container). The version
+in that URL is `core`'s own — and `gg --version`, read out of the run container, is
+what a run records as its `subject.harnessVersion`, so the two crates are versioned in
+lockstep. See [Releasing `gg`](/development/releasing/#releasing-gg).
+
 ## Capabilities
 
 Each capability has its own page. They are grouped here by concern for reading; the

@@ -2,7 +2,8 @@ name: Release
 
 # On-demand release pipeline for The Test Cabinet's distributable artifacts:
 # the headless binaries — the `tcab` CLI, the `tcab-backend` store/API, and the
-# `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts` run-topology services — plus the
+# `tcab-dispatcher`/`tcab-driver`/`tcab-artifacts` run-topology services — the `gg`
+# in-container coding harness, plus the
 # Tauri desktop app, each built for every platform. Public releases are cut on GitHub (the Azure DevOps repository is
 # private to the org), so this is where downloadable artifacts are built and
 # published.
@@ -19,7 +20,9 @@ name: Release
 # thing standing between a broken binary and users. The backend and the
 # dispatcher/driver/artifacts services need a runtime/store/cluster to do anything,
 # so a clean build is their gate; the desktop app is exercised by hand from the
-# published prerelease.
+# published prerelease. `gg` gets a smoke check of its own — it is built natively on
+# each architecture's runner, so the shipped binary can be executed here, and what it
+# reports for `--version` is what a run record will claim produced its result.
 #
 # Dormant until the repository is mirrored to GitHub.
 on:
@@ -105,6 +108,88 @@ jobs:
         with:
           name: dist-${{ matrix.name }}
           path: dist/*
+          if-no-files-found: error
+
+  gg:
+    name: gg (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # BOTH musl architectures, because the download side picks the triple from
+          # the arch of the machine asking: `core::gg_exec` resolves
+          # `{ARCH}-unknown-linux-musl` from the *driver's* own architecture, so an
+          # arm64 driver pod asks for `gg-aarch64-unknown-linux-musl` and an amd64 one
+          # for the x86_64 asset. Publishing only one leg would leave half the
+          # deployments unable to install gg at all.
+          #
+          # Each leg builds NATIVELY on a runner of its own architecture (no
+          # cross-compilation): scripts/build-gg-static.sh targets the host arch, which
+          # is also how the driver image bakes gg in, so the release asset and the
+          # image's binary come off the identical build path.
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            arch: x86_64
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            arch: aarch64
+    steps:
+      - uses: actions/checkout@v6
+      # musl-gcc: `ring` (via rustls/reqwest) and `wasmtime` each compile a little C
+      # that has to be built for the musl target.
+      - name: Install musl toolchain
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      # gg is shipped as a fully STATIC musl binary — not a portability nicety but the
+      # thing that makes it work at all: it executes INSIDE the run container, whose
+      # images span glibc Debian bookworm and the Ubuntu blender image, so one static
+      # binary is the only build that runs across all of them.
+      - name: Build gg (static musl)
+        shell: bash
+        run: |
+          # The build script derives its target from the runner's architecture, so a
+          # mislabelled matrix leg would silently publish (say) an x86_64 binary under
+          # the aarch64 asset name — a failure that would only surface as an "Exec
+          # format error" inside somebody's run container. Assert the pairing instead.
+          if [ "$(uname -m)" != "${{ matrix.arch }}" ]; then
+            echo "runner is $(uname -m) but this leg builds ${{ matrix.target }}" >&2
+            exit 1
+          fi
+          ./scripts/build-gg-static.sh "dist/gg-${{ matrix.target }}"
+      # Native build on a native runner, so the shipped binary itself can be run. This
+      # is the gate on the version coupling the whole release rests on: `gg --version`
+      # is read out of the run container by `core` and recorded as a run's
+      # `subject.harnessVersion`, and `core` asks GitHub for a release named by ITS own
+      # version. Cutting `v0.8.0` without bumping `crates/gg` would publish a binary
+      # that reports the old version and mislabels every run made with it, so fail the
+      # release here instead. A prerelease tag (`v0.7.0-rc1`) legitimately carries the
+      # base crate version, hence prefix rather than equality.
+      - name: Smoke-test gg
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          reported="$("dist/gg-${{ matrix.target }}" --version)"
+          echo "$reported"
+          built="${reported#gg }"
+          expected="${VERSION#v}"
+          case "$expected" in
+            "$built"|"$built"-*) ;;
+            *)
+              echo "gg reports version '$built' but this release is '$expected' — bump crates/gg and crates/core" >&2
+              exit 1
+              ;;
+          esac
+      # Uploaded as a BARE executable named `gg-<target>`, not an archive like the
+      # other binaries: the install inside a run container is a single `curl` (see
+      # `core::gg_exec::release_asset_url`) in an image that is not guaranteed to have
+      # `tar`, and the triple in the filename is what lets one release serve both
+      # architectures.
+      - uses: actions/upload-artifact@v6
+        with:
+          name: dist-gg-${{ matrix.target }}
+          path: dist/gg-${{ matrix.target }}
           if-no-files-found: error
 
   desktop:
@@ -221,7 +306,7 @@ jobs:
 
   publish:
     name: Publish prerelease
-    needs: [build, desktop]
+    needs: [build, gg, desktop]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -253,7 +338,7 @@ jobs:
           # reports the freshly downloaded app as "damaged". Tell downloaders how
           # to clear the quarantine attribute until signing is in place.
           macos_note=$'\n\n### macOS: "“The Test Cabinet” is damaged and can’t be opened"\n\nThe macOS app is not yet signed or notarized, so after downloading it macOS quarantines it and shows this (misleading) message — the app is fine, just unsigned. After dragging it to Applications, clear the quarantine attribute once:\n\n```sh\nxattr -dr com.apple.quarantine \"/Applications/The Test Cabinet.app\"\n```\n\nThen open it normally.'
-          notes="Candidate build of ${VERSION}: the tcab CLI, the backend server, the dispatcher/driver/artifacts services, and the desktop app, for every platform. Download and test these artifacts, then finalize with the \"Release (promote)\" workflow. Each platform's tcab was smoke-tested during build.${macos_note}"
+          notes="Candidate build of ${VERSION}: the tcab CLI, the backend server, the dispatcher/driver/artifacts services, the gg coding harness (static musl, x86_64 and aarch64), and the desktop app, for every platform. Download and test these artifacts, then finalize with the \"Release (promote)\" workflow. Each platform's tcab was smoke-tested during build, and each gg binary was checked to report ${VERSION}.${macos_note}"
           if gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
             gh release upload "$VERSION" --repo "$REPO" --clobber dist/*
           else

@@ -1,7 +1,15 @@
 [package]
 name = "test-cabinet-core"
 edition.workspace = true
-version.workspace = true
+# A REAL version, deliberately not `version.workspace = true` (which is `0.0.0`).
+# This crate resolves the default `gg` release to download in a cluster run
+# (`gg_exec::DEFAULT_RELEASE_VERSION` is this package's version), so `0.0.0` here
+# means the driver asks GitHub for a release tag that will never exist. It is kept
+# in lockstep with `crates/gg`, whose version is what `gg --version` reports and
+# what is recorded as a run's `subject.harnessVersion`; `crates/gg`'s
+# `the_default_release_version_matches_this_binary` test fails the build if the two
+# ever drift apart. Bump both when cutting a release.
+version = "0.7.0"
 license.workspace = true
 publish.workspace = true
 

@@ -106,3 +106,7 @@ pub async fn run_from_args() -> ExitCode {
         agent::SessionOutcome::LaunchFailed => ExitCode::FAILURE,
     }
 }
+
+#[cfg(test)]
+#[path = "lib.test.rs"]
+mod tests;

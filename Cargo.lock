@@ -6907,7 +6907,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-core"
-version = "0.0.0"
+version = "0.7.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -7060,7 +7060,7 @@ dependencies = [
 
 [[package]]
 name = "test-cabinet-gg"
-version = "0.0.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "async-trait",

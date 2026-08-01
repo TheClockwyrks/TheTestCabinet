@@ -424,10 +424,46 @@ fn release_download_command_builds_the_expected_url_and_script() {
         "/tmp/gg",
     );
     assert!(script.contains(
-        "https://github.com/TheClockwyrks/test-cabinet/releases/download/gg-v0.7.0/gg-x86_64-unknown-linux-gnu"
+        "https://github.com/TheClockwyrks/test-cabinet/releases/download/v0.7.0/gg-x86_64-unknown-linux-gnu"
     ));
     assert!(script.contains("--output /tmp/gg"));
     assert!(script.contains("chmod 0755 /tmp/gg"));
+}
+
+/// The asset URL is the contract with `.github/workflows/release.yml`: the release is
+/// cut at the tag `v{version}` and gg is uploaded to it as a bare `gg-{target}`
+/// executable. Pinning the whole string here means a change to either half of that
+/// convention has to be made deliberately, in a place that names the workflow.
+#[test]
+fn the_release_asset_url_names_the_version_tag_not_a_gg_prefixed_one() {
+    assert_eq!(
+        release_asset_url(
+            "TheClockwyrks/test-cabinet",
+            "0.7.0",
+            "aarch64-unknown-linux-musl"
+        ),
+        "https://github.com/TheClockwyrks/test-cabinet/releases/download/v0.7.0/gg-aarch64-unknown-linux-musl"
+    );
+}
+
+/// A release install with nothing overridden must resolve to a version that could
+/// actually have been published — i.e. this crate's real version, not the `0.0.0`
+/// every workspace member carried before gg had a release pipeline.
+#[test]
+fn the_default_release_version_is_a_real_published_version() {
+    assert_ne!(DEFAULT_RELEASE_VERSION, "0.0.0");
+
+    let install = resolve_install_with(
+        env_map(&[("TCAB_GG_INSTALL", "release")]),
+        |_: &Path| true,
+        DEFAULT_RELEASE_VERSION,
+        "x86_64",
+    )
+    .unwrap();
+    let GgInstall::Release { version, .. } = install else {
+        panic!("release mode must resolve to a release install");
+    };
+    assert_eq!(version, DEFAULT_RELEASE_VERSION);
 }
 
 // ---- invocation construction --------------------------------------------------

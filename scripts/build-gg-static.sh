@@ -60,7 +60,11 @@ export "CC_${tgt_us}=musl-gcc"
 export RUSTFLAGS="${RUSTFLAGS:-} -C target-feature=+crt-static"
 
 log "build-gg-static: building gg for $target (release, static)"
-cargo build -p test-cabinet-gg --release --target "$target"
+# `--locked`: this script builds the gg that ships — as a release asset and as the
+# binary baked into the driver image — so the dependency set must be exactly the
+# committed Cargo.lock. A stale lock should fail the build loudly here rather than be
+# silently updated into a shipped artifact nobody can reproduce.
+cargo build -p test-cabinet-gg --release --locked --target "$target"
 
 # Resolve the built binary. `CARGO_TARGET_DIR` (or this repo's relocated dev-container
 # target dir) may move it off the default ./target path.
