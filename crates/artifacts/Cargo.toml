@@ -46,9 +46,9 @@ reqwest = { workspace = true }
 tar = "0.4"
 # Gzip framing for the reviewer-facing run-archive download. A run tree is source
 # and JSON/NDJSON, so compressing it is most of the point of offering the download
-# at all. Default features keep the pure-Rust `miniz_oxide` backend — no zlib, so
-# no system dependency, matching `tar`'s reason for being here.
-flate2 = "1"
+# at all. Inherited from the workspace, which owns the version because the run-tree
+# artifact convention puts the same codec on the run host and in the backend too.
+flate2 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

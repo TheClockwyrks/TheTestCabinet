@@ -178,6 +178,16 @@ toml = "0.8"
 # they are never hard-coded into a specification.
 handlebars = "6"
 tempfile = "3"
+# Gzip framing, shared by every crate on the **run-tree artifact** path: a run's
+# whole-run analysis documents (`replay.json.gz`, `code-analysis.json.gz`) are
+# written compressed at the tree root, mirrored into the backend store as opaque
+# bytes, and served back content-negotiated on the request's `Accept-Encoding` —
+# so the writer (the run host), the store's reader (the backend) and the archive
+# service all need the same codec. Promoted here from `crates/artifacts`, which
+# pinned it privately for the run-archive download. Default features keep the
+# pure-Rust `miniz_oxide` backend — no zlib, so no system dependency, matching the
+# `png`/`gif` stance on keeping the workspace buildable on minimal hosts.
+flate2 = "1"
 # PNG decoding for the validator's reference-comparison similarity score, and PNG
 # encoding for the drawing/voxel binaries and the shared mesh preview renderer. The
 # `png` crate is a small, pure-Rust decoder/encoder with no system dependencies,

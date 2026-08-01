@@ -8,7 +8,7 @@ mod tests;
 use axum::Json;
 use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use test_cabinet_core::test_case::{
@@ -115,7 +115,7 @@ pub async fn artifact(
         .store
         .read_artifact(&slug, &version, &path)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&path, bytes))
+    Ok(bytes_response(&path, bytes, None))
 }
 
 /// `GET /test-cases/{slug}/versions/{version}/specs/{variant}` — the variant's
@@ -216,7 +216,7 @@ pub async fn reference(
         .store
         .read_reference(&slug, &version, &scope, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
+    Ok(bytes_response(&file, bytes, None))
 }
 
 /// `GET /test-cases/{slug}/versions/{version}/validation-baseline/{variant}/{file}`
@@ -235,7 +235,7 @@ pub async fn validation_baseline(
         .store
         .read_validation_baseline(&slug, &version, &variant, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
+    Ok(bytes_response(&file, bytes, None))
 }
 
 /// `GET /runs/{id}/proof/{file}` — a published run's proof media (`{file}` is
@@ -248,7 +248,7 @@ pub async fn run_proof(
         .store
         .read_run_proof(&id, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
+    Ok(bytes_response(&file, bytes, None))
 }
 
 /// `POST /runs/{id}/proof/{file}` — store a published run's proof media, uploaded
@@ -278,7 +278,7 @@ pub async fn run_validation(
         .store
         .read_run_validation(&id, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
+    Ok(bytes_response(&file, bytes, None))
 }
 
 /// `POST /runs/{id}/validation/{file}` — store a published run's synthesized *actual*
@@ -306,7 +306,7 @@ pub async fn run_asset(
         .store
         .read_run_asset(&id, &file)
         .map_err(ApiError::from)?;
-    Ok(bytes_response(&file, bytes))
+    Ok(bytes_response(&file, bytes, None))
 }
 
 /// `POST /runs/{id}/asset/{file}` — store a published asset-generation run's
@@ -333,7 +333,7 @@ pub async fn run_controller(
         .store
         .read_run_controller(&id)
         .map_err(ApiError::from)?;
-    Ok(bytes_response("controller.wasm", bytes))
+    Ok(bytes_response("controller.wasm", bytes, None))
 }
 
 /// `POST /runs/{id}/controller.wasm` — store an adversarial run's controller wasm,
@@ -351,18 +351,28 @@ pub async fn put_run_controller(
 }
 
 /// `GET /runs/{id}/replay` — a gg run's stored [replay](test_cabinet_core::gg::CAPABILITY_REPLAY)
-/// record (the debug-only capture of its non-deterministic inputs), served as JSON so a replay
-/// driver can re-run the session.
+/// record (the capture of its non-deterministic inputs), served as JSON so a replay driver can
+/// re-run the session.
+///
+/// The stored bytes are gzipped, so this is served through [`run_artifact_response`]: a browser
+/// gets them moved verbatim, and a gzip-unaware client (the CLI, the replay driver — anything on
+/// the workspace `reqwest`) gets them decoded here.
 pub async fn run_replay(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    headers: HeaderMap,
 ) -> Result<Response, ApiError> {
     let bytes = state.store.read_run_replay(&id).map_err(ApiError::from)?;
-    Ok(bytes_response("replay.json", bytes))
+    run_artifact_response(&headers, crate::store::REPLAY_ARTIFACT, bytes)
 }
 
 /// `POST /runs/{id}/replay` — store a gg run's replay record, mirrored in by the driver from the
-/// run's `.gg/replay.json` sidecar. The raw request body is the bytes.
+/// collected run tree. The raw request body is the bytes.
+///
+/// **Store-only**, by the run-tree artifact convention: the driver uploads *before* the terminal
+/// status post that creates the run row, so there is nothing here to patch, and the store keeps the
+/// body opaque (it is never parsed, and it may be gzipped or — for a record captured before the
+/// convention — plain JSON).
 pub async fn put_run_replay(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -678,10 +688,18 @@ fn workspace_out(file: &crate::store::StoredWorkspaceFile) -> WorkspaceOut {
 }
 
 /// Build a raw-bytes response with a best-effort content type and length.
-fn bytes_response(path: &str, bytes: Vec<u8>) -> Response {
+///
+/// `content_encoding` is the codec the *body* is framed in — `Some("gzip")` when the
+/// bytes travel compressed — and is `None` for every response whose body is what its
+/// content type says it is. It is deliberately a parameter rather than something
+/// derived from `path`: the encoding is a property of the bytes in hand, not of the
+/// name they are served under, and the one route that compresses serves the same
+/// resource both ways depending on what the caller advertised (see
+/// [`run_artifact_response`]).
+fn bytes_response(path: &str, bytes: Vec<u8>, content_encoding: Option<&str>) -> Response {
     let content_type = content_type_for(path);
     let len = bytes.len();
-    (
+    let mut response = (
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, content_type.to_string()),
@@ -689,7 +707,106 @@ fn bytes_response(path: &str, bytes: Vec<u8>) -> Response {
         ],
         Body::from(bytes),
     )
-        .into_response()
+        .into_response();
+    if let Some(encoding) = content_encoding {
+        // A malformed value is impossible here — every caller passes a static token —
+        // but an invalid header must never be the difference between serving the bytes
+        // and 500ing, so a bad one is simply not set.
+        if let Ok(value) = header::HeaderValue::from_str(encoding) {
+            response
+                .headers_mut()
+                .insert(header::CONTENT_ENCODING, value);
+        }
+    }
+    response
+}
+
+/// Serve one of a run's [run-tree artifacts](crate::store::DefinitionStore::run_artifact_path)
+/// — the whole-run analysis documents (`replay`, and code analysis to follow) — content
+/// negotiating on the **request's** `Accept-Encoding`.
+///
+/// Negotiating on the request rather than keying on what happens to be stored is the whole
+/// point of the convention. The workspace HTTP client (`reqwest`, built without its `gzip`
+/// feature so the workspace stays free of a second TLS/compression stack) neither advertises
+/// the encoding nor decodes it, while every browser advertises it unconditionally. Serving
+/// the stored bytes verbatim would break the CLI and the replay driver; decompressing
+/// unconditionally would throw away the ~10× the console's fetch gets for free.
+///
+/// Records captured before the convention are stored as plain JSON, so the stored bytes are
+/// sniffed rather than assumed. Nothing here ever compresses on demand: compression happens
+/// once, where the artifact is written, and this route only ever *removes* it.
+fn run_artifact_response(
+    headers: &HeaderMap,
+    name: &str,
+    stored: Vec<u8>,
+) -> Result<Response, ApiError> {
+    let file = format!("{name}.json");
+    let mut response = if !is_gzip(&stored) {
+        bytes_response(&file, stored, None)
+    } else if accepts_gzip(headers) {
+        bytes_response(&file, stored, Some("gzip"))
+    } else {
+        let mut plain = Vec::new();
+        std::io::Read::read_to_end(
+            &mut flate2::read::GzDecoder::new(std::io::Cursor::new(&stored)),
+            &mut plain,
+        )
+        .map_err(|e| {
+            ApiError::internal(format!(
+                "decoding stored `{name}` artifact for a client that does not accept gzip: {e}"
+            ))
+        })?;
+        bytes_response(&file, plain, None)
+    };
+    // The body genuinely varies by request header, so say so — a shared cache in front
+    // of the backend must not hand a browser's gzipped copy to the gzip-unaware CLI.
+    response.headers_mut().insert(
+        header::VARY,
+        header::HeaderValue::from_static("accept-encoding"),
+    );
+    Ok(response)
+}
+
+/// Whether the bytes are a gzip member, by its two-byte magic (RFC 1952 §2.3.1).
+///
+/// Both a gzip stream and the JSON it frames are self-describing enough that this
+/// cannot be ambiguous: a JSON document never begins `0x1f 0x8b`.
+fn is_gzip(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0x1f, 0x8b])
+}
+
+/// Whether the request advertised gzip in `Accept-Encoding`.
+///
+/// Deliberately narrow: this decides between handing over bytes already in hand and
+/// decompressing them, so it accepts `gzip` (or the `*` wildcard) and honours an explicit
+/// `q=0`, which is how a client *refuses* an encoding — RFC 9110 §12.5.3. Anything it does
+/// not understand means "not advertised", which is always the safe answer: the caller gets
+/// plain JSON.
+fn accepts_gzip(headers: &HeaderMap) -> bool {
+    let Some(value) = headers
+        .get(header::ACCEPT_ENCODING)
+        .and_then(|v| v.to_str().ok())
+    else {
+        return false;
+    };
+    value.split(',').any(|entry| {
+        let mut parts = entry.split(';');
+        let coding = parts.next().unwrap_or_default().trim();
+        if !coding.eq_ignore_ascii_case("gzip") && coding != "*" {
+            return false;
+        }
+        // `;q=0` (and `q=0.0`, `q=0.000`) is a refusal; any other quality is acceptance.
+        !parts.any(|param| {
+            let param = param.trim();
+            let Some(q) = param
+                .strip_prefix("q=")
+                .or_else(|| param.strip_prefix("Q="))
+            else {
+                return false;
+            };
+            q.trim().parse::<f32>().is_ok_and(|q| q <= 0.0)
+        })
+    })
 }
 
 /// A best-effort content type from a path's extension.

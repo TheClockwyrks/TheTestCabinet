@@ -105,3 +105,31 @@ fn host_mappings_become_add_host_flags() {
     let index = args.iter().position(|arg| arg == "--add-host").unwrap();
     assert_eq!(args[index + 1], "host.docker.internal:host-gateway");
 }
+
+// ── artifact salvage ────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn the_cli_collector_salvages_nothing_yet() {
+    // `collect_file` is the seam a `hung`/`timed_out` run's sidecars are rescued
+    // through; the CLI collector has not learned to copy one out yet, so it takes the
+    // trait's default. Pinning that here makes the day it *does* implement it a
+    // deliberate change to this test rather than a silent behavior swap — and proves
+    // the default is reached without ever invoking the runtime binary (the fake
+    // `no-such-runtime` below is never executed).
+    let collector = CliArtifactCollector::new(
+        CliContainerRuntime::with_binary("no-such-runtime"),
+        std::path::PathBuf::from("/tmp"),
+    );
+    let salvaged = collector
+        .collect_file(
+            &ContainerHandle {
+                id: "c1".to_string(),
+            },
+            "/work/implementation/.gg/replay.json",
+            std::path::Path::new("/tmp/tcab-salvage-never-written.json"),
+        )
+        .await
+        .unwrap();
+    assert!(!salvaged);
+    assert!(!std::path::Path::new("/tmp/tcab-salvage-never-written.json").exists());
+}

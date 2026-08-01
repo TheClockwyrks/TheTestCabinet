@@ -285,3 +285,158 @@ fn a_graded_review_item_carries_its_graded_flag_to_the_wire() {
     assert_eq!(item.id, "fun");
     assert!(item.graded);
 }
+
+// ── run-tree artifacts: Accept-Encoding negotiation ──────────────────────────
+
+/// A request carrying one `Accept-Encoding` value (absent when `None`).
+fn accept_encoding(value: Option<&str>) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    if let Some(value) = value {
+        headers.insert(header::ACCEPT_ENCODING, value.parse().unwrap());
+    }
+    headers
+}
+
+/// Gzip `body`, the way an artifact is stored.
+fn gzipped(body: &[u8]) -> Vec<u8> {
+    use std::io::Write;
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(body).unwrap();
+    encoder.finish().unwrap()
+}
+
+/// Drain a response into `(status, headers, body)`.
+async fn read_response(response: Response) -> (StatusCode, HeaderMap, Vec<u8>) {
+    let (parts, body) = response.into_parts();
+    let bytes = axum::body::to_bytes(body, usize::MAX).await.unwrap();
+    (parts.status, parts.headers, bytes.to_vec())
+}
+
+#[tokio::test]
+async fn a_browser_receives_a_stored_artifact_gzipped_and_verbatim() {
+    // The console advertises gzip, so the stored bytes are moved through untouched —
+    // the ~10× the compression bought is only real if it survives the route.
+    let stored = gzipped(br#"{"formatVersion":2}"#);
+    let response = run_artifact_response(
+        &accept_encoding(Some("gzip, deflate, br")),
+        "replay",
+        stored.clone(),
+    )
+    .unwrap();
+    let (status, headers, body) = read_response(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_ENCODING], "gzip");
+    assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+    assert_eq!(headers[header::CONTENT_LENGTH], stored.len().to_string());
+    assert_eq!(body, stored);
+}
+
+#[tokio::test]
+async fn a_gzip_unaware_client_receives_the_artifact_decoded() {
+    // The workspace `reqwest` is built without its `gzip` feature, so the CLI and the
+    // replay driver neither advertise nor decode the encoding. Keying on the stored
+    // bytes instead of the request header would hand them a gzip member they cannot
+    // parse — this is the whole reason the route negotiates.
+    let response =
+        run_artifact_response(&accept_encoding(None), "replay", gzipped(br#"{"a":1}"#)).unwrap();
+    let (status, headers, body) = read_response(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!headers.contains_key(header::CONTENT_ENCODING));
+    assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+    assert_eq!(body, br#"{"a":1}"#);
+    // Content-Length describes the body actually sent, not the stored size.
+    assert_eq!(headers[header::CONTENT_LENGTH], body.len().to_string());
+}
+
+#[tokio::test]
+async fn a_client_that_refuses_gzip_receives_the_artifact_decoded() {
+    // `gzip;q=0` is how a client *refuses* an encoding (RFC 9110 §12.5.3); reading it
+    // as "gzip appears in the header" would serve exactly what was refused.
+    let response = run_artifact_response(
+        &accept_encoding(Some("gzip;q=0, identity")),
+        "replay",
+        gzipped(br#"{"a":1}"#),
+    )
+    .unwrap();
+    let (_, headers, body) = read_response(response).await;
+    assert!(!headers.contains_key(header::CONTENT_ENCODING));
+    assert_eq!(body, br#"{"a":1}"#);
+}
+
+#[tokio::test]
+async fn a_plain_json_artifact_is_served_as_is_to_either_client() {
+    // Records captured before the convention are stored uncompressed. Neither client
+    // may be told they are gzipped, and the route never compresses on demand:
+    // compression happens once, where the artifact is written.
+    for accepts in [Some("gzip"), None] {
+        let response =
+            run_artifact_response(&accept_encoding(accepts), "replay", b"{\"v\":1}".to_vec())
+                .unwrap();
+        let (_, headers, body) = read_response(response).await;
+        assert!(!headers.contains_key(header::CONTENT_ENCODING));
+        assert_eq!(body, b"{\"v\":1}");
+    }
+}
+
+#[tokio::test]
+async fn a_negotiated_artifact_always_varies_on_accept_encoding() {
+    // The body genuinely differs by request header, so a shared cache must not hand a
+    // browser's gzipped copy to the gzip-unaware CLI.
+    for (accepts, stored) in [
+        (Some("gzip"), gzipped(b"{}")),
+        (None, gzipped(b"{}")),
+        (Some("gzip"), b"{}".to_vec()),
+    ] {
+        let response = run_artifact_response(&accept_encoding(accepts), "replay", stored).unwrap();
+        let (_, headers, _) = read_response(response).await;
+        assert_eq!(headers[header::VARY], "accept-encoding");
+    }
+}
+
+#[tokio::test]
+async fn an_artifact_is_served_under_its_own_name() {
+    // The name is the one string shared by the store slot, the route segment and the
+    // run tree's file stem, so a second artifact needs no second helper.
+    let response = run_artifact_response(
+        &accept_encoding(Some("gzip")),
+        "code-analysis",
+        gzipped(b"{}"),
+    )
+    .unwrap();
+    let (status, headers, _) = read_response(response).await;
+    assert_eq!(status, StatusCode::OK);
+    // Content type is derived from `<name>.json`, and stays JSON even when the body
+    // travels gzipped — the encoding is a framing, not a different media type.
+    assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+}
+
+#[test]
+fn accept_encoding_is_read_conservatively() {
+    // A wildcard accepts gzip; a refused wildcard does not; an encoding this route
+    // cannot produce means "not advertised", whose answer is always plain JSON.
+    assert!(accepts_gzip(&accept_encoding(Some("*"))));
+    assert!(accepts_gzip(&accept_encoding(Some("GZIP"))));
+    assert!(accepts_gzip(&accept_encoding(Some("br, gzip;q=0.5"))));
+    assert!(!accepts_gzip(&accept_encoding(Some("*;q=0"))));
+    assert!(!accepts_gzip(&accept_encoding(Some("br, deflate"))));
+    assert!(!accepts_gzip(&accept_encoding(Some("identity"))));
+    assert!(!accepts_gzip(&accept_encoding(None)));
+    // A header that is not valid UTF-8 is unreadable, not a reason to fail the route.
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::ACCEPT_ENCODING,
+        header::HeaderValue::from_bytes(&[0xff, 0xfe]).unwrap(),
+    );
+    assert!(!accepts_gzip(&headers));
+}
+
+#[tokio::test]
+async fn a_corrupt_stored_artifact_fails_loudly_rather_than_serving_garbage() {
+    // Gzip magic with a truncated member: the bytes claim an encoding they cannot
+    // honor, so a client that cannot decode gzip must get an error, never a body that
+    // is neither JSON nor a valid gzip stream.
+    let error = run_artifact_response(&accept_encoding(None), "replay", vec![0x1f, 0x8b, 0x08])
+        .expect_err("a truncated gzip member cannot be decoded");
+    let (status, _, _) = read_response(error.into_response()).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+}

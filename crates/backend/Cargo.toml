@@ -51,6 +51,11 @@ sha2 = { workspace = true }
 hmac = { workspace = true }
 hex = { workspace = true }
 percent-encoding = { workspace = true }
+# Gzip decoding for the run-tree artifact routes. The store keeps a run's analysis
+# documents exactly as they were uploaded (gzipped), so serving a client that does
+# not advertise `Accept-Encoding: gzip` — every caller built on the workspace
+# `reqwest`, which has no `gzip` feature — means decoding them here.
+flate2 = { workspace = true }
 
 # Contract codegen for the backend HTTP API + snapshot wire types. See
 # `crates/core`'s `contract` feature; this turns on core's too so the shared

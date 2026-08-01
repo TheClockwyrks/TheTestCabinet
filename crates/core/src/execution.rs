@@ -6,6 +6,10 @@
 //! screenshots that serve as visual targets. The reference *source* mockups are
 //! never seeded.
 
+#[cfg(test)]
+#[path = "execution.test.rs"]
+mod tests;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -346,4 +350,34 @@ pub trait ArtifactCollector: Send + Sync {
     /// Collect the run's working tree from the container as the primary
     /// artifact.
     async fn collect(&self, container: &ContainerHandle) -> Result<ArtifactCollection>;
+
+    /// Salvage **one** file out of a container by its absolute in-container path,
+    /// writing it to `dest` on the host. Returns whether the file was recovered.
+    ///
+    /// This exists for the runs that never reach [`collect`](Self::collect) at all.
+    /// A `hung` or `timed_out` run is torn down on the engine's error path, which
+    /// stops the container and returns *before* the tree is collected — so the
+    /// analysis sidecars a run writes as it goes (gg's replay journal first among
+    /// them) are lost for exactly the surprising outcomes they were captured to
+    /// explain. One narrow copy is enough to rescue them: the sidecars are small,
+    /// self-contained, and already complete on disk when the run stops responding.
+    ///
+    /// **Best-effort by contract.** A missing file, a container already gone, or a
+    /// collector that cannot reach into a dying container reports `Ok(false)`, not an
+    /// error: this runs on a path that is *already* failing a run, and a salvage
+    /// attempt must never be what turns a diagnosable timeout into an unexplained
+    /// collection failure. `Err` is reserved for a host-side failure to write `dest`.
+    ///
+    /// The default implementation salvages nothing, which is the honest answer for a
+    /// collector with no per-file channel into the container — every caller must
+    /// already handle "not recovered", since a run may simply not have written the
+    /// file.
+    async fn collect_file(
+        &self,
+        _container: &ContainerHandle,
+        _container_path: &str,
+        _dest: &std::path::Path,
+    ) -> Result<bool> {
+        Ok(false)
+    }
 }

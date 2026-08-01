@@ -1850,3 +1850,80 @@ fn generation_timestamp_round_trips_a_real_snapshot_id() {
         Some(time::macros::datetime!(2026 - 07 - 27 04:37:00 UTC))
     );
 }
+
+// ── run-tree artifacts and the public snapshot ──────────────────────────────
+
+#[tokio::test]
+async fn a_stored_run_tree_artifact_never_reaches_the_public_snapshot() {
+    // R7. `build` walks the published run set and emits exactly one document per run
+    // — the `PerRun` value it scrubs on the way out. A run-tree artifact (a replay
+    // record; tomorrow a code-analysis document) lives beside that run's media in the
+    // very store this builder holds, and is *not* published: it is a private,
+    // whole-run capture of everything the model was sent, so it never goes to R2 at
+    // all (and could not be redacted usefully if it did — it is opaque, possibly
+    // gzipped bytes the scrubber cannot walk).
+    //
+    // This is the regression that would be silent: adding a new sibling object to the
+    // snapshot is a two-line change, and nothing else in the builder would notice.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_artifact("r1", "replay", b"prompt sk-ant-leaked-key-from-the-env")
+        .unwrap();
+    store
+        .write_run_artifact("r1", "code-analysis", b"{\"files\":1}")
+        .unwrap();
+
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+
+    for object in snapshot
+        .objects
+        .iter()
+        .chain(std::iter::once(&snapshot.index))
+    {
+        assert!(
+            !object.key.contains("replay") && !object.key.contains("code-analysis"),
+            "run-tree artifact published as `{}`",
+            object.key
+        );
+        let body = String::from_utf8_lossy(&object.bytes);
+        assert!(
+            !body.contains("sk-ant-leaked-key-from-the-env"),
+            "run-tree artifact bytes leaked into `{}`",
+            object.key
+        );
+    }
+}
+
+#[tokio::test]
+async fn every_published_run_document_is_scrubbed_on_its_way_out() {
+    // The other half of R7: whatever *is* published for a run must go through
+    // `scrub_json`. Today that is the one `PerRun` document, so a leaked provider key
+    // anywhere in a run's captured text — here the failure detail, but the scrub walks
+    // the whole document including the events blob — is redacted before it becomes an
+    // object. Any new per-run field inherits that for free; a new sibling *object*
+    // would not, which is what the test above pins.
+    let (_tmp, store) = empty_store();
+    let mut run = stored_run("r1", "2026-06-17T21:40:00Z");
+    run.record.status.detail =
+        Some("harness exited: ANTHROPIC_API_KEY=sk-ant-api03-notreal-value".to_string());
+    let snapshot = SnapshotBuilder::new(vec![run], vec![], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let per_run = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key.ends_with("/runs/r1.json"))
+        .expect("the run's document is published");
+    let body = String::from_utf8(per_run.bytes.clone()).unwrap();
+    assert!(!body.contains("sk-ant-api03-notreal-value"));
+    assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+}

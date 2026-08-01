@@ -6857,6 +6857,7 @@ dependencies = [
  "bytes",
  "cuid2",
  "dotenvy",
+ "flate2",
  "futures-util",
  "hex",
  "hmac",

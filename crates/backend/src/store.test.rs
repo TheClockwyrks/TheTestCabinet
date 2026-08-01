@@ -478,6 +478,91 @@ fn delete_run_media_rejects_an_unsafe_run_id() {
 }
 
 #[test]
+fn a_run_tree_artifact_round_trips_opaquely_under_its_name() {
+    let (_dir, store) = temp_store();
+    // Gzip bytes, because that is what the convention stores: the slot must never
+    // parse, sniff or re-encode what it is handed, so arbitrary binary comes back
+    // byte-identical.
+    let bytes: &[u8] = &[0x1f, 0x8b, 0x08, 0x00, 0x99, 0x00, 0xff, 0x01];
+    store
+        .write_run_artifact("run-xyz", "code-analysis", bytes)
+        .unwrap();
+    assert_eq!(
+        store.read_run_artifact("run-xyz", "code-analysis").unwrap(),
+        bytes
+    );
+    // The path is `runs/<id>/<name>.json` — one layout for every artifact, so a new
+    // one needs no new store layout and `delete_run_media` keeps collecting them all.
+    let path = store.run_artifact_path("run-xyz", "code-analysis");
+    assert!(path.ends_with("runs/run-xyz/code-analysis.json"));
+    assert!(path.is_file());
+    // Artifacts of one run do not collide with each other.
+    store
+        .write_run_artifact("run-xyz", "replay", b"other")
+        .unwrap();
+    assert_eq!(
+        store.read_run_artifact("run-xyz", "code-analysis").unwrap(),
+        bytes
+    );
+}
+
+#[test]
+fn a_run_tree_artifact_guards_both_path_segments() {
+    let (_dir, store) = temp_store();
+    // Neither segment may escape the store root. The name is a compile-time constant
+    // at every call site today, but it is a path segment all the same, and the guard
+    // is what keeps it safe to widen this to a route-supplied name later.
+    assert!(matches!(
+        store
+            .write_run_artifact("../escape", "replay", b"x")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store.read_run_artifact("../escape", "replay").unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store
+            .write_run_artifact("run-xyz", "../../etc/passwd", b"x")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store
+            .read_run_artifact("run-xyz", "../../etc/passwd")
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    // An artifact a run never produced is not-found, not an error — every run-tree
+    // artifact is optional by construction.
+    assert!(matches!(
+        store
+            .read_run_artifact("run-xyz", "code-analysis")
+            .unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+}
+
+#[test]
+fn the_replay_slot_is_the_generic_artifact_slot_named_replay() {
+    let (_dir, store) = temp_store();
+    // The named wrappers must resolve to the same bytes as the generic slot, or a
+    // record written through one API would be invisible to the other — and every
+    // replay stored before the generalization would 404.
+    store.write_run_replay("run-xyz", b"{}").unwrap();
+    assert_eq!(
+        store.read_run_artifact("run-xyz", REPLAY_ARTIFACT).unwrap(),
+        b"{}"
+    );
+    assert_eq!(
+        store.run_replay_path("run-xyz"),
+        store.run_artifact_path("run-xyz", REPLAY_ARTIFACT)
+    );
+    assert!(store.run_replay_path("run-xyz").ends_with("replay.json"));
+}
+
+#[test]
 fn run_replay_record_round_trips_and_guards_the_run_id() {
     let (_dir, store) = temp_store();
     let bytes = br#"{"sessionId":"run-xyz","capabilitySet":{},"entries":[]}"#;

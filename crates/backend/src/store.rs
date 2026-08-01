@@ -40,6 +40,13 @@ use crate::error::{BackendError, Result};
 /// definition directory.
 const SIDECAR: &str = ".tcab";
 
+/// The [run-tree artifact](DefinitionStore::run_artifact_path) name of a gg run's
+/// replay record. One constant, because the same string is the store slot
+/// (`runs/<id>/replay.json`), the route segment (`/runs/{id}/replay`) and the run
+/// tree's file stem (`replay.json.gz`) — the convention only holds if they cannot
+/// drift apart.
+pub const REPLAY_ARTIFACT: &str = "replay";
+
 /// Owns the on-disk definition store rooted at a single directory.
 #[derive(Debug, Clone)]
 pub struct DefinitionStore {
@@ -1249,23 +1256,34 @@ impl DefinitionStore {
             .map_err(|_| BackendError::NotFound(format!("validation `{run_id}/{file}` not stored")))
     }
 
-    // --- Per-run gg replay record -------------------------------------------
+    // --- Per-run run-tree artifacts -----------------------------------------
 
-    /// Where a gg run's [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) record is stored:
-    /// `runs/<run_id>/replay.json`. A debug-only capture of the run's non-deterministic inputs
-    /// (each agent's model I/O and every tool result), mirrored here by the driver from the run's
-    /// `.gg/replay.json` sidecar so a replay driver can fetch it per run.
-    pub fn run_replay_path(&self, run_id: &str) -> PathBuf {
-        self.run_dir(run_id).join("replay.json")
+    /// Where one of a run's **run-tree artifacts** is stored: `runs/<run_id>/<name>.json`.
+    ///
+    /// A run-tree artifact is a whole-run analysis document produced *about* a run rather
+    /// than *by* it — today the gg [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) record
+    /// ([`REPLAY_ARTIFACT`]), with code analysis to follow. Each is written to the produced
+    /// run tree's root as `<name>.json.gz` and mirrored here by the driver, keyed by run id,
+    /// so it survives the collected tree and can be served per run.
+    ///
+    /// These bytes are **opaque to the store**: it never parses, validates or re-encodes
+    /// them. In practice they arrive gzipped (the extension deliberately does not say so —
+    /// the slot predates compression and already holds plain-JSON records captured before
+    /// it), and the serving route content-negotiates instead of assuming either way.
+    pub fn run_artifact_path(&self, run_id: &str, name: &str) -> PathBuf {
+        self.run_dir(run_id).join(format!("{name}.json"))
     }
 
-    /// Persist a gg run's replay record under `runs/<run_id>/replay.json`. Keyed by the run id a
-    /// publish carries, so a re-publish overwrites the identical bytes.
-    pub fn write_run_replay(&self, run_id: &str, bytes: &[u8]) -> Result<()> {
-        if !is_safe_segment(run_id) {
-            return Err(BackendError::BadRequest("invalid run id".to_string()));
+    /// Persist one of a run's [run-tree artifacts](Self::run_artifact_path) under
+    /// `runs/<run_id>/<name>.json`. Keyed by the run id the upload carries, so a re-upload
+    /// overwrites the identical bytes.
+    pub fn write_run_artifact(&self, run_id: &str, name: &str, bytes: &[u8]) -> Result<()> {
+        if !is_safe_segment(run_id) || !is_safe_segment(name) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or artifact name".to_string(),
+            ));
         }
-        let path = self.run_replay_path(run_id);
+        let path = self.run_artifact_path(run_id, name);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -1273,14 +1291,39 @@ impl DefinitionStore {
         Ok(())
     }
 
-    /// Read a gg run's stored replay record (`runs/<run_id>/replay.json`).
-    pub fn read_run_replay(&self, run_id: &str) -> Result<Vec<u8>> {
-        if !is_safe_segment(run_id) {
-            return Err(BackendError::BadRequest("invalid run id".to_string()));
+    /// Read one of a run's stored [run-tree artifacts](Self::run_artifact_path). A run that
+    /// never produced one reads as not-found: every artifact is optional by construction (a
+    /// non-gg run has no replay, a run collected before the analyzer shipped has no code
+    /// analysis), so absence is an ordinary 404, never an error.
+    pub fn read_run_artifact(&self, run_id: &str, name: &str) -> Result<Vec<u8>> {
+        if !is_safe_segment(run_id) || !is_safe_segment(name) {
+            return Err(BackendError::BadRequest(
+                "invalid run id or artifact name".to_string(),
+            ));
         }
-        let path = self.run_replay_path(run_id);
+        let path = self.run_artifact_path(run_id, name);
         std::fs::read(&path)
-            .map_err(|_| BackendError::NotFound(format!("replay for run `{run_id}` not stored")))
+            .map_err(|_| BackendError::NotFound(format!("{name} for run `{run_id}` not stored")))
+    }
+
+    /// Where a gg run's [replay](test_cabinet_core::gg::CAPABILITY_REPLAY) record is stored:
+    /// `runs/<run_id>/replay.json`. A capture of the run's non-deterministic inputs (each
+    /// agent's model I/O and every tool result), mirrored here by the driver from the run
+    /// tree so a replay driver can fetch it per run.
+    pub fn run_replay_path(&self, run_id: &str) -> PathBuf {
+        self.run_artifact_path(run_id, REPLAY_ARTIFACT)
+    }
+
+    /// Persist a gg run's replay record. The named wrapper over
+    /// [`write_run_artifact`](Self::write_run_artifact) — see it for the convention.
+    pub fn write_run_replay(&self, run_id: &str, bytes: &[u8]) -> Result<()> {
+        self.write_run_artifact(run_id, REPLAY_ARTIFACT, bytes)
+    }
+
+    /// Read a gg run's stored replay record. The named wrapper over
+    /// [`read_run_artifact`](Self::read_run_artifact).
+    pub fn read_run_replay(&self, run_id: &str) -> Result<Vec<u8>> {
+        self.read_run_artifact(run_id, REPLAY_ARTIFACT)
     }
 
     // --- Per-run asset-generation media -------------------------------------
