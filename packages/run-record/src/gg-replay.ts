@@ -210,6 +210,46 @@ export type GgReplayBlob = {
 };
 
 /**
+ * One pooled text that is a **clip** of the payload the session actually saw, rather than the
+ * whole of it.
+ *
+ * A [standard](GgReplayFidelity::Standard) capture clips a payload past
+ * [its ceiling](GG_REPLAY_STANDARD_TEXT_MAX_BYTES). The clip has to be self-describing, and the
+ * text pool is a bare `Vec<String>` with nowhere to say so — a reader handed a 32 KiB string
+ * cannot tell a command that printed exactly that much from one that printed forty megabytes, and
+ * the difference is the whole of whether a reconstruction comparing its own output against it is
+ * entitled to call a mismatch drift. Hence this table, keyed by pool index, holding what the
+ * stored string is missing.
+ *
+ * # Why the whole payload's content address is on it
+ *
+ * [`original_id`](Self::original_id) is what makes a clipped record still *checkable*: a
+ * reconstruction that re-executes the command has the whole output in hand, and hashing it
+ * answers "is this the same output?" exactly, from a record that kept 32 KiB of it. Without that
+ * the clip would be evidence of nothing — a matching tail proves very little about a payload
+ * whose head was dropped.
+ *
+ * It is also what makes the pool's dedup unambiguous. Interning keys on the address of the
+ * **original** rather than of the stored clip, so two different payloads that happen to share a
+ * tail occupy two pool entries with two clip rows, instead of collapsing into one entry whose
+ * single row could only describe one of them.
+ */
+export type GgReplayTextClip = {
+  /**
+   * The index into [`texts`](GgReplayRecord::texts) whose entry is a clip.
+   */
+  text: number;
+  /**
+   * How many bytes the whole payload had.
+   */
+  originalBytes: number;
+  /**
+   * The [content address](fingerprint_exact) of the whole payload.
+   */
+  originalId: string;
+};
+
+/**
  * How an [agent](GgReplayAgent) was created, carrying the keys that identify it
  * deterministically.
  *
@@ -706,6 +746,12 @@ export type GgReplayEntryKind =
        * cost ceiling trip at the same turn under a reconstruction.
        */
       response: Record<string, unknown>;
+      /**
+       * How long the call took, in milliseconds. A
+       * [full-fidelity](GgReplayFidelity::Full) latency clock: absent from a standard
+       * record, and absent even from a full one for a call whose latency was not measured.
+       */
+      durationMs?: number;
     }
   | {
       type: "model_error";
@@ -717,6 +763,13 @@ export type GgReplayEntryKind =
        * Why it failed.
        */
       error: GgReplayModelError;
+      /**
+       * How long the failed call took, in milliseconds — the same
+       * [full-fidelity](GgReplayFidelity::Full) latency clock the successful path carries.
+       * Worth as much as the successful one and sometimes more: a retry exhaustion's
+       * latency is the whole of the backoff the run paid for nothing.
+       */
+      durationMs?: number;
     }
   | {
       type: "tool_result";
@@ -809,6 +862,12 @@ export type GgReplayEntry = {
        * cost ceiling trip at the same turn under a reconstruction.
        */
       response: Record<string, unknown>;
+      /**
+       * How long the call took, in milliseconds. A
+       * [full-fidelity](GgReplayFidelity::Full) latency clock: absent from a standard
+       * record, and absent even from a full one for a call whose latency was not measured.
+       */
+      durationMs?: number;
     }
   | {
       type: "model_error";
@@ -820,6 +879,13 @@ export type GgReplayEntry = {
        * Why it failed.
        */
       error: GgReplayModelError;
+      /**
+       * How long the failed call took, in milliseconds — the same
+       * [full-fidelity](GgReplayFidelity::Full) latency clock the successful path carries.
+       * Worth as much as the successful one and sometimes more: a retry exhaustion's
+       * latency is the whole of the backoff the run paid for nothing.
+       */
+      durationMs?: number;
     }
   | {
       type: "tool_result";
@@ -988,6 +1054,18 @@ export type GgReplayRecord = {
    * invocation's stdout, a probe body.
    */
   texts: Array<string>;
+  /**
+   * Which [texts](Self::texts) are [clips](GgReplayTextClip) rather than whole payloads, in
+   * ascending pool order. Empty for a [full-fidelity](GgReplayFidelity::Full) record, which
+   * clips nothing, and for a standard one whose payloads all fit.
+   *
+   * A sparse side table rather than a field on each pooled text: the overwhelming majority of
+   * payloads are not clipped, and widening every entry of the pool to say so would cost more
+   * than the clipping saves. Always serialized, like the pools it annotates rather than like
+   * [`truncation`](Self::truncation) — an empty table is the positive statement "nothing was
+   * clipped", which is exactly what a reader of a standard record needs to hear.
+   */
+  clips: Array<GgReplayTextClip>;
   /**
    * The image-blob pool.
    */

@@ -34,7 +34,9 @@ async fn ensure_baseline_initializes_a_repo_and_is_idempotent() {
     let dir = TempDir::new().unwrap();
     write(dir.path(), "index.html", "<html></html>");
 
-    let sha = ensure_baseline(dir.path()).await.unwrap();
+    let sha = ensure_baseline(&GitCapture::disabled(), dir.path())
+        .await
+        .unwrap();
     assert!(!sha.is_empty(), "the baseline sha is returned");
     assert!(
         dir.path().join(".git").exists(),
@@ -42,7 +44,9 @@ async fn ensure_baseline_initializes_a_repo_and_is_idempotent() {
     );
 
     // Idempotent: an already-initialized workspace keeps its baseline HEAD.
-    let again = ensure_baseline(dir.path()).await.unwrap();
+    let again = ensure_baseline(&GitCapture::disabled(), dir.path())
+        .await
+        .unwrap();
     assert_eq!(again, sha, "an existing repo's HEAD is the baseline");
 }
 
@@ -53,13 +57,21 @@ async fn worktree_isolates_then_merges_back() {
     let main = TempDir::new().unwrap();
     let wt_root = TempDir::new().unwrap();
     write(main.path(), "seed.txt", "seed\n");
-    let baseline = ensure_baseline(main.path()).await.unwrap();
+    let baseline = ensure_baseline(&GitCapture::disabled(), main.path())
+        .await
+        .unwrap();
 
     let wt_path = wt_root.path().join("agent-0");
     let branch = "gg/agent-0";
-    add_worktree(main.path(), &wt_path, branch, &baseline)
-        .await
-        .unwrap();
+    add_worktree(
+        &GitCapture::disabled(),
+        main.path(),
+        &wt_path,
+        branch,
+        &baseline,
+    )
+    .await
+    .unwrap();
 
     // The subagent does its work inside the isolated worktree.
     write(&wt_path, "greeting.txt", "hello from the worktree\n");
@@ -72,12 +84,19 @@ async fn worktree_isolates_then_merges_back() {
     );
 
     // Commit the worktree's work, then merge it back.
-    let committed = commit_worktree(&wt_path, "subagent work").await.unwrap();
+    let committed = commit_worktree(&GitCapture::disabled(), &wt_path, "subagent work")
+        .await
+        .unwrap();
     assert!(committed, "the worktree had changes to commit");
     assert_eq!(
-        merge_branch(main.path(), branch, ConflictPolicy::Abort)
-            .await
-            .unwrap(),
+        merge_branch(
+            &GitCapture::disabled(),
+            main.path(),
+            branch,
+            ConflictPolicy::Abort
+        )
+        .await
+        .unwrap(),
         MergeOutcome::Merged,
         "the branch merges cleanly"
     );
@@ -90,7 +109,7 @@ async fn worktree_isolates_then_merges_back() {
     );
 
     // Cleanup removes the worktree entirely.
-    remove_worktree(main.path(), &wt_path, branch)
+    remove_worktree(&GitCapture::disabled(), main.path(), &wt_path, branch)
         .await
         .unwrap();
     assert!(!wt_path.exists(), "the worktree checkout is gone");
@@ -103,17 +122,25 @@ async fn discard_removes_worktree_without_merging() {
     let main = TempDir::new().unwrap();
     let wt_root = TempDir::new().unwrap();
     write(main.path(), "seed.txt", "seed\n");
-    let baseline = ensure_baseline(main.path()).await.unwrap();
+    let baseline = ensure_baseline(&GitCapture::disabled(), main.path())
+        .await
+        .unwrap();
 
     let wt_path = wt_root.path().join("agent-1");
     let branch = "gg/agent-1";
-    add_worktree(main.path(), &wt_path, branch, &baseline)
-        .await
-        .unwrap();
+    add_worktree(
+        &GitCapture::disabled(),
+        main.path(),
+        &wt_path,
+        branch,
+        &baseline,
+    )
+    .await
+    .unwrap();
     write(&wt_path, "scratch.txt", "throwaway\n");
 
     // Discard: never commit or merge, just remove.
-    remove_worktree(main.path(), &wt_path, branch)
+    remove_worktree(&GitCapture::disabled(), main.path(), &wt_path, branch)
         .await
         .unwrap();
 
@@ -125,10 +152,18 @@ async fn discard_removes_worktree_without_merging() {
     assert!(!wt_path.exists(), "the worktree checkout is gone");
     // The branch is gone: adding a worktree on the same branch name succeeds again.
     let reuse = wt_root.path().join("agent-1-again");
-    add_worktree(main.path(), &reuse, branch, &baseline)
+    add_worktree(
+        &GitCapture::disabled(),
+        main.path(),
+        &reuse,
+        branch,
+        &baseline,
+    )
+    .await
+    .unwrap();
+    remove_worktree(&GitCapture::disabled(), main.path(), &reuse, branch)
         .await
         .unwrap();
-    remove_worktree(main.path(), &reuse, branch).await.unwrap();
 }
 
 /// A merge conflict is surfaced (not silently dropped) and leaves the main tree unchanged.
@@ -137,24 +172,45 @@ async fn merge_conflict_is_surfaced_and_leaves_main_unchanged() {
     let main = TempDir::new().unwrap();
     let wt_root = TempDir::new().unwrap();
     write(main.path(), "shared.txt", "base\n");
-    let baseline = ensure_baseline(main.path()).await.unwrap();
+    let baseline = ensure_baseline(&GitCapture::disabled(), main.path())
+        .await
+        .unwrap();
 
     // The worktree branches from the baseline and changes the shared file one way.
     let wt_path = wt_root.path().join("agent-2");
     let branch = "gg/agent-2";
-    add_worktree(main.path(), &wt_path, branch, &baseline)
-        .await
-        .unwrap();
+    add_worktree(
+        &GitCapture::disabled(),
+        main.path(),
+        &wt_path,
+        branch,
+        &baseline,
+    )
+    .await
+    .unwrap();
     write(&wt_path, "shared.txt", "worktree change\n");
-    assert!(commit_worktree(&wt_path, "worktree edit").await.unwrap());
+    assert!(
+        commit_worktree(&GitCapture::disabled(), &wt_path, "worktree edit")
+            .await
+            .unwrap()
+    );
 
     // The main tree changes the same file a different way and commits — divergent histories.
     write(main.path(), "shared.txt", "main change\n");
-    assert!(commit_worktree(main.path(), "main edit").await.unwrap());
+    assert!(
+        commit_worktree(&GitCapture::disabled(), main.path(), "main edit")
+            .await
+            .unwrap()
+    );
 
-    match merge_branch(main.path(), branch, ConflictPolicy::Abort)
-        .await
-        .unwrap()
+    match merge_branch(
+        &GitCapture::disabled(),
+        main.path(),
+        branch,
+        ConflictPolicy::Abort,
+    )
+    .await
+    .unwrap()
     {
         MergeOutcome::Conflict(reason) => {
             assert!(!reason.is_empty(), "the conflict carries git's explanation");
@@ -169,11 +225,11 @@ async fn merge_conflict_is_surfaced_and_leaves_main_unchanged() {
         "an aborted conflict leaves the main tree unchanged"
     );
     assert!(
-        !merge_in_progress(main.path()).await,
+        !merge_in_progress(&GitCapture::disabled(), main.path()).await,
         "the abort policy leaves no merge in progress"
     );
 
-    remove_worktree(main.path(), &wt_path, branch)
+    remove_worktree(&GitCapture::disabled(), main.path(), &wt_path, branch)
         .await
         .unwrap();
 }
@@ -190,26 +246,47 @@ async fn a_kept_conflict_stays_in_the_tree_until_it_is_resolved_or_aborted() {
     let main = TempDir::new().unwrap();
     let wt_root = TempDir::new().unwrap();
     write(main.path(), "shared.txt", "base\n");
-    let baseline = ensure_baseline(main.path()).await.unwrap();
+    let baseline = ensure_baseline(&GitCapture::disabled(), main.path())
+        .await
+        .unwrap();
 
     let wt_path = wt_root.path().join("issue-1");
     let branch = "gg/issue-1";
-    add_worktree(main.path(), &wt_path, branch, &baseline)
-        .await
-        .unwrap();
+    add_worktree(
+        &GitCapture::disabled(),
+        main.path(),
+        &wt_path,
+        branch,
+        &baseline,
+    )
+    .await
+    .unwrap();
     write(&wt_path, "shared.txt", "issue change\n");
-    assert!(commit_worktree(&wt_path, "issue edit").await.unwrap());
+    assert!(
+        commit_worktree(&GitCapture::disabled(), &wt_path, "issue edit")
+            .await
+            .unwrap()
+    );
 
     write(main.path(), "shared.txt", "main change\n");
-    assert!(commit_worktree(main.path(), "main edit").await.unwrap());
+    assert!(
+        commit_worktree(&GitCapture::disabled(), main.path(), "main edit")
+            .await
+            .unwrap()
+    );
 
     assert!(
-        !merge_in_progress(main.path()).await,
+        !merge_in_progress(&GitCapture::disabled(), main.path()).await,
         "nothing is in progress before the merge"
     );
-    match merge_branch(main.path(), branch, ConflictPolicy::Keep)
-        .await
-        .unwrap()
+    match merge_branch(
+        &GitCapture::disabled(),
+        main.path(),
+        branch,
+        ConflictPolicy::Keep,
+    )
+    .await
+    .unwrap()
     {
         MergeOutcome::Conflict(reason) => {
             assert!(!reason.is_empty(), "the conflict carries git's explanation");
@@ -217,7 +294,7 @@ async fn a_kept_conflict_stays_in_the_tree_until_it_is_resolved_or_aborted() {
         MergeOutcome::Merged => panic!("divergent edits to the same file must conflict"),
     }
     assert!(
-        merge_in_progress(main.path()).await,
+        merge_in_progress(&GitCapture::disabled(), main.path()).await,
         "the kept conflict leaves the merge in progress for an agent to finish"
     );
     // The conflicted file is in the tree with markers, which is what the merge agent edits.
@@ -228,9 +305,9 @@ async fn a_kept_conflict_stays_in_the_tree_until_it_is_resolved_or_aborted() {
         "the conflicted file carries git's markers"
     );
 
-    abort_merge(main.path()).await;
+    abort_merge(&GitCapture::disabled(), main.path()).await;
     assert!(
-        !merge_in_progress(main.path()).await,
+        !merge_in_progress(&GitCapture::disabled(), main.path()).await,
         "aborting clears the in-progress merge"
     );
     assert_eq!(
@@ -252,7 +329,7 @@ async fn git_absent_is_reported_not_panicked() {
     }
 
     let available = git_available().await;
-    let baseline = ensure_baseline(dir.path()).await;
+    let baseline = ensure_baseline(&GitCapture::disabled(), dir.path()).await;
 
     // Restore before asserting so a failure does not leave the process without git.
     unsafe {
@@ -306,7 +383,9 @@ async fn a_git_call_leaves_the_runtime_thread_free_for_other_agents() {
     });
 
     ticks.store(0, Ordering::Relaxed);
-    let baseline = ensure_baseline(dir.path()).await.unwrap();
+    let baseline = ensure_baseline(&GitCapture::disabled(), dir.path())
+        .await
+        .unwrap();
     let during = ticks.load(Ordering::Relaxed);
     other_agent.abort();
 
@@ -314,5 +393,90 @@ async fn a_git_call_leaves_the_runtime_thread_free_for_other_agents() {
     assert!(
         during > 0,
         "the runtime thread must stay free while git runs: the other task never got a turn"
+    );
+}
+
+/// gg's own `git` is a **recorded input**. In format v1 it bypassed tool dispatch entirely and was
+/// captured nowhere, so a run that ended in a merge conflict left no trace of the conflict — and a
+/// speculation judge's verdict could not be understood without the patch it scored.
+///
+/// Recorded at [`git_output`], the single seam every invocation reaches, so *every* command is
+/// pinned rather than the handful a caller thought to name. The two things a reconstruction needs
+/// beyond the command line are asserted here: the exit code, and both streams interned separately
+/// into the text pool.
+#[tokio::test]
+async fn a_captured_run_records_every_git_invocation_it_makes() {
+    let dir = TempDir::new().unwrap();
+    write(dir.path(), "index.html", "<html></html>");
+    let journal = TempDir::new().unwrap();
+    let recorder = Arc::new(
+        crate::replay::GgRecorder::start(
+            &journal.path().join("replay.ndjson"),
+            "run_1",
+            &serde_json::from_value(serde_json::json!({})).unwrap(),
+            test_cabinet_core::gg_replay::GgReplayFidelity::Standard,
+            None,
+        )
+        .expect("the journal opens"),
+    );
+    let capture = GitCapture::new(Arc::clone(&recorder), "root", dir.path());
+
+    ensure_baseline(&capture, dir.path()).await.unwrap();
+    write(dir.path(), "index.html", "<html>changed</html>");
+    let patch = diff_since(&capture, dir.path(), "HEAD").await.unwrap();
+    assert!(patch.contains("changed"), "the diff is non-empty: {patch}");
+    recorder.finish();
+
+    let text = std::fs::read_to_string(journal.path().join("replay.ndjson")).unwrap();
+    let lines: Vec<serde_json::Value> = text
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let texts: Vec<&str> = lines
+        .iter()
+        .filter(|line| line["type"] == "text")
+        .map(|line| line["text"].as_str().unwrap())
+        .collect();
+    let gits: Vec<&serde_json::Value> = lines
+        .iter()
+        .filter(|line| line["type"] == "entry" && line["entry"]["type"] == "git")
+        .map(|line| &line["entry"])
+        .collect();
+
+    let commands: Vec<&str> = gits
+        .iter()
+        .map(|entry| entry["command"]["command"].as_str().unwrap())
+        .collect();
+    assert!(
+        commands
+            .iter()
+            .any(|command| command.starts_with("git init")),
+        "the baseline's own plumbing is recorded too: {commands:?}"
+    );
+    let diff = gits
+        .iter()
+        .find(|entry| {
+            entry["command"]["command"]
+                .as_str()
+                .unwrap()
+                .starts_with("git diff --cached")
+        })
+        .expect("the diff invocation is recorded");
+    assert_eq!(diff["agentId"], "root");
+    assert_eq!(diff["command"]["exitCode"], 0);
+    assert_eq!(
+        diff["command"]["cwd"]["type"], "workspace",
+        "the working directory is expressed relative to the workspace, not as an absolute path a \
+         reconstruction could never match"
+    );
+    let stdout = texts[diff["command"]["stdout"].as_u64().unwrap() as usize];
+    assert!(
+        stdout.contains("changed"),
+        "the patch itself is what a judge scored, so it is what the record pins: {stdout}"
+    );
+    assert_eq!(
+        texts[diff["command"]["stderr"].as_u64().unwrap() as usize],
+        "",
+        "and the two streams are interned separately"
     );
 }

@@ -88,15 +88,18 @@ a developer was most likely to be looking.
 | Cancel-file probe | **yes** — it ends the session | dropped | captured |
 | Deadline clock | **yes** | dropped | captured |
 | Latency clocks | no — metrics only | dropped | captured at full fidelity only |
-| Startup filesystem (skills, memories, autoloaded files, templates) | yes | dropped | digested at standard; verbatim at full |
+| Startup filesystem (skills, memories, autoloaded files, templates) | — | dropped | **not captured at either fidelity** — see below |
+| Bulky text payloads (a command's streams, a tool's output) | yes | inline, whole | pooled; clipped at standard, whole at full |
 | Cross-agent interleaving | yes | _observed_ via `seq` | the recorded `seq` **is** the input |
 | RNG | — | none exists | none exists |
 
-That handoff-summarizer row is a straight bug: gg's second compaction client is
+That handoff-summarizer row was a straight bug: gg's second compaction client was
 never wrapped in the recording decorator, so **every handoff-compaction model call
-in every record captured to date is missing**. Fixing it needs a discriminator on
-the entry — otherwise a compaction turn and the agent's own turn interleave into
-one indistinguishable queue, and a reconstruction would consume the wrong one.
+in every record captured before v2 is missing**. Fixing it needed a discriminator
+on the entry — otherwise a compaction turn and the agent's own turn interleave into
+one indistinguishable queue, and a reconstruction would consume the wrong one. The
+client role is that discriminator, and it is why the second queue is
+*representable* rather than merely labelled.
 
 Two categories are *inherently* unreproducible and are handled by recording the
 **decision** rather than the mechanism: thread interleaving (recorded as `seq`,
@@ -248,8 +251,8 @@ produced source, capture is no longer a cost worth gating.
 
 So **standard capture is always on**, and the `replay`
 [capability](/gg/configurations/) is repurposed to escalate a run to **full**
-fidelity — every clock read, verbatim startup filesystem loads, and no payload
-truncation. Three reasons, in order of weight:
+fidelity — every clock read, and no payload clipping. Three reasons, in order of
+weight:
 
 1. **An opt-in debugging capture is never on when you need it.** Replay exists for
    surprising outcomes, which are by definition not predicted.
@@ -264,6 +267,57 @@ The full-fidelity escalation reads any agent.
 
 A per-run byte ceiling bounds the worst case. Crossing it stops capture and marks
 the record truncated — **capture degrades, it never fails the run it observes.**
+
+### What the two fidelities actually differ by
+
+The difference is deliberately small. A capture that is on for every run is only
+worth having if what it captures is enough on its own, so **every input that
+changes control flow is recorded at both fidelities** — including the deadline
+clock, which is the one clock read the loop branches on.
+
+**Full adds two things.** It stores every text payload whole; and it records each
+model call's measured latency. The latency is here rather than in the standard set
+for the same reason it is worth recording at all: a playback removes model latency
+entirely and compares everything *but* it, so a standard capture would be spending
+bytes on the one number a reconstruction deliberately does not reproduce.
+
+**A clipped payload says so.** The text pool is a flat array of strings with
+nowhere to record that an entry is a fragment, and a reader handed 32 KiB of a
+command's output cannot otherwise tell a command that printed exactly that much
+from one that printed forty megabytes — which is precisely the case where the
+missing part is the part worth having. So the record carries a sparse **clip
+table**: for each clipped pool entry, how many bytes the whole payload had and
+**its content address**. That address is what keeps a clipped record *checkable*:
+a reconstruction that re-executes the command has the whole output in hand, and
+hashing it answers "is this the same output?" exactly, from a record that kept a
+fraction of it. It is also what makes the pool's dedup unambiguous — interning
+keys on the address of the original, so two payloads that happen to share a tail
+are two entries with two rows rather than one entry whose single row could
+describe only one of them.
+
+### The startup filesystem is not a fidelity axis
+
+The original design named a third full-only category — the startup filesystem,
+"digested at standard, verbatim at full". Implementing it established that it
+decomposes into four parts, none of which is a fidelity distinction:
+
+- **Prompt templates** are embedded in the gg binary at compile time. They are
+  never read from a filesystem, so there is nothing to digest; which templates a
+  run used is exactly what the recorder's `commit` answers, and a
+  [turn fingerprint](#what-this-hands-to-playback) is what detects one having
+  changed.
+- **Memories** are created during the session, not loaded at startup. Every
+  mutation is already a recorded tool outcome and every rendered index is already
+  a pooled message.
+- **Autoloaded specification files** belong to the seed as blob references —
+  verbatim at *both* fidelities and for zero additional bytes, since they were
+  sent to the model and are in the blob pool either way. Withholding them at
+  standard would make a record less self-contained while saving nothing.
+- **Skills** are a real directory read, but every skill body that influences the
+  run reaches the record verbatim regardless: the description listing is part of
+  the pooled system message, and reading one is a recorded tool outcome. What a
+  verbatim capture would add is the body of a skill the session *never read* —
+  inventory rather than input, and not something a reconstruction can diverge on.
 
 ## Serving and consuming
 

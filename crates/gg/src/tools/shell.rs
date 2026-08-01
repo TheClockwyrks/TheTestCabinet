@@ -344,6 +344,46 @@ pub(crate) async fn run_command(
     offload: &OffloadPolicy,
     ctx: &ToolContext,
 ) -> ToolOutcome {
+    run_command_capturing(command, timeout, offload, ctx)
+        .await
+        .0
+}
+
+/// What one subprocess printed and exited with, **before** any output policy touched it.
+///
+/// The [output policy](OffloadPolicy) merges the two streams, keeps a tail of the result and adds
+/// gg's own notes to it, all of which is right for the text a model reads and wrong for a
+/// [replay record](crate::replay), which pins what the *process* did. So the raw form is handed
+/// back beside the outcome for the one caller that records: everything else takes
+/// [`run_command`] and never sees it.
+pub(crate) struct CommandCapture {
+    /// The exit status, or `None` for a process a signal (or gg's own timeout kill) ended.
+    pub(crate) exit_code: Option<i32>,
+    /// Everything it wrote to standard output.
+    pub(crate) stdout: String,
+    /// Everything it wrote to standard error.
+    pub(crate) stderr: String,
+}
+
+impl CommandCapture {
+    /// The capture for a command that never ran at all — a spawn failure. Distinct from a command
+    /// that ran and printed nothing, which is why the exit code is absent rather than zero.
+    fn never_ran() -> Self {
+        Self {
+            exit_code: None,
+            stdout: String::new(),
+            stderr: String::new(),
+        }
+    }
+}
+
+/// [`run_command`], additionally handing back the process's [raw streams](CommandCapture).
+pub(crate) async fn run_command_capturing(
+    command: &str,
+    timeout: Duration,
+    offload: &OffloadPolicy,
+    ctx: &ToolContext,
+) -> (ToolOutcome, CommandCapture) {
     let mut command_builder = Command::new("sh");
     command_builder
         .arg("-c")
@@ -365,9 +405,12 @@ pub(crate) async fn run_command(
         Err(err) => {
             // Nothing ran, so there is no exit code to report and no `ShellData` to attach: this
             // is the one shell failure that is a failure *of the call* rather than a result of it.
-            return ToolOutcome::failed(
-                ToolFailure::from_io(&err),
-                format!("failed to launch shell command: {err}"),
+            return (
+                ToolOutcome::failed(
+                    ToolFailure::from_io(&err),
+                    format!("failed to launch shell command: {err}"),
+                ),
+                CommandCapture::never_ran(),
             );
         }
     };
@@ -432,16 +475,30 @@ pub(crate) async fn run_command(
         // thing from the command failing — so it is classified as the limit it is, and carries no
         // `ShellData`: there is no exit code, and whatever the process had printed is already in
         // the message.
-        return ToolOutcome::failed(ToolFailure::LimitExceeded, output);
+        return (
+            ToolOutcome::failed(ToolFailure::LimitExceeded, output),
+            CommandCapture {
+                exit_code: None,
+                stdout,
+                stderr,
+            },
+        );
     }
 
     let status = match waited {
         Ok(Ok(status)) => status,
         // `child.wait()` itself failed (rare): report it rather than pretend success.
         Ok(Err(err)) => {
-            return ToolOutcome::failed(
-                ToolFailure::from_io(&err),
-                format!("waiting on shell command: {err}"),
+            return (
+                ToolOutcome::failed(
+                    ToolFailure::from_io(&err),
+                    format!("waiting on shell command: {err}"),
+                ),
+                CommandCapture {
+                    exit_code: None,
+                    stdout,
+                    stderr,
+                },
             );
         }
         Err(_) => unreachable!("the timeout branch is handled above"),
@@ -471,22 +528,29 @@ pub(crate) async fn run_command(
         Some(code) => format!("exited {code}"),
         None => "terminated by signal".to_string(),
     };
-    ToolOutcome {
-        ok,
-        output,
-        summary: Some(summary),
-        images: Vec::new(),
-        // The process ran, so its facts are reported whatever it exited with. A non-zero exit
-        // leaves `ok` false (the model is told plainly that the command failed) but `failure`
-        // empty: nothing about the *call* went wrong, and a caller that wants to branch on the
-        // code reads it from here rather than from the first line of `output`.
-        data: Some(ToolData::Shell(ShellData {
+    (
+        ToolOutcome {
+            ok,
+            output,
+            summary: Some(summary),
+            images: Vec::new(),
+            // The process ran, so its facts are reported whatever it exited with. A non-zero exit
+            // leaves `ok` false (the model is told plainly that the command failed) but `failure`
+            // empty: nothing about the *call* went wrong, and a caller that wants to branch on the
+            // code reads it from here rather than from the first line of `output`.
+            data: Some(ToolData::Shell(ShellData {
+                exit_code: code,
+                body,
+                truncated,
+            })),
+            failure: None,
+        },
+        CommandCapture {
             exit_code: code,
-            body,
-            truncated,
-        })),
-        failure: None,
-    }
+            stdout,
+            stderr,
+        },
+    )
 }
 
 /// Read a captured pipe to EOF as lossy UTF-8 (build output is not guaranteed valid

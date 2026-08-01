@@ -108,6 +108,22 @@ pub fn fingerprint_exact(bytes: &[u8]) -> String {
     hex::encode(&digest[..GG_REPLAY_ID_HEX_LEN / 2])
 }
 
+/// How many bytes of one pooled text payload a [standard](GgReplayFidelity::Standard) capture
+/// keeps: 32 KiB.
+///
+/// The ceiling exists because the text pool is the one pool whose entries are unbounded by
+/// anything gg controls. A message is bounded by the model's context window and an image by the
+/// file that produced it, but a `git diff` over a tree the model has been building for forty
+/// minutes, or a failing test suite's output, is bounded only by what the subprocess felt like
+/// printing — and a run has hundreds of them. Clipping them is what keeps a *standard* record the
+/// well-under-a-megabyte artifact that justifies capturing every run.
+///
+/// Sized at twice the 16 KiB cap gg's own [shell tool](https://docs.testcabinet.ai/gg/tools/)
+/// applies to the output it shows the model: a payload the model was shown in full is therefore
+/// recorded in full, and only the parts of a payload the model never saw are ever at risk of being
+/// clipped.
+pub const GG_REPLAY_STANDARD_TEXT_MAX_BYTES: usize = 32 * 1024;
+
 /// The [content address](fingerprint_exact) of a JSON value, over its compact
 /// serialization.
 ///
@@ -169,25 +185,77 @@ pub enum GgReplayFidelity {
     /// outcomes, the orchestrator's own `git`, the cancel probe, the deadline clock, the
     /// prompt frame. This is what a reconstruction needs, and it is what every run gets
     /// for free.
+    ///
+    /// Text payloads are [clipped](GG_REPLAY_STANDARD_TEXT_MAX_BYTES) here, and a clipped one
+    /// says so — see [`clips`](GgReplayRecord::clips). Nothing else is withheld: the difference
+    /// between the two fidelities is deliberately small, because a capture that is on for every
+    /// run is only worth having if what it captures is enough on its own.
     #[default]
     Standard,
     /// Standard, plus what is only worth its bytes when someone is going to reconstruct
-    /// or audit the run in detail: every latency clock read, the startup filesystem loads
-    /// (skills, memories, autoloaded files, templates) verbatim rather than digested, and
-    /// no payload truncation.
+    /// or audit the run in detail. Selected by enabling
+    /// [`replay`](crate::gg::CAPABILITY_REPLAY) on **any** agent — see
+    /// [`resolve`](Self::resolve) for why the root alone is not enough.
     ///
-    /// Selected by enabling [`replay`](crate::gg::CAPABILITY_REPLAY) on **any** agent —
-    /// see [`resolve`](Self::resolve) for why the root alone is not enough.
+    /// # What it adds
     ///
-    /// The seams that produce the full-only categories are being built out; one that does
-    /// not exist yet contributes nothing at *either* fidelity, so a `full` record from
-    /// such a build carries the standard set. That is a statement about the build, not
-    /// about the session — which is the other reason
-    /// [`recorder`](GgReplayRecord::recorder) is on the record beside this.
+    /// - **No payload clipping.** Every pooled text is the whole payload, so
+    ///   [`clips`](GgReplayRecord::clips) is empty by construction and a reconstruction that
+    ///   re-executes a command can compare its output against the entire recorded one rather
+    ///   than against a tail.
+    /// - **Latency clocks.** Each model call's measured wall-clock latency is recorded on its
+    ///   [`ModelIo`](GgReplayEntryKind::ModelIo) /
+    ///   [`ModelError`](GgReplayEntryKind::ModelError) entry. It changes no control flow — it is
+    ///   the one clock read that does not — which is exactly why it is here and not in the
+    ///   standard set: a reconstruction runs with model latency removed, so recording it always
+    ///   would spend bytes on the one number a playback deliberately does not reproduce.
+    ///
+    /// # What it does not add, and why
+    ///
+    /// The original design named a third category, "the startup filesystem (skills, memories,
+    /// autoloaded files, templates) verbatim rather than digested". Implementing it established
+    /// that it decomposes into four parts, **none** of which is a fidelity distinction:
+    ///
+    /// - **Prompt templates** are `include_str!`-embedded in the gg binary. They are never read
+    ///   from a filesystem, so there is nothing to digest; which templates a run used is exactly
+    ///   what [`recorder.commit`](GgReplayRecorder::commit) answers, and a
+    ///   [turn fingerprint](GgTurnFingerprint) is what detects one having changed.
+    /// - **Memories** are created during the session, not loaded at startup. Every mutation is
+    ///   already a recorded tool outcome and every rendered index is already a pooled message.
+    /// - **Autoloaded specification files** belong to the [seed](GgReplaySeed::provided_files) as
+    ///   blob references, verbatim at *both* fidelities and for zero additional bytes — they were
+    ///   sent to the model, so they are in the [blob pool](GgReplayRecord::blobs) either way.
+    ///   Withholding them at standard would make a record less self-contained while saving
+    ///   nothing.
+    /// - **Skills** are a real directory read, but every skill body that influences the run
+    ///   reaches the record verbatim regardless: the description listing is part of the pooled
+    ///   system message, and reading one is a recorded tool outcome. What a verbatim capture
+    ///   would add is the body of a skill the session *never read* — inventory rather than input,
+    ///   and not something a reconstruction can diverge on.
+    ///
+    /// # A build can only record what it has a seam for
+    ///
+    /// A seam that does not exist contributes nothing at *either* fidelity, so a `full` record
+    /// from such a build carries the standard set. That is a statement about the build, not about
+    /// the session — which is the other reason [`recorder`](GgReplayRecord::recorder) is on the
+    /// record beside this.
     Full,
 }
 
 impl GgReplayFidelity {
+    /// The per-payload text ceiling this fidelity records under: the
+    /// [standard ceiling](GG_REPLAY_STANDARD_TEXT_MAX_BYTES), or `None` for
+    /// [`Full`](Self::Full), which clips nothing.
+    ///
+    /// The one place the clipping rule is written, so a recorder, a test and a reader cannot hold
+    /// three opinions about what a `full` record promises.
+    pub fn text_max_bytes(self) -> Option<usize> {
+        match self {
+            Self::Standard => Some(GG_REPLAY_STANDARD_TEXT_MAX_BYTES),
+            Self::Full => None,
+        }
+    }
+
     /// The fidelity a run configured with `capability_set` captures at.
     ///
     /// Reads [`replay`](crate::gg::CAPABILITY_REPLAY) across **every** agent, not just the
@@ -324,6 +392,60 @@ pub struct GgReplayToolset {
     /// `ToolDefinition[]`, camelCase.
     #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown>[]"))]
     pub tools: Value,
+}
+
+/// One pooled text that is a **clip** of the payload the session actually saw, rather than the
+/// whole of it.
+///
+/// A [standard](GgReplayFidelity::Standard) capture clips a payload past
+/// [its ceiling](GG_REPLAY_STANDARD_TEXT_MAX_BYTES). The clip has to be self-describing, and the
+/// text pool is a bare `Vec<String>` with nowhere to say so — a reader handed a 32 KiB string
+/// cannot tell a command that printed exactly that much from one that printed forty megabytes, and
+/// the difference is the whole of whether a reconstruction comparing its own output against it is
+/// entitled to call a mismatch drift. Hence this table, keyed by pool index, holding what the
+/// stored string is missing.
+///
+/// # Why the whole payload's content address is on it
+///
+/// [`original_id`](Self::original_id) is what makes a clipped record still *checkable*: a
+/// reconstruction that re-executes the command has the whole output in hand, and hashing it
+/// answers "is this the same output?" exactly, from a record that kept 32 KiB of it. Without that
+/// the clip would be evidence of nothing — a matching tail proves very little about a payload
+/// whose head was dropped.
+///
+/// It is also what makes the pool's dedup unambiguous. Interning keys on the address of the
+/// **original** rather than of the stored clip, so two different payloads that happen to share a
+/// tail occupy two pool entries with two clip rows, instead of collapsing into one entry whose
+/// single row could only describe one of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgReplayTextClip {
+    /// The index into [`texts`](GgReplayRecord::texts) whose entry is a clip.
+    pub text: u32,
+    /// How many bytes the whole payload had.
+    pub original_bytes: u64,
+    /// The [content address](fingerprint_exact) of the whole payload.
+    pub original_id: String,
+}
+
+/// Clip `text` to at most `max_bytes`, returning the kept part and the original's length — or
+/// `None` when it already fits.
+///
+/// Keeps the **tail**, matching the rule gg's own shell output cap uses and for the same reason: a
+/// command's last lines carry the error, and a clipped payload that reads the way the model saw
+/// one is easier to reason about than one clipped from the other end. The cut is moved forward to
+/// the next character boundary, so the result is always valid UTF-8 and is never *longer* than the
+/// ceiling.
+pub fn clip_text(text: &str, max_bytes: usize) -> Option<(&str, u64)> {
+    if text.len() <= max_bytes {
+        return None;
+    }
+    let mut start = text.len() - max_bytes;
+    while start < text.len() && !text.is_char_boundary(start) {
+        start += 1;
+    }
+    Some((&text[start..], text.len() as u64))
 }
 
 /// One image in the [blob pool](GgReplayRecord::blobs).
@@ -911,6 +1033,12 @@ pub enum GgReplayEntryKind {
         /// cost ceiling trip at the same turn under a reconstruction.
         #[cfg_attr(feature = "contract", ts(type = "Record<string, unknown>"))]
         response: Value,
+        /// How long the call took, in milliseconds. A
+        /// [full-fidelity](GgReplayFidelity::Full) latency clock: absent from a standard
+        /// record, and absent even from a full one for a call whose latency was not measured.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "contract", ts(optional))]
+        duration_ms: Option<u64>,
     },
     /// One model call that **failed**. Both the request and the error are kept: the
     /// request is what identifies the turn, and the error is what the loop branched on.
@@ -919,6 +1047,13 @@ pub enum GgReplayEntryKind {
         request: GgReplayRequest,
         /// Why it failed.
         error: GgReplayModelError,
+        /// How long the failed call took, in milliseconds — the same
+        /// [full-fidelity](GgReplayFidelity::Full) latency clock the successful path carries.
+        /// Worth as much as the successful one and sometimes more: a retry exhaustion's
+        /// latency is the whole of the backoff the run paid for nothing.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "contract", ts(optional))]
+        duration_ms: Option<u64>,
     },
     /// One tool call and the exact outcome the dispatch returned for it.
     ToolResult {
@@ -1126,6 +1261,17 @@ pub struct GgReplayRecord {
     /// invocation's stdout, a probe body.
     #[serde(default)]
     pub texts: Vec<String>,
+    /// Which [texts](Self::texts) are [clips](GgReplayTextClip) rather than whole payloads, in
+    /// ascending pool order. Empty for a [full-fidelity](GgReplayFidelity::Full) record, which
+    /// clips nothing, and for a standard one whose payloads all fit.
+    ///
+    /// A sparse side table rather than a field on each pooled text: the overwhelming majority of
+    /// payloads are not clipped, and widening every entry of the pool to say so would cost more
+    /// than the clipping saves. Always serialized, like the pools it annotates rather than like
+    /// [`truncation`](Self::truncation) — an empty table is the positive statement "nothing was
+    /// clipped", which is exactly what a reader of a standard record needs to hear.
+    #[serde(default)]
+    pub clips: Vec<GgReplayTextClip>,
     /// The image-blob pool.
     #[serde(default)]
     pub blobs: Vec<GgReplayBlob>,
@@ -1167,6 +1313,7 @@ impl GgReplayRecord {
             messages: Vec::new(),
             toolsets: Vec::new(),
             texts: Vec::new(),
+            clips: Vec::new(),
             blobs: Vec::new(),
             entries: Vec::new(),
             truncation: None,
@@ -1201,6 +1348,19 @@ impl GgReplayRecord {
     /// The pooled text at `index`, if the pool reaches that far.
     pub fn text(&self, index: u32) -> Option<&str> {
         self.texts.get(index as usize).map(String::as_str)
+    }
+
+    /// What the pooled text at `index` is missing, when it is a [clip](GgReplayTextClip) — the
+    /// question a reader has to ask before treating a recorded payload as the payload.
+    ///
+    /// A binary search rather than a map, because [`clips`](Self::clips) is written in ascending
+    /// pool order by construction (a clip row is minted when its text is first interned) and a
+    /// record is read far more often than it is built.
+    pub fn clip(&self, index: u32) -> Option<&GgReplayTextClip> {
+        self.clips
+            .binary_search_by_key(&index, |clip| clip.text)
+            .ok()
+            .map(|position| &self.clips[position])
     }
 
     /// The pooled [blob](GgReplayBlob) at `index`, if the pool reaches that far.
@@ -1297,8 +1457,22 @@ pub trait GgReplayInterner {
     /// The [id](GgReplayToolset::id) of the pooled toolset at `index`.
     fn toolset_id(&self, index: u32) -> Option<&str>;
 
-    /// Intern one string payload, returning its index.
-    fn intern_text(&mut self, text: &str) -> u32;
+    /// Intern one string payload, keeping at most `max_bytes` of it, and return its index.
+    ///
+    /// `max_bytes` is [the fidelity's ceiling](GgReplayFidelity::text_max_bytes): `None` stores
+    /// the payload whole, and `Some(n)` stores [the last `n` bytes](clip_text) of a longer one and
+    /// records a [clip](GgReplayTextClip) saying what was dropped.
+    ///
+    /// **Dedup keys on the address of the payload as given**, never on the stored clip. Two
+    /// distinct payloads sharing a tail therefore occupy two pool entries rather than collapsing
+    /// into one whose clip row could describe only one of them — and an unclipped payload dedups
+    /// exactly as it always did.
+    fn intern_text_clipped(&mut self, text: &str, max_bytes: Option<usize>) -> u32;
+
+    /// Intern one string payload **whole**, returning its index.
+    fn intern_text(&mut self, text: &str) -> u32 {
+        self.intern_text_clipped(text, None)
+    }
 
     /// Intern one image, returning its index.
     fn intern_blob(&mut self, media_type: &str, bytes: u64, data_base64: &str) -> u32;
@@ -1396,6 +1570,7 @@ pub struct GgReplayPools {
     toolset_index: HashMap<String, u32>,
     texts: Vec<String>,
     text_index: HashMap<String, u32>,
+    clips: Vec<GgReplayTextClip>,
     blobs: Vec<GgReplayBlob>,
     blob_index: HashMap<String, u32>,
 }
@@ -1406,17 +1581,33 @@ impl GgReplayPools {
         Self::default()
     }
 
-    /// The four pools, in the order the [record](GgReplayRecord) carries them.
-    pub fn into_parts(
-        self,
-    ) -> (
-        Vec<GgReplayMessage>,
-        Vec<GgReplayToolset>,
-        Vec<String>,
-        Vec<GgReplayBlob>,
-    ) {
-        (self.messages, self.toolsets, self.texts, self.blobs)
+    /// The four pools and the [clip](GgReplayTextClip) table, in the order the
+    /// [record](GgReplayRecord) carries them.
+    pub fn into_parts(self) -> GgReplayPoolParts {
+        GgReplayPoolParts {
+            messages: self.messages,
+            toolsets: self.toolsets,
+            texts: self.texts,
+            clips: self.clips,
+            blobs: self.blobs,
+        }
     }
+}
+
+/// What [`GgReplayPools::into_parts`] hands back: the four pools plus the clip table, named rather
+/// than positional so a caller cannot silently swap two `Vec`s that a tuple would let it.
+#[derive(Debug, Default)]
+pub struct GgReplayPoolParts {
+    /// The message pool.
+    pub messages: Vec<GgReplayMessage>,
+    /// The offered-toolset pool.
+    pub toolsets: Vec<GgReplayToolset>,
+    /// The text pool.
+    pub texts: Vec<String>,
+    /// Which texts are [clips](GgReplayTextClip).
+    pub clips: Vec<GgReplayTextClip>,
+    /// The image-blob pool.
+    pub blobs: Vec<GgReplayBlob>,
 }
 
 impl GgReplayInterner for GgReplayPools {
@@ -1458,17 +1649,27 @@ impl GgReplayInterner for GgReplayPools {
         self.toolsets.get(index as usize).map(|t| t.id.as_str())
     }
 
-    /// Keyed on the text itself rather than on a digest of it: this pool already holds
-    /// every body, so the pool *is* the map and a second table would only add a way for
-    /// the two to disagree. (gg's streaming journal, which holds no bodies at all, keys
-    /// on the address instead — the indices it hands out are identical either way.)
-    fn intern_text(&mut self, text: &str) -> u32 {
-        if let Some(&index) = self.text_index.get(text) {
+    /// Keyed on the [content address](fingerprint_exact) of the payload **as given**, exactly as
+    /// gg's streaming journal keys it — so the two hand out identical indices, and so a clipped
+    /// entry is still found by the payload it stands for rather than only by the tail that was
+    /// kept.
+    fn intern_text_clipped(&mut self, text: &str, max_bytes: Option<usize>) -> u32 {
+        let id = fingerprint_exact(text.as_bytes());
+        if let Some(&index) = self.text_index.get(&id) {
             return index;
         }
         let index = self.texts.len() as u32;
-        self.texts.push(text.to_string());
-        self.text_index.insert(text.to_string(), index);
+        let clipped = max_bytes.and_then(|max| clip_text(text, max));
+        self.texts
+            .push(clipped.map_or_else(|| text.to_string(), |(kept, _)| kept.to_string()));
+        if let Some((_, original_bytes)) = clipped {
+            self.clips.push(GgReplayTextClip {
+                text: index,
+                original_bytes,
+                original_id: id.clone(),
+            });
+        }
+        self.text_index.insert(id, index);
         index
     }
 
@@ -1525,6 +1726,8 @@ struct GgReplayRecordRaw {
     #[serde(default)]
     texts: Vec<String>,
     #[serde(default)]
+    clips: Vec<GgReplayTextClip>,
+    #[serde(default)]
     blobs: Vec<GgReplayBlob>,
     /// Left as raw JSON because a v1 entry and a v2 entry share this field name and
     /// nothing else: v1's carries a whole re-serialized conversation, v2's carries pool
@@ -1571,6 +1774,7 @@ impl<'de> Deserialize<'de> for GgReplayRecord {
                 messages: raw.messages,
                 toolsets: raw.toolsets,
                 texts: raw.texts,
+                clips: raw.clips,
                 blobs: raw.blobs,
                 entries,
                 truncation: raw.truncation,
@@ -1584,7 +1788,7 @@ impl<'de> Deserialize<'de> for GgReplayRecord {
             .map(|entry| upgrade_v1_entry(entry, &mut pools))
             .collect::<Result<Vec<_>, _>>()
             .map_err(D::Error::custom)?;
-        let (messages, toolsets, texts, blobs) = pools.into_parts();
+        let pools = pools.into_parts();
         Ok(GgReplayRecord {
             // The document in hand is now v2, and says so — see `format_version`.
             format_version: GG_REPLAY_FORMAT_VERSION,
@@ -1598,10 +1802,14 @@ impl<'de> Deserialize<'de> for GgReplayRecord {
             capability_set: raw.capability_set,
             seed: raw.seed,
             agents: raw.agents,
-            messages,
-            toolsets,
-            texts,
-            blobs,
+            messages: pools.messages,
+            toolsets: pools.toolsets,
+            texts: pools.texts,
+            // A v1 record was captured under a build that clipped nothing, so the upgrade's own
+            // interning is unclipped and this is empty — never `raw.clips`, which a v1 document
+            // cannot carry.
+            clips: pools.clips,
+            blobs: pools.blobs,
             entries,
             truncation: raw.truncation,
         })
@@ -1655,6 +1863,9 @@ fn upgrade_v1_entry(entry: &Value, pools: &mut GgReplayPools) -> Result<GgReplay
                     tools,
                 ),
                 response: object.get("response").cloned().unwrap_or(Value::Null),
+                // v1 recorded no clock of any kind, and a latency is a full-fidelity input a
+                // v1 capture had no seam for. Absent, not zero.
+                duration_ms: None,
             }
         }
         "tool_result" => {

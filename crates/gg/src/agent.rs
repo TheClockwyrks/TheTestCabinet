@@ -1243,6 +1243,24 @@ struct Orchestrator {
 }
 
 impl Orchestrator {
+    /// The [replay capture](crate::replay) gg's own [`git`](crate::git) invocations are reported
+    /// through, stamped with `agent_id`.
+    ///
+    /// Orchestration git is the run's bookkeeping rather than any one agent's turn — a worktree is
+    /// created for an issue before the agent that will work in it exists, and torn down after it
+    /// is gone — so the attribution is to whichever agent's decision caused it, falling back to
+    /// the [root](ROOT_AGENT_ID), which *is* the run. What actually places these entries in the
+    /// session is their [`seq`](test_cabinet_core::gg_replay::GgReplayEntry::seq), which is minted
+    /// from the same global counter as every other input.
+    fn git_capture(&self, agent_id: &str) -> git::GitCapture {
+        match &self.replay {
+            Some(recorder) => {
+                git::GitCapture::new(Arc::clone(recorder), agent_id, &self.workspace_dir)
+            }
+            None => git::GitCapture::disabled(),
+        }
+    }
+
     /// Build the orchestrator for `invocation`, loading the shared skills library and token
     /// estimator once and resolving the run-wide ceilings, deadline, healing strategies and
     /// subagent caps.
@@ -1588,7 +1606,8 @@ impl Orchestrator {
         if let Some(existing) = self.issue_worktree(issue_id) {
             return Some(existing);
         }
-        let base = match git::head_commit(&self.workspace_dir).await {
+        let capture = self.git_capture(ROOT_AGENT_ID);
+        let base = match git::head_commit(&capture, &self.workspace_dir).await {
             Ok(sha) => sha,
             Err(err) => {
                 emitter.emit(log(
@@ -1604,7 +1623,9 @@ impl Orchestrator {
         let slug = worktree_slug(issue_id);
         let branch = format!("gg/issue-{slug}");
         let path = root.join(format!("issue-{slug}"));
-        if let Err(err) = git::add_worktree(&self.workspace_dir, &path, &branch, &base).await {
+        if let Err(err) =
+            git::add_worktree(&capture, &self.workspace_dir, &path, &branch, &base).await
+        {
             emitter.emit(log(
                 "error",
                 format!(
@@ -1685,7 +1706,7 @@ impl Orchestrator {
         };
         let dir = self.issue_workspace(issue_id);
         let _guard = self.git_lock.lock().await;
-        git::diff_stat_since(&dir, &baseline)
+        git::diff_stat_since(&self.git_capture(ROOT_AGENT_ID), &dir, &baseline)
             .await
             .unwrap_or_default()
     }
@@ -2638,7 +2659,20 @@ async fn run_agent(
             let binding = GgSlotBinding::new(COMPACTION_SLOT, &model);
             match orch.factory.client_for(&binding) {
                 Ok(client) => {
-                    compaction.handoff_client = Some(client);
+                    // Wrapped in the recorder like the agent's own client, but under the
+                    // **compaction** client role. gg's second model client went unwrapped for the
+                    // whole of format v1, so every handoff-compaction call in every record
+                    // captured before this is simply missing — and a handoff is the one event that
+                    // rewrites an agent's entire window, so a record missing it describes a
+                    // conversation whose next turn appears to come from nowhere.
+                    compaction.handoff_client = Some(match &orch.replay {
+                        Some(recorder) => Box::new(RecordingClient::for_compaction(
+                            client,
+                            Arc::clone(recorder),
+                            agent.id.clone(),
+                        )),
+                        None => client,
+                    });
                     if is_root && first_incarnation {
                         emitter.emit(log(
                             "info",
@@ -3526,18 +3560,21 @@ async fn make_worktree(orch: &Orchestrator, name: &str) -> Result<Worktree, Disp
         ));
     };
     let _guard = orch.git_lock.lock().await;
-    let base = git::head_commit(&orch.workspace_dir).await.map_err(|err| {
-        DispatchError::new(
-            ToolFailure::IoError,
-            format!(
-                "could not read the workspace `HEAD` to branch an isolated worktree from: {err}"
-            ),
-        )
-    })?;
+    let capture = orch.git_capture(ROOT_AGENT_ID);
+    let base = git::head_commit(&capture, &orch.workspace_dir)
+        .await
+        .map_err(|err| {
+            DispatchError::new(
+                ToolFailure::IoError,
+                format!(
+                    "could not read the workspace `HEAD` to branch an isolated worktree from: {err}"
+                ),
+            )
+        })?;
     let slug = worktree_slug(name);
     let branch = format!("gg/{slug}");
     let path = root.join(&slug);
-    git::add_worktree(&orch.workspace_dir, &path, &branch, &base)
+    git::add_worktree(&capture, &orch.workspace_dir, &path, &branch, &base)
         .await
         .map_err(|err| {
             DispatchError::new(
@@ -4072,7 +4109,10 @@ async fn merge_issue_worktree(orch: &Arc<Orchestrator>, issue_id: &str, emitter:
 
     // Commit whatever the issue produced onto its branch. A worktree with no changes commits
     // nothing, which merges as a no-op — an issue whose work was already present is still accepted.
-    if let Err(err) = git::commit_worktree(&worktree.path, &format!("gg issue {issue_id}")).await {
+    let capture = orch.git_capture(ROOT_AGENT_ID);
+    if let Err(err) =
+        git::commit_worktree(&capture, &worktree.path, &format!("gg issue {issue_id}")).await
+    {
         emitter.emit(log(
             "error",
             format!("could not commit the work for issue `{issue_id}`: {err}"),
@@ -4089,6 +4129,7 @@ async fn merge_issue_worktree(orch: &Arc<Orchestrator>, issue_id: &str, emitter:
     // Leave a conflict **in** the tree: the merge agent resolves it in place, which is only possible
     // if git has not already unwound it.
     let outcome = git::merge_branch(
+        &capture,
         &orch.workspace_dir,
         &worktree.branch,
         git::ConflictPolicy::Keep,
@@ -4122,7 +4163,7 @@ async fn merge_issue_worktree(orch: &Arc<Orchestrator>, issue_id: &str, emitter:
     // exactly what it was, and the issue is reported as unmerged rather than silently corrupting
     // every later merge.
     if !merged {
-        git::abort_merge(&orch.workspace_dir).await;
+        git::abort_merge(&capture, &orch.workspace_dir).await;
     }
     remove_worktree(orch, &worktree, emitter).await;
     issue_emitter.emit(GgTelemetryKind::WorktreeMerged {
@@ -4184,7 +4225,7 @@ async fn resolve_merge_conflict(
             return false;
         }
     }
-    if git::merge_in_progress(&orch.workspace_dir).await {
+    if git::merge_in_progress(&orch.git_capture(ROOT_AGENT_ID), &orch.workspace_dir).await {
         emitter.emit(log(
             "error",
             format!(
@@ -4223,8 +4264,13 @@ async fn discard_issue_worktree(orch: &Arc<Orchestrator>, issue_id: &str, emitte
 /// fails a run, since the work it guards has already been merged or deliberately discarded.
 async fn remove_worktree(orch: &Orchestrator, worktree: &Worktree, emitter: &Emitter) {
     let _guard = orch.git_lock.lock().await;
-    if let Err(err) =
-        git::remove_worktree(&orch.workspace_dir, &worktree.path, &worktree.branch).await
+    if let Err(err) = git::remove_worktree(
+        &orch.git_capture(ROOT_AGENT_ID),
+        &orch.workspace_dir,
+        &worktree.path,
+        &worktree.branch,
+    )
+    .await
     {
         emitter.emit(log(
             "warn",
@@ -4640,7 +4686,9 @@ async fn handle_speculate(
         }
         attempt.diff = {
             let _guard = orch.git_lock.lock().await;
-            git::diff_since(&attempt.path, &attempt.base)
+            // Attributed to the **spawner**: this patch exists because that agent called
+            // `speculate`, and it is the patch its judge will be shown.
+            git::diff_since(&orch.git_capture(&spawner.id), &attempt.path, &attempt.base)
                 .await
                 .unwrap_or_default()
         };
@@ -4893,13 +4941,16 @@ async fn merge_speculation_winner(
     winner: &SpeculationAttempt,
 ) -> Result<(), String> {
     let _guard = orch.git_lock.lock().await;
+    let capture = orch.git_capture(ROOT_AGENT_ID);
     git::commit_worktree(
+        &capture,
         &winner.path,
         &format!("gg speculation winner {}", winner.id),
     )
     .await
     .map_err(|err| format!("committing the winning attempt failed: {err}"))?;
     match git::merge_branch(
+        &capture,
         &orch.workspace_dir,
         &winner.branch,
         git::ConflictPolicy::Abort,
@@ -4922,7 +4973,13 @@ async fn merge_speculation_winner(
 async fn discard_attempts(orch: &Orchestrator, attempts: &[SpeculationAttempt]) {
     let _guard = orch.git_lock.lock().await;
     for attempt in attempts {
-        let _ = git::remove_worktree(&orch.workspace_dir, &attempt.path, &attempt.branch).await;
+        let _ = git::remove_worktree(
+            &orch.git_capture(ROOT_AGENT_ID),
+            &orch.workspace_dir,
+            &attempt.path,
+            &attempt.branch,
+        )
+        .await;
     }
 }
 
@@ -5691,7 +5748,20 @@ impl Agent {
             // spent its clock: this turn has not started, so nothing is abandoned, and the epilogue
             // still emits the session summary, the per-slot rollups and the replay sidecar that are
             // the whole reason a killed run is worth keeping.
-            if limits.cancel.is_canceled() {
+            let canceled = limits.cancel.is_canceled();
+            // Replay capture: the probe and the clock read below are inputs in the strict sense —
+            // both can end the session, and neither is derivable from anything else the record
+            // holds. Recorded on **every** boundary rather than only when one fires, because "the
+            // probe was read forty times and found nothing" is what makes the fortieth read's
+            // `true` an input rather than an unexplained ending; a probe is two booleans on the
+            // wire, so the cost of that honesty is nil.
+            if let Some(recorder) = &replay {
+                recorder.record_cancel_probe(&self.id, canceled);
+                if let Some(clock) = limits.read_clock() {
+                    recorder.record_clock(&self.id, clock.elapsed_ms, clock.remaining_ms);
+                }
+            }
+            if canceled {
                 return self.stop_on_cancel(
                     emitter,
                     turn,
@@ -6208,6 +6278,9 @@ impl Agent {
                             tool_ctx,
                             &shell_offload,
                             emitter,
+                            replay
+                                .as_deref()
+                                .map(|recorder| (recorder, self.id.as_str())),
                         )
                         .await
                         {
@@ -6620,6 +6693,9 @@ impl Agent {
                                     tool_ctx,
                                     &shell_offload,
                                     emitter,
+                                    replay
+                                        .as_deref()
+                                        .map(|recorder| (recorder, self.id.as_str())),
                                 )
                                 .await
                             } else {
@@ -7351,12 +7427,45 @@ struct LimitsSetup {
     cancel: CancelWatch,
 }
 
+/// One read of the run's wall-clock deadline, as a
+/// [`Clock`](test_cabinet_core::gg_replay::GgReplayEntryKind::Clock) entry carries it.
+struct ClockRead {
+    /// How long the session had been running when the boundary read the clock.
+    elapsed_ms: u64,
+    /// How much of the budget was left, `0` once the deadline is behind.
+    remaining_ms: Option<u64>,
+}
+
 impl LimitsSetup {
     /// The [breach](GgLimitBreach) to stop `agent_id` on if the run has already spent its
     /// [cost ceiling](RunLimits::max_cost) — the turn-boundary check, on exactly the same terms as
     /// the deadline check beside it.
     fn check_cost(&self, agent_id: &str, turns: u64) -> Option<GgLimitBreach> {
         self.limits.check_cost(&self.spend, agent_id, turns)
+    }
+
+    /// One read of the run's wall-clock deadline, for the [replay record](crate::replay) — or
+    /// `None` when the run declared no wall-clock budget, in which case the loop reads no clock at
+    /// all and a record that carried one would be inventing it.
+    ///
+    /// Derived from the same two values [`check_deadline`](Self::check_deadline) branches on, so
+    /// the recorded observation and the breach that a later boundary may raise cannot describe
+    /// different moments. `Instant` is monotonic and unrelated to any wall clock, which is why the
+    /// record carries "how far in" rather than a timestamp: the elapsed figure is the only part of
+    /// a clock read that means anything to a reconstruction.
+    fn read_clock(&self) -> Option<ClockRead> {
+        let budget = self.limits.max_runtime?;
+        let deadline = self.deadline?;
+        let now = Instant::now();
+        let remaining = deadline.saturating_duration_since(now);
+        // Exactly one of the two saturating terms is non-zero, so this is `budget - remaining`
+        // before the line and `budget + overrun` after it — the same reconstruction
+        // `check_deadline` records as its `observed`.
+        let elapsed = (budget + now.saturating_duration_since(deadline)).saturating_sub(remaining);
+        Some(ClockRead {
+            elapsed_ms: elapsed.as_millis() as u64,
+            remaining_ms: Some(remaining.as_millis() as u64),
+        })
     }
 
     /// The [breach](GgLimitBreach) to stop `agent_id` on if the run's wall-clock budget is spent.
@@ -7783,7 +7892,12 @@ async fn resolve_worktrees(
         };
     }
 
-    let baseline = match git::ensure_baseline(workspace_dir).await {
+    // Not captured: worktree isolation is resolved *before* the orchestrator exists, so there is
+    // no journal open yet to record into. That is the honest boundary rather than an omission —
+    // the baseline commit this returns is the one thing here worth a record, and it belongs on the
+    // replay [seed](test_cabinet_core::gg_replay::GgReplaySeed::baseline_commit) rather than in
+    // the input log, since it is fixed identity rather than something the session consumed.
+    let baseline = match git::ensure_baseline(&git::GitCapture::disabled(), workspace_dir).await {
         Ok(sha) => sha,
         Err(err) => {
             emitter.emit(log(

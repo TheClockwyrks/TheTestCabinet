@@ -63,6 +63,23 @@
 //!   [`GgRecorder::record_prompt_frame`]. The recorder deliberately does **not** thread through
 //!   the [telemetry emitter](crate::telemetry) to get there: telemetry is a summary stream and
 //!   stays unaware of replay.
+//! - **gg's own subprocesses** are captured at their own choke points: every
+//!   [`git`](crate::git) invocation at `git_output`, through a [`GitCapture`](crate::git::GitCapture),
+//!   and a [completion gate's](crate::completion) validation commands, which run `sh -c` but never
+//!   reach tool dispatch and so were captured nowhere at all before.
+//! - **The turn-boundary probes** — the cancel file and the wall-clock deadline — are recorded
+//!   where the loop reads them, because both can end the session and neither is derivable from
+//!   anything else the record holds.
+//!
+//! # What the two fidelities differ by
+//!
+//! Capture is always on, and the [`replay`](test_cabinet_core::gg::CAPABILITY_REPLAY) capability
+//! escalates a run to [full](GgReplayFidelity::Full) fidelity rather than switching capture on. The
+//! difference is deliberately small — a capture that runs on every run is only worth having if what
+//! it captures is enough on its own — so **every input that changes control flow is recorded at
+//! both**. Full adds exactly two things: it stores every text payload whole rather than
+//! [clipping](test_cabinet_core::gg_replay::GG_REPLAY_STANDARD_TEXT_MAX_BYTES) it, and it records
+//! each model call's measured latency, which is the one clock read the loop does not branch on.
 //!
 //! Every entry is stamped with the recording agent's id and a **globally monotonic** sequence minted
 //! across all agents from one counter, so ordering the entries by sequence reconstructs the true
@@ -78,10 +95,11 @@ use std::thread::JoinHandle;
 use serde_json::Value;
 use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::gg_replay::{
-    GG_REPLAY_FORMAT_VERSION, GgClientRole, GgReplayEntry, GgReplayEntryKind, GgReplayFidelity,
-    GgReplayFileRegion, GgReplayInterner, GgReplayPromptItem, GgReplayPromptSlot, GgReplayRecorder,
+    GG_REPLAY_FORMAT_VERSION, GgClientRole, GgReplayCommand, GgReplayEntry, GgReplayEntryKind,
+    GgReplayFidelity, GgReplayFileRegion, GgReplayInterner, GgReplayModelError,
+    GgReplayModelErrorKind, GgReplayPromptItem, GgReplayPromptSlot, GgReplayRecorder,
     GgReplayRequestShape, GgReplayRetention, GgReplayToolCall, GgReplayToolOutcome,
-    GgReplayTruncation, GgReplayTruncationReason,
+    GgReplayTruncation, GgReplayTruncationReason, GgShellCwd, GgShellOrigin,
 };
 use test_cabinet_core::gg_replay_journal::{GgJournalInterner, GgJournalLine};
 
@@ -133,6 +151,123 @@ pub struct GgCaptureReport {
     /// [`truncation`](Self::truncation): a writer that died could not record why, so this is the
     /// only place the reason exists at all.
     pub write_error: Option<String>,
+}
+
+/// One model call, as the seam that made it hands it to the recorder — everything about the
+/// *request* that is the same whether the call succeeded or failed.
+///
+/// Grouped rather than passed as six parameters because the success and failure seams take exactly
+/// the same six, and a pair of long positional signatures is how the two come to disagree about
+/// which client role or which call shape they are recording.
+pub struct RecordedCall<'a> {
+    /// The agent whose loop made the call.
+    pub agent_id: &'a str,
+    /// Which of gg's two model clients issued it.
+    pub role: GgClientRole,
+    /// Whether the offered tool was *required*.
+    pub shape: GgReplayRequestShape,
+    /// The conversation that was sent.
+    pub messages: &'a [Message],
+    /// The tool definitions that were offered. Empty records no toolset at all rather than an
+    /// empty one: the contract distinguishes "offered nothing" from "offered an empty array".
+    pub tools: &'a [ToolDefinition],
+    /// The call's measured latency, recorded only at [full](GgReplayFidelity::Full) fidelity.
+    pub duration_ms: Option<u64>,
+}
+
+/// One subprocess gg ran, as the seam that ran it hands it to the recorder.
+///
+/// Borrowed rather than owned because both producers already hold the streams — a `git`
+/// invocation's [`Output`](std::process::Output) and a validation command's captured pipes — and
+/// a recorder that took them by value would copy megabytes on the way to clipping them.
+pub struct RecordedCommand<'a> {
+    /// The command line, as it would be read back.
+    pub command: &'a str,
+    /// Where it ran, relative to the agent's workspace wherever that is expressible.
+    pub cwd: GgShellCwd,
+    /// Its exit status. A process killed by a signal reports `-1`, which is what
+    /// [`ExitStatus::code`](std::process::ExitStatus::code) has no value for; the record's field
+    /// is a plain `i32` because every consumer of it branches on "zero or not".
+    pub exit_code: i32,
+    /// Everything it printed to standard output.
+    pub stdout: &'a str,
+    /// Everything it printed to standard error.
+    pub stderr: &'a str,
+}
+
+/// Where `dir` is, relative to `workspace` — the portable form a recorded command's working
+/// directory is stored in.
+///
+/// An absolute path is not portable across a reconstruction: a playback builds in a different
+/// (deliberately empty) directory, so a recorded `/work/impl/web` would never match the live one
+/// and every recorded command would fall through to a miss. Recording the *relationship* makes a
+/// genuine directory mismatch — the same command in a different tree is a different command —
+/// detectable rather than universal.
+///
+/// A path outside the workspace (a worktree gg created beside it, an absolute `cwd` a validation
+/// command declared) is kept verbatim, because there is nothing to relativize it against.
+pub fn shell_cwd(workspace: &Path, dir: &Path) -> GgShellCwd {
+    match dir.strip_prefix(workspace) {
+        Ok(relative) if relative.as_os_str().is_empty() => GgShellCwd::Workspace,
+        Ok(relative) => GgShellCwd::Relative {
+            // `/`-separated, matching the contract: gg runs on Linux, and a record read on any
+            // other platform still has to compare against the path the run used.
+            path: relative
+                .components()
+                .map(|component| component.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/"),
+        },
+        Err(_) => GgShellCwd::Absolute {
+            path: dir.display().to_string(),
+        },
+    }
+}
+
+/// Translate a gg [`ModelError`] into the contract's [class-plus-detail](GgReplayModelError) form.
+///
+/// The *class* is what the turn loop branches on, which is why the contract carries an enum rather
+/// than the error's rendered text: a reconstruction has to know that a call failed for a reason
+/// that strips images and retries, not merely that it failed.
+fn replay_model_error(error: &ModelError) -> GgReplayModelError {
+    let message = error.to_string();
+    match error {
+        ModelError::MissingApiKey => GgReplayModelError {
+            kind: GgReplayModelErrorKind::MissingApiKey,
+            message,
+            status: None,
+            attempts: None,
+            model_id: None,
+        },
+        ModelError::Fatal { status, .. } => GgReplayModelError {
+            kind: GgReplayModelErrorKind::Fatal,
+            message,
+            status: Some(*status),
+            attempts: None,
+            model_id: None,
+        },
+        ModelError::RetryExhausted { attempts, .. } => GgReplayModelError {
+            kind: GgReplayModelErrorKind::RetryExhausted,
+            message,
+            status: None,
+            attempts: Some(*attempts),
+            model_id: None,
+        },
+        ModelError::VisionUnsupported { model_id, .. } => GgReplayModelError {
+            kind: GgReplayModelErrorKind::VisionUnsupported,
+            message,
+            status: None,
+            attempts: None,
+            model_id: Some(model_id.clone()),
+        },
+        ModelError::Parse(_) => GgReplayModelError {
+            kind: GgReplayModelErrorKind::Parse,
+            message,
+            status: None,
+            attempts: None,
+            model_id: None,
+        },
+    }
 }
 
 /// The mutable half of a capture, holding everything that must move together.
@@ -357,29 +492,192 @@ impl GgRecorder {
     /// An **empty** `tools` slice records no toolset at all rather than an empty one: the contract
     /// distinguishes "offered nothing" from "offered an empty array", and a turn that offers no
     /// tools is the former.
-    pub fn record_model_io(
-        &self,
-        agent_id: &str,
-        role: GgClientRole,
-        shape: GgReplayRequestShape,
-        messages: &[Message],
-        tools: &[ToolDefinition],
-        response: &ModelResponse,
-    ) {
+    pub fn record_model_io(&self, call: RecordedCall<'_>, response: &ModelResponse) {
         // Serialized outside the lock: this is the bulk of the per-turn work, and holding the one
         // lock every agent shares across it would serialize the fleet on the recorder.
-        let messages: Vec<Value> = messages.iter().map(to_value).collect();
-        let tools = (!tools.is_empty()).then(|| to_value(&tools));
+        let messages: Vec<Value> = call.messages.iter().map(to_value).collect();
+        let tools = (!call.tools.is_empty()).then(|| to_value(&call.tools));
         let response = to_value(response);
 
         let mut capture = self.capture.lock().expect("replay capture lock");
         if capture.stopped.is_some() {
             return;
         }
-        let request = capture
+        let request =
+            capture
+                .interner
+                .intern_request(call.role, call.shape, &messages, tools.as_ref());
+        capture.push(
+            call.agent_id,
+            GgReplayEntryKind::ModelIo {
+                request,
+                response,
+                duration_ms: self.latency(call.duration_ms),
+            },
+        );
+    }
+
+    /// Record one model call that **failed**: the request that was sent and the error the loop
+    /// branched on.
+    ///
+    /// v1 dropped model errors outright, which was a defect rather than an omission — both
+    /// classes of error that a loop *recovers* from change control flow. A
+    /// [vision refusal](GgReplayModelErrorKind::VisionUnsupported) strips the images and re-runs
+    /// the same turn, so a reconstruction that never saw the refusal would send the images again
+    /// and diverge; a [retry exhaustion](GgReplayModelErrorKind::RetryExhausted) counts against
+    /// the run's error ceiling, so one that never saw it would stop at a different turn.
+    ///
+    /// Recorded with the same request the successful call carries, because the request is what
+    /// identifies *which* turn failed — a vision-refused turn and the stripped retry that follows
+    /// it are two calls a few milliseconds apart, and only their conversations tell them apart.
+    pub fn record_model_error(&self, call: RecordedCall<'_>, error: &ModelError) {
+        // Serialized outside the lock, exactly as the successful path is.
+        let messages: Vec<Value> = call.messages.iter().map(to_value).collect();
+        let tools = (!call.tools.is_empty()).then(|| to_value(&call.tools));
+        let error = replay_model_error(error);
+
+        let mut capture = self.capture.lock().expect("replay capture lock");
+        if capture.stopped.is_some() {
+            return;
+        }
+        let request =
+            capture
+                .interner
+                .intern_request(call.role, call.shape, &messages, tools.as_ref());
+        capture.push(
+            call.agent_id,
+            GgReplayEntryKind::ModelError {
+                request,
+                error,
+                duration_ms: self.latency(call.duration_ms),
+            },
+        );
+    }
+
+    /// The latency to record for a call that took `duration_ms`: the measurement at
+    /// [full](GgReplayFidelity::Full) fidelity, and `None` at
+    /// [standard](GgReplayFidelity::Standard).
+    ///
+    /// A latency clock is the one clock read that changes no control flow — a reconstruction
+    /// removes model latency entirely and compares everything *but* it — so a standard capture
+    /// spends no bytes on it. Decided here rather than at each call site so the two model seams
+    /// cannot disagree about what a standard record promises.
+    fn latency(&self, duration_ms: Option<u64>) -> Option<u64> {
+        match self.fidelity {
+            GgReplayFidelity::Full => duration_ms,
+            GgReplayFidelity::Standard => None,
+        }
+    }
+
+    /// The per-payload text ceiling this capture interns under — `None` at
+    /// [full](GgReplayFidelity::Full) fidelity, which stores every payload whole.
+    fn text_max_bytes(&self) -> Option<usize> {
+        self.fidelity.text_max_bytes()
+    }
+
+    /// Record one **shell command** gg ran on the agent's behalf, from whichever of the three
+    /// command paths issued it.
+    ///
+    /// The [completion gate's](crate::completion) validation commands are the reason this exists
+    /// as a seam of its own: they run `sh -c` through the same code path a `shell` tool call does
+    /// but never reach tool dispatch, so before this they were recorded nowhere at all — and they
+    /// decide whether the session is allowed to end, which is as control-flow-changing as an
+    /// input gets.
+    pub fn record_shell(
+        &self,
+        agent_id: &str,
+        origin: GgShellOrigin,
+        command: RecordedCommand<'_>,
+    ) {
+        self.record_command(
+            agent_id,
+            |command| GgReplayEntryKind::Shell { origin, command },
+            command,
+        );
+    }
+
+    /// Record one **`git` subprocess** gg's own orchestration ran — a worktree add, a commit, a
+    /// merge, a diff.
+    ///
+    /// In v1 these bypassed tool dispatch entirely and were captured nowhere, which mattered
+    /// because they are not bookkeeping a reconstruction can take for granted: a merge that
+    /// conflicts changes the run, and a speculation judge scores whatever `git diff` printed.
+    pub fn record_git(&self, agent_id: &str, command: RecordedCommand<'_>) {
+        self.record_command(
+            agent_id,
+            |command| GgReplayEntryKind::Git { command },
+            command,
+        );
+    }
+
+    /// Intern one subprocess's streams and push the entry `kind` builds from them.
+    ///
+    /// Both stream payloads are interned under the capture's
+    /// [ceiling](Self::text_max_bytes): a build log is the archetype of a payload that is
+    /// megabytes long, was never shown to the model in full, and is worth its bytes only when
+    /// somebody escalated the run to full fidelity.
+    fn record_command(
+        &self,
+        agent_id: &str,
+        kind: impl FnOnce(GgReplayCommand) -> GgReplayEntryKind,
+        command: RecordedCommand<'_>,
+    ) {
+        let max_bytes = self.text_max_bytes();
+        let mut capture = self.capture.lock().expect("replay capture lock");
+        if capture.stopped.is_some() {
+            return;
+        }
+        let stdout = capture
             .interner
-            .intern_request(role, shape, &messages, tools.as_ref());
-        capture.push(agent_id, GgReplayEntryKind::ModelIo { request, response });
+            .intern_text_clipped(command.stdout, max_bytes);
+        let stderr = capture
+            .interner
+            .intern_text_clipped(command.stderr, max_bytes);
+        let command = GgReplayCommand {
+            command: command.command.to_string(),
+            cwd: command.cwd,
+            exit_code: command.exit_code,
+            stdout,
+            stderr,
+        };
+        capture.push(agent_id, kind(command));
+    }
+
+    /// Record one read of the **cancel file**.
+    ///
+    /// It ends the session, so a reconstruction that could not see it would run past the point
+    /// the run stopped — and a killed run is one of the two outcomes always-on capture exists for.
+    /// Recorded on every read rather than only on the one that fired: "the probe was read forty
+    /// times and found nothing" is what makes the fortieth read's `true` an input rather than an
+    /// unexplained ending.
+    pub fn record_cancel_probe(&self, agent_id: &str, canceled: bool) {
+        let mut capture = self.capture.lock().expect("replay capture lock");
+        if capture.stopped.is_some() {
+            return;
+        }
+        capture.push(agent_id, GgReplayEntryKind::CancelProbe { canceled });
+    }
+
+    /// Record one read of the **wall-clock deadline**: how long the session had been running, and
+    /// how much of its budget was left.
+    ///
+    /// Unlike a latency clock this is recorded at *both* fidelities, because it is the one clock
+    /// read the loop branches on: the run stops at the turn boundary where the budget is spent. A
+    /// playback deliberately does not honor it — a reconstruction takes seconds — and reports the
+    /// resulting terminal difference rather than faking a clock, which it can only do by knowing
+    /// what the original observed.
+    pub fn record_clock(&self, agent_id: &str, elapsed_ms: u64, remaining_ms: Option<u64>) {
+        let mut capture = self.capture.lock().expect("replay capture lock");
+        if capture.stopped.is_some() {
+            return;
+        }
+        capture.push(
+            agent_id,
+            GgReplayEntryKind::Clock {
+                elapsed_ms,
+                remaining_ms,
+            },
+        );
     }
 
     /// Record one **tool result**: the `call` the agent (or a code program) made and the exact
@@ -401,11 +699,17 @@ impl GgRecorder {
         let data = outcome.data.as_ref().map(to_value);
         let failure = outcome.failure.as_ref().map(to_value);
 
+        let max_bytes = self.text_max_bytes();
         let mut capture = self.capture.lock().expect("replay capture lock");
         if capture.stopped.is_some() {
             return;
         }
-        let output = capture.interner.intern_text(&outcome.output);
+        // The output is clipped under the capture's ceiling; the summary never is. A summary is a
+        // sentence by construction, and one that somehow was not would still be shorter than the
+        // ceiling it would be measured against.
+        let output = capture
+            .interner
+            .intern_text_clipped(&outcome.output, max_bytes);
         let summary = outcome
             .summary
             .as_deref()
@@ -643,28 +947,83 @@ impl RecordingClient {
             role: GgClientRole::Agent,
         }
     }
+
+    /// The same wrapping for the **compaction summarizer's** client, whose calls rewrite the whole
+    /// window rather than advancing the conversation.
+    ///
+    /// gg's second model client was never wrapped at all, so *every handoff-compaction model call
+    /// in every record captured to date is missing* — and a handoff compaction is precisely the
+    /// event a reader goes to a record to understand, because it is the point at which the agent's
+    /// window stops being the conversation that produced it.
+    ///
+    /// The [role](GgClientRole) is what makes the second queue representable. Without it a
+    /// summarizer call and the agent's own next turn interleave into one indistinguishable stream
+    /// and a reconstruction serves the wrong one to whichever asked first — so the discriminator
+    /// is not labelling, it is the correctness condition for capturing this client at all.
+    pub fn for_compaction(
+        inner: Box<dyn ModelClient>,
+        recorder: std::sync::Arc<GgRecorder>,
+        agent_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            role: GgClientRole::Compaction,
+            ..Self::new(inner, recorder, agent_id)
+        }
+    }
+
+    /// Record the outcome of one call — the response, or the error — under `shape`.
+    ///
+    /// Both halves go through one function so the two `ModelClient` methods cannot record a
+    /// success and a failure on different terms, and so the latency clock is read in exactly one
+    /// place: around the inner call and nowhere else, which is what makes the recorded figure the
+    /// provider's latency rather than the recorder's own work.
+    async fn record(
+        &self,
+        shape: GgReplayRequestShape,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        call: impl std::future::Future<Output = Result<ModelResponse, ModelError>>,
+    ) -> Result<ModelResponse, ModelError> {
+        let started = std::time::Instant::now();
+        let outcome = call.await;
+        let recorded = RecordedCall {
+            agent_id: &self.agent_id,
+            role: self.role,
+            shape,
+            messages,
+            tools,
+            duration_ms: Some(started.elapsed().as_millis() as u64),
+        };
+        match &outcome {
+            Ok(response) => self.recorder.record_model_io(recorded, response),
+            Err(error) => self.recorder.record_model_error(recorded, error),
+        }
+        outcome
+    }
 }
 
 #[async_trait::async_trait]
 impl ModelClient for RecordingClient {
+    /// Recorded on the way out, so the captured response is exactly what the loop consumed — and
+    /// a failure is recorded too, as a [`ModelError`](GgReplayEntryKind::ModelError) entry.
+    ///
+    /// Capturing the failure *here* rather than at the loop's error arm is what makes the vision
+    /// recovery come out right: the recovery re-runs the same turn through this same client, so a
+    /// refused image turn records `model_error → model_io`, and the prompt frame the loop records
+    /// afterwards attaches to the call that was actually sent. The loop's error arm sees only the
+    /// second failure and could not record the first at all.
     async fn complete(
         &self,
         messages: &[Message],
         tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
-        // Only a *successful* turn is recorded here: a failed one is a different entry kind, and
-        // recording it belongs to the seam that can also see what the loop did about it. Recorded
-        // on the way out so the captured response is exactly what the loop consumed.
-        let response = self.inner.complete(messages, tools).await?;
-        self.recorder.record_model_io(
-            &self.agent_id,
-            self.role,
+        self.record(
             GgReplayRequestShape::Complete,
             messages,
             tools,
-            &response,
-        );
-        Ok(response)
+            self.inner.complete(messages, tools),
+        )
+        .await
     }
 
     /// Recorded as a **required** call, and delegated to the inner client's own implementation
@@ -676,16 +1035,13 @@ impl ModelClient for RecordingClient {
         messages: &[Message],
         tool: &ToolDefinition,
     ) -> Result<ModelResponse, ModelError> {
-        let response = self.inner.complete_requiring(messages, tool).await?;
-        self.recorder.record_model_io(
-            &self.agent_id,
-            self.role,
+        self.record(
             GgReplayRequestShape::CompleteRequiring,
             messages,
             std::slice::from_ref(tool),
-            &response,
-        );
-        Ok(response)
+            self.inner.complete_requiring(messages, tool),
+        )
+        .await
     }
 
     fn model_id(&self) -> &str {

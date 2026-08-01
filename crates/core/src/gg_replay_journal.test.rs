@@ -168,7 +168,10 @@ fn the_journal_interner_and_the_record_pools_agree_index_for_index() {
 
     assert_eq!(streamed, retained);
     // And the pooled bodies the journal streamed are the ones the pool retained.
-    let (pooled_messages, pooled_toolsets, _, pooled_blobs) = pools.into_parts();
+    let parts = pools.into_parts();
+    let pooled_messages = parts.messages;
+    let pooled_toolsets = parts.toolsets;
+    let pooled_blobs = parts.blobs;
     let lines = journal.take_pending();
     for (index, message) in message_lines(&lines) {
         assert_eq!(message, &pooled_messages[index as usize]);
@@ -198,6 +201,7 @@ fn every_line_round_trips_through_ndjson() {
         GgJournalLine::Text {
             index: 0,
             text: "ok\n".to_string(),
+            clip: None,
         },
         GgJournalLine::End {
             entries: 0,

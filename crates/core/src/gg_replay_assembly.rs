@@ -196,9 +196,14 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
                 expect_next_index(journal, "toolset", index, segments.toolsets.count)?;
                 segments.toolsets.push(&toolset)?;
             }
-            GgJournalLine::Text { index, text } => {
+            GgJournalLine::Text { index, text, clip } => {
                 expect_next_index(journal, "text", index, segments.texts.count)?;
                 segments.texts.push(&text)?;
+                // Pushed after the text it describes, so the clip table stays in ascending pool
+                // order — which is what lets a reader binary-search it.
+                if let Some(clip) = clip {
+                    segments.clips.push(&clip)?;
+                }
             }
             GgJournalLine::Blob { index, blob } => {
                 expect_next_index(journal, "blob", index, segments.blobs.count)?;
@@ -549,7 +554,7 @@ impl Segment {
     }
 }
 
-/// The five arrays of an assembled record, one segment file each.
+/// The six arrays of an assembled record, one segment file each.
 struct Segments {
     /// The message pool.
     messages: Segment,
@@ -557,6 +562,8 @@ struct Segments {
     toolsets: Segment,
     /// The text pool.
     texts: Segment,
+    /// The [clip](crate::gg_replay::GgReplayTextClip) table: which texts are clips.
+    clips: Segment,
     /// The image-blob pool.
     blobs: Segment,
     /// The input log.
@@ -564,12 +571,13 @@ struct Segments {
 }
 
 impl Segments {
-    /// Create the five empty segment files under `dir`.
+    /// Create the six empty segment files under `dir`.
     fn create(dir: &Path) -> Result<Self> {
         Ok(Self {
             messages: Segment::create(dir, "messages")?,
             toolsets: Segment::create(dir, "toolsets")?,
             texts: Segment::create(dir, "texts")?,
+            clips: Segment::create(dir, "clips")?,
             blobs: Segment::create(dir, "blobs")?,
             entries: Segment::create(dir, "entries")?,
         })
@@ -619,6 +627,7 @@ fn write_record(
         ("messages", segments.messages),
         ("toolsets", segments.toolsets),
         ("texts", segments.texts),
+        ("clips", segments.clips),
         ("blobs", segments.blobs),
         ("entries", segments.entries),
     ] {

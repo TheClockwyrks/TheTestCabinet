@@ -192,7 +192,7 @@ async fn run_validation_passes_when_all_commands_succeed() {
         ValidationCommand::from_value(&json!({ "command": "exit 0" })).unwrap(),
     ];
     assert!(
-        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter())
+        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter(), None)
             .await
             .is_none()
     );
@@ -210,7 +210,7 @@ async fn run_validation_reports_first_failure() {
         // Never reached — the batch is fail-fast.
         ValidationCommand::from_value(&json!("echo unreached")).unwrap(),
     ];
-    let feedback = run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter())
+    let feedback = run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter(), None)
         .await
         .expect("a failing command rejects the completion");
     assert!(
@@ -239,7 +239,7 @@ async fn run_validation_defaults_cwd_to_workspace() {
     let ctx = ToolContext::new(dir.path());
     let commands = vec![ValidationCommand::from_value(&json!("test -f marker.txt")).unwrap()];
     assert!(
-        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter())
+        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter(), None)
             .await
             .is_none()
     );
@@ -257,7 +257,7 @@ async fn run_validation_runs_in_declared_cwd() {
     // In the workspace root the marker is absent (fails); in `sub` it is present (passes).
     let at_root = vec![ValidationCommand::from_value(&json!("test -f inner.txt")).unwrap()];
     assert!(
-        run_validation(&at_root, &ctx, &OffloadPolicy::Inline, &emitter())
+        run_validation(&at_root, &ctx, &OffloadPolicy::Inline, &emitter(), None)
             .await
             .is_some()
     );
@@ -267,8 +267,86 @@ async fn run_validation_runs_in_declared_cwd() {
             .unwrap(),
     ];
     assert!(
-        run_validation(&in_sub, &ctx, &OffloadPolicy::Inline, &emitter())
+        run_validation(&in_sub, &ctx, &OffloadPolicy::Inline, &emitter(), None)
             .await
             .is_none()
+    );
+}
+
+/// A validation command is a **recorded input**: it runs `sh -c` and decides whether the session
+/// may end, but it never reaches tool dispatch, so before this seam existed it was captured
+/// nowhere at all.
+///
+/// The three things a reconstruction needs are asserted here: the
+/// [origin](GgShellOrigin::CompletionValidation), which keeps it off the agent's ordinary tool
+/// queue; the working directory as a *relationship* to the workspace, so a command declaring a
+/// `cwd` stays distinguishable from one that did not; and the process's own exit code and streams
+/// rather than the model-facing text gg wrapped around them.
+#[tokio::test]
+async fn a_validation_command_is_recorded_with_its_origin_cwd_and_streams() {
+    let dir = TempDir::new().unwrap();
+    let sub = dir.path().join("web");
+    std::fs::create_dir(&sub).unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let journal = TempDir::new().unwrap();
+    let recorder = crate::replay::GgRecorder::start(
+        &journal.path().join("replay.ndjson"),
+        "run_1",
+        &serde_json::from_value(json!({})).unwrap(),
+        test_cabinet_core::gg_replay::GgReplayFidelity::Standard,
+        None,
+    )
+    .expect("the journal opens");
+
+    let commands = vec![
+        ValidationCommand::from_value(
+            &json!({ "command": "echo built >&2; exit 0", "cwd": "web" }),
+        )
+        .unwrap(),
+        ValidationCommand::from_value(&json!("echo boom && exit 3")).unwrap(),
+    ];
+    let feedback = run_validation(
+        &commands,
+        &ctx,
+        &OffloadPolicy::Inline,
+        &emitter(),
+        Some((&recorder, "root")),
+    )
+    .await;
+    assert!(feedback.is_some(), "the second command fails the gate");
+    recorder.finish();
+
+    let text = std::fs::read_to_string(journal.path().join("replay.ndjson")).unwrap();
+    let lines: Vec<serde_json::Value> = text
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let texts: Vec<&str> = lines
+        .iter()
+        .filter(|line| line["type"] == "text")
+        .map(|line| line["text"].as_str().unwrap())
+        .collect();
+    let shells: Vec<&serde_json::Value> = lines
+        .iter()
+        .filter(|line| line["type"] == "entry" && line["entry"]["type"] == "shell")
+        .map(|line| &line["entry"])
+        .collect();
+
+    assert_eq!(shells.len(), 2, "both commands that ran are recorded");
+    assert_eq!(shells[0]["origin"], "completion_validation");
+    assert_eq!(shells[0]["agentId"], "root");
+    assert_eq!(shells[0]["command"]["cwd"]["type"], "relative");
+    assert_eq!(shells[0]["command"]["cwd"]["path"], "web");
+    assert_eq!(shells[0]["command"]["exitCode"], 0);
+    assert_eq!(
+        texts[shells[0]["command"]["stderr"].as_u64().unwrap() as usize],
+        "built\n",
+        "the process's own stderr, not the merged body the model was shown"
+    );
+    assert_eq!(shells[1]["command"]["cwd"]["type"], "workspace");
+    assert_eq!(shells[1]["command"]["exitCode"], 3);
+    assert_eq!(
+        texts[shells[1]["command"]["stdout"].as_u64().unwrap() as usize],
+        "boom\n"
     );
 }

@@ -272,6 +272,12 @@
         {
           "description": "One model turn's I/O: the pooled request and the response it returned.",
           "properties": {
+            "durationMs": {
+              "description": "How long the call took, in milliseconds. A\n[full-fidelity](GgReplayFidelity::Full) latency clock: absent from a standard\nrecord, and absent even from a full one for a call whose latency was not measured.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": ["integer", "null"]
+            },
             "request": {
               "$ref": "#/$defs/GgReplayRequest",
               "description": "What was sent."
@@ -290,6 +296,12 @@
         {
           "description": "One model call that **failed**. Both the request and the error are kept: the\nrequest is what identifies the turn, and the error is what the loop branched on.",
           "properties": {
+            "durationMs": {
+              "description": "How long the failed call took, in milliseconds — the same\n[full-fidelity](GgReplayFidelity::Full) latency clock the successful path carries.\nWorth as much as the successful one and sometimes more: a retry exhaustion's\nlatency is the whole of the backoff the run paid for nothing.",
+              "format": "uint64",
+              "minimum": 0,
+              "type": ["integer", "null"]
+            },
             "error": {
               "$ref": "#/$defs/GgReplayModelError",
               "description": "Why it failed."
@@ -436,12 +448,12 @@
       "oneOf": [
         {
           "const": "standard",
-          "description": "Every input that **changes control flow**: model I/O and model errors, tool\noutcomes, the orchestrator's own `git`, the cancel probe, the deadline clock, the\nprompt frame. This is what a reconstruction needs, and it is what every run gets\nfor free.",
+          "description": "Every input that **changes control flow**: model I/O and model errors, tool\noutcomes, the orchestrator's own `git`, the cancel probe, the deadline clock, the\nprompt frame. This is what a reconstruction needs, and it is what every run gets\nfor free.\n\nText payloads are [clipped](GG_REPLAY_STANDARD_TEXT_MAX_BYTES) here, and a clipped one\nsays so — see [`clips`](GgReplayRecord::clips). Nothing else is withheld: the difference\nbetween the two fidelities is deliberately small, because a capture that is on for every\nrun is only worth having if what it captures is enough on its own.",
           "type": "string"
         },
         {
           "const": "full",
-          "description": "Standard, plus what is only worth its bytes when someone is going to reconstruct\nor audit the run in detail: every latency clock read, the startup filesystem loads\n(skills, memories, autoloaded files, templates) verbatim rather than digested, and\nno payload truncation.\n\nSelected by enabling [`replay`](crate::gg::CAPABILITY_REPLAY) on **any** agent —\nsee [`resolve`](Self::resolve) for why the root alone is not enough.\n\nThe seams that produce the full-only categories are being built out; one that does\nnot exist yet contributes nothing at *either* fidelity, so a `full` record from\nsuch a build carries the standard set. That is a statement about the build, not\nabout the session — which is the other reason\n[`recorder`](GgReplayRecord::recorder) is on the record beside this.",
+          "description": "Standard, plus what is only worth its bytes when someone is going to reconstruct\nor audit the run in detail. Selected by enabling\n[`replay`](crate::gg::CAPABILITY_REPLAY) on **any** agent — see\n[`resolve`](Self::resolve) for why the root alone is not enough.\n\n# What it adds\n\n- **No payload clipping.** Every pooled text is the whole payload, so\n  [`clips`](GgReplayRecord::clips) is empty by construction and a reconstruction that\n  re-executes a command can compare its output against the entire recorded one rather\n  than against a tail.\n- **Latency clocks.** Each model call's measured wall-clock latency is recorded on its\n  [`ModelIo`](GgReplayEntryKind::ModelIo) /\n  [`ModelError`](GgReplayEntryKind::ModelError) entry. It changes no control flow — it is\n  the one clock read that does not — which is exactly why it is here and not in the\n  standard set: a reconstruction runs with model latency removed, so recording it always\n  would spend bytes on the one number a playback deliberately does not reproduce.\n\n# What it does not add, and why\n\nThe original design named a third category, \"the startup filesystem (skills, memories,\nautoloaded files, templates) verbatim rather than digested\". Implementing it established\nthat it decomposes into four parts, **none** of which is a fidelity distinction:\n\n- **Prompt templates** are `include_str!`-embedded in the gg binary. They are never read\n  from a filesystem, so there is nothing to digest; which templates a run used is exactly\n  what [`recorder.commit`](GgReplayRecorder::commit) answers, and a\n  [turn fingerprint](GgTurnFingerprint) is what detects one having changed.\n- **Memories** are created during the session, not loaded at startup. Every mutation is\n  already a recorded tool outcome and every rendered index is already a pooled message.\n- **Autoloaded specification files** belong to the [seed](GgReplaySeed::provided_files) as\n  blob references, verbatim at *both* fidelities and for zero additional bytes — they were\n  sent to the model, so they are in the [blob pool](GgReplayRecord::blobs) either way.\n  Withholding them at standard would make a record less self-contained while saving\n  nothing.\n- **Skills** are a real directory read, but every skill body that influences the run\n  reaches the record verbatim regardless: the description listing is part of the pooled\n  system message, and reading one is a recorded tool outcome. What a verbatim capture\n  would add is the body of a skill the session *never read* — inventory rather than input,\n  and not something a reconstruction can diverge on.\n\n# A build can only record what it has a seam for\n\nA seam that does not exist contributes nothing at *either* fidelity, so a `full` record\nfrom such a build carries the standard set. That is a statement about the build, not about\nthe session — which is the other reason [`recorder`](GgReplayRecord::recorder) is on the\nrecord beside this.",
           "type": "string"
         }
       ]
@@ -755,6 +767,29 @@
       "required": ["path", "blob"],
       "type": "object"
     },
+    "GgReplayTextClip": {
+      "description": "One pooled text that is a **clip** of the payload the session actually saw, rather than the\nwhole of it.\n\nA [standard](GgReplayFidelity::Standard) capture clips a payload past\n[its ceiling](GG_REPLAY_STANDARD_TEXT_MAX_BYTES). The clip has to be self-describing, and the\ntext pool is a bare `Vec<String>` with nowhere to say so — a reader handed a 32 KiB string\ncannot tell a command that printed exactly that much from one that printed forty megabytes, and\nthe difference is the whole of whether a reconstruction comparing its own output against it is\nentitled to call a mismatch drift. Hence this table, keyed by pool index, holding what the\nstored string is missing.\n\n# Why the whole payload's content address is on it\n\n[`original_id`](Self::original_id) is what makes a clipped record still *checkable*: a\nreconstruction that re-executes the command has the whole output in hand, and hashing it\nanswers \"is this the same output?\" exactly, from a record that kept 32 KiB of it. Without that\nthe clip would be evidence of nothing — a matching tail proves very little about a payload\nwhose head was dropped.\n\nIt is also what makes the pool's dedup unambiguous. Interning keys on the address of the\n**original** rather than of the stored clip, so two different payloads that happen to share a\ntail occupy two pool entries with two clip rows, instead of collapsing into one entry whose\nsingle row could only describe one of them.",
+      "properties": {
+        "originalBytes": {
+          "description": "How many bytes the whole payload had.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "originalId": {
+          "description": "The [content address](fingerprint_exact) of the whole payload.",
+          "type": "string"
+        },
+        "text": {
+          "description": "The index into [`texts`](GgReplayRecord::texts) whose entry is a clip.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": ["text", "originalBytes", "originalId"],
+      "type": "object"
+    },
     "GgReplayToolCall": {
       "description": "A tool call the agent (or a [responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE)\nprogram) made.",
       "properties": {
@@ -999,6 +1034,14 @@
     "capabilitySet": {
       "$ref": "https://docs.testcabinet.ai/schema/gg/capability-set.schema.json",
       "description": "The [capability set](GgCapabilitySet) the run was configured with, so a\nreconstruction runs under the recorded configuration verbatim rather than under\none assembled to suit it."
+    },
+    "clips": {
+      "default": [],
+      "description": "Which [texts](Self::texts) are [clips](GgReplayTextClip) rather than whole payloads, in\nascending pool order. Empty for a [full-fidelity](GgReplayFidelity::Full) record, which\nclips nothing, and for a standard one whose payloads all fit.\n\nA sparse side table rather than a field on each pooled text: the overwhelming majority of\npayloads are not clipped, and widening every entry of the pool to say so would cost more\nthan the clipping saves. Always serialized, like the pools it annotates rather than like\n[`truncation`](Self::truncation) — an empty table is the positive statement \"nothing was\nclipped\", which is exactly what a reader of a standard record needs to hear.",
+      "items": {
+        "$ref": "#/$defs/GgReplayTextClip"
+      },
+      "type": "array"
     },
     "entries": {
       "default": [],

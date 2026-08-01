@@ -15,6 +15,7 @@ import {
   truncationNotice,
   type ReplayContextItem,
   type ReplayStep,
+  type ReplayText,
   type ReplayToolResult,
   type ReplayWalk,
 } from "./replayModel";
@@ -39,6 +40,26 @@ import styles from "./GgReplayView.module.scss";
 // captured at two fidelities, and two components drawing it would drift.
 
 const numberFmt = new Intl.NumberFormat("en-US");
+
+/**
+ * The line under a payload the record kept only part of.
+ *
+ * Rendered rather than left implicit because the alternative is worse than showing
+ * nothing: a reader shown the tail of a forty-megabyte build log with no notice reads it
+ * as the whole of what the command printed, and concludes the command printed nothing
+ * interesting. It names the escalation that would have kept the whole of it, since
+ * "capture it at full fidelity next time" is the only thing to *do* about a clip.
+ */
+function ClipNotice({ text }: { text: ReplayText }) {
+  if (!text.clip) return null;
+  return (
+    <p className={styles.msgMeta}>
+      Clipped: the last {numberFmt.format(text.clip.keptBytes)} of{" "}
+      {numberFmt.format(text.clip.originalBytes)} bytes. Enable the{" "}
+      <code>replay</code> capability to capture payloads whole.
+    </p>
+  );
+}
 
 type LoadState =
   | { kind: "loading" }
@@ -581,19 +602,25 @@ function StepView({
                         {entry.command.cwd ? ` · in ${entry.command.cwd}` : ""}
                       </span>
                     </span>
-                    {entry.command.stdout && (
-                      <ExpandablePre
-                        content={entry.command.stdout}
-                        className={styles.output}
-                        label={`${entry.command.command} stdout`}
-                      />
+                    {entry.command.stdout.text && (
+                      <>
+                        <ExpandablePre
+                          content={entry.command.stdout.text}
+                          className={styles.output}
+                          label={`${entry.command.command} stdout`}
+                        />
+                        <ClipNotice text={entry.command.stdout} />
+                      </>
                     )}
-                    {entry.command.stderr && (
-                      <ExpandablePre
-                        content={entry.command.stderr}
-                        className={styles.output}
-                        label={`${entry.command.command} stderr`}
-                      />
+                    {entry.command.stderr.text && (
+                      <>
+                        <ExpandablePre
+                          content={entry.command.stderr.text}
+                          className={styles.output}
+                          label={`${entry.command.command} stderr`}
+                        />
+                        <ClipNotice text={entry.command.stderr} />
+                      </>
                     )}
                   </>
                 )}
@@ -659,10 +686,11 @@ function ToolResultView({ result }: { result: ReplayToolResult }) {
         <p className={styles.resultSummary}>{result.summary}</p>
       )}
       <ExpandablePre
-        content={result.output}
+        content={result.output.text}
         className={styles.output}
         label={`${result.name} output`}
       />
+      <ClipNotice text={result.output} />
       {result.images.length > 0 && (
         <ul className={panels.reqImages}>
           {result.images.map((image, i) => (

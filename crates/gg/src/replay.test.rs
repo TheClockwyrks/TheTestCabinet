@@ -9,7 +9,8 @@ use serde_json::json;
 use tempfile::TempDir;
 use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::gg_replay::{
-    GG_REPLAY_BLOB_REF_KEY, GG_REPLAY_FORMAT_VERSION, GgReplayPools,
+    GG_REPLAY_BLOB_REF_KEY, GG_REPLAY_FORMAT_VERSION, GG_REPLAY_STANDARD_TEXT_MAX_BYTES,
+    GgReplayPools, fingerprint_exact,
 };
 use test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH;
 use test_cabinet_core::metrics::TokenCounts;
@@ -197,11 +198,14 @@ fn the_header_states_the_fidelity_the_run_is_captured_at() {
 fn a_completed_capture_terminates_with_a_mandatory_end_line() {
     let (dir, recorder) = recorder_in(None);
     recorder.record_model_io(
-        "root",
-        GgClientRole::Agent,
-        GgReplayRequestShape::Complete,
-        &[Message::user("hi")],
-        &[],
+        RecordedCall {
+            agent_id: "root",
+            role: GgClientRole::Agent,
+            shape: GgReplayRequestShape::Complete,
+            messages: &[Message::user("hi")],
+            tools: &[],
+            duration_ms: None,
+        },
         &stop_response("done"),
     );
     let report = recorder.finish();
@@ -237,11 +241,14 @@ fn entries_are_stamped_by_agent_at_a_globally_monotonic_sequence() {
     let (dir, recorder) = recorder_in(None);
     let response = stop_response("done");
     recorder.record_model_io(
-        "root",
-        GgClientRole::Agent,
-        GgReplayRequestShape::Complete,
-        &[Message::user("hi")],
-        &[],
+        RecordedCall {
+            agent_id: "root",
+            role: GgClientRole::Agent,
+            shape: GgReplayRequestShape::Complete,
+            messages: &[Message::user("hi")],
+            tools: &[],
+            duration_ms: None,
+        },
         &response,
     );
     recorder.record_tool_result(
@@ -250,11 +257,14 @@ fn entries_are_stamped_by_agent_at_a_globally_monotonic_sequence() {
         &ToolOutcome::ok("wrote a.txt", "wrote a.txt"),
     );
     recorder.record_model_io(
-        "agent-0",
-        GgClientRole::Agent,
-        GgReplayRequestShape::Complete,
-        &[Message::user("go")],
-        &[],
+        RecordedCall {
+            agent_id: "agent-0",
+            role: GgClientRole::Agent,
+            shape: GgReplayRequestShape::Complete,
+            messages: &[Message::user("go")],
+            tools: &[],
+            duration_ms: None,
+        },
         &response,
     );
     recorder.finish();
@@ -296,11 +306,14 @@ fn a_growing_conversation_writes_one_new_body_per_turn() {
     let mut conversation = vec![Message::system("you are gg"), Message::user("build it")];
     for turn in 0..4 {
         recorder.record_model_io(
-            "root",
-            GgClientRole::Agent,
-            GgReplayRequestShape::Complete,
-            &conversation,
-            &tools,
+            RecordedCall {
+                agent_id: "root",
+                role: GgClientRole::Agent,
+                shape: GgReplayRequestShape::Complete,
+                messages: &conversation,
+                tools: &tools,
+                duration_ms: None,
+            },
             &stop_response("ok"),
         );
         conversation.push(Message::user(format!("turn {turn}")));
@@ -336,11 +349,14 @@ fn an_image_is_written_once_however_many_turns_it_survives() {
         .push(ImageContent::new("image/png", "QUJD", 3));
     for _ in 0..3 {
         recorder.record_model_io(
-            "root",
-            GgClientRole::Agent,
-            GgReplayRequestShape::Complete,
-            std::slice::from_ref(&message),
-            &[],
+            RecordedCall {
+                agent_id: "root",
+                role: GgClientRole::Agent,
+                shape: GgReplayRequestShape::Complete,
+                messages: std::slice::from_ref(&message),
+                tools: &[],
+                duration_ms: None,
+            },
             &stop_response("ok"),
         );
     }
@@ -409,11 +425,14 @@ fn the_recorded_fingerprint_is_the_one_the_shared_interner_folds() {
         json!({ "type": "object" }),
     )];
     recorder.record_model_io(
-        "root",
-        GgClientRole::Agent,
-        GgReplayRequestShape::Complete,
-        &conversation,
-        &tools,
+        RecordedCall {
+            agent_id: "root",
+            role: GgClientRole::Agent,
+            shape: GgReplayRequestShape::Complete,
+            messages: &conversation,
+            tools: &tools,
+            duration_ms: None,
+        },
         &stop_response("ok"),
     );
     recorder.finish();
@@ -444,11 +463,14 @@ fn the_recorded_fingerprint_is_the_one_the_shared_interner_folds() {
 fn a_turn_that_offered_no_tools_records_no_toolset_at_all() {
     let (dir, recorder) = recorder_in(None);
     recorder.record_model_io(
-        "root",
-        GgClientRole::Agent,
-        GgReplayRequestShape::Complete,
-        &[Message::user("hi")],
-        &[],
+        RecordedCall {
+            agent_id: "root",
+            role: GgClientRole::Agent,
+            shape: GgReplayRequestShape::Complete,
+            messages: &[Message::user("hi")],
+            tools: &[],
+            duration_ms: None,
+        },
         &stop_response("ok"),
     );
     recorder.finish();
@@ -565,11 +587,14 @@ fn a_prompt_frame_reuses_the_bodies_its_turns_model_io_already_pooled() {
     let (dir, recorder) = recorder_in(None);
     let ctx = framed_window();
     recorder.record_model_io(
-        "root",
-        GgClientRole::Agent,
-        GgReplayRequestShape::Complete,
-        &ctx.messages(),
-        &[],
+        RecordedCall {
+            agent_id: "root",
+            role: GgClientRole::Agent,
+            shape: GgReplayRequestShape::Complete,
+            messages: &ctx.messages(),
+            tools: &[],
+            duration_ms: None,
+        },
         &stop_response("ok"),
     );
     let items: Vec<PromptItem<'_>> = ctx.prompt_items().collect();
@@ -605,11 +630,14 @@ fn a_prompt_frame_follows_the_turn_it_describes_at_the_next_sequence() {
     let (dir, recorder) = recorder_in(None);
     let ctx = framed_window();
     recorder.record_model_io(
-        "root",
-        GgClientRole::Agent,
-        GgReplayRequestShape::Complete,
-        &ctx.messages(),
-        &[],
+        RecordedCall {
+            agent_id: "root",
+            role: GgClientRole::Agent,
+            shape: GgReplayRequestShape::Complete,
+            messages: &ctx.messages(),
+            tools: &[],
+            duration_ms: None,
+        },
         &stop_response("ok"),
     );
     let items: Vec<PromptItem<'_>> = ctx.prompt_items().collect();
@@ -658,11 +686,14 @@ fn crossing_the_byte_ceiling_stops_capture_for_the_whole_run() {
     let (dir, recorder) = recorder_in(Some(2_048));
     for turn in 0..20 {
         recorder.record_model_io(
-            "root",
-            GgClientRole::Agent,
-            GgReplayRequestShape::Complete,
-            &[Message::user(format!("turn {turn} {}", "x".repeat(200)))],
-            &[],
+            RecordedCall {
+                agent_id: "root",
+                role: GgClientRole::Agent,
+                shape: GgReplayRequestShape::Complete,
+                messages: &[Message::user(format!("turn {turn} {}", "x".repeat(200)))],
+                tools: &[],
+                duration_ms: None,
+            },
             &stop_response("ok"),
         );
     }
@@ -746,11 +777,14 @@ fn a_stopped_capture_records_nothing_further() {
     let (dir, recorder) = recorder_in(Some(1));
     // Even the header does not fit, so capture is stopped before the first entry.
     recorder.record_model_io(
-        "root",
-        GgClientRole::Agent,
-        GgReplayRequestShape::Complete,
-        &[Message::user("hi")],
-        &[],
+        RecordedCall {
+            agent_id: "root",
+            role: GgClientRole::Agent,
+            shape: GgReplayRequestShape::Complete,
+            messages: &[Message::user("hi")],
+            tools: &[],
+            duration_ms: None,
+        },
         &stop_response("ok"),
     );
     let report = recorder.finish();
@@ -842,11 +876,14 @@ fn a_pooled_body_round_trips_back_to_the_message_that_was_sent() {
     let (dir, recorder) = recorder_in(None);
     let sent = Message::user("build it");
     recorder.record_model_io(
-        "root",
-        GgClientRole::Agent,
-        GgReplayRequestShape::Complete,
-        std::slice::from_ref(&sent),
-        &[],
+        RecordedCall {
+            agent_id: "root",
+            role: GgClientRole::Agent,
+            shape: GgReplayRequestShape::Complete,
+            messages: std::slice::from_ref(&sent),
+            tools: &[],
+            duration_ms: None,
+        },
         &stop_response("ok"),
     );
     recorder.finish();
@@ -862,4 +899,550 @@ fn a_pooled_body_round_trips_back_to_the_message_that_was_sent() {
     let back: Message = serde_json::from_value(stored.body.clone()).expect("deserializes");
     assert_eq!(back, sent);
     assert_eq!(back.role, Role::User);
+}
+
+// --- model errors, the second client, and the latency clock -----------------
+
+/// A [`ModelClient`] whose first call fails and whose later calls succeed — the shape of the two
+/// recoverable failures (a vision refusal, a retry exhaustion counted against the error ceiling).
+struct FailingOnceClient {
+    error: Mutex<Option<ModelError>>,
+    response: ModelResponse,
+}
+
+impl FailingOnceClient {
+    fn new(error: ModelError, response: ModelResponse) -> Self {
+        Self {
+            error: Mutex::new(Some(error)),
+            response,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ModelClient for FailingOnceClient {
+    async fn complete(
+        &self,
+        _messages: &[Message],
+        _tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        match self.error.lock().expect("the scripted error").take() {
+            Some(error) => Err(error),
+            None => Ok(self.response.clone()),
+        }
+    }
+
+    fn model_id(&self) -> &str {
+        "mock/echo"
+    }
+}
+
+/// A failed model call is an **input**, and one this build records: v1 dropped every one of them,
+/// so a reconstruction of a run that recovered from a vision refusal diverged at exactly the turn
+/// a developer had opened the record to look at.
+///
+/// This is the vision-recovery shape end to end: the refused call and the stripped retry both go
+/// through the same wrapped client, so the record reads `model_error → model_io`, and the class
+/// the loop branched on — not merely the message — is what the entry carries.
+#[tokio::test]
+async fn a_refused_turn_records_its_error_before_the_call_that_replaced_it() {
+    let (dir, recorder) = recorder_in(None);
+    let recorder = Arc::new(recorder);
+    let client = RecordingClient::new(
+        Box::new(FailingOnceClient::new(
+            ModelError::VisionUnsupported {
+                model_id: "mock/echo".to_string(),
+                message: "no image route".to_string(),
+            },
+            stop_response("done"),
+        )),
+        Arc::clone(&recorder),
+        "root",
+    );
+
+    let refused = client.complete(&[Message::user("look")], &[]).await;
+    assert!(refused.is_err(), "the first call is the refusal");
+    // The loop's own recovery: strip the images and re-run the same turn.
+    client
+        .complete(&[Message::user("look (no images)")], &[])
+        .await
+        .expect("the stripped retry succeeds");
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let entries = entries(&lines);
+    let GgReplayEntryKind::ModelError { error, request, .. } = &entries[0].kind else {
+        panic!("the refusal is recorded first, got {:?}", entries[0].kind);
+    };
+    assert_eq!(error.kind, GgReplayModelErrorKind::VisionUnsupported);
+    assert_eq!(error.model_id.as_deref(), Some("mock/echo"));
+    assert_eq!(
+        request.messages.len(),
+        1,
+        "the request identifies which turn failed"
+    );
+    assert!(
+        matches!(entries[1].kind, GgReplayEntryKind::ModelIo { .. }),
+        "the retry that was actually sent follows it, got {:?}",
+        entries[1].kind
+    );
+    assert!(
+        entries[0].seq < entries[1].seq,
+        "and the ordering is what attaches the turn's prompt frame to the call that was sent"
+    );
+}
+
+/// Every [`ModelError`] class the loop branches on survives into the record as a class, not as a
+/// rendered sentence — a reconstruction has to know that a call failed for a reason that strips
+/// images and retries, not merely that it failed.
+#[test]
+fn every_model_error_class_is_recorded_as_the_class_the_loop_branched_on() {
+    let cases = [
+        (
+            ModelError::MissingApiKey,
+            GgReplayModelErrorKind::MissingApiKey,
+        ),
+        (
+            ModelError::Fatal {
+                status: 402,
+                message: "no credit".to_string(),
+            },
+            GgReplayModelErrorKind::Fatal,
+        ),
+        (
+            ModelError::RetryExhausted {
+                attempts: 4,
+                last: "504".to_string(),
+            },
+            GgReplayModelErrorKind::RetryExhausted,
+        ),
+        (
+            ModelError::Parse("not json".to_string()),
+            GgReplayModelErrorKind::Parse,
+        ),
+    ];
+    for (error, expected) in cases {
+        let recorded = replay_model_error(&error);
+        assert_eq!(recorded.kind, expected);
+        assert_eq!(recorded.message, error.to_string());
+    }
+    assert_eq!(
+        replay_model_error(&ModelError::Fatal {
+            status: 402,
+            message: "no credit".to_string(),
+        })
+        .status,
+        Some(402),
+        "the status a fatal error carried is what a reader diagnoses it from"
+    );
+    assert_eq!(
+        replay_model_error(&ModelError::RetryExhausted {
+            attempts: 4,
+            last: "504".to_string(),
+        })
+        .attempts,
+        Some(4),
+        "and the attempt count is what says how much of the run's clock the failure cost"
+    );
+}
+
+/// gg's **second** model client — the handoff-compaction summarizer — is recorded, on its own
+/// queue.
+///
+/// It was never wrapped at all before this, so every handoff-compaction call in every record
+/// captured to date is missing. The [role](GgClientRole) is what makes capturing it *safe*:
+/// without the discriminator a summarizer call and the agent's own next turn interleave into one
+/// indistinguishable queue and a reconstruction serves the wrong one to whichever asks first.
+#[tokio::test]
+async fn the_compaction_summarizers_calls_are_recorded_on_their_own_queue() {
+    let (dir, recorder) = recorder_in(None);
+    let recorder = Arc::new(recorder);
+    let agent = RecordingClient::new(
+        Box::new(StubClient::new("mock/agent", stop_response("working"))),
+        Arc::clone(&recorder),
+        "root",
+    );
+    let summarizer = RecordingClient::for_compaction(
+        Box::new(StubClient::new("mock/small", stop_response("a summary"))),
+        Arc::clone(&recorder),
+        "root",
+    );
+
+    agent.complete(&[Message::user("turn 1")], &[]).await.ok();
+    summarizer
+        .complete(&[Message::user("condense this")], &[])
+        .await
+        .ok();
+    agent.complete(&[Message::user("turn 2")], &[]).await.ok();
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let roles: Vec<GgClientRole> = entries(&lines)
+        .iter()
+        .filter_map(|entry| match &entry.kind {
+            GgReplayEntryKind::ModelIo { request, .. } => Some(request.role),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        roles,
+        vec![
+            GgClientRole::Agent,
+            GgClientRole::Compaction,
+            GgClientRole::Agent
+        ],
+        "the summarizer's call is recorded, and is distinguishable from the agent's own turns"
+    );
+}
+
+/// The latency clock is a **full-fidelity** input: it changes no control flow, and a playback
+/// removes model latency entirely, so a standard capture spends no bytes on the one number a
+/// reconstruction deliberately does not reproduce.
+#[tokio::test]
+async fn a_call_records_its_latency_only_at_full_fidelity() {
+    for (fidelity, expected) in [
+        (GgReplayFidelity::Standard, false),
+        (GgReplayFidelity::Full, true),
+    ] {
+        let (dir, recorder) = recorder_at(fidelity, None);
+        let recorder = Arc::new(recorder);
+        let client = RecordingClient::new(
+            Box::new(StubClient::new("mock/echo", stop_response("hi"))),
+            Arc::clone(&recorder),
+            "root",
+        );
+        client.complete(&[Message::user("go")], &[]).await.ok();
+        recorder.finish();
+
+        let lines = journal(&dir);
+        let GgReplayEntryKind::ModelIo { duration_ms, .. } = &entries(&lines)[0].kind else {
+            panic!("expected a model-io entry");
+        };
+        assert_eq!(
+            duration_ms.is_some(),
+            expected,
+            "at {fidelity:?} fidelity the latency clock should{} be recorded",
+            if expected { "" } else { " not" }
+        );
+    }
+}
+
+// --- subprocesses: shell, git, and the working directory --------------------
+
+/// A completion gate's validation command runs `sh -c` but never reaches tool dispatch, so before
+/// this seam it was recorded nowhere at all — and it decides whether the session may end.
+#[test]
+fn a_recorded_command_carries_its_origin_streams_and_working_directory() {
+    let (dir, recorder) = recorder_in(None);
+    recorder.record_shell(
+        "root",
+        GgShellOrigin::CompletionValidation,
+        RecordedCommand {
+            command: "npm test",
+            cwd: GgShellCwd::Relative {
+                path: "web".to_string(),
+            },
+            exit_code: 1,
+            stdout: "3 passing",
+            stderr: "1 failing",
+        },
+    );
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let GgReplayEntryKind::Shell { origin, command } = &entries(&lines)[0].kind else {
+        panic!("expected a shell entry");
+    };
+    assert_eq!(*origin, GgShellOrigin::CompletionValidation);
+    assert_eq!(command.command, "npm test");
+    assert_eq!(command.exit_code, 1);
+    assert_eq!(
+        command.cwd,
+        GgShellCwd::Relative {
+            path: "web".to_string()
+        }
+    );
+    // The two streams are interned separately, and into the text pool rather than inline.
+    assert_eq!(pool_indices(&lines, "text"), vec![0, 1]);
+    assert_ne!(command.stdout, command.stderr);
+}
+
+/// gg's own `git` bypassed tool dispatch entirely in v1 and was captured nowhere, so a run that
+/// ended in a merge conflict left no trace of the conflict. It is recorded now, with its streams
+/// pooled like every other bulky payload.
+#[test]
+fn a_recorded_git_invocation_interns_both_of_its_streams() {
+    let (dir, recorder) = recorder_in(None);
+    recorder.record_git(
+        "root",
+        RecordedCommand {
+            command: "git merge --no-ff gg/issue-1",
+            cwd: GgShellCwd::Workspace,
+            exit_code: 1,
+            stdout: "CONFLICT (content): Merge conflict in src/main.rs",
+            stderr: "",
+        },
+    );
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let GgReplayEntryKind::Git { command } = &entries(&lines)[0].kind else {
+        panic!("expected a git entry");
+    };
+    assert_eq!(command.cwd, GgShellCwd::Workspace);
+    let texts: Vec<&str> = lines
+        .iter()
+        .filter_map(|line| match line {
+            GgJournalLine::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        texts[command.stdout as usize],
+        "CONFLICT (content): Merge conflict in src/main.rs"
+    );
+    assert_eq!(texts[command.stderr as usize], "");
+}
+
+/// One payload recorded from two different seams occupies **one** text-pool entry.
+///
+/// This is what the text pool is for: a speculation's `git diff` patch is recorded as a `git`
+/// invocation's stdout *and* quoted into the material its judge is dispatched with, and a tool's
+/// output is recorded as an outcome *and* quoted into the `tool` message that carries it into the
+/// window. Interning against one content-addressed table collapses each pair to a single copy.
+#[test]
+fn one_payload_recorded_from_two_seams_shares_one_text_pool_entry() {
+    let (dir, recorder) = recorder_in(None);
+    let patch = "diff --git a/src/main.rs b/src/main.rs\n+fn main() {}\n";
+    recorder.record_git(
+        "root",
+        RecordedCommand {
+            command: "git diff --cached HEAD",
+            cwd: GgShellCwd::Workspace,
+            exit_code: 0,
+            stdout: patch,
+            stderr: "",
+        },
+    );
+    recorder.record_tool_result(
+        "root",
+        &tool_call("call_1", "read_file"),
+        &ToolOutcome::ok(patch.to_string(), "read the patch".to_string()),
+    );
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let entries = entries(&lines);
+    let GgReplayEntryKind::Git { command } = &entries[0].kind else {
+        panic!("expected a git entry");
+    };
+    let GgReplayEntryKind::ToolResult { outcome, .. } = &entries[1].kind else {
+        panic!("expected a tool result");
+    };
+    assert_eq!(
+        command.stdout, outcome.output,
+        "the same payload interns to the same index whichever seam recorded it"
+    );
+    let bodies: Vec<&str> = lines
+        .iter()
+        .filter_map(|line| match line {
+            GgJournalLine::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        bodies.iter().filter(|text| **text == patch).count(),
+        1,
+        "and it is written to the journal exactly once"
+    );
+}
+
+// --- payload clipping, the standard/full difference -------------------------
+
+/// A payload past the standard ceiling is **clipped**, and the record says so.
+///
+/// The clip has to be self-describing: a reader handed 32 KiB cannot otherwise tell a command that
+/// printed exactly that much from one that printed megabytes, and it is the second case where the
+/// missing part is the part worth having.
+#[test]
+fn a_standard_capture_clips_a_large_payload_and_records_what_it_dropped() {
+    let (dir, recorder) = recorder_in(None);
+    let huge = "x".repeat(GG_REPLAY_STANDARD_TEXT_MAX_BYTES * 2);
+    recorder.record_git(
+        "root",
+        RecordedCommand {
+            command: "git diff --cached HEAD",
+            cwd: GgShellCwd::Workspace,
+            exit_code: 0,
+            stdout: &huge,
+            stderr: "",
+        },
+    );
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let (text, clip) = lines
+        .iter()
+        .find_map(|line| match line {
+            GgJournalLine::Text { text, clip, .. } if !text.is_empty() => {
+                Some((text.clone(), clip.clone()))
+            }
+            _ => None,
+        })
+        .expect("the stdout line");
+    assert_eq!(text.len(), GG_REPLAY_STANDARD_TEXT_MAX_BYTES);
+    let clip = clip.expect("a clipped payload says so");
+    assert_eq!(clip.original_bytes, huge.len() as u64);
+    assert_eq!(
+        clip.original_id,
+        fingerprint_exact(huge.as_bytes()),
+        "the whole payload's content address is what lets a reconstruction that re-runs the \
+         command prove its own output matches, from a record that kept a fraction of it"
+    );
+}
+
+/// The escalation the `replay` capability now buys: at full fidelity nothing is clipped, so the
+/// clip table is empty **by construction** rather than by luck.
+#[test]
+fn a_full_capture_keeps_every_payload_whole() {
+    let (dir, recorder) = recorder_at(GgReplayFidelity::Full, None);
+    let huge = "x".repeat(GG_REPLAY_STANDARD_TEXT_MAX_BYTES * 2);
+    recorder.record_git(
+        "root",
+        RecordedCommand {
+            command: "git diff --cached HEAD",
+            cwd: GgShellCwd::Workspace,
+            exit_code: 0,
+            stdout: &huge,
+            stderr: "",
+        },
+    );
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let clipped: Vec<_> = lines
+        .iter()
+        .filter_map(|line| match line {
+            GgJournalLine::Text { text, clip, .. } => Some((text.len(), clip.is_some())),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        clipped.contains(&(huge.len(), false)),
+        "the whole payload is stored, with no clip row: {clipped:?}"
+    );
+}
+
+/// Two different payloads that happen to share a tail are two pool entries, not one.
+///
+/// The dedup keys on the address of the payload **as given**, never on the stored clip — otherwise
+/// the second payload would silently resolve to the first one's row, and the record would report a
+/// forty-megabyte log's length for a two-line one.
+#[test]
+fn two_payloads_sharing_a_tail_are_clipped_to_two_pool_entries() {
+    let (dir, recorder) = recorder_in(None);
+    let tail = "y".repeat(GG_REPLAY_STANDARD_TEXT_MAX_BYTES);
+    let first = format!("first{tail}");
+    let second = format!("second-and-longer{tail}");
+    for stdout in [&first, &second] {
+        recorder.record_git(
+            "root",
+            RecordedCommand {
+                command: "git log",
+                cwd: GgShellCwd::Workspace,
+                exit_code: 0,
+                stdout,
+                stderr: "",
+            },
+        );
+    }
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let clips: Vec<_> = lines
+        .iter()
+        .filter_map(|line| match line {
+            GgJournalLine::Text { clip, .. } => clip.clone(),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(clips.len(), 2, "two payloads, two clip rows: {clips:?}");
+    assert_ne!(
+        clips[0].text, clips[1].text,
+        "each clip row names its own pool entry"
+    );
+    assert_ne!(
+        clips[0].original_bytes, clips[1].original_bytes,
+        "and reports its own payload's length, not the other's"
+    );
+}
+
+/// The working directory a recorded command ran in is stored **relative to the workspace**, so a
+/// reconstruction building in a different directory can still compare it — and a path genuinely
+/// outside the workspace is kept verbatim rather than silently matched.
+#[test]
+fn a_recorded_working_directory_is_relative_to_the_workspace_where_it_can_be() {
+    let workspace = Path::new("/work/impl");
+    assert_eq!(shell_cwd(workspace, workspace), GgShellCwd::Workspace);
+    assert_eq!(
+        shell_cwd(workspace, &workspace.join("web/src")),
+        GgShellCwd::Relative {
+            path: "web/src".to_string()
+        }
+    );
+    assert_eq!(
+        shell_cwd(workspace, Path::new("/work/.gg-worktrees/issue-1")),
+        GgShellCwd::Absolute {
+            path: "/work/.gg-worktrees/issue-1".to_string()
+        },
+        "a worktree beside the workspace has nothing to relativize against, and saying so is the \
+         point"
+    );
+}
+
+// --- the turn-boundary probes -----------------------------------------------
+
+/// The cancel probe and the deadline clock both end sessions, and neither is derivable from
+/// anything else the record holds.
+#[test]
+fn the_turn_boundary_probes_are_recorded_as_inputs() {
+    let (dir, recorder) = recorder_in(None);
+    recorder.record_cancel_probe("root", false);
+    recorder.record_clock("root", 1_500, Some(598_500));
+    recorder.record_cancel_probe("root", true);
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let kinds: Vec<&GgReplayEntryKind> = entries(&lines).iter().map(|entry| &entry.kind).collect();
+    assert!(matches!(
+        kinds[0],
+        GgReplayEntryKind::CancelProbe { canceled: false }
+    ));
+    assert!(matches!(
+        kinds[1],
+        GgReplayEntryKind::Clock {
+            elapsed_ms: 1_500,
+            remaining_ms: Some(598_500)
+        }
+    ));
+    assert!(
+        matches!(kinds[2], GgReplayEntryKind::CancelProbe { canceled: true }),
+        "the probe that fired is the input that ends the session"
+    );
+}
+
+/// The deadline clock is recorded at **both** fidelities, unlike the latency clock beside it: it
+/// is the one clock read the loop branches on, so a standard capture that dropped it would leave a
+/// reconstruction running past the point the run stopped.
+#[test]
+fn the_deadline_clock_is_recorded_at_standard_fidelity_too() {
+    let (dir, recorder) = recorder_in(None);
+    recorder.record_clock("root", 42, None);
+    recorder.finish();
+
+    assert!(
+        entries(&journal(&dir))
+            .iter()
+            .any(|entry| matches!(entry.kind, GgReplayEntryKind::Clock { .. })),
+    );
 }

@@ -105,8 +105,8 @@ pub use memories::{
     CreateMemoryTool, DeleteMemoryTool, EditMemoryTool, ReadMemoryTool, SearchMemoriesTool,
     UpdateMemoryTool, WriteMemoryTool, is_memory_tool, read_only_refusal,
 };
-pub(crate) use shell::run_command;
 pub use shell::{OffloadPolicy, SHELL_TOOL};
+pub(crate) use shell::{run_command, run_command_capturing};
 pub use skills::{READ_SKILL_TOOL, ReadSkillTool};
 pub(crate) use subagents::handled_by_loop;
 pub use subagents::{

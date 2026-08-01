@@ -207,7 +207,8 @@ fn a_message_is_pooled_once_however_many_turns_it_survives() {
     assert_eq!(first, 0);
     assert_eq!(second, 1);
     assert_eq!(again, first, "an identical body reuses its pool slot");
-    let (messages, _, _, _) = pools.into_parts();
+    let parts = pools.into_parts();
+    let messages = parts.messages;
     assert_eq!(messages.len(), 2);
 }
 
@@ -219,7 +220,8 @@ fn a_toolset_is_pooled_once_however_many_turns_offer_it() {
     let second = pools.intern_toolset(&tools);
 
     assert_eq!(first, second);
-    let (_, toolsets, _, _) = pools.into_parts();
+    let parts = pools.into_parts();
+    let toolsets = parts.toolsets;
     assert_eq!(toolsets.len(), 1, "12x redundancy collapses to 1");
 }
 
@@ -238,7 +240,9 @@ fn an_image_payload_is_replaced_by_a_blob_reference_and_stored_once() {
     }));
     assert_ne!(first, second);
 
-    let (messages, _, _, blobs) = pools.into_parts();
+    let parts = pools.into_parts();
+    let messages = parts.messages;
+    let blobs = parts.blobs;
     assert_eq!(blobs.len(), 1, "the same picture is stored once");
     assert_eq!(blobs[0].media_type, "image/png");
     assert_eq!(blobs[0].data_base64, "QUJD");
@@ -254,7 +258,11 @@ fn a_message_body_inflates_its_blob_references_back_to_the_bytes_it_was_sent_wit
     let mut pools = GgReplayPools::new();
     let body = json!({ "role": "user", "content": [image("QUJD")] });
     let index = pools.intern_message(&body);
-    let (messages, toolsets, texts, blobs) = pools.into_parts();
+    let parts = pools.into_parts();
+    let messages = parts.messages;
+    let toolsets = parts.toolsets;
+    let texts = parts.texts;
+    let blobs = parts.blobs;
 
     let mut record = GgReplayRecord::new("run_1", capability_set());
     record.messages = messages;
@@ -278,7 +286,9 @@ fn the_message_address_covers_the_image_bytes_not_just_its_descriptor() {
     let second = pools.intern_message(&json!({ "role": "user", "content": [image("WFla")] }));
 
     assert_ne!(first, second);
-    let (messages, _, _, blobs) = pools.into_parts();
+    let parts = pools.into_parts();
+    let messages = parts.messages;
+    let blobs = parts.blobs;
     assert_ne!(messages[0].id, messages[1].id);
     assert_eq!(blobs.len(), 2);
 }
@@ -292,7 +302,8 @@ fn a_text_payload_is_pooled_once() {
 
     assert_eq!(first, second);
     assert_ne!(first, third);
-    let (_, _, texts, _) = pools.into_parts();
+    let parts = pools.into_parts();
+    let texts = parts.texts;
     assert_eq!(texts, vec!["ok\n".to_string(), "nope\n".to_string()]);
 }
 
@@ -563,7 +574,11 @@ fn a_seed_file_references_the_blob_pool_rather_than_carrying_a_second_copy() {
     let mut pools = GgReplayPools::new();
     // The mockup is in the pool because it was *sent to the model*.
     pools.intern_message(&json!({ "role": "user", "content": [image("QUJD")] }));
-    let (messages, toolsets, texts, blobs) = pools.into_parts();
+    let parts = pools.into_parts();
+    let messages = parts.messages;
+    let toolsets = parts.toolsets;
+    let texts = parts.texts;
+    let blobs = parts.blobs;
 
     let mut record = GgReplayRecord::new("run_1", capability_set());
     record.messages = messages;
@@ -625,6 +640,7 @@ fn every_entry_kind_round_trips_with_its_discriminator_inline() {
     let cases: Vec<(GgReplayEntryKind, &str)> = vec![
         (
             GgReplayEntryKind::ModelError {
+                duration_ms: None,
                 request: GgReplayPools::new().intern_request(
                     GgClientRole::Agent,
                     GgReplayRequestShape::Complete,
@@ -761,7 +777,10 @@ fn a_v1_record_upgrades_into_the_pooled_shape() {
     assert_eq!(record.toolsets.len(), 1, "one distinct toolset");
     assert_eq!(record.entries.len(), 2);
 
-    let GgReplayEntryKind::ModelIo { request, response } = &record.entries[1].kind else {
+    let GgReplayEntryKind::ModelIo {
+        request, response, ..
+    } = &record.entries[1].kind
+    else {
         panic!("a v1 model_io upgrades to a v2 ModelIo");
     };
     assert_eq!(request.messages, vec![0, 1, 2]);
@@ -981,4 +1000,130 @@ fn a_json_address_does_not_depend_on_the_order_fields_were_written_in() {
     let first: Value = serde_json::from_str(r#"{"a":1,"b":2}"#).expect("parses");
     let second: Value = serde_json::from_str(r#"{"b":2,"a":1}"#).expect("parses");
     assert_eq!(fingerprint_json(&first), fingerprint_json(&second));
+}
+
+// --- payload clipping -------------------------------------------------------
+
+/// The clip keeps the **tail** and lands on a character boundary, so a clipped payload is always
+/// valid UTF-8 and is never longer than the ceiling it was measured against.
+#[test]
+fn clipping_keeps_a_valid_tail_within_the_ceiling() {
+    assert_eq!(
+        clip_text("short", 16),
+        None,
+        "a payload that fits is not clipped"
+    );
+    assert_eq!(
+        clip_text("0123456789", 10),
+        None,
+        "and neither is one that fits exactly"
+    );
+
+    let (kept, original) = clip_text("0123456789", 4).expect("a longer payload is clipped");
+    assert_eq!(kept, "6789");
+    assert_eq!(original, 10);
+
+    // `é` is two bytes, so a cut landing inside it must move forward — never producing invalid
+    // UTF-8, and never producing a *longer* result by moving backwards.
+    let multibyte = "ééééé";
+    let (kept, original) = clip_text(multibyte, 5).expect("clipped");
+    assert!(multibyte.ends_with(kept));
+    assert!(
+        kept.len() <= 5,
+        "the ceiling is never exceeded: {}",
+        kept.len()
+    );
+    assert_eq!(original, 10);
+}
+
+/// The dedup key is the address of the payload **as given**, so two payloads that share a tail
+/// occupy two entries with two clip rows rather than collapsing into one whose single row could
+/// describe only one of them.
+#[test]
+fn two_payloads_sharing_a_clipped_tail_stay_two_pool_entries() {
+    let mut pools = GgReplayPools::new();
+    let tail = "z".repeat(64);
+    let first = pools.intern_text_clipped(&format!("a{tail}"), Some(64));
+    let second = pools.intern_text_clipped(&format!("bb{tail}"), Some(64));
+    assert_ne!(first, second);
+
+    let parts = pools.into_parts();
+    assert_eq!(parts.texts[first as usize], parts.texts[second as usize]);
+    assert_eq!(parts.clips.len(), 2);
+    assert_eq!(parts.clips[0].original_bytes, 65);
+    assert_eq!(parts.clips[1].original_bytes, 66);
+    assert_eq!(
+        parts.clips[0].original_id,
+        fingerprint_exact(format!("a{tail}").as_bytes()),
+        "the address is of the whole payload, which is what makes a clipped record checkable"
+    );
+}
+
+/// An unclipped payload dedups exactly as it always did, and mints no clip row — so the table is
+/// empty for a full-fidelity record by construction rather than by luck.
+#[test]
+fn interning_without_a_ceiling_records_no_clip() {
+    let mut pools = GgReplayPools::new();
+    let first = pools.intern_text_clipped("build output", None);
+    let second = pools.intern_text("build output");
+    assert_eq!(first, second);
+    assert!(pools.into_parts().clips.is_empty());
+}
+
+/// The record's clip lookup answers "is this payload the whole of it?" — the question a reader has
+/// to ask before treating a recorded payload as the payload.
+#[test]
+fn a_record_reports_which_of_its_texts_are_clips() {
+    let mut record = GgReplayRecord::new("run_1", capability_set());
+    record.texts = vec![
+        "whole".to_string(),
+        "tail".to_string(),
+        "also whole".to_string(),
+    ];
+    record.clips = vec![GgReplayTextClip {
+        text: 1,
+        original_bytes: 4_096,
+        original_id: fingerprint_exact(b"the whole payload"),
+    }];
+
+    assert!(record.clip(0).is_none());
+    assert_eq!(record.clip(1).map(|clip| clip.original_bytes), Some(4_096));
+    assert!(record.clip(2).is_none());
+    assert!(
+        record.clip(9).is_none(),
+        "a reference past the pool is absent, not a panic"
+    );
+}
+
+/// The clip table survives a round trip, and is **absent-tolerant**: a record written before the
+/// table existed reads as one that clipped nothing rather than failing to parse.
+#[test]
+fn the_clip_table_round_trips_and_defaults_to_empty() {
+    let mut record = GgReplayRecord::new("run_1", capability_set());
+    record.texts = vec!["tail".to_string()];
+    record.clips = vec![GgReplayTextClip {
+        text: 0,
+        original_bytes: 1_048_576,
+        original_id: fingerprint_exact(b"a megabyte of build log"),
+    }];
+    let json = serde_json::to_value(&record).expect("serializes");
+    let back: GgReplayRecord = serde_json::from_value(json.clone()).expect("round trips");
+    assert_eq!(back.clips, record.clips);
+
+    let mut without = json;
+    without.as_object_mut().unwrap().remove("clips");
+    let back: GgReplayRecord =
+        serde_json::from_value(without).expect("an older record still reads");
+    assert!(back.clips.is_empty());
+}
+
+/// The fidelity is the single home of the clipping rule, so a recorder, a test and a reader cannot
+/// hold three opinions about what a `full` record promises.
+#[test]
+fn full_fidelity_is_the_absence_of_a_ceiling() {
+    assert_eq!(
+        GgReplayFidelity::Standard.text_max_bytes(),
+        Some(GG_REPLAY_STANDARD_TEXT_MAX_BYTES)
+    );
+    assert_eq!(GgReplayFidelity::Full.text_max_bytes(), None);
 }

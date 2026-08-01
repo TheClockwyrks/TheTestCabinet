@@ -72,6 +72,7 @@ fn session() -> Vec<GgJournalLine> {
         GgReplayEntryKind::ModelIo {
             request,
             response: json!({ "text": "on it", "toolCalls": [] }),
+            duration_ms: None,
         },
     ));
 
@@ -325,6 +326,7 @@ fn an_always_on_capture_of_a_realistic_session_costs_a_fraction_of_a_megabyte() 
             GgReplayEntryKind::ModelIo {
                 request,
                 response: json!({ "text": reply, "toolCalls": [] }),
+                duration_ms: None,
             },
         ));
         conversation.push(message("assistant", &reply));
@@ -811,5 +813,55 @@ fn a_shell_entrys_streams_are_checked_against_the_text_pool() {
     assert_eq!(
         read_record(&output).texts,
         vec!["hello".to_string(), String::new()]
+    );
+}
+
+/// The clip table reaches the assembled record, in ascending pool order.
+///
+/// The journal carries a clip on the same line as the text it describes — a clip that could be
+/// separated from its payload is a clip that can go missing, and a record silently claiming a
+/// 32 KiB tail is a whole payload is exactly the lie the table exists to prevent — so assembly's
+/// job is to lift them into the record's own sparse table without reordering them.
+#[test]
+fn a_clipped_journal_assembles_into_a_record_that_says_which_texts_are_clips() {
+    let dir = tempfile::tempdir().expect("a scratch directory");
+    let mut interner = GgJournalInterner::new();
+    let mut lines = vec![header()];
+
+    let whole = "a short outcome";
+    let huge = "x".repeat(128);
+    let output = interner.intern_text(whole);
+    let clipped = interner.intern_text_clipped(&huge, Some(32));
+    lines.extend(interner.take_pending());
+    lines.push(entry(
+        0,
+        GgReplayEntryKind::Shell {
+            origin: GgShellOrigin::CompletionValidation,
+            command: GgReplayCommand {
+                command: "npm test".to_string(),
+                cwd: GgShellCwd::Workspace,
+                exit_code: 1,
+                stdout: clipped,
+                stderr: output,
+            },
+        },
+    ));
+    lines.push(end(1));
+
+    let journal = write_journal(dir.path(), &lines);
+    let output_path = output_in(dir.path());
+    assemble_journal_to_gz(&journal, &output_path).expect("assembles");
+    let record = read_record(&output_path);
+
+    assert_eq!(record.texts[clipped as usize].len(), 32);
+    assert_eq!(record.texts[output as usize], whole);
+    assert_eq!(record.clips.len(), 1, "only the clipped payload has a row");
+    let clip = record
+        .clip(clipped)
+        .expect("the clipped text is found by its index");
+    assert_eq!(clip.original_bytes, 128);
+    assert!(
+        record.clip(output).is_none(),
+        "and a whole payload is not reported as one"
     );
 }

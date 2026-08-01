@@ -114,14 +114,38 @@ export interface ReplayResponse {
   cost: number | null;
 }
 
+/**
+ * A pooled payload as it is displayed: the recorded text, and — when a **standard**
+ * fidelity capture clipped it — what the whole of it was.
+ *
+ * The clip has to travel with the text rather than beside it. A reader shown 32 KiB of a
+ * command's output cannot otherwise tell a command that printed exactly that from one
+ * that printed forty megabytes, and it is precisely the second case where the missing
+ * part is the part worth having.
+ */
+export interface ReplayText {
+  /** What the record holds — the whole payload, or the tail of it that was kept. */
+  text: string;
+  /** What was dropped, or `null` for a payload recorded whole. */
+  clip: ReplayClip | null;
+}
+
+/** What a [clipped](ReplayText) payload is missing. */
+export interface ReplayClip {
+  /** How many bytes the whole payload had. */
+  originalBytes: number;
+  /** How many bytes of it the record kept. */
+  keptBytes: number;
+}
+
 /** One subprocess the run recorded, with its pooled streams resolved. */
 export interface ReplayCommand {
   command: string;
   /** Where it ran, as the record expresses it — workspace-relative wherever possible. */
   cwd: string | null;
   exitCode: number;
-  stdout: string;
-  stderr: string;
+  stdout: ReplayText;
+  stderr: ReplayText;
 }
 
 /** One tool call and the outcome the run's dispatch returned for it. */
@@ -133,7 +157,7 @@ export interface ReplayToolResult {
   arguments: unknown;
   cwd: string | null;
   ok: boolean;
-  output: string;
+  output: ReplayText;
   summary: string | null;
   images: PooledImage[];
   data: Record<string, unknown> | null;
@@ -234,8 +258,28 @@ export function buildReplayWalk(record: GgReplayRecord): ReplayWalk {
     dataBase64: blob.dataBase64,
   }));
   const texts = record.texts ?? [];
-  const resolveText = (index: number | undefined): string =>
-    index == null ? "" : (texts[index] ?? "");
+  // The clip table is sparse and keyed by pool index, so it is turned into a lookup once
+  // rather than scanned per payload.
+  const clips = new Map<number, number>(
+    (record.clips ?? []).map((clip) => [clip.text, clip.originalBytes]),
+  );
+  const resolveText = (index: number | undefined): ReplayText => {
+    const text = index == null ? "" : (texts[index] ?? "");
+    const originalBytes = index == null ? undefined : clips.get(index);
+    return {
+      text,
+      clip:
+        originalBytes == null
+          ? null
+          : // Measured in UTF-8 bytes, as the recorder measured it — a payload of
+            // multi-byte characters would otherwise report a "kept" figure larger than
+            // the ceiling that produced it.
+            {
+              originalBytes,
+              keptBytes: new TextEncoder().encode(text).length,
+            },
+    };
+  };
   const resolveBlob = (index: number): PooledImage | null =>
     blobs[index] ?? null;
   const resolveMessage = (index: number): PooledMessage | null => {
@@ -458,7 +502,7 @@ function walkEntry(
   entry: GgReplayEntry,
   record: GgReplayRecord,
   resolveMessage: (index: number) => PooledMessage | null,
-  resolveText: (index: number | undefined) => string,
+  resolveText: (index: number | undefined) => ReplayText,
   resolveBlob: (index: number) => PooledImage | null,
 ): WalkEntry {
   const at = { agentId: entry.agentId, seq: entry.seq };
@@ -514,7 +558,7 @@ function walkEntry(
           summary:
             entry.outcome.summary == null
               ? null
-              : resolveText(entry.outcome.summary),
+              : resolveText(entry.outcome.summary).text,
           images: (entry.outcome.images ?? [])
             .map(resolveBlob)
             .filter((image): image is PooledImage => image != null),
@@ -612,7 +656,9 @@ function legacyWalkEntry(entry: GgReplayEntryV1, index: number): WalkEntry {
       arguments: entry.call.arguments ?? null,
       cwd: null,
       ok: typeof outcome.ok === "boolean" ? outcome.ok : false,
-      output: asString(outcome.output) ?? "",
+      // A v1 record predates both pooling and clipping, so its payload is inline and is
+      // by definition whole.
+      output: { text: asString(outcome.output) ?? "", clip: null },
       summary: asString(outcome.summary),
       images: asArray(outcome.images)
         .map(readInlineImage)
@@ -739,7 +785,7 @@ function readFinishReason(value: unknown): string | null {
 
 function readCommand(
   command: GgReplayCommand,
-  resolveText: (index: number | undefined) => string,
+  resolveText: (index: number | undefined) => ReplayText,
 ): ReplayCommand {
   return {
     command: command.command,

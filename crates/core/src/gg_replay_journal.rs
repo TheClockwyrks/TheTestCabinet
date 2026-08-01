@@ -42,7 +42,8 @@ use serde_json::Value;
 use crate::gg::GgCapabilitySet;
 use crate::gg_replay::{
     GgReplayBlob, GgReplayEntry, GgReplayFidelity, GgReplayInterner, GgReplayMessage,
-    GgReplayRecorder, GgReplayToolset, GgReplayTruncation, fingerprint_exact, fingerprint_json,
+    GgReplayRecorder, GgReplayTextClip, GgReplayToolset, GgReplayTruncation, clip_text,
+    fingerprint_exact, fingerprint_json,
 };
 
 /// Where a recording gg session writes its [journal](self), relative to the run workspace.
@@ -108,8 +109,19 @@ pub enum GgJournalLine {
     Text {
         /// Its index into the assembled record's text pool.
         index: u32,
-        /// The payload.
+        /// The payload — the whole of it at [full](GgReplayFidelity::Full) fidelity, and its
+        /// [kept tail](crate::gg_replay::clip_text) when the capture clipped it.
         text: String,
+        /// What the payload is missing, when this line carries a clip of it rather than the whole.
+        ///
+        /// Carried on the same line rather than as a line of its own, for the reason the index is
+        /// carried at all: a clip that could be separated from its text is a clip that can go
+        /// missing, and a record silently claiming a 32 KiB tail is a whole payload is precisely
+        /// the lie the table exists to prevent. Its
+        /// [`text`](crate::gg_replay::GgReplayTextClip::text) repeats this line's `index` for the
+        /// same reason every pool line already names its own.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        clip: Option<GgReplayTextClip>,
     },
     /// One newly interned image, at the blob pool index it occupies.
     Blob {
@@ -249,17 +261,23 @@ impl GgReplayInterner for GgJournalInterner {
         self.toolset_ids.get(index as usize).map(String::as_str)
     }
 
-    fn intern_text(&mut self, text: &str) -> u32 {
+    fn intern_text_clipped(&mut self, text: &str, max_bytes: Option<usize>) -> u32 {
         let id = fingerprint_exact(text.as_bytes());
         if let Some(&index) = self.text_index.get(&id) {
             return index;
         }
         let index = self.texts;
         self.texts += 1;
-        self.text_index.insert(id, index);
+        self.text_index.insert(id.clone(), index);
+        let clipped = max_bytes.and_then(|max| clip_text(text, max));
         self.pending.push(GgJournalLine::Text {
             index,
-            text: text.to_string(),
+            text: clipped.map_or_else(|| text.to_string(), |(kept, _)| kept.to_string()),
+            clip: clipped.map(|(_, original_bytes)| GgReplayTextClip {
+                text: index,
+                original_bytes,
+                original_id: id,
+            }),
         });
         index
     }

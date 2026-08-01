@@ -80,6 +80,7 @@ const RECORD: GgReplayRecord = {
     },
   ],
   texts: ["src/\nCargo.toml", "2 entries"],
+  clips: [],
   blobs: [{ id: "b0", mediaType: "image/png", bytes: 68, dataBase64: PIXEL }],
   entries: [
     {
@@ -326,6 +327,25 @@ describe("GgReplayView", () => {
     expect(screen.getByTestId("replay-counter")).toHaveTextContent(
       "step 1 / 2",
     );
+  });
+
+  // A standard-fidelity capture clips a payload past its ceiling, and a reader shown the
+  // tail with no notice would read it as the whole of what the command printed — and
+  // conclude the command printed nothing interesting.
+  it("says when a recorded payload is only a clip of what was printed", async () => {
+    renderRecord({
+      ...RECORD,
+      clips: [
+        { text: 0, originalBytes: 4_194_304, originalId: "deadbeefdeadbeef" },
+      ],
+    });
+    expect(await screen.findByText(/Clipped/)).toBeInTheDocument();
+    // It names the whole payload's size, which is the part that makes the notice worth
+    // reading, and the escalation that would have kept it.
+    expect(screen.getByText(/4,194,304 bytes/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/capture payloads whole/, { exact: false }),
+    ).toBeInTheDocument();
   });
 
   it("shows a tidy empty state when the run has no replay record", async () => {

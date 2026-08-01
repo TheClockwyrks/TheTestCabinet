@@ -47,6 +47,7 @@ function record(over: Partial<GgReplayRecord> = {}): GgReplayRecord {
     messages: [],
     toolsets: [],
     texts: [],
+    clips: [],
     blobs: [],
     entries: [],
     ...over,
@@ -242,7 +243,7 @@ describe("buildReplayWalk", () => {
     expect(walk.steps).toHaveLength(1);
     const [result] = walk.steps[0]!.toolResults;
     expect(result?.name).toBe("shell");
-    expect(result?.output).toBe("src/\nCargo.toml");
+    expect(result?.output.text).toBe("src/\nCargo.toml");
     expect(result?.summary).toBe("2 entries");
     expect(result?.cwd).toBe("web");
   });
@@ -444,7 +445,7 @@ describe("buildLegacyReplayWalk", () => {
     expect(step.request.every((row) => row.context == null)).toBe(true);
     expect(step.response?.message.content).toBe("I'll list the files.");
     expect(step.response?.message.tokens).toBe(42);
-    expect(step.toolResults[0]?.output).toBe("src/\nCargo.toml");
+    expect(step.toolResults[0]?.output.text).toBe("src/\nCargo.toml");
   });
 
   it("reports standard fidelity rather than inferring full from the capability", () => {

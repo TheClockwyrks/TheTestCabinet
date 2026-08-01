@@ -41,7 +41,7 @@ use test_cabinet_core::gg::{
     GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::gg_replay::{
-    GgReplayEntry, GgReplayEntryKind, GgReplayPromptSlot, GgReplayRetention,
+    GgClientRole, GgReplayEntry, GgReplayEntryKind, GgReplayPromptSlot, GgReplayRetention,
 };
 use test_cabinet_core::gg_replay_journal::{GG_REPLAY_JOURNAL_PATH, GgJournalLine};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
@@ -8395,7 +8395,10 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
         model_ios.len()
     );
     for entry in &model_ios {
-        let GgReplayEntryKind::ModelIo { request, response } = &entry.kind else {
+        let GgReplayEntryKind::ModelIo {
+            request, response, ..
+        } = &entry.kind
+        else {
             unreachable!()
         };
         // A request is pool references plus the fingerprint of the question it asked, and every
@@ -8678,6 +8681,7 @@ async fn a_captured_run_journals_an_outcome_for_every_call_it_made() {
     // response requested, and each recorded tool result must answer the next one, by id and name.
     let mut awaiting: std::collections::VecDeque<(String, String)> = Default::default();
     let mut model_calls = 0usize;
+    let mut probes = 0usize;
     let mut tool_calls = 0usize;
     let mut journaled: Vec<(&'static str, String)> = Vec::new();
     for entry in &entries {
@@ -8712,9 +8716,23 @@ async fn a_captured_run_journals_an_outcome_for_every_call_it_made() {
             // rather than removed from the walk: the `other` arm below is what proves the capture
             // emits nothing this reconstruction would not understand.
             GgReplayEntryKind::PromptFrame { .. } => {}
+            // The turn-boundary inputs: read before the turn's model call, so they land between
+            // one turn's results and the next turn's call and are likewise no part of the
+            // pairing. Counted rather than merely skipped — a boundary that stopped probing
+            // would be a run that could no longer be killed.
+            GgReplayEntryKind::CancelProbe { canceled } => {
+                assert!(!canceled, "this run was never canceled");
+                probes += 1;
+            }
+            GgReplayEntryKind::Clock { .. } => {}
             other => panic!("unexpected entry kind {other:?}"),
         }
     }
+    assert!(
+        probes >= model_calls,
+        "every turn probes for cancellation before it calls the model: {probes} probe(s) for \
+         {model_calls} turn(s)"
+    );
     assert!(
         awaiting.is_empty(),
         "the record left {awaiting:?} unanswered"
@@ -8973,3 +8991,67 @@ mod transition_tests;
 /// anything, and really reports the same id two holders of one store both report.
 #[path = "agent.modules.test.rs"]
 mod module_tests;
+
+/// The **handoff-compaction summarizer's** model call reaches the record.
+///
+/// It did not before this: gg's second model client was resolved through the same factory as the
+/// agent's own and then handed straight to the loop unwrapped, so every handoff-compaction call in
+/// every record captured to date is missing — and a handoff is the one event that rewrites an
+/// agent's whole window, so a record missing it describes a conversation whose next turn appears
+/// to come out of nowhere.
+///
+/// Driven through the production launch path rather than by constructing a `CompactionSetup`,
+/// because the wrapping *is* the launch path: the point of the test is that the client the loop is
+/// handed is the recorded one.
+#[tokio::test]
+async fn a_handoff_compactions_summarizer_call_reaches_the_record() {
+    let dir = TempDir::new().unwrap();
+    seed_default_skill(dir.path());
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-handoff".to_string()), Box::new(sink.clone()));
+
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents[0].capabilities.push(GgCapabilityConfig {
+        id: CAPABILITY_COMPACTION.to_string(),
+        enabled: true,
+        implementation: Some(
+            test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_COMPACTION.to_string(),
+        ),
+        params: json!({ test_cabinet_core::gg::COMPACTION_PARAM_MODEL: "mock/compactor" }),
+    });
+    // A window narrow enough that the thread crosses the trigger within a few turns, so the run
+    // actually hands off rather than passing the assertion below by never compacting at all.
+    let mut inv = invocation(dir.path(), set);
+    inv.model_windows = BTreeMap::from([
+        ("mock/echo".to_string(), 1_200),
+        ("mock/compactor".to_string(), 1_200),
+    ]);
+
+    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
+
+    let lines = read_replay_journal(dir.path());
+    let roles: Vec<GgClientRole> = journal_entries(&lines)
+        .iter()
+        .filter_map(|entry| match &entry.kind {
+            GgReplayEntryKind::ModelIo { request, .. } => Some(request.role),
+            _ => None,
+        })
+        .collect();
+    // The boundary really was crossed — otherwise the assertion below would pass vacuously on a
+    // run that simply never compacted.
+    assert!(
+        sink.events().iter().any(
+            |event| matches!(&event.kind, GgTelemetryKind::Compaction { strategy, .. }
+                if strategy == test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_COMPACTION)
+        ),
+        "the run crossed a handoff-compaction boundary"
+    );
+    assert!(
+        roles.contains(&GgClientRole::Compaction),
+        "the summarizer's call is in the record: {roles:?}"
+    );
+    assert!(
+        roles.contains(&GgClientRole::Agent),
+        "and the agent's own turns still are too: {roles:?}"
+    );
+}
