@@ -607,6 +607,7 @@ description = "A placement that would trap a unit already walking (leaving it no
 # the placement check. See validation/sealing/no-trap.mjs.
 validation = { script = "validation/sealing/no-trap.mjs", outputs = [
   { id = "trap", name = "A trap placement refused", kind = "video" },
+  { id = "refused", name = "The refused footprint held over the trapped unit", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "partial-opening-ok"
@@ -837,6 +838,7 @@ description = "Before Wave 1 the opening build phase is untimed: it shows no cou
 # shows a build timer. See validation/phases/opening-untimed.mjs.
 validation = { script = "validation/phases/opening-untimed.mjs", outputs = [
   { id = "opening", name = "The untimed opening phase holding", kind = "image" },
+  { id = "untimed", name = "The opening phase running on with no countdown", kind = "video" },
 ] }
 [[review.categories.items]]
 id = "opening-start"
@@ -1042,6 +1044,7 @@ description = "While paused the simulation does not advance — the surge holds 
 # and stepped. See validation/pause/freezes.mjs.
 validation = { script = "validation/pause/freezes.mjs", outputs = [
   { id = "frozen", name = "The surge frozen while paused", kind = "image" },
+  { id = "pause", name = "The surge walking, then held by the pause", kind = "video" },
 ] }
 
 # --- Modes and difficulty ----------------------------------------------------

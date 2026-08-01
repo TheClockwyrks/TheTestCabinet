@@ -14,6 +14,24 @@
 // leaks the same unit type with no wave running at all — a Core injected during the
 // untimed opening phase walks the same floor to the same exhaust, and the run has no
 // wave to clear.
+//
+// THE CLEAR IS DETECTED BY `phase`, NOT BY THE WAVE NUMBER.
+//
+// This used to wait for `wave >= 11`, and what a build reports as the current `wave`
+// while it is sitting in a build phase is not something the specs settle.
+// `snapshot.wave` is "current wave number; 0 in the opening phase before wave 1"
+// (specs/instrumentation.md), which makes a build phase report the wave just finished —
+// but `setWave(n)` "sets the current wave and rebuilds the run to the build phase just
+// before wave `n`", which makes that same build phase report the wave about to run. A
+// build that clears wave 10 into a build phase still reading `wave: 10` is honouring
+// the first of those, and this item would wait out its ceiling and report the clear as
+// never having happened.
+//
+// `phase` names the state without the ambiguity — "opening" | "building" | "wave"
+// (specs/instrumentation.md) — and the wave-clear cue is attached to exactly that
+// transition, out of "wave" and into the build phase that clearing it begins
+// (specs/gameplay.md). Window 1 runs in "opening", so there is no way for it to be
+// confused with the clear either.
 
 //
 // The baseline window's own cue is measured but NOT asserted on. Whether a shot or a
@@ -29,6 +47,7 @@ import {
   audioCount,
   skipToApproach,
   nearlyOut,
+  TICK,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -74,12 +93,23 @@ export default function item() {
       await api.call("setWave", 10); // the midpoint Core wave (specs/surge.md)
       await api.call("setLives", 1000000);
       await api.call("startWave");
+      // Get the wave genuinely under way before sweeping for its clear. `skipUntil`
+      // tests its predicate BEFORE it advances, so a sweep aimed straight at "building"
+      // would match the build phase `startWave` was just pressed from, on any build
+      // that flips the phase on the next tick rather than inside the call — and the
+      // measured window would then contain no wave at all.
+      await api.skipUntil((s) => s.phase === "wave", { max: 120, poll: TICK });
       await api.skipUntil(
-        (s) => s.wave >= 11 || (s.surge.length > 0 && s.surge.every(nearlyOut)),
+        (s) =>
+          s.phase === "building" ||
+          (s.surge.length > 0 && s.surge.every(nearlyOut)),
         { max: 3600, poll: 12 },
       );
       const clearBefore = await audioCount(api);
-      const done = await api.until((s) => s.wave >= 11, { max: 600, poll: 6 });
+      const done = await api.until((s) => s.phase === "building", {
+        max: 600,
+        poll: 6,
+      });
       onClear = (await audioCount(api)) - clearBefore;
       cleared = done.hit;
       await api.advance(120); // 2 s on the cleared wave the cue belongs to

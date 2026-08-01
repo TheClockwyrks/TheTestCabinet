@@ -1294,7 +1294,12 @@ export class Game {
       money: this.money,
       lives: this.lives,
       score: this.score,
-      wave: inMatch ? (this.openingPhase ? 0 : this.waveNumber) : 0,
+      // A build phase belongs to the wave it is preparing for, so the opening phase
+      // reports Wave 1 and a cleared wave `n` advances to `n + 1` as its build phase
+      // begins (specs/gameplay.md). `waveNumber` already tracks exactly that — the
+      // opening phase is `enterBuildPhase(1)` and `clearWave` enters `n + 1` — so
+      // there is nothing to adjust here beyond having no run at all outside a match.
+      wave: inMatch ? this.waveNumber : 0,
       waveCount: this.cfg.totalWaves,
       buildTimer,
       wavePreview,

@@ -15,9 +15,31 @@
 // number of sources means "a cue played" and only a comparison against a matched
 // window is sound.
 //
-// A Lance posed at its redline one-shots a Mote (43 base x3.5 = ~150 vs 40 HP), so
-// the kill lands on its first shot and the window cannot stretch to a second one.
-// A Core (1600 HP) shrugs the same shot off, which is what makes it the control.
+// A Lance posed hot one-shots a Mote, so the kill lands on its first shot and neither
+// window can stretch to a second one. A Core (1600 HP) shrugs the same shot off, which
+// is what makes it the control.
+//
+// WHY THE LANCE IS NOT POSED AT ITS REDLINE.
+//
+// It used to be posed at 92, its redline, for the full 3.5x multiplier — and at that
+// heat it trips on the shot this item is built around. A Lance adds `heatPerShot /
+// mass` per shot (48.9 / 2.8 = 17.5, specs/towers.md), so its first shot from 92 takes
+// it to 100, which IS the trip (specs/heat.md). Both windows then hinge on whether a
+// build reports `firing` on the same step it goes offline — a question specs/heat.md
+// and specs/instrumentation.md leave open — and on a build that reports it the other
+// way the Lance spends the next five seconds offline while the Core walks out of the
+// scenario.
+//
+// None of that is this item's subject, and the full multiplier was never needed for
+// it. A Lance at heat 60 multiplies by 0.35 + 3.15 * (60/92)^2 = 1.69 (specs/heat.md),
+// so its shot does about 73 against a 40 HP Mote — a one-shot kill with room to spare —
+// and lands at 77.5 heat afterwards, comfortably short of the trip. The Core's 1600 HP
+// is untouched by either figure, so the control is unaffected.
+//
+// The window also ends on the shot CONNECTING rather than on the `firing` flag, for the
+// same reason: `firing` is "whether it has a target and is firing this step"
+// (specs/instrumentation.md), a per-step flag a sweep can land either side of, while a
+// target whose `hp` has dropped has unambiguously been shot once.
 
 //
 // The baseline window's own cue is measured but NOT asserted on. Whether a shot or a
@@ -40,18 +62,22 @@ import {
 const LANCE_COL = 6;
 const LANCE_ROW = 20;
 
+// See the note above on why this is short of the Lance's 92 redline.
+const LANCE_HEAT = 60;
+
 // A Lance on the lane at its redline, with one unit of `type` walking into range.
 async function poseLanceAgainst(api, start, type) {
   await start(api, "containment", "medium", 100000);
   await api.call("setLives", 100000);
   const id = await build(api, "lance", LANCE_COL, LANCE_ROW);
-  await api.call("setHeat", id, 92); // its redline: full power, one-shots a Mote
+  // Hot enough to one-shot a Mote (x1.69 on 43 base ~= 73 vs 40 HP), cool enough that
+  // the shot's own 17.5 heat leaves it at 77.5 and well short of the 100 trip.
+  await api.call("setHeat", id, LANCE_HEAT);
   const target = await spawn(api, type, "left");
   return { id, target };
 }
 
 export default function item() {
-  let lanceId;
   let coreId;
   let onShot;
   let onKill;
@@ -64,18 +90,19 @@ export default function item() {
     // Configuration A: the control — one shot at a Core, which survives it.
     async arrange(api) {
       const posed = await poseLanceAgainst(api, newGame, "core");
-      lanceId = posed.id;
       coreId = posed.target;
       await armAudio(api);
     },
 
-    // Window 1 ends on the tick the Lance first fires: exactly one shot, no death.
-    // Window 2 re-poses the same Lance against a Mote and ends on the tick that Mote
-    // leaves the floor — the same single shot, plus the kill it lands.
+    // Window 1 ends on the tick the Lance's shot connects with the Core: exactly one
+    // shot, no death. Window 2 re-poses the same Lance against a Mote and ends on the
+    // tick that Mote leaves the floor — the same single shot, plus the kill it lands.
     async act(api) {
       const shotBefore = await audioCount(api);
+      // Ends on the shot CONNECTING — the Core's hp dropping — rather than on the
+      // `firing` flag, so exactly one shot is in the window on any build.
       const fired = await api.until(
-        (s) => s.towers.some((t) => t.id === lanceId && t.firing),
+        (s) => s.surge.some((u) => u.id === coreId && u.hp < u.maxHp),
         { max: 360, poll: TICK },
       );
       onShot = (await audioCount(api)) - shotBefore;

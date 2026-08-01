@@ -39,6 +39,15 @@ surface on this core.
   re-shape the maze. Interest is paid at its start (`specs/economy.md`). You may choose
   to send the next wave early (`specs/controls.md`) for the early-send bonus, or let
   the timer expire to start it automatically.
+- Wave numbering spans both phases. A build phase belongs to the wave it is preparing
+  for, never to the one that just finished: the untimed opening phase is Wave 1's build
+  phase, and the moment the last unit of Wave `n` dies or leaks, the run is on Wave
+  `n + 1` and that wave's build phase begins. The current wave number therefore advances
+  on the clear, not on the release, so `WAVE n / N` (`specs/ui.md`) reads the wave you
+  are about to face for the whole time you are shaping the floor for it. There is no
+  Wave 0: a run is on Wave 1 from the moment it starts. Clearing the final wave ends the
+  run (Victory, below) rather than advancing to a wave `N + 1`, so the number never
+  exceeds `N`.
 - The opening build phase, before Wave 1, is untimed. It shows no countdown and never
   starts on its own: the player lays their opening maze at leisure and presses Start
   (the same wave control, `specs/controls.md`) to begin Wave 1 when they are ready.

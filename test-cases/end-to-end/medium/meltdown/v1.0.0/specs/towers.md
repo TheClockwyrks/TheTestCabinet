@@ -104,7 +104,8 @@ currently applied. So a cold Rime (`H` near 0) cuts a unit's speed by up to `slo
 so it is easy to keep cold in open air, but its own firing warms it, and conduction
 from hot neighbors or a Forge cooks it (`specs/heat.md`). Keep a Rime in open air or
 beside a Sink, away from Forges and hot cores. Some surge units are immune to slowing
-entirely (`specs/surge.md`).
+entirely (`specs/surge.md`): the Rime's slow is not applied to them, and it targets them
+under the shared rules above like anything else.
 
 ## Forge and Sink
 
