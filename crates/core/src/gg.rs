@@ -1297,6 +1297,11 @@ impl GgCapabilitySet {
     /// [replay fidelity](crate::gg_replay::GgReplayFidelity::resolve) escalation is the
     /// first, and it is here because the root-only read it replaced was a real defect:
     /// enabling `replay` on the one subagent under suspicion did nothing at all.
+    ///
+    /// The query language's [`cap.<id>` fields](crate::gg_query::build_run_doc) are the
+    /// other, for the same reason in a different register: `avg(cap.compaction)` is
+    /// meant to be an enablement *rate*, and a root-only read would score a run that
+    /// configured the capability per-agent as not having used it at all.
     pub fn any_agent_enabled(&self, id: &str) -> bool {
         self.agents.iter().any(|agent| agent.is_enabled(id))
     }
@@ -1304,10 +1309,10 @@ impl GgCapabilitySet {
     // --- Root-agent conveniences ------------------------------------------------
     //
     // These forward to the [Root agent](Self::root) for the run-level reads that
-    // predate per-agent capabilities — launch validation, result-aggregation facets,
-    // and the session summary, all of which describe a run by its Root. Code that
-    // *executes* a specific agent must read that agent's own [`GgAgentConfig`], never
-    // these.
+    // predate per-agent capabilities — launch validation and the session summary, both
+    // of which describe a run by its Root. Code that *executes* a specific agent must
+    // read that agent's own [`GgAgentConfig`], never these; code asking whether a run
+    // used a feature at all wants [`Self::any_agent_enabled`].
 
     /// Whether the [Root agent](Self::root) has the capability with `id` enabled.
     pub fn is_enabled(&self, id: &str) -> bool {

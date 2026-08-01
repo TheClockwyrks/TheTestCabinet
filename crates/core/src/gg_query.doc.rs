@@ -40,8 +40,8 @@ use crate::run_record::RunRecord;
 ///
 /// A run that carries a capability id **not** in this list — an externally supplied
 /// one, or one added to gg after a document was built — still gets its own `cap.<id>`
-/// field: the builder emits the union of this catalog and the ids the run's root
-/// agent actually declares. The catalog is the floor, not the ceiling.
+/// field: the builder emits the union of this catalog and the ids **any** of the run's
+/// agents declares. The catalog is the floor, not the ceiling.
 ///
 /// Adding a capability to gg means adding it here. Forgetting to is not a silent
 /// failure of the field (it still appears on any run that enables it) but it *is* a
@@ -164,7 +164,7 @@ pub fn flatten_json(prefix: &str, value: &Value, out: &mut GgRunDoc) {
 /// | `id`, `started`, `finished`, `state`, `published`, `rating`, `score`, `reviewCount` | identity, timing, lifecycle |
 /// | `case`, `caseVersion`, `variant`, `testType` | what was run |
 /// | `model`, `orchestrator`, `harnessVersion`, `preset`, `agents`, `agent.<name>.model` | how it was configured |
-/// | `cap.<id>`, `cap.<id>.impl`, `cap.<id>.<param>` | the capability set, flattened and **typed** |
+/// | `cap.<id>`, `cap.<id>.impl`, `cap.<id>.<param>`, `agent.<name>.cap.<id>` | the capability set, flattened and **typed** |
 /// | `tool.<name>` | the effective toolset (sparse — true only for offered tools) |
 /// | `status`, `mode`, `limit` | how it ended |
 /// | `summary.<path>` | the **whole** session summary, flattened |
@@ -179,10 +179,16 @@ pub fn flatten_json(prefix: &str, value: &Value, out: &mut GgRunDoc) {
 /// `cap.compaction.summaryHeadroom > 0.5` works; the implementation this replaced
 /// stringified every capability param, which made numeric comparison impossible.
 ///
-/// The capability reads are the **root agent's**, matching every other run-level read
-/// of a capability set: the root drives the top-level session and its configuration is
-/// what "the run's configuration" means. Per-agent detail is not lost — it is simply
-/// not what `cap.*` answers.
+/// `cap.<id>` is a **run-wide** read — true when *any* agent has the capability on —
+/// because the question the field exists to answer is "was this run configured with
+/// X", and `avg(cap.compaction)` is only an honest enablement rate if it is. Reading
+/// the root alone would report `false` for a run that enabled a capability on the one
+/// subagent under study, which is the same defect
+/// [`GgCapabilitySet::any_agent_enabled`](crate::gg::GgCapabilitySet::any_agent_enabled)
+/// was introduced to fix in the replay gate. Per-agent detail is not lost either: each
+/// agent's own enablements are written **sparsely** as `agent.<name>.cap.<id>`, so a
+/// per-agent ablation is expressible without making every document carry the catalog
+/// once per profile.
 pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc {
     let mut doc = GgRunDoc::default();
 
@@ -238,7 +244,16 @@ pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc
     doc
 }
 
-/// Write the `preset` / `agents` / `agent.<name>.model` / `cap.*` namespaces.
+/// Write the `preset` / `agents` / `agent.<name>.model` / `cap.*` /
+/// `agent.<name>.cap.<id>` namespaces.
+///
+/// Two populations, deliberately shaped differently. `cap.<id>` is **total** over the
+/// catalog and **run-wide** — the field an ablation slices on, so "configured and off"
+/// and "never mentioned" must collapse into one honest `false` rather than an absence.
+/// `agent.<name>.cap.<id>` is **sparse** and per-agent, like `tool.<name>`: writing the
+/// catalog once per profile would multiply a five-agent document's capability fields by
+/// five to say `false` a hundred times, and the question it answers ("which profile had
+/// it") only ever needs the ones that did.
 fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
     if let Some(preset) = &set.preset {
         doc.insert("preset", preset.clone());
@@ -250,22 +265,38 @@ fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
         }
     }
 
-    // The union of the shipped catalog and whatever this run's root actually declares,
+    // The union of the shipped catalog and whatever this run's agents actually declare,
     // so an externally supplied capability is queryable even though the catalog cannot
-    // know about it. Ordering is irrelevant (the document is a `BTreeMap`) but the set
-    // must be de-duplicated or a declared catalog capability would be written twice.
-    let root = set.root();
+    // know about it. Every agent contributes, not just the root: a capability declared
+    // only on a subagent would otherwise produce no field at all, which is the same
+    // root-only blind spot the enabled flag itself used to have. Ordering is irrelevant
+    // (the document is a `BTreeMap`) but the set must be de-duplicated or a declared
+    // catalog capability would be written twice.
     let mut ids: BTreeSet<&str> = GG_CAPABILITY_CATALOG.iter().copied().collect();
-    ids.extend(root.capabilities.iter().map(|cfg| cfg.id.as_str()));
+    for agent in &set.agents {
+        ids.extend(agent.capabilities.iter().map(|cfg| cfg.id.as_str()));
+    }
 
-    for id in ids {
-        doc.insert(format!("cap.{id}"), root.is_enabled(id));
+    for id in &ids {
+        doc.insert(format!("cap.{id}"), set.any_agent_enabled(id));
         // The implementation and the params describe a capability the set *carries*.
         // A capability that is merely absent has neither, so those two stay absent
         // rather than being invented — only the enabled flag is made total.
-        let Some(cfg) = root.capability(id) else {
+        //
+        // Read from the root when the root declares it, and otherwise from the first
+        // agent that does. A set that configures a capability on one subagent has
+        // exactly one configuration for it, and reporting `cap.replay = true` beside no
+        // `cap.replay.journalCeiling` would make the params look absent from the run
+        // rather than absent from the root. Declaration order is stable, so the choice
+        // is deterministic.
+        let Some(cfg) = set
+            .root()
+            .capability(id)
+            .or_else(|| set.agents.iter().find_map(|agent| agent.capability(id)))
+        else {
             continue;
         };
+
         doc.insert(
             format!("cap.{id}.impl"),
             cfg.implementation
@@ -273,6 +304,18 @@ fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
                 .unwrap_or_else(|| DEFAULT_IMPLEMENTATION.to_string()),
         );
         flatten_json(&format!("cap.{id}"), &cfg.params, doc);
+    }
+
+    for agent in &set.agents {
+        for id in &ids {
+            // Sparse: only the agents that have it, and only as `true`. Read through
+            // `is_enabled` rather than off the declaration so a profile that inherits a
+            // tool capability through a legacy alias answers the same question the
+            // run-wide flag did.
+            if agent.is_enabled(id) {
+                doc.insert(format!("agent.{}.cap.{id}", agent.name), true);
+            }
+        }
     }
 }
 

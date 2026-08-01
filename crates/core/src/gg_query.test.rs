@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use super::*;
 use crate::gg::{
-    CAPABILITY_COMPACTION, CAPABILITY_MEMORIES, CAPABILITY_SHELL, GgAgentConfig,
+    CAPABILITY_COMPACTION, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_SHELL, GgAgentConfig,
     GgCapabilityConfig, GgCapabilitySet, GgHealingSummary, GgRunLimits, GgSessionSummary,
     GgSlotCost,
 };
@@ -42,8 +42,15 @@ struct Conformance {
 }
 
 /// One case: a query and what it must produce.
+///
+/// `deny_unknown_fields` on both this and [`ConformanceExpect`] is load-bearing rather
+/// than tidy. Every assertion below is optional, so a misspelled expectation key —
+/// `documentIDs` for `documentIds` — would deserialize into `None`, silently degrade
+/// that case to a `totalRuns` check, and leave the suite green. The fixture would then
+/// be *quieter* than no fixture at all, because it would still look like coverage. The
+/// TypeScript twin reads this same file and must reject unknown keys too.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ConformanceCase {
     name: String,
     /// Why the case exists, so a future reader deleting it has to argue with the
@@ -58,7 +65,7 @@ struct ConformanceCase {
 /// whole documents — the ordering is the property under test, and repeating six full
 /// documents per case would bury it.
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ConformanceExpect {
     total_runs: u64,
     #[serde(default)]
@@ -86,6 +93,16 @@ fn the_conformance_fixture_pins_every_evaluator_rule() {
             "{name}: total runs"
         );
         assert_eq!(actual.truncated, case.expect.truncated, "{name}: truncated");
+        // A case that asserts nothing but a run count is not pinning an evaluator rule,
+        // and it is exactly what a typo'd expectation key degrades into. `total_runs` is
+        // the one field every case shares, so it cannot stand in for the assertion the
+        // case exists to make.
+        assert!(
+            case.expect.document_ids.is_some()
+                || case.expect.buckets.is_some()
+                || case.expect.columns.is_some(),
+            "{name}: a case must assert documents, buckets or columns, not just a count"
+        );
         if let Some(expected) = &case.expect.document_ids {
             let ids: Vec<&str> = actual.documents.iter().map(GgRunDoc::id).collect();
             assert_eq!(ids, expected.as_slice(), "{name}: document ids, in order");
@@ -276,9 +293,14 @@ fn capability_set() -> GgCapabilitySet {
                 ],
                 ..GgAgentConfig::root()
             },
+            // Declares no capabilities of its own, so the run-wide `cap.*` reads are the
+            // root's and the assertions below stay about the root's configuration.
+            // `the_capability_namespace_reads_every_agent` is where a subagent-only
+            // enablement is exercised.
             GgAgentConfig {
                 name: "reviewer".to_string(),
                 model_id: "openai/gpt-x".to_string(),
+                capabilities: Vec::new(),
                 ..GgAgentConfig::root()
             },
         ],
@@ -411,17 +433,72 @@ fn the_capability_namespace_is_total_over_the_catalog() {
     assert_eq!(doc.get("cap.fsm"), Some(&GgValue::Bool(false)));
 }
 
+/// **`cap.<id>` is a run-wide read, not a root-only one**, and per-agent detail survives
+/// beside it.
+///
+/// The root-only reading of a capability set is a defect this codebase has already been
+/// bitten by once — enabling `replay` on the one subagent under suspicion did nothing at
+/// all, which is why [`GgCapabilitySet::any_agent_enabled`] exists. `cap.*` is the field an
+/// ablation slices on and `avg(cap.x)` is meant to be an enablement *rate*, so a run that
+/// configured a capability per-agent must not be counted as a run that did without it.
+#[test]
+fn the_capability_namespace_reads_every_agent() {
+    let mut record = gg_record();
+    let set = record.subject.gg_capability_set.as_mut().expect("set");
+    // `fsm` on the subagent only, and the root does not mention it at all.
+    set.agents[1]
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_FSM));
+    assert!(
+        !set.is_enabled(CAPABILITY_FSM),
+        "the fixture must actually leave the root without it, or this proves nothing"
+    );
+    let doc = build_run_doc(&record, &GgDocLifecycle::default());
+    assert_eq!(doc.get("cap.fsm"), Some(&GgValue::Bool(true)));
+    // The params come from whichever agent carries the configuration, so a subagent-only
+    // capability does not report itself as enabled with nothing configured.
+    assert_eq!(
+        doc.get("cap.fsm.impl"),
+        Some(&GgValue::String("default".to_string()))
+    );
+
+    // Per-agent detail is recoverable, and it is sparse: only the agents that have a
+    // capability get a field, and only ever as `true`.
+    assert_eq!(
+        doc.get("agent.reviewer.cap.fsm"),
+        Some(&GgValue::Bool(true))
+    );
+    assert!(doc.get("agent.root.cap.fsm").is_none());
+    assert_eq!(
+        doc.get("agent.root.cap.compaction"),
+        Some(&GgValue::Bool(true))
+    );
+    assert!(
+        doc.get("agent.root.cap.memories").is_none(),
+        "a capability the root carries but disabled is absent per agent, never false"
+    );
+}
+
 #[test]
 fn a_capability_outside_the_catalog_is_still_queryable() {
     // The catalog is the floor, not the ceiling: an externally supplied capability
-    // must not vanish from the document just because core has never heard of it.
+    // must not vanish from the document just because core has never heard of it —
+    // including one only a subagent declares, which a root-only union would have
+    // dropped from the document entirely rather than merely reported as false.
     let mut record = gg_record();
     let set = record.subject.gg_capability_set.as_mut().expect("set");
     set.agents[0]
         .capabilities
         .push(GgCapabilityConfig::enabled("third-party-thing"));
+    set.agents[1]
+        .capabilities
+        .push(GgCapabilityConfig::enabled("subagent-only-thing"));
     let doc = build_run_doc(&record, &GgDocLifecycle::default());
     assert_eq!(doc.get("cap.third-party-thing"), Some(&GgValue::Bool(true)));
+    assert_eq!(
+        doc.get("cap.subagent-only-thing"),
+        Some(&GgValue::Bool(true))
+    );
 }
 
 #[test]
