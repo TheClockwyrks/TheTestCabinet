@@ -979,27 +979,25 @@ fn init_repo(repo: &Path) -> Result<String> {
     // global git configuration.
     git(repo, &["config", "user.name", "The Test Cabinet"])?;
     git(repo, &["config", "user.email", "runs@test-cabinet.invalid"])?;
+    // Directories that live in the workspace but are not part of what the model is
+    // building, and so must never be tracked. See `exclude_from_git` for why this is
+    // `.git/info/exclude` rather than a committed `.gitignore`.
+    let mut excluded = Vec::new();
+    // gg's own dotdir — the replay journal it streams *while the session runs*, its
+    // assembled sidecar, its skills library. Unconditional: it is created during the
+    // run, not by seeding, so there is nothing to probe for, and the exclusion has to
+    // be in place before the model's first commit. Excluding it for a non-gg harness
+    // (which writes nothing there) costs nothing.
+    excluded.push(crate::gg::GG_WORKSPACE_DIR);
     // A game jam's seeded previous-entries folder is reference material, not part of
-    // the submission. Exclude it locally through `.git/info/exclude` — an uncommitted
-    // ignore that keeps it out of both the seed commit's `add --all` below and the
-    // model's own `git add -A` during the run — rather than editing a committed
-    // `.gitignore` (the model's file to own). The exclude travels with the repo's
-    // `.git` into the run container, so it applies for the whole session.
+    // the submission.
     if repo
         .join(crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR)
         .is_dir()
     {
-        let exclude = repo.join(".git").join("info").join("exclude");
-        let entry = format!("/{}/\n", crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR);
-        // `git init` creates `.git/info/`; append so any git-managed default excludes
-        // stay intact.
-        let mut contents = fs::read_to_string(&exclude).unwrap_or_default();
-        if !contents.ends_with('\n') && !contents.is_empty() {
-            contents.push('\n');
-        }
-        contents.push_str(&entry);
-        fs::write(&exclude, contents).map_err(seed_err)?;
+        excluded.push(crate::execution::GAME_JAM_PRIOR_ENTRIES_DIR);
     }
+    exclude_from_git(repo, &excluded)?;
     git(repo, &["add", "--all"])?;
     // Vendored runtime packages live under `.tcab/packages/` and carry `dist/`
     // subtrees; a case's own `.gitignore` (which ignores `dist/` for its build
@@ -1012,6 +1010,37 @@ fn init_repo(repo: &Path) -> Result<String> {
     git(repo, &["commit", "--quiet", "--message", "Seed test case"])?;
     let output = git(repo, &["rev-parse", "HEAD"])?;
     Ok(output.trim().to_string())
+}
+
+/// Git-ignore each of `dirs` — workspace-relative directory names — in the freshly
+/// initialized `repo` by appending an anchored `/<dir>/` pattern to
+/// `.git/info/exclude`.
+///
+/// `.git/info/exclude` rather than a committed `.gitignore` because `.gitignore` is the
+/// model's file to own: a seeded entry there would show up in its diffs, could be edited
+/// or deleted mid-run, and would ship in the published repository. The exclude file is
+/// uncommitted, invisible to `git status`, and travels with the repo's `.git` into the run
+/// container, so a single write at seed time governs the whole session — both the seed
+/// commit's `add --all` and every `git add -A` the model itself runs.
+///
+/// Patterns are anchored (`/name/`) so they match only at the repository root: a `.gg/`
+/// the model happens to create deeper in its own source tree is its business.
+fn exclude_from_git(repo: &Path, dirs: &[&str]) -> Result<()> {
+    if dirs.is_empty() {
+        return Ok(());
+    }
+    let exclude = repo.join(".git").join("info").join("exclude");
+    // `git init` creates `.git/info/exclude` with commented-out defaults; append so those
+    // stay intact, and tolerate its absence in case a future git stops writing it.
+    let mut contents = fs::read_to_string(&exclude).unwrap_or_default();
+    if !contents.is_empty() && !contents.ends_with('\n') {
+        contents.push('\n');
+    }
+    for dir in dirs {
+        contents.push_str(&format!("/{dir}/\n"));
+    }
+    fs::write(&exclude, contents).map_err(seed_err)?;
+    Ok(())
 }
 
 /// Run a git command in `repo`, returning its stdout, or a seeding error.

@@ -117,3 +117,85 @@ fn init_repo_excludes_the_previous_entries_folder_from_git() {
     // The files remain on disk for the model to read during the run.
     assert!(repo.path().join("previous-entries/entry-01.md").exists());
 }
+
+/// gg's `.gg/` dotdir is excluded unconditionally, and — unlike the previous-entries
+/// folder — it does not exist at seed time: the replay journal is created and grows
+/// *while the session runs*, inside the model's working tree. So the property that
+/// matters is that a seeded repository never reports it as a change, no matter when it
+/// appears. If it ever did, the transcript would ride a speculation judge's diff, an
+/// issue reviewer's diff stat, and the model's own `git add -A` into the public per-run
+/// repository.
+#[test]
+fn init_repo_excludes_ggs_dotdir_from_git() {
+    let repo = tempfile::tempdir().expect("temp dir");
+    std::fs::write(repo.path().join("package.json"), "{}\n").expect("write package.json");
+
+    init_repo(repo.path()).expect("init repo");
+
+    // Everything gg writes under its dotdir, appearing *after* the seed commit.
+    let gg = repo.path().join(crate::gg::GG_WORKSPACE_DIR);
+    std::fs::create_dir_all(gg.join("skills")).expect("create .gg/skills");
+    std::fs::write(gg.join("replay.ndjson"), "{\"type\":\"header\"}\n").expect("write journal");
+    std::fs::write(gg.join("replay.json"), "{}\n").expect("write sidecar");
+    std::fs::write(gg.join("skills").join("draw.md"), "# Draw\n").expect("write skill");
+    // A file the model really did write, to prove the exclusion is not just "git sees
+    // nothing at all".
+    std::fs::write(repo.path().join("index.html"), "<!doctype html>\n").expect("write index.html");
+
+    let status = git_stdout(repo.path(), &["status", "--porcelain"]);
+    assert!(
+        !status.contains(".gg"),
+        "`git status --porcelain` must never list .gg/: {status}",
+    );
+    assert!(
+        status.contains("index.html"),
+        "the model's own new files are still reported: {status}",
+    );
+
+    // The model's own `git add -A` cannot pick it up either — the exclusion is what
+    // keeps a verbatim transcript out of the published repository.
+    git_stdout(repo.path(), &["add", "--all"]);
+    let tracked = git_stdout(repo.path(), &["ls-files"]);
+    assert!(
+        !tracked.contains(".gg"),
+        "`git add -A` must not stage .gg/: {tracked}",
+    );
+    assert!(tracked.contains("index.html"), "but does stage real work");
+}
+
+/// The exclusion in `init_repo` is anchored at the repository root and written from
+/// [`crate::gg::GG_WORKSPACE_DIR`], so the journal path gg actually writes has to live
+/// under that same directory or the exclusion silently stops covering it.
+#[test]
+fn the_replay_journal_lives_under_the_excluded_dotdir() {
+    assert!(
+        crate::gg_replay_journal::GG_REPLAY_JOURNAL_PATH
+            .starts_with(&format!("{}/", crate::gg::GG_WORKSPACE_DIR)),
+        "journal path {} must sit under {}",
+        crate::gg_replay_journal::GG_REPLAY_JOURNAL_PATH,
+        crate::gg::GG_WORKSPACE_DIR,
+    );
+    assert!(
+        crate::gg::GG_REPLAY_ARTIFACT_PATH
+            .starts_with(&format!("{}/", crate::gg::GG_WORKSPACE_DIR)),
+        "sidecar path {} must sit under {}",
+        crate::gg::GG_REPLAY_ARTIFACT_PATH,
+        crate::gg::GG_WORKSPACE_DIR,
+    );
+}
+
+/// Run a git command in `repo` and return its stdout, failing the test if git does.
+fn git_stdout(repo: &std::path::Path, args: &[&str]) -> String {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .output()
+        .unwrap_or_else(|err| panic!("running `git {}`: {err}", args.join(" ")));
+    assert!(
+        output.status.success(),
+        "git {} failed: {}",
+        args.join(" "),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}

@@ -1113,6 +1113,20 @@ pub const CAPABILITY_RESPONSES_AS_CODE: &str = "responses-as-code";
 /// [replay]: https://docs.testcabinet.ai/gg/replay/
 pub const CAPABILITY_REPLAY: &str = "replay";
 
+/// The workspace-relative dotdir gg keeps **its own** files in during a run: the replay
+/// [journal](crate::gg_replay_journal::GG_REPLAY_JOURNAL_PATH) and sidecar
+/// ([`GG_REPLAY_ARTIFACT_PATH`]), and the [skills](CAPABILITY_SKILLS) library.
+///
+/// Everything under it is gg's bookkeeping, never the model's work, so seeding adds `/.gg/`
+/// to the seeded repository's `.git/info/exclude`
+/// ([`crate::seeding`]). That is load-bearing rather than tidy: the journal grows *inside the
+/// model's working tree while the session runs*, so without the exclusion it would show up in
+/// a speculation judge's diff, in an issue reviewer's per-file diff stat, in a worktree
+/// commit, and — through the model's own `git add -A` — in the **public per-run repository**,
+/// where it would publish a verbatim transcript of every model call. It must be excluded at
+/// seed time because no publish-time filter can undo a commit the model already made.
+pub const GG_WORKSPACE_DIR: &str = ".gg";
+
 /// The workspace-relative path a [replay](CAPABILITY_REPLAY)-captured run writes its
 /// [`GgReplayRecordV1`] to: a `.gg/replay.json` sidecar.
 ///
