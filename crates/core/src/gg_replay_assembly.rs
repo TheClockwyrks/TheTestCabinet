@@ -100,7 +100,10 @@ pub struct GgReplayAssembly {
 ///
 /// `output` is written **only** on success: an assembly that refuses its journal leaves
 /// no artifact at all rather than a partial one, which is what keeps "the file exists" a
-/// usable statement about the record.
+/// usable statement about the record. That holds for an I/O failure *mid-write* as well as
+/// for a refusal, because the document is streamed into the scratch directory and moved
+/// into place once it is whole — the scratch tree is on `output`'s own volume precisely so
+/// that move is a rename and not a second copy.
 ///
 /// See the [module documentation](self) for which damage is reported as a
 /// [truncation](GgReplayTruncation) and which is refused outright.
@@ -229,7 +232,12 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
     };
     let truncation = resolve_truncation(damaged, end, entries, last_seq);
 
-    let compressed_bytes = write_record(output, &header, segments, truncation.as_ref())?;
+    // Staged, then moved into place. A failure inside `write_record` — a full disk, a
+    // short write copying a segment in — would otherwise leave a truncated `.gz` at the
+    // run tree root, which the driver would go on to mirror as the run's record.
+    let staged = scratch.path().join("record.json.gz");
+    let compressed_bytes = write_record(&staged, &header, segments, truncation.as_ref())?;
+    std::fs::rename(&staged, output)?;
     Ok(GgReplayAssembly {
         entries,
         truncation,
@@ -248,10 +256,17 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
 /// missing journal is an ordinary absence rather than a failure.
 ///
 /// On success it **removes the journal from the collected tree**. The tree is copied
-/// verbatim into the run's `implementation/` directory and from there into the public
-/// per-run repository, so leaving a full conversation transcript inside it would publish
-/// the transcript — and would additionally count it as code the model wrote. The
-/// assembled record at the tree root is where that content belongs.
+/// verbatim into the run's `implementation/` directory and from there into the run-tree
+/// archive, so leaving a full conversation transcript inside it would ship the transcript
+/// — and would additionally count it as code the model wrote. The assembled record at the
+/// tree root is where that content belongs.
+///
+/// A journal the assembly **refused** is deliberately left where it is: the record that
+/// would have superseded it does not exist, so the journal is the only remaining account
+/// of the session and the only thing a human can diagnose the refusal from. It costs
+/// bulk in the archive, and it is never a *publish* exposure — seeding excludes `/.gg/`
+/// from the run's git repository, so it cannot reach the public per-run repo — which is
+/// what makes keeping it the better trade.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct GgReplayAssembler;
 
@@ -270,6 +285,9 @@ impl PostRunStage for GgReplayAssembler {
             return Ok(PostRunReport::empty());
         }
         let output = context.run_dir.join(GG_REPLAY_TREE_ARTIFACT);
+        // The `?` is what leaves a refused journal in the tree, and that is the intent:
+        // with no record to supersede it, the journal is the only account of the session
+        // left to diagnose the refusal from (see this stage's documentation).
         let assembly = assemble_journal_to_gz(&journal, &output)?;
         if let Err(err) = std::fs::remove_file(&journal) {
             // Not fatal: the record is already written, and the exclusion seeding adds
