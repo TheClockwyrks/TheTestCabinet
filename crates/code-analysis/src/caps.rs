@@ -22,9 +22,10 @@
 //!    byte. A file over the cap is counted for **size** rather than dropped: a 300 KB
 //!    god-file is precisely the interesting case, and dropping it would bias every size
 //!    metric against the worst outcomes.
-//! 2. [`bracket_nesting_depth`] prescans for the bracket shapes, which are both the ones a
-//!    runaway generation actually produces and the most expensive per level. Over
-//!    [`MAX_BRACKET_NESTING`] the file is size-only.
+//! 2. [`bracket_nesting_depth`] prescans for the bracket shapes — round, square, curly
+//!    **and angle** — which are both the ones a runaway generation actually produces and
+//!    by far the most expensive per level. Over [`MAX_BRACKET_NESTING`] the file is
+//!    size-only.
 //! 3. [`parse_stack_bytes`] **derives** the stack from the file rather than fixing it, so
 //!    a small file costs a small reservation and a 256 KiB file gets what 256 KiB can ask
 //!    for.
@@ -51,8 +52,17 @@
 //! [`STACK_BYTES_PER_SOURCE_BYTE`] is measured, not chosen — see its own documentation.
 //! The relationship between it and [`MAX_PARSED_FILE_BYTES`] is load-bearing in both
 //! directions: **raising the byte cap without raising the stack breaks the derivation**,
-//! and 256 KiB is the largest file for which the derived stack still fits under
+//! and 128 KiB is the largest file for which the derived stack still fits under
 //! [`MAX_PARSE_STACK_BYTES`].
+//!
+//! The measurement has to be made against the shape that costs the **fewest source bytes
+//! per recursion level**, because the derivation is per *byte* and the parser recurses per
+//! *level*. A shape that spends two bytes per level halves the demand the measurement sees,
+//! so calibrating against one certifies a constant roughly twice as small as the caps
+//! actually admit — which is how an earlier derivation, calibrated against a spaced `- `
+//! chain, shipped a figure that a plain `*` deref chain in an ordinary 17 KB file walked
+//! straight through. Every figure below is now measured against a one- or two-byte-per-level
+//! shape, and the tests that assert them use those shapes too.
 
 use std::panic::AssertUnwindSafe;
 
@@ -72,12 +82,19 @@ pub const MAX_FILES: usize = 20_000;
 /// where the model did worst.
 ///
 /// The number is not free-standing. [`parse_stack_bytes`] derives a stack of
-/// `bytes × STACK_BYTES_PER_SOURCE_BYTE × STACK_SAFETY_FACTOR`, and at 256 KiB that is
-/// ~946 MiB — just under [`MAX_PARSE_STACK_BYTES`]. **A larger byte cap would silently
+/// `bytes × STACK_BYTES_PER_SOURCE_BYTE × STACK_SAFETY_FACTOR`, and at 128 KiB that is
+/// ~2.1 GiB — just under [`MAX_PARSE_STACK_BYTES`]. **A larger byte cap would silently
 /// clamp, and the derivation would stop covering the worst shape the cap admits.** Raise
 /// them together or not at all, and bump the analyzer version when you do, because a cap
 /// change is a definition change.
-pub const MAX_PARSED_FILE_BYTES: usize = 256 * 1024;
+///
+/// It was 256 KiB in the first generation, against a per-byte figure measured on a shape
+/// that cost two source bytes per recursion level. `syn` is several times hungrier than
+/// that figure admitted, so the cap came down with the constant going up rather than the
+/// stack ceiling going up alone: a file this large that is *entirely* degenerate already
+/// asks for gigabytes of real, touched stack, and the point of a cap is to refuse that
+/// file, not to reserve more address space for it.
+pub const MAX_PARSED_FILE_BYTES: usize = 128 * 1024;
 
 /// The most bytes handed to a parser across the whole tree.
 ///
@@ -92,43 +109,89 @@ pub const MAX_TOTAL_PARSE_BYTES: u64 = 64 * 1024 * 1024;
 /// function and it is the *document* this protects.
 pub const MAX_SYMBOLS: usize = 200_000;
 
-/// The deepest `(`, `[` or `{` nesting either front end will parse.
+/// The deepest `(`, `[`, `{`, `<` or closure-`|` nesting either front end will parse.
 ///
 /// Real code nests fewer than ten levels. Two hundred is twenty times that, and still well
 /// under the shallowest depth at which `oxc` was measured to overflow a 2 MiB stack (985
 /// levels of `{a:`). Bracket shapes are both the cheapest for a model to emit by accident
 /// and the most expensive per level, which is why they get a bound of their own instead of
 /// being left to the stack.
+///
+/// **Angle brackets are in the count**, and they are the reason the bound is load-bearing
+/// rather than belt-and-braces: a nest of one-character generics (`A<A<A<…i32…>>>`) costs
+/// `syn` ~51 KiB of stack per level in the dev profile for three source bytes, which is
+/// three times what the byte derivation provides and the hungriest shape either front end
+/// was measured at. Refusing it here is what lets [`STACK_BYTES_PER_SOURCE_BYTE`] be sized
+/// for the *unbracketed* shapes alone. The cost of counting `<` is over-counting a
+/// comparison-heavy file, and over-counting only refuses a file that would have parsed —
+/// scanning this repository's 7,305 TypeScript and Rust files put the deepest naive angle
+/// nesting at **25**, an eighth of the bound.
 pub const MAX_BRACKET_NESTING: u32 = 200;
 
-/// Bytes of stack per byte of source, measured against `oxc` 0.141 in the **dev** profile.
+/// Bytes of stack per byte of source, measured against the **hungrier of the two front
+/// ends** in the **dev** profile.
 ///
-/// The figure comes from `crates/gg/src/sandbox/transpile.rs`, which measured the appetite
-/// of every bracket-free recursion the nesting prescan cannot see — chains of postfix `!`,
-/// prefix `!`, `.b`, `?:`, unary `-`, `as any`, `new`. The hungriest was a chain of
-/// postfix non-null assertions at **1,261 bytes of stack per byte of source**.
+/// One constant covers both front ends deliberately. `syn` is several times hungrier per
+/// level than `oxc`, and a per-front-end pair would buy nothing: the reservation is virtual,
+/// untouched pages never fault in, and a TypeScript file being handed a stack sized for a
+/// Rust one costs exactly nothing at run time. So the figure is the maximum, and the
+/// TypeScript calibration test asserts `oxc` still fits inside it.
 ///
-/// It is the dev-profile figure deliberately: an unoptimised frame is up to ~16× fatter
-/// than an optimised one (the same chain costs ~80 bytes per source byte in `release`),
-/// the test suite runs unoptimised, and the margin has to hold for the build a developer
-/// runs as well as the one a run container gets.
-pub const STACK_BYTES_PER_SOURCE_BYTE: usize = 1_261;
+/// Every candidate was measured by bisecting the file size at which `tcab analyze` aborts,
+/// with the stack the production derivation gives that size. Per **source byte**, worst
+/// first, for the shapes the nesting prescan does *not* refuse:
+///
+/// | Shape | Front end | Bytes/level | Stack/level | **Stack/source byte** |
+/// | --- | --- | --- | --- | --- |
+/// | `\|\|\|\|…1` (closure chain) | `syn` | 2 | ~17.2 KiB | **8,595** |
+/// | `***…x` (deref chain) | `syn` | 1 | ~4.4 KiB | 4,388 |
+/// | `!!!…x` (prefix not) | `syn` | 1 | ~4.4 KiB | 4,388 |
+/// | `(((…` hidden behind `//` | `syn` | 2 | ~14.2 KiB | 4,705 |
+/// | `a!!!…` (postfix non-null) | `oxc` | 1 | ~1.3 KiB | 1,261 |
+///
+/// The shapes that outrun this — a `syn` generic nest at ~51 KiB per level for three source
+/// bytes — are refused by [`MAX_BRACKET_NESTING`] before the parser is entered, which is why
+/// that prescan now counts angle brackets. The closure chain is refused there too, but it
+/// stays at the head of this table because the prescan counts a *run* of `|` and a comment
+/// between two of them breaks the run: a file that reaches the parser having fooled the
+/// prescan is the case this figure carries on its own.
+///
+/// **A second hazard, found measuring the first, and the reason the prescan counts `|`.**
+/// The closure chain does not *overflow* on this stack — it takes time quadratic in its
+/// depth. The Rust front end asks `syn` for a closure's span, and computing a compound
+/// node's span re-serializes its whole subtree, so `n` nested closures re-walk `O(n²)`
+/// tokens: sixteen thousand levels take about a minute in the dev profile, and a file at
+/// the byte cap would not finish. There is no wall-clock budget in this path *by design*
+/// (see the module docs on determinism), so a slow parse is not something a timeout can
+/// rescue and the shape has to be refused before it starts. [`MAX_BRACKET_NESTING`] does
+/// that now. The underlying quadratic is a defect in the front end's line accounting — the
+/// fix is to take a node's start and end from its own cheap delimiter tokens rather than
+/// from `Spanned` — and every *other* deep nest already carries a brace, so the prescan
+/// bounds those at two hundred levels regardless.
+///
+/// It is the dev-profile figure deliberately: an unoptimised frame is several times fatter
+/// than an optimised one (`syn`'s generic nest measured under a quarter of the dev cost in
+/// `release`), the test suite runs unoptimised, and the margin has to hold for the build a
+/// developer runs — `tcab analyze` is a shipped command — as well as for the one a run
+/// container gets.
+pub const STACK_BYTES_PER_SOURCE_BYTE: usize = 8_600;
 
 /// The multiplier applied on top of [`STACK_BYTES_PER_SOURCE_BYTE`].
 ///
-/// **This is not slack; it is the bracket allowance.** The measured per-byte figure covers
-/// the bracket-*free* shapes. Bracket shapes cost more per level — up to ~3.4 KiB for each
-/// `{a:` — and the nesting prescan is a naive byte scan that a closer inside a string
-/// literal can fool, so a crafted file can reach the parser with real nesting the prescan
-/// under-counted. At `1_261 × 3 = 3_783` bytes per source byte the derived stack covers
-/// even a file that is *entirely* the most expensive bracket shape, because a bracket
-/// still costs at least one byte of source. The two guards therefore overlap by design
-/// rather than depending on each other.
-pub const STACK_SAFETY_FACTOR: usize = 3;
+/// **This is not slack; it is the allowance for the shapes nobody enumerated.** The
+/// per-byte figure is a maximum over the degenerate shapes that were actually measured, and
+/// neither grammar is small enough for that list to be a proof. Doubling it means a shape
+/// twice as hungry as the worst one found still parses, and it is what covers the two known
+/// ways the nesting prescan can be *under*-counted — a closer hidden inside a comment or a
+/// string literal — at the ~4,705 bytes per source byte such a file was measured to demand.
+///
+/// The factor is deliberately a separate constant from the measurement so that re-measuring
+/// one does not quietly re-decide the other.
+pub const STACK_SAFETY_FACTOR: usize = 2;
 
 /// The floor on a derived parse stack.
 ///
-/// Below about 17 KiB of source the derivation asks for less than this, and there is no
+/// Below about 4 KiB of source the derivation asks for less than this, and there is no
 /// reason to reserve less: the reservation is virtual, untouched pages never fault in, and
 /// a thread costs the same tens of microseconds to spawn whatever its stack size.
 pub const MIN_PARSE_STACK_BYTES: usize = 64 * 1024 * 1024;
@@ -136,9 +199,16 @@ pub const MIN_PARSE_STACK_BYTES: usize = 64 * 1024 * 1024;
 /// The ceiling on a derived parse stack.
 ///
 /// [`MAX_PARSED_FILE_BYTES`] is chosen so the derivation never actually reaches this — it
-/// tops out at ~946 MiB — so the clamp is a backstop against a future cap change made
+/// tops out at ~2.1 GiB — so the clamp is a backstop against a future cap change made
 /// without reading [`MAX_PARSED_FILE_BYTES`]'s documentation, not a live bound.
-pub const MAX_PARSE_STACK_BYTES: usize = 1024 * 1024 * 1024;
+///
+/// Four gibibytes of *reservation* is not four gibibytes of memory: the mapping is
+/// anonymous and lazily faulted, so a thread that recurses ten levels touches two pages of
+/// it. A parse that genuinely walked the whole reservation would be a file the caps should
+/// have refused, and a host that cannot reserve it at all reports
+/// [`ThreadUnavailable`](ParseRefusal::ThreadUnavailable) and degrades that one file to
+/// size-only.
+pub const MAX_PARSE_STACK_BYTES: usize = 4 * 1024 * 1024 * 1024;
 
 /// The stack a file of `source_bytes` is parsed on, **before** clamping.
 ///
@@ -156,26 +226,61 @@ pub fn parse_stack_bytes(source_bytes: usize) -> usize {
     derived_stack_bytes(source_bytes).clamp(MIN_PARSE_STACK_BYTES, MAX_PARSE_STACK_BYTES)
 }
 
-/// The deepest `(`, `[` or `{` nesting in `source`, by a single byte scan.
+/// The deepest `(`, `[`, `{` or `<` nesting in `source`, by a single byte scan.
 ///
 /// Deliberately naive — it does not skip string literals or comments — for two reasons.
 /// Over-counting is safe: it only refuses a file that would have parsed, and that file is
 /// still counted for size. Under-counting is *possible* (a closer inside a string literal
-/// cancels a real opener) but is covered by [`STACK_SAFETY_FACTOR`], which sizes the stack
-/// for a file that is entirely brackets. A lexer here would buy accuracy the safety
+/// cancels a real opener) but is covered by [`STACK_SAFETY_FACTOR`], which is sized against
+/// the measured cost of exactly that file. A lexer here would buy accuracy the safety
 /// argument does not need, and would itself have to be correct for two languages.
+///
+/// Angle brackets are counted on a **separate** running depth that is summed with the
+/// round/square/curly one, rather than sharing a counter with it. Sharing would let `a > b`
+/// pop a real `{`, which under-counts in the one direction that matters; summing two
+/// independent counters can only over-count, and a file where both nests are genuinely deep
+/// does demand both. `->`, `=>` and every comparison decrement the angle counter, which is
+/// why ordinary source stays two orders of magnitude clear of
+/// [`MAX_BRACKET_NESTING`] — the deepest naive angle nesting in this repository is 25.
+///
+/// A **run of `|`** counts too, because a Rust closure chain (`||||||…1`) is a nest whose
+/// levels have no closer to balance them: `n` closures nest `n` deep and the counting
+/// scheme above would see zero. It is measured as a run rather than a depth for the same
+/// reason. Whitespace does not break the run — `|| || ||` is the same nest spelled wider —
+/// and anything else resets it, so `a || b || c` never exceeds two, the longest run in all
+/// 7,305 source files in this repository. The run is counted per `|` rather than per pair,
+/// so a chain of `n` closures scores `2n`: an over-count, which is the safe direction, and
+/// one that bounds closure nesting at a hundred rather than two hundred levels.
 pub fn bracket_nesting_depth(source: &str) -> u32 {
-    let mut depth: u32 = 0;
+    let mut brackets: u32 = 0;
+    let mut angles: u32 = 0;
+    let mut closures: u32 = 0;
     let mut deepest: u32 = 0;
     for byte in source.bytes() {
         match byte {
-            b'(' | b'[' | b'{' => {
-                depth = depth.saturating_add(1);
-                deepest = deepest.max(depth);
+            b'(' | b'[' | b'{' => brackets = brackets.saturating_add(1),
+            b')' | b']' | b'}' => {
+                brackets = brackets.saturating_sub(1);
+                closures = 0;
+                continue;
             }
-            b')' | b']' | b'}' => depth = depth.saturating_sub(1),
-            _ => {}
+            b'<' => angles = angles.saturating_add(1),
+            b'>' => {
+                angles = angles.saturating_sub(1);
+                closures = 0;
+                continue;
+            }
+            b'|' => closures = closures.saturating_add(1),
+            b' ' | b'\t' | b'\r' | b'\n' => continue,
+            _ => {
+                closures = 0;
+                continue;
+            }
         }
+        if byte != b'|' {
+            closures = 0;
+        }
+        deepest = deepest.max(brackets.saturating_add(angles).saturating_add(closures));
     }
     deepest
 }
@@ -211,6 +316,31 @@ impl ParseRefusal {
             Self::ThreadUnavailable => "thread-unavailable",
             Self::Panicked => "parse-failed",
         }
+    }
+
+    /// Whether `token` names a file the **guard** turned away before a front end could
+    /// judge it, as opposed to one a front end saw and could not read.
+    ///
+    /// The distinction is the whole point of the
+    /// [`filesRefused`](test_cabinet_core::CodeAnalysisNotes::files_refused) note. "Could
+    /// not parse" is a fact about the model's output; "was not offered to the parser" is a
+    /// fact about *this analysis*, and a reader has to be able to tell how much of the tree
+    /// the parsed-only metrics were computed over. Written as a match over the variants
+    /// rather than a token list so a new refusal cannot be added without classifying it.
+    pub fn is_guard_refusal(token: &str) -> bool {
+        [
+            Self::OverByteCap,
+            Self::OverNestingCap,
+            Self::ThreadUnavailable,
+            Self::Panicked,
+        ]
+        .into_iter()
+        .find(|refusal| refusal.as_str() == token)
+        .is_some_and(|refusal| match refusal {
+            Self::OverByteCap | Self::OverNestingCap | Self::ThreadUnavailable => true,
+            // The parser was entered. Counted under `filesUnparsable` instead.
+            Self::Panicked => false,
+        })
     }
 }
 

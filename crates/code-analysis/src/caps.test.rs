@@ -52,15 +52,21 @@ fn the_byte_cap_never_derives_a_stack_the_ceiling_would_clamp() {
     );
 }
 
-/// The safety factor is not slack: it is what covers the bracket shapes the prescan can be
-/// fooled about. Three point four kilobytes per level is the worst measured bracket cost.
+/// The safety factor is not slack: it is what covers the shapes the prescan can be *fooled*
+/// about, which are the ones that reach the parser with real nesting the scan under-counted.
+///
+/// The worst such shape measured is a `(`-nest whose closers hide behind a `//` comment: it
+/// reaches `syn` at ~14.2 KiB of stack per level for two source bytes, i.e. ~4,705 bytes of
+/// stack per source byte. The derived figure has to stay clear of that on its own, because
+/// by construction the prescan did not stop it.
 #[test]
-fn the_safety_factor_covers_the_worst_bracket_shape() {
-    const WORST_BRACKET_BYTES_PER_LEVEL: usize = 3_400;
+fn the_margin_covers_a_nest_the_prescan_was_fooled_about() {
+    const COMMENT_HIDDEN_NEST_BYTES_PER_SOURCE_BYTE: usize = 4_705;
     const {
         assert!(
-            STACK_BYTES_PER_SOURCE_BYTE * STACK_SAFETY_FACTOR > WORST_BRACKET_BYTES_PER_LEVEL,
-            "a file that is entirely the most expensive bracket shape would outrun its stack"
+            STACK_BYTES_PER_SOURCE_BYTE * STACK_SAFETY_FACTOR
+                > COMMENT_HIDDEN_NEST_BYTES_PER_SOURCE_BYTE,
+            "a nest whose closers hide in a comment would outrun the stack it is given"
         );
     }
 }
@@ -71,6 +77,57 @@ fn the_prescan_reports_the_deepest_nesting() {
     assert_eq!(bracket_nesting_depth("f(g(h(1)))"), 3);
     assert_eq!(bracket_nesting_depth("a(1) b(2) c(3)"), 1);
     assert_eq!(bracket_nesting_depth("{[()]}"), 3);
+}
+
+/// **Angle brackets are in the count**, and they are counted on their own running depth so
+/// a comparison cannot pop a curly brace.
+///
+/// The generic nest is the hungriest shape either front end was measured at — ~51 KiB of
+/// `syn` stack per level for three source bytes — so this bound, not the byte derivation, is
+/// what stands between a produced tree and an aborted driver pod for that shape.
+#[test]
+fn the_prescan_counts_generic_nesting_without_letting_a_comparison_unwind_a_brace() {
+    assert_eq!(bracket_nesting_depth("Box<Box<Box<i32>>>"), 3);
+    // Round and angle nests are summed, because a file with both really does demand both.
+    assert_eq!(bracket_nesting_depth("f(Vec<T>)"), 2);
+    // A bare comparison is a spurious opener the scan cannot tell from a generic, which is
+    // over-counting — the safe direction, and two orders of magnitude clear of the bound.
+    assert_eq!(bracket_nesting_depth("if a < b { c }"), 2);
+    // ...but it must not *unwind* a real brace: shared counters would report 0 here.
+    assert_eq!(bracket_nesting_depth("{ a > b }"), 1);
+
+    let generics = "A<".repeat(MAX_BRACKET_NESTING as usize + 1);
+    let refusal = parse_guarded(&generics, |_| {
+        unreachable!("the parser must not be entered")
+    })
+    .expect_err("a deep generic nest is refused");
+    assert_eq!(refusal, ParseRefusal::OverNestingCap);
+}
+
+/// **A closure chain is a nest with no closer**, so it is counted as a run rather than a
+/// depth — and it has to be counted at all, because it is the one deep shape that reaches
+/// the parser carrying no brace.
+///
+/// It is refused for time rather than for stack: nested closures parse in time quadratic in
+/// their depth (see [`STACK_BYTES_PER_SOURCE_BYTE`]), there is deliberately no wall-clock
+/// budget anywhere in this path, and a file at the byte cap would therefore never finish.
+#[test]
+fn the_prescan_counts_a_closure_chain_but_not_an_ordinary_disjunction() {
+    // `a || b || c` is three operands and two operators, never a nest: each operand resets
+    // the run, so the file's depth comes from its braces instead.
+    assert_eq!(bracket_nesting_depth("if a || b || c { d }"), 2);
+    // Three nested closures score six, because the run is counted per `|` rather than per
+    // pair — an over-count, which is the safe direction, and the reason the bound bites a
+    // closure chain at half its nominal depth.
+    assert_eq!(bracket_nesting_depth("||||||1"), 6);
+    // Whitespace does not break the run: the same nest, spelled wider.
+    assert_eq!(bracket_nesting_depth("|| || ||1"), 6);
+
+    let closures = "||".repeat(MAX_BRACKET_NESTING as usize);
+    let program = format!("pub fn f() {{ let _x = {closures}1; }}");
+    let refusal = parse_guarded(&program, |_| unreachable!("the parser must not be entered"))
+        .expect_err("a deep closure chain is refused");
+    assert_eq!(refusal, ParseRefusal::OverNestingCap);
 }
 
 #[test]
@@ -138,10 +195,16 @@ fn a_thread_that_cannot_be_started_is_a_refusal_not_a_panic() {
 /// Note what this test can and cannot do. It can prove a shape *parses*; it cannot search
 /// for the shape that does not, because finding that shape means overflowing, and an
 /// overflow aborts the test binary rather than failing a case.
+///
+/// **Every shape here costs one or two source bytes per recursion level.** The version this
+/// replaced used a spaced `- ` chain, which costs two source bytes per level *and* is a
+/// cheap frame — so it certified the constants against a demand roughly a quarter of what
+/// the caps admit, and passed while a plain `*` deref chain in a 17 KB file aborted the
+/// process. A calibration shape is only as good as its bytes-per-level.
 #[test]
 fn the_hungriest_files_the_caps_admit_still_parse() {
     // TypeScript: a chain of postfix non-null assertions, one byte per level — the shape the
-    // 1,261 bytes-per-source-byte figure was measured against.
+    // `oxc` half of the per-byte figure was measured against.
     let prelude = "const a = 1;\nexport const b = a";
     let assertions = "!".repeat(MAX_PARSED_FILE_BYTES - prelude.len() - 1);
     let program = format!("{prelude}{assertions};");
@@ -150,13 +213,21 @@ fn the_hungriest_files_the_caps_admit_still_parse() {
         .expect("a TypeScript file at the byte cap is not refused");
     assert!(facts.is_some(), "the hungriest TypeScript shape must parse");
 
-    // Rust: a chain of unary negations, two bytes per level. Spaced so the lexer cannot fold
-    // a pair into an operator Rust does not have.
-    let prelude = "pub fn f() -> i32 { ";
-    let negations = "- ".repeat((MAX_PARSED_FILE_BYTES - prelude.len() - 3) / 2);
-    let program = format!("{prelude}{negations}1 }}");
-    assert!(program.len() <= MAX_PARSED_FILE_BYTES);
+    // Rust: a deref chain, one byte per level — the shape that aborted `tcab analyze` on an
+    // ordinary 17 KB file under the first generation's constants, and the one that packs the
+    // most recursion levels into the byte cap.
+    //
+    // Not the *hungriest* Rust shape per byte — that is a nested closure chain, at twice the
+    // stack per source byte — because a closure nest deep enough to matter takes time
+    // quadratic in its depth to parse (see `STACK_BYTES_PER_SOURCE_BYTE`), so driving one at
+    // the byte cap would hang the suite rather than test it. The constant is sized for the
+    // closure chain regardless; `rust_stack_per_byte_calibration` exercises that shape at a
+    // depth the quadratic tolerates.
+    let prelude = "pub fn g(x: i32) -> i32 { ";
+    let derefs = "*".repeat(MAX_PARSED_FILE_BYTES - prelude.len() - 4);
+    let program = format!("{prelude}{derefs} x }}");
+    assert_eq!(program.len(), MAX_PARSED_FILE_BYTES);
     let facts = parse_guarded(&program, |text| crate::rust::analyze("a.rs", text))
         .expect("a Rust file at the byte cap is not refused");
-    assert!(facts.is_some(), "the hungriest Rust shape must parse");
+    assert!(facts.is_some(), "the deepest Rust shape must parse");
 }

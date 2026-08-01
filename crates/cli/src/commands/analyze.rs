@@ -496,6 +496,17 @@ fn caveats(
             plural(u64::from(notes.files_unparsable), "file", "files"),
         ));
     }
+    // The one caveat a reader cannot reconstruct from the report body. A refused file is
+    // still in the file table with its size, so nothing above it looks wrong — but every
+    // parsed-only figure was computed without it, and the tree's largest files are exactly
+    // the ones the per-file caps turn away.
+    if notes.files_refused > 0 {
+        caveats.push(format!(
+            "· {} too large or too deeply nested to parse; no complexity, API or \
+             discipline figure includes them",
+            plural(u64::from(notes.files_refused), "file", "files"),
+        ));
+    }
     if !notes.gitignore_applied {
         caveats.push(
             "· no ignore file was found, so build output and dependencies may be counted"

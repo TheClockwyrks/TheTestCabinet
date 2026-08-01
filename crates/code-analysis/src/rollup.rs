@@ -71,6 +71,14 @@ pub(crate) fn build(input: Rollup<'_>) -> CodeAnalysisDocument {
                 .iter()
                 .filter(|file| file.size_only_reason == Some("parse-failed"))
                 .count() as u32,
+            files_refused: input
+                .files
+                .iter()
+                .filter(|file| {
+                    file.size_only_reason
+                        .is_some_and(crate::caps::ParseRefusal::is_guard_refusal)
+                })
+                .count() as u32,
         },
     };
 
@@ -354,14 +362,24 @@ fn rust(files: &[AnalyzedFile]) -> Option<CodeRustSummary> {
     Some(summary)
 }
 
+/// The test figures, over the **parsed** population.
+///
+/// The denominator of [`test_line_ratio`](CodeTestSummary::test_line_ratio) is the code
+/// lines of files a front end actually read, not of every file kept. Only a parsed file can
+/// land in the numerator — "is this test code" is a fact a front end reports — so summing
+/// every file's lines below the line put Markdown, JSON and CSS into the denominator, along
+/// with any source file the parse guard refused. That understated the share by however much
+/// non-source a produced tree happened to carry, and it made this the one ratio in the
+/// rollup whose two halves came from different populations: `duplication.cloned_line_ratio`
+/// and both per-language `code_lines` totals are parsed-only.
 fn tests(files: &[AnalyzedFile]) -> CodeTestSummary {
     let mut summary = CodeTestSummary::default();
-    let mut all_code_lines = 0u32;
+    let mut parsed_code_lines = 0u32;
     for file in files {
-        all_code_lines += file.lines.code;
         let Some(facts) = file.facts.as_ref() else {
             continue;
         };
+        parsed_code_lines += file.lines.code;
         summary.test_functions += facts.test_functions;
         if facts.is_test {
             summary.test_files += 1;
@@ -370,7 +388,7 @@ fn tests(files: &[AnalyzedFile]) -> CodeTestSummary {
     }
     summary.test_line_ratio = ratio(
         f64::from(summary.test_code_lines),
-        f64::from(all_code_lines),
+        f64::from(parsed_code_lines),
     );
     summary
 }

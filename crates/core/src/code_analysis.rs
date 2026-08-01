@@ -64,7 +64,13 @@ pub use catalog::CODE_METRICS;
 /// cap changes** — a cap change is a definition change, because it changes which files
 /// contribute. Do *not* bump for a purely additive metric, which older records simply
 /// lack.
-pub const CODE_ANALYZER_VERSION: u32 = 1;
+///
+/// **Generation 2** re-derived the parse guard's stack numbers (the per-file byte cap
+/// halved, the nesting prescan grew to cover angle brackets) and moved
+/// [`tests.testLineRatio`](CodeTestSummary::test_line_ratio) onto a parsed-only
+/// denominator. Both are definition changes: which files contribute, and what a ratio is a
+/// share of.
+pub const CODE_ANALYZER_VERSION: u32 = 2;
 
 /// How the analyzer decided which files the **model** wrote, as opposed to which were
 /// seeded into the workspace before it started.
@@ -476,7 +482,13 @@ pub struct CodeTestSummary {
     pub test_functions: u32,
     /// Code lines in test files.
     pub test_code_lines: u32,
-    /// Test code lines over all code lines.
+    /// Test code lines over the code lines of every **parsed** file.
+    ///
+    /// Parsed-only on both sides, because only a parsed file can be recognised as test
+    /// code: a denominator over the whole kept tree would put Markdown, JSON and any
+    /// source file the parse guard [refused](CodeAnalysisNotes::files_refused) below the
+    /// line but never above it, and understate the share by however much non-source the
+    /// tree happened to carry.
     pub test_line_ratio: f64,
 }
 
@@ -503,11 +515,17 @@ pub struct CodeDuplicationSummary {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct CodeAnalysisNotes {
-    /// Whether a cap dropped work that would otherwise have contributed.
+    /// Whether a **tree-wide** cap stopped the analysis short of the whole tree.
     ///
     /// **A truncated analysis is excluded from aggregation by default**: a partial figure
     /// that looks complete is worse than a missing one. Under the query language that is
     /// the composable filter `not code.notes.truncated`, not a hidden flag on a query.
+    ///
+    /// The three caps that set it are the ones in [`CodeTruncationCap`], all of which are
+    /// pathological: a tree of twenty thousand files, sixty-four megabytes of source, two
+    /// hundred thousand functions. The **per-file** caps do not, because they fire on
+    /// ordinary trees and a flag that is usually true excludes nothing —
+    /// [`files_refused`](Self::files_refused) is what reports those.
     pub truncated: bool,
     /// Which cap fired first. Absent when [`truncated`](Self::truncated) is false.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -528,6 +546,24 @@ pub struct CodeAnalysisNotes {
     /// Authored files a front end was offered but could not parse — a syntax error, or a
     /// panic contained on the parse thread.
     pub files_unparsable: u32,
+    /// Authored **source** files the parse guard turned away before a front end saw them:
+    /// larger than the per-file byte cap, nested deeper than the prescan admits, or unable
+    /// to get a parse thread.
+    ///
+    /// Counted separately from [`truncated`](Self::truncated) on purpose. The per-file caps
+    /// are *routine* — a model that writes one 300 KB god-file trips them on an otherwise
+    /// complete analysis — so marking the whole result truncated would exclude most real
+    /// trees from aggregation and make the flag meaningless. But a refused file still
+    /// contributes nothing to any parsed-only figure while contributing every size figure,
+    /// so an analysis that says nothing about it reports partial complexity, discipline and
+    /// API numbers that look complete. This is the field that makes that visible, and
+    /// `code.notes.filesRefused = 0` is the composable filter for "every source file was
+    /// actually read".
+    ///
+    /// Not to be confused with [`size.sizeOnlyFiles`](CodeSizeSummary::size_only_files),
+    /// which also counts the files no front end exists for — Markdown, JSON, CSS — and so
+    /// cannot answer this question.
+    pub files_refused: u32,
 }
 
 /// The unit a [`CodeMetricDef`] is measured in, so an axis can be labelled and two

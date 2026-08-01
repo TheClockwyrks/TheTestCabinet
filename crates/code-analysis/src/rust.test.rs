@@ -136,21 +136,51 @@ fn functions_carry_their_real_line_numbers() {
 ///
 /// Done per front end deliberately: `oxc` and `syn` have different frame sizes, so one
 /// measured figure cannot speak for both, and the shared constant has to be sized against
-/// the hungrier of the two. If `syn` ever grows past it, this fails rather than a run
-/// aborting a driver pod.
+/// the hungrier of the two — which is this one. If `syn` ever grows past it, this fails
+/// rather than a run aborting a driver pod.
+///
+/// The shape matters as much as the size. A calibration is only as good as its **source
+/// bytes per recursion level**: the version this replaced used a spaced `- ` chain at two
+/// bytes a level with frames four times cheaper than the worst, so it certified the shared
+/// constant against roughly a quarter of the demand the caps admit — and passed while a
+/// plain deref chain in a 17 KB file aborted the process. Both shapes below cost one or two
+/// bytes per level, and both are given the stack the *production* derivation computes for
+/// their own size.
 #[test]
 fn rust_stack_per_byte_calibration() {
-    const SOURCE_BYTES: usize = 32 * 1024;
-    let prelude = "pub fn f() -> i32 { ";
-    let negations = "- ".repeat((SOURCE_BYTES - prelude.len() - 3) / 2);
-    let program = format!("{prelude}{negations}1 }}");
-    assert!(program.len() <= SOURCE_BYTES);
-
-    let derived = derived_stack_bytes(SOURCE_BYTES);
+    // One source byte per level: the shape that packs the most frames into a file.
+    const DEREF_BYTES: usize = 32 * 1024;
+    let derived = derived_stack_bytes(DEREF_BYTES);
+    let prelude = "pub fn g(x: i32) -> i32 { ";
+    let derefs = "*".repeat(DEREF_BYTES - prelude.len() - 4);
+    let program = format!("{prelude}{derefs} x }}");
+    assert_eq!(program.len(), DEREF_BYTES);
     let parsed = on_stack(derived, || analyze("deep.rs", &program))
         .expect("the parse thread starts and does not panic");
     assert!(
         parsed.is_some(),
-        "the derived {derived}-byte stack must carry a {SOURCE_BYTES}-byte unary chain"
+        "the derived {derived}-byte stack must carry a {DEREF_BYTES}-byte deref chain"
+    );
+
+    // Two source bytes per level, but the fattest frame either front end was measured at
+    // (~17.2 KiB), which makes it the hungriest shape **per source byte** and therefore the
+    // one `STACK_BYTES_PER_SOURCE_BYTE` is sized against. The prescan refuses this shape
+    // outright now, so it reaches a parser only when the prescan was fooled — a comment
+    // between two `|` breaks the run it counts — which is exactly the case the derived stack
+    // has to carry alone. Exercised at a sixteenth of the byte cap because parsing a closure
+    // nest costs time quadratic in its depth, so a cap-sized one would not finish; eight
+    // kilobytes still puts the demand at half the derived stack, which is precisely
+    // `STACK_SAFETY_FACTOR`.
+    const CLOSURE_BYTES: usize = 8 * 1024;
+    let derived = derived_stack_bytes(CLOSURE_BYTES);
+    let prelude = "pub fn f() { let _x = ";
+    let closures = "||".repeat((CLOSURE_BYTES - prelude.len() - 4) / 2);
+    let program = format!("{prelude}{closures}1; }}");
+    assert!(program.len() <= CLOSURE_BYTES);
+    let parsed = on_stack(derived, || analyze("hungry.rs", &program))
+        .expect("the parse thread starts and does not panic");
+    assert!(
+        parsed.is_some(),
+        "the derived {derived}-byte stack must carry a {CLOSURE_BYTES}-byte closure chain"
     );
 }
