@@ -446,6 +446,10 @@ fn the_limits_stop_a_runaway_program() {
         "the heaviest honest program must complete within the default ceiling"
     );
     assert_eq!(log.names().len(), 40, "twenty reads and twenty writes");
+    // `elapsed` is the guest's *wall clock* with bridged-call time subtracted, not CPU time,
+    // so this reading is only about the workload when the workload has the machine. That is
+    // what `.config/nextest.toml` gives it: the override there makes this test take every
+    // runner slot, so a busy suite cannot inflate the number and red the gate over nothing.
     let default_timeout = SandboxLimits::default().timeout;
     assert!(
         outcome.elapsed * 5 < default_timeout,

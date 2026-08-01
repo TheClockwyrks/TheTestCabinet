@@ -8,3 +8,13 @@ fail-fast = false
 # period × terminate-after (120s here). This bounds a wedged test instead of
 # letting it hang the whole run until the CI job's own timeout fires.
 slow-timeout = { period = "60s", terminate-after = 2 }
+
+# The wasm sandbox's timeout-headroom assertion measures the guest's *wall clock* — the
+# epoch-interruption budget is wall clock with bridged-call time subtracted, not CPU time —
+# so it inflates under contention from the rest of the suite and fails on a busy machine
+# while the property it checks is perfectly intact. Give it the whole runner: taking every
+# slot is what makes the reading it takes a reading of the workload rather than of the
+# machine's load average.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(=sandbox::tests::the_limits_stop_a_runaway_program)'
+threads-required = "num-test-threads"

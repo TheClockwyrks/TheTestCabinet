@@ -1268,8 +1268,8 @@ fn an_assigned_issue_names_the_issue_and_its_worktree() {
     );
 }
 
-/// A **read-only** memory holder is told the memories are another agent's and that it has no call
-/// that writes one — instead of being told, as every other holder is, to write them regularly.
+/// A **read-only** memory holder is told the memories are another agent's and that its access to
+/// them is read-only — instead of being told, as every other holder is, to write them regularly.
 ///
 /// A prompt that tells a model to curate memories and a toolset that offers it nothing to curate
 /// them with is how an agent spends turns hunting for a call that was never there.
@@ -1297,11 +1297,11 @@ fn the_memory_section_changes_shape_for_a_read_only_holder() {
         "the memories are named as somebody else's:\n{prompt}"
     );
     assert!(
-        prompt.contains("read one with `read_memory`"),
+        prompt.contains("use `read_memory` to read the memory in full"),
         "and the call it does have is named:\n{prompt}"
     );
     assert!(
-        prompt.contains("no call that writes one"),
+        prompt.contains("read-only access"),
         "and the ones it does not are ruled out:\n{prompt}"
     );
     assert!(
@@ -1342,8 +1342,9 @@ fn the_memory_section_explains_the_linked_notices() {
         "{linked}"
     );
     assert!(
-        linked.contains("your own writes are never announced back to you"),
-        "{linked}"
+        linked.contains("you will be given a system-generated notification"),
+        "the notice is named as this system's, not as another agent addressing the \
+         model:\n{linked}"
     );
 
     // An isolated holder — the default — reads none of it, because none of it can happen to it.
