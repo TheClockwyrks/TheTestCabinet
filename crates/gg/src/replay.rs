@@ -98,6 +98,25 @@ use crate::tools::ToolOutcome;
 /// one `write_all`, and a writer that is 64 batches behind is not slow, it is stuck.
 const JOURNAL_QUEUE_DEPTH: usize = 64;
 
+/// How long [`finish`](GgRecorder::finish) will wait for room in a full queue to write the
+/// terminating [`End`](GgJournalLine::End) line.
+///
+/// The `End` line is not one line among many: its absence is what makes assembly report the record
+/// as [`SessionKilled`](GgReplayTruncationReason::SessionKilled), so dropping it on a momentarily
+/// full queue would libel a session that ended cleanly as one that was killed — the single most
+/// misleading thing this module could do. A writer merely *behind* by a burst of batches drains in
+/// milliseconds, and this waits for that.
+///
+/// Bounded, and short, because the other failure is worse: an unbounded block would hand a stalled
+/// disk the power to wedge the run's teardown, which is the very thing
+/// [`JOURNAL_QUEUE_DEPTH`] exists to prevent. A queue still full after this is not behind, it is
+/// stuck, and a record from a stuck writer is truncated no matter what this writes.
+const END_LINE_QUEUE_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// How long each retry sleeps while waiting on a full queue. Small enough that the common case —
+/// the writer being one `write_all` behind — costs a single tick.
+const END_LINE_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
+
 /// What a run's [capture](GgRecorder) achieved, reported once at
 /// [`finish`](GgRecorder::finish) so the run's operator log can say so.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -489,7 +508,7 @@ impl GgRecorder {
             if let Some(queue) = capture.queue.as_ref()
                 && let Ok(line) = serde_json::to_string(&end)
             {
-                let _ = queue.try_send(format!("{line}\n"));
+                send_end_line(queue, format!("{line}\n"));
             }
             // Dropping the queue closes the channel, which is what ends the writer's loop.
             capture.queue = None;
@@ -507,6 +526,31 @@ impl GgRecorder {
             bytes,
             truncation,
             write_error,
+        }
+    }
+}
+
+/// Hand the terminating [`End`](GgJournalLine::End) line to the writer, waiting out a queue that is
+/// merely behind.
+///
+/// Unlike every other line, this one is retried: see [`END_LINE_QUEUE_GRACE`] for why losing it is
+/// uniquely damaging and why the wait is nevertheless bounded. A disconnected writer (the thread
+/// died on an I/O error) returns immediately — there is nobody to receive it, and the record it
+/// already reported the failure through says so.
+fn send_end_line(queue: &SyncSender<String>, line: String) {
+    let deadline = std::time::Instant::now() + END_LINE_QUEUE_GRACE;
+    let mut pending = line;
+    loop {
+        match queue.try_send(pending) {
+            Ok(()) => return,
+            Err(TrySendError::Full(returned)) => {
+                if std::time::Instant::now() >= deadline {
+                    return;
+                }
+                pending = returned;
+                std::thread::sleep(END_LINE_RETRY_INTERVAL);
+            }
+            Err(TrySendError::Disconnected(_)) => return,
         }
     }
 }
