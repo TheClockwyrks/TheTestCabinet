@@ -178,12 +178,22 @@ export const routes = {
     `/runs/gg/${encodeURIComponent(runId)}/replay`,
   // The gg **analysis** section (consoles only): its own top-level `/gg` space,
   // entered from the topbar's analyze control. It keeps the app's chrome but swaps
-  // the mark for a back arrow and the section nav for gg's own tabs. It currently
-  // opens directly on the recorded sessions: the widget-builder aggregate surface
-  // was removed with the facet/metric vocabulary it was built on, and the query
-  // language that replaces it (Discover, Dashboards, Saved) mounts its own routes
-  // here when it lands.
+  // the mark for a back arrow and the section nav for gg's own tabs. It opens on
+  // the recorded sessions; Dashboards and Saved mount their own routes here when
+  // they land.
   ggAnalysis: (): string => "/gg",
+  // **Discover** — the TCQ query surface. The whole query rides in the URL as its
+  // **source text**, never its compiled form: that is what keeps `now-30d`
+  // relative, so a link shared on Monday still means "the last thirty days" when it
+  // is opened on Friday, and what stops a later grammar addition from invalidating
+  // a link somebody already pasted somewhere.
+  ggAnalysisDiscover: (query?: string, opts?: { range?: string }): string => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (opts?.range) params.set("range", opts.range);
+    const search = params.toString();
+    return search ? `/gg/query?${search}` : "/gg/query";
+  },
   // The run's default (Verdict) tab. `edit` opens the review editor in revise
   // mode — used by the single-review page's Edit control to return here with the
   // owner's review form reopened.
@@ -320,9 +330,18 @@ export const routePatterns = {
   // of the plain `runMonitor` under that same static prefix.
   ggMonitor: "/runs/gg/:jobId/live",
   // The gg analysis section's own top-level space (console-only). One route per
-  // tab, so a surface is linkable and survives a reload; today the section has a
-  // single tab and its index *is* that tab.
+  // tab, so a surface is linkable and survives a reload; the index is the sessions
+  // list, and Discover is its sibling.
   ggAnalysis: "/gg",
+  ggAnalysisDiscover: "/gg/query",
+  // The **legacy** aggregate-surface routes. The widget builder and its results
+  // page are gone, but the best property of that implementation was that the URL
+  // *was* the query — so an old link is transcoded into equivalent TCQ text and
+  // redirected to Discover rather than 404ing. Both spellings are kept because both
+  // were linkable: the builder reopened a composed query and the results page held
+  // a ran one, and a pasted link is as likely to be one as the other.
+  ggAnalysisAggregateLegacy: "/gg/aggregate",
+  ggAnalysisAggregateResultsLegacy: "/gg/aggregate/results",
   // The debug-only step-through replay view, a sibling of `ggMonitor` under the
   // literal `/runs/gg` prefix (both outrank the `/runs/:runId` dynamic route).
   ggReplay: "/runs/gg/:runId/replay",

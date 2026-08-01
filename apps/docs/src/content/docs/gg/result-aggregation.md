@@ -13,6 +13,14 @@ document plus a text pipeline language, with a document view, dashboards, saved
 queries and a public-site path. The questions below are the ones the replacement is
 built to answer, and each is now one line of query text; the mechanics described
 further down are history.
+
+**Old links still work.** The best property of this surface was that the URL *was*
+the query, so a `/gg/aggregate` or `/gg/aggregate/results?…` link is transcoded into
+equivalent query text and redirected to Discover (`/gg/query`) rather than 404ing.
+The transcode is visible in the editor it lands in, so what a link became can be read
+and edited. One thing it cannot carry: the computed `healing_rate` below was a
+per-run ratio the aggregator derived, and the document model stores no such field —
+that column is dropped rather than silently rewritten to its numerator.
 :::
 
 The point is to make the experiments gg enables **analyzable in aggregate**:

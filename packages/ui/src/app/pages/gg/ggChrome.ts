@@ -13,5 +13,8 @@ export const GG_CHROME: TopbarChrome = {
   home: routes.runs(),
   label: "gg analysis",
   back: true,
-  links: [{ label: "Sessions", to: routes.ggAnalysis(), end: true }],
+  links: [
+    { label: "Sessions", to: routes.ggAnalysis(), end: true },
+    { label: "Discover", to: routes.ggAnalysisDiscover() },
+  ],
 };

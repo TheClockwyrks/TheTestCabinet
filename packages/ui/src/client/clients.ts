@@ -49,6 +49,11 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import type { GgReplayRecord } from "@test-cabinet/run-record/gg-replay";
 import type {
+  GgFieldCatalog,
+  GgQuery,
+  GgQueryResponse,
+} from "@test-cabinet/run-record/gg-query";
+import type {
   CoverageGroup,
   CoverageGroupInput,
   CoverageMatrix,
@@ -371,6 +376,30 @@ export interface BackendClient {
   ): Promise<GgConfig>;
   /** Delete a configuration (`DELETE /gg/configs/{id}`). */
   deleteGgConfig?(id: string, token: string): Promise<void>;
+
+  // The gg **analysis** query surface (console-only, Bearer). The corpus is *not*
+  // account-scoped — a gg run belongs to the deployment, exactly as the run listings
+  // and the coverage matrix already treat runs — so the token gates reaching the
+  // surface rather than filtering what it returns. Optional like the calls above:
+  // the static site's read-only transport omits them and will answer the same two
+  // questions from a shipped snapshot with the mirrored browser evaluator instead.
+  /**
+   * Evaluate one TCQ query over every recorded gg run (`POST /gg/query`).
+   *
+   * The **compiled** query is the wire form: the client parses and compiles the
+   * source text, so the server needs neither a parser nor a clock (a relative
+   * `now-30d` is already absolute milliseconds by the time it is sent).
+   */
+  runGgQuery?(query: GgQuery, token: string): Promise<GgQueryResponse>;
+  /**
+   * The corpus's field catalog (`GET /gg/fields`): every dotted field, its kind, its
+   * **document count** and its top values.
+   *
+   * What makes the language discoverable at all — the sidebar and the completer both
+   * read it, and the document count is what makes a deliberately sparse `tool.*`
+   * field visible *before* a query returns nothing rather than after.
+   */
+  getGgFields?(token: string): Promise<GgFieldCatalog>;
 
   // The operator's saved harness/gg-config/model comparisons (console-only,
   // Bearer) — the A/B-testing capability that fixes every controlled variable and

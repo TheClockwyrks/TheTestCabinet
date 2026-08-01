@@ -71,6 +71,11 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import type { GgReplayRecord } from "@test-cabinet/run-record/gg-replay";
 import type {
+  GgFieldCatalog,
+  GgQuery,
+  GgQueryResponse,
+} from "@test-cabinet/run-record/gg-query";
+import type {
   CoverageGroup,
   CoverageGroupInput,
   CoverageMatrix,
@@ -657,6 +662,19 @@ export function createHttpBackend(baseUrl: string): BackendClient {
 
     async deleteGgConfig(id: string, token: string): Promise<void> {
       await delVoid(baseUrl, `/gg/configs/${encodeURIComponent(id)}`, token);
+    },
+
+    // The gg analysis query surface. The body is the *compiled* query — the client
+    // owns the parser, so nothing about what a query means is decided twice.
+    async runGgQuery(
+      query: GgQuery,
+      token: string,
+    ): Promise<GgQueryResponse> {
+      return postJson<GgQueryResponse>(baseUrl, "/gg/query", query, token);
+    },
+
+    async getGgFields(token: string): Promise<GgFieldCatalog> {
+      return getJson<GgFieldCatalog>(baseUrl, "/gg/fields", token);
     },
 
     async listComparisons(token: string): Promise<Comparison[]> {
