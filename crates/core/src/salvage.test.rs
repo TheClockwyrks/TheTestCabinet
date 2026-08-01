@@ -76,6 +76,12 @@ fn handle() -> ContainerHandle {
     }
 }
 
+/// A stand-in for the engine's output directory — the volume the run tree is written to,
+/// and therefore the one the salvage must stage into.
+fn output_dir() -> tempfile::TempDir {
+    tempfile::tempdir().expect("an output directory")
+}
+
 #[test]
 fn the_journal_is_asked_for_at_its_absolute_in_container_path() {
     // Every host-side reader joins the workspace-relative path onto a collected tree;
@@ -90,8 +96,9 @@ async fn a_salvaged_journal_lands_where_the_assembler_looks_for_it() {
     // holding pen: the replay assembly stage joins `GG_REPLAY_JOURNAL_PATH` onto the tree
     // it is given, so the salvaged file must sit at exactly that relative path for the
     // ordinary stage to work unchanged on the failure path.
+    let out = output_dir();
     let collector = FakeCollector::new(Outcome::Recovered(b"{\"type\":\"header\"}\n"));
-    let scratch = salvage_journal_tree(&collector, &handle())
+    let scratch = salvage_journal_tree(&collector, &handle(), out.path())
         .await
         .expect("a journal that was copied out should be reported");
 
@@ -118,9 +125,13 @@ async fn a_run_that_wrote_no_journal_salvages_nothing() {
     // The overwhelmingly common case: a third-party-harness run, or a gg run that failed
     // before capture started. It is an ordinary absence, not a failure.
     assert!(
-        salvage_journal_tree(&FakeCollector::new(Outcome::Absent), &handle())
-            .await
-            .is_none()
+        salvage_journal_tree(
+            &FakeCollector::new(Outcome::Absent),
+            &handle(),
+            output_dir().path()
+        )
+        .await
+        .is_none()
     );
 }
 
@@ -130,9 +141,13 @@ async fn an_empty_salvaged_journal_is_reported_as_nothing_to_assemble() {
     // Assembly refuses a headerless journal, so handing one on would turn a silent
     // absence into a warned-about stage failure for no gain.
     assert!(
-        salvage_journal_tree(&FakeCollector::new(Outcome::Empty), &handle())
-            .await
-            .is_none()
+        salvage_journal_tree(
+            &FakeCollector::new(Outcome::Empty),
+            &handle(),
+            output_dir().path()
+        )
+        .await
+        .is_none()
     );
 }
 
@@ -142,8 +157,41 @@ async fn a_failed_salvage_is_swallowed_rather_than_raised() {
     // outranks the diagnostic, so a collector error yields no tree rather than an error
     // the caller would have to decide what to do with.
     assert!(
-        salvage_journal_tree(&FakeCollector::new(Outcome::Failed), &handle())
+        salvage_journal_tree(
+            &FakeCollector::new(Outcome::Failed),
+            &handle(),
+            output_dir().path()
+        )
+        .await
+        .is_none()
+    );
+}
+
+#[tokio::test]
+async fn the_scratch_tree_is_on_the_output_volume_and_does_not_survive() {
+    // R17. The copy is bounded only by the run's `replay_max_bytes` ceiling — 256 MiB by
+    // default — so it must be staged on the volume the run tree is on, never on a
+    // container's `/tmp`, which is routinely a small `tmpfs`. Filling that would either
+    // fail the salvage or take the pod down, on the one path where the failure being
+    // reported has to stay diagnosable.
+    let out = output_dir();
+    let collector = FakeCollector::new(Outcome::Recovered(b"{\"type\":\"header\"}\n"));
+    let path = {
+        let scratch = salvage_journal_tree(&collector, &handle(), out.path())
             .await
-            .is_none()
+            .expect("a journal that was copied out should be reported");
+        assert_eq!(
+            scratch.path().parent(),
+            Some(out.path()),
+            "the salvage scratch tree must be staged under the output directory, not in \
+             `std::env::temp_dir`",
+        );
+        scratch.path().to_path_buf()
+    };
+    // And it is scratch: dropping the handle takes the copied journal with it, so a
+    // salvage that the assembler refused leaves nothing behind on the run's volume.
+    assert!(
+        !path.exists(),
+        "the scratch tree must not outlive its handle"
     );
 }

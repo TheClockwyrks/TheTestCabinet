@@ -990,12 +990,18 @@ where
         if !request.is_gg() {
             return;
         }
-        let Some(scratch) = salvage::salvage_journal_tree(&self.collector, handle).await else {
+        // Staged under the output directory, not `/tmp`: the copy is a whole journal and
+        // the only volume known to have room for one is the one the run tree is already
+        // being written to (see [`crate::salvage`]).
+        let Some(scratch) =
+            salvage::salvage_journal_tree(&self.collector, handle, &self.output_dir).await
+        else {
             return;
         };
 
         // The run directory the failed record will be written into by
-        // `write_failed_record`, which builds the same `<output_dir>/<run_id>` path. The
+        // `write_failed_record`, which builds the same `<output_dir>/<run_id>` path — the
+        // reason `run_resolved` takes its id from the caller rather than minting one. The
         // stage writes its artifact at that tree's root, exactly where a completed run's
         // is, so the driver's mirror and the artifact-service upload find it unchanged.
         let run_dir = self.output_dir.join(run_id);

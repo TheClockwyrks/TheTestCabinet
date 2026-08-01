@@ -40,6 +40,8 @@
 //! into an unexplained collection error would destroy the very information the salvage
 //! exists to preserve.
 
+use std::path::Path;
+
 use tempfile::TempDir;
 
 use crate::execution::{ArtifactCollector, ContainerHandle, WORKSPACE_DIR};
@@ -54,8 +56,9 @@ pub fn journal_container_path() -> String {
     format!("{WORKSPACE_DIR}/{GG_REPLAY_JOURNAL_PATH}")
 }
 
-/// Copy the replay journal out of a still-running `handle` into a fresh scratch directory,
-/// laid out like a collected working tree with the journal at its usual relative path.
+/// Copy the replay journal out of a still-running `handle` into a fresh scratch directory
+/// **under `beside`**, laid out like a collected working tree with the journal at its usual
+/// relative path.
 ///
 /// Returns the scratch directory on success — the caller keeps it alive for as long as it
 /// reads from it, and its contents vanish with it. `None` means there is nothing to
@@ -63,11 +66,35 @@ pub fn journal_container_path() -> String {
 /// wrote no journal, or the copy produced an empty file (a session that died before its
 /// header line reached disk assembles into nothing, so it is reported as absent rather
 /// than handed on to fail).
+///
+/// # Why `beside` rather than `/tmp`
+///
+/// The copy is a whole journal, bounded only by
+/// [`replay_max_bytes`](crate::gg::GgRunLimits) — 256 MiB by default — so it has to land on
+/// a volume known to have room for it. That volume is the one the run tree is already being
+/// written to, which is why the caller passes its output directory rather than this
+/// reaching for [`std::env::temp_dir`]. It is the same rule the assembly's segment files
+/// follow, and for the same reason (spelled out in
+/// [`gg_replay_assembly`](crate::gg_replay_assembly)): a container's `/tmp` is routinely a
+/// small `tmpfs`, and filling it would either fail the copy or take the pod down with it —
+/// on the one path where the failure being reported has to stay diagnosable.
 pub(crate) async fn salvage_journal_tree(
     collector: &dyn ArtifactCollector,
     handle: &ContainerHandle,
+    beside: &Path,
 ) -> Option<TempDir> {
-    let scratch = match tempfile::tempdir() {
+    if let Err(err) = std::fs::create_dir_all(beside) {
+        tracing::warn!(
+            error = %err,
+            dir = %beside.display(),
+            "could not prepare the directory to salvage into",
+        );
+        return None;
+    }
+    let scratch = match tempfile::Builder::new()
+        .prefix(".replay-salvage-")
+        .tempdir_in(beside)
+    {
         Ok(scratch) => scratch,
         Err(err) => {
             tracing::warn!(error = %err, "could not create a scratch directory to salvage into");

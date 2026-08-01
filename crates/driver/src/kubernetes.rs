@@ -819,15 +819,36 @@ impl ArtifactCollector for KubernetesArtifactCollector {
         // pod must still be **up** — which is exactly why the caller salvages *before*
         // `stop`, while a hung or over-cap run's container is wedged but alive. A pod that
         // has already terminated cannot be salvaged from and reports nothing recovered.
-        let result = self
-            .runtime
-            .exec_stream_stdout(
+        let result = tokio::time::timeout(
+            SALVAGE_READ_TIMEOUT,
+            self.runtime.exec_stream_stdout(
                 &container.id,
                 &salvage_read_command(container_path),
                 &mut file,
-            )
-            .await;
+            ),
+        )
+        .await;
         drop(file);
+
+        let result = match result {
+            Ok(result) => result,
+            Err(_elapsed) => {
+                // The salvage runs, by definition, against a container that has already
+                // stopped responding — and nothing below this bounds the wait: a pod on a
+                // NotReady node holds the exec open until the kubelet's own idle timeout
+                // (hours). Waiting that out would delay reporting the hang, which is the
+                // one thing on this path that must not be delayed, so a salvage that does
+                // not answer promptly reports nothing recovered.
+                tracing::warn!(
+                    pod = %container.id,
+                    path = %container_path,
+                    seconds = SALVAGE_READ_TIMEOUT.as_secs(),
+                    "salvaging a file from the run pod timed out",
+                );
+                let _ = std::fs::remove_file(dest);
+                return Ok(false);
+            }
+        };
 
         match result {
             Ok((0, _)) => Ok(true),
@@ -857,6 +878,15 @@ impl ArtifactCollector for KubernetesArtifactCollector {
         }
     }
 }
+
+/// How long a salvage read may take before it is abandoned.
+///
+/// The work is a `cat` of one file, not a build, so this is generous for the read itself and
+/// deliberately short against what it is guarding: the salvage happens on the failure path of a run
+/// that has *already* stopped responding, and a pod whose node has gone NotReady will hold the exec
+/// open until the kubelet's streaming idle timeout — hours. The diagnostic is best-effort and the
+/// failure report is not, so the report wins.
+const SALVAGE_READ_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The argv that streams one in-pod file to stdout for salvage.
 ///
