@@ -1,5 +1,5 @@
 {
-  "$comment": "The TCQ conformance fixture. Executed by BOTH the Rust suite (crates/core/src/gg_query.test.rs) and the TypeScript twin, because `evaluate` and `field_catalog` exist twice and a drift between them publishes different numbers on the console and the public site. Every case names the rule it pins; a change to any evaluator rule must arrive with a case here that would have caught the drift. Timestamps are epoch milliseconds: 1767225600000 is 2026-01-01T00:00:00Z, a Thursday, which is what makes the week-origin case load-bearing.",
+  "$comment": "The TCQ conformance fixture. Executed by BOTH the Rust suite (crates/core/src/gg_query.test.rs) and the TypeScript twin (packages/ui/src/app/pages/gg/query/conformance.test.ts, which reads THIS file rather than a copy), because `evaluate` and `field_catalog` exist twice and a drift between them publishes different numbers on the console and the public site. Every case names the rule it pins; a change to any evaluator rule must arrive with a case here that would have caught the drift. Timestamps are epoch milliseconds: 1767225600000 is 2026-01-01T00:00:00Z, a Thursday, which is what makes the week-origin case load-bearing.",
   "documents": [
     {
       "fields": {
@@ -19,7 +19,8 @@
         "metric.runTimeSeconds": 10,
         "metric.cost": 0.5,
         "has.summary": true,
-        "has.capabilitySet": true
+        "has.capabilitySet": true,
+        "note": "beta"
       }
     },
     {
@@ -40,7 +41,8 @@
         "metric.runTimeSeconds": 20,
         "metric.cost": 1.5,
         "has.summary": true,
-        "has.capabilitySet": true
+        "has.capabilitySet": true,
+        "note": 3
       }
     },
     {
@@ -59,7 +61,8 @@
         "tool.edit_file": true,
         "metric.runTimeSeconds": 30,
         "has.summary": true,
-        "has.capabilitySet": true
+        "has.capabilitySet": true,
+        "note": true
       }
     },
     {
@@ -345,6 +348,25 @@
           },
           {
             "value": "openai/gpt-y",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "note",
+        "kind": "mixed",
+        "documents": 3,
+        "topValues": [
+          {
+            "value": true,
+            "count": 1
+          },
+          {
+            "value": 3,
+            "count": 1
+          },
+          {
+            "value": "beta",
             "count": 1
           }
         ]
@@ -1530,6 +1552,391 @@
           "r5",
           "r1",
           "r2"
+        ]
+      }
+    },
+    {
+      "name": "a comparison orders strings by Unicode code point too",
+      "why": "The astral hazard is not confined to bucket keys: `>` and `<` go through the same string ordering. U+1F600 (😀) is a surrogate pair, so a TypeScript `>` reads it as BELOW U+FF01 (！) and this filter would return nothing. Code-point order — what Rust's UTF-8 byte comparison already is — puts it above.",
+      "query": {
+        "filter": {
+          "kind": "compare",
+          "field": "label",
+          "op": "gt",
+          "value": "！"
+        }
+      },
+      "expect": {
+        "totalRuns": 1,
+        "documentIds": [
+          "r3"
+        ]
+      }
+    },
+    {
+      "name": "a field with mixed value kinds buckets by kind rank",
+      "why": "A corpus spanning a rename or a type change carries one field with several kinds. Both implementations must pick the SAME cross-kind order or the buckets differ: booleans, then numbers, then strings, then the documents that lack the field. The catalog reports the field as `mixed` for the same reason.",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "count"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "field",
+              "field": "note"
+            }
+          ]
+        },
+        "sort": [
+          {
+            "field": "note"
+          }
+        ]
+      },
+      "expect": {
+        "totalRuns": 6,
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "note",
+                "value": true
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "note",
+                "value": 3
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "note",
+                "value": "beta"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "note"
+              }
+            ],
+            "n": 3,
+            "values": [
+              {
+                "name": "count()",
+                "value": 3,
+                "contributing": 3
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a glob backtracks when a star consumed too little",
+      "why": "The only glob case that was here matched a bare prefix, which a `startsWith` would also pass. This one has two stars and a tail that only matches after the second star gives ground, so a matcher without the backtrack point fails it.",
+      "query": {
+        "filter": {
+          "kind": "compare",
+          "field": "model",
+          "op": "eq",
+          "value": "a*c/*-a"
+        }
+      },
+      "expect": {
+        "totalRuns": 2,
+        "documentIds": [
+          "r5",
+          "r1"
+        ]
+      }
+    },
+    {
+      "name": "a composite bucket key orders component by component, absent last",
+      "why": "Two group keys, which is where an implementation that joins the key components into one string can silently MERGE two buckets. Every bucket holds one run, so the whole assertion is the order: by case, then by label in code-point order, with the runs that carry no label last within each case.",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "count"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "field",
+              "field": "case"
+            },
+            {
+              "kind": "field",
+              "field": "label"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 6,
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "case",
+                "value": "carom"
+              },
+              {
+                "field": "label",
+                "value": "a"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "case",
+                "value": "carom"
+              },
+              {
+                "field": "label",
+                "value": "！"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "case",
+                "value": "carom"
+              },
+              {
+                "field": "label"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "case",
+                "value": "coil"
+              },
+              {
+                "field": "label",
+                "value": "Z"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "case",
+                "value": "coil"
+              },
+              {
+                "field": "label",
+                "value": "😀"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "case",
+                "value": "coil"
+              },
+              {
+                "field": "label"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "free text ignores numbers, so a metric's spelling is not searchable",
+      "why": "The other free-text case searched for a word no number could have spelled, so it never actually proved the restriction. `10` IS the decimal spelling of r1's run time and of nothing else in the corpus, so an implementation that folded numbers into the haystack would return r1 here.",
+      "query": {
+        "filter": {
+          "kind": "text",
+          "text": "10"
+        }
+      },
+      "expect": {
+        "totalRuns": 0,
+        "documentIds": []
+      }
+    },
+    {
+      "name": "a string literal coerces to a number against a numeric field",
+      "why": "Kinds reconcile toward the OBSERVED value, so `\"2.0\"` compares numerically against a stored 2 and matches — where a string comparison of `2` against `2.0` would not. This is also what pins the shared number rendering: an integral value renders without a fractional part on both hosts.",
+      "query": {
+        "filter": {
+          "kind": "compare",
+          "field": "metric.cost",
+          "op": "eq",
+          "value": "2.0"
+        }
+      },
+      "expect": {
+        "totalRuns": 1,
+        "documentIds": [
+          "r4"
+        ]
+      }
+    },
+    {
+      "name": "a boolean projects to 1 in a comparison, not just in an average",
+      "why": "Rule 5 is usually exercised through `avg`. It applies to comparison too: `cap.shell:1` must find the five runs with the shell enabled, which it can only do if the stored boolean projects numerically before the literal is read as a string.",
+      "query": {
+        "filter": {
+          "kind": "compare",
+          "field": "cap.shell",
+          "op": "eq",
+          "value": 1
+        }
+      },
+      "expect": {
+        "totalRuns": 5,
+        "documentIds": [
+          "r4",
+          "r3",
+          "r1",
+          "r2",
+          "r6"
+        ]
+      }
+    },
+    {
+      "name": "min and max over a sparse metric report the extremes, not zero",
+      "why": "Neither aggregation was covered at all. Two of the six runs carry no run time, so the pair also re-states rule 3 from the other end: the extremes are 10 and 40, and the absent runs neither drag the minimum to zero nor count toward `contributing`.",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "min",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "max",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "avg",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "count"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 6,
+        "buckets": [
+          {
+            "key": [],
+            "n": 6,
+            "values": [
+              {
+                "name": "min(metric.runTimeSeconds)",
+                "value": 10,
+                "contributing": 4
+              },
+              {
+                "name": "max(metric.runTimeSeconds)",
+                "value": 40,
+                "contributing": 4
+              },
+              {
+                "name": "avg(metric.runTimeSeconds)",
+                "value": 25,
+                "contributing": 4
+              },
+              {
+                "name": "count()",
+                "value": 6,
+                "contributing": 6
+              }
+            ]
+          }
         ]
       }
     }

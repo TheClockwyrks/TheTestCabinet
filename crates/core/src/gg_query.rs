@@ -44,7 +44,7 @@
 //!    for every capability a run did not enable, so `avg(cap.compaction)` is an honest
 //!    enablement rate), and `tool.<name>` stays **sparse** on purpose (the tool
 //!    universe is per-run, not a closed catalog, so "never offered this tool" is
-//!    written explicitly as `not tool.edit_file` and the field sidebar shows each tool
+//!    written explicitly as `not tool.edit_file:*` and the field sidebar shows each tool
 //!    field's document count so the sparseness is *seen* rather than inferred).
 //! 2. **`has.*` markers make denominators explicit.** A gg run that never ran a
 //!    session has a capability set but no summary; a non-gg-shaped record has neither.

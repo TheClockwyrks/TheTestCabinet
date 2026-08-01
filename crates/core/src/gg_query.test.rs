@@ -144,6 +144,20 @@ fn the_conformance_fixture_covers_the_named_hazards() {
         "week histogram",
         "Unicode code point",
         "absent value last",
+        // The hazards the TypeScript twin added when it landed. Each one is a place the
+        // two implementations can disagree that the original set did not reach: string
+        // ordering inside a *comparison* rather than a bucket key, the cross-kind rank,
+        // a glob that only matches after backtracking, a two-component bucket key (which
+        // a twin that concatenates key components can silently merge), free text against
+        // a number's spelling, and the numeric coercions.
+        "code point too",
+        "mixed value kinds",
+        "backtracks",
+        "composite bucket key",
+        "free text ignores numbers",
+        "coerces to a number",
+        "projects to 1 in a comparison",
+        "min and max",
     ] {
         assert!(
             names.iter().any(|name| name.contains(needle)),

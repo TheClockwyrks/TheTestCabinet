@@ -165,10 +165,10 @@ Worked examples, which double as the editor's example menu:
 | --- | --- |
 | Long recent sessions on one provider | `started >= now-30d and model:"anthropic/*" and metric.runTimeSeconds >= 1800` |
 | Abnormal-termination share per configuration | `not state:completed \| stats count() by preset` |
-| Context overflow with compaction off, per model | `cap.compaction:false and has.summary \| stats avg(summary.ranOutOfContext) as overflow_rate by model` |
+| Context overflow with compaction off, per model | `cap.compaction:false and has.summary:true \| stats avg(summary.ranOutOfContext) as overflow_rate by model` |
 | Score distribution, speculation on vs off | `\| stats dist(score) by cap."speculative-execution"` |
 | Sessions per day | `started >= now-90d \| stats count() by bucket(started, 1d)` |
-| Which runs never got the edit tool | `has.summary and not tool.editFile` |
+| Which runs never got the edit tool | `has.summary:true and not tool.editFile:*` |
 | A code metric, once code analysis lands | `\| stats median(code.functions.cognitive.p90) by model` |
 
 ## Where the parser lives, and why the evaluator is mirrored
