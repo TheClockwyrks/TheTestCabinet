@@ -1270,9 +1270,14 @@ export interface RunLimitSpec {
   defaultValue?: string;
 }
 
+// gg's default ceiling on the replay capture journal, in bytes (256 MiB). Unlike the
+// others this one is always in force — capture runs for every run — so the default is a
+// number rather than "off".
+export const DEFAULT_REPLAY_MAX_BYTES = 256 * 1024 * 1024;
+
 // The guardrails, in the order they read as a sentence: how much of the run happens
 // at once, then how long it may go on for, then how badly it may go, then how much it
-// may cost.
+// may cost — and last, the one that bounds not the run but the record kept of it.
 //
 // `key` is typed as `keyof GgRunLimits`, and [ggConfigDraft]'s draft is a total
 // record over the same keys, so a ceiling added to the contract cannot ship without
@@ -1330,5 +1335,12 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     kind: "amount",
     placeholder: "e.g. 25",
     hint: "Ceiling on the whole run's accumulated cost, checked at each agent's turn boundary. A run whose model reports no cost can never be stopped by it — gg does not invent a figure to stop a run with.",
+  },
+  {
+    key: "replayMaxBytes",
+    label: "Replay journal (bytes)",
+    kind: "count",
+    placeholder: `e.g. ${DEFAULT_REPLAY_MAX_BYTES}`,
+    hint: `The odd one out, and deliberately so: every other ceiling here stops the run, and this one stops only the record kept of it. Crossing it stops replay capture and marks the record truncated — capture degrades, it never fails the run it observes, because a debugging artifact that can end a paid run is worse than no artifact. Absent means gg's default of ${DEFAULT_REPLAY_MAX_BYTES} bytes (256 MiB); 0 cannot bound anything and is read as no ceiling at all.`,
   },
 ];

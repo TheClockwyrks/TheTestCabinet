@@ -194,6 +194,7 @@ export function blankRunLimits(): GgRunLimitsDraft {
     maxErrorRate: "",
     errorRateWindow: "",
     maxCost: "",
+    replayMaxBytes: "",
   };
 }
 
