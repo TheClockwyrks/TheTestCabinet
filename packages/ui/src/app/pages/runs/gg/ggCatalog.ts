@@ -1,9 +1,14 @@
 // The shared gg capability catalog — the single in-console description of gg's full
-// capability set. Both the configuration editor (`GgConfigEditor`) and the
-// result-aggregation surface (`GgAggregatePage`) drive off this one list so the
-// facets a query can slice by stay in lockstep with the capabilities a run can be
-// configured with. The ids, params, and tool names are the real core contract
-// (`crates/core/src/gg.rs` + `crates/gg/src/tools/mod.rs`), not guesses.
+// capability set, which the configuration editor (`GgConfigEditor`) drives off. The
+// ids, params, and tool names are the real core contract (`crates/core/src/gg.rs` +
+// `crates/gg/src/tools/mod.rs`), not guesses.
+//
+// Its analysis-side counterpart is `GG_CAPABILITY_CATALOG` in
+// `crates/core/src/gg_query.doc.rs`, which is what makes the query language's
+// `cap.<id>` namespace total. The two lists describe the same capabilities from
+// different ends — this one says what an operator may configure, that one says what
+// every run document must carry a value for — so a capability added to gg belongs in
+// both.
 
 import type {
   GgAgentConfig,

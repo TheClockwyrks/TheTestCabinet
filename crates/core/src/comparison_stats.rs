@@ -161,7 +161,13 @@ pub fn median_ratio(
 /// The `q`-quantile of an already-sorted, non-empty slice, by linear interpolation
 /// between the two closest ranks (the "type 7" definition R and NumPy use by
 /// default). `q` is clamped to `[0, 1]`.
-fn quantile(sorted: &[f64], q: f64) -> f64 {
+///
+/// Public because it is **the repository's one quantile definition**: the
+/// [gg query language](crate::gg_query)'s `median`/`p90`/`p95`/`dist` reuse it
+/// verbatim rather than reinventing one, so a gg box plot and a comparison chart
+/// cannot report different medians for the same numbers. A second definition anywhere
+/// is a defect, not a preference.
+pub fn quantile(sorted: &[f64], q: f64) -> f64 {
     debug_assert!(!sorted.is_empty());
     let n = sorted.len();
     if n == 1 {

@@ -43,10 +43,6 @@ import type {
   LaunchAck,
 } from "@test-cabinet/run-record/jobs-api";
 import type {
-  GgAggregateQuery,
-  GgAggregateResponse,
-} from "@test-cabinet/run-record/gg-aggregate";
-import type {
   GgConfig,
   GgConfigInput,
   GgReplayRecordV1,
@@ -512,22 +508,6 @@ export interface WorkerClient {
    * from the existing `GET /jobs/{id}/live` relay — gg needs no new live route.
    */
   launchGgRun(req: GgRunRequest, token: string): Promise<LaunchAck>;
-
-  /**
-   * Run a **capability-set-sliced aggregate query** across the persisted gg runs
-   * (`POST /gg/aggregate`, Bearer). This is the Kibana-style result-aggregation
-   * surface: the {@link GgAggregateQuery} narrows the gg runs by facet/metric
-   * predicates, groups them by one or more capability-set facets, and aggregates a
-   * set of metrics per bucket. Resolves to the {@link GgAggregateResponse} — the
-   * buckets (each with its group-by key, run count, aggregated metric values, and
-   * terminal-state distribution) plus the total runs matched. Gated on the same
-   * signed-in account as the other gg endpoints (a missing/invalid `token` is
-   * rejected `401`).
-   */
-  aggregateGgRuns(
-    query: GgAggregateQuery,
-    token: string,
-  ): Promise<GgAggregateResponse>;
 
   /** The current state of a submitted job (`GET /runs/{job}`). */
   getRun(runId: string): Promise<RunJob>;

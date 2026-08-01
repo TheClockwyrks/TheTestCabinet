@@ -1,0 +1,383 @@
+//! The **document builder**: one gg run's [record](crate::run_record::RunRecord) plus
+//! the store's lifecycle columns, reduced to the flat [`GgRunDoc`] every
+//! [query](super::GgQuery) runs over.
+//!
+//! This is the only place in the system that decides what a field is *called*, and a
+//! field name is user-visible — it appears in autocomplete and, more importantly,
+//! **inside saved queries and dashboards**. So the two standing obligations on every
+//! feature that wants to be queryable are: emit scalars, never arrays
+//! ([rule 4](crate::gg_query#the-seven-semantic-rules)), and keep field names stable.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use serde::Serialize;
+use serde_json::Value;
+use time::OffsetDateTime;
+use time::format_description::well_known::Rfc3339;
+
+use super::GgRunDoc;
+use crate::gg::{
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AGENT_PERSISTENCE, CAPABILITY_AGENT_TRANSITIONS,
+    CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_COMPACTION, CAPABILITY_COMPLETION,
+    CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_EDIT_FILE, CAPABILITY_FILESYSTEM,
+    CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
+    CAPABILITY_READ_FILE, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL,
+    CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
+    CAPABILITY_WORKFLOWS, CAPABILITY_WRITE_FILE, GgCapabilitySet, GgSessionSummary,
+};
+use crate::review::Rating;
+use crate::run_record::RunRecord;
+
+/// Every capability id gg ships, in catalog order — the closed set the `cap.*`
+/// namespace is made **total** over.
+///
+/// Totality is what makes `cap.compaction:false` and `avg(cap.compaction)` mean what
+/// a reader expects: the builder stores an explicit `false` for every id here that a
+/// run did not enable, so "configured and off" and "never mentioned" collapse into
+/// one honest answer instead of a missing key that would fail every comparison
+/// ([rule 1](crate::gg_query#the-seven-semantic-rules)) and quietly shrink an enablement rate's
+/// denominator.
+///
+/// A run that carries a capability id **not** in this list — an externally supplied
+/// one, or one added to gg after a document was built — still gets its own `cap.<id>`
+/// field: the builder emits the union of this catalog and the ids the run's root
+/// agent actually declares. The catalog is the floor, not the ceiling.
+///
+/// Adding a capability to gg means adding it here. Forgetting to is not a silent
+/// failure of the field (it still appears on any run that enables it) but it *is* a
+/// silent failure of the totality guarantee — the field would be sparse, so an
+/// average over it would be a rate among the runs that mentioned it rather than among
+/// all runs.
+pub const GG_CAPABILITY_CATALOG: &[&str] = &[
+    CAPABILITY_SHELL,
+    CAPABILITY_FILESYSTEM,
+    CAPABILITY_READ_FILE,
+    CAPABILITY_WRITE_FILE,
+    CAPABILITY_EDIT_FILE,
+    CAPABILITY_LIST_DIR,
+    CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
+    CAPABILITY_AUTOLOAD_SPECS,
+    CAPABILITY_AGENT_PERSISTENCE,
+    CAPABILITY_SKILLS,
+    CAPABILITY_MEMORIES,
+    CAPABILITY_TASKS,
+    CAPABILITY_COMPACTION,
+    CAPABILITY_AGENT_MANAGED_CONTEXT,
+    CAPABILITY_PROJECT_MANAGEMENT,
+    CAPABILITY_SUBAGENTS,
+    CAPABILITY_WORKFLOWS,
+    CAPABILITY_FSM,
+    CAPABILITY_AGENT_TRANSITIONS,
+    CAPABILITY_SPECULATIVE,
+    CAPABILITY_RESPONSES_AS_CODE,
+    CAPABILITY_REPLAY,
+    CAPABILITY_COMPLETION,
+];
+
+/// The fields that are epoch-millisecond timestamps rather than plain numbers.
+///
+/// [Rule 6](crate::gg_query#the-seven-semantic-rules) makes a date *be* a number, which is what
+/// keeps ranges, sorts and histograms out of the evaluator entirely — but it also
+/// means date-ness cannot be observed from the values. This list is how the
+/// [field catalog](super::field_catalog) still labels them
+/// [`Date`](super::GgFieldKind::Date), so the editor offers a date picker and a
+/// histogram interval instead of a raw number box.
+pub const GG_DATE_FIELDS: &[&str] = &["started", "finished"];
+
+/// The bucket a run that breached no [execution ceiling](crate::gg::GgLimitKind) falls
+/// into on the `limit` field. Deliberately a value rather than an absence: "ran to its
+/// own conclusion" is the arm every ceiling comparison is measured against, so it must
+/// be groupable.
+pub const NO_LIMIT_HIT: &str = "none";
+
+/// The name a capability that selects no implementation reports under `cap.<id>.impl`.
+pub const DEFAULT_IMPLEMENTATION: &str = "default";
+
+/// The run-lifecycle facts that live on the **store**, not on the record: whether the
+/// run was published, and what its reviewers concluded.
+///
+/// These are the fields a review or a publish changes *without* rewriting the record —
+/// which is exactly why the backend's document index reconciles on a mutation
+/// timestamp rather than on the record's own finish time. Passed in rather than
+/// looked up because core has no database: the caller (the backend for the console,
+/// the snapshot builder for the public site) resolves them and hands them over.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct GgDocLifecycle {
+    /// Whether the run has been published to the public gallery.
+    pub published: bool,
+    /// The reviewers' overall rating, or `None` for an unreviewed run.
+    pub rating: Option<Rating>,
+    /// The aggregate reviewer score as a `0.0..=1.0` fraction (mean earned checklist
+    /// weight over the total available), or `None` when the run has no reviews or its
+    /// case's checklist weights could not be resolved. Computed by the caller, because
+    /// the weights live in the case catalog rather than on the run.
+    pub score: Option<f64>,
+    /// How many reviews the run has.
+    pub review_count: u64,
+}
+
+/// Flatten a JSON value into `out` under `prefix`, following
+/// [rule 4](crate::gg_query#the-seven-semantic-rules).
+///
+/// - An **object** contributes one dotted field per key, recursively.
+/// - An **array** contributes only `<prefix>.count`. Positional keys would be
+///   unqueryable (nobody asks about `slotCosts.3.cost`), they duplicate the
+///   purpose-built per-model and per-tool namespaces, and they would flood the field
+///   sidebar with junk that hides the fields worth finding.
+/// - A **null** contributes nothing — an absent value is a missing key, never a
+///   stored null.
+/// - A **scalar** is stored, with a non-finite number dropped
+///   ([rule 7](crate::gg_query#the-seven-semantic-rules)).
+///
+/// Public because the `code.*` namespace flattens its own typed block through exactly
+/// this function: one flattening rule for the whole document, not one per namespace.
+pub fn flatten_json(prefix: &str, value: &Value, out: &mut GgRunDoc) {
+    match value {
+        Value::Object(map) => {
+            for (key, child) in map {
+                let path = if prefix.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{prefix}.{key}")
+                };
+                flatten_json(&path, child, out);
+            }
+        }
+        Value::Array(items) => out.insert(format!("{prefix}.count"), items.len() as f64),
+        Value::Null => {}
+        Value::Bool(b) => out.insert(prefix, *b),
+        Value::Number(n) => {
+            if let Some(f) = n.as_f64() {
+                out.insert(prefix, f);
+            }
+        }
+        Value::String(s) => out.insert(prefix, s.clone()),
+    }
+}
+
+/// Build one run's [document](GgRunDoc).
+///
+/// The namespaces, in the order they are written:
+///
+/// | Namespace | Holds |
+/// | --- | --- |
+/// | `id`, `started`, `finished`, `state`, `published`, `rating`, `score`, `reviewCount` | identity, timing, lifecycle |
+/// | `case`, `caseVersion`, `variant`, `testType` | what was run |
+/// | `model`, `orchestrator`, `harnessVersion`, `preset`, `agents`, `agent.<name>.model` | how it was configured |
+/// | `cap.<id>`, `cap.<id>.impl`, `cap.<id>.<param>` | the capability set, flattened and **typed** |
+/// | `tool.<name>` | the effective toolset (sparse — true only for offered tools) |
+/// | `status`, `mode`, `limit` | how it ended |
+/// | `summary.<path>` | the **whole** session summary, flattened |
+/// | `model.<id>.tokens`, `model.<id>.cost` | the per-`(slot, model)` spend rollup |
+/// | `metric.*` | run time, tokens and cost — **absent, never zero**, on a run that produced nothing |
+/// | `has.<block>` | presence markers, so a rate's denominator is expressible |
+///
+/// Two of those rows carry most of the design. `summary.<path>` **subsumes the entire
+/// closed summary-field enum this replaced, and every field nobody ever wrote an enum
+/// arm for** — a number a future feature folds onto the summary is queryable the day
+/// it lands. And `cap.<id>.<param>` is **typed**, so
+/// `cap.compaction.summaryHeadroom > 0.5` works; the implementation this replaced
+/// stringified every capability param, which made numeric comparison impossible.
+///
+/// The capability reads are the **root agent's**, matching every other run-level read
+/// of a capability set: the root drives the top-level session and its configuration is
+/// what "the run's configuration" means. Per-agent detail is not lost — it is simply
+/// not what `cap.*` answers.
+pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc {
+    let mut doc = GgRunDoc::default();
+
+    // --- identity, timing, lifecycle -------------------------------------------
+    doc.insert("id", record.id.clone());
+    if let Some(ms) = epoch_millis(&record.started_at) {
+        doc.insert("started", ms as f64);
+    }
+    if let Some(ms) = epoch_millis(&record.finished_at) {
+        doc.insert("finished", ms as f64);
+    }
+    if let Some(state) = enum_str(&record.status.state) {
+        doc.insert("state", state);
+    }
+    doc.insert("published", lifecycle.published);
+    if let Some(rating) = lifecycle.rating {
+        doc.insert("rating", rating.as_str().to_string());
+    }
+    if let Some(score) = lifecycle.score {
+        doc.insert("score", score);
+    }
+    doc.insert("reviewCount", lifecycle.review_count as f64);
+
+    // --- what was run -----------------------------------------------------------
+    let subject = &record.subject;
+    doc.insert("case", subject.test_case_slug.clone());
+    doc.insert("caseVersion", subject.test_case_version.clone());
+    doc.insert("variant", subject.variant.clone());
+    doc.insert("testType", subject.test_type.as_str().to_string());
+
+    // --- how it was configured ---------------------------------------------------
+    doc.insert("model", subject.model_id.clone());
+    doc.insert("orchestrator", subject.orchestrator_slug.clone());
+    if let Some(version) = &subject.harness_version {
+        doc.insert("harnessVersion", version.clone());
+    }
+    if let Some(set) = &subject.gg_capability_set {
+        insert_capability_set(&mut doc, set);
+    }
+
+    // --- how it ended, and the whole summary -------------------------------------
+    if let Some(summary) = &subject.gg_summary {
+        insert_summary(&mut doc, summary);
+    }
+
+    // --- resource metrics --------------------------------------------------------
+    insert_metrics(&mut doc, record);
+
+    // --- presence markers --------------------------------------------------------
+    doc.insert("has.capabilitySet", subject.gg_capability_set.is_some());
+    doc.insert("has.summary", subject.gg_summary.is_some());
+
+    doc
+}
+
+/// Write the `preset` / `agents` / `agent.<name>.model` / `cap.*` namespaces.
+fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
+    if let Some(preset) = &set.preset {
+        doc.insert("preset", preset.clone());
+    }
+    doc.insert("agents", set.agents.len() as f64);
+    for agent in &set.agents {
+        if let Some(model) = agent.resolved_model_id() {
+            doc.insert(format!("agent.{}.model", agent.name), model.to_string());
+        }
+    }
+
+    // The union of the shipped catalog and whatever this run's root actually declares,
+    // so an externally supplied capability is queryable even though the catalog cannot
+    // know about it. Ordering is irrelevant (the document is a `BTreeMap`) but the set
+    // must be de-duplicated or a declared catalog capability would be written twice.
+    let root = set.root();
+    let mut ids: BTreeSet<&str> = GG_CAPABILITY_CATALOG.iter().copied().collect();
+    ids.extend(root.capabilities.iter().map(|cfg| cfg.id.as_str()));
+
+    for id in ids {
+        doc.insert(format!("cap.{id}"), root.is_enabled(id));
+        // The implementation and the params describe a capability the set *carries*.
+        // A capability that is merely absent has neither, so those two stay absent
+        // rather than being invented — only the enabled flag is made total.
+        let Some(cfg) = root.capability(id) else {
+            continue;
+        };
+        doc.insert(
+            format!("cap.{id}.impl"),
+            cfg.implementation
+                .clone()
+                .unwrap_or_else(|| DEFAULT_IMPLEMENTATION.to_string()),
+        );
+        flatten_json(&format!("cap.{id}"), &cfg.params, doc);
+    }
+}
+
+/// Write the `status` / `mode` / `limit` / `tool.*` / `summary.*` / `model.<id>.*`
+/// namespaces off the session summary.
+fn insert_summary(doc: &mut GgRunDoc, summary: &GgSessionSummary) {
+    doc.insert("status", summary.terminal_status.clone());
+    doc.insert("mode", summary.execution_mode.clone());
+    doc.insert(
+        "limit",
+        match &summary.limit_hit {
+            Some(breach) => breach.limit.as_str().to_string(),
+            None => NO_LIMIT_HIT.to_string(),
+        },
+    );
+
+    // The effective toolset is **sparse on purpose**: the tool universe is per-run, not
+    // a closed catalog, so there is no honest set of names to write `false` for. "Never
+    // offered this tool" is asked as `not tool.<name>`, and the field sidebar's
+    // per-field document count is what makes that sparseness visible rather than
+    // something an operator has to infer from an empty result.
+    for tool in &summary.effective_tools {
+        doc.insert(format!("tool.{tool}"), true);
+    }
+
+    // The per-(slot, model) rollup, folded to per-model so a run whose subagents ran on
+    // a cheaper slot is still sliceable by model spend. Folded rather than flattened
+    // because `slot_costs` is an array, and an array contributes only its length.
+    let mut tokens: BTreeMap<&str, u64> = BTreeMap::new();
+    let mut costs: BTreeMap<&str, f64> = BTreeMap::new();
+    for entry in &summary.slot_costs {
+        if let Some(total) = entry.tokens.total() {
+            *tokens.entry(entry.model_id.as_str()).or_default() += total;
+        }
+        if let Some(cost) = entry.cost.and_then(|c| c.comparable) {
+            *costs.entry(entry.model_id.as_str()).or_default() += cost;
+        }
+    }
+    for (model, total) in tokens {
+        doc.insert(format!("model.{model}.tokens"), total as f64);
+    }
+    for (model, cost) in costs {
+        doc.insert(format!("model.{model}.cost"), cost);
+    }
+
+    // Then the whole summary verbatim, which is what makes a field a future feature
+    // adds queryable with no change here.
+    if let Ok(value) = serde_json::to_value(summary) {
+        flatten_json("summary", &value, doc);
+    }
+}
+
+/// Write the `metric.*` namespace, honouring
+/// [rule 3](crate::gg_query#the-seven-semantic-rules): **absent, never zero**.
+///
+/// A record built for a failed run carries default metrics — zero seconds, no tokens,
+/// no cost. Flattened naively, a `timed_out` run would report a run time of zero,
+/// which drags an average toward zero with *exactly the runs that burned the most
+/// budget* and excludes the longest runs from a `metric.runTimeSeconds >= 1800`
+/// filter. The token and cost classes are already `Option`, so they answer for
+/// themselves; run time is a bare `f64`, so a positive value is the proxy for "this
+/// run genuinely probed a container".
+fn insert_metrics(doc: &mut GgRunDoc, record: &RunRecord) {
+    let metrics = &record.metrics;
+    if metrics.run_time_seconds > 0.0 {
+        doc.insert("metric.runTimeSeconds", metrics.run_time_seconds);
+    }
+    if let Some(total) = metrics.tokens.total() {
+        doc.insert("metric.totalTokens", total as f64);
+    }
+    let tokens = &metrics.tokens;
+    for (name, value) in [
+        ("uncachedInput", tokens.uncached_input),
+        ("cachedInput", tokens.cached_input),
+        ("output", tokens.output),
+        ("reasoning", tokens.reasoning),
+    ] {
+        if let Some(value) = value {
+            doc.insert(format!("metric.tokens.{name}"), value as f64);
+        }
+    }
+    if let Some(cost) = metrics.cost.comparable {
+        doc.insert("metric.cost", cost);
+    }
+    if let Some(cost) = metrics.cost.actual {
+        doc.insert("metric.costActual", cost);
+    }
+}
+
+/// Parse an RFC 3339 timestamp to epoch milliseconds, or `None` when it is not a
+/// timestamp at all. A record whose timestamps are unparseable simply carries no
+/// `started`/`finished` — which sorts it last in
+/// [document order](crate::gg_query#the-seven-determinism-rules) rather than pretending it
+/// happened at the epoch.
+fn epoch_millis(rfc3339: &str) -> Option<i64> {
+    let parsed = OffsetDateTime::parse(rfc3339, &Rfc3339).ok()?;
+    i64::try_from(parsed.unix_timestamp_nanos() / 1_000_000).ok()
+}
+
+/// The serde wire token of a small enum (`RunState`, `TestType`), read through serde
+/// rather than a hand-written match so the document can never spell a state
+/// differently from the record it came from.
+fn enum_str<T: Serialize>(value: &T) -> Option<String> {
+    match serde_json::to_value(value).ok()? {
+        Value::String(s) => Some(s),
+        _ => None,
+    }
+}

@@ -1080,8 +1080,8 @@ pub const CAPABILITY_SPECULATIVE: &str = "speculative-execution";
 /// to it.
 ///
 /// gg includes responses-as-code **so its effectiveness can be measured empirically** — toggled
-/// against traditional tool calling (the [`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled)
-/// facet, plus the [`execution_mode`](GgSessionSummary::execution_mode) the run records), it answers
+/// against traditional tool calling (the [`cap.responses-as-code`](crate::gg_query) document field,
+/// plus the [`execution_mode`](GgSessionSummary::execution_mode) the run records), it answers
 /// "does a code-shaped response help a model tackle the large [Hard](https://docs.testcabinet.ai/testing/end-to-end/)
 /// cases?" with data. Opt-in, like the other Phase 2+ capabilities.
 ///
@@ -1223,7 +1223,7 @@ pub struct GgCapabilitySet {
     /// interpretable beside the value it was set to. They are deliberately not a
     /// capability — a capability is a feature under ablation, a ceiling is an operator's
     /// guardrail over every capability at once — so they never appear in the
-    /// [`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled) facet space.
+    /// [`cap.*`](crate::gg_query) document namespace.
     /// A set that declares none omits the key entirely, so every configuration stored
     /// before ceilings existed round-trips unchanged.
     #[serde(default, skip_serializing_if = "GgRunLimits::is_empty")]
@@ -2163,8 +2163,8 @@ impl GgRunLimits {
 /// Which [execution ceiling](GgRunLimits) stopped a run.
 ///
 /// A closed, stable taxonomy (unlike the open capability ids): the console labels each one and the
-/// [aggregation facet](crate::gg_aggregate::GgFacet::LimitHit) buckets by them, so the set is
-/// fixed here rather than being a free string.
+/// query language's [`limit`](crate::gg_query::build_run_doc) document field groups by them, so the
+/// set is fixed here rather than being a free string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -2199,8 +2199,8 @@ impl GgLimitKind {
     ];
 
     /// This ceiling's stable wire value — exactly the string serde writes, so the
-    /// [facet](crate::gg_aggregate::GgFacet::LimitHit) that buckets runs by it and the JSON a run
-    /// records can never disagree. Pinned over [`ALL`](Self::ALL) by a test.
+    /// [`limit`](crate::gg_query::build_run_doc) document field that buckets runs by it and the
+    /// JSON a run records can never disagree. Pinned over [`ALL`](Self::ALL) by a test.
     pub const fn as_str(self) -> &'static str {
         match self {
             GgLimitKind::Turns => "turns",
@@ -3447,8 +3447,8 @@ pub struct GgSessionSummary {
     /// driven with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) (`"responses_as_code"`, the
     /// model emitted programs gg ran in the wasmtime sandbox) or traditional tool calling
     /// (`"tool_calling"`, the default). This is the effective-behavior companion to the
-    /// [`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled)`{responses-as-code}`
-    /// facet: the facet slices by the *configured* capability, and this field records the mode the
+    /// [`cap.responses-as-code`](crate::gg_query) document field: that field slices by the
+    /// *configured* capability, and this one records the mode the
     /// run actually ran in, so "does a code-shaped response help?" is a durable, sliceable outcome
     /// dimension. Recorded once off the run's configuration (like [`effective_tools`](Self::effective_tools)),
     /// not derived from the telemetry stream.

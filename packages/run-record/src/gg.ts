@@ -283,7 +283,7 @@ export type GgCapabilitySet = {
    * interpretable beside the value it was set to. They are deliberately not a
    * capability — a capability is a feature under ablation, a ceiling is an operator's
    * guardrail over every capability at once — so they never appear in the
-   * [`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled) facet space.
+   * [`cap.*`](crate::gg_query) document namespace.
    * A set that declares none omits the key entirely, so every configuration stored
    * before ceilings existed round-trips unchanged.
    */
@@ -1353,8 +1353,8 @@ export type GgRunLimits = {
  * Which [execution ceiling](GgRunLimits) stopped a run.
  *
  * A closed, stable taxonomy (unlike the open capability ids): the console labels each one and the
- * [aggregation facet](crate::gg_aggregate::GgFacet::LimitHit) buckets by them, so the set is
- * fixed here rather than being a free string.
+ * query language's [`limit`](crate::gg_query::build_run_doc) document field groups by them, so the
+ * set is fixed here rather than being a free string.
  */
 export type GgLimitKind =
   | "turns"
@@ -1779,8 +1779,8 @@ export type GgSessionSummary = {
    * driven with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) (`"responses_as_code"`, the
    * model emitted programs gg ran in the wasmtime sandbox) or traditional tool calling
    * (`"tool_calling"`, the default). This is the effective-behavior companion to the
-   * [`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled)`{responses-as-code}`
-   * facet: the facet slices by the *configured* capability, and this field records the mode the
+   * [`cap.responses-as-code`](crate::gg_query) document field: that field slices by the
+   * *configured* capability, and this one records the mode the
    * run actually ran in, so "does a code-shaped response help?" is a durable, sliceable outcome
    * dimension. Recorded once off the run's configuration (like [`effective_tools`](Self::effective_tools)),
    * not derived from the telemetry stream.

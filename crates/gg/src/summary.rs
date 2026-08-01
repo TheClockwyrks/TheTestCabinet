@@ -230,7 +230,7 @@ impl SessionSummaryTracker {
     /// event carries, so the binary sets it once (off the run's capability set) before
     /// [finalizing](Self::finalize). Recording the mode the run *actually* ran in makes "does a
     /// code-shaped response help?" a durable, sliceable outcome dimension alongside the
-    /// [`capabilityEnabled`](test_cabinet_core::gg_aggregate::GgFacet::CapabilityEnabled) facet.
+    /// [`cap.responses-as-code`](test_cabinet_core::gg_query) document field.
     pub fn record_execution_mode(&self, mode: impl Into<String>) {
         let mut state = self.inner.lock().expect("summary tracker lock");
         state.execution_mode = Some(mode.into());

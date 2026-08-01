@@ -1,0 +1,17 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/gg/run-document.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One gg run as the query language sees it: a flat map of dotted field names to\n[scalars](GgValue).\n\nBuilt once per run by [`build_run_doc`] from its\n[run record](crate::run_record::RunRecord) plus the store's lifecycle columns, and\nthen never re-derived — the backend holds an index of these and the public static\nsite ships them as a snapshot artifact, where the *same* mirrored evaluator runs\nin the browser with no backend at all.\n\nA document is an order of magnitude smaller than the structures it derives from\nand carries configuration ids and outcome numbers only — **no source, no prompts,\nno model output** — which is what makes publishing it a redaction question rather\nthan a disclosure one. See [`build_run_doc`] for the namespaces.",
+  "properties": {
+    "fields": {
+      "additionalProperties": {
+        "$ref": "https://docs.testcabinet.ai/schema/gg/query.schema.json#/$defs/GgValue"
+      },
+      "default": {},
+      "description": "The run's fields, keyed by dotted name. A `BTreeMap` so serialization is\nkey-ordered and two builds of the same run are byte-identical.",
+      "type": "object"
+    }
+  },
+  "title": "GgRunDoc",
+  "type": "object"
+}

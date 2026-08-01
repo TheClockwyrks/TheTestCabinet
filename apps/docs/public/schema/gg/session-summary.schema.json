@@ -138,7 +138,7 @@
       "type": "object"
     },
     "GgLimitKind": {
-      "description": "Which [execution ceiling](GgRunLimits) stopped a run.\n\nA closed, stable taxonomy (unlike the open capability ids): the console labels each one and the\n[aggregation facet](crate::gg_aggregate::GgFacet::LimitHit) buckets by them, so the set is\nfixed here rather than being a free string.",
+      "description": "Which [execution ceiling](GgRunLimits) stopped a run.\n\nA closed, stable taxonomy (unlike the open capability ids): the console labels each one and the\nquery language's [`limit`](crate::gg_query::build_run_doc) document field groups by them, so the\nset is fixed here rather than being a free string.",
       "oneOf": [
         {
           "const": "turns",
@@ -236,7 +236,7 @@
     },
     "executionMode": {
       "default": "tool_calling",
-      "description": "Which **execution mode** the run's agents used — the durable record of whether the run was\ndriven with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) (`\"responses_as_code\"`, the\nmodel emitted programs gg ran in the wasmtime sandbox) or traditional tool calling\n(`\"tool_calling\"`, the default). This is the effective-behavior companion to the\n[`capabilityEnabled`](crate::gg_aggregate::GgFacet::CapabilityEnabled)`{responses-as-code}`\nfacet: the facet slices by the *configured* capability, and this field records the mode the\nrun actually ran in, so \"does a code-shaped response help?\" is a durable, sliceable outcome\ndimension. Recorded once off the run's configuration (like [`effective_tools`](Self::effective_tools)),\nnot derived from the telemetry stream.",
+      "description": "Which **execution mode** the run's agents used — the durable record of whether the run was\ndriven with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) (`\"responses_as_code\"`, the\nmodel emitted programs gg ran in the wasmtime sandbox) or traditional tool calling\n(`\"tool_calling\"`, the default). This is the effective-behavior companion to the\n[`cap.responses-as-code`](crate::gg_query) document field: that field slices by the\n*configured* capability, and this one records the mode the\nrun actually ran in, so \"does a code-shaped response help?\" is a durable, sliceable outcome\ndimension. Recorded once off the run's configuration (like [`effective_tools`](Self::effective_tools)),\nnot derived from the telemetry stream.",
       "type": "string"
     },
     "finalFullness": {

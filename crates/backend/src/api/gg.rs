@@ -23,8 +23,6 @@
 #[path = "gg.test.rs"]
 mod tests;
 
-use std::collections::HashMap;
-
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -33,14 +31,10 @@ use serde::{Deserialize, Serialize};
 
 use test_cabinet_core::LaunchBody;
 use test_cabinet_core::gg::GgCapabilitySet;
-use test_cabinet_core::gg_aggregate::{GgAggregateQuery, GgAggregateResponse};
 use test_cabinet_core::run_record::HarnessSlug;
 
 use crate::auth::AuthUser;
-use crate::db::StoredRun;
 use crate::error::ApiError;
-use crate::snapshot::run_summary_score;
-use crate::store::StoredManifest;
 
 use super::AppState;
 use super::jobs::{LaunchAck, build_new_job, now_rfc3339, resolve_gg_model_facts};
@@ -232,66 +226,4 @@ pub async fn launch_gg(
         live_url: format!("/jobs/{id}/live"),
     };
     Ok((StatusCode::ACCEPTED, Json(ack)).into_response())
-}
-
-/// `POST /gg/aggregate` — the **capability-set-sliced result-aggregation** query: run
-/// a Kibana-style structured query across the persisted gg runs and return the
-/// aggregated buckets. Requires a bearer token, the same gate as the other gg
-/// endpoints.
-///
-/// The handler loads the matching gg runs (harness `gg`, optionally narrowed to one
-/// test case by [`GgAggregateQuery::test_case`]), resolves each run's aggregate
-/// reviewer [score](test_cabinet_core::gg_aggregate::GgMetric::Score) from the case
-/// catalog (the checklist weights live only there — cached per `(slug, version)` so a
-/// case is read once per query rather than once per run), and then filters, groups,
-/// and aggregates entirely in memory (see
-/// [`crate::gg_aggregate::aggregate_stored_gg_runs`]). This is the simplest, most
-/// flexible path at gg's scale; a SQL push-down can come later without changing the
-/// contract. Every field the query slices by — the capability set (its per-capability
-/// enabled/implementation/params facets, its slot→model bindings, its preset) and the
-/// session summary — is already durably recorded on the run, so no schema change is
-/// needed.
-#[tracing::instrument(name = "gg.aggregate", skip(state, _user, query), err(Debug))]
-pub async fn aggregate_gg(
-    State(state): State<AppState>,
-    _user: AuthUser,
-    Json(query): Json<GgAggregateQuery>,
-) -> Result<Json<GgAggregateResponse>, ApiError> {
-    let runs = state
-        .db
-        .list_gg_runs(query.test_case.as_deref())
-        .await
-        .map_err(ApiError::from)?;
-
-    // Resolve each run's reviewer score up front, caching the case manifest per
-    // (slug, version) so a case's checklist weights are read once per query. The score
-    // metric is a `0.0..=1.0` fraction (earned checklist weight over the total
-    // available); a run with no reviews, or whose case is not ingested, scores `None`.
-    let mut manifests: HashMap<(String, String), Option<StoredManifest>> = HashMap::new();
-    let mut scores: HashMap<String, Option<f64>> = HashMap::new();
-    for run in &runs {
-        let subject = &run.record.subject;
-        let key = (
-            subject.test_case_slug.clone(),
-            subject.test_case_version.clone(),
-        );
-        let manifest = manifests.entry(key).or_insert_with(|| {
-            state
-                .store
-                .read_manifest(&subject.test_case_slug, &subject.test_case_version)
-                .ok()
-        });
-        let fraction = manifest.as_ref().and_then(|manifest| {
-            run_summary_score(manifest, &subject.variant, &run.reviews)
-                .filter(|score| score.total > 0)
-                .map(|score| score.earned / score.total as f64)
-        });
-        scores.insert(run.record.id.clone(), fraction);
-    }
-
-    let response =
-        crate::gg_aggregate::aggregate_stored_gg_runs(&runs, &query, |run: &StoredRun| {
-            scores.get(&run.record.id).copied().flatten()
-        });
-    Ok(Json(response))
 }

@@ -178,20 +178,12 @@ export const routes = {
     `/runs/gg/${encodeURIComponent(runId)}/replay`,
   // The gg **analysis** section (consoles only): its own top-level `/gg` space,
   // entered from the topbar's analyze control. It keeps the app's chrome but swaps
-  // the mark for a back arrow and the section nav for gg's own tabs — the
-  // cross-run dashboard it opens on, the Kibana-style aggregate query surface, and
-  // the recorded gg sessions.
+  // the mark for a back arrow and the section nav for gg's own tabs. It currently
+  // opens directly on the recorded sessions: the widget-builder aggregate surface
+  // was removed with the facet/metric vocabulary it was built on, and the query
+  // language that replaces it (Discover, Dashboards, Saved) mounts its own routes
+  // here when it lands.
   ggAnalysis: (): string => "/gg",
-  // The aggregate query builder. `search` reloads it with a query already
-  // composed — the encoded draft the results page hands back when an operator goes
-  // to revise the query they just ran (see `pages/gg/ggQuery`).
-  ggAnalysisAggregate: (search?: string): string =>
-    search ? `/gg/aggregate?${search}` : "/gg/aggregate",
-  // One ran aggregate query. The whole query rides in `search`, so the result is a
-  // page that can be linked to and reopened rather than state on the builder.
-  ggAnalysisAggregateResults: (search?: string): string =>
-    search ? `/gg/aggregate/results?${search}` : "/gg/aggregate/results",
-  ggAnalysisSessions: (): string => "/gg/sessions",
   // The run's default (Verdict) tab. `edit` opens the review editor in revise
   // mode — used by the single-review page's Edit control to return here with the
   // owner's review form reopened.
@@ -327,13 +319,10 @@ export const routePatterns = {
   // `/runs/:runId` dynamic route, and `ggMonitor`'s `/runs/gg/:jobId` is a sibling
   // of the plain `runMonitor` under that same static prefix.
   ggMonitor: "/runs/gg/:jobId/live",
-  // The gg analysis section's own top-level space (console-only), one route per
-  // tab so a surface is linkable and survives a reload.
+  // The gg analysis section's own top-level space (console-only). One route per
+  // tab, so a surface is linkable and survives a reload; today the section has a
+  // single tab and its index *is* that tab.
   ggAnalysis: "/gg",
-  ggAnalysisAggregate: "/gg/aggregate",
-  // A ran query's own page, a child path of the builder that composed it.
-  ggAnalysisAggregateResults: "/gg/aggregate/results",
-  ggAnalysisSessions: "/gg/sessions",
   // The debug-only step-through replay view, a sibling of `ggMonitor` under the
   // literal `/runs/gg` prefix (both outrank the `/runs/:runId` dynamic route).
   ggReplay: "/runs/gg/:runId/replay",

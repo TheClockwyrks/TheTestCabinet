@@ -5,11 +5,14 @@ title: "Result aggregation"
 gg sessions must be **queryable Kibana-style**: run structured queries across many gg
 sessions to gather and analyze data — not just look at one run at a time.
 
-:::note
-This page describes the facet-and-metric aggregation surface as it stands today.
-Its replacement — a flat run document plus a text pipeline language, with a
-document view, dashboards, saved queries, and a public-site path — is specified in
-[the query language](/gg/analysis/query-language/).
+:::caution[Superseded]
+The facet-and-metric surface this page describes — the closed `GgFacet`/`GgMetric`
+vocabulary, the widget builder, and `POST /gg/aggregate` — **has been removed**. Its
+replacement is [the query language](/gg/analysis/query-language/): a flat run
+document plus a text pipeline language, with a document view, dashboards, saved
+queries and a public-site path. The questions below are the ones the replacement is
+built to answer, and each is now one line of query text; the mechanics described
+further down are history.
 :::
 
 The point is to make the experiments gg enables **analyzable in aggregate**:

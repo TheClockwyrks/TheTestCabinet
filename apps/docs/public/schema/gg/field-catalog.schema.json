@@ -1,0 +1,101 @@
+{
+  "$defs": {
+    "GgFieldInfo": {
+      "description": "One field of the corpus, as the field sidebar and the completer see it.",
+      "properties": {
+        "documents": {
+          "description": "**How many documents carry it** — the number that makes a sparse field visible.\nA `tool.*` field is deliberately sparse ([rule 1](crate::gg_query#the-seven-semantic-rules)),\nand without this count an operator would have to *infer* that from an empty\nresult rather than see it before running the query.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "kind": {
+          "$ref": "#/$defs/GgFieldKind",
+          "description": "What kind of values it carries."
+        },
+        "name": {
+          "description": "The dotted field name.",
+          "type": "string"
+        },
+        "topValues": {
+          "description": "The most common values, count descending and ties by the\n[total order](GgValue::total_cmp), capped at [`GG_FIELD_TOP_VALUES`].",
+          "items": {
+            "$ref": "#/$defs/GgFieldValueCount"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["name", "kind", "documents"],
+      "type": "object"
+    },
+    "GgFieldKind": {
+      "description": "What kind of values a field carries across the corpus.\n\nDerived from the observed documents rather than declared, which is what keeps the\nfield side open — except [`Date`](Self::Date), which cannot be derived (a date *is*\na number, [rule 6](crate::gg_query#the-seven-semantic-rules)) and comes from the\n[known date fields](GG_DATE_FIELDS).",
+      "oneOf": [
+        {
+          "const": "string",
+          "description": "Every observed value is a string.",
+          "type": "string"
+        },
+        {
+          "const": "number",
+          "description": "Every observed value is a number.",
+          "type": "string"
+        },
+        {
+          "const": "boolean",
+          "description": "Every observed value is a boolean.",
+          "type": "string"
+        },
+        {
+          "const": "date",
+          "description": "A number that is an epoch-millisecond timestamp — offered a date picker and a\nhistogram interval rather than a raw number box.",
+          "type": "string"
+        },
+        {
+          "const": "mixed",
+          "description": "Values of more than one kind were observed. A corpus spanning a field rename or\na type change lands here; the editor still offers the field, and the\n[total order](GgValue::total_cmp) still groups it deterministically.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgFieldValueCount": {
+      "description": "One observed value of a field and how many documents carry it — the value\nsuggestions the editor offers after a colon, with their counts.",
+      "properties": {
+        "count": {
+          "description": "How many documents carry it.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "value": {
+          "$ref": "https://docs.testcabinet.ai/schema/gg/query.schema.json#/$defs/GgValue",
+          "description": "The value."
+        }
+      },
+      "required": ["value", "count"],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/gg/field-catalog.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The field catalog: the union of every key across the corpus, with each field's\nkind, document count and top values.\n\n**The second mirrored function**, and the reason the conformance fixture covers it\ntoo: a drift here is a one-host-only autocomplete regression, which is far harder\nto notice than a wrong number.",
+  "properties": {
+    "documents": {
+      "description": "How many documents the catalog was derived from — the denominator for every\nfield's [`documents`](GgFieldInfo::documents).",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "fields": {
+      "default": [],
+      "description": "The fields, by name ascending (Unicode code point).",
+      "items": {
+        "$ref": "#/$defs/GgFieldInfo"
+      },
+      "type": "array"
+    }
+  },
+  "required": ["documents"],
+  "title": "GgFieldCatalog",
+  "type": "object"
+}

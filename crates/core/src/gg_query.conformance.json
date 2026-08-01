@@ -1,0 +1,1537 @@
+{
+  "$comment": "The TCQ conformance fixture. Executed by BOTH the Rust suite (crates/core/src/gg_query.test.rs) and the TypeScript twin, because `evaluate` and `field_catalog` exist twice and a drift between them publishes different numbers on the console and the public site. Every case names the rule it pins; a change to any evaluator rule must arrive with a case here that would have caught the drift. Timestamps are epoch milliseconds: 1767225600000 is 2026-01-01T00:00:00Z, a Thursday, which is what makes the week-origin case load-bearing.",
+  "documents": [
+    {
+      "fields": {
+        "id": "r1",
+        "finished": 1767229200000,
+        "state": "completed",
+        "published": false,
+        "reviewCount": 0,
+        "case": "carom",
+        "model": "anthropic/claude-a",
+        "label": "a",
+        "cap.compaction": true,
+        "cap.memories": false,
+        "cap.shell": true,
+        "tool.edit_file": true,
+        "tool.shell": true,
+        "metric.runTimeSeconds": 10,
+        "metric.cost": 0.5,
+        "has.summary": true,
+        "has.capabilitySet": true
+      }
+    },
+    {
+      "fields": {
+        "id": "r2",
+        "finished": 1767229200000,
+        "state": "completed",
+        "published": true,
+        "reviewCount": 2,
+        "score": 0.75,
+        "case": "carom",
+        "model": "anthropic/claude-b",
+        "label": "！",
+        "cap.compaction": false,
+        "cap.memories": true,
+        "cap.shell": true,
+        "tool.shell": true,
+        "metric.runTimeSeconds": 20,
+        "metric.cost": 1.5,
+        "has.summary": true,
+        "has.capabilitySet": true
+      }
+    },
+    {
+      "fields": {
+        "id": "r3",
+        "finished": 1767315600000,
+        "state": "timed_out",
+        "published": false,
+        "reviewCount": 0,
+        "case": "coil",
+        "model": "openai/gpt-x",
+        "label": "😀",
+        "cap.compaction": true,
+        "cap.memories": false,
+        "cap.shell": true,
+        "tool.edit_file": true,
+        "metric.runTimeSeconds": 30,
+        "has.summary": true,
+        "has.capabilitySet": true
+      }
+    },
+    {
+      "fields": {
+        "id": "r4",
+        "finished": 1767402000000,
+        "state": "hung",
+        "published": false,
+        "reviewCount": 1,
+        "score": 0.25,
+        "case": "coil",
+        "model": "openai/gpt-y",
+        "label": "Z",
+        "cap.compaction": false,
+        "cap.memories": false,
+        "cap.shell": true,
+        "metric.runTimeSeconds": 40,
+        "metric.cost": 2,
+        "has.summary": true,
+        "has.capabilitySet": true
+      }
+    },
+    {
+      "fields": {
+        "id": "r5",
+        "finished": 1768003200000,
+        "state": "infrastructure",
+        "published": false,
+        "reviewCount": 0,
+        "case": "carom",
+        "model": "anthropic/claude-a",
+        "cap.compaction": false,
+        "cap.memories": false,
+        "cap.shell": false,
+        "has.summary": false,
+        "has.capabilitySet": true
+      }
+    },
+    {
+      "fields": {
+        "id": "r6",
+        "state": "catastrophic",
+        "published": false,
+        "reviewCount": 0,
+        "case": "coil",
+        "model": "openai/gpt-x",
+        "cap.compaction": true,
+        "cap.memories": false,
+        "cap.shell": true,
+        "has.summary": false,
+        "has.capabilitySet": false
+      }
+    }
+  ],
+  "fieldCatalog": {
+    "documents": 6,
+    "fields": [
+      {
+        "name": "cap.compaction",
+        "kind": "boolean",
+        "documents": 6,
+        "topValues": [
+          {
+            "value": false,
+            "count": 3
+          },
+          {
+            "value": true,
+            "count": 3
+          }
+        ]
+      },
+      {
+        "name": "cap.memories",
+        "kind": "boolean",
+        "documents": 6,
+        "topValues": [
+          {
+            "value": false,
+            "count": 5
+          },
+          {
+            "value": true,
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "cap.shell",
+        "kind": "boolean",
+        "documents": 6,
+        "topValues": [
+          {
+            "value": true,
+            "count": 5
+          },
+          {
+            "value": false,
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "case",
+        "kind": "string",
+        "documents": 6,
+        "topValues": [
+          {
+            "value": "carom",
+            "count": 3
+          },
+          {
+            "value": "coil",
+            "count": 3
+          }
+        ]
+      },
+      {
+        "name": "finished",
+        "kind": "date",
+        "documents": 5,
+        "topValues": [
+          {
+            "value": 1767229200000.0,
+            "count": 2
+          },
+          {
+            "value": 1767315600000.0,
+            "count": 1
+          },
+          {
+            "value": 1767402000000.0,
+            "count": 1
+          },
+          {
+            "value": 1768003200000.0,
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "has.capabilitySet",
+        "kind": "boolean",
+        "documents": 6,
+        "topValues": [
+          {
+            "value": true,
+            "count": 5
+          },
+          {
+            "value": false,
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "has.summary",
+        "kind": "boolean",
+        "documents": 6,
+        "topValues": [
+          {
+            "value": true,
+            "count": 4
+          },
+          {
+            "value": false,
+            "count": 2
+          }
+        ]
+      },
+      {
+        "name": "id",
+        "kind": "string",
+        "documents": 6,
+        "topValues": [
+          {
+            "value": "r1",
+            "count": 1
+          },
+          {
+            "value": "r2",
+            "count": 1
+          },
+          {
+            "value": "r3",
+            "count": 1
+          },
+          {
+            "value": "r4",
+            "count": 1
+          },
+          {
+            "value": "r5",
+            "count": 1
+          },
+          {
+            "value": "r6",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "label",
+        "kind": "string",
+        "documents": 4,
+        "topValues": [
+          {
+            "value": "Z",
+            "count": 1
+          },
+          {
+            "value": "a",
+            "count": 1
+          },
+          {
+            "value": "！",
+            "count": 1
+          },
+          {
+            "value": "😀",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "metric.cost",
+        "kind": "number",
+        "documents": 3,
+        "topValues": [
+          {
+            "value": 0.5,
+            "count": 1
+          },
+          {
+            "value": 1.5,
+            "count": 1
+          },
+          {
+            "value": 2.0,
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "metric.runTimeSeconds",
+        "kind": "number",
+        "documents": 4,
+        "topValues": [
+          {
+            "value": 10.0,
+            "count": 1
+          },
+          {
+            "value": 20.0,
+            "count": 1
+          },
+          {
+            "value": 30.0,
+            "count": 1
+          },
+          {
+            "value": 40.0,
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "model",
+        "kind": "string",
+        "documents": 6,
+        "topValues": [
+          {
+            "value": "anthropic/claude-a",
+            "count": 2
+          },
+          {
+            "value": "openai/gpt-x",
+            "count": 2
+          },
+          {
+            "value": "anthropic/claude-b",
+            "count": 1
+          },
+          {
+            "value": "openai/gpt-y",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "published",
+        "kind": "boolean",
+        "documents": 6,
+        "topValues": [
+          {
+            "value": false,
+            "count": 5
+          },
+          {
+            "value": true,
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "reviewCount",
+        "kind": "number",
+        "documents": 6,
+        "topValues": [
+          {
+            "value": 0.0,
+            "count": 4
+          },
+          {
+            "value": 1.0,
+            "count": 1
+          },
+          {
+            "value": 2.0,
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "score",
+        "kind": "number",
+        "documents": 2,
+        "topValues": [
+          {
+            "value": 0.25,
+            "count": 1
+          },
+          {
+            "value": 0.75,
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "state",
+        "kind": "string",
+        "documents": 6,
+        "topValues": [
+          {
+            "value": "completed",
+            "count": 2
+          },
+          {
+            "value": "catastrophic",
+            "count": 1
+          },
+          {
+            "value": "hung",
+            "count": 1
+          },
+          {
+            "value": "infrastructure",
+            "count": 1
+          },
+          {
+            "value": "timed_out",
+            "count": 1
+          }
+        ]
+      },
+      {
+        "name": "tool.edit_file",
+        "kind": "boolean",
+        "documents": 2,
+        "topValues": [
+          {
+            "value": true,
+            "count": 2
+          }
+        ]
+      },
+      {
+        "name": "tool.shell",
+        "kind": "boolean",
+        "documents": 2,
+        "topValues": [
+          {
+            "value": true,
+            "count": 2
+          }
+        ]
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "the default document order is finished descending, ties by id, absent last",
+      "why": "Rule: document order is imposed before filtering so both implementations fold in the same sequence. r1 and r2 share a finish time, so the id tiebreak is exercised; r6 has no finished timestamp and must land last rather than first.",
+      "query": {},
+      "expect": {
+        "totalRuns": 6,
+        "documentIds": [
+          "r5",
+          "r4",
+          "r3",
+          "r1",
+          "r2",
+          "r6"
+        ]
+      }
+    },
+    {
+      "name": "an absent field fails != like every other comparison",
+      "why": "Rule 1, the arm most likely to be got wrong: r5 and r6 carry no runtime at all, and the tempting reading of `!= 10` would include them.",
+      "query": {
+        "filter": {
+          "kind": "compare",
+          "field": "metric.runTimeSeconds",
+          "op": "ne",
+          "value": 10
+        }
+      },
+      "expect": {
+        "totalRuns": 3,
+        "documentIds": [
+          "r4",
+          "r3",
+          "r2"
+        ]
+      }
+    },
+    {
+      "name": "not is the only way to reach an absent field",
+      "why": "Rule 1's other half: negating the same predicate does pick up the two runs that lack the field, which is what makes the blunt comparison rule usable.",
+      "query": {
+        "filter": {
+          "kind": "not",
+          "clause": {
+            "kind": "compare",
+            "field": "metric.runTimeSeconds",
+            "op": "eq",
+            "value": 10
+          }
+        }
+      },
+      "expect": {
+        "totalRuns": 5,
+        "documentIds": [
+          "r5",
+          "r4",
+          "r3",
+          "r2",
+          "r6"
+        ]
+      }
+    },
+    {
+      "name": "an absent metric is absent, not zero",
+      "why": "Rule 3. r5 is an infrastructure failure whose record carries default metrics; if the builder had flattened a zero run time it would appear here.",
+      "query": {
+        "filter": {
+          "kind": "exists",
+          "field": "metric.runTimeSeconds"
+        }
+      },
+      "expect": {
+        "totalRuns": 4,
+        "documentIds": [
+          "r4",
+          "r3",
+          "r1",
+          "r2"
+        ]
+      }
+    },
+    {
+      "name": "a glob matches case-insensitively",
+      "why": "`:` is equality with `*` globs and no case sensitivity, which is what makes model prefix search a first-class predicate without a second operator.",
+      "query": {
+        "filter": {
+          "kind": "compare",
+          "field": "model",
+          "op": "eq",
+          "value": "ANTHROPIC/*"
+        }
+      },
+      "expect": {
+        "totalRuns": 3,
+        "documentIds": [
+          "r5",
+          "r1",
+          "r2"
+        ]
+      }
+    },
+    {
+      "name": "an open-ended range is inclusive on the bound it names",
+      "why": "`[20 to *]` must include 20 itself and must not admit the documents that lack the field.",
+      "query": {
+        "filter": {
+          "kind": "range",
+          "field": "metric.runTimeSeconds",
+          "from": 20
+        }
+      },
+      "expect": {
+        "totalRuns": 3,
+        "documentIds": [
+          "r4",
+          "r3",
+          "r2"
+        ]
+      }
+    },
+    {
+      "name": "an open lower bound is inclusive too",
+      "why": "The mirror of the case above, so an off-by-one on either bound is caught.",
+      "query": {
+        "filter": {
+          "kind": "range",
+          "field": "metric.runTimeSeconds",
+          "to": 20
+        }
+      },
+      "expect": {
+        "totalRuns": 2,
+        "documentIds": [
+          "r1",
+          "r2"
+        ]
+      }
+    },
+    {
+      "name": "or expresses what an all-AND engine could not",
+      "why": "\"hung or timed out\" is the query the closed vocabulary this language replaced was structurally unable to ask.",
+      "query": {
+        "filter": {
+          "kind": "or",
+          "clauses": [
+            {
+              "kind": "compare",
+              "field": "state",
+              "op": "eq",
+              "value": "hung"
+            },
+            {
+              "kind": "compare",
+              "field": "state",
+              "op": "eq",
+              "value": "timed_out"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 2,
+        "documentIds": [
+          "r4",
+          "r3"
+        ]
+      }
+    },
+    {
+      "name": "a limit truncates and says so",
+      "why": "totalRuns must stay the unlimited count, so a limited page never makes the denominator lie.",
+      "query": {
+        "limit": 2
+      },
+      "expect": {
+        "totalRuns": 6,
+        "truncated": true,
+        "documentIds": [
+          "r5",
+          "r4"
+        ]
+      }
+    },
+    {
+      "name": "the total cap.* projection makes an enablement rate honest",
+      "why": "Every document carries cap.compaction, including the runs that never configured it, so avg() contributes 6 of 6 and the rate is over all runs rather than over the ones that mentioned the capability.",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "avg",
+              "field": "cap.compaction",
+              "alias": "compaction_rate"
+            },
+            {
+              "func": "count"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 6,
+        "columns": [
+          {
+            "name": "compaction_rate",
+            "func": "avg",
+            "field": "cap.compaction"
+          },
+          {
+            "name": "count()",
+            "func": "count"
+          }
+        ],
+        "buckets": [
+          {
+            "key": [],
+            "n": 6,
+            "values": [
+              {
+                "name": "compaction_rate",
+                "value": 0.5,
+                "contributing": 6
+              },
+              {
+                "name": "count()",
+                "value": 6,
+                "contributing": 6
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a sparse tool.* field reports a smaller denominator",
+      "why": "tool.* is deliberately sparse, so `contributing` (2) is what tells a reader the average is over two runs and not six. Without it the 1.0 would read as \"every run had the edit tool\".",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "avg",
+              "field": "tool.edit_file"
+            },
+            {
+              "func": "count"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 6,
+        "buckets": [
+          {
+            "key": [],
+            "n": 6,
+            "values": [
+              {
+                "name": "avg(tool.edit_file)",
+                "value": 1,
+                "contributing": 2
+              },
+              {
+                "name": "count()",
+                "value": 6,
+                "contributing": 6
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "not on a sparse field finds the runs that never had the tool",
+      "why": "Because tool.* is sparse, \"never offered this tool\" has to be written as a negation — and it must catch runs with no summary at all as well as runs whose summary listed other tools.",
+      "query": {
+        "filter": {
+          "kind": "not",
+          "clause": {
+            "kind": "exists",
+            "field": "tool.edit_file"
+          }
+        }
+      },
+      "expect": {
+        "totalRuns": 4,
+        "documentIds": [
+          "r5",
+          "r4",
+          "r2",
+          "r6"
+        ]
+      }
+    },
+    {
+      "name": "a sum over a bucket that carried nothing is absent, not zero",
+      "why": "A zero here would invent a measurement and draw a zero bar on a chart. `contributing` is 0 and the value is omitted.",
+      "query": {
+        "filter": {
+          "kind": "compare",
+          "field": "id",
+          "op": "eq",
+          "value": "r6"
+        },
+        "stats": {
+          "aggs": [
+            {
+              "func": "sum",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "count"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 1,
+        "buckets": [
+          {
+            "key": [],
+            "n": 1,
+            "values": [
+              {
+                "name": "sum(metric.runTimeSeconds)",
+                "contributing": 0
+              },
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "distinct counts under the same total order as bucket keys",
+      "why": "Two runs share a model, so distinct must be 4 over 6 contributing documents — and it must agree with what a group-by on the same field would produce.",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "distinct",
+              "field": "model"
+            },
+            {
+              "func": "count"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 6,
+        "buckets": [
+          {
+            "key": [],
+            "n": 6,
+            "values": [
+              {
+                "name": "distinct(model)",
+                "value": 4,
+                "contributing": 6
+              },
+              {
+                "name": "count()",
+                "value": 6,
+                "contributing": 6
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "quantiles at n=1 collapse to the single observation",
+      "why": "One of the four n=1..4 cases that pin the repository's single interpolated quantile definition; at n=1 every figure is the observation itself and the interval has no width.",
+      "query": {
+        "filter": {
+          "kind": "compare",
+          "field": "id",
+          "op": "eq",
+          "value": "r1"
+        },
+        "stats": {
+          "aggs": [
+            {
+              "func": "median",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "p90",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "p95",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "dist",
+              "field": "metric.runTimeSeconds"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 1,
+        "buckets": [
+          {
+            "key": [],
+            "n": 1,
+            "values": [
+              {
+                "name": "median(metric.runTimeSeconds)",
+                "value": 10,
+                "contributing": 1
+              },
+              {
+                "name": "p90(metric.runTimeSeconds)",
+                "value": 10,
+                "contributing": 1
+              },
+              {
+                "name": "p95(metric.runTimeSeconds)",
+                "value": 10,
+                "contributing": 1
+              },
+              {
+                "name": "dist(metric.runTimeSeconds)",
+                "contributing": 1,
+                "distribution": {
+                  "n": 1,
+                  "min": 10,
+                  "q1": 10,
+                  "median": 10,
+                  "q3": 10,
+                  "max": 10,
+                  "mean": 10
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "quantiles at n=2 interpolate between the two observations",
+      "why": "The first case where interpolation actually runs: the median of [10, 20] is 15, and p90 lands nine tenths of the way up.",
+      "query": {
+        "filter": {
+          "kind": "oneOf",
+          "field": "id",
+          "values": [
+            "r1",
+            "r2"
+          ]
+        },
+        "stats": {
+          "aggs": [
+            {
+              "func": "median",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "p90",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "dist",
+              "field": "metric.runTimeSeconds"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 2,
+        "buckets": [
+          {
+            "key": [],
+            "n": 2,
+            "values": [
+              {
+                "name": "median(metric.runTimeSeconds)",
+                "value": 15,
+                "contributing": 2
+              },
+              {
+                "name": "p90(metric.runTimeSeconds)",
+                "value": 19,
+                "contributing": 2
+              },
+              {
+                "name": "dist(metric.runTimeSeconds)",
+                "contributing": 2,
+                "distribution": {
+                  "n": 2,
+                  "min": 10,
+                  "q1": 12.5,
+                  "median": 15,
+                  "q3": 17.5,
+                  "max": 20,
+                  "mean": 15
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "quantiles at n=3 land exactly on the middle rank",
+      "why": "An odd sample: the median is an observation rather than an interpolation, and p90 sits four fifths of the way from the second rank to the third.",
+      "query": {
+        "filter": {
+          "kind": "oneOf",
+          "field": "id",
+          "values": [
+            "r1",
+            "r2",
+            "r3"
+          ]
+        },
+        "stats": {
+          "aggs": [
+            {
+              "func": "median",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "p90",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "dist",
+              "field": "metric.runTimeSeconds"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 3,
+        "buckets": [
+          {
+            "key": [],
+            "n": 3,
+            "values": [
+              {
+                "name": "median(metric.runTimeSeconds)",
+                "value": 20,
+                "contributing": 3
+              },
+              {
+                "name": "p90(metric.runTimeSeconds)",
+                "value": 28,
+                "contributing": 3
+              },
+              {
+                "name": "dist(metric.runTimeSeconds)",
+                "contributing": 3,
+                "distribution": {
+                  "n": 3,
+                  "min": 10,
+                  "q1": 15,
+                  "median": 20,
+                  "q3": 25,
+                  "max": 30,
+                  "mean": 20
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "quantiles at n=4 interpolate across three intervals",
+      "why": "The fourth of the n=1..4 cases; the quartiles fall a quarter and three quarters of the way along the rank axis, which is where a rank-vs-index confusion shows up.",
+      "query": {
+        "filter": {
+          "kind": "oneOf",
+          "field": "id",
+          "values": [
+            "r1",
+            "r2",
+            "r3",
+            "r4"
+          ]
+        },
+        "stats": {
+          "aggs": [
+            {
+              "func": "median",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "p90",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "p95",
+              "field": "metric.runTimeSeconds"
+            },
+            {
+              "func": "dist",
+              "field": "metric.runTimeSeconds"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 4,
+        "buckets": [
+          {
+            "key": [],
+            "n": 4,
+            "values": [
+              {
+                "name": "median(metric.runTimeSeconds)",
+                "value": 25,
+                "contributing": 4
+              },
+              {
+                "name": "p90(metric.runTimeSeconds)",
+                "value": 37,
+                "contributing": 4
+              },
+              {
+                "name": "p95(metric.runTimeSeconds)",
+                "value": 38.5,
+                "contributing": 4
+              },
+              {
+                "name": "dist(metric.runTimeSeconds)",
+                "contributing": 4,
+                "distribution": {
+                  "n": 4,
+                  "min": 10,
+                  "q1": 17.5,
+                  "median": 25,
+                  "q3": 32.5,
+                  "max": 40,
+                  "mean": 25
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a plain group-by orders by count descending, then by key",
+      "why": "The default bucket order. Four states tie at one run each, so the key tiebreak decides their order and the result is stable across hosts.",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "count"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "field",
+              "field": "state"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 6,
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "state",
+                "value": "completed"
+              }
+            ],
+            "n": 2,
+            "values": [
+              {
+                "name": "count()",
+                "value": 2,
+                "contributing": 2
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "state",
+                "value": "catastrophic"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "state",
+                "value": "hung"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "state",
+                "value": "infrastructure"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "state",
+                "value": "timed_out"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a day histogram floors against the epoch and orders chronologically",
+      "why": "The exception to count-descending order. The two-run bucket is first here only because it is also the earliest; what is being pinned is that the sequence is ascending in time so a line chart draws a series rather than a zigzag. The run with no finish time buckets under absence and lands last.",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "count"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "bucket",
+              "field": "finished",
+              "interval": {
+                "count": 1,
+                "unit": "day"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 6,
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "finished",
+                "value": 1767225600000
+              }
+            ],
+            "n": 2,
+            "values": [
+              {
+                "name": "count()",
+                "value": 2,
+                "contributing": 2
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "finished",
+                "value": 1767312000000
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "finished",
+                "value": 1767398400000
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "finished",
+                "value": 1768003200000
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "finished"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a week histogram floors against a Monday, not the Thursday epoch",
+      "why": "The single most likely mirroring bug. Flooring 2026-01-01 (a Thursday) against the epoch would open the bucket on that Thursday; the correct origin is Monday 2025-12-29 (1766966400000), so the four runs of that week land together and the run on 2026-01-10 opens the week of Monday 2026-01-05 (1767571200000).",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "count"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "bucket",
+              "field": "finished",
+              "interval": {
+                "count": 1,
+                "unit": "week"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 6,
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "finished",
+                "value": 1766966400000
+              }
+            ],
+            "n": 4,
+            "values": [
+              {
+                "name": "count()",
+                "value": 4,
+                "contributing": 4
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "finished",
+                "value": 1767571200000
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "finished"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "string buckets order by Unicode code point, not by UTF-16 code unit",
+      "why": "U+FF01 (！) is above U+D800, so a TypeScript implementation using `<` or localeCompare orders it AFTER the astral U+1F600 (😀), which is a surrogate pair. Code-point order puts ！ first. The absent bucket sorts last in both directions, which this ascending sort also pins.",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "count"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "field",
+              "field": "label"
+            }
+          ]
+        },
+        "sort": [
+          {
+            "field": "label"
+          }
+        ]
+      },
+      "expect": {
+        "totalRuns": 6,
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "label",
+                "value": "Z"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "label",
+                "value": "a"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "label",
+                "value": "！"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "label",
+                "value": "😀"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "label"
+              }
+            ],
+            "n": 2,
+            "values": [
+              {
+                "name": "count()",
+                "value": 2,
+                "contributing": 2
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a descending sort still puts an absent value last",
+      "why": "An absent value is unplaced, not an extreme. Reversing it with the direction would put the runs that never got a score at the top of \"highest scoring first\", which is exactly where a reader is looking for the opposite.",
+      "query": {
+        "sort": [
+          {
+            "field": "score",
+            "desc": true
+          }
+        ]
+      },
+      "expect": {
+        "totalRuns": 6,
+        "documentIds": [
+          "r2",
+          "r4",
+          "r5",
+          "r3",
+          "r1",
+          "r6"
+        ]
+      }
+    },
+    {
+      "name": "free text matches string fields only",
+      "why": "A bare term is a word. It finds the two carom runs by their case slug and the third by its model, but it must not match the decimal spelling of a cost or a timestamp.",
+      "query": {
+        "filter": {
+          "kind": "text",
+          "text": "CAROM"
+        }
+      },
+      "expect": {
+        "totalRuns": 3,
+        "documentIds": [
+          "r5",
+          "r1",
+          "r2"
+        ]
+      }
+    }
+  ]
+}

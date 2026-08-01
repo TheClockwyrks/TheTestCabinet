@@ -39,9 +39,9 @@
       "types": "./dist/gg-system-prompt.d.ts",
       "default": "./dist/gg-system-prompt.js"
     },
-    "./gg-aggregate": {
-      "types": "./dist/gg-aggregate.d.ts",
-      "default": "./dist/gg-aggregate.js"
+    "./gg-query": {
+      "types": "./dist/gg-query.d.ts",
+      "default": "./dist/gg-query.js"
     },
     "./comparison": {
       "types": "./dist/comparison.d.ts",

@@ -23,7 +23,7 @@ use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_c
 use test_cabinet_backend::{api as bapi, error as berr, relay, snapshot as snap};
 use test_cabinet_core::{
     accounts as acct, comparison as cmp, comparison_stats as cstats, event as ev, gg,
-    gg_aggregate as gga, gg_replay as ggr, match_play as mp, metrics as m, review as rv,
+    gg_query as ggq, gg_replay as ggr, match_play as mp, metrics as m, review as rv,
     run_record as rr, test_case as tc, validation as val,
 };
 
@@ -243,19 +243,22 @@ fn main() -> Result<()> {
                 ggr::GgReplayRecord,
             ],
         },
-        // The gg result-aggregation query contract: the Kibana-style query over many
-        // gg runs (sliced by the capability set), its facets/metrics/filters, and the
-        // aggregated response buckets. `GgStateCount` references `RunState`, owned by
-        // the run-record document, so that import resolves cross-module.
+        // The gg analysis query language (TCQ): the flat run document every query runs
+        // over, the compiled query the client sends, the results it produces, and the
+        // field catalog the editor's completer and sidebar read. The parser/compiler
+        // are TypeScript-only by design, so this module is what they compile *to*; the
+        // evaluator is mirrored against these same shapes.
         TsModule {
-            file: "gg-aggregate.ts",
+            file: "gg-query.ts",
             decls: ts_decls![&cfg;
-                gga::GgSummaryField, gga::GgFacet, gga::GgFacetBinding,
-                gga::GgMetric, gga::GgAggregation, gga::GgMetricSpec,
-                gga::GgFacetOp, gga::GgFacetFilter, gga::GgCompareOp, gga::GgMetricFilter,
-                gga::GgAggregateQuery,
-                gga::GgBucketKeyPart, gga::GgMetricValue, gga::GgStateCount,
-                gga::GgAggregateBucket, gga::GgAggregateResponse,
+                ggq::GgValue, ggq::GgRunDoc,
+                ggq::GgCompareOp, ggq::GgFilter,
+                ggq::GgAggFunc, ggq::GgAgg,
+                ggq::GgIntervalUnit, ggq::GgInterval, ggq::GgGroupKey,
+                ggq::GgStatsStage, ggq::GgSortKey, ggq::GgQuery,
+                ggq::GgDistribution, ggq::GgAggValue, ggq::GgBucketKeyPart, ggq::GgBucket,
+                ggq::GgAggColumn, ggq::GgQueryResponse,
+                ggq::GgFieldKind, ggq::GgFieldValueCount, ggq::GgFieldInfo, ggq::GgFieldCatalog,
             ],
         },
         // The harness-comparison (A/B) contract: the stored config (controls and the
@@ -523,46 +526,60 @@ fn main() -> Result<()> {
             owns: &["GgReplayToolStep"],
             schema: root_schema::<gg::GgReplayStep>(),
         },
-        // The gg result-aggregation query request: it owns its facet/metric/filter
-        // vocabulary, which the response document below cross-references.
+        // The compiled TCQ query — the single wire form of a gg analysis query. It owns
+        // the whole language vocabulary (the filter tree, the aggregation functions,
+        // the histogram intervals), which the response and document below
+        // cross-reference.
         SchemaDoc {
-            rel_path: "gg/aggregate-query.schema.json",
-            root: Some("GgAggregateQuery"),
+            rel_path: "gg/query.schema.json",
+            root: Some("GgQuery"),
             owns: &[
-                "GgFacet",
-                "GgFacetFilter",
-                "GgFacetOp",
-                "GgMetric",
-                "GgMetricFilter",
+                "GgValue",
                 "GgCompareOp",
-                "GgMetricSpec",
-                "GgAggregation",
-                "GgSummaryField",
+                "GgFilter",
+                "GgAggFunc",
+                "GgAgg",
+                "GgIntervalUnit",
+                "GgInterval",
+                "GgGroupKey",
+                "GgStatsStage",
+                "GgSortKey",
             ],
-            schema: root_schema::<gga::GgAggregateQuery>(),
+            schema: root_schema::<ggq::GgQuery>(),
         },
-        // The gg result-aggregation response: the aggregated buckets. `GgFacet`,
-        // `GgMetric`, and `GgAggregation` are owned by the query document above, and
-        // `RunState` by the run-record document, so those refs become cross-document
-        // URLs.
+        // A gg run as the query language sees it: one flat map of dotted field names to
+        // scalars. Its own document because it is what the public static site ships as
+        // a snapshot artifact and evaluates in the browser, independent of any query.
         SchemaDoc {
-            rel_path: "gg/aggregate-response.schema.json",
-            root: Some("GgAggregateResponse"),
-            owns: &[
-                "GgAggregateBucket",
-                "GgBucketKeyPart",
-                "GgMetricValue",
-                "GgStateCount",
-            ],
-            schema: root_schema::<gga::GgAggregateResponse>(),
+            rel_path: "gg/run-document.schema.json",
+            root: Some("GgRunDoc"),
+            owns: &[],
+            schema: root_schema::<ggq::GgRunDoc>(),
         },
-        // The gg capability-set facet binding: the sliceable facets extracted from a
-        // capability set (the console's facet picker). `GgFacet` is owned by the
-        // aggregate-query document, so its ref is rewritten cross-document.
-        anon(
-            "gg/facet-binding.schema.json",
-            root_schema::<gga::GgFacetBinding>(),
-        ),
+        // The result of a TCQ query: the matching documents or the aggregated buckets.
+        // `GgValue`, `GgAggFunc` and `GgRunDoc` are owned by the two documents above,
+        // so those refs become cross-document URLs.
+        SchemaDoc {
+            rel_path: "gg/query-response.schema.json",
+            root: Some("GgQueryResponse"),
+            owns: &[
+                "GgDistribution",
+                "GgAggValue",
+                "GgBucketKeyPart",
+                "GgBucket",
+                "GgAggColumn",
+            ],
+            schema: root_schema::<ggq::GgQueryResponse>(),
+        },
+        // The field catalog: every field observed across the corpus, with its kind,
+        // document count and top values — the completer's and the field sidebar's
+        // source, and the second mirrored function.
+        SchemaDoc {
+            rel_path: "gg/field-catalog.schema.json",
+            root: Some("GgFieldCatalog"),
+            owns: &["GgFieldInfo", "GgFieldKind", "GgFieldValueCount"],
+            schema: root_schema::<ggq::GgFieldCatalog>(),
+        },
         // The backend's run-queue (`/jobs`) control plane. These reference the core
         // run-record document by URL (the launch request, the claimed job, and the
         // driver's status update all carry or echo a `RunRecord`); any type local to

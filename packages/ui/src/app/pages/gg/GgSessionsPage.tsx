@@ -22,14 +22,16 @@ const PAGE_SIZE = 20;
 const GG_HARNESS = "gg";
 
 // The gg analysis section's Sessions tab: every recorded gg run, newest first, in
-// the same dense run log the rest of the console uses.
+// the same dense run log the rest of the console uses. Today it is also the
+// section's index — the widget-builder aggregate surface was removed with the closed
+// facet/metric vocabulary it was built on, and the query language replacing it will
+// mount Discover, Dashboards and Saved beside this tab.
 //
-// It is the bridge from an aggregate to the individual sessions behind it: the
-// dashboard and Aggregate tabs answer "what happened across runs", and a row here
-// opens the one run — its verdict, its telemetry, and its step-through replay (every
-// gg run records one). The listing is the ordinary summary query narrowed to the gg
-// harness, so it stays in step with the runs list rather than duplicating its
-// paging.
+// It is the bridge from an aggregate to the individual sessions behind it: a query
+// answers "what happened across runs", and a row here opens the one run — its
+// verdict, its telemetry, and its step-through replay (every gg run records one).
+// The listing is the ordinary summary query narrowed to the gg harness, so it stays
+// in step with the runs list rather than duplicating its paging.
 //
 // It draws from the **unfiltered** `any` slice rather than the published one every
 // other listing defaults to: gg runs are experiment material, published only if
