@@ -214,7 +214,7 @@ export type GgReplayBlob = {
  * whole of it.
  *
  * A [standard](GgReplayFidelity::Standard) capture clips a payload past
- * [its ceiling](GG_REPLAY_STANDARD_TEXT_MAX_BYTES). The clip has to be self-describing, and the
+ * [its ceiling](GgReplayFidelity::stream_max_bytes). The clip has to be self-describing, and the
  * text pool is a bare `Vec<String>` with nowhere to say so — a reader handed a 32 KiB string
  * cannot tell a command that printed exactly that much from one that printed forty megabytes, and
  * the difference is the whole of whether a reconstruction comparing its own output against it is
@@ -646,9 +646,32 @@ export type GgReplayToolOutcome = {
   images?: Array<number>;
   /**
    * The structured facts a responses-as-code program branches on, when the tool
-   * produced them.
+   * produced them — with the one unbounded text field lifted out into
+   * [`data_text`](Self::data_text).
    */
   data?: Record<string, unknown>;
+  /**
+   * The bulky text lifted out of [`data`](Self::data), as an index into
+   * [`texts`](GgReplayRecord::texts).
+   *
+   * Two of gg's structured tool payloads carry the *whole* of what the tool returned a second
+   * time: a `read_file`'s `contents` (up to 256 KiB) and a `shell`'s `body`. Left inline they
+   * would be the largest thing in the record and the one thing in it that is neither pooled nor
+   * clipped — five reads of the same 100 KB file would store it five times, uncompressed, in a
+   * format whose entire premise is that v1's per-turn re-serialization of payloads was the
+   * defect worth fixing. Worse, an inline copy disagrees with a clipped
+   * [`output`](Self::output), leaving the entry with two answers to what the tool returned.
+   *
+   * Pooling it fixes all three at once: the bytes are stored once, under the same ceiling
+   * `output` is clipped at, and — because a `read_file`'s `contents` and its `output` are
+   * usually the identical string — they normally dedup to the *same* pool entry, so the second
+   * copy costs nothing at all.
+   *
+   * Which field it belongs to is determined by `data`'s own variant, so nothing has to be
+   * recorded twice to say. Absent on a record whose tool produced no such payload, and on every
+   * record written before the lift, whose `data` still carries its text inline.
+   */
+  dataText?: number;
   /**
    * Why the call failed, when it failed and the failure was classified.
    */

@@ -108,21 +108,44 @@ pub fn fingerprint_exact(bytes: &[u8]) -> String {
     hex::encode(&digest[..GG_REPLAY_ID_HEX_LEN / 2])
 }
 
-/// How many bytes of one pooled text payload a [standard](GgReplayFidelity::Standard) capture
-/// keeps: 32 KiB.
+/// How many bytes of one pooled **subprocess stream** a [standard](GgReplayFidelity::Standard)
+/// capture keeps: 32 KiB.
 ///
-/// The ceiling exists because the text pool is the one pool whose entries are unbounded by
-/// anything gg controls. A message is bounded by the model's context window and an image by the
-/// file that produced it, but a `git diff` over a tree the model has been building for forty
-/// minutes, or a failing test suite's output, is bounded only by what the subprocess felt like
-/// printing — and a run has hundreds of them. Clipping them is what keeps a *standard* record the
+/// The ceiling exists because a raw process stream is the one payload class unbounded by anything
+/// gg controls. A message is bounded by the model's context window and an image by the file that
+/// produced it, but a `git diff` over a tree the model has been building for forty minutes, or a
+/// failing test suite's output, is bounded only by what the subprocess felt like printing — and a
+/// run has hundreds of them. Clipping them is what keeps a *standard* record the
 /// well-under-a-megabyte artifact that justifies capturing every run.
 ///
 /// Sized at twice the 16 KiB cap gg's own [shell tool](https://docs.testcabinet.ai/gg/tools/)
-/// applies to the output it shows the model: a payload the model was shown in full is therefore
-/// recorded in full, and only the parts of a payload the model never saw are ever at risk of being
-/// clipped.
-pub const GG_REPLAY_STANDARD_TEXT_MAX_BYTES: usize = 32 * 1024;
+/// applies to the output it shows the model, so the clip always covers everything the model saw of
+/// the command plus as much again of what it did not.
+pub const GG_REPLAY_STANDARD_STREAM_MAX_BYTES: usize = 32 * 1024;
+
+/// How many bytes of one pooled **tool payload** a [standard](GgReplayFidelity::Standard) capture
+/// keeps: 256 KiB.
+///
+/// Eight times the [stream ceiling](GG_REPLAY_STANDARD_STREAM_MAX_BYTES), and deliberately so:
+/// these two seams record different things and only one of them is bounded by a cap the model's
+/// own view shares. A recorded stream is what the process printed, of which `shell` shows the model
+/// the last 16 KiB; a recorded tool payload **is** what the model was shown, and the largest such
+/// payload gg hands over is a whole-file `read_file`, capped at 256 KiB by the filesystem tool
+/// itself. Sizing this ceiling at that cap is what keeps the invariant a reader depends on: *a
+/// payload the model was shown in full is recorded in full*, so a clip in the tool pool means the
+/// tool layer had already clipped it too.
+///
+/// A single 32 KiB ceiling across both seams broke that. It recorded a 100 KB source file the model
+/// read in its entirety as a 32 KiB tail, cut mid-file — a reconstruction feeding that back would
+/// present the model with a different file than the run did, and report the resulting divergence as
+/// model drift.
+pub const GG_REPLAY_STANDARD_TOOL_MAX_BYTES: usize = 256 * 1024;
+
+/// The two ceilings are separate numbers with separate reasons, and the tool one is deliberately
+/// the larger; collapsing them back to a single value is the regression this fails the build on.
+/// The tie that matters most — tool ceiling ≥ `read_file`'s own cap — is asserted the same way in
+/// `gg`'s `replay` module, which is the one place both of *those* numbers are in scope.
+const _: () = assert!(GG_REPLAY_STANDARD_TOOL_MAX_BYTES > GG_REPLAY_STANDARD_STREAM_MAX_BYTES);
 
 /// The [content address](fingerprint_exact) of a JSON value, over its compact
 /// serialization.
@@ -186,7 +209,7 @@ pub enum GgReplayFidelity {
     /// prompt frame. This is what a reconstruction needs, and it is what every run gets
     /// for free.
     ///
-    /// Text payloads are [clipped](GG_REPLAY_STANDARD_TEXT_MAX_BYTES) here, and a clipped one
+    /// Text payloads are [clipped](GG_REPLAY_STANDARD_STREAM_MAX_BYTES) here, and a clipped one
     /// says so — see [`clips`](GgReplayRecord::clips). Nothing else is withheld: the difference
     /// between the two fidelities is deliberately small, because a capture that is on for every
     /// run is only worth having if what it captures is enough on its own.
@@ -243,15 +266,26 @@ pub enum GgReplayFidelity {
 }
 
 impl GgReplayFidelity {
-    /// The per-payload text ceiling this fidelity records under: the
-    /// [standard ceiling](GG_REPLAY_STANDARD_TEXT_MAX_BYTES), or `None` for
+    /// The ceiling one pooled **subprocess stream** is recorded under: the
+    /// [stream ceiling](GG_REPLAY_STANDARD_STREAM_MAX_BYTES), or `None` for
     /// [`Full`](Self::Full), which clips nothing.
-    ///
-    /// The one place the clipping rule is written, so a recorder, a test and a reader cannot hold
-    /// three opinions about what a `full` record promises.
-    pub fn text_max_bytes(self) -> Option<usize> {
+    pub fn stream_max_bytes(self) -> Option<usize> {
         match self {
-            Self::Standard => Some(GG_REPLAY_STANDARD_TEXT_MAX_BYTES),
+            Self::Standard => Some(GG_REPLAY_STANDARD_STREAM_MAX_BYTES),
+            Self::Full => None,
+        }
+    }
+
+    /// The ceiling one pooled **tool payload** is recorded under: the
+    /// [tool ceiling](GG_REPLAY_STANDARD_TOOL_MAX_BYTES), or `None` for [`Full`](Self::Full).
+    ///
+    /// Separate from [`stream_max_bytes`](Self::stream_max_bytes) because the two seams record
+    /// payloads with different provenance — see the two constants. Both live here so that a
+    /// recorder, a test and a reader cannot hold three opinions about what a record of either
+    /// fidelity promises.
+    pub fn tool_max_bytes(self) -> Option<usize> {
+        match self {
+            Self::Standard => Some(GG_REPLAY_STANDARD_TOOL_MAX_BYTES),
             Self::Full => None,
         }
     }
@@ -398,7 +432,7 @@ pub struct GgReplayToolset {
 /// whole of it.
 ///
 /// A [standard](GgReplayFidelity::Standard) capture clips a payload past
-/// [its ceiling](GG_REPLAY_STANDARD_TEXT_MAX_BYTES). The clip has to be self-describing, and the
+/// [its ceiling](GgReplayFidelity::stream_max_bytes). The clip has to be self-describing, and the
 /// text pool is a bare `Vec<String>` with nowhere to say so — a reader handed a 32 KiB string
 /// cannot tell a command that printed exactly that much from one that printed forty megabytes, and
 /// the difference is the whole of whether a reconstruction comparing its own output against it is
@@ -853,10 +887,33 @@ pub struct GgReplayToolOutcome {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<u32>,
     /// The structured facts a responses-as-code program branches on, when the tool
-    /// produced them.
+    /// produced them — with the one unbounded text field lifted out into
+    /// [`data_text`](Self::data_text).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional, type = "Record<string, unknown>"))]
     pub data: Option<Value>,
+    /// The bulky text lifted out of [`data`](Self::data), as an index into
+    /// [`texts`](GgReplayRecord::texts).
+    ///
+    /// Two of gg's structured tool payloads carry the *whole* of what the tool returned a second
+    /// time: a `read_file`'s `contents` (up to 256 KiB) and a `shell`'s `body`. Left inline they
+    /// would be the largest thing in the record and the one thing in it that is neither pooled nor
+    /// clipped — five reads of the same 100 KB file would store it five times, uncompressed, in a
+    /// format whose entire premise is that v1's per-turn re-serialization of payloads was the
+    /// defect worth fixing. Worse, an inline copy disagrees with a clipped
+    /// [`output`](Self::output), leaving the entry with two answers to what the tool returned.
+    ///
+    /// Pooling it fixes all three at once: the bytes are stored once, under the same ceiling
+    /// `output` is clipped at, and — because a `read_file`'s `contents` and its `output` are
+    /// usually the identical string — they normally dedup to the *same* pool entry, so the second
+    /// copy costs nothing at all.
+    ///
+    /// Which field it belongs to is determined by `data`'s own variant, so nothing has to be
+    /// recorded twice to say. Absent on a record whose tool produced no such payload, and on every
+    /// record written before the lift, whose `data` still carries its text inline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub data_text: Option<u32>,
     /// Why the call failed, when it failed and the failure was classified.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional, type = "Record<string, unknown>"))]
@@ -1459,9 +1516,10 @@ pub trait GgReplayInterner {
 
     /// Intern one string payload, keeping at most `max_bytes` of it, and return its index.
     ///
-    /// `max_bytes` is [the fidelity's ceiling](GgReplayFidelity::text_max_bytes): `None` stores
-    /// the payload whole, and `Some(n)` stores [the last `n` bytes](clip_text) of a longer one and
-    /// records a [clip](GgReplayTextClip) saying what was dropped.
+    /// `max_bytes` is whichever of the fidelity's two ceilings the calling seam records under —
+    /// [stream](GgReplayFidelity::stream_max_bytes) or [tool](GgReplayFidelity::tool_max_bytes).
+    /// `None` stores the payload whole, and `Some(n)` stores [the last `n` bytes](clip_text) of a
+    /// longer one and records a [clip](GgReplayTextClip) saying what was dropped.
     ///
     /// **Dedup keys on the address of the payload as given**, never on the stored clip. Two
     /// distinct payloads sharing a tail therefore occupy two pool entries rather than collapsing
@@ -1911,6 +1969,11 @@ fn upgrade_v1_entry(entry: &Value, pools: &mut GgReplayPools) -> Result<GgReplay
                         })
                         .unwrap_or_default(),
                     data: outcome.get("data").cloned().filter(|data| !data.is_null()),
+                    // v1 inlined the whole of a tool's structured payload, so an upgraded record's
+                    // `data` is already complete and nothing was lifted out of it. Interning it
+                    // here would be a rewrite of what the session recorded, which upgrade never
+                    // does — it re-shapes, it does not re-decide.
+                    data_text: None,
                     failure: outcome
                         .get("failure")
                         .cloned()

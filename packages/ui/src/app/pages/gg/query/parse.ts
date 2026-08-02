@@ -64,6 +64,15 @@ const COMPARE_OPS: Record<string, GgCompareOp> = {
   "<=": "lte",
 };
 
+/** A bare word that *opens* like a relative date, valid or not — the only words
+ *  {@link Parser.checkRelativeDate} inspects. */
+const RELATIVE_DATE_OPENER = /^[nN][oO][wW][+-]/;
+
+/** The offsets the compiler resolves, in the spelling it resolves them in. Kept in step
+ *  with `RELATIVE_DATE` in `compile.ts`; case-**sensitive** on the unit, so `now-1M` is
+ *  a diagnostic here rather than one minute there. */
+const RELATIVE_DATE = /^[nN][oO][wW][+-]\d+[smhdw]$/;
+
 /** The interval suffixes, mapped to the compiled unit. Deliberately stops at the week:
  *  a month is not a fixed number of milliseconds, so bucketing by one would need a civil
  *  calendar in **both** implementations. */
@@ -367,9 +376,33 @@ class Parser {
     }
     if (token.kind === "word") {
       this.next();
+      this.checkRelativeDate(token);
       return { raw: token.text, quoted: false, span: { start: token.start, end: token.end } };
     }
     return null;
+  }
+
+  /**
+   * Report a mis-spelled relative date instead of letting it fall through to a string.
+   *
+   * `now-1M` is the spelling worth catching, and it is the sibling of the `1M` histogram
+   * interval this parser already rejects. Both failure modes are silent: a
+   * case-insensitive unit resolves it to one *minute*, answering "the last sixty
+   * seconds" to a question about the last month; and a compiler that instead left it as
+   * the bare string `now-1M` would compare a timestamp against a word and quietly match
+   * nothing. So the near-misses are named here, where there is a diagnostic channel —
+   * the compiler has none, being total by construction.
+   *
+   * Only words that already *open* like an offset are checked, so an ordinary search
+   * term is never second-guessed.
+   */
+  private checkRelativeDate(token: Token): void {
+    if (!RELATIVE_DATE_OPENER.test(token.text)) return;
+    if (RELATIVE_DATE.test(token.text)) return;
+    this.error(
+      token,
+      `\`${token.text}\` is not a relative date — use e.g. \`now-30d\`, \`now-1h\`, \`now+15m\`. A month is not a fixed width, so there is no \`M\``,
+    );
   }
 
   /**

@@ -78,7 +78,7 @@
 //! difference is deliberately small — a capture that runs on every run is only worth having if what
 //! it captures is enough on its own — so **every input that changes control flow is recorded at
 //! both**. Full adds exactly two things: it stores every text payload whole rather than
-//! [clipping](test_cabinet_core::gg_replay::GG_REPLAY_STANDARD_TEXT_MAX_BYTES) it, and it records
+//! [clipping](test_cabinet_core::gg_replay::GG_REPLAY_STANDARD_STREAM_MAX_BYTES) it, and it records
 //! each model call's measured latency, which is the one clock read the loop does not branch on.
 //!
 //! Every entry is stamped with the recording agent's id and a **globally monotonic** sequence minted
@@ -95,17 +95,28 @@ use std::thread::JoinHandle;
 use serde_json::Value;
 use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::gg_replay::{
-    GG_REPLAY_FORMAT_VERSION, GgClientRole, GgReplayCommand, GgReplayEntry, GgReplayEntryKind,
-    GgReplayFidelity, GgReplayFileRegion, GgReplayInterner, GgReplayModelError,
-    GgReplayModelErrorKind, GgReplayPromptItem, GgReplayPromptSlot, GgReplayRecorder,
-    GgReplayRequestShape, GgReplayRetention, GgReplayToolCall, GgReplayToolOutcome,
-    GgReplayTruncation, GgReplayTruncationReason, GgShellCwd, GgShellOrigin,
+    GG_REPLAY_FORMAT_VERSION, GG_REPLAY_STANDARD_TOOL_MAX_BYTES, GgClientRole, GgReplayCommand,
+    GgReplayEntry, GgReplayEntryKind, GgReplayFidelity, GgReplayFileRegion, GgReplayInterner,
+    GgReplayModelError, GgReplayModelErrorKind, GgReplayPromptItem, GgReplayPromptSlot,
+    GgReplayRecorder, GgReplayRequestShape, GgReplayRetention, GgReplayToolCall,
+    GgReplayToolOutcome, GgReplayTruncation, GgReplayTruncationReason, GgShellCwd, GgShellOrigin,
 };
 use test_cabinet_core::gg_replay_journal::{GgJournalInterner, GgJournalLine};
 
 use crate::context::{PromptItem, PromptSlot, Retention};
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
-use crate::tools::ToolOutcome;
+use crate::tools::{READ_FILE_CAP, ToolData, ToolOutcome};
+
+/// A standard capture must keep whole whatever the model was shown whole, and the largest such
+/// payload gg produces is a whole-file `read_file`. So the record's tool ceiling has to cover the
+/// tool layer's own cap — asserted here, at the one place both numbers are in scope, because the
+/// failure it guards against is silent: a ceiling below the cap records a file the model read in
+/// its entirety as a tail of itself, and a reconstruction feeding that back reports the resulting
+/// divergence as model drift rather than as a hole in the record.
+///
+/// A compile error, not a test, because either constant can be lowered by someone who has never
+/// read the other and the relation between them is the whole invariant.
+const _: () = assert!(GG_REPLAY_STANDARD_TOOL_MAX_BYTES >= READ_FILE_CAP);
 
 /// How many queued batches the writer thread may fall behind by before capture stops.
 ///
@@ -569,10 +580,19 @@ impl GgRecorder {
         }
     }
 
-    /// The per-payload text ceiling this capture interns under — `None` at
+    /// The ceiling a **subprocess stream** is interned under — `None` at
     /// [full](GgReplayFidelity::Full) fidelity, which stores every payload whole.
-    fn text_max_bytes(&self) -> Option<usize> {
-        self.fidelity.text_max_bytes()
+    fn stream_max_bytes(&self) -> Option<usize> {
+        self.fidelity.stream_max_bytes()
+    }
+
+    /// The ceiling a **tool payload** is interned under, which is eight times the stream ceiling
+    /// and for a reason worth restating at the seam: what a tool returns *is* what the model was
+    /// shown, so clipping it below the tool layer's own cap would record a file the model read in
+    /// full as a tail of itself. See
+    /// [`GG_REPLAY_STANDARD_TOOL_MAX_BYTES`](test_cabinet_core::gg_replay::GG_REPLAY_STANDARD_TOOL_MAX_BYTES).
+    fn tool_max_bytes(&self) -> Option<usize> {
+        self.fidelity.tool_max_bytes()
     }
 
     /// Record one **shell command** gg ran on the agent's behalf, from whichever of the three
@@ -613,7 +633,7 @@ impl GgRecorder {
     /// Intern one subprocess's streams and push the entry `kind` builds from them.
     ///
     /// Both stream payloads are interned under the capture's
-    /// [ceiling](Self::text_max_bytes): a build log is the archetype of a payload that is
+    /// [stream ceiling](Self::stream_max_bytes): a build log is the archetype of a payload that is
     /// megabytes long, was never shown to the model in full, and is worth its bytes only when
     /// somebody escalated the run to full fidelity.
     fn record_command(
@@ -622,7 +642,7 @@ impl GgRecorder {
         kind: impl FnOnce(GgReplayCommand) -> GgReplayEntryKind,
         command: RecordedCommand<'_>,
     ) {
-        let max_bytes = self.text_max_bytes();
+        let max_bytes = self.stream_max_bytes();
         let mut capture = self.capture.lock().expect("replay capture lock");
         if capture.stopped.is_some() {
             return;
@@ -696,10 +716,10 @@ impl GgRecorder {
     /// made.
     pub fn record_tool_result(&self, agent_id: &str, call: &ToolCall, outcome: &ToolOutcome) {
         let arguments = call.arguments.clone();
-        let data = outcome.data.as_ref().map(to_value);
+        let (data, lifted) = split_tool_data(outcome.data.as_ref());
         let failure = outcome.failure.as_ref().map(to_value);
 
-        let max_bytes = self.text_max_bytes();
+        let max_bytes = self.tool_max_bytes();
         let mut capture = self.capture.lock().expect("replay capture lock");
         if capture.stopped.is_some() {
             return;
@@ -710,6 +730,12 @@ impl GgRecorder {
         let output = capture
             .interner
             .intern_text_clipped(&outcome.output, max_bytes);
+        // The text lifted out of `data` goes through the same pool under the same ceiling — and
+        // usually lands on the entry `output` just took, because a whole-file read's `contents` and
+        // its `output` are the same string.
+        let data_text = lifted
+            .as_deref()
+            .map(|text| capture.interner.intern_text_clipped(text, max_bytes));
         let summary = outcome
             .summary
             .as_deref()
@@ -740,6 +766,7 @@ impl GgRecorder {
                     summary,
                     images,
                     data,
+                    data_text,
                     failure,
                 },
             },
@@ -911,6 +938,40 @@ fn write_journal(mut file: File, lines: &std::sync::mpsc::Receiver<String>) -> W
 /// one — which is the right shape for a capture that must never abort what it observes.
 fn to_value<T: serde::Serialize>(value: &T) -> Value {
     serde_json::to_value(value).unwrap_or(Value::Null)
+}
+
+/// Split a tool's structured [`ToolData`] into the part that is recorded inline and the one
+/// unbounded text field that is [pooled instead](GgReplayToolOutcome::data_text).
+///
+/// Two variants carry the whole of what the tool returned a second time — a `read_file`'s
+/// `contents` and a `shell`'s `body` — and both are duplicates of the `output` the same outcome
+/// already interns. Recording them inline would put the record's single largest payload in the one
+/// place that is neither pooled, deduped nor clipped, and would leave the entry holding two
+/// disagreeing answers whenever the ceiling did cut `output`.
+///
+/// The lift is by **variant**, not by field name, so it cannot silently start (or stop) applying to
+/// a payload as `ToolData` grows: a new variant carrying an unbounded string has to be added here
+/// deliberately, and until it is, it is recorded inline exactly as today. Every other variant is a
+/// handful of numbers and short strings and is left whole — pooling those would cost a pool entry
+/// to save nothing.
+///
+/// The returned text is `Some` whenever the variant *has* the field, empty body included, so the
+/// reconstruction's restore is driven by the variant alone and never has to guess whether an
+/// absent index means "empty" or "not lifted".
+fn split_tool_data(data: Option<&ToolData>) -> (Option<Value>, Option<String>) {
+    match data {
+        Some(ToolData::FileText(file)) => {
+            let mut file = file.clone();
+            let contents = std::mem::take(&mut file.contents);
+            (Some(to_value(&ToolData::FileText(file))), Some(contents))
+        }
+        Some(ToolData::Shell(shell)) => {
+            let mut shell = shell.clone();
+            let body = std::mem::take(&mut shell.body);
+            (Some(to_value(&ToolData::Shell(shell))), Some(body))
+        }
+        other => (other.map(to_value), None),
+    }
 }
 
 /// A [`ModelClient`] decorator that streams each turn's **model I/O** into a [`GgRecorder`].

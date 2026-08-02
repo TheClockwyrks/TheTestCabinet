@@ -618,6 +618,20 @@ fn write_record(
     // The journal carries no provenance lines yet, so an assembled record's seed and
     // agent table are empty rather than absent: both are `#[serde(default)]`, and a
     // reader that must know whether an agent row exists asks the table, not the format.
+    //
+    // **Both are unimplemented, not merely unpopulated**, and the distinction matters to
+    // anyone building on this: `GgReplayAgent` is constructed nowhere outside its own
+    // tests, so `agents` is empty on *every* record that has ever been produced, at both
+    // fidelities. The invocation envelope `GgReplaySeed` is specified to carry — the
+    // prompt, the model windows, the resolved modalities, the baseline commit and the
+    // provided files as blob refs — is likewise absent everywhere.
+    //
+    // This is a **blocking prerequisite for driving playback**, which binds live agents
+    // through the `agents` table and seeds a workspace from `seed`; deriving the agent
+    // set from the entries instead (as `ReplayInputs::agent_ids` does today) silently
+    // loses an agent that was spawned and recorded nothing. It is owned by **M7.5** in
+    // the build order — filed there precisely so that it stops being disclosed by each
+    // step in passing and belonging to none of them.
     out.write_all(b",")?;
     write_field(&mut out, "seed", &GgReplaySeed::default())?;
     out.write_all(b",")?;

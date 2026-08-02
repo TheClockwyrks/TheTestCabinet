@@ -62,7 +62,13 @@ pub const READ_FILE_TOOL: &str = "read_file";
 /// Ceiling on the bytes `read_file` returns to the model, so a huge file cannot flood
 /// context. Applied **after** any [line window](ReadPolicy), as the last-resort backstop
 /// against a file with enormous lines; the returned text carries a truncation note.
-const READ_FILE_CAP: usize = 256 * 1024;
+///
+/// Visible to the crate because [replay capture](crate::replay) sizes its own tool-payload
+/// ceiling *at* this number and asserts the relation at compile time: a record has to keep whole
+/// whatever the model was shown whole, so lowering the replay ceiling below this one — or raising
+/// this one above it — must fail the build rather than quietly start recording a file the model
+/// read in full as a tail of itself.
+pub(crate) const READ_FILE_CAP: usize = 256 * 1024;
 
 /// Ceiling on the **decoded** size of an image `read_file` will attach, in bytes.
 ///

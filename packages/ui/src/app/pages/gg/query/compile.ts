@@ -41,8 +41,18 @@ const RELATIVE_UNITS: Record<string, number> = {
   w: 604_800_000,
 };
 
-/** `now`, optionally offset: `now-30d`, `now+1h`. */
-const RELATIVE_DATE = /^now(?:([+-])(\d+)([smhdw]))?$/i;
+/**
+ * `now`, optionally offset: `now-30d`, `now+1h`.
+ *
+ * The keyword is case-insensitive; the **unit is not**, for exactly the reason a
+ * histogram interval's is not. `M` is a month in most query languages, and under a
+ * case-insensitive match of this pattern it would fall through to the `m` alternative
+ * and resolve to one *minute* — a factor of forty-three thousand, with no diagnostic,
+ * because the literal parsed. The parser rejects the near-miss spellings by name
+ * (`Parser.checkRelativeDate`); anything that still reaches here unmatched stays a
+ * string.
+ */
+const RELATIVE_DATE = /^[nN][oO][wW](?:([+-])(\d+)([smhdw]))?$/;
 
 /** A bare calendar day, `2026-01-01`. Deliberately **day resolution only**: `:` is the
  *  equality operator, so a full ISO timestamp cannot lex as one bare word. Anything
@@ -207,7 +217,7 @@ export function literalValue(
   const relative = RELATIVE_DATE.exec(raw);
   if (relative) {
     if (!relative[1]) return now;
-    const magnitude = Number(relative[2]) * RELATIVE_UNITS[relative[3]!.toLowerCase()]!;
+    const magnitude = Number(relative[2]) * RELATIVE_UNITS[relative[3]!]!;
     return relative[1] === "-" ? now - magnitude : now + magnitude;
   }
 

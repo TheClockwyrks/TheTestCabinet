@@ -9,8 +9,8 @@ use serde_json::json;
 use tempfile::TempDir;
 use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::gg_replay::{
-    GG_REPLAY_BLOB_REF_KEY, GG_REPLAY_FORMAT_VERSION, GG_REPLAY_STANDARD_TEXT_MAX_BYTES,
-    GgReplayPools, fingerprint_exact,
+    GG_REPLAY_BLOB_REF_KEY, GG_REPLAY_FORMAT_VERSION, GG_REPLAY_STANDARD_STREAM_MAX_BYTES,
+    GG_REPLAY_STANDARD_TOOL_MAX_BYTES, GgReplayPools, fingerprint_exact,
 };
 use test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH;
 use test_cabinet_core::metrics::TokenCounts;
@@ -1267,7 +1267,7 @@ fn one_payload_recorded_from_two_seams_shares_one_text_pool_entry() {
 #[test]
 fn a_standard_capture_clips_a_large_payload_and_records_what_it_dropped() {
     let (dir, recorder) = recorder_in(None);
-    let huge = "x".repeat(GG_REPLAY_STANDARD_TEXT_MAX_BYTES * 2);
+    let huge = "x".repeat(GG_REPLAY_STANDARD_STREAM_MAX_BYTES * 2);
     recorder.record_git(
         "root",
         RecordedCommand {
@@ -1290,7 +1290,7 @@ fn a_standard_capture_clips_a_large_payload_and_records_what_it_dropped() {
             _ => None,
         })
         .expect("the stdout line");
-    assert_eq!(text.len(), GG_REPLAY_STANDARD_TEXT_MAX_BYTES);
+    assert_eq!(text.len(), GG_REPLAY_STANDARD_STREAM_MAX_BYTES);
     let clip = clip.expect("a clipped payload says so");
     assert_eq!(clip.original_bytes, huge.len() as u64);
     assert_eq!(
@@ -1306,7 +1306,7 @@ fn a_standard_capture_clips_a_large_payload_and_records_what_it_dropped() {
 #[test]
 fn a_full_capture_keeps_every_payload_whole() {
     let (dir, recorder) = recorder_at(GgReplayFidelity::Full, None);
-    let huge = "x".repeat(GG_REPLAY_STANDARD_TEXT_MAX_BYTES * 2);
+    let huge = "x".repeat(GG_REPLAY_STANDARD_STREAM_MAX_BYTES * 2);
     recorder.record_git(
         "root",
         RecordedCommand {
@@ -1341,7 +1341,7 @@ fn a_full_capture_keeps_every_payload_whole() {
 #[test]
 fn two_payloads_sharing_a_tail_are_clipped_to_two_pool_entries() {
     let (dir, recorder) = recorder_in(None);
-    let tail = "y".repeat(GG_REPLAY_STANDARD_TEXT_MAX_BYTES);
+    let tail = "y".repeat(GG_REPLAY_STANDARD_STREAM_MAX_BYTES);
     let first = format!("first{tail}");
     let second = format!("second-and-longer{tail}");
     for stdout in [&first, &second] {
@@ -1374,6 +1374,133 @@ fn two_payloads_sharing_a_tail_are_clipped_to_two_pool_entries() {
     assert_ne!(
         clips[0].original_bytes, clips[1].original_bytes,
         "and reports its own payload's length, not the other's"
+    );
+}
+
+/// A payload the **model was shown whole** is recorded whole, even though it is far past the
+/// ceiling a subprocess stream is clipped at.
+///
+/// The two seams record different things: a stream is what a process printed, of which the model
+/// sees the last 16 KiB, while a tool outcome *is* what the model saw. Clipping the second at the
+/// first's ceiling recorded a 100 KB file the model read in its entirety as a 32 KiB tail cut
+/// mid-file — and a reconstruction feeding that back presents the model with a different file than
+/// the run did, then reports the divergence as model drift.
+#[test]
+fn a_standard_capture_records_a_whole_file_read_without_clipping_it() {
+    let (dir, recorder) = recorder_in(None);
+    // Three times the stream ceiling, and comfortably under `read_file`'s own 256 KiB cap: the
+    // exact band the single old ceiling got wrong.
+    let file = "x".repeat(GG_REPLAY_STANDARD_STREAM_MAX_BYTES * 3);
+    recorder.record_tool_result(
+        "root",
+        &tool_call("c1", "read_file"),
+        &ToolOutcome::ok(file.clone(), "read 98304 bytes"),
+    );
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let texts: Vec<_> = lines
+        .iter()
+        .filter_map(|line| match line {
+            GgJournalLine::Text { text, clip, .. } => Some((text.len(), clip.is_some())),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        texts.contains(&(file.len(), false)),
+        "the file is stored whole, with no clip row: {texts:?}"
+    );
+}
+
+/// A tool payload past **the tool ceiling** is still clipped — the fidelity axis did not disappear
+/// at this seam, it moved.
+#[test]
+fn a_standard_capture_still_clips_a_tool_payload_past_the_tool_ceiling() {
+    let (dir, recorder) = recorder_in(None);
+    let huge = "x".repeat(GG_REPLAY_STANDARD_TOOL_MAX_BYTES + 1);
+    recorder.record_tool_result(
+        "root",
+        &tool_call("c1", "read_file"),
+        &ToolOutcome::ok(huge.clone(), "read a very large file"),
+    );
+    recorder.finish();
+
+    let clip = journal(&dir)
+        .into_iter()
+        .find_map(|line| match line {
+            GgJournalLine::Text { clip, .. } => clip,
+            _ => None,
+        })
+        .expect("a payload past the tool ceiling is clipped");
+    assert_eq!(clip.original_bytes, huge.len() as u64);
+}
+
+/// A `read_file`'s structured payload repeats the file body a second time, and that copy is
+/// **pooled with the first** rather than inlined beside it.
+///
+/// Inline, it was the one payload in the record that was neither deduped nor clipped: five reads of
+/// the same 100 KB file stored it five times, uncompressed, in a format whose whole premise is that
+/// per-turn re-serialization of payloads was v1's defect. Pooled, the body and the outcome's
+/// `output` are the same string and therefore the same pool entry — the second copy is free.
+#[test]
+fn a_structured_file_payload_is_pooled_with_the_output_it_duplicates() {
+    let (dir, recorder) = recorder_in(None);
+    let file = "hello, file\n".repeat(64);
+    let outcome = ToolOutcome::ok(file.clone(), "read 768 bytes").with_data(ToolData::FileText(
+        crate::tools::FileTextData {
+            contents: file.clone(),
+            first_line: 1,
+            last_line: 64,
+            total_lines: 64,
+            byte_truncated: false,
+            limit_reduced: false,
+        },
+    ));
+    for call in 0..5 {
+        recorder.record_tool_result(
+            "root",
+            &tool_call(&format!("c{call}"), "read_file"),
+            &outcome,
+        );
+    }
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let bodies = lines
+        .iter()
+        .filter(|line| matches!(line, GgJournalLine::Text { text, .. } if text == &file))
+        .count();
+    assert_eq!(
+        bodies, 1,
+        "five reads of one file write the body to the journal exactly once"
+    );
+
+    let entry = entries(&lines)[0];
+    let GgReplayEntryKind::ToolResult { outcome, .. } = &entry.kind else {
+        panic!("a tool result");
+    };
+    assert_eq!(
+        outcome.data_text,
+        Some(outcome.output),
+        "the lifted body resolves to the very pool entry `output` took"
+    );
+    // `ToolData` is adjacently tagged, so the payload sits under `data` beside its `kind`.
+    let data = outcome.data.as_ref().expect("the structured payload");
+    assert_eq!(
+        data.pointer("/kind").and_then(Value::as_str),
+        Some("fileText"),
+        "the variant is still named, which is what drives the restore"
+    );
+    assert_eq!(
+        data.pointer("/data/contents").and_then(Value::as_str),
+        Some(""),
+        "and the inline copy is gone — the record holds one answer to what the tool returned, not \
+         two that can disagree"
+    );
+    assert_eq!(
+        data.pointer("/data/totalLines").and_then(Value::as_u64),
+        Some(64),
+        "while everything a reconstruction actually branches on stays inline"
     );
 }
 

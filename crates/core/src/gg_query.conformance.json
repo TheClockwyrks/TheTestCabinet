@@ -1,5 +1,5 @@
 {
-  "$comment": "The TCQ conformance fixture. Executed by BOTH the Rust suite (crates/core/src/gg_query.test.rs) and the TypeScript twin (packages/ui/src/app/pages/gg/query/conformance.test.ts, which reads THIS file rather than a copy), because `evaluate` and `field_catalog` exist twice and a drift between them publishes different numbers on the console and the public site. Every case names the rule it pins; a change to any evaluator rule must arrive with a case here that would have caught the drift. Timestamps are epoch milliseconds: 1767225600000 is 2026-01-01T00:00:00Z, a Thursday, which is what makes the week-origin case load-bearing.",
+  "$comment": "The TCQ conformance fixture. Executed by BOTH the Rust suite (crates/core/src/gg_query.test.rs) and the TypeScript twin (packages/ui/src/app/pages/gg/query/conformance.test.ts, which reads THIS file rather than a copy), because `evaluate` and `field_catalog` exist twice and a drift between them publishes different numbers on the console and the public site. Every case names the rule it pins; a change to any evaluator rule must arrive with a case here that would have caught the drift. Timestamps are epoch milliseconds: 1767225600000 is 2026-01-01T00:00:00Z, a Thursday, which is what makes the week-origin case load-bearing. Most cases run over the shared `documents` corpus; a case may carry its own `documents` when the shared corpus cannot discriminate the rule it pins (see `ConformanceCase::documents` in the Rust suite).",
   "documents": [
     {
       "fields": {
@@ -1938,6 +1938,706 @@
             ]
           }
         ]
+      }
+    },
+    {
+      "name": "a day histogram stays chronological when a later bucket is larger, and floors a pre-1970 run downward",
+      "why": "The two histogram cases over the shared corpus CANNOT discriminate the chronological exception: its busiest day is also its earliest, so count-descending with a key-ascending tiebreak produces byte-identical output, and no filter over six documents can change that. This corpus puts the two-run bucket LAST, so a count-descending histogram would hoist it to the front. The pre-1970 document pins the other half of the same code path: -259200001 is 1969-12-28T23:59:59.999Z, so a floor that TRUNCATES toward zero instead of flooring toward negative infinity would place it on the 29th.",
+      "documents": [
+        {
+          "fields": {
+            "id": "t1",
+            "finished": -259200001
+          }
+        },
+        {
+          "fields": {
+            "id": "t2",
+            "finished": 1767229200000
+          }
+        },
+        {
+          "fields": {
+            "id": "t3",
+            "finished": 1768003200000
+          }
+        },
+        {
+          "fields": {
+            "id": "t4",
+            "finished": 1768006800000
+          }
+        }
+      ],
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "count"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "bucket",
+              "field": "finished",
+              "interval": {
+                "count": 1,
+                "unit": "day"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 4,
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "finished",
+                "value": -345600000
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "finished",
+                "value": 1767225600000
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "finished",
+                "value": 1768003200000
+              }
+            ],
+            "n": 2,
+            "values": [
+              {
+                "name": "count()",
+                "value": 2,
+                "contributing": 2
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a week histogram stays chronological when a later bucket is larger, and floors below its own origin",
+      "why": "The same discrimination for the week grid, whose origin is itself negative (1969-12-29, the Monday before the epoch). -259200001 is one millisecond BELOW that origin, so the delta the floor divides is -1: flooring toward negative infinity opens the week of 1969-12-22, truncating toward zero would leave the run in the origin week it precedes.",
+      "documents": [
+        {
+          "fields": {
+            "id": "t1",
+            "finished": -259200001
+          }
+        },
+        {
+          "fields": {
+            "id": "t2",
+            "finished": 1767229200000
+          }
+        },
+        {
+          "fields": {
+            "id": "t3",
+            "finished": 1768003200000
+          }
+        },
+        {
+          "fields": {
+            "id": "t4",
+            "finished": 1768006800000
+          }
+        }
+      ],
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "count"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "bucket",
+              "field": "finished",
+              "interval": {
+                "count": 1,
+                "unit": "week"
+              }
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 4,
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "finished",
+                "value": -864000000
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "finished",
+                "value": 1766966400000
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "finished",
+                "value": 1767571200000
+              }
+            ],
+            "n": 2,
+            "values": [
+              {
+                "name": "count()",
+                "value": 2,
+                "contributing": 2
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a sort on an aggregation column orders buckets by the column, absent last",
+      "why": "`stats … | sort avg(cost) desc | limit 10` is the canonical dashboard query, and nothing pinned it: every other sort case here names a group-key field, which resolves through a different branch. The default order would put the two-run buckets first; this one puts the most expensive model first, and the model whose runs all lack a cost last — an absent COLUMN is unplaced for the same reason an absent field is, and the direction must not reverse it.",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "avg",
+              "field": "metric.cost"
+            },
+            {
+              "func": "count"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "field",
+              "field": "model"
+            }
+          ]
+        },
+        "sort": [
+          {
+            "field": "avg(metric.cost)",
+            "desc": true
+          }
+        ]
+      },
+      "expect": {
+        "totalRuns": 6,
+        "columns": [
+          {
+            "name": "avg(metric.cost)",
+            "func": "avg",
+            "field": "metric.cost"
+          },
+          {
+            "name": "count()",
+            "func": "count"
+          }
+        ],
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "model",
+                "value": "openai/gpt-y"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "avg(metric.cost)",
+                "value": 2,
+                "contributing": 1
+              },
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "model",
+                "value": "anthropic/claude-b"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "avg(metric.cost)",
+                "value": 1.5,
+                "contributing": 1
+              },
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "model",
+                "value": "anthropic/claude-a"
+              }
+            ],
+            "n": 2,
+            "values": [
+              {
+                "name": "avg(metric.cost)",
+                "value": 0.5,
+                "contributing": 1
+              },
+              {
+                "name": "count()",
+                "value": 2,
+                "contributing": 2
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "model",
+                "value": "openai/gpt-x"
+              }
+            ],
+            "n": 2,
+            "values": [
+              {
+                "name": "avg(metric.cost)",
+                "contributing": 0
+              },
+              {
+                "name": "count()",
+                "value": 2,
+                "contributing": 2
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a group key wins over an aggregation column aliased to the same name",
+      "why": "The two namespaces a sort key can resolve in overlap, because an `as` alias is free text. The group key is looked up first, so `sort model desc` orders by the model name even when a column is also called `model` — an implementation that checked columns first would order by cost here, which is a different sequence.",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "avg",
+              "field": "metric.cost",
+              "alias": "model"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "field",
+              "field": "model"
+            }
+          ]
+        },
+        "sort": [
+          {
+            "field": "model",
+            "desc": true
+          }
+        ]
+      },
+      "expect": {
+        "totalRuns": 6,
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "model",
+                "value": "openai/gpt-y"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "model",
+                "value": 2,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "model",
+                "value": "openai/gpt-x"
+              }
+            ],
+            "n": 2,
+            "values": [
+              {
+                "name": "model",
+                "contributing": 0
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "model",
+                "value": "anthropic/claude-b"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "model",
+                "value": 1.5,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "model",
+                "value": "anthropic/claude-a"
+              }
+            ],
+            "n": 2,
+            "values": [
+              {
+                "name": "model",
+                "value": 0.5,
+                "contributing": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a limit truncates buckets too, and says so",
+      "why": "The only limit case here ran over documents, so bucket truncation — and the `truncated` flag on an aggregated response — was unpinned on both hosts. `totalRuns` must still be the whole matched corpus, not the sum of the surviving buckets, or a limited dashboard's denominator lies.",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "count"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "field",
+              "field": "state"
+            }
+          ]
+        },
+        "limit": 2
+      },
+      "expect": {
+        "totalRuns": 6,
+        "truncated": true,
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "state",
+                "value": "completed"
+              }
+            ],
+            "n": 2,
+            "values": [
+              {
+                "name": "count()",
+                "value": 2,
+                "contributing": 2
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "state",
+                "value": "catastrophic"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a fourth group key is clamped away, leaving a three-part bucket key",
+      "why": "The parser rejects a fourth key, but the evaluator clamps independently — a hand-built query reaching the wire skips the parser entirely — and the two hosts hold the bound as separate constants. Every bucket here holds one run, so the whole assertion is that each key has three components and `model` is not among them.",
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "count"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "field",
+              "field": "case"
+            },
+            {
+              "kind": "field",
+              "field": "state"
+            },
+            {
+              "kind": "field",
+              "field": "published"
+            },
+            {
+              "kind": "field",
+              "field": "model"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 6,
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "case",
+                "value": "carom"
+              },
+              {
+                "field": "state",
+                "value": "completed"
+              },
+              {
+                "field": "published",
+                "value": false
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "case",
+                "value": "carom"
+              },
+              {
+                "field": "state",
+                "value": "completed"
+              },
+              {
+                "field": "published",
+                "value": true
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "case",
+                "value": "carom"
+              },
+              {
+                "field": "state",
+                "value": "infrastructure"
+              },
+              {
+                "field": "published",
+                "value": false
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "case",
+                "value": "coil"
+              },
+              {
+                "field": "state",
+                "value": "catastrophic"
+              },
+              {
+                "field": "published",
+                "value": false
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "case",
+                "value": "coil"
+              },
+              {
+                "field": "state",
+                "value": "hung"
+              },
+              {
+                "field": "published",
+                "value": false
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "case",
+                "value": "coil"
+              },
+              {
+                "field": "state",
+                "value": "timed_out"
+              },
+              {
+                "field": "published",
+                "value": false
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a trailing star matches an exhausted value",
+      "why": "Both other glob cases have every star consuming at least one character, so a matcher that simply asked whether the pattern was exhausted alongside the value would pass them — and would then refuse `model:\"openai/gpt-x*\"` against the literal value `openai/gpt-x`, which is the shape a prefix search collapses to the moment someone types the whole name.",
+      "query": {
+        "filter": {
+          "kind": "compare",
+          "field": "model",
+          "op": "eq",
+          "value": "openai/gpt-x*"
+        }
+      },
+      "expect": {
+        "totalRuns": 2,
+        "documentIds": [
+          "r3",
+          "r6"
+        ]
+      }
+    },
+    {
+      "name": "a literal padded with a byte-order mark is not a number",
+      "why": "Rust trims Unicode `White_Space`, which U+FEFF is not a member of, so a BOM-padded literal never reads as a number there and falls back to a string comparison that fails. ECMAScript's own `trim()` strips U+FEFF, so a twin using it would match this run on the console and not on the published site — the quietest possible parity break, since both hosts return a perfectly plausible answer.",
+      "query": {
+        "filter": {
+          "kind": "compare",
+          "field": "metric.cost",
+          "op": "eq",
+          "value": "\uFEFF0.5"
+        }
+      },
+      "expect": {
+        "totalRuns": 0,
+        "documentIds": []
       }
     }
   ]

@@ -190,6 +190,22 @@ describe("literal typing", () => {
     expect(compile("started<=now").filter).toMatchObject({ value: NOW });
   });
 
+  it("rejects `now-1M` instead of resolving it to one minute", () => {
+    // The sibling of the `1M` histogram interval above, and a far quieter defect: under a
+    // case-insensitive unit `M` falls through to the `m` alternative, so `now-1M` asks
+    // for the last sixty seconds while reading as the last month — a factor of
+    // forty-three thousand with nothing to see. The offsets that *are* carried still
+    // resolve, and the keyword itself stays case-insensitive.
+    expect(problems("started>=now-1M")[0]).toContain("is not a relative date");
+    expect(problems("started>=now-1y")[0]).toContain("is not a relative date");
+    expect(problems("started>=now-30d")).toEqual([]);
+    expect(compile("started>=NOW-1h").filter).toMatchObject({
+      value: NOW - 3_600_000,
+    });
+    // A word that merely starts with `now` is a search term, not a mis-typed offset.
+    expect(problems("nowhere")).toEqual([]);
+  });
+
   it("stretches a bare date to the end of its day as an inclusive upper bound", () => {
     // So that a whole month is a whole month. The lower bound already means the start of
     // its day, and widening that would exclude the day the operator asked for.

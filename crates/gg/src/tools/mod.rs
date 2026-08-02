@@ -98,6 +98,10 @@ pub use data::{
     ReclaimData, ShellData, SpeculationData, SubagentHandleData, SubagentResultData, ToolData,
     ToolFailure, UsagePair, WorkflowData, saturating_u32, saturating_u64,
 };
+/// Crate-visible, unlike the rest of this module's surface: the only consumer is
+/// [replay capture](crate::replay), which sizes its tool-payload ceiling at this cap and asserts
+/// the relation at compile time. It is not part of the tool API.
+pub(crate) use filesystem::READ_FILE_CAP;
 pub use filesystem::{
     EditFileTool, ListDirTool, READ_FILE_TOOL, ReadFileTool, ReadPolicy, WriteFileTool,
 };

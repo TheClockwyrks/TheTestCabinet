@@ -274,6 +274,25 @@ function ordering(observed: GgValue, literal: GgValue): number {
 const RUST_FLOAT = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 
 /**
+ * The padding Rust's `str::trim` strips, spelled out: the Unicode `White_Space`
+ * property, which is what `char::is_whitespace` tests.
+ *
+ * Neither `String.prototype.trim()` nor `\s` is that set, and they differ from it at
+ * *both* ends. ECMAScript strips U+FEFF, a byte-order mark, which has
+ * `White_Space=No` and which Rust therefore leaves in place; and it does not strip
+ * U+0085 (NEL), which Rust does. A literal pasted with a leading BOM — the ordinary way
+ * one arrives, off a spreadsheet cell or a UTF-8-signed file — would otherwise coerce to
+ * a number in the browser and refuse to on the backend, so `metric.cost:"\uFEFF2"`
+ * would match on the console and not on the published site. Both answers look
+ * plausible, which is what makes it the worst kind of parity break.
+ */
+const WHITE_SPACE = "\\u0009-\\u000D\\u0020\\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000";
+const RUST_WHITESPACE = new RegExp(
+  `^[${WHITE_SPACE}]+|[${WHITE_SPACE}]+$`,
+  "g",
+);
+
+/**
  * Read `literal` as a number **for comparison against a numeric `observed`**: a number
  * or boolean projects directly, and a string is parsed only when the observed side is
  * itself numeric, so a genuinely textual field never starts comparing numerically
@@ -285,7 +304,7 @@ function coerceNumber(
 ): number | undefined {
   if (asNumber(observed) === undefined) return undefined;
   if (typeof literal === "string") {
-    const trimmed = literal.trim();
+    const trimmed = literal.replace(RUST_WHITESPACE, "");
     if (!RUST_FLOAT.test(trimmed)) return undefined;
     const parsed = Number(trimmed);
     return Number.isFinite(parsed) ? parsed : undefined;

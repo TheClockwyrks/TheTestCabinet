@@ -77,9 +77,12 @@ export function CodeOutliers({
   }));
 
   const largest = [...analysis.files]
-    // A file with no code lines has no bar; dropping those before the cap keeps the
-    // ranking at full length rather than shortening it by however many the tree
-    // happened to carry.
+    // A file with no code lines has no bar to draw, so it is dropped rather than shown
+    // as a zero-length row. It only ever reaches the chart on a *short* ranking — the
+    // sort sinks empty files past the cap by itself whenever there are TOP_N non-empty
+    // ones — which is why the filter is not redundant with it: a run whose model
+    // scaffolded a pile of empty files and wrote few real ones is precisely the tree
+    // where the ranking has room left over.
     .filter((file) => file.codeLines > 0)
     .sort((a, b) => b.codeLines - a.codeLines || (a.path < b.path ? -1 : 1))
     .slice(0, TOP_N);

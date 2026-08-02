@@ -94,6 +94,7 @@ fn session() -> Vec<GgJournalLine> {
                 summary: None,
                 images: vec![image],
                 data: None,
+                data_text: None,
                 failure: None,
             },
         },

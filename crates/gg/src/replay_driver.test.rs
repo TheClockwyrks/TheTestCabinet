@@ -144,6 +144,7 @@ impl RecordBuilder {
                     summary,
                     images: Vec::new(),
                     data: None,
+                    data_text: None,
                     failure: None,
                 },
             },

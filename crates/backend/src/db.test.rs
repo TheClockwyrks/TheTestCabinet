@@ -3835,7 +3835,23 @@ async fn backfill_code_analyzer_version_lifts_the_column_but_analyses_nothing() 
     // be re-read post-validation and those are not comparable figures.
     assert_eq!(lifted(&db, "unanalysed").await.code_analyzer_version, None);
 
-    // Settles to a no-write pass: the analysis-less residue is re-read every boot and
-    // rewritten never.
+    // Settles to an *empty* candidate set, not merely a no-write one. The distinction is
+    // the whole cost of this routine: the analysis-less half of the `NULL`s is every run
+    // recorded before the analyzer shipped, so a pass that re-read them would fetch and
+    // parse the entire historical corpus on every boot, before the router is built. The
+    // blob filter is what keeps them out, so it is asserted directly rather than through
+    // the return value — a no-write pass and a no-read one both report 0.
     assert_eq!(db.backfill_code_analyzer_version().await.unwrap(), 0);
+    let candidates = run::Entity::find()
+        .filter(run::Column::CodeAnalyzerVersion.is_null())
+        .filter(run::Column::RecordJson.contains("\"codeAnalysis\""))
+        .all(&db.connection())
+        .await
+        .unwrap();
+    assert!(
+        candidates.is_empty(),
+        "the unanalysed run must not be a candidate at all, but {} row(s) would be \
+         re-read on every boot",
+        candidates.len(),
+    );
 }

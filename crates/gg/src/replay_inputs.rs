@@ -65,7 +65,8 @@ use std::time::Duration;
 use serde_json::Value;
 use test_cabinet_core::gg_replay::{
     GgReplayCommand, GgReplayEntry, GgReplayEntryKind, GgReplayModelError, GgReplayPromptItem,
-    GgReplayRecord, GgReplayRequest, GgReplaySeed, GgShellCwd, GgShellOrigin,
+    GgReplayRecord, GgReplayRequest, GgReplaySeed, GgReplayTextClip, GgReplayToolOutcome,
+    GgShellCwd, GgShellOrigin,
 };
 use tokio::sync::Notify;
 use tokio::time::{Instant, timeout_at};
@@ -335,6 +336,18 @@ pub struct RecordedToolCall {
     /// Where the call ran, when the seam knew. Always `None` on a record captured before the tool
     /// context carried a shell.
     pub cwd: Option<GgShellCwd>,
+    /// What the outcome's `output` is missing, when a
+    /// [standard](test_cabinet_core::gg_replay::GgReplayFidelity::Standard) capture clipped it —
+    /// and `None`, the overwhelming majority, when the recorded text is the whole payload.
+    ///
+    /// Carried because a consumer that cannot tell a clip from a payload cannot tell drift from
+    /// incompleteness. A playback serving a clipped outcome back to the model hands it a *tail* of
+    /// what the run handed it, so the turn's content address diverges — and without this the
+    /// mismatch is indistinguishable from the model having answered differently, which is the one
+    /// question the reconstruction exists to settle. The clip carries the whole payload's
+    /// [content address](test_cabinet_core::gg_replay::GgReplayTextClip::original_id), so a
+    /// consumer that re-executes the call can still check it exactly.
+    pub output_clip: Option<GgReplayTextClip>,
     /// The outcome, with its pooled payloads resolved.
     pub outcome: ToolOutcome,
 }
@@ -359,10 +372,15 @@ pub struct RecordedSubprocess {
     /// The status it exited with.
     pub exit_code: i32,
     /// What it printed on stdout. [Clipped](test_cabinet_core::gg_replay::GgReplayTextClip) on a
-    /// standard capture when it was longer than the ceiling.
+    /// standard capture when it was longer than the ceiling — see [`stdout_clip`](Self::stdout_clip),
+    /// which is the only way to tell a stream that ended there from one that was cut.
     pub stdout: String,
+    /// What [`stdout`](Self::stdout) is missing, when it was clipped; `None` when it is whole.
+    pub stdout_clip: Option<GgReplayTextClip>,
     /// What it printed on stderr, under the same clipping rule.
     pub stderr: String,
+    /// What [`stderr`](Self::stderr) is missing, when it was clipped; `None` when it is whole.
+    pub stderr_clip: Option<GgReplayTextClip>,
 }
 
 /// One recorded read of the wall-clock deadline.
@@ -592,6 +610,7 @@ impl ReplayInputs {
                             arguments: call.arguments.clone(),
                         },
                         cwd: call.cwd.clone(),
+                        output_clip: record.clip(outcome.output).cloned(),
                         outcome: ToolOutcome {
                             ok: outcome.ok,
                             output: text(&record, entry, outcome.output)?,
@@ -604,11 +623,7 @@ impl ReplayInputs {
                                 .iter()
                                 .map(|index| image(&record, entry, *index))
                                 .collect::<Result<Vec<_>, _>>()?,
-                            data: outcome
-                                .data
-                                .as_ref()
-                                .map(|data| parse::<ToolData>(entry, data, "tool data"))
-                                .transpose()?,
+                            data: tool_data(&record, entry, outcome)?,
                             failure: outcome
                                 .failure
                                 .as_ref()
@@ -1002,8 +1017,73 @@ fn subprocess(
         cwd: command.cwd.clone(),
         exit_code: command.exit_code,
         stdout: text(record, entry, command.stdout)?,
+        stdout_clip: record.clip(command.stdout).cloned(),
         stderr: text(record, entry, command.stderr)?,
+        stderr_clip: record.clip(command.stderr).cloned(),
     })
+}
+
+/// Rehydrate a recorded outcome's structured [`ToolData`], putting the
+/// [lifted text](test_cabinet_core::gg_replay::GgReplayToolOutcome::data_text) back where the
+/// recorder took it from.
+///
+/// The recorder pools a `read_file`'s `contents` and a `shell`'s `body` rather than inlining them
+/// (they duplicate the outcome's `output` byte for byte), so the parsed value arrives with that one
+/// field empty and this puts it back. A record written before the lift carries no index and its
+/// `data` is already whole, which is why the restore is driven by the index's presence.
+///
+/// A lifted index against a variant that has no such field is a **hard error**, not a silent drop:
+/// it means the record was written by a build that lifts a field this one does not know about, and
+/// feeding the loop a payload with that field empty is exactly the quiet divergence a replay exists
+/// to make loud.
+fn tool_data(
+    record: &GgReplayRecord,
+    entry: &GgReplayEntry,
+    outcome: &GgReplayToolOutcome,
+) -> Result<Option<ToolData>, ReplayError> {
+    let Some(value) = outcome.data.as_ref() else {
+        return Ok(None);
+    };
+    let mut data = parse::<ToolData>(entry, value, "tool data")?;
+    if let Some(index) = outcome.data_text {
+        let lifted = text(record, entry, index)?;
+        match &mut data {
+            ToolData::FileText(file) => file.contents = lifted,
+            ToolData::Shell(shell) => shell.body = lifted,
+            other => {
+                return Err(ReplayError::MalformedEntry {
+                    agent_id: entry.agent_id.clone(),
+                    seq: entry.seq,
+                    detail: format!(
+                        "tool data: text {index} was lifted out of a `{}` payload, which this \
+                         build has no field to restore it into",
+                        variant_name(other)
+                    ),
+                });
+            }
+        }
+    }
+    Ok(Some(data))
+}
+
+/// The serde tag of a [`ToolData`] variant, for a diagnostic that has to name the shape it could
+/// not handle.
+///
+/// Read off the serialization rather than matched arm by arm, so it cannot fall out of step as
+/// variants are added. [`ToolData`] is **adjacently tagged** — `{"kind": …, "data": …}` — so the
+/// name is the `kind` field specifically; taking the first key instead would print `data` or
+/// `kind` depending on how the map happened to order itself, which is a diagnostic that names the
+/// envelope rather than the payload it failed on.
+fn variant_name(data: &ToolData) -> String {
+    serde_json::to_value(data)
+        .ok()
+        .and_then(|value| match value {
+            Value::Object(map) => map.get("kind").and_then(Value::as_str).map(str::to_owned),
+            // A unit variant serializes as the bare tag.
+            Value::String(name) => Some(name),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 /// The pooled text at `index`, or a located [`DanglingPoolRef`](ReplayError::DanglingPoolRef).

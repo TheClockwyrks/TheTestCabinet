@@ -33,7 +33,11 @@ const CORPUS: GgRunDoc[] = [
   {
     fields: {
       id: "b",
-      started: Date.UTC(2026, 6, 1, 2, 0),
+      // Deliberately in the *later* day bucket, alongside `c`. With both of these on
+      // 1 July the busiest bucket would also be the earliest, and count-descending order
+      // would produce byte-identical output to chronological order — so the exception the
+      // histogram case below exists to pin would be untestable over this corpus.
+      started: Date.UTC(2026, 6, 3, 2, 0),
       preset: "planning",
       "cap.compaction": true,
       score: 0.4,
@@ -118,8 +122,12 @@ describe("bucket keys", () => {
     const result = run("| stats count() by bucket(started, 1d)");
     const keys = (result.buckets ?? []).map((bucket) => bucket.key[0]?.value);
     expect(keys).toEqual([...keys].sort((a, b) => Number(a) - Number(b)));
-    // And the larger bucket is not first, which is what count-descending would have given.
-    expect(result.buckets?.[0]?.n).toBe(2);
+    // Ascending keys alone would not discriminate: with a single ordering rule, key
+    // ascending is also what count-descending's tiebreak produces. The load-bearing
+    // assertion is that the *smaller* bucket is first — the two-run bucket is the later
+    // one, so count-descending would have hoisted it to the front.
+    expect(result.buckets?.[0]?.n).toBe(1);
+    expect(result.buckets?.[1]?.n).toBe(2);
   });
 
   it("labels the grand-total bucket rather than leaving it blank", () => {

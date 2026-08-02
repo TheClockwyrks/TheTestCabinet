@@ -2790,12 +2790,17 @@ async fn run_agent(
             AgentRole::Issue { brief, .. } => brief.clone(),
         };
 
-        // Replay capture: when the capability is on, wrap this agent's client so every model turn it
-        // makes — including the summarizer's compaction calls, which reuse this same client —
-        // records its request/response into the shared recorder, and thread the recorder into the
-        // loop so it records each tool result too. The wrapping is invisible to the loop (`model_id`
-        // and errors pass through); off (the default), the client is unwrapped and nothing extra is
-        // captured.
+        // Replay capture: wrap this agent's client so every model turn it makes — including the
+        // summarizer's compaction calls, which reuse this same client — records its
+        // request/response into the shared recorder, and thread the recorder into the loop so it
+        // records each tool result too. The wrapping is invisible to the loop (`model_id` and
+        // errors pass through).
+        //
+        // Capture is **always on**: the `replay` capability is not what turns it on, it is what
+        // escalates the [fidelity](GgReplayFidelity) the recorder was built at. So `None` here does
+        // not mean "the operator did not ask for a record" — it means
+        // [`start_replay_capture`] could not open the journal and warned about it, which is the one
+        // case a run proceeds unrecorded.
         let client: Box<dyn ModelClient> = match &orch.replay {
             Some(recorder) => Box::new(RecordingClient::new(
                 client,

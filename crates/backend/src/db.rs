@@ -3704,15 +3704,32 @@ impl Db {
     /// exists to prevent. So the corpus starts at ship day and this routine only lifts a
     /// number that is *already in the record blob* into a column that can be queried.
     ///
-    /// Scoped to rows that are still `NULL`, which is genuinely ambiguous — it means
-    /// either "not yet lifted" or "this run carries no analysis". So, exactly like
-    /// [`Self::backfill_gg_presets`], it cannot settle to an empty candidate set; it
-    /// settles to a **no-write** one, re-parsing the analysis-less residue on every boot
-    /// and rewriting none of it. Best-effort per row: a record that no longer
-    /// deserializes is left for a later boot. Returns how many rows were filled.
+    /// Scoped to rows that are still `NULL` **and whose record blob actually mentions an
+    /// analysis**, so the candidate set settles to empty rather than to
+    /// [`Self::backfill_gg_presets`]'s no-write residue.
+    ///
+    /// The second filter is what makes the difference, and it is not an optimization of
+    /// degree. A `NULL` here is ambiguous — "not yet lifted" or "carries no analysis" —
+    /// and the analysis-less half is *every run recorded before the analyzer shipped*,
+    /// which is the whole historical corpus and grows without bound. Selecting on the
+    /// column alone would therefore fetch and `serde_json`-parse every one of them, at
+    /// tens of kilobytes of `record_json` apiece, on every boot, before the router is
+    /// built — an unbounded startup cost in a service whose availability incidents have
+    /// been single-replica ones. `codeAnalysis` is
+    /// [omitted from the blob when absent](test_cabinet_core::run_record::RunRecord::code_analysis),
+    /// so the substring is a sound over-approximation of "has an analysis": it can only
+    /// fail toward including a row, never toward skipping one that needed the lift. A
+    /// spurious match — the string occurring somewhere else in the record — parses, finds
+    /// nothing to lift and stays `NULL`, which is the same harmless no-write residue the
+    /// preset backfill carries, minus the corpus. The same pushdown
+    /// [`Self::has_free_tag_candidates`] uses to keep a boot's price fetch off the wire.
+    ///
+    /// Best-effort per row: a record that no longer deserializes is left for a later
+    /// boot. Returns how many rows were filled.
     pub async fn backfill_code_analyzer_version(&self) -> Result<usize> {
         let rows = run::Entity::find()
             .filter(run::Column::CodeAnalyzerVersion.is_null())
+            .filter(run::Column::RecordJson.contains("\"codeAnalysis\""))
             .all(&self.conn())
             .await?;
 

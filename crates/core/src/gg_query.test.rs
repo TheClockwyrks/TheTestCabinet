@@ -57,6 +57,22 @@ struct ConformanceCase {
     /// reason rather than with an opaque assertion.
     #[allow(dead_code)]
     why: String,
+    /// A corpus for **this case only**, replacing the shared one.
+    ///
+    /// Present for the handful of rules the shared corpus cannot discriminate. The
+    /// chronological bucket order is the motivating example: it differs from the default
+    /// count-descending order only when a *later* bucket is larger than an earlier one, and
+    /// the shared corpus's busiest day is also its earliest — so every histogram case over it
+    /// produces byte-identical output under both orders, and no filter over six documents can
+    /// change that. Reshaping the shared corpus to fix it would rewrite the expectations of
+    /// thirty other cases that were tuned to it (the quantile cases pin n=1..4 exactly), so a
+    /// case that needs a different shape brings its own three documents instead.
+    ///
+    /// Deliberately **not** used to give every case a bespoke corpus: the shared one is what
+    /// makes the cases comparable to each other and is the only corpus the
+    /// [field catalog](field_catalog) is pinned over.
+    #[serde(default)]
+    documents: Option<Vec<GgRunDoc>>,
     query: GgQuery,
     expect: ConformanceExpect,
 }
@@ -86,7 +102,8 @@ fn conformance() -> Conformance {
 fn the_conformance_fixture_pins_every_evaluator_rule() {
     let fixture = conformance();
     for case in &fixture.cases {
-        let actual = evaluate(&fixture.documents, &case.query);
+        let docs = case.documents.as_ref().unwrap_or(&fixture.documents);
+        let actual = evaluate(docs, &case.query);
         let name = &case.name;
         assert_eq!(
             actual.total_runs, case.expect.total_runs,
@@ -158,6 +175,18 @@ fn the_conformance_fixture_covers_the_named_hazards() {
         "coerces to a number",
         "projects to 1 in a comparison",
         "min and max",
+        // The hazards the mutation audit found the fixture could not discriminate: every
+        // rule below survived a deliberate break of the TypeScript evaluator with all
+        // thirty-two of the cases above still green.
+        "later bucket is larger",
+        "pre-1970",
+        "below its own origin",
+        "aggregation column orders buckets",
+        "aliased to the same name",
+        "truncates buckets",
+        "fourth group key",
+        "trailing star",
+        "byte-order mark",
     ] {
         assert!(
             names.iter().any(|name| name.contains(needle)),

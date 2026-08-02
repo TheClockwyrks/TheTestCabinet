@@ -31,6 +31,9 @@ interface ConformanceCase {
   /** Why the case exists, so a future reader deleting it has to argue with the reason
    *  rather than with an opaque assertion. */
   why: string;
+  /** A corpus for **this case only**, replacing the shared one — see the Rust twin's
+   *  `ConformanceCase::documents` for why a handful of rules need one. */
+  documents?: GgRunDoc[];
   query: GgQuery;
   expect: {
     totalRuns: number;
@@ -62,7 +65,7 @@ const fixture = JSON.parse(readFileSync(FIXTURE, "utf8")) as Conformance;
 /** The keys each fixture level may carry. A key outside these lists is a typo that would
  *  otherwise be silently ignored — the exact failure `deny_unknown_fields` exists to
  *  stop on the Rust side. */
-const CASE_KEYS = new Set(["name", "why", "query", "expect"]);
+const CASE_KEYS = new Set(["name", "why", "documents", "query", "expect"]);
 const EXPECT_KEYS = new Set([
   "totalRuns",
   "truncated",
@@ -102,7 +105,10 @@ describe("the TCQ conformance fixture", () => {
   it.each(fixture.cases.map((c) => [c.name, c] as const))(
     "%s",
     (_name, testCase) => {
-      const actual = evaluate(fixture.documents, testCase.query);
+      const actual = evaluate(
+        testCase.documents ?? fixture.documents,
+        testCase.query,
+      );
       expect(actual.totalRuns).toBe(testCase.expect.totalRuns);
       expect(actual.truncated).toBe(testCase.expect.truncated ?? false);
       if (testCase.expect.documentIds) {
@@ -152,6 +158,18 @@ describe("the TCQ conformance fixture", () => {
       "coerces to a number",
       "projects to 1 in a comparison",
       "min and max",
+      // The hazards the mutation audit found the fixture could not discriminate: every
+      // rule below survived a deliberate break of this evaluator with all thirty-two of
+      // the cases above still green.
+      "later bucket is larger",
+      "pre-1970",
+      "below its own origin",
+      "aggregation column orders buckets",
+      "aliased to the same name",
+      "truncates buckets",
+      "fourth group key",
+      "trailing star",
+      "byte-order mark",
     ]) {
       expect(
         names.some((name) => name.includes(needle)),

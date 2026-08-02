@@ -1122,8 +1122,13 @@ fn the_clip_table_round_trips_and_defaults_to_empty() {
 #[test]
 fn full_fidelity_is_the_absence_of_a_ceiling() {
     assert_eq!(
-        GgReplayFidelity::Standard.text_max_bytes(),
-        Some(GG_REPLAY_STANDARD_TEXT_MAX_BYTES)
+        GgReplayFidelity::Standard.stream_max_bytes(),
+        Some(GG_REPLAY_STANDARD_STREAM_MAX_BYTES)
     );
-    assert_eq!(GgReplayFidelity::Full.text_max_bytes(), None);
+    assert_eq!(
+        GgReplayFidelity::Standard.tool_max_bytes(),
+        Some(GG_REPLAY_STANDARD_TOOL_MAX_BYTES)
+    );
+    assert_eq!(GgReplayFidelity::Full.stream_max_bytes(), None);
+    assert_eq!(GgReplayFidelity::Full.tool_max_bytes(), None);
 }

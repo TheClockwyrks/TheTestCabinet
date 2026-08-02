@@ -109,6 +109,7 @@ impl Builder {
                     summary: Some(summary),
                     images: Vec::new(),
                     data: None,
+                    data_text: None,
                     failure: None,
                 },
             },
@@ -136,7 +137,48 @@ impl Builder {
                     summary: None,
                     images: vec![blob],
                     data: None,
+                    data_text: None,
                     failure: Some(serde_json::to_value(ToolFailure::NotFound).unwrap()),
+                },
+            },
+        )
+    }
+
+    /// A `read_file` whose body was **clipped** by a standard capture and whose structured payload
+    /// had that same body [lifted into the text pool](GgReplayToolOutcome::data_text) — the two
+    /// things the recorder does to a large read, together, because they are what a playback has to
+    /// undo and to notice.
+    fn clipped_read(&mut self, agent: &str, seq: u64, body: &str, max_bytes: usize) -> &mut Self {
+        let output = self.pools.intern_text_clipped(body, Some(max_bytes));
+        let data_text = self.pools.intern_text_clipped(body, Some(max_bytes));
+        let data = serde_json::to_value(ToolData::FileText(crate::tools::FileTextData {
+            // Emptied on the recording path: the body lives in the pool now.
+            contents: String::new(),
+            first_line: 1,
+            last_line: 9,
+            total_lines: 9,
+            byte_truncated: true,
+            limit_reduced: false,
+        }))
+        .unwrap();
+        self.push(
+            agent,
+            seq,
+            GgReplayEntryKind::ToolResult {
+                call: GgReplayToolCall {
+                    id: "call-clipped".to_string(),
+                    name: "read_file".to_string(),
+                    arguments: json!({ "path": "big.ts" }),
+                    cwd: None,
+                },
+                outcome: GgReplayToolOutcome {
+                    ok: true,
+                    output,
+                    summary: None,
+                    images: Vec::new(),
+                    data: Some(data),
+                    data_text: Some(data_text),
+                    failure: None,
                 },
             },
         )
@@ -167,6 +209,31 @@ impl Builder {
             stdout: self.pools.intern_text(stdout),
             stderr: self.pools.intern_text(""),
         }
+    }
+
+    /// A shell command whose stdout a standard capture clipped — a build log, the archetype.
+    fn clipped_shell(
+        &mut self,
+        agent: &str,
+        seq: u64,
+        stdout: &str,
+        max_bytes: usize,
+    ) -> &mut Self {
+        let command = GgReplayCommand {
+            command: "npm run build".to_string(),
+            cwd: GgShellCwd::Workspace,
+            exit_code: 0,
+            stdout: self.pools.intern_text_clipped(stdout, Some(max_bytes)),
+            stderr: self.pools.intern_text(""),
+        };
+        self.push(
+            agent,
+            seq,
+            GgReplayEntryKind::Shell {
+                origin: GgShellOrigin::CompletionValidation,
+                command,
+            },
+        )
     }
 
     fn clock(&mut self, agent: &str, seq: u64, elapsed_ms: u64) -> &mut Self {
@@ -327,6 +394,102 @@ fn a_tool_outcome_is_rehydrated_out_of_the_pools() {
     assert_eq!(served.outcome.images[0].bytes, 12);
     assert_eq!(served.call.name, "read_file");
     assert_eq!(served.cwd, None);
+}
+
+/// A clipped payload is served **as a clip**, not as a payload: the index hands back the tail it
+/// has *and* the record of what is missing, on both the tool seam and the subprocess seam.
+///
+/// This is the difference between a loud failure and a silent one. A playback feeding a clipped
+/// outcome back to the model hands it a tail of what the run handed it, so the turn's content
+/// address diverges — and a consumer that cannot see the clip reports that as the model having
+/// answered differently, which is the one question the reconstruction exists to settle. The clip
+/// also carries the whole payload's content address, so a consumer that re-executes the call can
+/// still check its result exactly.
+#[test]
+fn a_clipped_payload_says_what_it_is_missing() {
+    let body = "z".repeat(4_096);
+    let log = "build log\n".repeat(500);
+    let record = Builder::default()
+        .clipped_read("root", 0, &body, 1_024)
+        .clipped_shell("root", 1, &log, 512)
+        .build();
+    let inputs = ReplayInputs::new(record).expect("indexes");
+
+    let served = inputs.next_tool("root").expect("the outcome");
+    assert_eq!(
+        served.outcome.output.len(),
+        1_024,
+        "the tail is what is held"
+    );
+    let clip = served.output_clip.expect("a clipped outcome says so");
+    assert_eq!(clip.original_bytes, body.len() as u64);
+    assert_eq!(
+        clip.original_id,
+        test_cabinet_core::gg_replay::fingerprint_exact(body.as_bytes())
+    );
+
+    let subprocess = inputs.next_shell("root").expect("the command");
+    assert_eq!(subprocess.stdout.len(), 512);
+    assert_eq!(
+        subprocess
+            .stdout_clip
+            .expect("a clipped stream says so")
+            .original_bytes,
+        log.len() as u64,
+    );
+    // The stream that was never clipped carries no clip, so `Some` genuinely means "cut here"
+    // rather than "this seam clips".
+    assert_eq!(subprocess.stderr_clip, None);
+}
+
+/// The body the recorder lifted out of a `read_file`'s structured payload is put back where it came
+/// from, so the loop is handed the same `ToolData` the run produced rather than one with its
+/// largest field empty.
+#[test]
+fn a_lifted_payload_is_restored_into_its_structured_data() {
+    let body = "contents that were pooled";
+    let record = Builder::default()
+        .clipped_read("root", 0, body, 1_024)
+        .build();
+    let inputs = ReplayInputs::new(record).expect("indexes");
+
+    let served = inputs.next_tool("root").expect("the outcome");
+    let Some(ToolData::FileText(file)) = served.outcome.data else {
+        panic!("the structured payload comes back as a file read");
+    };
+    assert_eq!(file.contents, body, "the lifted body is restored");
+    assert_eq!(
+        file.total_lines, 9,
+        "and the fields that stayed inline are untouched"
+    );
+}
+
+/// A lifted index against a variant with **no field to restore it into** is a hard error rather
+/// than a silent drop, and it is raised while the index is *built* rather than when the entry is
+/// served.
+///
+/// It means the record was written by a build that lifts a field this one does not know about, and
+/// feeding the loop that payload with the field empty is exactly the quiet divergence the loud
+/// errors exist to prevent. Catching it in [`ReplayInputs::new`] is what keeps that refusal
+/// cheap: the alternative surfaces it halfway through a reconstruction that has already emitted
+/// telemetry for a session it now cannot finish.
+#[test]
+fn a_lifted_payload_the_build_cannot_place_is_a_hard_error() {
+    let mut builder = Builder::default();
+    builder.clipped_read("root", 0, "body", 1_024);
+    // Swap the variant out from under the lift, which is what a future build's record looks like
+    // to this one.
+    let GgReplayEntryKind::ToolResult { outcome, .. } = &mut builder.entries[0].kind else {
+        panic!("a tool result");
+    };
+    outcome.data = Some(serde_json::to_value(ToolData::BytesWritten(42)).unwrap());
+    let error = ReplayInputs::new(builder.build())
+        .expect_err("the index refuses a payload it cannot restore")
+        .to_string();
+    assert!(
+        error.contains("bytesWritten"),
+        "the diagnostic names the variant it could not place, not the tagging envelope: {error}"
+    );
 }
 
 /// A subprocess comes back with its streams resolved and its origin intact — `git` is not one of the
