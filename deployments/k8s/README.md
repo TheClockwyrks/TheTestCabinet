@@ -52,10 +52,10 @@ Overlays compose in reusable kustomize **components**:
 | `components/postgres` | Converts the backend + auth service from their SQLite `StatefulSet` shape to stateless `Deployment`s (no PVC) wired to a managed database via Secret. Environment-agnostic — each overlay supplies its own namespace, `TCAB_ENV`, images, and connection-string Secret (Azure Database for PostgreSQL — Flexible Server in the `azure-*` overlays). |
 | `components/web` | The in-cluster web console (`tcab-web`) `Deployment` + `ClusterIP` `Service` — the static SPA, with its backend/auth URLs injected at runtime into `/config.js` (each consumer patches the real values). Pulled in by the `internal-ingress` component behind a prod ingress. `overlays/local` deliberately does NOT include it — locally the console runs from source (`npm run -w apps/web dev`) against a `kubectl port-forward`ed backend, so a UI edit needs no image rebuild. |
 
-The service container images are built from [`../images/`](../images/)
-(`backend.Dockerfile`, `auth.Dockerfile`, `dispatcher.Dockerfile`,
-`driver.Dockerfile`, `artifacts.Dockerfile`, `arena.Dockerfile`, `web.Dockerfile`)
-and published to
+The service container images are built from [`../images/`](../images/) — every Rust
+service is a `--target` of the shared `services.Dockerfile` (`backend`, `auth`,
+`dispatcher`, `driver`, `artifacts`, `arena`, `publisher`), and the console has its
+own `web.Dockerfile` — and published to
 GHCR by the
 [`build-service-images.yml`](../../.github/workflows/build-service-images.yml)
 workflow as `ghcr.io/<owner>/tcab-backend`, `…/tcab-auth-service`,

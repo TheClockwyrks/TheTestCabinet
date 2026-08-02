@@ -2,7 +2,7 @@
 # as the backend (its own SQLite accounts database is single-writer), plus a
 # ClusterIP Service. Point TCAB_AUTH_DATABASE_URL at a postgres:// instance to run
 # it as a plain stateless Deployment instead. It renders nothing, so its image
-# (deployments/images/auth.Dockerfile) ships no browser.
+# (deployments/images/services.Dockerfile, `--target auth`) ships no browser.
 apiVersion: v1
 kind: Service
 metadata:

@@ -102,6 +102,10 @@ REGISTRY_PREFIX ?= docker.io/library
 # when git can't resolve one (no repo), which simply stamps a null commit.
 TCAB_COMMIT ?= $(shell sh -c 'h=$$(git -C "$(REPO)" rev-parse HEAD 2>/dev/null) || exit 0; [ -n "$$(git -C "$(REPO)" status --porcelain 2>/dev/null)" ] && h="$$h-dirty"; printf %s "$$h"')
 
+# Every Rust service image is built from this one file, selected by `--target`
+# (see the `images` target below and the file's own header for why they share it).
+SERVICES_DOCKERFILE := $(REPO)/deployments/images/services.Dockerfile
+
 BACKEND_IMG    := $(REGISTRY_PREFIX)/tcab-backend:local
 AUTH_IMG       := $(REGISTRY_PREFIX)/tcab-auth-service:local
 DISPATCHER_IMG := $(REGISTRY_PREFIX)/tcab-dispatcher:local
@@ -275,14 +279,22 @@ kubeconfig:
 	kubectl config set 'clusters.$(KUBE_CTX).tls-server-name' localhost >/dev/null; \
 	echo "kubeconfig: '$(KUBE_CTX)' server → https://host.docker.internal:$$port (tls-server-name=localhost)."
 
-# Build the service images from the same Dockerfiles the cluster uses, then load
+# Build the service images from the same Dockerfile the cluster uses, then load
 # them into the cluster's nodes (no registry needed for local development).
 #
-# The Dockerfiles are BuildKit Dockerfiles (`# syntax=…` + `--mount=type=cache`
-# Rust build caches), so the build needs the buildx plugin — the devcontainer ships
-# it in the system cli-plugins dir (see .devcontainer/tools/docker.sh); a bare host
-# gets it from its docker install. DOCKER_CONFIG is pinned to a credsStore-free
-# config dir for the builds (see BUILD_DOCKER_CONFIG above for why).
+# All six come out of ONE file, deployments/images/services.Dockerfile, each
+# selected with `--target`. That file shares a single cargo build stage across every
+# service, so the six builds below compile the workspace ONCE between them: the
+# first `docker build` runs the shared stage and the other five hit it in the layer
+# cache. (When they were six separate Dockerfiles each re-dirtied the shared cargo
+# target/ cache mount, so every service rebuilt the ~19 workspace crates it pulls in
+# — six times over per `make images`, even with no source change.)
+#
+# It is a BuildKit Dockerfile (`# syntax=…` + `--mount=type=cache` Rust build
+# caches), so the build needs the buildx plugin — the devcontainer ships it in the
+# system cli-plugins dir (see .devcontainer/tools/docker.sh); a bare host gets it
+# from its docker install. DOCKER_CONFIG is pinned to a credsStore-free config dir
+# for the builds (see BUILD_DOCKER_CONFIG above for why).
 #
 # Images are imported as saved tarballs rather than by name: `k3d image import`
 # does its own `save` from a name through the runtime, which fails on podman (the
@@ -292,12 +304,12 @@ kubeconfig:
 images: export DOCKER_CONFIG := $(BUILD_DOCKER_CONFIG)
 images:
 	@mkdir -p '$(BUILD_DOCKER_CONFIG)' && printf '{}\n' > '$(BUILD_DOCKER_CONFIG)/config.json'
-	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(BACKEND_IMG)'    -f '$(REPO)/deployments/images/backend.Dockerfile'    '$(REPO)'
-	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(AUTH_IMG)'       -f '$(REPO)/deployments/images/auth.Dockerfile'       '$(REPO)'
-	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(DISPATCHER_IMG)' -f '$(REPO)/deployments/images/dispatcher.Dockerfile' '$(REPO)'
-	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(DRIVER_IMG)'     -f '$(REPO)/deployments/images/driver.Dockerfile'     '$(REPO)'
-	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(ARTIFACTS_IMG)'  -f '$(REPO)/deployments/images/artifacts.Dockerfile'  '$(REPO)'
-	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' -t '$(ARENA_IMG)'      -f '$(REPO)/deployments/images/arena.Dockerfile'      '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target backend    -t '$(BACKEND_IMG)'    -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target auth       -t '$(AUTH_IMG)'       -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target dispatcher -t '$(DISPATCHER_IMG)' -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target driver     -t '$(DRIVER_IMG)'     -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target artifacts  -t '$(ARTIFACTS_IMG)'  -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
+	$(CONTAINER_TOOL) build --build-arg TCAB_BUILD_COMMIT='$(TCAB_COMMIT)' --target arena      -t '$(ARENA_IMG)'      -f '$(SERVICES_DOCKERFILE)' '$(REPO)'
 	@set -e; tmp="$$(mktemp -d)"; trap 'rm -rf "$$tmp"' EXIT; \
 	  i=0; tars=""; \
 	  for img in $(ALL_IMGS); do \
@@ -316,18 +328,20 @@ images:
 # reaches a run: those tools live in these images, not in any service.
 #
 # It is DELIBERATELY separate from `local-rebuild` (which rebuilds only the service
-# images) and is instead folded into `local-up`: a run-container rebuild recompiles
-# each image's tooling from scratch (the run-container Dockerfiles carry no cargo
-# cache mount), so it is minutes-per-image and not something to pay on every
-# service-code iteration. Run it explicitly after changing the baked-in tooling —
-# `voxel-anim`, `voxel`, `draw`/`draw-sheet`, the Foray/Lattice tooling, or the core
-# modeling library any of them link — then enqueue a run (driver Jobs resolve the
-# run image fresh each run, so no service restart is needed to pick the new image
-# up).
+# images) and is instead folded into `local-up`. Run it after changing the baked-in
+# tooling — `voxel-anim`, `voxel`, `draw`/`draw-sheet`, the Foray/Lattice tooling, or
+# the core modeling library any of them link — then enqueue a run (driver Jobs
+# resolve the run image fresh each run, so no service restart is needed to pick the
+# new image up).
 #
-# Because a full rebuild is ~20 images at minutes each, the target is SPLIT so a
-# change to one test type's tooling only rebuilds that type. Reach for the narrowest
-# target that covers what you changed:
+# Every asset image's binaries now come out of ONE shared tooling builder
+# (`containers/tools/Dockerfile`), which carries cargo cache mounts — so the whole
+# asset set costs a single incremental compile plus a per-image layer export, rather
+# than the from-scratch recompile per image it used to be. `build.sh` always rebuilds
+# that builder when an asset image is selected, so a tooling change can never be
+# missed. The per-type targets below are still worth reaching for (each image still
+# has to be exported and re-imported into the cluster), just no longer to dodge a
+# multi-minute recompile:
 #   - `run-images`               everything (what local-up runs; the heavy path)
 #   - `run-images-e2e`           the base-wasm image (an end-to-end / base-layer change)
 #   - `run-images-full-stack`    the full-stack-2d image (needs the R2 pack credentials)
@@ -617,11 +631,11 @@ local-grafana:
 # run, so they pick up the new tcab-driver:local image on the next run with no
 # restart here.) This rebuilds ONLY the long-lived service images — NOT the
 # run-container images that bake in the modeling tooling (`voxel-anim`/`draw`/`voxel`
-# and the Foray/Lattice tooling). Those are minutes-per-image to recompile and are
-# rebuilt by the separate `run-images` target (folded into `local-up`); run it by
-# hand after changing that baked-in tooling or the core modeling library it links,
-# otherwise a run pod keeps executing the previously-imported (or ghcr) image and a
-# tooling change silently never reaches a run. The `apply` dependency is what makes a
+# and the Foray/Lattice tooling). Those are rebuilt by the separate `run-images`
+# target (folded into `local-up`); run it by hand after changing that baked-in
+# tooling or the core modeling library it links, otherwise a run pod keeps executing
+# the previously-imported (or ghcr) image and a tooling change silently never reaches
+# a run. The `apply` dependency is what makes a
 # rebuild also pick up MANIFEST
 # changes — RBAC, env, volumes — not just new image bytes; without it a Role or env
 # edit silently never reaches the cluster on a rebuild (it only does on local-up).

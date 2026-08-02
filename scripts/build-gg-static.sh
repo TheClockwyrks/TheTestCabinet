@@ -11,7 +11,7 @@
 #
 # This is a NATIVE build (target arch == host arch); it does not cross-compile. In
 # the aarch64 devcontainer it yields an aarch64-musl gg; on x86_64 CI an x86_64-musl
-# gg. The driver image's build stage (deployments/images/driver.Dockerfile) runs
+# gg. The driver image's gg-build stage (deployments/images/services.Dockerfile) runs
 # this same script, so the gg it bakes in always matches the image's platform.
 #
 # Usage:

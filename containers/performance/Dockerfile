@@ -45,10 +45,10 @@
 # always `FROM` the matching base-wasm.
 ARG BASE_IMAGE=test-cabinet-base-wasm:latest
 
-# --- Stage 1: compile the Lattice tooling from this repository
-# ---------------- A full Rust image (not the slim base) so the `lattice` CLI
-# and the buildkit smoke build all compile here; only the artifacts are copied
-# into the final image. The glibc target matches the bookworm-based base.
+# --- Stage 1: compile the Lattice tooling from this repository ---------------
+# A full Rust image (not the slim base) so the `lattice` CLI and the buildkit smoke
+# build all compile here; only the artifacts are copied into the final image. The
+# glibc target matches the bookworm-based base.
 FROM docker.io/library/rust:1.97.1-bookworm AS lattice-build
 WORKDIR /build
 # The whole workspace is copied (minus `.dockerignore`'d paths) so cargo can
@@ -56,8 +56,35 @@ WORKDIR /build
 COPY . .
 # The `lattice` CLI (host target) — the oracle + local scorer baked onto PATH. The
 # wasm target is for the buildkit smoke build below.
-RUN rustup target add wasm32-unknown-unknown \
-	&& cargo build --release -p lattice-cli
+#
+# The cargo registry/git caches are BuildKit cache mounts shared with every other
+# image in the repository (they take the default id, their target path), so the
+# crates.io index and the crate tarballs are fetched once rather than re-downloaded
+# per image. target/ gets its OWN id rather than sharing the asset tooling's: this
+# is a separate cargo invocation with a different package selection, and cargo
+# unifies features across whatever set is selected — two invocations sharing one
+# target dir would keep invalidating each other's fingerprints and rebuild on every
+# alternation. `sharing=locked` because cargo locks a whole target dir anyway.
+#
+# rustup's home is deliberately NOT mounted: `rustup target add` below must persist
+# into the image layer for the buildkit smoke build in the next RUN to use it, and a
+# cache mount is detached when its RUN ends.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+	--mount=type=cache,target=/usr/local/cargo/git \
+	--mount=type=cache,target=/build/target,id=tcab-container-lattice,sharing=locked \
+	rustup target add wasm32-unknown-unknown \
+	# Refresh the COPYed sources' mtimes: BuildKit replays the mtimes baked into a
+	# cache-hit `COPY . .` layer, which can be OLDER than artifacts an earlier build
+	# left in the persistent target/ mount — and cargo's freshness check is
+	# mtime-based, so it would reuse those stale artifacts and bake the wrong binary.
+	# Only the handful of workspace crates is dirtied; registry dependencies are
+	# fingerprinted by version+features, not mtime.
+	&& find /build -path /build/target -prune -o -type f -exec touch {} + \
+	&& cargo build --release -p lattice-cli \
+	# target/ is a cache mount, not a layer, so the binary must be copied to a stable
+	# path INSIDE this RUN, before the mount is detached.
+	&& mkdir -p /out \
+	&& cp target/release/lattice /out/lattice
 
 # Assemble the engine buildkit and smoke-build it standalone. The two crates are
 # copied VERBATIM (so they can never drift from the types and checksum the
@@ -66,13 +93,21 @@ RUN rustup target add wasm32-unknown-unknown \
 # against that root proves the buildkit resolves on its own before it is baked. A
 # broken root (e.g. after a workspace-dependency bump the root no longer mirrors)
 # fails the image build here.
-RUN mkdir -p /opt/lattice/buildkit \
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+	--mount=type=cache,target=/usr/local/cargo/git \
+	--mount=type=cache,target=/tmp/buildkit-smoke,id=tcab-lattice-buildkit-smoke,sharing=locked \
+	mkdir -p /opt/lattice/buildkit \
 	&& cp -a crates/lattice-core /opt/lattice/buildkit/lattice-core \
 	&& cp -a crates/lattice-sdk /opt/lattice/buildkit/lattice-sdk \
 	&& cp containers/performance/buildkit/Cargo.toml /opt/lattice/buildkit/Cargo.toml \
 	&& rm -rf /opt/lattice/buildkit/lattice-core/target \
 		/opt/lattice/buildkit/lattice-sdk/target \
-	# Build into a throwaway target dir so the baked buildkit stays source-only.
+	# Build into a throwaway target dir so the baked buildkit stays source-only. It
+	# is a cache mount so the smoke build is incremental across image builds; nothing
+	# is copied out of it, since proving the buildkit compiles is the entire point.
+	# The sources it builds are the `cp -a`'d copies above, which are freshly written
+	# in this RUN and so always newer than anything in the mount — no mtime refresh
+	# is needed here.
 	&& cargo build --release --target wasm32-unknown-unknown \
 		--manifest-path /opt/lattice/buildkit/lattice-sdk/Cargo.toml \
 		--target-dir /tmp/buildkit-smoke
@@ -89,7 +124,7 @@ USER root
 # Bake the `lattice` CLI onto PATH. `/usr/local/bin` is root-owned (COPY writes as
 # root regardless of the inherited run user); the unprivileged run user only
 # executes it. A model invokes it as `lattice solve`/`lattice run` to iterate.
-COPY --from=lattice-build /build/target/release/lattice /usr/local/bin/lattice
+COPY --from=lattice-build /out/lattice /usr/local/bin/lattice
 
 # Bake the engine buildkit — the verified, source-only `lattice-core` +
 # `lattice-sdk` the seeded `engine` crate path-depends on (no vendor folder in the

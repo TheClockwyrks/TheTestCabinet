@@ -115,6 +115,9 @@ the image by test type and asset kind via
 containers/
 ├── base/Dockerfile             # the shared Node foundation (toolchain, run user); not a run image itself
 ├── base-wasm/Dockerfile        # the end-to-end run image: base plus the shared Rust → wasm toolchain
+├── tools/Dockerfile            # the shared asset-tooling BUILDER: every asset binary compiled in ONE
+│                               #   cargo pass, exported as a `scratch` image. Not a run image and never
+│                               #   published — the asset images below `COPY --from` it (see Building)
 ├── full-stack-2d/Dockerfile    # the full-stack run image: base-wasm plus the six 2D asset binaries + audio packs
 ├── game-jam/Dockerfile         # the game-jam run image: full-stack-2d plus its own identity (separately pinnable)
 ├── sprite/Dockerfile           # the base image plus the baked-in `draw` binary
@@ -194,7 +197,7 @@ The base run image carries nothing for the **shippable Test Cabinet packages**
 [`packages`](../apps/docs/src/content/docs/testing/end-to-end/manifests.md) has
 them **vendored into its run repository at seed time**, so the produced tree is
 self-contained. The packages that get vendored come from a host **package store**
-baked into the [driver image](../deployments/images/driver.Dockerfile), which is
+baked into the [driver image](../deployments/images/services.Dockerfile), which is
 the image that seeds runs.
 
 ## Rust/wasm base image (`base-wasm`)
@@ -254,7 +257,7 @@ Because these packages are private (never npm-published) and must match the form
 the validator and review UI play, they are **staged from this repo into a host
 package store** rather than fetched from a registry. The store lives at
 `/opt/tcab-packages/@test-cabinet/<name>/` (world-readable) on the
-[driver image](../deployments/images/driver.Dockerfile) — the image that seeds
+[driver image](../deployments/images/services.Dockerfile) — the image that seeds
 runs — each a publish-shaped copy: its `package.json` plus its built `dist/`. Any
 dependency **between** two shippable packages (for example `particle-runtime`'s
 type-only dependency on `run-record`) is rewritten to a relative `file:` path
@@ -262,7 +265,7 @@ within the store, so the staged set resolves with no npm-published
 `@test-cabinet/*` package required.
 
 Staging is done by [`scripts/stage-tcab-packages.mjs`](../scripts/stage-tcab-packages.mjs),
-run in a builder stage of the driver Dockerfile (the build context is the
+run in a builder stage of the shared services Dockerfile (the build context is the
 repository root, so the stage can see `packages/`). The script builds the
 npm workspace, then for each package in its **shippable list** copies the package's
 `package.json` and the files its `files` field publishes into
@@ -526,6 +529,38 @@ Run on a machine with Docker (or Podman) available:
 ./build.sh adversarial performance
 DOCKER=podman ./build.sh       # build with Podman instead
 ```
+
+### The shared asset-tooling builder
+
+Every asset-generation image bakes in one or more binaries compiled from `crates/`,
+and all of them get those binaries from a single builder image,
+`tools/Dockerfile` → `test-cabinet-tools:latest`.
+
+That builder runs ONE `cargo build` over the union of every asset tool's dependency
+graph and exports the resulting binaries as a `scratch` image; each asset image then
+resolves it through a `TOOLS_IMAGE` build arg and `COPY --from=tools /out/<bin>`.
+(A `COPY --from` cannot interpolate a build arg directly, so each Dockerfile brings
+the arg in through a `FROM ${TOOLS_IMAGE} AS tools` stage first — the same idiom
+`BASE_IMAGE` already uses.)
+
+This replaced a per-image `cargo build`, which recompiled the shared dependency
+graph from scratch for every image: **1865 crate-compilations across the set where
+only 182 distinct crates exist** — `syn`, `serde` and `proc-macro2` built 23 times
+each, the ~90-crate `wgpu`/`naga` graph that the 13 rendering tools share built 13
+times over, and `ui`/`material` compiling the *identical* `test-cabinet-paint` crate
+twice. The builder also carries cargo registry/target cache mounts, so an
+incremental rebuild costs only the crates that actually changed.
+
+`build.sh` **always** rebuilds it when any consuming image is selected, rather than
+reusing a present one the way it reuses the base. The base is a stable OS+toolchain
+layer, but this image holds the compiled tooling — reusing a stale one would bake
+yesterday's `voxel-anim` into today's run image. A no-change rebuild is near-instant.
+
+It is deliberately **not** a run image: nothing executes in it, it never appears in
+`image-names.sh`, and it is never pushed. The adversarial and performance images are
+also not built from it — they compile to `wasm32-unknown-unknown` as well as the host
+target and assemble their own standalone buildkits, so they keep their own build
+stages (with the same cache mounts applied directly).
 
 Build-only mode tags every image as `test-cabinet-<name>:latest` locally (one per
 directory alongside this README, plus the base). Those are exactly the names a runner

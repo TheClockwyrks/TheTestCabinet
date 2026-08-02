@@ -28,12 +28,20 @@ name: Build service images
 #                          internal-only ingress. Its backend/auth URLs are injected
 #                          at container start (envsubst /config.js), not baked, so the
 #                          one shared image works for every environment.
-# Each is built from its Dockerfile under deployments/images/ with the repository
-# root as the build context (the Rust Dockerfiles compile their crate from source;
-# the web Dockerfile npm-builds the console from the workspace), and tagged both
-# `:latest` and `:<git-sha>` so a deployment can pin an immutable digest/tag. The
-# Kubernetes manifests under deployments/k8s/ pull these from the registry the
-# cluster is pointed at (see deployment/kubernetes.md).
+# The seven Rust images are all `--target` stages of the single shared
+# deployments/images/services.Dockerfile (one cargo build stage for every service —
+# see that file's header for why); tcab-web has its own Dockerfile and npm-builds
+# the console from the workspace. All are built with the repository root as the
+# build context and tagged both `:latest` and `:<git-sha>` so a deployment can pin an
+# immutable digest/tag. The Kubernetes manifests under deployments/k8s/ pull these
+# from the registry the cluster is pointed at (see deployment/kubernetes.md).
+#
+# Note the deliberate trade-off in the matrix below: because the Rust legs share one
+# build stage, each leg compiles ALL seven service binaries rather than just its own.
+# The legs run concurrently on separate runners, so wall-clock is roughly unchanged,
+# and each keeps its own GitHub Actions cache scope (below) so a repeat run reuses
+# its whole build. The win this buys is local: `make images` builds the six services
+# sequentially against one BuildKit cache, where the shared stage is computed once.
 #
 # These are NOT the run-container images a run executes inside — those (base,
 # sprite, sprite-sheet, adversarial, performance) are built by the separate
@@ -103,31 +111,43 @@ jobs:
       # hide the status of the others.
       fail-fast: false
       matrix:
+        # Every Rust service is a `--target` in the shared services.Dockerfile (see
+        # that file's header); only the web console has a Dockerfile of its own, and
+        # it takes no target. BuildKit builds just the stages a target depends on, so
+        # asking for `arena` never runs the driver's gg or npm stages.
         image:
           - name: backend
             image: tcab-backend
-            dockerfile: deployments/images/backend.Dockerfile
+            dockerfile: deployments/images/services.Dockerfile
+            target: backend
           - name: auth
             image: tcab-auth-service
-            dockerfile: deployments/images/auth.Dockerfile
+            dockerfile: deployments/images/services.Dockerfile
+            target: auth
           - name: dispatcher
             image: tcab-dispatcher
-            dockerfile: deployments/images/dispatcher.Dockerfile
+            dockerfile: deployments/images/services.Dockerfile
+            target: dispatcher
           - name: driver
             image: tcab-driver
-            dockerfile: deployments/images/driver.Dockerfile
+            dockerfile: deployments/images/services.Dockerfile
+            target: driver
           - name: artifacts
             image: tcab-artifacts
-            dockerfile: deployments/images/artifacts.Dockerfile
+            dockerfile: deployments/images/services.Dockerfile
+            target: artifacts
           - name: arena
             image: tcab-arena
-            dockerfile: deployments/images/arena.Dockerfile
+            dockerfile: deployments/images/services.Dockerfile
+            target: arena
           - name: publisher
             image: tcab-publisher
-            dockerfile: deployments/images/publisher.Dockerfile
+            dockerfile: deployments/images/services.Dockerfile
+            target: publisher
           - name: web
             image: tcab-web
             dockerfile: deployments/images/web.Dockerfile
+            target: ""
         # Each arch builds on a runner of that architecture, natively. (GitHub-hosted
         # arm64 runners are free on public repositories.)
         arch:
@@ -169,6 +189,7 @@ jobs:
         with:
           context: .
           file: ${{ matrix.image.dockerfile }}
+          target: ${{ matrix.image.target }}
           platforms: linux/${{ matrix.arch.name }}
           # Stamp the provenance commit into the binary. The build context omits
           # `.git` (the repo-root .dockerignore is an allowlist that never

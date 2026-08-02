@@ -125,6 +125,13 @@ readonly BASE_WASM_IMAGE="${IMAGE_NAME_PREFIX}base-wasm:${IMAGE_TAG}"
 # `FROM` it (it inherits the six asset binaries, the audio packs, and the Rust/wasm
 # toolchain), so the jam image stays in lockstep with full-stack-2d within a build.
 readonly FULL_STACK_2D_IMAGE="${IMAGE_NAME_PREFIX}full-stack-2d:${IMAGE_TAG}"
+# The shared asset-tooling BUILDER image. Not a run image and never pushed: it exists
+# only as a `COPY --from` source, holding every asset-generation binary compiled in a
+# single cargo pass (see containers/tools/Dockerfile). Every asset image is built with
+# this tag passed as its TOOLS_IMAGE build arg, so all of them bake binaries from the
+# same compile. It is deliberately absent from image-names.sh, which is the list of
+# PUBLISHED run images.
+readonly TOOLS_IMAGE="${IMAGE_NAME_PREFIX}tools:${IMAGE_TAG}"
 readonly ADVERSARIAL_IMAGE="${IMAGE_NAME_PREFIX}adversarial:${IMAGE_TAG}"
 readonly PERFORMANCE_IMAGE="${IMAGE_NAME_PREFIX}performance:${IMAGE_TAG}"
 
@@ -159,6 +166,26 @@ push_and_pin() {
 		exit 1
 	fi
 	echo "${digest}"
+}
+
+# Build the shared asset-tooling builder: every asset-generation binary the run
+# images bake in, compiled in ONE cargo pass over the shared dependency graph, and
+# exported as a `scratch` image the asset builds `COPY --from`.
+#
+# This is NOT a run image. It is never pushed and never appears in image-names.sh —
+# a run never executes in it; it is only ever a source for `COPY --from`.
+#
+# It is ALWAYS rebuilt when any consuming image is selected, rather than reused when
+# present the way the base is. The base is a stable OS+toolchain layer, but this
+# image holds the compiled tooling, so reusing a stale one would silently bake
+# yesterday's `voxel-anim` into today's run image — exactly the gap `run-images`
+# exists to close. A no-change rebuild is cheap: the Dockerfile's cargo cache mounts
+# mean cargo re-links at most the crates that actually changed.
+build_tools() {
+	echo "==> building ${TOOLS_IMAGE} (shared asset tooling; not pushed)"
+	"$DOCKER" build \
+		-t "${TOOLS_IMAGE}" \
+		-f "${SCRIPT_DIR}/tools/Dockerfile" "${SCRIPT_DIR}/.."
 }
 
 build_base() {
@@ -212,6 +239,7 @@ build_asset_image() {
 	echo "==> building ${image} (FROM ${BASE_IMAGE})"
 	"$DOCKER" build \
 		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}" \
 		-t "${image}" \
 		-f "${SCRIPT_DIR}/${name}/Dockerfile" "${SCRIPT_DIR}/.."
 
@@ -262,6 +290,7 @@ build_audio_image() {
 	echo "==> building ${image} (FROM ${BASE_IMAGE}) with ${pack_arg}=${pack_ref}"
 	"$DOCKER" build \
 		--build-arg "BASE_IMAGE=${BASE_IMAGE}" \
+		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}" \
 		--build-arg "${pack_arg}=${pack_ref}" \
 		--build-arg "${url_arg}=${url}" \
 		--build-arg "${sha_arg}=${sha}" \
@@ -290,7 +319,10 @@ build_music_image() {
 	local banks=("gm-lite@0.1.0" "cinematic@0.1.0" "synthwave@0.1.0")
 	local prefixes=("INSTRUMENT_BANK" "INSTRUMENT_BANK_CINEMATIC" "INSTRUMENT_BANK_SYNTHWAVE")
 
-	local build_args=(--build-arg "BASE_IMAGE=${BASE_IMAGE}")
+	local build_args=(
+		--build-arg "BASE_IMAGE=${BASE_IMAGE}"
+		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}"
+	)
 	local i ref presign lines
 	for i in "${!banks[@]}"; do
 		ref="${banks[$i]}"
@@ -366,6 +398,7 @@ build_full_stack_2d() {
 	echo "==> building ${image} (FROM ${BASE_WASM_IMAGE}) with ${sample_ref} + ${bank_ref}"
 	"$DOCKER" build \
 		--build-arg "BASE_IMAGE=${BASE_WASM_IMAGE}" \
+		--build-arg "TOOLS_IMAGE=${TOOLS_IMAGE}" \
 		--build-arg "SAMPLE_PACK=${sample_ref}" \
 		--build-arg "SAMPLE_PACK_URL=${sample_url}" \
 		--build-arg "SAMPLE_PACK_SHA256=${sample_sha}" \
@@ -514,6 +547,14 @@ build_one() {
 # in build-containers.yml can't drift (see that script's header).
 mapfile -t ALL_NAMES < <("${SCRIPT_DIR}/image-names.sh")
 
+# The images that do NOT bake a binary out of the shared tooling builder: the two
+# base layers, the self-contained blender image, the adversarial and performance
+# images (which compile their own wasm-targeting tooling in their own stages), and
+# game-jam (which inherits everything from full-stack-2d). Everything else in
+# ALL_NAMES is an asset image that `COPY --from=tools`. Expressed as the exceptions
+# rather than the members so a newly-added asset kind is covered by default.
+readonly NON_TOOLS_IMAGES=(base base-wasm blender adversarial performance game-jam)
+
 # Whether an image tag is present in the local image store (used to decide whether
 # the FROM base has to be built before a selected non-base image).
 image_present() { "$DOCKER" image inspect "$1" >/dev/null 2>&1; }
@@ -529,7 +570,11 @@ fi
 # (e.g. `voxel-anim` for `voxel-animation`) fails fast instead of building nothing.
 for name in "${selected[@]}"; do
 	found=""
-	for known in "${ALL_NAMES[@]}"; do
+	# `tools` is accepted although it is not in ALL_NAMES: it is the shared tooling
+	# BUILDER, not a published run image, so `./build.sh tools` is a way to rebuild
+	# just it. The layer-0 rule below is what actually builds it (which is also why
+	# the main build loop skips it).
+	for known in "${ALL_NAMES[@]}" tools; do
 		[[ "$name" == "$known" ]] && { found=1; break; }
 	done
 	if [[ -z "${found}" ]]; then
@@ -583,6 +628,32 @@ select_needs_full_stack_2d() {
 	return 1
 }
 
+# Whether the selection includes any image that bakes a binary out of the shared
+# tooling builder — i.e. anything but the exceptions in NON_TOOLS_IMAGES. `game-jam`
+# is an exception only because it inherits its binaries from full-stack-2d; when a
+# game-jam selection has to build that parent, the layer-3 rule below asks for the
+# tooling itself.
+select_needs_tools() {
+	local x y is_exception
+	for x in "${selected[@]}"; do
+		is_exception=""
+		for y in "${NON_TOOLS_IMAGES[@]}"; do
+			[[ "$x" == "$y" ]] && { is_exception=1; break; }
+		done
+		[[ -z "${is_exception}" ]] && return 0
+	done
+	return 1
+}
+
+# Layer 0 — the shared asset tooling, built before anything that copies out of it.
+# ALWAYS rebuilt (never "reused if present"): it carries the compiled binaries, so a
+# stale one would bake outdated tooling into an otherwise-fresh run image. Its cargo
+# cache mounts make a no-change rebuild near-instant. It is independent of the base,
+# so it is built first.
+if select_needs_tools; then
+	build_tools
+fi
+
 # Layer 1 — the base. `select_needs_base` is true whenever base-wasm or any of its
 # dependents is selected (none of them is `base`/`blender`), so this also covers the
 # base that base-wasm is `FROM`.
@@ -611,14 +682,18 @@ if ! select_has full-stack-2d \
 	&& select_needs_full_stack_2d \
 	&& ! image_present "${FULL_STACK_2D_IMAGE}"; then
 	echo "==> full-stack-2d image ${FULL_STACK_2D_IMAGE} not present; building it first (game-jam is FROM it)"
+	# full-stack-2d bakes six binaries out of the tooling builder. A game-jam-only
+	# selection did not trigger the layer-0 rule (game-jam inherits its binaries and
+	# needs no tooling of its own), so build the tooling here before its parent.
+	build_tools
 	build_full_stack_2d
 fi
 
-# Build each selected image (base and base-wasm are already handled above). The
-# canonical order in image-names.sh places full-stack-2d before game-jam, so a full
-# build builds the parent before the jam image.
+# Build each selected image. The base layers and the tooling builder are already
+# handled above. The canonical order in image-names.sh places full-stack-2d before
+# game-jam, so a full build builds the parent before the jam image.
 for name in "${selected[@]}"; do
-	[[ "$name" == base || "$name" == base-wasm ]] && continue
+	[[ "$name" == base || "$name" == base-wasm || "$name" == tools ]] && continue
 	build_one "$name"
 done
 echo "==> done"

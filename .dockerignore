@@ -1,10 +1,17 @@
 # Keep the build context lean AND stable. Both the run-container builds
-# (containers/*/Dockerfile, which compile the `draw`/`foray` binaries from
-# crates/) and the service-image builds (deployments/images/*.Dockerfile, which
-# compile the backend/auth/dispatcher/driver/artifacts/arena crates) use the
+# (containers/*/Dockerfile — the shared tooling builder in containers/tools/, which
+# compiles every asset binary from crates/, plus the adversarial and performance
+# images, which compile the Foray/Lattice tooling in their own stages) and the
+# service-image builds (deployments/images/services.Dockerfile, which compiles the
+# backend/auth/dispatcher/driver/artifacts/arena/publisher crates) use the
 # repository root as their context. Every one of those builds is just a `cargo
 # build` over the Rust workspace — nothing else — so this is an ALLOWLIST: ignore
 # everything, then re-include only the paths cargo actually reads.
+#
+# (The per-asset-kind images — sprite, voxel, mc, … — no longer read the context at
+# all: they only `COPY --from` the tooling builder. They are still built with the
+# repo root as their context for consistency, and it costs nothing because this
+# allowlist keeps it to ~100kB.)
 #
 # Flipping to an allowlist (rather than enumerating things to exclude) means a
 # change to anything cargo does NOT compile — the frontend, the docs, test cases,
@@ -29,7 +36,7 @@
 !/orchestrators
 !/harnesses
 
-# The backend service image (deployments/images/backend.Dockerfile) bakes the
+# The backend service image (services.Dockerfile, `--target backend`) bakes the
 # Playwright browser-driver into its runtime to render references at ingest, so the
 # driver script, the sibling ES modules it imports (its reporter-side `ttc` kit and
 # the `validation` runtime), and its manifest must survive the allowlist too. Any
@@ -100,7 +107,7 @@
 # containers/README.md#the-shippable-test-cabinet-packages). The script is the one
 # extra file that build needs beyond the console's slice, so re-include it.
 !/scripts/stage-tcab-packages.mjs
-# The driver service image (deployments/images/driver.Dockerfile) bakes in a
+# The driver service image (services.Dockerfile, `--target driver`) bakes in a
 # static-musl `gg` harness, building it in a stage that runs this script (which
 # `cargo build`s test-cabinet-gg for the musl target). It lives outside the
 # allowlisted paths above, so re-include it or the gg-build stage dies with

@@ -8,7 +8,8 @@
 # so the single-writer pin and the durable volume both go away. Two base constraints
 # still hold (see deployment/kubernetes.md#backend), and shape this manifest:
 #   - The image must still ship a headless Chromium for reference rendering — same
-#     `tcab-backend` image as the base (deployments/images/backend.Dockerfile).
+#     `tcab-backend` image as the base (deployments/images/services.Dockerfile,
+#     `--target backend`).
 #   - The definition store and ingest checkout still live on local disk, so /state
 #     stays mounted — but as an emptyDir, since both are regenerable: the ingest
 #     CronJob (POST /ingest) repopulates them, so losing them on a reschedule costs

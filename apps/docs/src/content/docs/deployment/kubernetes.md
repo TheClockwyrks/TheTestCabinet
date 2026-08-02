@@ -341,7 +341,7 @@ three things are non-negotiable and follow directly from that:
    see [Backups](/deployment/backups/).
 3. **An image with a browser.** The stock binary has no Chromium. The published
    `tcab-backend` image
-   ([`deployments/images/backend.Dockerfile`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/images/backend.Dockerfile))
+   ([`deployments/images/services.Dockerfile`](https://github.com/TheClockwyrks/TheTestCabinet/blob/master/deployments/images/services.Dockerfile), `--target backend`)
    layers the `tcab-backend` binary over Node, the bundled Playwright driver, and a
    Playwright-managed Chromium (plus the fonts it needs), and points the render path
    at them. The **`tcab-driver`** image carries the same Node/Playwright toolchain

@@ -32,11 +32,11 @@ deployments/
 │   ├── compose.yml            # backend + auth service in containers (a minimal stack)
 │   └── Makefile               # the full stack on a local k3d cluster (`make local-up`)
 ├── images/                    # service images, published to GHCR by CI (see below)
-│   ├── backend.Dockerfile     # tcab-backend + headless Chromium
-│   ├── auth.Dockerfile        # tcab-auth-service, slim runtime (no Chromium/fonts)
-│   ├── dispatcher.Dockerfile  # tcab-dispatcher, slim controller; no container engine
-│   ├── driver.Dockerfile      # tcab-driver, the per-run executor; no container engine
-│   └── artifacts.Dockerfile   # tcab-artifacts, slim run-tree server
+│   ├── services.Dockerfile    # EVERY Rust service, one `--target` each, over one
+│   │                          #   shared cargo build stage: backend (+ headless
+│   │                          #   Chromium), auth, dispatcher, driver, artifacts,
+│   │                          #   arena, publisher
+│   └── web.Dockerfile         # tcab-web, the console SPA behind nginx (no crate)
 ├── k8s/
 │   ├── kustomization.yaml     # the kustomize BASE (the flat manifests below)
 │   ├── namespace.yaml         # per-environment namespace
