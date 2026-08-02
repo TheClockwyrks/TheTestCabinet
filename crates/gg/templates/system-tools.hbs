@@ -14,6 +14,14 @@ Name the winning attempt with `{{ending.selectWinner}}`.
 {{/if}}
 A reply with no tool call is an error.
 
+## Reading Files
+
+{{#if readFile.offered}}
+{{#if readFile.capped}}Reading a file returns at most {{readFile.lineCap}} lines per call.{{/if}}
+
+{{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}
+{{/if}}
+
 {{#if memories}}
 ## Memory
 
@@ -65,16 +73,8 @@ memory, you will be given a system-generated notification naming what changed so
 you can decide whether to read it.
 {{/if}}
 {{#if memories.maxLenDescription}}
-A memory's description must be at most {{memories.maxLenDescription}} characters.
+A memory's description may be at most {{memories.maxLenDescription}} characters.
 {{/if}}
-{{/if}}
-
-## Image Support
-
-{{#if readFile.offered}}
-{{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}
-
-{{#if readFile.capped}}Reading a file returns at most {{readFile.lineCap}} lines per call.{{/if}}
 {{/if}}
 
 {{#if tasks}}
