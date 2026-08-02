@@ -141,7 +141,9 @@ impl DocsRuntime {
             (Some(tool), _) => self.enabled.contains(tool),
             // An ending call: bound when it is this agent's role's.
             (None, Some(ending)) => ending == self.role,
-            // Neither gate — nothing in the committed catalogue is shaped this way.
+            // Neither gate: an ungated carve-out, which today is `view.openText` / `view.close` /
+            // `view.current` — bound to every program whatever a run enables, because a run that
+            // offers no tools at all must still be able to show its model something.
             (None, None) => true,
         }
     }

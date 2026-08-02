@@ -1,23 +1,39 @@
 /**
  * The `files` family: reading, writing, editing and listing workspace files.
  *
- * Two lowering decisions live here. `readFile` flattens the membrane's `{ tag, val }` variant into a
- * `kind`-discriminated object a model can destructure directly, and every `u64` — the byte count
+ * Two lowering decisions live here. {@link asFileRead} flattens the membrane's `{ tag, val }` variant
+ * into a `kind`-discriminated object a model can destructure directly — shared with `view.openFile`,
+ * which performs the same read — and every `u64` — the byte count
  * `writeFile` returns, the size of a picture — is converted with `Number()` before it can reach a
  * program. A `bigint` that escapes is not a local nuisance: `JSON.stringify` throws on it, so one
  * stray `bigint` anywhere in a returned structure turns the program's entire result into `null`.
  */
 
+import type { FileReadRaw } from "test-cabinet:gg/files";
 import * as raw from "test-cabinet:gg/files";
 import { U32_MAX, call, opts, uint } from "../errors.js";
 import type { DirEntry, FileRead } from "../types.js";
 
 /**
+ * The membrane's `{ tag, val }` read variant, lowered to the model-facing `FileRead`.
+ *
+ * Exported so `view.openFile` — which performs the very same host read and returns the very same
+ * shape — shares this one lowering rather than keeping a second copy of it. It is **not** a
+ * catalogued export: nothing binds it into a program's scope and no prompt line describes it.
+ */
+export function asFileRead(read: FileReadRaw): FileRead {
+  return read.tag === "text"
+    ? { kind: "text", ...read.val }
+    : { kind: "image", ...read.val, bytes: Number(read.val.bytes) };
+}
+
+/**
  * Read a workspace file, returning either `{ kind: "text", ... }` or `{ kind: "image", ... }` — the
  * format is detected from the file's bytes, never its extension, and an image's pixels are shown to
  * you rather than handed to your program. `offset` and `limit` select a window of lines and are
- * honoured only under a capped read policy. Throws `not-found` for a missing path and
- * `invalid-argument` for one that escapes the workspace.
+ * honoured only under a capped read policy. This gets bytes for your program and puts nothing in
+ * your context window; `view.openFile` is the call that shows the file to you. Throws `not-found`
+ * for a missing path and `invalid-argument` for one that escapes the workspace.
  */
 export function readFile(
   path: string,
@@ -26,10 +42,7 @@ export function readFile(
   const o = opts<{ offset?: number; limit?: number }>("readFile", options);
   const offset = uint("readFile", "offset", o?.offset, U32_MAX);
   const limit = uint("readFile", "limit", o?.limit, U32_MAX);
-  const read = call(() => raw.readFile(path, offset, limit));
-  return read.tag === "text"
-    ? { kind: "text", ...read.val }
-    : { kind: "image", ...read.val, bytes: Number(read.val.bytes) };
+  return asFileRead(call(() => raw.readFile(path, offset, limit)));
 }
 
 /**

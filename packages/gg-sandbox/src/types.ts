@@ -230,6 +230,35 @@ export interface ArchiveSearch {
   hits: ArchiveHit[];
 }
 
+/**
+ * Which of the two kinds a view is.
+ *
+ * The taxonomy is closed at two on purpose: everything on disk is a file, and everything a program
+ * can compute is a string. A directory listing, a command's output, a child agent's answer, a table
+ * you assembled — every one of those is a **text** view.
+ */
+export type ViewKind = "file" | "text";
+
+/** The window of lines a **paged** file view covers; absent for a whole-file view. */
+export interface ViewRegion {
+  /** The 1-based first line the view shows. */
+  offset: number;
+  /** How many lines it shows. */
+  limit: number;
+}
+
+/** One view open in your context window, as `view.current()` reports it. */
+export interface OpenView {
+  /** Whether it is a file view or a text view. */
+  kind: ViewKind;
+  /** What `view.close` takes: a file view's workspace path, or a text view's label. */
+  selector: string;
+  /** Roughly what holding it costs you, in tokens. */
+  tokens: number;
+  /** The line window a paged file view covers; absent for a whole-file view and for text views. */
+  region?: ViewRegion;
+}
+
 /** A child agent that was spawned and is now running in parallel. */
 export interface SubagentHandle {
   /** The child's id — pass it to `waitForSubagents` or `sendMessage`. */

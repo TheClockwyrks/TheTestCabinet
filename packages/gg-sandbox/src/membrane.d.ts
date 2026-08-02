@@ -472,6 +472,55 @@ declare module "test-cabinet:gg/docs" {
   export function readDocs(name: string): string;
 }
 
+/**
+ * Putting material into the agent's own context window — the third model-facing carve-out, beside
+ * `session` and `docs`, and never a gg tool. `src/tools/views.ts` is its only importer.
+ *
+ * Three of the four functions are bound into every program's scope whatever a run enables, exactly
+ * as `finish` is; `open-file-view` is a read, so the shim binds it only when `read_file` is enabled.
+ * Cataloguing any of them as a tool would break the `boundTools() == ALL_TOOL_NAMES` bijection the
+ * committed component is checked against, which is why they have their own interface.
+ */
+declare module "test-cabinet:gg/views" {
+  import type { FileReadRaw } from "test-cabinet:gg/files";
+
+  /** Which of the two kinds a view is, in the WIT's spelling. */
+  export type ViewKindRaw = "file" | "text";
+
+  /** The line window a paged file view covers. */
+  export interface ViewRegionRaw {
+    /** The 1-based first line the view shows. */
+    offset: number;
+    /** How many lines it shows. */
+    limit: number;
+  }
+
+  /** One view currently open in the agent's context window. */
+  export interface OpenViewRaw {
+    /** Whether it is a file or a text view. */
+    kind: ViewKindRaw;
+    /** What `closeView` takes: a file view's path, or a text view's label. */
+    selector: string;
+    /** Roughly what holding it costs, in tokens. A `u64`, so a `bigint` here. */
+    tokens: bigint;
+    /** The window a paged file view covers; `undefined` for whole-file and text views. */
+    region: ViewRegionRaw | undefined;
+  }
+
+  /** Read a workspace file and open a view of it. Returns exactly what `readFile` returns. */
+  export function openFileView(
+    path: string,
+    offset: number | undefined,
+    limit: number | undefined,
+  ): FileReadRaw;
+  /** Open, or replace, the text view keyed by `label`. */
+  export function openTextView(label: string, body: string): void;
+  /** Close every view carrying `selector`, and return how many were closed. */
+  export function closeView(selector: string): number;
+  /** What is open in the agent's window right now. Cannot fail. */
+  export function currentViews(): OpenViewRaw[];
+}
+
 /** Delegating work to child agents. */
 declare module "test-cabinet:gg/delegation" {
   /** What a child agent is asked to do — exactly one of a written brief or a board issue. */

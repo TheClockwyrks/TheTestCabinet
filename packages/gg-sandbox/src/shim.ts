@@ -30,9 +30,11 @@
  *    and cannot diagnose from a generic message.
  *
  * What this file deliberately does **not** do is carry a program's return value anywhere. The value
- * is discarded and the model is told once ({@link feedback.noteReturn}) that it was: `console.log`
- * is the one channel, which is why there is no serialisation to fail, no depth limit to explain, and
- * no rule about what a program may hand back. Ending the run is likewise not this file's business —
+ * is discarded and the model is told once ({@link feedback.noteReturn}) that it was: a program shows
+ * itself material by opening a **view** (`view.openText`, `view.openFile`) and tells the run's
+ * operator things with `console.log`, which is why there is no serialisation to fail, no depth limit
+ * to explain, and no rule about what a program may hand back. Ending the run is likewise not this
+ * file's business —
  * `finish` returns like any other call and the *host* owns the flag it sets, so there is no unwind
  * to recognise and nothing here to reset between programs.
  */
@@ -45,6 +47,8 @@ import {
   OBJECT_FOR_MODULE,
   SESSION_ENTRIES,
   TOOL_CATALOGUE,
+  VIEW_ENTRIES,
+  VIEW_MODULE,
 } from "./catalogue.js";
 import { ToolError, asToolError } from "./errors.js";
 import * as helpers from "./helpers.js";
@@ -58,16 +62,21 @@ import * as memoriesMod from "./tools/memories.js";
 import * as shellMod from "./tools/shell.js";
 import * as skillsMod from "./tools/skills.js";
 import * as tasksMod from "./tools/tasks.js";
+import * as viewsMod from "./tools/views.js";
 
 /** A bound tool or helper, as the shim handles it: names and arities are the SDK's business. */
 type ToolFn = (...args: unknown[]) => unknown;
 
 /**
- * The SDK modules, keyed by the `module` field of {@link TOOL_CATALOGUE}.
+ * The SDK modules, keyed by the `module` field of {@link TOOL_CATALOGUE} — plus
+ * {@link VIEW_MODULE}, whose functions are catalogued separately because none of them is a gg tool.
  *
  * Every module is imported unconditionally — the component is baked once, so there is nothing to
  * gain by importing lazily, and a static import is what lets `componentize-js` resolve the membrane
  * specifiers at build time.
+ *
+ * {@link boundTools} iterates {@link TOOL_CATALOGUE} rather than this map's keys, so the `views`
+ * entry cannot perturb the `boundTools() == ALL_TOOL_NAMES` bijection: no tool names that module.
  */
 const MODULES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   shell: shellMod,
@@ -78,6 +87,7 @@ const MODULES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   board: boardMod,
   context: contextMod,
   delegation: delegationMod,
+  views: viewsMod,
 };
 
 /** The helper module, looked up the same way the tool modules are. */
@@ -358,8 +368,9 @@ function readDocs(target: unknown): string {
  * with nothing enabled is a missing object.
  *
  * Every object also carries a `list()` (the directory of its own functions), and every bound
- * function carries a `.docs()` — both routed to the {@link docsMod} carve-out. The `harness` object
- * is present whatever a run enables, because it holds `readDocs`. The session-ending calls are bound
+ * function carries a `.docs()` — both routed to the {@link docsMod} carve-out. The `harness` and
+ * `view` objects are present whatever a run enables — one holds `readDocs`, the other is the only
+ * way material reaches the model's context window at all. The session-ending calls are bound
  * from `ending`, one group per role, so a program has exactly the ending its role produces — a
  * reviewer gets a `review` object and no `finish`, a judge a `judge` object and no `finish`.
  * Everything goes through {@link guard}, so a call made from deferred work — which lands after the
@@ -401,6 +412,18 @@ function buildScope(
   const harness = objectFor(OBJECT_FOR_MODULE["session"] ?? "harness");
   harness["readDocs"] = documented(guard("readDocs", readDocs as ToolFn), "readDocs");
 
+  // `view`: always present, on the same carve-out `harness` has — a run that enables no tools at all
+  // must still be able to show its model something, and a view is the only channel that reaches it.
+  // `openFile` is the one exception: it is a read, so it is bound exactly when `read_file` is, and a
+  // run with reading withheld gets a `view` object without it rather than a side door into the
+  // workspace.
+  const view = objectFor(OBJECT_FOR_MODULE[VIEW_MODULE] ?? "view");
+  for (const entry of VIEW_ENTRIES) {
+    if (entry.requires !== undefined && !on.has(entry.requires)) continue;
+    const fn = lookup(MODULES[VIEW_MODULE] ?? {}, entry.js);
+    if (fn) view[entry.js] = documented(guard(entry.js, fn), entry.js);
+  }
+
   // The one ending group this role produces. Bound by the same rule the tools are: what is not this
   // role's ending is not a name in the program's scope.
   for (const entry of SESSION_ENTRIES) {
@@ -418,13 +441,13 @@ function buildScope(
  * `program` is JavaScript: gg type-stripped the model's TypeScript before it got here. `enabled` is
  * the run's gg tool names and `ending` the agent's role, which together are the whole scope. Nothing
  * comes back: a throw is reported over `feedback.report-error` rather than being allowed to escape as
- * an opaque wasm trap, everything a program wanted to say it said with `console.log`, and an ending
+ * an opaque wasm trap, everything a program wanted to show itself it opened a view of, and an ending
  * is a flag the host already holds.
  *
  * A **returned value is discarded**, and {@link feedback.noteReturn} is how the model learns that
- * rather than by noticing an absence. Discarding it is what makes the rule one sentence — log what
- * you want to see — and it costs a program nothing: there is no value it could return that it could
- * not log.
+ * rather than by noticing an absence. Discarding it is what makes the rule one sentence — open a
+ * view of what you want to see — and it costs a program nothing: there is no value it could return
+ * that it could not open a view of.
  */
 export function run(program: string, enabled: string[], ending: EndingKind): void {
   installConsole();

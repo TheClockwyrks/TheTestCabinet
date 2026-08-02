@@ -22,10 +22,11 @@
 //   * every catalogued export must carry a doc comment — an undocumented tool would reach a model as
 //     a bare signature with nothing after the dash.
 //
-// Beside its provenance line the catalogue has four parts — `session`, `tools`, `helpers`, `types` —
-// and `session` comes first because it is the one part that is not a projection of the run's enabled
-// set: an ending call is bound from the agent's *role*, so the prompt renders the role's group
-// unconditionally, and a run that offers no tools at all still has to be told how to end.
+// Beside its provenance line the catalogue has five parts — `session`, `views`, `tools`, `helpers`,
+// `types` — and the two carve-outs come first because they are the parts that are not a projection of
+// the run's enabled set: an ending call is bound from the agent's *role* and three of the four view
+// functions are bound unconditionally, so a run that offers no tools at all is still told how to end
+// and how to put something in front of itself.
 //
 // Usage:
 //   node tools/signatures.mjs --out <path>            # write the catalogue
@@ -229,8 +230,15 @@ function reflect(js, expectedFile, { functions, types }) {
 
 /** Build the whole catalogue. */
 async function build() {
-  const { TOOL_CATALOGUE, HELPER_CATALOGUE, SESSION_ENTRIES, SESSION_MODULE, OBJECT_FOR_MODULE } =
-    await loadCatalogue();
+  const {
+    TOOL_CATALOGUE,
+    HELPER_CATALOGUE,
+    SESSION_ENTRIES,
+    SESSION_MODULE,
+    VIEW_ENTRIES,
+    VIEW_MODULE,
+    OBJECT_FOR_MODULE,
+  } = await loadCatalogue();
   const declarations = index(await loadHeaders());
   // The API object a module's functions are grouped under in a program's scope. The host groups the
   // catalogue by this to build each object's `list()` directory and to route `readDocs`.
@@ -261,6 +269,23 @@ async function build() {
       js: entry.js,
       object: entry.object,
       ending: entry.ending,
+      signature,
+      doc,
+      types: sorted(referenced),
+    };
+  });
+
+  // The view functions, reflected on the same terms as the ending calls: no `tool` field, because
+  // none of them has a name in `ALL_TOOL_NAMES` and nothing dispatches them. `requires` carries the
+  // one gate among them — `openFile` is a read — and is `null` for the three nothing gates, so the
+  // host reads an explicit absence rather than a missing key.
+  const views = VIEW_ENTRIES.map((entry) => {
+    const { signature, doc, referenced } = reflect(entry.js, `${VIEW_MODULE}.d.ts`, declarations);
+    for (const name of referenced) used.add(name);
+    return {
+      js: entry.js,
+      object: objectForModule(VIEW_MODULE),
+      requires: entry.requires ?? null,
       signature,
       doc,
       types: sorted(referenced),
@@ -305,7 +330,7 @@ async function build() {
   }));
 
   return `${JSON.stringify(
-    { generatedFrom: GENERATED_FROM, session, tools, helpers, types },
+    { generatedFrom: GENERATED_FROM, session, views, tools, helpers, types },
     null,
     2,
   )}\n`;
@@ -345,10 +370,10 @@ async function main() {
   }
   await mkdir(path.dirname(out), { recursive: true });
   await writeFile(out, catalogue, "utf8");
-  const { tools, helpers, types } = JSON.parse(catalogue);
+  const { views, tools, helpers, types } = JSON.parse(catalogue);
   process.stdout.write(
     `Wrote ${path.relative(process.cwd(), out)} (${tools.length} tools, ` +
-      `${helpers.length} helpers, ${types.length} types).\n`,
+      `${helpers.length} helpers, ${views.length} view functions, ${types.length} types).\n`,
   );
 }
 

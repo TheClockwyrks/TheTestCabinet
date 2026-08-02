@@ -175,6 +175,85 @@ fn the_catalogue_carries_every_ending_function() {
     }
 }
 
+/// The catalogue carries the four `view` functions, each with the gate that decides whether a
+/// program binds it — and none of them as a gg tool.
+///
+/// The gate is the whole content of this entry type: `openFile` is a read and must close when
+/// `read_file` is withheld, while the other three are bound whatever a run enables, because a run
+/// that offers no tools at all must still be able to show its model something. A `requires` that
+/// slipped onto the wrong one would silently withhold the only channel into the context window, or
+/// silently open a side door into the workspace, and neither shows up as a compile error.
+#[test]
+fn the_catalogue_carries_every_view_function() {
+    let by_name = |js: &str| {
+        catalogue()
+            .views
+            .iter()
+            .find(|entry| entry.js == js)
+            .unwrap_or_else(|| panic!("`{js}` is catalogued"))
+    };
+
+    let open_file = by_name("openFile");
+    assert_eq!(open_file.object, "view");
+    assert_eq!(
+        open_file.requires.as_deref(),
+        Some("read_file"),
+        "opening a file view is a read, and closes with reading"
+    );
+
+    for js in ["openText", "close", "current"] {
+        let entry = by_name(js);
+        assert_eq!(entry.object, "view");
+        assert!(
+            entry.requires.is_none(),
+            "`{js}` is bound whatever a run enables"
+        );
+    }
+
+    assert_eq!(
+        catalogue().views.len(),
+        4,
+        "the view surface is the four functions and nothing else"
+    );
+
+    // None of them is a gg tool, and none collides with one: two vocabularies share a program's
+    // scope, and a collision would be resolved by bind order rather than by anyone's decision.
+    for entry in &catalogue().views {
+        assert!(
+            !ALL_TOOL_NAMES.contains(&entry.js.as_str()),
+            "`{}` is not a gg tool name",
+            entry.js
+        );
+        assert!(
+            catalogue().tools.iter().all(|tool| tool.js != entry.js),
+            "the gg tool vocabulary binds the name `{}` the view surface needs",
+            entry.js
+        );
+        assert!(!entry.doc.trim().is_empty(), "`{}` has no doc", entry.js);
+        assert!(
+            entry.signature.starts_with(&entry.js),
+            "`{}`'s signature does not start with the name a program calls: {}",
+            entry.js,
+            entry.signature
+        );
+    }
+
+    // The projection the docs runtime reads carries the same gates, which is what makes a withheld
+    // `read_file` withhold `view.openFile`'s *documentation* as well as the function.
+    let functions = catalogue_functions();
+    let projected = |name: &str| {
+        functions
+            .iter()
+            .find(|function| function.name == name)
+            .unwrap_or_else(|| panic!("`{name}` is documented"))
+    };
+    assert_eq!(projected("openFile").gate, Some("read_file"));
+    assert_eq!(projected("openFile").object, "view");
+    assert!(projected("openText").gate.is_none());
+    assert!(projected("openText").ending.is_none());
+    assert!(!projected("current").summary.is_empty());
+}
+
 /// **`finish` is not a gg tool, and no gg tool is called `finish`.**
 ///
 /// Two vocabularies share one namespace — a program's scope — and the sandbox binds them from

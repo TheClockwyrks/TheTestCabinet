@@ -13,7 +13,7 @@ binary/generated artifacts** in the Rust crate:
 
 | Artifact | What it is |
 | --- | --- |
-| [`crates/gg/src/sandbox/gg-sandbox.component.wasm`](../../crates/gg/src/sandbox/) | The baked component, `include_bytes!`d by the host. **13,720,745 bytes** (13.1 MiB) as committed. |
+| [`crates/gg/src/sandbox/gg-sandbox.component.wasm`](../../crates/gg/src/sandbox/) | The baked component, `include_bytes!`d by the host. **13,939,240 bytes** (13.3 MiB) as committed. |
 | [`crates/gg/src/sandbox/signatures.json`](../../crates/gg/src/sandbox/) | The signature catalogue, `include_str!`d and rendered into the system prompt. |
 
 ## Layout
@@ -23,10 +23,10 @@ binary/generated artifacts** in the Rust crate:
 | `src/membrane.d.ts` | The hand-maintained TypeScript mirror of `crates/gg/wit/gg-sandbox.wit`. Emits no code; `componentize-js` injects the real bindings. |
 | `src/types.ts` | The **model-facing** record and enum types — gg's vocabulary, not the WIT's. |
 | `src/errors.ts` | `ToolError`, and the argument validators every wrapper runs first. |
-| `src/catalogue.ts` | Pure data: gg tool name ↔ SDK function ↔ module, plus `SESSION_ENTRY`. |
-| `src/tools/*.ts` | The 37 typed wrappers — one per gg tool, grouped one module per capability family — plus the two on-demand documentation functions (`listFunctions`, `readDoc`). |
+| `src/catalogue.ts` | Pure data: gg tool name ↔ SDK function ↔ module, plus `SESSION_ENTRIES` and `VIEW_ENTRIES`. |
+| `src/tools/*.ts` | The 37 typed wrappers — one per gg tool, grouped one module per capability family — plus the two on-demand documentation functions (`listFunctions`, `readDoc`) and the four `view` functions. |
 | `src/helpers.ts` | The one helper, `readTextFile`. |
-| `src/session.ts` | `finish(summary)` — the one model-facing function that is not a gg tool. |
+| `src/session.ts` | `finish(summary)` and the two verdict endings — model-facing functions that are not gg tools. |
 | `src/shim.ts` | The component's entry point: `run(program, tools)` and `boundTools()`. |
 | `tools/signatures.mjs` | Reflects the catalogue out of the emitted `.d.ts` files. |
 | `build.sh` | Refreshes both committed artifacts. |
@@ -39,10 +39,21 @@ reason. `finish(summary)` is model-facing — it is the only thing that ends a
 responses-as-code session, and the system prompt teaches it — but it is not a gg
 tool: no capability offers it, nothing dispatches it, and the shim binds it into
 **every** program's scope, including one in a run that enables no tools at all. It
-therefore gets its own `interface session` in the WIT, its own `SESSION_ENTRY`
-constant in the catalogue, and its own top-level `session` object in
+therefore gets its own `interface session` in the WIT, its own `SESSION_ENTRIES`
+array in the catalogue, and its own top-level `session` object in
 `signatures.json`, so that the bijection gg's `bound-tools` gate checks —
 `boundTools() == ALL_TOOL_NAMES` — is not perturbed by it.
+
+`src/tools/views.ts` is the same carve-out, one level further out. The `view`
+object — `openFile`, `openText`, `close`, `current` — is how a program puts
+material into its own **context window**, which is the only channel material has
+into the model: `console.*` reaches the run's operator, a view reaches the model
+on its next turn. None of the four is a gg tool either, so they get their own
+`interface views` in the WIT, their own `VIEW_ENTRIES` array, and their own
+top-level `views` array in `signatures.json`. Three of them are bound whatever a
+run enables, for the same reason `finish` is; `openFile` carries
+`requires: "read_file"`, because it is a read and a run with reading withheld must
+not get one through a side door.
 
 ## Refreshing the artifacts
 

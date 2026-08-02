@@ -20,9 +20,10 @@
  * The order is `ALL_TOOL_NAMES`' order, so the prompt lists tools in the same sequence gg documents
  * them everywhere else.
  *
- * The model-facing functions that **end a session** are deliberately not in either array — see
- * {@link SESSION_ENTRIES}. None of them is a gg tool, and cataloguing them as ones would break the
- * very bijection consumer 2 exists to check.
+ * The model-facing functions that **end a session** ({@link SESSION_ENTRIES}) and the ones that put
+ * material into the agent's own **context window** ({@link VIEW_ENTRIES}) are deliberately in
+ * neither array. None of them is a gg tool, and cataloguing them as ones would break the very
+ * bijection consumer 2 exists to check.
  */
 
 /** One tool: gg's name for it, this SDK's function name, and the module that exports it. */
@@ -53,6 +54,10 @@ export interface CatalogueEntry {
  * The two role-shaped ending objects — `review` and `judge` — are named on {@link SESSION_ENTRIES}
  * instead, because they are grouped by *role* rather than by module: all three groups are exported
  * by the one `session` module.
+ *
+ * `views` maps to the singular `view` for the same reason `files` maps to `fs`: the object name is
+ * read at a call site, and `view.openText(...)` states an intent about one thing where
+ * `views.openText(...)` would read like a collection being mutated.
  */
 export const OBJECT_FOR_MODULE: Readonly<Record<string, string>> = {
   shell: "system",
@@ -64,6 +69,7 @@ export const OBJECT_FOR_MODULE: Readonly<Record<string, string>> = {
   context: "context",
   delegation: "agents",
   session: "harness",
+  views: "view",
 };
 
 /**
@@ -169,3 +175,45 @@ export const SESSION_ENTRIES: readonly SessionEntry[] = [
 
 /** The module every {@link SESSION_ENTRIES} function is exported by. */
 export const SESSION_MODULE = "session";
+
+/** One model-facing view function: what it is called, and the gg tool (if any) that gates it. */
+export interface ViewEntry {
+  /** The exported function name a program calls. */
+  js: string;
+  /**
+   * The gg tool whose being enabled binds it, or `undefined` when nothing gates it.
+   *
+   * Deliberately the same shape {@link HelperEntry.requires} has, and read the same way by the shim:
+   * a gated view function is bound exactly when its tool is, an ungated one always.
+   */
+  requires?: string;
+}
+
+/**
+ * Every model-facing view function — the calls that put material into the agent's own context
+ * window. None of them is a gg tool.
+ *
+ * They are here rather than in {@link TOOL_CATALOGUE} for the same reason {@link SESSION_ENTRIES}
+ * are: they have no gg tool names, so cataloguing them as tools would break the bijection
+ * `boundTools() == ALL_TOOL_NAMES` that the committed component is checked against — and *making*
+ * them tools would hand a native tool-calling session an `open_file_view` that duplicates
+ * `read_file`, which on that path already arrives as an attributable message.
+ *
+ * `openText`, `close` and `current` are **ungated**, the carve-out `harness` has and for the same
+ * reason: a run that enables no tools at all must still be able to show its model something.
+ * `openFile` is a read, so it carries `requires: "read_file"` — a run with reading withheld must not
+ * get a read through a side door.
+ *
+ * The same two consumers the other arrays have: the shim binds these into a program's scope, and
+ * `tools/signatures.mjs` reflects each declaration and its JSDoc out of `views`' emitted `.d.ts` so
+ * the prompt and `fn.docs()` describe the surface the component really exports.
+ */
+export const VIEW_ENTRIES: readonly ViewEntry[] = [
+  { js: "openFile", requires: "read_file" },
+  { js: "openText" },
+  { js: "close" },
+  { js: "current" },
+];
+
+/** The module every {@link VIEW_ENTRIES} function is exported by. */
+export const VIEW_MODULE = "views";

@@ -50,6 +50,13 @@ pub(crate) struct SignatureCatalogue {
     /// keeps that array in exact bijection with the gg tool vocabulary the committed component is
     /// checked against.
     pub session: Vec<SessionSignature>,
+    /// The model-facing functions that put material into the agent's own context window — the `view`
+    /// object.
+    ///
+    /// Kept out of [`tools`](Self::tools) on the same rule [`session`](Self::session) is: none of
+    /// them has a gg tool name, so folding them in would break the bijection the committed component
+    /// is checked against.
+    pub views: Vec<ViewSignature>,
     /// One entry per gg tool the sandbox binds, in catalogue order.
     pub tools: Vec<ToolSignature>,
     /// The helper functions bound alongside a tool — convenience wrappers that are not gg tools in
@@ -104,6 +111,32 @@ pub(crate) struct SessionSignature {
     /// The type names this signature references, folded into the prompt's declarations exactly as a
     /// tool's are. Empty today — it takes a string and hands nothing back — and read rather than
     /// assumed so a future argument type cannot be shown to a model undeclared.
+    pub types: Vec<String>,
+}
+
+/// One view function as the guest exports it and the prompt describes it.
+///
+/// It is shaped like a [`HelperSignature`] with the gate made **optional**, and that one difference
+/// is the whole point of the type: `openFile` is a read and is bound exactly when `read_file` is,
+/// while `openText`, `close` and `current` are bound whatever a run enables — the same carve-out the
+/// documentation lookup has, because a run that offers no tools at all must still be able to show its
+/// model something. Modelling that as `Option<String>` on a *helper* would have made the gate look
+/// optional for helpers too, which it never is.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ViewSignature {
+    /// The gg tool whose being enabled binds this function, or `None` when nothing gates it.
+    pub requires: Option<String>,
+    /// The function name a program calls (`openText`).
+    pub js: String,
+    /// The API object it is grouped under — `view`, for all four.
+    pub object: String,
+    /// The full TypeScript signature, as the SDK declares it.
+    pub signature: String,
+    /// The SDK's own documentation for it, which is what a doc lookup renders.
+    pub doc: String,
+    /// The type names this signature references, folded into the prompt's declarations exactly as a
+    /// tool's are.
     pub types: Vec<String>,
 }
 
@@ -173,8 +206,9 @@ pub struct CatalogueFunction {
     pub object: &'static str,
     /// The name a program calls it by (`readFile`) — what `readDocs` is keyed on.
     pub name: &'static str,
-    /// The gg tool whose being enabled gates this function; `None` for a carve-out gated by
-    /// something other than the enabled set — an ending call, which the agent's role decides.
+    /// The gg tool whose being enabled gates this function; `None` for a carve-out the enabled set
+    /// does not decide — an ending call, which the agent's [role](Self::ending) decides, or a view
+    /// function that is bound unconditionally.
     pub gate: Option<&'static str>,
     /// For an ending call, the [role](crate::ending::EndingRole) whose programs bind it; `None` for
     /// a tool or helper, which every role's programs reach the same way.
@@ -203,14 +237,17 @@ fn first_sentence(doc: &'static str) -> &'static str {
     doc
 }
 
-/// Every function the committed catalogue documents — the ending calls, the tools, and the one
-/// helper — each projected as a [`CatalogueFunction`]. The docs runtime filters these by the run's
-/// enabled set and the agent's role, and adds the two meta functions (`list`, `readDocs`) itself,
-/// since those are the carve-out's own and have no catalogue entry.
+/// Every function the committed catalogue documents — the ending calls, the view calls, the tools,
+/// and the one helper — each projected as a [`CatalogueFunction`]. The docs runtime filters these by
+/// the run's enabled set and the agent's role, and adds the two meta functions (`list`, `readDocs`)
+/// itself, since those are the carve-out's own and have no catalogue entry.
 pub fn catalogue_functions() -> Vec<CatalogueFunction> {
     let catalogue = catalogue();
     let mut functions = Vec::with_capacity(
-        catalogue.session.len() + catalogue.tools.len() + catalogue.helpers.len(),
+        catalogue.session.len()
+            + catalogue.views.len()
+            + catalogue.tools.len()
+            + catalogue.helpers.len(),
     );
     for session in &catalogue.session {
         functions.push(CatalogueFunction {
@@ -222,6 +259,21 @@ pub fn catalogue_functions() -> Vec<CatalogueFunction> {
             signature: session.signature.as_str(),
             doc: session.doc.as_str(),
             types: session.types.as_slice(),
+        });
+    }
+    // A view function's gate is the one thing that varies within its group: `openFile` is a read and
+    // carries `read_file`, the other three carry nothing and are therefore bound to every program,
+    // which is what `(None, None)` means to the two consumers that read this projection.
+    for view in &catalogue.views {
+        functions.push(CatalogueFunction {
+            object: view.object.as_str(),
+            name: view.js.as_str(),
+            gate: view.requires.as_deref(),
+            ending: None,
+            summary: first_sentence(&view.doc),
+            signature: view.signature.as_str(),
+            doc: view.doc.as_str(),
+            types: view.types.as_slice(),
         });
     }
     for tool in &catalogue.tools {

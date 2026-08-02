@@ -649,8 +649,9 @@ fn a_returned_value_is_discarded_and_the_model_is_told() {
 /// committed `.wasm` rather than a source file.
 ///
 /// One blind spot, worth stating so nobody over-trusts the first gate: the guest imports the eight
-/// tool families, `session` and `feedback`. It never imports `types` or `turns`, so instantiation
-/// cannot notice a change to those — only the tool-name check below, and the Rust compiler, can.
+/// tool families, `session`, `docs`, `views` and `feedback`. It never imports `types` or `turns`, so
+/// instantiation cannot notice a change to those — only the tool-name check below, and the Rust
+/// compiler, can.
 #[test]
 fn the_committed_component_matches_this_build() {
     let (outcome, _) = run("console.log(\"instantiated\");");
@@ -746,4 +747,114 @@ fn a_role_gets_only_its_own_ending_calls() {
         "an out-of-range pick is a typed failure, not a merge of the wrong work"
     );
     assert!(outcome.completion.is_none());
+}
+
+/// **The `view` object is bound to every program, and only `openFile` is gated.**
+///
+/// A view is the one channel material has into a model's own context window, so binding it from the
+/// capability set would leave a run that enables no tools with nothing to show itself — the same
+/// carve-out `harness` has, checked here against the **committed artifact** rather than the source
+/// catalogue. `openFile` is the exception and stays a read: withholding `read_file` must not leave a
+/// side door open, and it has to close the *function* rather than the whole object, which is a
+/// distinction only an end-to-end run can prove.
+///
+/// The rest of the programs drive the four functions the way the prompt tells a model to write them,
+/// because everything about this surface that could be wrong is invisible from Rust: an argument
+/// under the wrong key, a `bigint` token count that makes `JSON.stringify` throw, a refusal that
+/// arrives as a bare record instead of a catchable `ToolError`.
+#[test]
+fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
+    // A run with NO tools at all still has `view`, and three of its four functions.
+    let outcome = run_as(
+        "view.openText(\"note\", \"what I found\");",
+        EndingRole::Standard,
+    );
+    assert!(
+        logs(&outcome).is_empty(),
+        "the program ran and said nothing"
+    );
+    let outcome = run_as(
+        "console.log(JSON.stringify(view.current().length));",
+        EndingRole::Standard,
+    );
+    assert_eq!(logged_json(&outcome), json!(0));
+    let outcome = run_as(
+        "console.log(JSON.stringify(view.close(\"nothing\")));",
+        EndingRole::Standard,
+    );
+    assert_eq!(
+        logged_json(&outcome),
+        json!(0),
+        "closing a selector that is not open is an answer, not a failure"
+    );
+
+    // …but not `openFile`, which is a read. The object is there; the function is not, so the model
+    // is told exactly which call it does not have rather than losing the whole namespace.
+    let outcome = run_as("view.openFile(\"src/a.ts\");", EndingRole::Standard);
+    assert_eq!(program_error(&outcome).kind, ProgramErrorKind::Other);
+    assert!(
+        program_error(&outcome).message.contains("not a function"),
+        "a run without `read_file` has no `view.openFile`: {:?}",
+        program_error(&outcome).message
+    );
+
+    // With `read_file` enabled it IS bound, and it dispatches a real `read_file` carrying the same
+    // typed arguments `fs.readFile` does — one read, not two, for the bytes and the view together.
+    let (outcome, log) = run(
+        "const read = view.openFile(\"src/a.ts\", { offset: 2, limit: 5 });\n\
+         console.log(JSON.stringify({ kind: read.kind, first: read.firstLine }));",
+    );
+    assert_eq!(logged_json(&outcome), json!({ "kind": "text", "first": 1 }));
+    assert_eq!(log.names(), ["read_file"]);
+    assert_eq!(
+        log.args("read_file"),
+        Some(json!({ "path": "src/a.ts", "offset": 2, "limit": 5 })),
+        "`view.openFile` is a `read_file`, argument for argument"
+    );
+
+    // What is open, as data. `JSON.stringify` is the assertion: a `u64` that reached the program as
+    // a `bigint` would throw here rather than merely reading oddly.
+    let (outcome, _) = run("view.openFile(\"src/a.ts\");\n\
+         view.openText(\"summary\", \"the body\");\n\
+         console.log(JSON.stringify(view.current().map((v) => ({\n\
+             kind: v.kind, selector: v.selector, tokens: typeof v.tokens, region: v.region ?? null,\n\
+         }))));");
+    assert_eq!(
+        logged_json(&outcome),
+        json!([
+            { "kind": "file", "selector": "src/a.ts", "tokens": "number", "region": null },
+            { "kind": "text", "selector": "summary", "tokens": "number", "region": null },
+        ]),
+        "a whole-file read has no region, and no token count reaches a program as a `bigint`"
+    );
+
+    // Re-stating an intent replaces it: two `openText`s of one label are one view.
+    let (outcome, _) = run("view.openText(\"summary\", \"first\");\n\
+         view.openText(\"summary\", \"second\");\n\
+         console.log(JSON.stringify(view.current().map((v) => v.selector)));");
+    assert_eq!(logged_json(&outcome), json!(["summary"]));
+
+    // Closing reports how many it closed, and leaves the rest.
+    let (outcome, _) = run("view.openText(\"a\", \"x\");\n\
+         view.openText(\"b\", \"y\");\n\
+         console.log(JSON.stringify({\n\
+             closed: view.close(\"a\"), left: view.current().map((v) => v.selector),\n\
+         }));");
+    assert_eq!(logged_json(&outcome), json!({ "closed": 1, "left": ["b"] }));
+
+    // A refused view arrives as a catchable `ToolError` naming the function the program called —
+    // there is no gg tool name to report, and `openText` is what the model wrote.
+    let (outcome, _) = run("try { view.openText(\"\", \"body\"); }\n\
+         catch (e) { console.log(JSON.stringify({ isToolError: e instanceof ToolError, tool: e.tool, code: e.code })); }");
+    assert_eq!(
+        logged_json(&outcome),
+        json!({ "isToolError": true, "tool": "openText", "code": "invalid-argument" }),
+        "a view with no selector could never be closed or attributed, so it is refused"
+    );
+
+    // The object is wired into the documentation carve-out under its own name, like every other one.
+    let (outcome, _) = run("console.log(JSON.stringify(view.list().map((f) => f.name)));");
+    assert_eq!(logged_json(&outcome), json!(["viewFunction"]));
+    let (outcome, _) = run("console.log(view.openText.docs());");
+    assert_eq!(logs(&outcome), ["documentation for `openText`"]);
 }
