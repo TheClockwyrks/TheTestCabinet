@@ -1116,7 +1116,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Agent persistence",
     group: "Delegation",
     purpose:
-      "Make this agent one long-lived worker instead of a pool of interchangeable ones: only one instance of it runs at a time (further instances queue), and each instance opens on the file views the last one had open — re-read from the workspace as it stands then, not replayed.",
+      "Make this agent one long-lived worker instead of a pool of interchangeable ones: only one instance of it runs at a time (further instances queue), and each instance opens on the views the last one had open — a file view re-read from the workspace as it stands then rather than replayed, and a view the agent composed for itself restored exactly as it wrote it.",
     defaultOn: false,
   },
   {

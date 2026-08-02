@@ -427,7 +427,9 @@ describe("deriveGgAgentSummaries", () => {
       ["shell", 1],
     ]);
     // The same spec, read by both instances, carried for three agent-turns between them.
-    const spec = worker.context.byFile.find((f) => f.key === "specs/spec.md");
+    const spec = worker.context.byView.find(
+      (v) => v.key === "file:specs/spec.md",
+    );
     expect(spec?.messages).toBe(2);
     expect(spec?.turns).toBe(3);
     expect(spec?.billedTokens).toBeCloseTo(1500, 6);

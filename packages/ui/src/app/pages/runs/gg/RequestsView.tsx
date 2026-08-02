@@ -38,6 +38,13 @@ import { ExpandablePre } from "./MessageOverlay";
 export type MessageBand = GgContextSource | "reply" | { unattributed: string };
 
 // The band a message occupies, resolved to its label and color.
+//
+// The last lookup is guarded because a record can name a band this build does not know: the
+// console reads records written by any gg, including one newer than itself, and an
+// unrecognised source came back from the unguarded lookup as `undefined` — a row with a blank
+// name and no swatch, which reads as a rendering bug rather than as a band the reader's
+// console cannot name. The raw tag is a worse label than a proper one and a far better label
+// than nothing. (`GgModuleViews` already guards the same lookup this way.)
 function band(source: MessageBand): {
   label: string;
   color: string;
@@ -49,8 +56,8 @@ function band(source: MessageBand): {
     return { label: "Reply", color: CONTEXT_SOURCE_COLORS.assistant };
   }
   return {
-    label: CONTEXT_SOURCE_LABELS[source],
-    color: CONTEXT_SOURCE_COLORS[source],
+    label: CONTEXT_SOURCE_LABELS[source] ?? source,
+    color: CONTEXT_SOURCE_COLORS[source] ?? CONTEXT_SOURCE_COLORS.history,
   };
 }
 

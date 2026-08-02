@@ -19,7 +19,7 @@
 // the provider reported (uncached + cached) and the input cost those tokens carry at the
 // agent's model's catalog rates, then splits both across the turn's request messages in
 // proportion to each message's estimated share of that request. Summing per message — and
-// then per band, per file, and per tool — gives what each is answerable for across the whole
+// then per band, per view, and per tool — gives what each is answerable for across the whole
 // run, grounded in reported usage rather than in estimates alone.
 //
 // Two figures come out of that, and they mean different things:
@@ -35,13 +35,20 @@
 //
 // # What can be attributed
 //
-// A file view is attributed to its path by the [selector tag](PooledMessage.label) gg records
-// on the pooled message. A stream recorded before gg carried that tag falls back to the
-// `read_file` call the view answers (matching its `toolCallId` to the arguments of the
-// assistant call that made it), which covers an ordinary read but not a pinned, autoloaded
-// specification whose `tool` message was re-framed by a compaction. What neither resolves is
-// reported as unattributed rather than dropped, so the file list never silently understates
-// the band it decomposes.
+// A **view** — a file the agent opened, or a value it composed and showed itself — is
+// attributed to its *selector* by the [tag](PooledMessage.label) gg records on the pooled
+// message: a path for a file view, the agent's own label for a text view. A stream recorded
+// before gg carried that tag falls back to the `read_file` call the view answers (matching its
+// `toolCallId` to the arguments of the assistant call that made it), which covers an ordinary
+// read but not a pinned, autoloaded specification whose `tool` message was re-framed by a
+// compaction. What neither resolves is reported as unattributed rather than dropped, so the
+// view list never silently understates the bands it decomposes.
+//
+// The two view bands share one grain deliberately. They answer the same question — *which
+// material sat in this window, and what did keeping it cost* — and an operator tuning a
+// configuration wants a 12k specification and a 12k agent-composed summary ranked against each
+// other, not filed apart. Each row carries its [kind](GgViewAttributionRow.kind) so the two are
+// still tellable apart where that matters.
 //
 // Tool output is attributed the same way, by the name of the call each result answers.
 //
@@ -53,11 +60,18 @@ import type { GgContextSource } from "@test-cabinet/run-record/gg";
 import type { ModelPriceLookup } from "./ggCost";
 import type { DerivedGgState, PooledMessage } from "./useGgRunState";
 
-/** One thing the window carried — a band, a file, or a tool — and what it was answerable for. */
+/**
+ * Which of the two kinds of view a row is: a file the agent opened, or a value it composed
+ * and showed itself. Mirrors gg's own closed taxonomy — everything on disk is a file, and
+ * everything a program can compute is text.
+ */
+export type GgViewKind = "file" | "text";
+
+/** One thing the window carried — a band, a view, or a tool — and what it was answerable for. */
 export interface GgAttributionRow {
   /** A stable react key, unique within its list. */
   key: string;
-  /** How the row reads: the band's name, the file's path, or the tool's name. */
+  /** How the row reads: the band's name, the view's selector, or the tool's name. */
   label: string;
   /**
    * The material's own estimated size — each distinct message counted once, however many
@@ -80,6 +94,14 @@ export interface GgAttributionRow {
   messages: number;
 }
 
+/**
+ * A view's row, which additionally says which kind of view it was — the one thing a path and
+ * an agent-chosen label do not tell apart on their own (`notes` could be either).
+ */
+export interface GgViewAttributionRow extends GgAttributionRow {
+  kind: GgViewKind;
+}
+
 /** An agent's whole window accounting, read the three ways its material can be grouped. */
 export interface GgContextAttribution {
   /**
@@ -95,15 +117,19 @@ export interface GgContextAttribution {
   cost: number | null;
   /** One row per context band the window carried, costliest first. */
   bySource: GgAttributionRow[];
-  /** One row per file whose view sat in the window, costliest first. */
-  byFile: GgAttributionRow[];
+  /**
+   * One row per view that sat in the window — a file by its path, an agent-composed text view
+   * by its label — costliest first, the two kinds ranked against each other.
+   */
+  byView: GgViewAttributionRow[];
   /** One row per tool whose output sat in the window, costliest first. */
   byTool: GgAttributionRow[];
   /**
-   * The billed tokens of file views whose path could not be resolved — an older stream's
-   * re-framed pinned view. Reported so the file list is honest about what it does not cover.
+   * The billed tokens of views whose selector could not be resolved — in practice an older
+   * stream's re-framed pinned file view, since a text view is keyed by a label gg always
+   * records. Reported so the view list is honest about what it does not cover.
    */
-  unattributedFileTokens: number;
+  unattributedViewTokens: number;
 }
 
 /** How each context band reads in the breakdown. */
@@ -113,6 +139,7 @@ const SOURCE_LABELS: Record<GgContextSource, string> = {
   assistant: "assistant turns",
   tool_output: "tool output",
   file_view: "file views",
+  text_view: "agent views",
   skill: "skills",
   memory: "memories",
   task_list: "task list",
@@ -127,12 +154,12 @@ export const EMPTY_ATTRIBUTION: GgContextAttribution = {
   billedTokens: 0,
   cost: null,
   bySource: [],
-  byFile: [],
+  byView: [],
   byTool: [],
-  unattributedFileTokens: 0,
+  unattributedViewTokens: 0,
 };
 
-// A bucket under construction: the running totals for one band, file, or tool, plus the
+// A bucket under construction: the running totals for one band, view, or tool, plus the
 // distinct messages it has absorbed (so `tokens` counts a message once however many turns it
 // survives) and the turns it appeared on.
 interface Bucket {
@@ -147,6 +174,25 @@ interface Bucket {
   lastTurn: number;
 }
 
+// A view's bucket also remembers which kind of view opened it. The kind is fixed at the key,
+// never re-decided, because a bucket only ever accumulates messages from one band.
+interface ViewBucket extends Bucket {
+  kind: GgViewKind;
+}
+
+function newBucket(label: string): Bucket {
+  return {
+    label,
+    billedTokens: 0,
+    cost: 0,
+    priced: false,
+    messages: new Set(),
+    tokens: 0,
+    turns: 0,
+    lastTurn: -1,
+  };
+}
+
 function bucketFor(
   into: Map<string, Bucket>,
   key: string,
@@ -154,16 +200,27 @@ function bucketFor(
 ): Bucket {
   let bucket = into.get(key);
   if (!bucket) {
-    bucket = {
-      label,
-      billedTokens: 0,
-      cost: 0,
-      priced: false,
-      messages: new Set(),
-      tokens: 0,
-      turns: 0,
-      lastTurn: -1,
-    };
+    bucket = newBucket(label);
+    into.set(key, bucket);
+  }
+  return bucket;
+}
+
+/**
+ * The bucket for one view, keyed by **kind and selector** rather than by selector alone: a
+ * workspace file named `notes` and a text view an agent labelled `notes` are two different
+ * things that must not sum into one row. The key is also what merges an agent's instances
+ * together in {@link mergeGgAttributions}, so the same discipline holds across a succession.
+ */
+function viewBucketFor(
+  into: Map<string, ViewBucket>,
+  kind: GgViewKind,
+  selector: string,
+): ViewBucket {
+  const key = `${kind}:${selector}`;
+  let bucket = into.get(key);
+  if (!bucket) {
+    bucket = { ...newBucket(selector), kind };
     into.set(key, bucket);
   }
   return bucket;
@@ -203,26 +260,37 @@ function byCostDescending(a: GgAttributionRow, b: GgAttributionRow): number {
   return a.label.localeCompare(b.label);
 }
 
+function rowOf(key: string, bucket: Bucket): GgAttributionRow {
+  return {
+    key,
+    label: bucket.label,
+    tokens: bucket.tokens,
+    billedTokens: bucket.billedTokens,
+    cost: bucket.priced ? bucket.cost : null,
+    turns: bucket.turns,
+    messages: bucket.messages.size,
+  };
+}
+
 function rowsFrom(buckets: Map<string, Bucket>): GgAttributionRow[] {
+  return [...buckets].map(([key, b]) => rowOf(key, b)).sort(byCostDescending);
+}
+
+function viewRowsFrom(
+  buckets: Map<string, ViewBucket>,
+): GgViewAttributionRow[] {
   return [...buckets]
-    .map(([key, bucket]) => ({
-      key,
-      label: bucket.label,
-      tokens: bucket.tokens,
-      billedTokens: bucket.billedTokens,
-      cost: bucket.priced ? bucket.cost : null,
-      turns: bucket.turns,
-      messages: bucket.messages.size,
-    }))
+    .map(([key, b]) => ({ ...rowOf(key, b), kind: b.kind }))
     .sort(byCostDescending);
 }
 
 /**
- * The path a pooled file-view message shows: the selector tag gg records on it, or — on a
- * stream recorded before gg carried one — the `path` argument of the `read_file` call the
- * view answers, resolved through `callPaths`. Null when neither is available.
+ * The selector a pooled view message shows: the tag gg records on it — a path for a file view,
+ * the agent's label for a text view — or, on a stream recorded before gg carried one, the
+ * `path` argument of the `read_file` call the view answers, resolved through `callPaths`. Null
+ * when neither is available.
  */
-function filePathOf(
+function viewSelectorOf(
   message: PooledMessage,
   callPaths: Map<string, string>,
 ): string | null {
@@ -276,12 +344,12 @@ export function attributeGgContext(
   const cachedRate = prices?.cachedInput ?? prices?.uncachedInput ?? null;
 
   const bySource = new Map<string, Bucket>();
-  const byFile = new Map<string, Bucket>();
+  const byView = new Map<string, ViewBucket>();
   const byTool = new Map<string, Bucket>();
   let totalBilled = 0;
   let totalCost = 0;
   let anyPriced = false;
-  let unattributedFileTokens = 0;
+  let unattributedViewTokens = 0;
 
   state.prompts.forEach((prompt, turn) => {
     // The request's estimated size, summed from the pool rather than read off the prompt's
@@ -326,12 +394,13 @@ export function attributeGgContext(
         shareCost,
       );
 
-      if (ref.source === "file_view") {
-        const path = filePathOf(message, paths);
-        if (path == null) unattributedFileTokens += shareBilled;
+      if (ref.source === "file_view" || ref.source === "text_view") {
+        const kind: GgViewKind = ref.source === "file_view" ? "file" : "text";
+        const selector = viewSelectorOf(message, paths);
+        if (selector == null) unattributedViewTokens += shareBilled;
         else
           credit(
-            bucketFor(byFile, path, path),
+            viewBucketFor(byView, kind, selector),
             message,
             turn,
             shareBilled,
@@ -357,9 +426,9 @@ export function attributeGgContext(
     billedTokens: totalBilled,
     cost: anyPriced ? totalCost : null,
     bySource: rowsFrom(bySource),
-    byFile: rowsFrom(byFile),
+    byView: viewRowsFrom(byView),
     byTool: rowsFrom(byTool),
-    unattributedFileTokens,
+    unattributedViewTokens,
   };
 }
 
@@ -367,9 +436,13 @@ export function attributeGgContext(
 // resident turns add up across instances too: two instances of one agent that each read the
 // same file for ten turns held it for twenty agent-turns between them, which is exactly the
 // figure a per-agent (rather than per-instance) read wants.
-function mergeRows(
-  into: Map<string, GgAttributionRow>,
-  rows: readonly GgAttributionRow[],
+//
+// Generic in the row so a view row carries its `kind` across the merge rather than being
+// widened back to a bare row: the key already pins the kind, and the spread below preserves
+// every field the caller's row type adds.
+function mergeRows<R extends GgAttributionRow>(
+  into: Map<string, R>,
+  rows: readonly R[],
 ): void {
   for (const row of rows) {
     const at = into.get(row.key);
@@ -385,11 +458,11 @@ function mergeRows(
   }
 }
 
-function mergedRows(
+function mergedRows<R extends GgAttributionRow>(
   parts: readonly GgContextAttribution[],
-  pick: (a: GgContextAttribution) => readonly GgAttributionRow[],
-): GgAttributionRow[] {
-  const merged = new Map<string, GgAttributionRow>();
+  pick: (a: GgContextAttribution) => readonly R[],
+): R[] {
+  const merged = new Map<string, R>();
   for (const part of parts) mergeRows(merged, pick(part));
   return [...merged.values()].sort(byCostDescending);
 }
@@ -417,10 +490,10 @@ export function mergeGgAttributions(
         ? null
         : priced.reduce((sum, part) => sum + (part.cost ?? 0), 0),
     bySource: mergedRows(known, (part) => part.bySource),
-    byFile: mergedRows(known, (part) => part.byFile),
+    byView: mergedRows(known, (part) => part.byView),
     byTool: mergedRows(known, (part) => part.byTool),
-    unattributedFileTokens: known.reduce(
-      (sum, part) => sum + part.unattributedFileTokens,
+    unattributedViewTokens: known.reduce(
+      (sum, part) => sum + part.unattributedViewTokens,
       0,
     ),
   };

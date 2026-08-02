@@ -512,6 +512,21 @@ describe("contextSummary", () => {
     ).toBe("usage slot · pinned · t0 · __context_usage__");
   });
 
+  it("spells an agent-composed view as its bare label", () => {
+    // A text view is keyed by a label, not by a path, and is never paged — appending a
+    // window to it would describe a region of a file it is not.
+    expect(
+      contextSummary({
+        slot: "thread",
+        source: "text_view",
+        retention: "ephemeral",
+        turn: 5,
+        label: "changed-files",
+        region: null,
+      }),
+    ).toBe("ephemeral · t5 · changed-files");
+  });
+
   it("spells a paged file view as path@offset+limit", () => {
     expect(
       contextSummary({

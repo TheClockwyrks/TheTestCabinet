@@ -152,6 +152,43 @@ function runEvents(memoriesId: (instance: string) => string): HarnessEvent[] {
 const EVENTS = runEvents((id) => `mem-${id}`);
 const SHARED_EVENTS = runEvents(() => "mem-shared");
 
+// The base run plus one reviewer instance's message log: a file view and an agent-composed
+// text view, both resident for the one turn that reports usage against them. Only the
+// context-spend section reads any of this.
+const VIEW_EVENTS: HarnessEvent[] = [
+  ...EVENTS,
+  gg("r1", {
+    type: "context_message",
+    id: "m-file",
+    role: "tool",
+    content: "fn main() {}",
+    toolCalls: [],
+    images: [],
+    tokens: 200,
+    label: "src/main.rs",
+  } as GgTelemetryKind),
+  gg("r1", {
+    type: "context_message",
+    id: "m-notes",
+    role: "user",
+    content: "View: changed-files\n----\nsrc/main.rs",
+    toolCalls: [],
+    images: [],
+    tokens: 600,
+    label: "changed-files",
+  } as GgTelemetryKind),
+  gg("r1", {
+    type: "prompt",
+    request: [
+      { id: "m-file", source: "file_view" },
+      { id: "m-notes", source: "text_view" },
+    ],
+    totalTokens: 800,
+    finishReason: "stop",
+    tokens: { uncachedInput: 800 },
+  } as GgTelemetryKind),
+];
+
 const CAPABILITIES: GgCapabilitySet = {
   agents: [profile("Root", ["board"]), profile("reviewer", ["memories"])],
 } as GgCapabilitySet;
@@ -236,6 +273,21 @@ describe("GgAgentsSummary detail", () => {
       "context",
       "tools",
     ]);
+  });
+
+  it("opens the context spend on Views and tells the two kinds of view apart", () => {
+    // The reading covers both kinds of view an agent can open — a file it asked to see and a
+    // value it composed and showed itself — because both are material it CHOSE to keep
+    // resident. A label is not self-identifying (an agent may label a view `src/main.rs`), so
+    // the agent-composed one says which it is.
+    const { detail } = openReviewer(stubNav(), VIEW_EVENTS);
+    const spend = within(detail).getByText("Context spend").closest("section")!;
+    expect(within(spend).getByRole("radio", { name: "Views" })).toBeChecked();
+    expect(within(spend).getByText("changed-files")).toBeInTheDocument();
+    expect(within(spend).getByText(/^agent view ·/)).toBeInTheDocument();
+    // The file view is in the same list, ranked against it, and is not marked.
+    expect(within(spend).getByText("src/main.rs")).toBeInTheDocument();
+    expect(within(spend).getAllByText(/^agent view ·/)).toHaveLength(1);
   });
 
   it("states the sharing distribution per row rather than in a preamble", () => {

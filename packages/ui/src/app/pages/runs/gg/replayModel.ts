@@ -825,7 +825,7 @@ const SLOT_LABELS: Record<GgReplayPromptSlot, string | null> = {
 /**
  * The Context column's one line for a message: its slot (where that says something the
  * band does not), whether it survives compaction, the turn it was pushed on, and — for a
- * paged file view — the `path@offset+limit` window it covers.
+ * labelled item — its selector, with a paged file view's `path@offset+limit` window.
  */
 export function contextSummary(item: ReplayContextItem): string {
   const parts: string[] = [];
@@ -833,13 +833,20 @@ export function contextSummary(item: ReplayContextItem): string {
   if (slot) parts.push(slot);
   parts.push(item.retention);
   parts.push(`t${item.turn}`);
-  const view = fileViewLabel(item);
+  const view = viewLabel(item);
   if (view) parts.push(view);
   return parts.join(" · ");
 }
 
-/** A labelled item's selector, with a paged view's window appended. */
-export function fileViewLabel(item: ReplayContextItem): string | null {
+/**
+ * A labelled item's selector, with a paged view's window appended where it has one.
+ *
+ * Not file-specific: a selector is a workspace path on a file view and the agent's own label
+ * on a text view, and only the first kind is ever paged. The region is appended only when the
+ * record carries one, so a text view reads as its bare label rather than as a window over a
+ * file it is not.
+ */
+export function viewLabel(item: ReplayContextItem): string | null {
   if (item.label == null) return null;
   return item.region == null
     ? item.label

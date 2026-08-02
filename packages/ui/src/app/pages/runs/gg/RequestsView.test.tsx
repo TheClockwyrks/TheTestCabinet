@@ -308,4 +308,55 @@ describe("RequestsView", () => {
     const turn = screen.getByText("Turn 1").closest("details")!;
     expect(within(turn).getByText(/No assistant message/)).toBeInTheDocument();
   });
+  // One message in one band, so a band-tag assertion has exactly one row to read.
+  function bandedStream(source: string): HarnessEvent[] {
+    return [
+      gg({
+        type: "context_message",
+        id: "m1",
+        role: "user",
+        content: "the material",
+        toolCalls: [],
+        images: [],
+        tokens: 3,
+        label: "changed-files",
+      } as GgTelemetryKind),
+      gg({
+        type: "prompt",
+        request: [{ id: "m1", source }],
+        totalTokens: 3,
+        finishReason: "stop",
+        tokens: {},
+      } as unknown as GgTelemetryKind),
+    ];
+  }
+
+  it("tags a view the agent composed for itself as its own band", () => {
+    const state = reduceGgEvents(bandedStream("text_view"));
+    render(
+      <RequestsView
+        prompts={state.prompts}
+        pool={state.messagePool}
+        live={false}
+      />,
+    );
+    expect(screen.getByText("Agent views")).toBeInTheDocument();
+    // Not folded into the file band it sits beside in the contract.
+    expect(screen.queryByText("File views")).toBeNull();
+  });
+
+  it("falls back to the raw tag for a band this build cannot name", () => {
+    // The console reads records written by any gg, including one newer than itself. The
+    // lookup used to be unguarded, so an unrecognised source rendered a nameless row with
+    // no swatch — which reads as a rendering bug rather than as a band this build predates.
+    const state = reduceGgEvents(bandedStream("band_from_the_future"));
+    render(
+      <RequestsView
+        prompts={state.prompts}
+        pool={state.messagePool}
+        live={false}
+      />,
+    );
+    expect(screen.getByText("band_from_the_future")).toBeInTheDocument();
+  });
 });

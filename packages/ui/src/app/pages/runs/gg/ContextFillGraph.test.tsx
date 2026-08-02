@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type {
@@ -8,6 +11,9 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import {
   ContextFillGraph,
+  CONTEXT_SOURCE_COLORS,
+  CONTEXT_SOURCE_LABELS,
+  CONTEXT_SOURCES,
   contextTooltip,
   contextYMax,
   visibleSources,
@@ -21,6 +27,7 @@ const SOURCE_ORDER: GgContextSource[] = [
   "assistant",
   "tool_output",
   "file_view",
+  "text_view",
   "skill",
   "memory",
   "task_list",
@@ -238,5 +245,76 @@ describe("ContextFillGraph", () => {
     expect(screen.queryByText("Memories")).not.toBeInTheDocument();
     expect(screen.queryByText("Task list")).not.toBeInTheDocument();
     expect(screen.getByText("System")).toBeInTheDocument();
+  });
+});
+
+// The band tables are four parallel lists plus a fifth in SCSS, and only two of the five
+// are type-checked against `GgContextSource`. These assertions cover the other three, which
+// is where a new band goes wrong: silently, by taking its neighbour's hue.
+describe("the band tables", () => {
+  it("carries every context source the contract declares, in the contract's order", () => {
+    // `SOURCE_ORDER` is this file's transcription of `GgContextSource::ALL`; the graph's own
+    // list must be the same list, in the same order, since band order and palette index are
+    // both keyed to position.
+    expect([...CONTEXT_SOURCES]).toEqual(SOURCE_ORDER);
+    expect(Object.keys(CONTEXT_SOURCE_LABELS)).toEqual(SOURCE_ORDER);
+    expect(Object.keys(CONTEXT_SOURCE_COLORS)).toEqual(SOURCE_ORDER);
+  });
+
+  it("gives every band a hue of its own", () => {
+    const hues = Object.values(CONTEXT_SOURCE_COLORS);
+    expect(new Set(hues).size).toBe(hues.length);
+  });
+
+  it("keeps the SCSS swatch palette in lockstep with the band colors", () => {
+    // `$context-palette` is keyed by NUMERIC INDEX and nothing type-checks it, so a band
+    // inserted anywhere but the end shifts every later swatch onto its neighbour's hue —
+    // wrong colors, no error, in the legend the graph is read against. This is the check
+    // that turns that into a failing test.
+    // Read as source text, not imported: the test setup stubs SCSS modules to a class-name
+    // proxy, and `new URL(…, import.meta.url)` is rewritten by Vite's asset handling, so the
+    // path is composed by hand.
+    const scss = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "GgPanels.module.scss"),
+      "utf8",
+    );
+    const map = /\$context-palette:\s*\(([^)]*)\)/.exec(scss);
+    expect(map).not.toBeNull();
+    const entries = [...map![1]!.matchAll(/(\d+):\s*(#[0-9a-fA-F]{6})/g)].map(
+      ([, index, color]) => [Number(index), color!.toLowerCase()] as const,
+    );
+    expect(entries.map(([index]) => index)).toEqual(
+      CONTEXT_SOURCES.map((_, i) => i),
+    );
+    expect(entries.map(([, color]) => color)).toEqual(
+      CONTEXT_SOURCES.map((source) =>
+        CONTEXT_SOURCE_COLORS[source].toLowerCase(),
+      ),
+    );
+  });
+
+  it("shows agent views to a run with every capability withheld", () => {
+    // `view.openText` is bound whatever the capability set says — a run with no tools at all
+    // must still be able to show its model something — so the band is never filtered out for
+    // want of a capability, unlike file views.
+    const series = [snapshot(1, { system: 1_000 })];
+    expect(visibleSources(caps([]), series)).toContain("text_view");
+    expect(visibleSources(caps([]), series)).not.toContain("file_view");
+  });
+
+  it("names agent views apart from file views in the legend", () => {
+    const series = [
+      snapshot(1, { system: 1_000 }),
+      snapshot(2, { system: 1_000, text_view: 400 }),
+    ];
+    render(
+      <ContextFillGraph
+        series={series}
+        latest={series[1]!}
+        capabilitySet={caps(["read-file"])}
+      />,
+    );
+    expect(screen.getByText("Agent views")).toBeInTheDocument();
+    expect(screen.getByText("File views")).toBeInTheDocument();
   });
 });

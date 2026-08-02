@@ -53,23 +53,33 @@
   padding: t.$space-2xs 0;
 }
 
-// The ten fixed context sources get a stable categorical color, keyed to the
-// band's position in `CONTEXT_SOURCES` (see ContextFillGraph.tsx). Reused by the
+// The eleven fixed context sources get a stable categorical color, keyed to the
+// band's POSITION in `CONTEXT_SOURCES` (see ContextFillGraph.tsx). Reused by the
 // later stacked graph so a source reads as the same hue everywhere. Accessible,
-// spaced-out hues that hold up in both themes. Index 8 (board) arrived with the
-// Phase 3 work-decomposition source; keep this in lockstep with
-// `CONTEXT_SOURCE_COLORS`.
+// spaced-out hues that hold up in both themes.
+//
+// This map is keyed by index and nothing type-checks it against the band list, so
+// it is the one table in the context panels that fails SILENTLY: a band inserted
+// anywhere but the end shifts every later index and every later swatch quietly
+// takes its neighbour's hue. Whenever `GgContextSource::ALL` gains a variant, walk
+// this whole map against `CONTEXT_SOURCE_COLORS` in the same commit — do not append.
+// (Index 5, `text_view`, arrived that way, shifting skill/memory/task_list/board/
+// history down one; index 9, `board`, arrived with the Phase 3 work-decomposition
+// source.)
+// 0 system · 1 user_prompt · 2 assistant · 3 tool_output · 4 file_view ·
+// 5 text_view · 6 skill · 7 memory · 8 task_list · 9 board · 10 history
 $context-palette: (
   0: #6ea8fe,
   1: #ffca3a,
   2: #8ac926,
   3: #ff924c,
   4: #4cc9c0,
-  5: #c77dff,
-  6: #ff6b9d,
-  7: #b5e48c,
-  8: #ef5350,
-  9: #9aa5b1,
+  5: #4361ee,
+  6: #c77dff,
+  7: #ff6b9d,
+  8: #b5e48c,
+  9: #ef5350,
+  10: #9aa5b1,
 );
 
 .swatch {

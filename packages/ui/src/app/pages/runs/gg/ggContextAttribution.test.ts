@@ -7,9 +7,10 @@
 // turn above a 400-token specification carried for fifty — and get the tuning advice exactly
 // backwards.
 //
-// So these assert the residency arithmetic, the two attribution paths for a file (the
+// So these assert the residency arithmetic, the two attribution paths for a file view (the
 // selector tag gg records, and the `read_file` fallback for streams recorded before it), the
-// honest reporting of what neither path resolves, and that a profile's several instances sum
+// honest reporting of what neither path resolves, that an agent-composed text view is
+// attributed by its label on the same footing, and that a profile's several instances sum
 // into one accounting.
 
 import { describe, expect, it } from "vitest";
@@ -96,7 +97,8 @@ const PRICES: Record<string, ModelPrices> = {
 const priceOf: ModelPriceLookup = (id) => PRICES[id] ?? null;
 const unpriced: ModelPriceLookup = () => null;
 
-function row(rows: GgAttributionRow[], key: string): GgAttributionRow {
+// Generic in the row so a view row keeps its `kind` rather than being widened to a bare row.
+function row<R extends GgAttributionRow>(rows: readonly R[], key: string): R {
   const found = rows.find((r) => r.key === key);
   expect(found, `no row for ${key}`).toBeDefined();
   return found!;
@@ -144,7 +146,7 @@ describe("attributeGgContext", () => {
     expect(attribution.turns).toBe(3);
     expect(attribution.billedTokens).toBe(3100);
 
-    const spec = row(attribution.byFile, "specs/spec.md");
+    const spec = row(attribution.byView, "file:specs/spec.md");
     // Its own size is 900 however many turns it survives…
     expect(spec.tokens).toBe(900);
     expect(spec.messages).toBe(1);
@@ -184,14 +186,13 @@ describe("attributeGgContext", () => {
       600,
       6,
     );
-    expect(row(attribution.byFile, "src/main.ts").billedTokens).toBeCloseTo(
-      200,
-      6,
-    );
+    expect(
+      row(attribution.byView, "file:src/main.ts").billedTokens,
+    ).toBeCloseTo(200, 6);
     // The turn's cost is 200 uncached + 600 cached at their own rates, split the same way.
     const turnCost = 200 * 1e-5 + 600 * 1e-6;
     expect(attribution.cost).toBeCloseTo(turnCost, 12);
-    expect(row(attribution.byFile, "src/main.ts").cost).toBeCloseTo(
+    expect(row(attribution.byView, "file:src/main.ts").cost).toBeCloseTo(
       turnCost * 0.25,
       12,
     );
@@ -218,8 +219,10 @@ describe("attributeGgContext", () => {
     ]);
 
     const attribution = attributeGgContext(state, "vendor/m", priceOf);
-    expect(attribution.byFile.map((r) => r.key)).toEqual(["levels/1.json"]);
-    expect(attribution.unattributedFileTokens).toBe(0);
+    expect(attribution.byView.map((r) => r.key)).toEqual([
+      "file:levels/1.json",
+    ]);
+    expect(attribution.unattributedViewTokens).toBe(0);
   });
 
   it("reports a file view it cannot place rather than dropping it from the band", () => {
@@ -231,8 +234,8 @@ describe("attributeGgContext", () => {
     ]);
 
     const attribution = attributeGgContext(state, "vendor/m", priceOf);
-    expect(attribution.byFile).toEqual([]);
-    expect(attribution.unattributedFileTokens).toBeCloseTo(400, 6);
+    expect(attribution.byView).toEqual([]);
+    expect(attribution.unattributedViewTokens).toBeCloseTo(400, 6);
     // The band itself still accounts for it, so the breakdown never understates the window.
     expect(row(attribution.bySource, "file_view").billedTokens).toBeCloseTo(
       400,
@@ -247,8 +250,11 @@ describe("attributeGgContext", () => {
     ]);
     const attribution = attributeGgContext(state, "vendor/m", unpriced);
     expect(attribution.cost).toBeNull();
-    expect(row(attribution.byFile, "a.ts").cost).toBeNull();
-    expect(row(attribution.byFile, "a.ts").billedTokens).toBeCloseTo(100, 6);
+    expect(row(attribution.byView, "file:a.ts").cost).toBeNull();
+    expect(row(attribution.byView, "file:a.ts").billedTokens).toBeCloseTo(
+      100,
+      6,
+    );
   });
 
   it("says nothing was recorded when context visibility was off", () => {
@@ -258,7 +264,65 @@ describe("attributeGgContext", () => {
       priceOf,
     );
     expect(attribution.known).toBe(false);
-    expect(attribution.byFile).toEqual([]);
+    expect(attribution.byView).toEqual([]);
+  });
+
+  it("attributes an agent-composed view to the label the agent gave it", () => {
+    // A text view is keyed by a label the agent chose rather than by a path, and it is ranked
+    // against files in the same list: an operator tuning a configuration wants to see that a
+    // summary the agent kept showing itself outspent the specification it read once.
+    const state = reduceGgEvents([
+      message("m-spec", 200, { label: "specs/rules.md" }),
+      message("m-notes", 600, { role: "user", label: "changed-files" }),
+      prompt(
+        [
+          ["m-spec", "file_view"],
+          ["m-notes", "text_view"],
+        ],
+        { uncached: 800 },
+      ),
+    ]);
+
+    const attribution = attributeGgContext(state, "vendor/m", priceOf);
+    const notes = row(attribution.byView, "text:changed-files");
+    expect(notes.label).toBe("changed-files");
+    expect(notes.kind).toBe("text");
+    expect(notes.billedTokens).toBeCloseTo(600, 6);
+    expect(row(attribution.byView, "file:specs/rules.md").kind).toBe("file");
+    // The band accounts for it too, under its own name.
+    expect(row(attribution.bySource, "text_view").label).toBe("agent views");
+    // Both kinds rank in one list, costliest first.
+    expect(attribution.byView.map((r) => r.key)).toEqual([
+      "text:changed-files",
+      "file:specs/rules.md",
+    ]);
+  });
+
+  it("keeps a file and an agent view of the same name apart", () => {
+    // A path and an agent-chosen label live in different namespaces, so `notes` can be both.
+    // Summing them into one row would invent a thing that was never in the window.
+    const state = reduceGgEvents([
+      message("m-file", 100, { label: "notes" }),
+      message("m-text", 300, { role: "user", label: "notes" }),
+      prompt(
+        [
+          ["m-file", "file_view"],
+          ["m-text", "text_view"],
+        ],
+        { uncached: 400 },
+      ),
+    ]);
+
+    const attribution = attributeGgContext(state, "vendor/m", priceOf);
+    expect(attribution.byView).toHaveLength(2);
+    expect(row(attribution.byView, "file:notes").billedTokens).toBeCloseTo(
+      100,
+      6,
+    );
+    expect(row(attribution.byView, "text:notes").billedTokens).toBeCloseTo(
+      300,
+      6,
+    );
   });
 
   it("ranks material by what it cost, not by what it weighs", () => {
@@ -278,9 +342,9 @@ describe("attributeGgContext", () => {
       ),
     ]);
     const attribution = attributeGgContext(state, "vendor/m", priceOf);
-    expect(attribution.byFile.map((r) => r.key)).toEqual([
-      "small-but-early.md",
-      "big-but-late.md",
+    expect(attribution.byView.map((r) => r.key)).toEqual([
+      "file:small-but-early.md",
+      "file:big-but-late.md",
     ]);
   });
 });
@@ -308,12 +372,33 @@ describe("mergeGgAttributions", () => {
     const merged = mergeGgAttributions([one, two]);
     expect(merged.turns).toBe(3);
     expect(merged.billedTokens).toBe(700);
-    const shared = row(merged.byFile, "shared.ts");
+    const shared = row(merged.byView, "file:shared.ts");
     // Two distinct reads of the file, resident for three agent-turns between them.
     expect(shared.messages).toBe(2);
     expect(shared.turns).toBe(3);
     expect(shared.tokens).toBe(400);
     expect(shared.billedTokens).toBeCloseTo(700, 6);
+  });
+
+  it("carries a view's kind across the merge", () => {
+    // The merge keys by row key, which already pins the kind — but the row it builds is a
+    // fresh object, so the kind has to survive the copy or the list loses the one thing that
+    // tells an agent's label apart from a path.
+    const each = [1, 2].map((n) =>
+      attributeGgContext(
+        reduceGgEvents([
+          message(`m-${n}`, 100, { role: "user", label: "plan" }),
+          prompt([[`m-${n}`, "text_view"]], { uncached: 100 }),
+        ]),
+        "vendor/m",
+        priceOf,
+      ),
+    );
+    const merged = mergeGgAttributions(each);
+    const plan = row(merged.byView, "text:plan");
+    expect(plan.kind).toBe("text");
+    expect(plan.messages).toBe(2);
+    expect(plan.billedTokens).toBeCloseTo(200, 6);
   });
 
   it("stays known when only some instances logged anything", () => {
@@ -328,7 +413,7 @@ describe("mergeGgAttributions", () => {
     const silent = attributeGgContext(reduceGgEvents([]), "vendor/m", priceOf);
     const merged = mergeGgAttributions([logged, silent]);
     expect(merged.known).toBe(true);
-    expect(merged.byFile).toHaveLength(1);
+    expect(merged.byView).toHaveLength(1);
   });
 
   it("is empty when no instance logged anything", () => {

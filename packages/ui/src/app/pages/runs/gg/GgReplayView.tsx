@@ -634,8 +634,9 @@ function StepView({
 }
 
 // The Context column's cell: where this message sat in the agent's window. Ellipsized
-// to one line with the whole of it in the row's tooltip, since a paged file view's
-// `path@offset+limit` is routinely longer than the column.
+// to one line with the whole of it in the row's tooltip, since a view's selector — a paged
+// file view's `path@offset+limit`, or an agent's own label for something it composed — is
+// routinely longer than the column.
 //
 // A message with no frame behind it gets an em dash rather than a blank — a pre-v2
 // record carries no prompt frames at all, and the banner above says so, but a blank cell

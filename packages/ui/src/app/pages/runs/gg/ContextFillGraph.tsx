@@ -39,7 +39,7 @@ import { agentCapabilityOn, LEGACY_FILESYSTEM_CAP_ID } from "./ggCatalog";
 import { formatPercent } from "./GgOverviewWidgets";
 import styles from "./GgPanels.module.scss";
 
-// The ten context sources in their fixed, stable order (mirrors
+// The eleven context sources in their fixed, stable order (mirrors
 // `GgContextSource::ALL`). Band order and colors are keyed to this list so the
 // graph stays stable across turns — a source is the same band, the same hue,
 // everywhere.
@@ -49,6 +49,7 @@ export const CONTEXT_SOURCES: readonly GgContextSource[] = [
   "assistant",
   "tool_output",
   "file_view",
+  "text_view",
   "skill",
   "memory",
   "task_list",
@@ -57,12 +58,19 @@ export const CONTEXT_SOURCES: readonly GgContextSource[] = [
 ] as const;
 
 // Human-facing labels for each source, for legends and axes.
+//
+// "File views" and "Agent views" are deliberately near-twins: both are material an
+// agent declared should be visible to it, and the only difference is who wrote it —
+// the workspace, or the agent itself. Naming the second one "Text views" would say
+// what its body is made of, which is not the thing an operator reading a fill graph
+// needs to know.
 export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
   system: "System",
   user_prompt: "User prompt",
   assistant: "Assistant",
   tool_output: "Tool output",
   file_view: "File views",
+  text_view: "Agent views",
   skill: "Skills",
   memory: "Memories",
   task_list: "Task list",
@@ -76,12 +84,23 @@ export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
 // swatches, and anywhere else it appears. They are fixed hues chosen to stay
 // legible and distinguishable in both the light and dark console themes; the
 // chart's axes/grid/reference still track the live theme via the Plot palette.
+//
+// `text_view`'s indigo was picked by measurement rather than by eye: among the hues
+// still open in this palette, it is the one whose OKLab distance clears the
+// normal-vision floor (≥15) against every other band AND the colorblind-safe target
+// (≥8) under deutan/protan/tritan simulation, while holding ≥3:1 contrast against
+// both the light and the dark console surface. Its nearest band in normal vision is
+// `system` at ΔE 19 (a pale sky blue against a deep saturated indigo — they differ
+// in lightness as much as in hue); its nearest under simulation is `skill` at ΔE 11.
+// It also has to survive sitting directly beside `file_view` in the stack, which it
+// does at ΔE 31.
 export const CONTEXT_SOURCE_COLORS: Record<GgContextSource, string> = {
   system: "#6ea8fe",
   user_prompt: "#ffca3a",
   assistant: "#8ac926",
   tool_output: "#ff924c",
   file_view: "#4cc9c0",
+  text_view: "#4361ee",
   skill: "#c77dff",
   memory: "#ff6b9d",
   task_list: "#b5e48c",
@@ -92,8 +111,10 @@ export const CONTEXT_SOURCE_COLORS: Record<GgContextSource, string> = {
 // The capabilities each context source is the product of — a source whose
 // capabilities are all ablated off cannot fill the window, so listing it is noise.
 // Sources with no entry are unconditional: system/user prompt/assistant/tool output
-// are what any run is made of, and history accrues in every run (a superseded block
-// is retagged as history whether or not compaction ever fires).
+// are what any run is made of, history accrues in every run (a superseded block is
+// retagged as history whether or not compaction ever fires), and agent views are
+// ungated by design — `view.openText` is bound whatever the capability set says, so
+// that a run with every tool withheld can still show its model something.
 const SOURCE_CAPABILITIES: Partial<Record<GgContextSource, readonly string[]>> =
   {
     // The umbrella capability that sets saved before the per-tool filesystem split
@@ -151,7 +172,8 @@ export function visibleSources(
 }
 
 // Tokens held by one source in a snapshot (0 when the band is absent, though gg
-// always emits all ten).
+// always emits every band it knows about — a record written before a band existed
+// simply omits it, which is the case this fallback covers).
 function sourceTokens(
   snapshot: ContextSnapshot,
   source: GgContextSource,

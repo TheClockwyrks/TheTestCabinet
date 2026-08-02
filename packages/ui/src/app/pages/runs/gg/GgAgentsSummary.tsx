@@ -13,7 +13,10 @@ import type {
 import dash from "./GgDashboard.module.scss";
 import styles from "./GgAgentsSummary.module.scss";
 import { useGgAgentSummaries, type GgAgentSummary } from "./ggAgentAggregate";
-import type { GgAttributionRow } from "./ggContextAttribution";
+import type {
+  GgAttributionRow,
+  GgViewAttributionRow,
+} from "./ggContextAttribution";
 import type {
   AgentTransition,
   AgentTreeNode,
@@ -76,11 +79,17 @@ function callRateTitle(agent: GgAgentSummary): string {
 /** How many rows a context breakdown shows before the rest fold behind a "show all". */
 const ATTRIBUTION_ROWS_SHOWN = 8;
 
-/** How the three readings of an agent's window are labelled. */
-type AttributionView = "files" | "tools" | "sources";
+/**
+ * How the three readings of an agent's window are labelled.
+ *
+ * "Views" rather than "Files" because the grain covers both kinds of view an agent can open:
+ * a workspace file it asked to see, and a value it composed and showed itself. Both are
+ * material the agent *chose* to keep resident, which is the thing this reading ranks.
+ */
+type AttributionView = "views" | "tools" | "sources";
 
 const ATTRIBUTION_VIEWS: ReadonlyArray<SegmentedOption<AttributionView>> = [
-  { value: "files", label: "Files" },
+  { value: "views", label: "Views" },
   { value: "tools", label: "Tools" },
   { value: "sources", label: "Sources" },
 ];
@@ -956,15 +965,25 @@ function statusSummary(counts: Record<GgAgentStatus, number>): string {
   return parts.join(" · ");
 }
 
+// What each reading says when it has nothing to show. Spelled out per reading rather than
+// interpolating the selector's own word, since "came from views" is not what an empty view
+// list means — a view is material the agent asked for, not a place material came from.
+const ATTRIBUTION_EMPTY: Record<AttributionView, string> = {
+  views:
+    "This agent opened no views — it neither asked to see a file nor showed itself a value.",
+  tools: "Nothing in this agent's window came from a tool.",
+  sources: "Nothing in this agent's window was attributed to a context band.",
+};
+
 // What filled this agent's windows, and what carrying it cost. The three readings of one
-// accounting — by file, by tool, by band — behind a selector, since they answer the same
+// accounting — by view, by tool, by band — behind a selector, since they answer the same
 // question at different grains and stacking all three would bury the one being read.
 function ContextBreakdown({ agent }: { agent: GgAgentSummary }) {
-  const [view, setView] = useState<AttributionView>("files");
+  const [view, setView] = useState<AttributionView>("views");
   const { context } = agent;
-  const rows =
-    view === "files"
-      ? context.byFile
+  const rows: readonly (GgAttributionRow | GgViewAttributionRow)[] =
+    view === "views"
+      ? context.byView
       : view === "tools"
         ? context.byTool
         : context.bySource;
@@ -985,16 +1004,14 @@ function ContextBreakdown({ agent }: { agent: GgAgentSummary }) {
           No message log was recorded for this agent.
         </p>
       ) : rows.length === 0 ? (
-        <p className={styles.empty}>
-          Nothing in this agent's window came from {view}.
-        </p>
+        <p className={styles.empty}>{ATTRIBUTION_EMPTY[view]}</p>
       ) : (
         <AttributionList rows={rows} total={context.billedTokens} />
       )}
-      {view === "files" && context.unattributedFileTokens > 0 && (
+      {view === "views" && context.unattributedViewTokens > 0 && (
         <p className={styles.sectionNote}>
-          {shortTokens(Math.round(context.unattributedFileTokens))} of file
-          views could not be traced to a path — a view carried across a
+          {shortTokens(Math.round(context.unattributedViewTokens))} of views
+          could not be traced to a selector — a file view carried across a
           compaction on a stream recorded before gg tagged it.
         </p>
       )}
@@ -1005,11 +1022,15 @@ function ContextBreakdown({ agent }: { agent: GgAgentSummary }) {
 // The bars themselves: each thing the window carried, its share of the agent's billed input,
 // and what that share cost. Long lists fold after the leaders, since the tail of a file list
 // is a hundred one-turn reads nobody is tuning against.
+//
+// A view row additionally says which kind of view it is, because its label alone does not: an
+// agent that labels a text view `notes.md` is indistinguishable from one that read a file of
+// that name, and the two cost the operator entirely different decisions.
 function AttributionList({
   rows,
   total,
 }: {
-  rows: GgAttributionRow[];
+  rows: readonly (GgAttributionRow | GgViewAttributionRow)[];
   total: number;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -1031,6 +1052,7 @@ function AttributionList({
                 {row.label}
               </span>
               <span className={styles.attrMeta}>
+                {"kind" in row && row.kind === "text" ? "agent view · " : ""}
                 {shortTokens(row.tokens)} · {row.messages}× · resident{" "}
                 {row.turns} turn{row.turns === 1 ? "" : "s"}
               </span>

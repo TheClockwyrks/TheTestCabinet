@@ -36,17 +36,19 @@ vi.mock("../../../components/KillRunControl", () => ({
   KillRunControl: () => null,
 }));
 
-// The fixed nine-source order the context breakdown always reports (zeros
-// included), so a partial map fills out to a stable, ordered band set.
+// The fixed source order the context breakdown always reports (zeros included), so a
+// partial map fills out to a stable, ordered band set. Mirrors `GgContextSource::ALL`.
 const SOURCE_ORDER: GgContextSource[] = [
   "system",
   "user_prompt",
   "assistant",
   "tool_output",
   "file_view",
+  "text_view",
   "skill",
   "memory",
   "task_list",
+  "board",
   "history",
 ];
 function bySource(
@@ -424,7 +426,8 @@ const EVENTS: HarnessEvent[] = [
   }),
   // Phase 2: a compaction boundary (summarize-and-drop, honoring the retention
   // contract), the reclaimed post-compaction breakdown it drops to, and the agent
-  // evicting a file view itself.
+  // dropping material itself — one of each kind of view, which are different trades:
+  // an evicted file view can be re-read, a closed agent view was its only copy.
   gg({
     type: "compaction",
     strategy: "model",
@@ -456,6 +459,13 @@ const EVENTS: HarnessEvent[] = [
     reclaimedTokens: 1200,
     items: 1,
     detail: "Evicted 1 file view (level.json), reclaiming ~1200 tokens.",
+  }),
+  gg({
+    type: "context_managed",
+    action: "close_text_views",
+    reclaimedTokens: 800,
+    items: 1,
+    detail: "Closed 1 agent view (changed-files), reclaiming ~800 tokens.",
   }),
 ];
 
@@ -744,6 +754,13 @@ describe("GgRunMonitorPage", () => {
     expect(
       screen.getByText(
         "Evicted 1 file view (level.json), reclaiming ~1200 tokens.",
+      ),
+    ).toBeInTheDocument();
+    // The agent closing a view it composed reads as its own row, labelled apart from an
+    // eviction — `contextActionLabel` is exhaustive, so a new action lands here or nowhere.
+    expect(
+      screen.getByText(
+        "Closed 1 agent view (changed-files), reclaiming ~800 tokens.",
       ),
     ).toBeInTheDocument();
   });

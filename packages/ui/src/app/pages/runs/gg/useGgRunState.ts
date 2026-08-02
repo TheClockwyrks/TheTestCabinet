@@ -253,8 +253,10 @@ export interface AgentTransition {
 }
 
 // One `context_breakdown` snapshot — a point on the stacked context-window graph.
-// `bySource` is always all ten `GgContextSource` bands in fixed order (zeros
-// included), so the graph's bands stay stable across turns.
+// `bySource` is always every `GgContextSource` band in fixed order (zeros
+// included), so the graph's bands stay stable across turns. A record written by an
+// older gg simply carries fewer of them, which the graph reads as zero rather than
+// as a gap.
 export interface ContextSnapshot {
   // The wall-clock time of the snapshot, for the graph's x-axis.
   timestamp: string;
@@ -341,10 +343,11 @@ export interface PooledMessage {
   // would report a real message as costing nothing.
   tokens?: number;
   // The window item's selector tag, when it carried one — the workspace path a file view
-  // shows. It is what makes the window's material attributable to a *file* rather than
-  // only to the `file_view` band (see ggContextAttribution), and it survives a compaction
-  // that re-frames a pinned view and drops its `toolCallId` pairing. Absent on an ordinary
-  // message, and on a stream recorded before gg carried it.
+  // shows, or the label an agent gave a text view it composed. It is what makes the
+  // window's material attributable to a *thing* rather than only to its band (see
+  // ggContextAttribution), and it survives a compaction that re-frames a pinned view and
+  // drops its `toolCallId` pairing. Absent on an ordinary message, and on a stream
+  // recorded before gg carried it.
   label?: string;
 }
 
@@ -761,10 +764,20 @@ export function moduleFate(
 }
 
 // The human label for an agent-managed-context action.
+//
+// Exhaustive with no `default`, deliberately: a new `GgContextAction` should stop the build
+// here rather than reach the feed as an unlabelled row.
+//
+// Dropping a file view and dropping a text view read differently because they *are* different
+// trades — an evicted file view can be re-read from the workspace, whereas a closed text view
+// was the agent's only copy of something it composed — so the feed names them apart rather
+// than folding both into "evict".
 function contextActionLabel(action: GgContextAction): string {
   switch (action) {
     case "evict_file_views":
       return "evict";
+    case "close_text_views":
+      return "close";
     case "archive_thread":
       return "archive";
   }
