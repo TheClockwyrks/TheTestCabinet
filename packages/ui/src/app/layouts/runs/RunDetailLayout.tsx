@@ -36,6 +36,7 @@ export type RunDetailTab =
   | "proof"
   | "metrics"
   | "gg"
+  | "code"
   | "events"
   | "metadata";
 
@@ -254,6 +255,15 @@ export function RunDetailLayout({
     // stream — rather than losing it the moment the run ends.
     ...(isGg
       ? [{ key: "gg" as const, label: "gg", to: routes.runGg(run.id) }]
+      : []),
+    // The static read of the code the model wrote. Gated on the run actually carrying an
+    // analysis rather than on its harness: the analyzer is harness-agnostic (analysing a
+    // directory involves no harness-specific work, so restricting the tab would cost
+    // coverage for nothing), but the corpus is deliberately not backfilled, so every run
+    // recorded before it shipped has nothing to show and gets no tab rather than an empty
+    // one.
+    ...(run.codeAnalysis
+      ? [{ key: "code" as const, label: "Code", to: routes.runCode(run.id) }]
       : []),
     { key: "events", label: "Events", to: routes.runEvents(run.id) },
     { key: "metadata", label: "Metadata", to: routes.runMetadata(run.id) },

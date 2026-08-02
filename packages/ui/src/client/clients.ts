@@ -48,6 +48,7 @@ import type {
   GgReplayRecordV1,
 } from "@test-cabinet/run-record/gg";
 import type { GgReplayRecord } from "@test-cabinet/run-record/gg-replay";
+import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import type {
   GgFieldCatalog,
   GgQuery,
@@ -297,6 +298,22 @@ export interface BackendClient {
    * versioned and the reader must know which version it holds — see that type.
    */
   readGgReplay?(id: string): Promise<StoredGgReplay | null>;
+
+  /**
+   * A run's stored **code-analysis document** (`GET /runs/{id}/code-analysis`), or `null`
+   * when the run has none. Backs the run-detail Code tab's explorer: the bounded summary
+   * rides on the record, and this is the unbounded tier behind it — every authored file,
+   * every function with its complexity, every import edge, cycle and clone group.
+   *
+   * Not harness-specific: analysing a directory involves no harness-specific work, so the
+   * tab is offered on every run that carries an analysis. A `null` means the run predates
+   * the analyzer — [the corpus is not
+   * backfilled](https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version)
+   * — not that anything failed. Optional so a transport that cannot reach per-run media
+   * omits it and the tab falls back to the summary alone, which is the same pattern the
+   * other console-only reads use.
+   */
+  readCodeAnalysis?(id: string): Promise<CodeAnalysisDocument | null>;
 
   /**
    * The reviewer checklist items a case declares for a variant (`commonReviewItems`

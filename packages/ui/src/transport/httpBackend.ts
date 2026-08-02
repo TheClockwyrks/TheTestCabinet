@@ -70,6 +70,7 @@ import type {
   GgReplayRecordV1,
 } from "@test-cabinet/run-record/gg";
 import type { GgReplayRecord } from "@test-cabinet/run-record/gg-replay";
+import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import type {
   GgFieldCatalog,
   GgQuery,
@@ -666,10 +667,7 @@ export function createHttpBackend(baseUrl: string): BackendClient {
 
     // The gg analysis query surface. The body is the *compiled* query — the client
     // owns the parser, so nothing about what a query means is decided twice.
-    async runGgQuery(
-      query: GgQuery,
-      token: string,
-    ): Promise<GgQueryResponse> {
+    async runGgQuery(query: GgQuery, token: string): Promise<GgQueryResponse> {
       return postJson<GgQueryResponse>(baseUrl, "/gg/query", query, token);
     },
 
@@ -856,6 +854,33 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return formatVersion >= GG_REPLAY_FORMAT_VERSION
         ? { format: "v2", record: body as GgReplayRecord }
         : { format: "v1", record: body as GgReplayRecordV1 };
+    },
+
+    async readCodeAnalysis(id: string): Promise<CodeAnalysisDocument | null> {
+      // Same shape as the replay read, and for the same reasons: the backend serves the
+      // stored document as JSON and 404s for a run that has none — which is every run
+      // recorded before the analyzer shipped, since the corpus is not backfilled. A raw
+      // fetch lets that 404 resolve to `null` (a tidy "not analysed" state) while any
+      // other non-2xx still surfaces as an error.
+      //
+      // The request advertises no `accept-encoding` of its own: the browser always sends
+      // one, and the route negotiates the stored gzip against the *request's* header.
+      //
+      // The document is not version-tagged the way a replay record is, and does not need
+      // to be: it carries `analyzerVersion` as data (which generation computed the
+      // figures, so a mixed corpus is visible rather than a silent step change), while
+      // the document's *shape* is the contract type this app is compiled against.
+      const res = await fetch(
+        joinUrl(baseUrl, `/runs/${encodeURIComponent(id)}/code-analysis`),
+        { headers: { accept: "application/json" } },
+      );
+      if (res.status === 404) return null;
+      if (!res.ok) {
+        throw new Error(
+          `code analysis fetch failed: ${res.status} ${res.statusText}`,
+        );
+      }
+      return (await res.json()) as CodeAnalysisDocument;
     },
   };
 }
@@ -1624,7 +1649,9 @@ async function awaitCanceledRecordId(
       // Keep waiting; the next tick re-reads.
     }
     if (Date.now() >= deadline) return null;
-    await new Promise((resolve) => setTimeout(resolve, CANCELED_RECORD_POLL_MS));
+    await new Promise((resolve) =>
+      setTimeout(resolve, CANCELED_RECORD_POLL_MS),
+    );
   }
 }
 

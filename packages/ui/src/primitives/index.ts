@@ -23,7 +23,16 @@ export {
   type ReliabilityTone,
 } from "./ReliabilityRingWidget";
 export {
+  Treemap,
+  placeTreemapTiles,
+  type TreemapTile,
+  type PlacedTreemapTile,
+  type TreemapLegendKey,
+  type TreemapLegendKind,
+} from "./plot/Treemap";
+export {
   barChart,
+  horizontalBarChart,
   stackedBarChart,
   stackedAreaChart,
   priceHistoryChart,
@@ -31,6 +40,8 @@ export {
   timeSeriesChart,
   distributionChart,
   type BarPoint,
+  type HorizontalBarPoint,
+  type HorizontalBarLabels,
   type StackedBarSegment,
   type StackedSeries,
   type StackedAreaPoint,

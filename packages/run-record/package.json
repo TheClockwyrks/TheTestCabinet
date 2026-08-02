@@ -43,6 +43,10 @@
       "types": "./dist/code-analysis.d.ts",
       "default": "./dist/code-analysis.js"
     },
+    "./code-metrics": {
+      "types": "./dist/code-metrics.d.ts",
+      "default": "./dist/code-metrics.js"
+    },
     "./gg-query": {
       "types": "./dist/gg-query.d.ts",
       "default": "./dist/gg-query.js"

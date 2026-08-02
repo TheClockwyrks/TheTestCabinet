@@ -4,6 +4,7 @@ import { RunsPage } from "./RunsPage";
 import { RunFailuresPage } from "./RunFailuresPage";
 import { UnreviewedPage } from "./UnreviewedPage";
 import { NewRunPage } from "./NewRunPage";
+import { RunCodePage } from "./[runId]/RunCodePage";
 import { RunEventsPage } from "./[runId]/RunEventsPage";
 import { RunGgPage } from "./[runId]/RunGgPage";
 import { RunMetadataPage } from "./[runId]/RunMetadataPage";
@@ -95,6 +96,9 @@ export function runsRoutes(canExecute: boolean) {
       {/* A finished gg run's rich view, rebuilt from its recorded telemetry — the
           same panels its live monitor showed. */}
       <Route path={routePatterns.runGg} element={<RunGgPage />} />
+      {/* The static read of the code the run's model wrote — offered for any harness's
+          run that carries one. */}
+      <Route path={routePatterns.runCode} element={<RunCodePage />} />
       <Route path={routePatterns.runMetadata} element={<RunMetadataPage />} />
     </>
   );

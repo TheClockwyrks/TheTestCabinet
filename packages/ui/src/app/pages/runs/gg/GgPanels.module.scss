@@ -950,131 +950,15 @@ $context-palette: (
   word-break: break-word;
 }
 
-// --- Memories: the treemap and the revision record ---------------------------
+// --- Memories: the revision record -------------------------------------------
+//
+// The size treemap above it is the shared `Treemap` primitive, so its styling lives with
+// the primitive (`primitives/plot/Treemap.module.scss`) rather than here.
 //
 // The now/peak figures are the shared module figure row (`.modStats` below, via
 // `ModuleStats`) rather than tiles of their own: a memory store's totals are the same
 // class of fact as a window's turns or an archive's entries, and three shapes for one
 // class of fact read as three classes.
-
-// The treemap of memory sizes. Area encodes characters, so the SVG scales
-// uniformly — never stretched to the panel, which would falsify the encoding.
-.treemap {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-}
-
-.treemapSvg {
-  width: 100%;
-  height: auto;
-  display: block;
-  overflow: visible;
-}
-
-.treemapTile {
-  stroke: color-mix(in srgb, t.$color-border 50%, transparent);
-  stroke-width: 1;
-  transition:
-    stroke 120ms ease,
-    filter 120ms ease;
-
-  // A deleted memory is a state, not another series: neutral fill (set inline) plus
-  // a dashed edge, so it is distinguishable without relying on color.
-  &[data-deleted] {
-    stroke-dasharray: 3 2;
-    stroke: color-mix(in srgb, t.$color-text-muted 55%, transparent);
-  }
-
-  // A memory written by another holder of the same instance: the same size ramp (it
-  // costs the same window), a solid contrasting edge, so authorship reads at the tile's
-  // border rather than competing with the magnitude its fill encodes.
-  &[data-foreign] {
-    stroke: var(--ttc-event-orchestration);
-    stroke-width: 1.5;
-  }
-
-  &[data-active] {
-    stroke: t.$color-text;
-    stroke-width: 1.5;
-  }
-}
-
-// Labels wear text ink, never the tile's fill — the rectangle already carries the
-// identity, and colored text on a colored fill is the pair that stops being legible.
-.treemapLabel {
-  fill: t.$color-text;
-  font-size: 10px;
-  font-weight: 600;
-
-  &[data-deleted] {
-    fill: t.$color-text-muted;
-    text-decoration: line-through;
-  }
-}
-
-.treemapSubLabel {
-  fill: t.$color-text-muted;
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
-}
-
-.treemapCaption {
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-  min-height: 1.2em;
-}
-
-.treemapReadout {
-  color: t.$color-text;
-  font-variant-numeric: tabular-nums;
-}
-
-.treemapLegend {
-  display: flex;
-  align-items: center;
-  gap: t.$space-sm;
-  flex-wrap: wrap;
-}
-
-// A legend key: a swatch matching the map's two states, plus its name.
-.treemapKey {
-  display: inline-flex;
-  align-items: center;
-  gap: t.$space-xs;
-
-  &::before {
-    content: "";
-    width: 0.6rem;
-    height: 0.6rem;
-    border-radius: 2px;
-    border: t.$border-hairline solid
-      color-mix(in srgb, t.$color-border 60%, transparent);
-  }
-
-  &[data-live]::before {
-    background: color-mix(in srgb, t.$color-accent 55%, t.$color-surface);
-  }
-
-  &[data-deleted]::before {
-    background: color-mix(in srgb, t.$color-text-muted 22%, t.$color-surface);
-    border-style: dashed;
-    border-color: color-mix(in srgb, t.$color-text-muted 55%, transparent);
-  }
-
-  &[data-foreign]::before {
-    background: color-mix(in srgb, t.$color-accent 55%, t.$color-surface);
-    border-color: var(--ttc-event-orchestration);
-  }
-}
-
-.treemapHint {
-  margin-left: auto;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
 
 // A deleted memory's row is dimmed but never hidden — it is part of the record of
 // what the model did, and the reason this panel exists at all.

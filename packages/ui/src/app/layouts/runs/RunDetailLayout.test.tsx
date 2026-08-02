@@ -40,8 +40,10 @@ const RUN_ID = "run-1";
 function record(
   testType: RunRecord["subject"]["testType"],
   harnessSlug = "claude",
+  codeAnalysis?: RunRecord["codeAnalysis"],
 ): RunRecord {
   return {
+    codeAnalysis,
     id: RUN_ID,
     subject: {
       testCaseSlug: "lattice",
@@ -64,9 +66,10 @@ function record(
 function renderLayout(
   testType: RunRecord["subject"]["testType"],
   harnessSlug?: string,
+  codeAnalysis?: RunRecord["codeAnalysis"],
 ) {
   fixture.detail = {
-    record: record(testType, harnessSlug),
+    record: record(testType, harnessSlug, codeAnalysis),
     reviews: [
       {
         reviewerId: "u1",
@@ -105,6 +108,27 @@ describe("RunDetailLayout tabs", () => {
     renderLayout("end-to-end");
     await screen.findByRole("link", { name: "Verdict" });
     expect(screen.queryByRole("link", { name: "gg" })).toBeNull();
+  });
+
+  // The analyzer is harness-agnostic — analysing a directory involves no
+  // harness-specific work — so the tab is gated on the run carrying an analysis
+  // rather than on which harness produced it.
+  it("offers a Code tab on any harness's run that carries an analysis", async () => {
+    renderLayout("end-to-end", "claude", {
+      analyzerVersion: 2,
+    } as RunRecord["codeAnalysis"]);
+    expect(
+      await screen.findByRole("link", { name: "Code" }),
+    ).toBeInTheDocument();
+  });
+
+  // The corpus is deliberately not backfilled, so a run recorded before the
+  // analyzer shipped has nothing to show. It gets no tab rather than an empty one —
+  // including a gg run, which is otherwise the best-instrumented run there is.
+  it("offers no Code tab on a run with no analysis", async () => {
+    renderLayout("end-to-end", "gg");
+    await screen.findByRole("link", { name: "Verdict" });
+    expect(screen.queryByRole("link", { name: "Code" })).toBeNull();
   });
 
   it("names the default tab Verdict for a human-reviewed run", async () => {

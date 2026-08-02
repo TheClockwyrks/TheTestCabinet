@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   barChart,
   distributionChart,
+  horizontalBarChart,
   metricLineChart,
   stackedAreaChart,
   stackedBarChart,
@@ -539,5 +540,118 @@ describe("distributionChart", () => {
       },
     ];
     expect(() => render(distributionChart(lone, palette))).not.toThrow();
+  });
+});
+
+describe("horizontalBarChart", () => {
+  // The y positions of the drawn bars, in DOM order. Reading the geometry rather than
+  // the spec is the only way to see what the band scale actually did: an inferred
+  // ordinal domain sorts itself, and a chart whose whole point is that it is ranked
+  // would come out alphabetical with nothing in the spec looking wrong.
+  function barYs(node: Element): number[] {
+    return [...node.querySelectorAll('[aria-label="bar"] rect')].map((rect) =>
+      Number(rect.getAttribute("y")),
+    );
+  }
+
+  it("draws a bar per point", () => {
+    const node = render(
+      horizontalBarChart(
+        [
+          { label: "resolveCollision", value: 41 },
+          { label: "step", value: 12 },
+        ],
+        palette,
+      ),
+    );
+    expect(barYs(node)).toHaveLength(2);
+  });
+
+  // The property the form exists for. The caller ranks; the chart must not re-rank.
+  // Plot sorts an ordinal domain it infers, so a ranking whose labels happen to be
+  // alphabetically ordered the other way would silently come out reversed — which
+  // reads as a correct chart of the wrong data.
+  it("keeps the caller's order rather than sorting the labels", () => {
+    const node = render(
+      horizontalBarChart(
+        [
+          { label: "zeta", value: 90 },
+          { label: "alpha", value: 40 },
+          { label: "mu", value: 10 },
+        ],
+        palette,
+      ),
+    );
+    const ys = barYs(node);
+    expect(ys).toHaveLength(3);
+    // Top to bottom in the order given: `zeta` first even though `alpha` sorts before
+    // it.
+    for (let i = 1; i < ys.length; i += 1) {
+      expect(ys[i]).toBeGreaterThan(ys[i - 1]!);
+    }
+  });
+
+  it("frames taller for more rows, so every row keeps the same height", () => {
+    const three = horizontalBarChart(
+      [
+        { label: "a", value: 1 },
+        { label: "b", value: 2 },
+        { label: "c", value: 3 },
+      ],
+      palette,
+    );
+    const six = horizontalBarChart(
+      ["a", "b", "c", "d", "e", "f"].map((label, i) => ({
+        label,
+        value: i + 1,
+      })),
+      palette,
+    );
+    expect(Number(six.height)).toBeGreaterThan(Number(three.height));
+  });
+
+  // A long category label is exactly why this form was chosen, so the left margin has
+  // to grow to hold one rather than clipping it into ambiguity.
+  it("widens the label margin for long categories, up to a ceiling", () => {
+    const short = horizontalBarChart([{ label: "up", value: 1 }], palette);
+    const long = horizontalBarChart(
+      [{ label: "src/game/systems/collision/resolveCollision.ts", value: 1 }],
+      palette,
+    );
+    const absurd = horizontalBarChart(
+      [{ label: "x".repeat(500), value: 1 }],
+      palette,
+    );
+    expect(Number(long.marginLeft)).toBeGreaterThan(Number(short.marginLeft));
+    expect(Number(absurd.marginLeft)).toBeLessThanOrEqual(260);
+  });
+
+  it("direct-labels each bar's tip when a formatter is given", () => {
+    const node = render(
+      horizontalBarChart(
+        [
+          { label: "a", value: 1234 },
+          { label: "b", value: 7 },
+        ],
+        palette,
+        { valueLabel: (v) => v.toLocaleString("en-US") },
+      ),
+    );
+    const text = node.textContent ?? "";
+    expect(text).toContain("1,234");
+    expect(text).toContain("7");
+  });
+
+  it("renders with hover tips when a bar carries a title, without throwing", () => {
+    const node = render(
+      horizontalBarChart(
+        [
+          { label: "a", value: 3, title: "a\nsrc/a.ts:12" },
+          { label: "b", value: 5, title: "b\nsrc/b.ts:4" },
+        ],
+        palette,
+      ),
+    );
+    expect(node.querySelector('[aria-label="tip"]')).not.toBeNull();
   });
 });

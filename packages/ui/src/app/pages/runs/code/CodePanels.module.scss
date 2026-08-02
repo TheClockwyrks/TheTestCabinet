@@ -1,0 +1,453 @@
+@use "../../../../styles/tokens" as t;
+@use "../../../../styles/surfaces" as s;
+
+// The run-detail Code tab. Everything reads the shared `--tcab-*` token contract, so the
+// page is theme-aware: the consoles ship a dark theme today and the static site may ship
+// a light one, and nothing here hardcodes either.
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+  padding-block: t.$space-md;
+  min-width: 0;
+}
+
+.sectionHeading {
+  margin: 0;
+  font-size: t.$font-md;
+  color: t.$color-text;
+  border-bottom: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  padding-bottom: t.$space-xs;
+}
+
+// --- Provenance --------------------------------------------------------------
+//
+// The tones reinforce the words; they never carry the meaning on their own. Every fact
+// spells its state out ("Degraded", "Post-validation"), so the strip is readable with no
+// color perception at all.
+
+.provenance {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+.provenanceFacts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: t.$space-sm;
+}
+
+.provenanceFact {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  padding: t.$space-sm;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-left-width: 3px;
+  border-radius: t.$radius-md;
+  min-width: 0;
+
+  &[data-tone="ok"] {
+    border-left-color: t.$color-positive;
+  }
+
+  &[data-tone="caution"] {
+    border-left-color: t.$color-accent;
+  }
+
+  &[data-tone="degraded"] {
+    border-left-color: t.$color-negative;
+  }
+}
+
+.provenanceLabel {
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.provenanceValue {
+  color: t.$color-text;
+  font-size: t.$font-md;
+  font-weight: 600;
+}
+
+.provenanceNote {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  line-height: 1.4;
+}
+
+.provenanceNotices {
+  margin: 0;
+  padding-left: t.$space-md;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  line-height: 1.5;
+}
+
+// --- The headline figures ----------------------------------------------------
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: t.$space-sm;
+}
+
+// --- The explorer ------------------------------------------------------------
+
+.explorer {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  min-width: 0;
+}
+
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-2xs;
+  font-size: t.$font-sm;
+}
+
+.crumb {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-2xs;
+}
+
+.crumbSep {
+  color: t.$color-text-muted;
+}
+
+.crumbLink {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: t.$color-accent;
+  font: inherit;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+}
+
+.crumbCurrent {
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+.fileFacts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: t.$space-sm;
+  margin: 0;
+
+  dt {
+    color: t.$color-text-muted;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  dd {
+    margin: 0;
+    color: t.$color-text;
+    font-size: t.$font-sm;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+// --- Tables ------------------------------------------------------------------
+//
+// A table is the twin of every chart on this page: the map encodes code lines as area,
+// and the same numbers are here as numbers. Wide tables scroll inside their own box so
+// the page body never scrolls sideways.
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: t.$font-sm;
+  display: block;
+  overflow-x: auto;
+
+  th,
+  td {
+    padding: t.$space-2xs t.$space-sm;
+    text-align: left;
+    border-bottom: t.$border-hairline solid
+      color-mix(in srgb, t.$color-border 45%, transparent);
+    white-space: nowrap;
+  }
+
+  thead th {
+    color: t.$color-text-muted;
+    font-weight: 500;
+    position: sticky;
+    top: 0;
+    background: s.$panel-bg;
+  }
+
+  tbody th {
+    font-weight: 500;
+    color: t.$color-text;
+  }
+}
+
+.tableCaption {
+  caption-side: top;
+  text-align: left;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  padding-bottom: t.$space-xs;
+}
+
+// Columns of numbers align vertically, so they wear tabular figures — unlike the
+// standalone values in the tiles above, which stay proportional.
+.numeric {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.rowLink {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: t.$color-text;
+
+  &[data-kind="dir"] {
+    color: t.$color-accent;
+  }
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+}
+
+.sortButton {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+
+  &[data-active] {
+    color: t.$color-text;
+  }
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+}
+
+// The approximate marker. Never the only statement of the caveat — the sentence is always
+// on the page too — but it is what keeps the caveat attached to the column it applies to.
+.approxMark {
+  color: t.$color-accent;
+  margin-left: 0.15em;
+  cursor: help;
+}
+
+.tag {
+  margin-left: t.$space-xs;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 70%, transparent);
+  color: t.$color-text-muted;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.symbols {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+  // The symbol table is the long one; cap it so the sections below stay reachable
+  // without a page-length scroll through functions.
+  max-height: 34rem;
+  overflow-y: auto;
+}
+
+.symbolName {
+  font-weight: 600;
+}
+
+.symbolWhere {
+  margin-left: t.$space-sm;
+  color: t.$color-text-muted;
+  font-size: 0.75rem;
+}
+
+// --- Outliers ----------------------------------------------------------------
+
+.outliers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: t.$space-md;
+}
+
+.outlier {
+  margin: 0;
+  min-width: 0;
+}
+
+.outlierTitle {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-sm;
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  font-weight: 600;
+  padding-bottom: t.$space-xs;
+}
+
+.outlierNote {
+  color: t.$color-text-muted;
+  font-weight: 400;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+// --- The cycles callout ------------------------------------------------------
+
+.callout {
+  padding: t.$space-sm t.$space-md;
+  background: s.$panel-bg;
+  border: t.$border-hairline solid t.$color-border;
+  border-left: 3px solid t.$color-accent;
+  border-radius: t.$radius-md;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.calloutTitle {
+  margin: 0;
+  color: t.$color-text;
+  font-weight: 600;
+}
+
+.cycleList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  font-size: t.$font-sm;
+  overflow-x: auto;
+
+  li {
+    display: flex;
+    gap: t.$space-sm;
+    align-items: baseline;
+  }
+}
+
+.cycleSize {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  min-width: 1.5rem;
+  text-align: right;
+}
+
+.cyclePath {
+  color: t.$color-text;
+  white-space: nowrap;
+}
+
+// --- Every figure ------------------------------------------------------------
+
+.figures {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+}
+
+.figureFamily {
+  min-width: 0;
+}
+
+.figureHeading {
+  margin: 0 0 t.$space-xs;
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.figureGrid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0 t.$space-lg;
+}
+
+.figureRow {
+  display: flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  padding-block: t.$space-2xs;
+  border-bottom: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 30%, transparent);
+
+  dt {
+    color: t.$color-text-muted;
+    font-size: t.$font-sm;
+    // The label takes the slack and the value sits against the right edge, so the eye
+    // runs down a column of figures rather than a ragged tail.
+    flex: 1 1 auto;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  dd {
+    margin: 0;
+    color: t.$color-text;
+    font-size: t.$font-sm;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+// --- Shared states -----------------------------------------------------------
+
+.empty {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  display: flex;
+  align-items: center;
+  gap: t.$space-xs;
+}
+
+.error {
+  color: t.$color-negative;
+}
+
+.caveat {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: 0.75rem;
+}

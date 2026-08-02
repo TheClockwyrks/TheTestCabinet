@@ -1,0 +1,135 @@
+@use "../../styles/tokens" as t;
+
+// The squarified treemap. Area encodes a magnitude, so the SVG scales uniformly —
+// never stretched to its container, which would falsify the encoding.
+.treemap {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-xs;
+}
+
+.treemapSvg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+
+  // The edge color an `outlined` tile takes, overridable per map (the caller passes a
+  // CSS color) so a surface that already spends a token on the fact the edge carries
+  // keeps spending it. Defaults to the theme's second accent.
+  --treemap-outline: #{t.$color-accent-2};
+}
+
+.treemapTile {
+  stroke: color-mix(in srgb, t.$color-border 50%, transparent);
+  stroke-width: 1;
+  transition:
+    stroke 120ms ease,
+    filter 120ms ease;
+
+  // A muted tile is a state, not another series: neutral fill (set inline) plus a
+  // dashed edge, so it is distinguishable without relying on color.
+  &[data-muted] {
+    stroke-dasharray: 3 2;
+    stroke: color-mix(in srgb, t.$color-text-muted 55%, transparent);
+  }
+
+  // An orthogonal fact about the tile: the same size ramp, a solid contrasting edge, so
+  // it reads at the tile's border rather than competing with the magnitude its fill
+  // encodes.
+  &[data-outlined] {
+    stroke: var(--treemap-outline);
+    stroke-width: 1.5;
+  }
+
+  &[data-active] {
+    stroke: t.$color-text;
+    stroke-width: 1.5;
+  }
+
+  // A tile that can be opened says so under the pointer, and takes a visible focus ring
+  // from the keyboard — the map is navigable either way.
+  &[data-interactive] {
+    cursor: pointer;
+  }
+
+  :focus-visible > & {
+    outline: 2px solid t.$color-text;
+    outline-offset: 1px;
+  }
+}
+
+// Labels wear text ink, never the tile's fill — the rectangle already carries the
+// identity, and colored text on a colored fill is the pair that stops being legible.
+.treemapLabel {
+  fill: t.$color-text;
+  font-size: 10px;
+  font-weight: 600;
+
+  &[data-muted] {
+    fill: t.$color-text-muted;
+  }
+}
+
+.treemapSubLabel {
+  fill: t.$color-text-muted;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.treemapCaption {
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  min-height: 1.2em;
+}
+
+.treemapReadout {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+}
+
+.treemapLegend {
+  display: flex;
+  align-items: center;
+  gap: t.$space-sm;
+  flex-wrap: wrap;
+}
+
+// A legend key: a swatch matching one of the map's states, plus its name.
+.treemapKey {
+  display: inline-flex;
+  align-items: center;
+  gap: t.$space-xs;
+
+  &::before {
+    content: "";
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 2px;
+    border: t.$border-hairline solid
+      color-mix(in srgb, t.$color-border 60%, transparent);
+  }
+
+  &[data-kind="ramp"]::before {
+    background: color-mix(in srgb, t.$color-accent 55%, t.$color-surface);
+  }
+
+  &[data-kind="muted"]::before {
+    background: color-mix(in srgb, t.$color-text-muted 22%, t.$color-surface);
+    border-style: dashed;
+    border-color: color-mix(in srgb, t.$color-text-muted 55%, transparent);
+  }
+
+  &[data-kind="outlined"]::before {
+    background: color-mix(in srgb, t.$color-accent 55%, t.$color-surface);
+    border-color: var(--treemap-outline, #{t.$color-accent-2});
+  }
+}
+
+.treemapHint {
+  margin-left: auto;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

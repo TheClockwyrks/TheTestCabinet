@@ -156,6 +156,43 @@ const REVIEW_DEFS: &[&str] = &[
     "ReviewRevision",
 ];
 
+/// The generated module that carries the `code.*` display catalog.
+///
+/// Named once because it is referenced twice — as the module's file name and as the
+/// target of the appended [`CODE_METRICS`](test_cabinet_core::CODE_METRICS) table — and a
+/// mismatch between the two would silently emit the types without the data.
+const CODE_METRICS_MODULE: &str = "code-metrics.ts";
+
+/// Render the `code.*` display catalog as a TypeScript value.
+///
+/// The table is Rust's, verbatim: it is serialized with the same `serde` derive the
+/// contract types use, so the emitted rows carry exactly the paths, labels, units,
+/// families, polarities and `approximate` flags the analyzer and the CLI read. Prettier
+/// (in the generator wrapper) reformats the JSON into idiomatic TypeScript, so the shape
+/// written here only has to be valid.
+fn code_metrics_catalog() -> Result<String> {
+    /// The JSDoc stamped above the emitted table. A constant rather than part of the
+    /// format string because the prose contains `{@link …}`, which a Rust format string
+    /// would read as an interpolation.
+    const DOC: &str = "/**\n\
+         * Display metadata for every leaf of the code-analysis summary, in the order a\n\
+         * reader wants the figures: by family, and within a family by how much the figure\n\
+         * says.\n\
+         *\n\
+         * This is **not** a query vocabulary — the query language derives its field catalog\n\
+         * from the documents it has indexed, so a metric is queryable with or without an\n\
+         * entry here. What an entry buys is what a number cannot carry on its own: a label,\n\
+         * a unit, a polarity, and the {@link CodeMetricDef.approximate} flag that the Code\n\
+         * tab's headers, the field sidebar and the docs page all read, so the four cannot\n\
+         * drift apart.\n\
+         */\n";
+    let rows = serde_json::to_string(&test_cabinet_core::CODE_METRICS)
+        .context("serializing the code-metric catalog")?;
+    Ok(format!(
+        "{DOC}export const CODE_METRICS: readonly CodeMetricDef[] = {rows};\n"
+    ))
+}
+
 fn main() -> Result<()> {
     let root = workspace_root()?;
     let cfg = ts_config();
@@ -314,6 +351,19 @@ fn main() -> Result<()> {
                 code::CodeCloneInstance, code::CodeCloneGroup, code::CodeAnalysisDocument,
             ],
         },
+        // The `code.*` display catalog: the label, unit, family, polarity and — the
+        // reason it crosses the contract boundary at all — the `approximate` flag for
+        // every leaf of the code-analysis summary.
+        //
+        // Its own module because it is the one contract artifact that ships *data* and
+        // not only types: the table itself is appended below, generated from the Rust
+        // `CODE_METRICS` static, so the Code tab's headers, the CLI's report and the
+        // docs page cannot disagree about whether a figure rests on approximation. A
+        // hand-kept TypeScript copy is exactly the drift the flag exists to prevent.
+        TsModule {
+            file: CODE_METRICS_MODULE,
+            decls: ts_decls![&cfg; code::CodeMetricUnit, code::CodeMetricDef],
+        },
         // The harness-comparison (A/B) contract: the stored config (controls and the
         // per-arm configurations) and the computed read model (per-arm distributions,
         // automated-only score, diagnostics, confounds). The descriptive statistics
@@ -400,7 +450,14 @@ fn main() -> Result<()> {
             ],
         },
     ];
-    for (file, content) in finalize_ts(modules, TS_HEADER) {
+    for (file, mut content) in finalize_ts(modules, TS_HEADER) {
+        // The one module that carries a value as well as its types. `ts_rs` renders
+        // types, not data, so the catalog is serialized here and appended to the module
+        // that declares its element type — which is why the file name is a constant
+        // rather than a literal in two places.
+        if file == CODE_METRICS_MODULE {
+            content.push_str(&code_metrics_catalog()?);
+        }
         write_ts(&root, file, &content)?;
     }
 

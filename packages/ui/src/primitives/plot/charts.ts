@@ -1000,3 +1000,171 @@ export function metricLineChart(
     ],
   };
 }
+
+/** One bar in a {@link horizontalBarChart}: a named thing and the magnitude that ranks
+ * it. */
+export interface HorizontalBarPoint {
+  /**
+   * The category drawn down y, and the band scale's domain key — so it must be unique
+   * within one chart. A caller ranking things whose names repeat (two functions called
+   * `update`, in different files) has to qualify them itself; silently merging two bars
+   * into one would misstate every value in the chart.
+   */
+  label: string;
+  /** The bar's length. */
+  value: number;
+  /** Text shown in an interactive tooltip when the bar's row is hovered — the figures
+   * the ranked value hides (where the thing lives, its other measures). Newlines break
+   * the tip into lines. Omit to leave the bar without a tooltip; a chart shows tooltips
+   * only when at least one of its bars carries one. */
+  title?: string;
+}
+
+/** Labels and framing for a {@link horizontalBarChart}. */
+export interface HorizontalBarLabels {
+  /** The x-axis label (what the length means). Omit for none. */
+  x?: string;
+  /** d3-format specifier (or function) for the x-axis ticks. */
+  xTickFormat?: string | ((value: number) => string);
+  /** The bar color — one hue for the whole chart, because length is already carrying
+   * the magnitude and a second channel for the same fact is noise. Omit to take the
+   * theme accent. */
+  color?: string;
+  /**
+   * Draws each bar's value at its tip, formatted by this function. Direct labels are
+   * what let a ranking be read without hovering anything, and a horizontal bar is the
+   * one form where they always fit (the row is as tall as the text and the space to the
+   * right of the shortest bar is free). Omit to leave the axis to carry the values.
+   */
+  valueLabel?: (value: number) => string;
+}
+
+// Geometry for a horizontal bar chart. The height is a function of the row count rather
+// than a fixed box: a ranking of five and a ranking of twenty want the same row height,
+// and a fixed height would either squash the bars past the mark spec's 24px ceiling or
+// strand a short ranking in a tall empty frame.
+const ROW_PX = 22;
+const H_BAR_MARGIN_TOP = 12;
+// A category label's left margin, sized to the longest label so a qualified function
+// name keeps its text instead of being clipped into ambiguity.
+const MIN_LABEL_MARGIN = 90;
+const MAX_LABEL_MARGIN = 260;
+
+// Hover-tip options for a chart whose categories run down y: same box as `tipBox`, with
+// the pointer selecting by ROW rather than by column, so the whole width of a row
+// responds and the tip describes the bar the pointer is actually beside.
+function tipBoxY(palette: ChartPalette): {
+  pointer: "y";
+  maxRadius: number;
+  fill: string;
+  stroke: string;
+} {
+  return {
+    pointer: "y",
+    maxRadius: POINTER_RADIUS,
+    fill: palette.surface,
+    stroke: palette.border,
+  };
+}
+
+/**
+ * A horizontal bar chart: one bar per named thing, ranked by length.
+ *
+ * This is the form for a ranking whose categories have **long names** — a function, a
+ * file path, a module. Turned on its side the labels read horizontally at full length
+ * instead of being tilted 40° and clipped by the bottom margin, and the eye runs down a
+ * list, which is what a ranking is.
+ *
+ * Two things are load-bearing rather than stylistic:
+ *
+ * - **The order is the caller's**, pinned as the band domain. Plot sorts an ordinal
+ *   domain it infers, which would silently alphabetize a chart whose whole point is that
+ *   it is sorted by magnitude.
+ * - **One hue.** Length already encodes the magnitude; painting each bar a different
+ *   color would spend the categorical palette on identity that the axis labels already
+ *   carry, and imply a series structure that is not there.
+ */
+export function horizontalBarChart(
+  data: readonly HorizontalBarPoint[],
+  palette: ChartPalette,
+  labels: HorizontalBarLabels = {},
+): PlotOptions {
+  const color = labels.color ?? palette.accent;
+  const hasTips = data.some((d) => d.title != null);
+  const order = data.map((d) => d.label);
+  const longest = order.reduce((n, label) => Math.max(n, label.length), 0);
+  const marginLeft = Math.min(
+    MAX_LABEL_MARGIN,
+    Math.max(MIN_LABEL_MARGIN, Math.ceil(longest * GLYPH_PX) + 12),
+  );
+  const valueLabel = labels.valueLabel;
+  // Room at the right for the direct labels, measured from the longest one actually
+  // rendered — a label drawn outside the frame is a clipped label, which is the failure
+  // the direct labels were added to avoid.
+  const marginRight = valueLabel
+    ? Math.ceil(
+        data.reduce(
+          (n, d) => Math.max(n, valueLabel(d.value).length * GLYPH_PX),
+          0,
+        ),
+      ) + 12
+    : undefined;
+  return {
+    ...basePlotOptions(palette),
+    marginLeft,
+    marginTop: H_BAR_MARGIN_TOP,
+    ...(marginRight != null ? { marginRight } : {}),
+    // The frame grows with the ranking, so every row gets the same height whatever the
+    // row count, and the x-axis band below is always inside the figure.
+    height: H_BAR_MARGIN_TOP + data.length * ROW_PX + 40,
+    x: {
+      label: labels.x ?? null,
+      grid: true,
+      zero: true,
+      tickFormat: labels.xTickFormat,
+    },
+    y: { label: null, type: "band", domain: order, padding: 0.32 },
+    marks: [
+      Plot.barX(data as HorizontalBarPoint[], {
+        x: "value",
+        y: "label",
+        fill: color,
+        rx: 2,
+        ...(hasTips
+          ? { title: (d: HorizontalBarPoint) => d.title, tip: tipBoxY(palette) }
+          : {}),
+      }),
+      Plot.ruleX([0], { stroke: palette.border }),
+      // Direct labels at the tips, in text ink — never the bar's color, which is a
+      // light accent and illegible as text on the surface.
+      ...(valueLabel
+        ? [
+            Plot.text(data as HorizontalBarPoint[], {
+              x: "value",
+              y: "label",
+              text: (d: HorizontalBarPoint) => valueLabel(d.value),
+              textAnchor: "start",
+              dx: 5,
+              fill: palette.text,
+            }),
+          ]
+        : []),
+      // The hover highlight: a wash over the pointer-selected row, matching the tip's
+      // row selection (renders nothing until the pointer is near).
+      ...(hasTips
+        ? [
+            Plot.barX(
+              data as HorizontalBarPoint[],
+              Plot.pointerY({
+                x: "value",
+                y: "label",
+                rx: 2,
+                maxRadius: POINTER_RADIUS,
+                ...highlightWash(palette),
+              }),
+            ),
+          ]
+        : []),
+    ],
+  };
+}

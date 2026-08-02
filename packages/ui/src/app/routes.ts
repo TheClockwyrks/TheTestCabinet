@@ -220,6 +220,11 @@ export const routes = {
   // knowledge), rebuilt from the recorded telemetry. Offered only on a gg run, so
   // opening one from the runs list gets back everything the live view showed.
   runGg: (runId: string): string => `/runs/${encodeURIComponent(runId)}/gg`,
+  // The static read of the code the run's model wrote: the provenance it was measured
+  // under, the shape of the tree, and an explorer over every file and function. Offered
+  // on any harness's run that carries an analysis (analysing a directory is
+  // harness-agnostic), which means runs from the day the analyzer shipped onward.
+  runCode: (runId: string): string => `/runs/${encodeURIComponent(runId)}/code`,
   // The "Other" section (consoles only): a tabbed list page collecting the
   // surfaces that don't belong on the Test Cases page — Game Jams and
   // Tournaments. The bare `/other` redirects to the first tab (Game Jams). Each
@@ -355,6 +360,7 @@ export const routePatterns = {
   runMetadata: "/runs/:runId/metadata",
   runEvents: "/runs/:runId/events",
   runGg: "/runs/:runId/gg",
+  runCode: "/runs/:runId/code",
   // The Other section: the tabbed list (Game Jams / Tournaments) and the game-jam
   // detail routes. The tab slugs are literal siblings under `/other`; the
   // game-jam detail's sub-tabs mirror the test-case detail's, one route each so a
