@@ -77,14 +77,7 @@ pub async fn execute(args: GgReplayArgs) -> anyhow::Result<()> {
         return delegate(spec, &source, args.steps.as_deref()).await;
     }
 
-    let record = match &source {
-        RecordSource::File(path) => read_record(path)?,
-        RecordSource::Run(run_id) => {
-            let bytes = fetch_record(run_id).await?;
-            parse_record(&bytes)
-                .with_context(|| format!("parsing the replay record for run `{run_id}`"))?
-        }
-    };
+    let record = source.load().await?;
 
     let label = source.label();
     let report = ReplayReport {
@@ -101,6 +94,11 @@ pub async fn execute(args: GgReplayArgs) -> anyhow::Result<()> {
 /// Exactly one of the two, enforced by the clap group on [`GgReplayArgs`] — so the impossible third
 /// state (neither, or both) is a parse error the user sees in terms of the flags they typed, not a
 /// runtime branch here.
+///
+/// Shared with [`gg-playback`](super::gg_playback), which names a record exactly the same two ways.
+/// The two commands do very different things with the record, but *finding* it is one behaviour and
+/// a second copy of it would drift — a run id that resolved for one command and not the other would
+/// be a confusing bug for no reason.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RecordSource {
     /// A local file — plain JSON or gzipped.
@@ -112,20 +110,39 @@ pub enum RecordSource {
 impl RecordSource {
     /// Read the source out of the parsed arguments.
     fn from_args(args: &GgReplayArgs) -> anyhow::Result<Self> {
-        match (&args.run_id, &args.record) {
-            (_, Some(path)) => Ok(Self::File(path.clone())),
-            (Some(run_id), None) => Ok(Self::Run(run_id.clone())),
-            // Unreachable through clap (the arg group is `required`), but a handler that would
-            // panic or silently do nothing if the group were ever relaxed is worse than one line.
+        Self::new(args.run_id.as_deref(), args.record.as_deref())
+    }
+
+    /// The source named by a run id, a `--record` path, or neither.
+    ///
+    /// `--record` wins when both are given, which clap's `required` group makes unreachable; the
+    /// branch exists so that relaxing the group later is a behaviour change somebody has to make
+    /// deliberately rather than a panic.
+    pub fn new(run_id: Option<&str>, record: Option<&Path>) -> anyhow::Result<Self> {
+        match (run_id, record) {
+            (_, Some(path)) => Ok(Self::File(path.to_path_buf())),
+            (Some(run_id), None) => Ok(Self::Run(run_id.to_string())),
             (None, None) => bail!("name a run id, or a record file with --record"),
         }
     }
 
     /// How the source reads in the reconstruction's opening line.
-    fn label(&self) -> String {
+    pub fn label(&self) -> String {
         match self {
             Self::File(path) => path.display().to_string(),
             Self::Run(run_id) => format!("run `{run_id}`"),
+        }
+    }
+
+    /// Load and parse the record this source names.
+    pub async fn load(&self) -> anyhow::Result<GgReplayRecord> {
+        match self {
+            Self::File(path) => read_record(path),
+            Self::Run(run_id) => {
+                let bytes = fetch_record(run_id).await?;
+                parse_record(&bytes)
+                    .with_context(|| format!("parsing the replay record for run `{run_id}`"))
+            }
         }
     }
 }

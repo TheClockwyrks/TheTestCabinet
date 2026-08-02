@@ -15,6 +15,8 @@ mod cli;
 mod commands;
 mod config;
 
+use std::process::ExitCode;
+
 use clap::Parser;
 use tracing::Instrument;
 
@@ -28,8 +30,13 @@ use crate::cli::{Cli, Command};
 /// short-lived process exits. For that flush to run we always return from `main`
 /// rather than calling [`std::process::exit`], which would skip the guard's
 /// destructor and lose any buffered spans, metrics, and logs.
+///
+/// Returning an [`ExitCode`] rather than `()` is what lets a subcommand whose *result* is a
+/// verdict — today only [`gg-playback`](commands::gg_playback), whose code distinguishes a
+/// faithful reconstruction from a diverged one from a relaxed one — report it through the process
+/// status without reaching for `std::process::exit` and losing that flush.
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> anyhow::Result<ExitCode> {
     load_dotenv()?;
 
     // Logs go to standard error, not standard output: `tcab` is a command line tool whose
@@ -55,24 +62,31 @@ async fn main() -> anyhow::Result<()> {
 }
 
 /// Route a parsed subcommand to its handler.
-async fn dispatch(command: Command) -> anyhow::Result<()> {
+///
+/// Every handler but one reports success or an error, and a subcommand that ran is a subcommand
+/// that exits `0`. [`gg-playback`](commands::gg_playback) is the exception: it *ran fine* and still
+/// has something to say — whether the reconstruction was faithful, and under which mode — so it
+/// returns early with its own code rather than being flattened into `0`.
+async fn dispatch(command: Command) -> anyhow::Result<ExitCode> {
     match command {
-        Command::Run(args) => commands::run::execute(args).await,
-        Command::GgReplay(args) => commands::gg_replay::execute(args).await,
-        Command::Validate(args) => commands::validate::execute(args).await,
-        Command::Register(args) => commands::auth::register(args).await,
-        Command::Login(args) => commands::auth::login(args).await,
-        Command::Logout => commands::auth::logout().await,
-        Command::Review(args) => commands::publish::review(args).await,
-        Command::Publish(args) => commands::publish::publish(args).await,
-        Command::Harnesses(args) => commands::harnesses::execute(args).await,
-        Command::Orchestrators(args) => commands::orchestrators::execute(args).await,
-        Command::Seed(args) => commands::seed::execute(args).await,
-        Command::Prompt(args) => commands::prompt::execute(args).await,
-        Command::PublishReference(args) => commands::publish_reference::execute(args).await,
-        Command::CaptureBaselines(args) => commands::capture_baselines::execute(args).await,
-        Command::Analyze(args) => commands::analyze::execute(args).await,
+        Command::GgPlayback(args) => return commands::gg_playback::execute(args).await,
+        Command::Run(args) => commands::run::execute(args).await?,
+        Command::GgReplay(args) => commands::gg_replay::execute(args).await?,
+        Command::Validate(args) => commands::validate::execute(args).await?,
+        Command::Register(args) => commands::auth::register(args).await?,
+        Command::Login(args) => commands::auth::login(args).await?,
+        Command::Logout => commands::auth::logout().await?,
+        Command::Review(args) => commands::publish::review(args).await?,
+        Command::Publish(args) => commands::publish::publish(args).await?,
+        Command::Harnesses(args) => commands::harnesses::execute(args).await?,
+        Command::Orchestrators(args) => commands::orchestrators::execute(args).await?,
+        Command::Seed(args) => commands::seed::execute(args).await?,
+        Command::Prompt(args) => commands::prompt::execute(args).await?,
+        Command::PublishReference(args) => commands::publish_reference::execute(args).await?,
+        Command::CaptureBaselines(args) => commands::capture_baselines::execute(args).await?,
+        Command::Analyze(args) => commands::analyze::execute(args).await?,
     }
+    Ok(ExitCode::SUCCESS)
 }
 
 /// The static subcommand name used to label the invocation's root span.
@@ -80,6 +94,7 @@ fn command_name(command: &Command) -> &'static str {
     match command {
         Command::Run(_) => "run",
         Command::GgReplay(_) => "gg-replay",
+        Command::GgPlayback(_) => "gg-playback",
         Command::Validate(_) => "validate",
         Command::Register(_) => "register",
         Command::Login(_) => "login",

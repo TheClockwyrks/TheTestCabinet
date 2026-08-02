@@ -498,12 +498,13 @@ pub fn clip_text(text: &str, max_bytes: usize) -> Option<(&str, u64)> {
 pub struct GgReplayBlob {
     /// The blob's [content address](fingerprint_exact) over its base64 bytes.
     pub id: String,
-    /// The IANA media type (`image/png`, `image/jpeg`, …).
+    /// The IANA media type (`image/png`, `image/jpeg`, …), or `application/octet-stream`
+    /// for a seeded file whose type the sniffer did not recognize.
     pub media_type: String,
     /// The decoded size in bytes — what the file on disk measured.
     #[serde(default)]
     pub bytes: u64,
-    /// The image's bytes, base64-encoded (no `data:` prefix).
+    /// The payload's bytes, base64-encoded (no `data:` prefix).
     pub data_base64: String,
 }
 

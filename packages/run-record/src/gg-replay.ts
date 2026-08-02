@@ -201,7 +201,8 @@ export type GgReplayBlob = {
    */
   id: string;
   /**
-   * The IANA media type (`image/png`, `image/jpeg`, …).
+   * The IANA media type (`image/png`, `image/jpeg`, …), or `application/octet-stream`
+   * for a seeded file whose type the sniffer did not recognize.
    */
   mediaType: string;
   /**
@@ -209,7 +210,7 @@ export type GgReplayBlob = {
    */
   bytes: number;
   /**
-   * The image's bytes, base64-encoded (no `data:` prefix).
+   * The payload's bytes, base64-encoded (no `data:` prefix).
    */
   dataBase64: string;
 };

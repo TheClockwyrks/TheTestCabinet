@@ -219,7 +219,7 @@
           "type": "integer"
         },
         "dataBase64": {
-          "description": "The image's bytes, base64-encoded (no `data:` prefix).",
+          "description": "The payload's bytes, base64-encoded (no `data:` prefix).",
           "type": "string"
         },
         "id": {
@@ -227,7 +227,7 @@
           "type": "string"
         },
         "mediaType": {
-          "description": "The IANA media type (`image/png`, `image/jpeg`, …).",
+          "description": "The IANA media type (`image/png`, `image/jpeg`, …), or `application/octet-stream`\nfor a seeded file whose type the sniffer did not recognize.",
           "type": "string"
         }
       },

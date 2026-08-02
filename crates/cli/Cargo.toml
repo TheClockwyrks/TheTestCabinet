@@ -13,7 +13,9 @@ path = "src/main.rs"
 test-cabinet-core = { path = "../core" }
 test-cabinet-telemetry = { path = "../telemetry", features = ["otlp"] }
 # gg's harness library — `tcab gg-replay` drives its debug-only replay driver
-# (`replay_driver`) in-process to reconstruct a run from a captured replay record.
+# (`replay_driver`) in-process to reconstruct a run from a captured replay record, and
+# `tcab gg-playback` drives its `playback` entrypoint, which re-runs the recorded session
+# through gg's real turn loop.
 test-cabinet-gg = { path = "../gg" }
 # The static code analyzer — `tcab analyze` runs it in-process over a directory. The
 # dependency lives here rather than in core on purpose: core owns the contract types, and
@@ -30,7 +32,8 @@ tracing = { workspace = true }
 anyhow = { workspace = true }
 # Scratch workspace an asset-generation reference is drawn into before its frames
 # are uploaded. The bytes are derived from the committed script, so the directory
-# is discarded once the upload finishes.
+# is discarded once the upload finishes. Also the default `tcab gg-playback` workspace: a
+# reconstruction's product is its report and its telemetry, not the tree it built.
 tempfile = { workspace = true }
 anstyle = { workspace = true }
 anstream = { workspace = true }

@@ -393,6 +393,71 @@ A fatal divergence returns a **report carrying what stopped it**, not an error t
 throws the report away — the divergences found before that point are exactly what a
 developer wants.
 
+## The command line
+
+```sh
+tcab gg-playback --record run/replay.json.gz --report report.json
+```
+
+A record is named exactly the two ways `tcab gg-replay` names one — a run id, which
+is fetched from the backend, or `--record` pointing at a file (plain or gzipped, a
+run tree's copy being `replay.json.gz`). No provider credential is read and none is
+needed: a playback constructs no live client, so the headline invocation runs with
+`OPENROUTER_API_KEY` unset and finishes a half-hour session in seconds.
+
+The last line is the verdict, and the exit code carries the **mode** as well as it:
+
+| Code | Meaning |
+| --- | --- |
+| 0 | faithful |
+| 1 | Exact, and it diverged |
+| 2 | reconstructed under `--strictness shape` |
+| 3 | reconstructed under `--strictness none` |
+
+Distinguishing 2 and 3 from 1 is the point. A script that checks `!= 0` behaves the
+same either way, and one that checks `== 0` cannot mistake a relaxed reconstruction
+for a clean one — precisely the mistake a mode reached for to unblock a red build
+invites.
+
+Every flag beyond naming the record is a relaxation, and each one costs the
+reconstruction its faithfulness:
+
+| Flag | What it gives up |
+| --- | --- |
+| `--strictness shape\|none` | the staleness check, in the [two grades](#staleness-is-this-recorded-answer-still-an-answer) the matrix defines |
+| `--ordering free` | the [ordering barrier](#the-ordering-barrier) — a measurement instrument, not a convenience |
+| `--execute-unrecorded` | the guarantee that a playback starts **no** process at all |
+| `--stop-on-unrecorded` | nothing; the opposite posture, for a caller who would rather have nothing than a session in which a build's output was invented |
+
+`--report` is written on every path that reached a reconstruction, **including** the
+one a fatal divergence stopped — that is the library's error design surfacing at the
+front end. `--events` writes the reconstructed telemetry as NDJSON, which is the
+same stream a live run emits and the actual *product* of a playback.
+
+With no `--workspace` the reconstruction builds in a temporary directory and removes
+it afterwards. Name one to keep the tree — but never point it at a run's produced
+tree, which is why a non-empty directory is refused rather than merged into.
+
+A kept tree holds one thing worth knowing about: **its own capture journal**. Capture
+is always on and a playback runs the real loop, so a playback records itself. The CLI
+neither suppresses that nor mentions it — suppressing it would mean reconstructing
+under a configuration the recorded run did not have, and mentioning it would put a
+line in every report about a file the default invocation deletes moments later. It is
+a perfectly good record, and it plays back like any other.
+
+### The committed fixture suite
+
+The other consumer of a playback is gg's own test suite, and it is the reason to keep
+records around. `crates/gg/src/testdata/playback/` holds whole recorded sessions —
+capped at six, at 500 KB each, both asserted rather than noted — and each one asserts
+faithfulness on every test run. Because those records were written by an *earlier*
+build, they catch what an in-process round trip structurally cannot: a prompt-template
+edit. Change one and every fixture fails at once, naming the component that moved.
+
+The records committed today were driven by gg's offline `MockClient` rather than by a
+model, which the directory's `README` says plainly. That costs only the realism of the
+content: the signal comes from the request gg builds, not from the answer it gets.
+
 ## What this does for gg's test suite
 
 This is the second reason to build it, and on some days the better one.

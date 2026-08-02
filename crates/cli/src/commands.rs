@@ -7,6 +7,7 @@ pub mod analyze;
 pub mod auth;
 pub mod capture_baselines;
 pub mod event_printer;
+pub mod gg_playback;
 pub mod gg_replay;
 pub mod harnesses;
 pub mod orchestrators;

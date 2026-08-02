@@ -808,6 +808,22 @@ async fn a_board_dispatched_session_reconstructs_into_the_same_session() {
 // Responses as code
 // ---------------------------------------------------------------------------
 
+/// A single-agent [responses-as-code](crate::sandbox) set, on the production factory's
+/// `mock/demo-responses-as-code` script — real program text, compiled and run in the real sandbox.
+fn responses_as_code_set() -> GgCapabilitySet {
+    use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgCapabilityConfig};
+    let mut root = GgAgentConfig {
+        model_id: "mock/demo-responses-as-code".to_string(),
+        ..GgCapabilitySet::minimal("mock/demo-responses-as-code").agents[0].clone()
+    };
+    root.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    GgCapabilitySet {
+        agents: vec![root],
+        ..GgCapabilitySet::default()
+    }
+}
+
 /// A **responses-as-code** session reconstructs, which means the recorded program really was
 /// re-run: the transpiler, the wasmtime sandbox, the typed membrane and the deferred-effect
 /// machinery all execute against real recorded model output, in sequence, with the real tool results
@@ -821,17 +837,7 @@ async fn a_board_dispatched_session_reconstructs_into_the_same_session() {
 #[tokio::test]
 async fn a_responses_as_code_session_reconstructs_into_the_same_session() {
     use crate::client::MOCK_CODE_LEVEL_FILES;
-    use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgCapabilityConfig};
-    let mut root = GgAgentConfig {
-        model_id: "mock/demo-responses-as-code".to_string(),
-        ..GgCapabilitySet::minimal("mock/demo-responses-as-code").agents[0].clone()
-    };
-    root.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
-    let set = GgCapabilitySet {
-        agents: vec![root],
-        ..GgCapabilitySet::default()
-    };
+    let set = responses_as_code_set();
 
     let original = TempDir::new().unwrap();
     let capture = CapturingSink::new();
@@ -1210,3 +1216,13 @@ async fn without_the_barrier_a_concurrent_reconstruction_diverges_on_the_convers
         report.divergences,
     );
 }
+
+/// The **committed fixture suite** — whole sessions recorded by an *earlier* build and checked
+/// into the repository, each asserting that this one still reconstructs it.
+///
+/// Separate from everything above on the one axis that matters: every test in this file records
+/// and reconstructs within a single process, so none of them can detect a prompt-template change —
+/// the recorder stamps the fingerprint of the request this build built, and then this build builds
+/// it again. A fixture is the missing half.
+#[path = "fixtures.test.rs"]
+mod fixture_tests;

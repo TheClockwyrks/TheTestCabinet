@@ -85,8 +85,16 @@
 //! next call reads — and then the [recorded outcome is preferred](binding), which is what keeps the
 //! reconstructed context window equal to the recorded one.
 //!
-//! What is **not** here is the `tcab gg-playback` front end and the committed real-session fixture
-//! suite. Where a seam is narrower than the design, it says so at the seam rather than here.
+//! # The two front doors
+//!
+//! [`tcab gg-playback`](https://docs.testcabinet.ai/gg/analysis/playback/#the-command-line) is the
+//! developer-facing one — it names a record, prints the divergences and exits with a code that
+//! carries the mode as well as the verdict. The other is this builder, used directly by the
+//! **committed fixture suite** (`fixtures.test.rs`), where whole recorded sessions assert that this
+//! build still reconstructs them: when a prompt template, a tool description or the context-usage
+//! block moves, every fixture fails at once, naming the diverged component and showing the diff.
+//!
+//! Where a seam is narrower than the design, it says so at the seam rather than here.
 
 pub mod binding;
 pub mod client;
