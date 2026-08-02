@@ -433,6 +433,29 @@ files to `size.files`. Kill a run mid-session: the canceled record still carries
 `codeAnalysis`. `curl $BACKEND/runs/<id>/code-analysis` resolves and the `run`
 row's `code_analyzer_version` is set **with the POST's patch branch disabled**.
 
+### M7.5 (A) — The invocation envelope: `seed` and the `agents` table
+
+**Added after M7, because M6 did not close it and nothing else claimed it.** M6
+shipped as "replay capture completeness" while `gg_replay_assembly.rs` still
+writes `seed` and `agents` as hardcoded empties at both fidelities —
+`GgReplayAgent` is constructed nowhere outside its own tests. §1.3(c) and §1.3(d)
+specify both, and §2's dependency table lists them inside the replay→playback
+edge it marks **HARD, blocking**. Six step reports have disclosed the gap as
+out of scope; this step is the owner.
+
+Add the journal's provenance lines and assemble them: `GgReplaySeed` with the
+invocation envelope (`prompt`, `model_windows`, **resolved** `model_modalities`,
+`baseline_commit` from `git::ensure_baseline`, and `provided_files` as blob-pool
+refs — the pool already holds the bytes, so this costs none), and one
+`GgReplayAgent` row per agent covering **all five creation paths**, not only the
+ones that happened to record an entry.
+
+**Verify:** a run that spawns a sub-agent which then records nothing still has
+its row in `agents` — the case `ReplayInputs::agent_ids` gets wrong today,
+because it derives the agent set from entries rather than from the table.
+`provided_files` resolves against the blob pool with no growth in the record's
+compressed size beyond the refs themselves.
+
 ### M8 (A) — Playback: seams and single-agent
 
 `ShellRunner` + `ToolContext.{agent_id,shell}` (59 construction sites unaffected
