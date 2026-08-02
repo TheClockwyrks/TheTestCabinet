@@ -48,9 +48,9 @@ fn feedback(outcome: &SandboxOutcome) -> String {
 /// **What a program logged does not reach the model; the fact that it logged does.**
 ///
 /// This is the contract the whole view mechanism rests on. `console.*` is still captured — the lines
-/// are right there on the outcome, and from there they reach the operator's stream, telemetry, the
-/// replay record and the console — but the prompt gets a count and a pointer at the channel that
-/// does carry, never the text. A model that could still read its own logs would have no reason to
+/// are right there on the outcome, and from there onto the turn's `CodeExecution` event, which is
+/// what carries them to the operator's stream, the run record and the console — but the prompt gets
+/// a count and a pointer at the channel that does carry, never the text. A model that could still read its own logs would have no reason to
 /// open a view, and the anonymous, unattributable, unevictable blob this feature exists to remove
 /// would simply come back.
 #[test]
@@ -84,8 +84,8 @@ fn a_programs_logs_are_counted_in_the_feedback_and_never_quoted() {
         rendered.contains("`view.openText(label, body)`"),
         "a model told its output vanished must be told what to use instead:\n{rendered}"
     );
-    // ...and the lines are still on the outcome, which is what the operator's stream, telemetry and
-    // the replay record are built from.
+    // ...and the lines are still on the outcome, which is what the turn's `CodeExecution` event —
+    // the only record of a program's output — is built from.
     assert_eq!(outcome.logs.len(), 2);
 }
 

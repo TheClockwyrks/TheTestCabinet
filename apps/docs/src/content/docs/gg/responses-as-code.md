@@ -51,11 +51,14 @@ asking the model not to send.
   protocol a model cannot work around.
 - **`console.*` is captured, and it goes to the run's *operator*.** It is not stdout:
   gg's [telemetry](/gg/telemetry/) *is* this process's stdout, so `console.log` is routed
-  to a host call instead — and from there to the operator's stream, the
-  [replay](/gg/replay/) record and the console. It is not shown back to the model. A turn
-  whose program logged is told **how many lines** it logged and pointed at the view API,
-  once, in that turn's feedback, so a model whose output went somewhere it cannot read
-  learns that rather than reading the silence as a program that never ran.
+  to a host call instead — and from there onto the turn's own `code_execution` event,
+  which carries every line the program printed (and how many the capture caps dropped).
+  That event is what puts a program's output on the operator's stream, in the run record
+  and on the console's activity feed, and it is the **only** record of it: a log line is
+  not shown back to the model. A turn whose program logged is told **how many lines** it
+  logged and pointed at the view API, once, in that turn's feedback, so a model whose
+  output went somewhere it cannot read learns that rather than reading the silence as a
+  program that never ran.
 - **`return` at the top level** ends the program, exactly as it ends any function body,
   and **its value is discarded**. A program uses it to stop early; it says nothing. A
   model that returns a value is told, once, in that turn's feedback, that the value went
@@ -656,6 +659,14 @@ picture the model sees once, in the report on its program. `view.openFile` inste
 picture **into the view**, up to four per turn, where it stays until the view is closed. One
 number, two places a picture can land, and a program that does both can spend both.
 
+A picture either budget withholds is **said out loud in every place that describes it**. The
+read still succeeds and still reports what the file is; its result carries `shown: false` and
+the reason; the turn's feedback counts it (`2 image(s) were read but not shown to you: at most
+4 pictures per program`); and — this is the one that matters for a view — the view's own body
+says what the file is *instead of* saying that the image follows. A view whose picture was
+withheld must never leave the sentence `The image follows.` in the window: a model told a
+mockup is in front of it will reason about a mockup it was never shown.
+
 ### What the turn's feedback says about it
 
 The report on a program lists what it did to its own window, beside the roster of what it
@@ -754,9 +765,11 @@ or it will read the shorter list as evidence that its loop never ran:
 | Pictures attached to one turn's feedback | 4 |
 | Log lines kept | 200, 16 KiB in total, 2 KiB per line — the **last** lines, evicting from the front |
 
-The log caps no longer describe anything the model reads: logs go to the operator's stream and
-the [replay](/gg/replay/) record, so what they bound is how much of a runaway loop's output is
-kept for a *reader*, not how much of the prompt it can occupy. What a program puts in the
+The log caps no longer describe anything the model reads: logs ride out on the turn's
+`code_execution` [telemetry](/gg/telemetry/) event, so what they bound is how much of a runaway
+loop's output is kept for a *reader*, not how much of the prompt it can occupy. What the caps
+discard is reported as `logsSuppressed` on that same event, so a capped list never reads as a
+program that stopped printing. What a program puts in the
 **prompt** is bounded by [the view caps](#the-caps-and-why-none-of-them-truncates) instead,
 and those refuse rather than truncate.
 

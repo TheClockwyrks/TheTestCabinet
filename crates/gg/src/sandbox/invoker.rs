@@ -129,6 +129,15 @@ pub struct ViewOpenOutcome {
     pub outcome: ToolOutcome,
     /// The view that was opened, or `None` when the read failed or a cap refused the call.
     pub opened: Option<SandboxViewOpened>,
+    /// How many pictures this read produced that the per-program picture budget withheld from the
+    /// view.
+    ///
+    /// It travels out here rather than being counted where it happens because the budget is spent
+    /// on the api side (that is where the window is) while the turn's *disclosure* of a dropped
+    /// picture is the membrane's, alongside the pictures a bare `read_file` could not attach. A
+    /// model shown a view of an image it cannot see, with nothing in the feedback saying so, would
+    /// reason about a mockup it was never shown.
+    pub images_dropped: u32,
 }
 
 /// The prefix of the synthetic call id a program-composed tool call is recorded under:

@@ -946,7 +946,11 @@ fn the_result_feedback_reports_what_was_dropped_refused_and_deferred() {
     assert!(rendered.contains("- refused: `speculate` — the run has no worktree isolation"));
     assert!(rendered.contains("(3 further refusal(s) were not listed"));
     assert!(rendered.contains("it ran after the program had already ended."));
-    assert!(rendered.contains("(2 image(s) were not attached: max image count reached)"));
+    assert!(
+        rendered.contains(
+            "(2 image(s) were read but not shown to you: at most 4 pictures per program)"
+        )
+    );
     assert_no_blank_run(&rendered);
 }
 

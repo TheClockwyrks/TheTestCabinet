@@ -183,6 +183,17 @@ impl<A: ToolApi> MembraneState<A> {
             .push(truncate(message.to_string(), MAX_CALL_ERROR_BYTES));
     }
 
+    /// Count pictures a caller withheld on its own, outside [`collect_images`](Self::collect_images).
+    ///
+    /// [`open_file_view`](super::views) spends its own picture budget on the far side of the
+    /// [api](ToolApi) — that is where the window is — so the drop happens somewhere this state
+    /// cannot see. It still has to reach the same per-turn total, because that total is what the
+    /// feedback renders, and a picture that disappears from a view with nothing in the turn's report
+    /// saying so is exactly the silence this module refuses everywhere else.
+    pub(super) fn record_images_dropped(&mut self, dropped: u32) {
+        self.images_dropped = self.images_dropped.saturating_add(dropped);
+    }
+
     /// Move the pictures a call produced out of its outcome and into the turn's attachments, up to
     /// [`IMAGE_BUDGET`].
     ///

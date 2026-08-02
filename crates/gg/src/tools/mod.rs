@@ -107,7 +107,7 @@ pub use filesystem::{
 /// with the same [`sniff_image`] `read_file` types an attachment with — so an image the model was
 /// shown and the seed that placed it on disk agree about what it is, which is what lets the two
 /// collapse into one blob-pool entry. Neither is part of the tool API.
-pub(crate) use filesystem::{READ_FILE_CAP, sniff_image};
+pub(crate) use filesystem::{READ_FILE_CAP, human_bytes, sniff_image};
 pub use memories::{
     CreateMemoryTool, DeleteMemoryTool, EditMemoryTool, ReadMemoryTool, SearchMemoriesTool,
     UpdateMemoryTool, WriteMemoryTool, is_memory_tool, read_only_refusal,

@@ -2654,6 +2654,28 @@ export type GgTelemetryKind =
        */
       finished?: string;
       /**
+       * Everything the program wrote with `console.*`, in order, subject to the sandbox's
+       * capture caps (200 lines, 16 KiB, 2 KiB per line — the tail is what is kept).
+       *
+       * **This is the only place a program's output is recorded.** `console.*` is not a channel
+       * into the model's own context window — what a program shows *itself* is a
+       * [view](GgContextSource::TextView), which arrives as its own attributable context message
+       * — so a log line goes to whoever is watching the run and nowhere else. Carrying the lines
+       * on the turn's own event is what keeps that true: without them, a program's diagnostic
+       * output would exist only for the instant it crossed the sandbox membrane, and an operator
+       * reading a finished run, a replay, or an analysis over a thousand runs could not see what
+       * any program printed.
+       *
+       * Absent (an empty list) for a turn that logged nothing and for a reply that was not a
+       * program at all.
+       */
+      logs?: Array<string>;
+      /**
+       * How many log lines the capture caps discarded, so a reader of a capped list knows it is a
+       * tail rather than the whole of what the program wrote. `0` for the ordinary turn.
+       */
+      logsSuppressed?: number;
+      /**
        * How long **this** program spent obtaining the sandbox's compiled interpreter component,
        * in milliseconds — absent (the ordinary case) when the component was already compiled and
        * nothing here was on the turn's critical path.
@@ -3536,6 +3558,28 @@ export type GgTelemetryEvent = {
        * text (a subagent's return value to its spawner).
        */
       finished?: string;
+      /**
+       * Everything the program wrote with `console.*`, in order, subject to the sandbox's
+       * capture caps (200 lines, 16 KiB, 2 KiB per line — the tail is what is kept).
+       *
+       * **This is the only place a program's output is recorded.** `console.*` is not a channel
+       * into the model's own context window — what a program shows *itself* is a
+       * [view](GgContextSource::TextView), which arrives as its own attributable context message
+       * — so a log line goes to whoever is watching the run and nowhere else. Carrying the lines
+       * on the turn's own event is what keeps that true: without them, a program's diagnostic
+       * output would exist only for the instant it crossed the sandbox membrane, and an operator
+       * reading a finished run, a replay, or an analysis over a thousand runs could not see what
+       * any program printed.
+       *
+       * Absent (an empty list) for a turn that logged nothing and for a reply that was not a
+       * program at all.
+       */
+      logs?: Array<string>;
+      /**
+       * How many log lines the capture caps discarded, so a reader of a capped list knows it is a
+       * tail rather than the whole of what the program wrote. `0` for the ordinary turn.
+       */
+      logsSuppressed?: number;
       /**
        * How long **this** program spent obtaining the sandbox's compiled interpreter component,
        * in milliseconds — absent (the ordinary case) when the component was already compiled and

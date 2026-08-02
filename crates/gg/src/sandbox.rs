@@ -50,7 +50,8 @@
 //! A program has exactly one channel for putting something in front of its **model**: a
 //! [view](crate::context::ViewKind) — `view.openText` for a value it computed, `view.openFile` for a
 //! file. `console.log` still works and is still captured, but it writes to the **operator**: the
-//! run's stream, its telemetry, its replay record and the console. A top-level `return` ends the
+//! turn's [`CodeExecution`](test_cabinet_core::gg::GgTelemetryKind::CodeExecution) event carries
+//! every line, which puts them on the run's stream, in the run record and on the console. A top-level `return` ends the
 //! program the way it ends any function body, and a value handed to it is **discarded** — the model
 //! is told so, once, rather than left to infer the rule from an absence. That is a deliberate
 //! subtraction. A returned value bought nothing an opened view does not, and it cost a whole family

@@ -462,6 +462,7 @@ impl ToolApi for FakeToolApi {
             return ViewOpenOutcome {
                 outcome,
                 opened: None,
+                images_dropped: 0,
             };
         }
         let region = match &outcome.data {
@@ -482,6 +483,9 @@ impl ToolApi for FakeToolApi {
         ViewOpenOutcome {
             outcome,
             opened: Some(opened),
+            // The double never models the picture budget: it is the production api's, spent against
+            // the real window, and every test of it drives that api.
+            images_dropped: 0,
         }
     }
 

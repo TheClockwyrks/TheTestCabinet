@@ -985,6 +985,8 @@ fn a_code_execution_omits_finished_and_healing_when_the_turn_was_clean() {
         duration_ms: Some(24_000),
         error: None,
         finished: None,
+        logs: Vec::new(),
+        logs_suppressed: 0,
         compile_wait_ms: None,
         healing: GgResponseHealing::default(),
     };
@@ -1012,6 +1014,8 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
         duration_ms: Some(9_100),
         error: None,
         finished: Some("Built the game and wrote MANIFEST.md.".to_string()),
+        logs: Vec::new(),
+        logs_suppressed: 0,
         compile_wait_ms: None,
         healing: GgResponseHealing {
             strategies: vec![
@@ -1047,6 +1051,8 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
         duration_ms: None,
         error: Some("Your reply contained 7 separate code blocks.".to_string()),
         finished: None,
+        logs: Vec::new(),
+        logs_suppressed: 0,
         compile_wait_ms: None,
         healing: GgResponseHealing {
             not_a_program: Some(GgNotAProgram::SeveralBlocks),

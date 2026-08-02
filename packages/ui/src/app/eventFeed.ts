@@ -104,6 +104,14 @@ function ggCodeExecutionDetail(
   // the program ran would drop the flag exactly where it matters most — and the
   // run rollup does not count it, so this line is the only place it surfaces.
   if (healing?.didNotConverge) parts.push("healing did not converge");
+  // What the program printed is not shown to the model — `console.*` writes to whoever
+  // is watching the run, and this event is the only record of it — so the count belongs
+  // on the one line that describes the turn. The lines themselves are on the event for
+  // a reader who opens it; a one-line feed cannot carry two hundred of them.
+  const logged = event.logs?.length ?? 0;
+  if (logged > 0) {
+    parts.push(`logged ${logged} line${logged === 1 ? "" : "s"}`);
+  }
   // The finishing turn is the only one that carries a summary, so this marks the
   // single turn on which the model ended the run of its own accord. The summary
   // itself reaches the feed as its own agent-message event, so it is not repeated.

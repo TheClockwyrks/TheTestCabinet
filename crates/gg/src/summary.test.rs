@@ -53,6 +53,8 @@ fn code_turn(healing: GgResponseHealing) -> GgTelemetryKind {
         duration_ms: healing.not_a_program.is_none().then_some(0),
         error: None,
         finished: None,
+        logs: Vec::new(),
+        logs_suppressed: 0,
         compile_wait_ms: None,
         healing,
     }

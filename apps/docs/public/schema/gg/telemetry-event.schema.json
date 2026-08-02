@@ -1987,6 +1987,19 @@
           "$ref": "#/$defs/GgResponseHealing",
           "description": "What gg had to do to this reply before running it, and whether it was a program at all.\nDefaulted and omitted from the wire for a clean response, so the presence of this\nobject *is* \"something was unusual about this response\"."
         },
+        "logs": {
+          "description": "Everything the program wrote with `console.*`, in order, subject to the sandbox's\ncapture caps (200 lines, 16 KiB, 2 KiB per line — the tail is what is kept).\n\n**This is the only place a program's output is recorded.** `console.*` is not a channel\ninto the model's own context window — what a program shows *itself* is a\n[view](GgContextSource::TextView), which arrives as its own attributable context message\n— so a log line goes to whoever is watching the run and nowhere else. Carrying the lines\non the turn's own event is what keeps that true: without them, a program's diagnostic\noutput would exist only for the instant it crossed the sandbox membrane, and an operator\nreading a finished run, a replay, or an analysis over a thousand runs could not see what\nany program printed.\n\nAbsent (an empty list) for a turn that logged nothing and for a reply that was not a\nprogram at all.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "logsSuppressed": {
+          "description": "How many log lines the capture caps discarded, so a reader of a capped list knows it is a\ntail rather than the whole of what the program wrote. `0` for the ordinary turn.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "ok": {
           "description": "Whether the program returned normally (`true`) or faulted, was stopped, or never\nexisted (`false`). A failed code turn is a *turn* outcome fed back to the model, never\na crash of the run. Independent of [`finished`](Self::CodeExecution::finished): a\nprogram that finished the run and then threw is `ok: false` with `finished` present.",
           "type": "boolean"

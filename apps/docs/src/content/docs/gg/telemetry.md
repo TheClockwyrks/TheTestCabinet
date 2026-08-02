@@ -344,7 +344,13 @@ directly:
   execution took, the failure if there was one, `finished` — the summary a program passed to
   `finish`, present on exactly the turn that ended the run and absent on every other —
   and `healing`, the record of what gg had to repair before it could run the reply
-  (omitted entirely for a clean one). It also carries `compileWaitMs` on the one turn that
+  (omitted entirely for a clean one). It also carries `logs`: every line the program wrote
+  with `console.*`, plus `logsSuppressed` for the lines the capture caps dropped. That is
+  the **only** record of a program's output — `console.*` is not a channel into the model's
+  own window (what a program shows itself is a
+  [view](/gg/responses-as-code/#showing-yourself-things), which arrives as its own context
+  message), so a log line goes to whoever is watching the run and nowhere else. Both fields
+  are omitted for a turn that printed nothing. It also carries `compileWaitMs` on the one turn that
   ever needs it: the sandbox's ~13 MB interpreter component is compiled once per process
   and the run starts that compile before its first model request, but starting it early
   only *overlaps* it with the request — so a model that answers quickly, on a container

@@ -77,6 +77,10 @@ export interface FeedRow {
   // A compact, secondary line (a tool call's args), shown muted beneath the detail.
   args?: string;
   tone: FeedTone;
+  // Collapse the detail behind a one-line preview. Set for rows whose text is
+  // routinely many lines (a program's own output), so one noisy turn cannot bury
+  // the rest of the feed.
+  collapsible?: boolean;
   // The id of the agent that emitted this row (the event envelope's `agentId`), so
   // the feed can attribute a line to a node in the subagent tree once subagents run.
   // `"root"` for a single-agent run; undefined for the rare pre-agent event (and for
@@ -928,6 +932,30 @@ function ggFeedRow(
     case "issue_review":
     case "speculation":
       return null;
+    // What a responses-as-code program printed. `console.*` is not a channel into the
+    // model's own window — what a program shows itself is a view, which arrives as its
+    // own context message — so this event is the only record of a program's output, and
+    // the feed is where an operator watching the run reads it. A turn that printed
+    // nothing renders no row: the execution itself is already visible as the assistant
+    // message carrying the program.
+    case "code_execution": {
+      const logs = gg.logs ?? [];
+      if (logs.length === 0) return null;
+      const dropped = gg.logsSuppressed ?? 0;
+      return {
+        ...base,
+        label: "output",
+        detail: logs.join("\n"),
+        args:
+          dropped > 0
+            ? `${logs.length} line${logs.length === 1 ? "" : "s"} · ${dropped} earlier line${
+                dropped === 1 ? "" : "s"
+              } dropped by the capture cap`
+            : `${logs.length} line${logs.length === 1 ? "" : "s"}`,
+        tone: "system",
+        collapsible: true,
+      };
+    }
     default:
       return null;
   }

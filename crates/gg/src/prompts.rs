@@ -736,9 +736,11 @@ pub fn default_system_prompt_template_code() -> &'static str {
 /// *did* everything up to the throw, and the model needs the same roster, the same views and the
 /// same nudges either way. The template's `{{#if error}}` is the only thing that differs.
 ///
-/// **What a program logged is not here.** `console.*` still crosses the membrane, still streams to
-/// the operator, and still reaches telemetry, the replay record and the console — it simply no
-/// longer reaches the model, because a program's channel into its own window is a
+/// **What a program logged is not here.** `console.*` still crosses the membrane and is still
+/// recorded — the turn's own
+/// [`CodeExecution`](test_cabinet_core::gg::GgTelemetryKind::CodeExecution) event carries every line
+/// of it, so the operator's stream, the run record and any analysis still see what a program printed
+/// — it simply no longer reaches the model, because a program's channel into its own window is a
 /// [view](crate::context::ViewKind) and one anonymous blob of interleaved log lines is exactly what
 /// views replaced. All that survives here is [`logged_lines`](Self::logged_lines), which drives the
 /// one-line nudge that tells a model that logged where its output went. Telling it once, in the turn
@@ -819,9 +821,17 @@ pub struct CodeResultContext {
     /// nothing, returned nothing and threw nothing — the one outcome that tells the model absolutely
     /// nothing, and therefore the one worth naming.
     pub silent: bool,
-    /// How many pictures the per-program budget dropped.
+    /// How many pictures the per-program budget withheld from the model, across **both** places a
+    /// picture can land: attached to this feedback by a bare `fs.readFile`, or carried into the
+    /// window by a `view.openFile`.
+    ///
+    /// A withheld picture is disclosed here as well as in the read's own result because the two
+    /// readers are different. The program is told through the sidecar it is handed
+    /// (`shown: false`), which it may never inspect; the *model* is told here, and — for a view —
+    /// by the view's own body, which says what the file is instead of saying that the image
+    /// follows.
     pub images_dropped: u32,
-    /// How many pictures one program may show. Only rendered when
+    /// How many pictures one program may show, per place a picture can land. Only rendered when
     /// [`images_dropped`](Self::images_dropped) is non-zero, so a model told about the budget is
     /// always told it in the moment it hit it.
     pub image_budget: u32,

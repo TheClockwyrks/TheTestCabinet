@@ -116,6 +116,7 @@ function ggFeedLine(row: FeedRow): FeedLine {
     detail: row.detail,
   };
   if (row.args) line.args = row.args;
+  if (row.collapsible) line.collapsible = true;
   return line;
 }
 

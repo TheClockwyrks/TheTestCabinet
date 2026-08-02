@@ -340,7 +340,7 @@ pub fn sniff_image(bytes: &[u8]) -> Option<ImageFormat> {
 }
 
 /// A human-readable byte size for the tool result's prose (`412 KB`, `1.2 MB`).
-fn human_bytes(bytes: u64) -> String {
+pub(crate) fn human_bytes(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = 1024 * KB;
     if bytes >= MB {

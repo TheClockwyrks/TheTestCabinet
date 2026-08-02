@@ -66,19 +66,27 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
     ) -> Result<FileRead, ToolError> {
         let (offset, limit) = read_window(offset, limit);
         let mut opened = None;
+        let mut withheld = 0;
         let outcome = self
             .call(READ_FILE_TOOL, |api| {
                 let ViewOpenOutcome {
                     outcome,
                     opened: view,
+                    images_dropped,
                 } = api.open_file_view(path, offset, limit);
                 opened = view;
+                withheld = images_dropped;
                 outcome
             })
             .inspect_err(|error| self.record_view_refusal(&error.message))?;
         if let Some(view) = opened {
             self.record_view_opened(view);
         }
+        // A picture the view could not carry is counted onto the same turn total a bare read's
+        // dropped picture is, so the one feedback line that discloses a withheld picture covers
+        // both places a picture can now land. Without it the view's own body would be the only
+        // statement that the model is not looking at the file it asked to see.
+        self.record_images_dropped(withheld);
         file_read(self, outcome.data)
     }
 

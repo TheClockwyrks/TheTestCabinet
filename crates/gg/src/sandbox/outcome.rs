@@ -45,10 +45,13 @@ pub struct SandboxOutcome {
     pub refusals_suppressed: u64,
     /// Everything the program wrote with `console.*`, in order, subject to the capture caps.
     ///
-    /// These go to the **operator** — the run's stream, telemetry, the replay record and the console
-    /// — and to the spawner's one-line report. They are deliberately *not* shown to the model, whose
-    /// channel into its own window is a [view](crate::context::ViewKind); all the turn's feedback
-    /// says about them is how many there were. See [`CodeResultContext`](crate::prompts::CodeResultContext).
+    /// These go to the **operator**: the loop puts them on the turn's own
+    /// [`CodeExecution`](test_cabinet_core::gg::GgTelemetryKind::CodeExecution) event, which is what
+    /// carries them onto the run's stream, into the run record and into any analysis over it. The
+    /// tail of them is also the spawner's one-line report. They are deliberately *not* shown to the
+    /// model, whose channel into its own window is a [view](crate::context::ViewKind); all the
+    /// turn's feedback says about them is how many there were. See
+    /// [`CodeResultContext`](crate::prompts::CodeResultContext).
     pub logs: Vec<String>,
     /// How many log lines the caps discarded. Added to `logs.len()` for the line count the feedback
     /// reports, so the model is told what its program did rather than what gg's buffer kept.

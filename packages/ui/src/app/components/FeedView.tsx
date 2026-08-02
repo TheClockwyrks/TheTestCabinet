@@ -76,12 +76,18 @@ function Line({ line }: { line: FeedLine }) {
       {line.collapsible ? (
         // Collapsed by default behind a one-line preview; a native <details> needs
         // no state and react-virtuoso re-measures the row when it is toggled open.
-        <details className={styles.body}>
-          <summary className={styles.summary}>
-            {eventSummary(line.detail)}
-          </summary>
-          <div className={styles.collapsed}>{line.detail}</div>
-        </details>
+        // The secondary line sits OUTSIDE the disclosure, because it says what the
+        // row is a preview *of* — how many lines there are, what a capture cap
+        // dropped — which is what a reader needs in order to decide to expand it.
+        <div className={styles.body}>
+          <details>
+            <summary className={styles.summary}>
+              {eventSummary(line.detail)}
+            </summary>
+            <div className={styles.collapsed}>{line.detail}</div>
+          </details>
+          {line.args && <div className={styles.args}>{line.args}</div>}
+        </div>
       ) : (
         <div className={styles.body}>
           <span className={styles.detail}>{line.detail}</span>

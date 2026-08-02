@@ -53,7 +53,7 @@ use crate::tools::{
     ListDirTool, OffloadPolicy, OwnedStructured, ReadMemoryTool, ReadSkillTool, RemoveEpicTool,
     RemoveIssueTool, RemoveTaskTool, SearchArchiveTool, SearchMemoriesTool, SetBlockedByTool,
     SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool, UpdateTaskTool, WriteFileTool,
-    WriteMemoryTool, read_only_refusal, run_command,
+    WriteMemoryTool, human_bytes, read_only_refusal, run_command,
 };
 
 // ---------------------------------------------------------------------------
@@ -272,6 +272,14 @@ pub(super) async fn run_code_turn(
             .completion
             .as_ref()
             .map(|completion| completion.ending.final_text()),
+        // Everything the program printed, on the one event that describes the turn it printed it
+        // in. This is the **only** record of it: a log line is not a channel into the model's own
+        // window (what a program shows itself is a view, which arrives as its own context message),
+        // so without this the output would exist for the instant it crossed the membrane and then
+        // be gone — invisible to the operator reading a finished run, to the replay record, and to
+        // any analysis over many runs.
+        logs: outcome.logs.clone(),
+        logs_suppressed: outcome.logs_suppressed,
         // Non-zero only for the program that beat the run's warm-up to the one shared component
         // compile and paid it itself — the figure that separates "this program was slow" from
         // "this program compiled a 13 MB component inside its own span".
@@ -400,6 +408,10 @@ fn not_a_program(
         duration_ms: None,
         error: Some(reason.short()),
         finished: None,
+        // Empty for the same reason `duration_ms` is absent: there was no program, so there is
+        // nothing that could have printed.
+        logs: Vec::new(),
+        logs_suppressed: 0,
         // Absent for the same reason `duration_ms` is: nothing about this turn touched the sandbox,
         // so there is no component to have waited on.
         compile_wait_ms: None,
@@ -622,12 +634,14 @@ fn code_result_context(outcome: &SandboxOutcome, result: &ProgramResult) -> Code
             && outcome.views_opened.is_empty()
             && outcome.views_closed.is_empty()
             && outcome.view_refusals.is_empty(),
+        // Counts BOTH places a picture can now fail to reach the model: one a bare `fs.readFile`
+        // could not attach to this feedback, and one a `view.openFile` could not put into the
+        // window. The two spend separate budgets of the same size, so the count is a sum and the
+        // budget below is the ceiling each of them hit — never the number attached, which for a
+        // turn whose only pictures went into views is zero while the budget that refused them is
+        // four.
         images_dropped: outcome.images_dropped,
-        // The budget is derived from what the turn actually attached rather than restated from the
-        // sandbox's constant, and the two cannot disagree: a picture is dropped only once the budget
-        // is already full, so whenever `images_dropped` is non-zero — the only case the feedback
-        // names a budget at all — the attached count *is* the budget.
-        image_budget: saturating_u32(outcome.images.len()),
+        image_budget: IMAGE_BUDGET,
         deferred: outcome.deferred_note.clone(),
         unreachable: outcome.unreachable.as_ref().map(unreachable_note),
     }
@@ -1476,33 +1490,35 @@ impl LoopToolApi {
     /// Move the pictures a `view.openFile` read produced out of its outcome and into the view item
     /// that is about to be pushed, up to [`IMAGE_BUDGET`].
     ///
-    /// A picture beyond the budget is dropped and the outcome's own description of it is rewritten
-    /// to say it is not being shown and why — the same bargain the membrane strikes for a bare read,
-    /// so the value the program is handed and the picture the model can actually see never disagree.
+    /// A picture beyond the budget is withheld, and **everything that describes it is rewritten to
+    /// say so**: the sidecar the program is handed back (`shown: false` plus the reason) *and* the
+    /// outcome's prose, which for this one call is not only the program's own return value — it is
+    /// the body of the context item the model reads. A successful image read says `The image
+    /// follows.`, which is true of the pictures the budget admitted and a lie about this one, and a
+    /// model told a mockup is in front of it reasons about a mockup it was never shown.
+    ///
     /// The `shown` flag belongs to the sidecar's one picture, and gg has exactly one tool that
     /// produces pictures, one at a time.
-    fn admit_view_images(&mut self, outcome: &mut ToolOutcome) -> Vec<ImageContent> {
+    fn admit_view_images(&mut self, path: &str, outcome: &mut ToolOutcome) -> ViewImages {
         let offered = std::mem::take(&mut outcome.images);
         if offered.is_empty() {
-            return offered;
+            return ViewImages::default();
         }
         let room = IMAGE_BUDGET.saturating_sub(self.view_images) as usize;
         if room == 0 {
-            if let Some(ToolData::FileImage(image)) = outcome.data.as_mut() {
-                image.shown = false;
-                image.not_shown_reason = Some(format!(
-                    "a program may put at most {IMAGE_BUDGET} pictures into your context window in \
-                     one turn; this file was read and described, but is not being shown"
-                ));
-            }
-            return Vec::new();
+            withhold_view_image(path, outcome);
+            return ViewImages {
+                admitted: Vec::new(),
+                dropped: u32::try_from(offered.len()).unwrap_or(u32::MAX),
+            };
         }
+        let dropped = u32::try_from(offered.len().saturating_sub(room)).unwrap_or(u32::MAX);
         let mut admitted = offered;
         admitted.truncate(room);
         self.view_images = self
             .view_images
             .saturating_add(u32::try_from(admitted.len()).unwrap_or(u32::MAX));
-        admitted
+        ViewImages { admitted, dropped }
     }
 
     /// Check one `view.openText` against the caps that bound a text view, then push it and report
@@ -1542,6 +1558,66 @@ impl LoopToolApi {
 // from the call and from what is already open. Keeping them out of `LoopToolApi` is what lets the
 // rules — and the exact words a refused model reads — be read and tested without standing up an
 // agent, a workspace and a tokio runtime.
+
+/// What [`LoopToolApi::admit_view_images`] did with the pictures one `view.openFile` produced.
+///
+/// The two halves are separate answers to two different readers: `admitted` is what the context item
+/// carries, and `dropped` is what the **turn's feedback** has to disclose. A picture that vanished
+/// from a view without either the view's body or the feedback saying so is the shape this type
+/// exists to make impossible to write.
+#[derive(Debug, Default)]
+struct ViewImages {
+    /// The pictures the budget admitted, which the view item carries.
+    admitted: Vec<ImageContent>,
+    /// How many the budget withheld.
+    dropped: u32,
+}
+
+/// Rewrite everything that describes an image read whose picture the per-program budget withheld,
+/// so nothing left behind claims a picture that is not there.
+///
+/// Two things describe it and both are read by somebody. The **sidecar** is what the program is
+/// handed back (`shown`, `not_shown_reason`), and is the same rewrite the membrane performs for a
+/// bare `read_file` whose picture could not be attached. The **prose** is what a bare read never has
+/// to worry about — it is the program's return value and nothing else — but for a `view.openFile` it
+/// becomes the body of the context item the model reads, and a successful image read's prose ends
+/// `The image follows.`
+///
+/// The replacement states the two facts a withheld read leaves: what the file is, and why it is not
+/// being shown. That is what [`read_image`](crate::tools) already writes at the point it decides not
+/// to show a picture (a text-only model, an over-large image); this decision is made later — the
+/// budget is only spent once the view is being pushed — so it has to be said later.
+fn withhold_view_image(path: &str, outcome: &mut ToolOutcome) {
+    let reason = format!(
+        "a program may put at most {IMAGE_BUDGET} pictures into your context window in one turn; \
+         this file was read and described, but is not being shown"
+    );
+    // Composed while the sidecar is borrowed, assigned after — the sidecar carries the label and
+    // the size the sentence needs.
+    let described = match outcome.data.as_mut() {
+        Some(ToolData::FileImage(image)) => {
+            image.shown = false;
+            image.not_shown_reason = Some(reason.clone());
+            Some(format!(
+                "`{path}` is a {} image ({}). It is not being shown to you: {reason}. Work from \
+                 the written specification, or open fewer image views in one program.",
+                image.label,
+                human_bytes(image.bytes)
+            ))
+        }
+        // No image sidecar to read the label and size off — a shape no gg tool produces, since the
+        // one that returns pictures always describes them. The body still must not claim a picture
+        // it does not carry, so the correction is appended to whatever prose there is.
+        _ => None,
+    };
+    outcome.output = match described {
+        Some(output) => output,
+        None => format!(
+            "{}\n\nThe image is not being shown to you: {reason}.",
+            outcome.output.trim_end()
+        ),
+    };
+}
 
 /// The refusal [`MAX_VIEW_OPS_PER_PROGRAM`] makes when a program has already spent its budget.
 fn view_ops_refusal(made: u32) -> Option<ViewRefusal> {
@@ -2225,6 +2301,7 @@ impl ToolApi for LoopToolApi {
             return ViewOpenOutcome {
                 outcome,
                 opened: None,
+                images_dropped: 0,
             };
         }
         let mut outcome = self.read_file(path.clone(), offset, limit);
@@ -2234,6 +2311,7 @@ impl ToolApi for LoopToolApi {
             return ViewOpenOutcome {
                 outcome,
                 opened: None,
+                images_dropped: 0,
             };
         }
         let region = match &outcome.data {
@@ -2244,14 +2322,17 @@ impl ToolApi for LoopToolApi {
             ),
             _ => None,
         };
-        let images = self.admit_view_images(&mut outcome);
+        let ViewImages { admitted, dropped } = self.admit_view_images(&path, &mut outcome);
+        // Cloned **after** the withholding rewrite, so the body the model reads and the picture the
+        // window actually carries can never disagree.
         let opened = self.context.open_file_view_deduped(
             path.clone(),
             region,
             outcome.output.clone(),
-            images,
+            admitted,
         );
         ViewOpenOutcome {
+            images_dropped: dropped,
             outcome,
             opened: Some(SandboxViewOpened {
                 kind: ViewKind::File,

@@ -467,6 +467,18 @@ const EVENTS: HarnessEvent[] = [
     items: 1,
     detail: "Closed 1 agent view (changed-files), reclaiming ~800 tokens.",
   }),
+  // A responses-as-code turn whose program printed. `console.*` never reaches the
+  // model, so this event is the only record of what the program said and the feed is
+  // where an operator reads it.
+  gg({
+    type: "code_execution",
+    ok: true,
+    toolCalls: 2,
+    logs: ["checked 12 files", "3 of them changed"],
+    logsSuppressed: 4,
+  }),
+  // A turn that printed nothing renders no row at all.
+  gg({ type: "code_execution", ok: true, toolCalls: 1 }),
 ];
 
 // A worker whose live subscription replays a fixed event set synchronously, then
@@ -763,6 +775,20 @@ describe("GgRunMonitorPage", () => {
         "Closed 1 agent view (changed-files), reclaiming ~800 tokens.",
       ),
     ).toBeInTheDocument();
+    // A program's own output. It is not shown to the model — a view is the channel into
+    // the window — so the turn's `code_execution` event is its ONLY record, and the feed
+    // is where the operator reads it. The capture cap is disclosed rather than leaving a
+    // truncated list to read as a program that stopped printing.
+    // Twice: a collapsible row renders a one-line preview AND the full body.
+    expect(screen.getAllByText(/checked 12 files/).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(
+        "2 lines · 4 earlier lines dropped by the capture cap",
+      ),
+    ).toBeInTheDocument();
+    // A turn that printed nothing adds no row: the program itself is already visible as
+    // the assistant message that carried it.
+    expect(screen.getAllByText("OUTPUT")).toHaveLength(1);
   });
 
   it("renders an agent's activity through the shared feed, in the layout the user picked", () => {

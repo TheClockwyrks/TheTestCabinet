@@ -1907,6 +1907,15 @@ fn default_true() -> bool {
     true
 }
 
+/// Whether a count is zero, for a counter that is omitted from the wire in the ordinary case.
+///
+/// Used by [`CodeExecution::logs_suppressed`](GgTelemetryKind::CodeExecution): almost every program
+/// logs well under the capture caps, so the field would otherwise put a `0` on every code turn of
+/// every run for the rare turn that has something to say.
+fn is_zero_u64(count: &u64) -> bool {
+    *count == 0
+}
+
 /// The default [execution mode](GgSessionSummary::execution_mode): traditional tool calling. Used
 /// as the serde default so a summary recorded before responses-as-code existed deserializes as
 /// tool-calling rather than failing.
@@ -4759,6 +4768,32 @@ pub enum GgTelemetryKind {
         /// text (a subagent's return value to its spawner).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         finished: Option<String>,
+        /// Everything the program wrote with `console.*`, in order, subject to the sandbox's
+        /// capture caps (200 lines, 16 KiB, 2 KiB per line — the tail is what is kept).
+        ///
+        /// **This is the only place a program's output is recorded.** `console.*` is not a channel
+        /// into the model's own context window — what a program shows *itself* is a
+        /// [view](GgContextSource::TextView), which arrives as its own attributable context message
+        /// — so a log line goes to whoever is watching the run and nowhere else. Carrying the lines
+        /// on the turn's own event is what keeps that true: without them, a program's diagnostic
+        /// output would exist only for the instant it crossed the sandbox membrane, and an operator
+        /// reading a finished run, a replay, or an analysis over a thousand runs could not see what
+        /// any program printed.
+        ///
+        /// Absent (an empty list) for a turn that logged nothing and for a reply that was not a
+        /// program at all.
+        // Omitted from the wire when the program printed nothing, which is most turns — so, like
+        // `healing` below, it has to declare its own optionality: the enum's `optional_fields` only
+        // reaches `Option<T>`, and a consumer promised an array the record does not carry would
+        // read `undefined.length`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        logs: Vec<String>,
+        /// How many log lines the capture caps discarded, so a reader of a capped list knows it is a
+        /// tail rather than the whole of what the program wrote. `0` for the ordinary turn.
+        #[serde(default, skip_serializing_if = "is_zero_u64")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        logs_suppressed: u64,
         /// How long **this** program spent obtaining the sandbox's compiled interpreter component,
         /// in milliseconds — absent (the ordinary case) when the component was already compiled and
         /// nothing here was on the turn's critical path.

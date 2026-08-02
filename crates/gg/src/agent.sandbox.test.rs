@@ -140,6 +140,22 @@ fn code_executions(events: &[GgTelemetryEvent]) -> Vec<(bool, u64, Option<u64>, 
         .collect()
 }
 
+/// Every `CodeExecution`'s captured program output, in order: the lines and how many the capture
+/// caps discarded.
+fn code_logs(events: &[GgTelemetryEvent]) -> Vec<(Vec<String>, u64)> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::CodeExecution {
+                logs,
+                logs_suppressed,
+                ..
+            } => Some((logs.clone(), *logs_suppressed)),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Every `CodeExecution`'s completion summary, in order — `Some` on exactly the turn that ended the
 /// run, and absent on every other, which is what makes "did this run end because the model said so?"
 /// answerable from the stream alone.
@@ -779,6 +795,124 @@ async fn a_program_read_of_a_picture_shows_it_to_the_model() {
     );
     let (ok, _, _, _) = first_code_execution(&sink.events()).expect("a CodeExecution event");
     assert!(ok, "the read succeeded inside the program");
+}
+
+/// **A picture the per-program budget withheld is disclosed everywhere it is described.**
+///
+/// A `view.openFile` of an image pushes the read's own prose into the window as the view's body, and
+/// a successful image read's prose ends `The image follows.` — true of the pictures the budget
+/// admitted and a lie about the one it did not. This drives five image views through the whole loop
+/// and reads the *provider's* copy of the next request, which is the only place the defect was
+/// visible: four messages carry a picture, the fifth carries none and says so instead of promising
+/// one, and the turn's feedback counts the withheld picture rather than leaving the view's body as
+/// the only statement that the model is not looking at the file it asked to see.
+#[tokio::test]
+async fn a_view_of_a_picture_over_the_budget_says_so_instead_of_promising_an_image() {
+    let dir = TempDir::new().unwrap();
+    for name in ["a.png", "b.png", "c.png", "d.png", "e.png"] {
+        std::fs::write(dir.path().join(name), TEST_PNG).unwrap();
+    }
+
+    let (outcome, _, requests) = drive_recorded_code_run(
+        &dir,
+        code_set("mock/primary", json!({})),
+        vec![code_reply(
+            "for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\", \"e.png\"]) {\n\
+             \x20 view.openFile(p);\n\
+             }",
+        )],
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let after = requests.get(1).expect("a turn after the program ran");
+    assert_eq!(
+        after.iter().filter(|m| !m.images.is_empty()).count(),
+        4,
+        "the budget admits exactly four pictures into the window"
+    );
+
+    let body = |message: &Message| message.content.clone().unwrap_or_default();
+    let withheld = after
+        .iter()
+        .find(|m| body(m).contains("`e.png`"))
+        .expect("the fifth view is in the window");
+    assert!(
+        withheld.images.is_empty(),
+        "the fifth view carries no picture"
+    );
+    assert!(
+        !body(withheld).contains("The image follows"),
+        "a view with no picture must not promise one: {}",
+        body(withheld)
+    );
+    assert!(
+        body(withheld).contains("is not being shown to you"),
+        "the view has to say what happened to its picture: {}",
+        body(withheld)
+    );
+
+    let feedback = after
+        .iter()
+        .find(|m| body(m).contains("Your program ran to completion."))
+        .expect("the turn feedback");
+    assert!(
+        body(feedback).contains("1 image(s) were read but not shown"),
+        "the turn's report has to count the withheld picture: {}",
+        body(feedback)
+    );
+}
+
+/// **A program's output goes to the operator — which means it has to go *somewhere*.**
+///
+/// `console.*` is deliberately not a channel into the model's own window: what a program shows
+/// itself is a view, which arrives as its own attributable context message. But a channel that
+/// reaches neither the model nor any record is not a channel at all, and the sandbox's capture
+/// buffer is discarded the moment the turn ends. The turn's own `CodeExecution` event is therefore
+/// the one place a program's output is written down, and this asserts both halves of that: the
+/// event carries every line, and no message gg hands the model contains any of them.
+#[tokio::test]
+async fn a_programs_logs_are_recorded_on_its_turn_and_withheld_from_its_model() {
+    let dir = TempDir::new().unwrap();
+    let (outcome, events, requests) = drive_recorded_code_run(
+        &dir,
+        code_set("mock/primary", json!({})),
+        vec![code_reply(
+            "console.log(\"checked 12 files\");\nconsole.error(\"3 of them changed\");",
+        )],
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let logged = code_logs(&events);
+    assert_eq!(
+        logged.first(),
+        Some(&(
+            vec![
+                "checked 12 files".to_string(),
+                "3 of them changed".to_string()
+            ],
+            0
+        )),
+        "the turn's own event is the only record of what its program printed: {logged:?}"
+    );
+    assert_eq!(
+        logged.get(1).map(|(lines, _)| lines.len()),
+        Some(0),
+        "the finishing turn printed nothing, and says so with an empty list"
+    );
+
+    // Every message but the assistant turns, which are the model's OWN programs and of course
+    // contain the source of the calls it wrote.
+    for messages in &requests {
+        for message in messages.iter().filter(|m| m.role != Role::Assistant) {
+            let body = message.content.clone().unwrap_or_default();
+            assert!(
+                !body.contains("checked 12 files") && !body.contains("3 of them changed"),
+                "a log line reached the model: {body}"
+            );
+        }
+    }
 }
 
 /// A client that records whether each request carried an image, emits one program that reads a
