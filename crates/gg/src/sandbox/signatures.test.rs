@@ -326,3 +326,54 @@ fn type_declaration_returns_the_sdks_own_declaration() {
     );
     assert!(type_declaration("NoSuchType").is_none());
 }
+
+/// **The picture channel the catalogue describes is the one gg implements.**
+///
+/// These two docs are the only place a code-mode model can learn how looking at an image works
+/// before it tries, and they used to contradict both gg and each other: `fs.readFile` promised that
+/// "an image's pixels are shown to you" one sentence before saying `view.openFile` is the call that
+/// shows a file. A model that reads the first half calls `readFile` on a reference mockup and then
+/// reasons about a picture it was never shown — the exact misconception the one-channel rule exists
+/// to prevent, delivered by gg's own documentation.
+///
+/// A doc string cannot be type-checked against behaviour, so this pins the two claims that matter:
+/// a bare read does not show, and a view can be refused.
+#[test]
+fn the_catalogue_tells_the_truth_about_pictures() {
+    let read = catalogue()
+        .tools
+        .iter()
+        .find(|entry| entry.js == "readFile")
+        .expect("readFile is catalogued");
+    assert!(
+        !read.doc.contains("pixels are shown to you"),
+        "`fs.readFile` must not promise a picture it does not show: {}",
+        read.doc
+    );
+    assert!(
+        read.doc.contains("does not show it to YOU"),
+        "`fs.readFile` must say plainly that reading an image does not show it: {}",
+        read.doc
+    );
+    assert!(
+        read.doc.contains("view.openFile"),
+        "`fs.readFile` must name the call that does show it: {}",
+        read.doc
+    );
+
+    let open_file = catalogue()
+        .views
+        .iter()
+        .find(|entry| entry.js == "openFile")
+        .expect("openFile is catalogued");
+    assert!(
+        open_file.doc.contains("imageViewCap"),
+        "`view.openFile` must name the cap an operator configures: {}",
+        open_file.doc
+    );
+    assert!(
+        open_file.doc.contains("limit-exceeded") && open_file.doc.contains("view.close"),
+        "`view.openFile` must say how the cap fails and how to recover from it: {}",
+        open_file.doc
+    );
+}

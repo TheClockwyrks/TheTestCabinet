@@ -37,7 +37,14 @@ import { asFileRead } from "./files.js";
  * `view.openFile` shows a file to YOU — so a program that reads forty files to grep them still puts
  * nothing in your window. `offset` and `limit` select a window of lines, and two pages of one file
  * are two views that coexist; re-opening the SAME page replaces what it showed rather than piling up
- * a duplicate. An image file is shown to you as a picture.
+ * a duplicate. An image file is shown to you as a picture, and is the ONLY way to look at one —
+ * `fs.readFile` of an image describes it without showing it.
+ *
+ * Pictures are the one thing this call can refuse. Only so many image-carrying views may be open at
+ * once (your agent's `imageViewCap`); opening one past that throws `limit-exceeded` naming the cap,
+ * and nothing is opened and nothing is shown, so close one with `view.close(path)` and try again.
+ * Re-opening a picture you already have open replaces it rather than adding one, and is never
+ * refused. Text views are never refused by this cap.
  */
 export function openFile(path: string, options?: { offset?: number; limit?: number }): FileRead {
   const o = opts<{ offset?: number; limit?: number }>("openFile", options);

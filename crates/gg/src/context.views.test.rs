@@ -38,6 +38,16 @@ fn keys(ctx: &ContextModel) -> Vec<(GgContextSource, Option<String>, Option<File
         .collect()
 }
 
+/// How many pictures the window would actually upload — counted over the rendered
+/// [`messages`](ContextModel::messages) rather than over the open views, because the whole point of
+/// the image-view cap is that those two numbers agree.
+fn resident_images(ctx: &ContextModel) -> usize {
+    ctx.messages()
+        .iter()
+        .map(|message| message.images.len())
+        .sum()
+}
+
 /// The rendered body of every thread item, in order.
 fn bodies(ctx: &ContextModel) -> Vec<String> {
     ctx.items()
@@ -507,6 +517,100 @@ fn a_superseded_image_view_stops_occupying_the_cap() {
         1,
         "but only the live view occupies the cap"
     );
+    assert_eq!(
+        resident_images(&ctx),
+        1,
+        "and only the live view still carries a picture, so the cap counts what is uploaded"
+    );
+    let retired = &ctx.items()[0];
+    assert!(
+        retired.message().images.is_empty(),
+        "the retired copy's picture is taken out rather than left to be re-uploaded forever"
+    );
+    assert!(
+        retired
+            .message()
+            .content
+            .as_deref()
+            .expect("the retired copy keeps its text")
+            .contains("no longer shown here"),
+        "and it says so, so the model does not read a description of a picture it cannot see"
+    );
+    assert!(
+        retired.tokens() < ctx.items()[1].tokens(),
+        "its estimate follows the bytes: the live copy carries the picture and costs more"
+    );
+}
+
+#[test]
+fn re_opening_one_picture_every_turn_leaves_exactly_one_picture_resident() {
+    let mut ctx = code_model();
+
+    // The workflow the supersede carve-out exists for: a program re-renders a screenshot and looks
+    // at it again, turn after turn. Every one of these is admitted (a supersede is never refused),
+    // so if a retired copy kept its bytes the window would end up holding twenty pictures that
+    // `open_image_views` reports as one — the cap counting a number that had stopped mattering.
+    for turn in 1..=20 {
+        ctx.begin_turn(turn);
+        ctx.open_file_view_deduped(
+            "shot.png".to_string(),
+            None,
+            format!("screenshot after turn {turn}"),
+            vec![image(4_096)],
+        );
+    }
+
+    assert_eq!(ctx.open_image_views(), 1, "one view is open");
+    assert_eq!(
+        resident_images(&ctx),
+        1,
+        "and one picture is resident: the cap bounds what the run actually pays per request"
+    );
+}
+
+#[test]
+fn a_superseded_text_view_is_left_exactly_as_it_was() {
+    let mut ctx = code_model();
+    ctx.begin_turn(1);
+    ctx.open_text_view("notes".to_string(), "first pass".to_string());
+    ctx.begin_turn(2);
+    ctx.open_text_view("notes".to_string(), "second pass".to_string());
+
+    // The picture correction is scoped to pictures. A retired text body is already-sent text: it
+    // costs what it cost, rewriting it would invalidate a cached prefix for nothing, and the note
+    // would be describing a removal that never happened.
+    assert!(
+        bodies(&ctx)[0].contains("first pass"),
+        "the retired body is untouched"
+    );
+    assert!(
+        !bodies(&ctx)[0].contains("no longer shown here"),
+        "and gains no note about a picture it never carried"
+    );
+}
+
+#[test]
+fn a_picture_re_opened_inside_one_program_leaves_no_note_behind() {
+    let mut ctx = code_model();
+    ctx.begin_turn(1);
+    ctx.open_file_view_deduped(
+        "shot.png".to_string(),
+        None,
+        "first look".to_string(),
+        vec![image(1_024)],
+    );
+    ctx.open_file_view_deduped(
+        "shot.png".to_string(),
+        None,
+        "second look".to_string(),
+        vec![image(1_024)],
+    );
+
+    // Nothing was sent between the two opens, so the first copy is removed outright rather than
+    // retired — there is no corpse to correct and no reader to correct it for.
+    assert_eq!(ctx.items().len(), 1);
+    assert_eq!(resident_images(&ctx), 1);
+    assert!(!bodies(&ctx)[0].contains("no longer shown here"));
 }
 
 // ---------------------------------------------------------------------------

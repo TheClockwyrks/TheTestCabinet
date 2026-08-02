@@ -116,7 +116,11 @@ declare module "test-cabinet:gg/files" {
     limitReduced: boolean;
   }
 
-  /** A picture. The bytes never enter the program; gg attaches the image to the turn instead. */
+  /**
+   * A picture. The bytes never enter the program — a read of an image describes it. Whether the
+   * picture is also put in front of the model depends on which call produced this: `view.openFile`
+   * shows it, a bare `fs.readFile` does not (and says so in `notShownReason`).
+   */
   export interface ImageRead {
     /** The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`). */
     mediaType: string;

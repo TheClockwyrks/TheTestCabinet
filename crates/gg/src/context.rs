@@ -58,6 +58,17 @@ use crate::prompts::{self, ContextPressureContext, UsageCategoryView, UsageFileV
 /// counted as ~zero. An approximation, like the rest of the accounting.
 const MESSAGE_FRAMING_TOKENS: usize = 4;
 
+/// The line appended to a [retired view](ContextModel::retire_view) whose attached picture was
+/// dropped when a newer copy of the same file superseded it.
+///
+/// The model is told plainly rather than left to notice that a picture it was shown is gone: a
+/// message that quietly changes shape between turns reads as a glitch. It is also told where the
+/// live copy is, so the sensible reaction is to look further down the window rather than to spend a
+/// call re-opening what it already has.
+const SUPERSEDED_IMAGE_NOTE: &str = "[This picture is no longer shown here: the file was opened \
+     again later in this conversation, and only the newest view of it carries the image. The \
+     current view is below.]";
+
 /// Whether a [`ContextItem`] is retained verbatim across a
 /// [compaction](https://docs.testcabinet.ai/gg/compaction/) boundary and shielded from
 /// agent-managed eviction, or is ephemeral thread material a later phase may summarize
@@ -1714,7 +1725,10 @@ impl ContextModel {
     ///   after its position. It stays where it is, retagged to
     ///   [`History`](GgContextSource::History) + [`Ephemeral`](Retention::Ephemeral) with its
     ///   selector cleared — precisely what [`supersede_source`](Self::supersede_source) does to a
-    ///   mutable block — and the new copy is appended at the tail.
+    ///   mutable block — and the new copy is appended at the tail. Any **picture** it carried is
+    ///   taken out on the way, for the reason [`retire_view`](Self::retire_view) gives: text left in
+    ///   place costs what it already cost, while a picture left in place is re-uploaded on every
+    ///   request thereafter.
     /// - **The existing copy was pushed on the current turn** (`turn == self.turn`): the same
     ///   program opened it moments ago and *nothing has been sent*. There is no cached prefix to
     ///   protect and no history worth recording, so it is removed outright. A program that refines
@@ -1769,12 +1783,45 @@ impl ContextModel {
     ///
     /// The [region](FileRegion) goes with the label: it only ever qualifies a selector, and a
     /// region on an item nothing can select is a fragment of a key that no longer exists.
+    ///
+    /// # A retired view keeps its text but not its picture
+    ///
+    /// Retagging deliberately leaves the *text* where it is: the item has been sent, a provider has
+    /// cached the prefix containing it, and rewriting it would cost the run every cached token after
+    /// its position. An **attached image** is the one thing that rule cannot cover, because the
+    /// asymmetry is enormous in the other direction: a picture is re-uploaded whole on every
+    /// subsequent request for as long as it is resident (up to `IMAGE_ATTACH_CAP`, 8 MiB, each), so
+    /// an agent re-opening one screenshot across twenty turns would leave twenty copies of it in the
+    /// window — none of them visible to [`open_image_views`](Self::open_image_views), which counts
+    /// what is *open*, and so none of them bounded by the code path's image-view cap. That is
+    /// precisely the "resident is unbounded" defect the cap exists to close, reintroduced through
+    /// the corpses.
+    ///
+    /// So the picture goes and the text stays, and the item gains a line saying so — the same shape
+    /// [`strip_images`](Self::strip_images) uses, and for the same reason: a message that quietly
+    /// changed shape between turns reads to the model as a glitch. What it loses is nothing it needs
+    /// — the *newest* copy of the same `(path, region)` is appended in the same breath and carries
+    /// the live picture. Its token estimate is recomputed, so the run's fullness figure follows the
+    /// bytes rather than remembering them.
+    ///
+    /// The one-time cost is the cache invalidation this function otherwise avoids. It is paid once,
+    /// on the turn the view is re-opened, and it buys back an unbounded per-request upload.
     fn retire_view(&mut self, index: usize) {
         let item = &mut self.items[index];
         item.source = GgContextSource::History;
         item.retention = Retention::Ephemeral;
         item.label = None;
         item.region = None;
+        if item.message.strip_images() {
+            match &mut item.message.content {
+                Some(content) => {
+                    content.push_str("\n\n");
+                    content.push_str(SUPERSEDED_IMAGE_NOTE);
+                }
+                slot @ None => *slot = Some(SUPERSEDED_IMAGE_NOTE.to_string()),
+            }
+            item.tokens = self.estimator.estimate_message(&item.message);
+        }
     }
 
     /// Every view **open** in the window, in the order it was opened — what backs the model-facing
@@ -2014,12 +2061,12 @@ fn source_label(source: GgContextSource) -> &'static str {
 /// what an occupant of the cap is: a divergence between them would show up as an agent refused a
 /// view it could have replaced.
 ///
-/// A superseded copy is deliberately *not* one. Retiring a view retags it to
-/// [`History`](GgContextSource::History) in place — the message, and with it the picture, stays in
-/// the window to protect a provider's cached prefix — so it no longer occupies the cap even though
-/// its bytes are still resident. That is the same accounting every other band uses for a retagged
-/// item, and the alternative (rewriting a message the provider has already cached) would cost the
-/// run every cached token after it.
+/// A superseded copy is deliberately *not* one, and it is not resident either:
+/// [`retire_view`](ContextModel::retire_view) retags it to [`History`](GgContextSource::History) in
+/// place *and takes its picture out*, precisely so that "open image views" and "images the window
+/// actually holds" cannot diverge. If a retired copy kept its bytes, an agent re-opening one
+/// screenshot every turn would accumulate pictures this predicate cannot see and the cap cannot
+/// bound — the counter would be honest about a number that had stopped mattering.
 fn is_image_view(item: &ContextItem) -> bool {
     item.source == GgContextSource::FileView
         && !item.retention.is_pinned()

@@ -642,6 +642,14 @@ nothing has been sent — is replaced **in place**, because there is no cached p
 and a program refining a view in a loop should not leave a corpse per iteration. A view opened
 and then closed within one program reaches the window not at all.
 
+A retired copy keeps its **text** — it has already been sent and paid for, and rewriting it
+would invalidate the cached prefix that leaving it in place exists to protect. Its **picture**
+is the one thing that does not stay: an image is re-uploaded whole on every subsequent request
+for as long as it is resident, so twenty re-opens of one screenshot would leave twenty copies
+of it in the window, none of them a view anyone could close. The retired copy is stripped of
+its image and gains a line saying so and pointing at the live view below it, and its token
+estimate follows the bytes rather than remembering them.
+
 The native `read_file` path is unchanged. Only the view API supersedes.
 
 ### The caps, and why none of them truncates
@@ -672,7 +680,10 @@ opened this turn. A per-turn budget would bound nothing that matters — four a 
 forty over ten turns, all of them still in the window. `imageViewCap` is therefore read off
 the live window at the moment `view.openFile` is about to attach a picture: there is no
 counter to reset, nothing that can drift from what the window actually holds, and
-`view.close(path)` frees a slot for the next mockup immediately.
+`view.close(path)` frees a slot for the next mockup immediately. Superseding is what keeps
+open and resident the same number: [re-opening a picture](#re-opening-a-selector-replaces-what-was-under-it)
+takes the image out of the copy it retires, so an agent that re-renders and re-opens one
+screenshot every turn holds exactly one picture, not one per turn.
 
 Over it **refuses**, like every other cap on this page. `view.openFile` throws
 `limit-exceeded` naming the cap and the remedy — close one with `view.close(path)`,

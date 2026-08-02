@@ -29,11 +29,15 @@ export function asFileRead(read: FileReadRaw): FileRead {
 
 /**
  * Read a workspace file, returning either `{ kind: "text", ... }` or `{ kind: "image", ... }` — the
- * format is detected from the file's bytes, never its extension, and an image's pixels are shown to
- * you rather than handed to your program. `offset` and `limit` select a window of lines and are
- * honoured only under a capped read policy. This gets bytes for your program and puts nothing in
- * your context window; `view.openFile` is the call that shows the file to you. Throws `not-found`
- * for a missing path and `invalid-argument` for one that escapes the workspace.
+ * format is detected from the file's bytes, never its extension. `offset` and `limit` select a
+ * window of lines and are honoured only under a capped read policy. This gets bytes for your program
+ * and puts NOTHING in your context window; `view.openFile` is the call that shows the file to you.
+ * Throws `not-found` for a missing path and `invalid-argument` for one that escapes the workspace.
+ *
+ * Reading an IMAGE describes it to your program — label, media type, byte size — and does not show
+ * it to YOU: the pixels reach neither your program nor your context window, so a file you only
+ * `readFile` is a file you have not looked at. `view.openFile` is the one way to actually see a
+ * picture.
  */
 export function readFile(
   path: string,
