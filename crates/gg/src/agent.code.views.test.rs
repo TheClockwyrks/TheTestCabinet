@@ -8,7 +8,6 @@
 
 use super::*;
 use crate::context::EvictionResult;
-use crate::tools::FileImageData;
 
 /// A body under the ceiling, with a label, is simply allowed.
 #[test]
@@ -177,65 +176,56 @@ fn a_close_reports_the_band_it_reclaimed_from() {
 }
 
 // ---------------------------------------------------------------------------
-// A picture the budget withheld
+// The open-image-view cap
 // ---------------------------------------------------------------------------
 
-/// The outcome a successful image read produces — prose that ends `The image follows.`, and the
-/// sidecar that says the same thing structurally.
-fn image_read(path: &str) -> ToolOutcome {
-    ToolOutcome::ok(
-        format!("`{path}` — PNG image, 45 KB. The image follows."),
-        "PNG image, 45 KB".to_string(),
-    )
-    .with_data(ToolData::FileImage(FileImageData {
-        media_type: "image/png".to_string(),
-        label: "PNG".to_string(),
-        bytes: 46_080,
-        shown: true,
-        not_shown_reason: None,
-    }))
-}
-
-/// **The view's body must never claim a picture the window does not carry.**
-///
-/// The prose a successful image read returns is not only the program's return value on this path —
-/// it becomes the body of the context item the model reads. Leaving `The image follows.` on a view
-/// whose picture the budget withheld tells the model it is looking at a mockup it was never shown,
-/// which is worse than not reading the file at all: it invents a source for whatever the model then
-/// concludes.
+/// Under the ceiling, nothing is refused — including the call that fills the last slot.
 #[test]
-fn a_withheld_picture_is_taken_out_of_the_view_body_as_well_as_the_sidecar() {
-    let mut outcome = image_read("mockups/e.png");
-    withhold_view_image("mockups/e.png", &mut outcome);
-
-    assert!(
-        !outcome.output.contains("The image follows"),
-        "the body still promises a picture that is not there: {}",
-        outcome.output
-    );
-    assert!(outcome.output.contains("`mockups/e.png`"));
-    assert!(outcome.output.contains("is not being shown to you"));
-    assert!(
-        outcome.output.contains("PNG") && outcome.output.contains("45 KB"),
-        "what the file is survives the rewrite: {}",
-        outcome.output
-    );
-
-    match outcome.data {
-        Some(ToolData::FileImage(image)) => {
-            assert!(!image.shown, "the sidecar agrees with the body");
-            let why = image.not_shown_reason.expect("a withheld picture says why");
-            assert!(why.contains("at most 4 pictures"));
-        }
-        other => panic!("the sidecar must survive the rewrite, not {other:?}"),
+fn the_image_cap_admits_everything_up_to_the_ceiling() {
+    for open in 0..MAX_OPEN_IMAGE_VIEWS {
+        assert!(
+            image_view_refusal(open, false).is_none(),
+            "{open} open image views is under the cap"
+        );
     }
 }
 
-/// A read that produced pictures with **no** image sidecar is a shape no gg tool writes — but if one
-/// ever did, the body must still not be left claiming a picture it does not carry.
+/// **At the ceiling a new picture is refused — and the refusal names the cap and the remedy.**
+///
+/// A refusal the model cannot act on is a truncation with extra steps: it has to know both which
+/// ceiling it hit and that the way out is a close it can actually perform. It also has to be told
+/// that nothing happened, because the alternative reading — that the view was opened without its
+/// picture — is exactly the shipped defect this replaced.
 #[test]
-fn a_withheld_picture_with_no_sidecar_still_corrects_the_body() {
-    let mut outcome = ToolOutcome::ok("The image follows.".to_string(), "read".to_string());
-    withhold_view_image("mockups/e.png", &mut outcome);
-    assert!(outcome.output.contains("is not being shown to you"));
+fn the_image_cap_refuses_a_new_picture_and_names_the_way_out() {
+    let refusal = image_view_refusal(MAX_OPEN_IMAGE_VIEWS, false).expect("the window is full");
+    assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
+    assert!(refusal.message.contains("MAX_OPEN_IMAGE_VIEWS"));
+    assert!(
+        refusal.message.contains("view.close(path)"),
+        "the model has to be told what to close: {}",
+        refusal.message
+    );
+    assert!(
+        refusal.message.contains("no view was opened"),
+        "a refusal must not read as a view that opened without its picture: {}",
+        refusal.message
+    );
+}
+
+/// **Re-opening a path that is already an open image view is never refused.**
+///
+/// It replaces an occupant rather than adding one, so the count does not move. Refusing it would
+/// leave an agent at exactly the ceiling unable to refresh any of the mockups holding it there —
+/// the same carve-out the open-text-view cap makes for a label that is already open.
+#[test]
+fn the_image_cap_admits_a_supersede_at_exactly_the_ceiling() {
+    assert!(
+        image_view_refusal(MAX_OPEN_IMAGE_VIEWS, true).is_none(),
+        "re-opening an open image view replaces one; it does not add one"
+    );
+    assert!(
+        image_view_refusal(MAX_OPEN_IMAGE_VIEWS + 3, true).is_none(),
+        "a window somehow over the cap can still be refreshed, which is how it gets back under it"
+    );
 }

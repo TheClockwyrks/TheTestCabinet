@@ -758,14 +758,15 @@ async fn a_program_subagent_still_honours_the_scheduler() {
     assert_eq!(summary.execution_mode, "responses_as_code");
 }
 
-/// A program that reads a picture shows it to the model. Vision is the one thing a program cannot
-/// carry in its return value — an image is worth looking at, not base64'ing into a variable — so it
-/// rides out on the outcome and is attached to the turn's feedback.
+/// **A bare `fs.readFile` of a picture shows the model nothing.**
 ///
-/// The proof is the *provider's* view: the second request carries an image, which only happens if
-/// the loop attached one.
+/// Views are the only channel into the window, so a picture reaches the model as a *file view of an
+/// image file* or not at all. The read still succeeds and still hands the program the descriptor —
+/// a program that checks a mockup's format or size is unaffected — but no request that follows it
+/// carries a picture. The proof is the *provider's* view: without it a picture could be attached
+/// somewhere no assertion on the context model would see.
 #[tokio::test]
-async fn a_program_read_of_a_picture_shows_it_to_the_model() {
+async fn a_bare_program_read_of_a_picture_shows_the_model_nothing() {
     let dir = TempDir::new().unwrap();
     std::fs::write(dir.path().join("ref.png"), TEST_PNG).unwrap();
     let sink = CollectingSink::new();
@@ -790,24 +791,29 @@ async fn a_program_read_of_a_picture_shows_it_to_the_model() {
     let requests = seen.lock().unwrap().clone();
     assert_eq!(
         requests,
-        vec![false, true],
-        "the turn after the program carries the picture it read"
+        vec![false, false],
+        "a bare read is not a channel: no request carries the picture it read"
     );
     let (ok, _, _, _) = first_code_execution(&sink.events()).expect("a CodeExecution event");
-    assert!(ok, "the read succeeded inside the program");
+    assert!(ok, "the read still succeeded inside the program");
+    // The program returned `read.kind`, which is the descriptor it was handed — proof the read
+    // reported the file as a picture rather than failing or reading it as text.
+    assert!(
+        std::fs::read_to_string(dir.path().join("kind.txt")).unwrap() == "image",
+        "the program was still handed the image descriptor"
+    );
 }
 
-/// **A picture the per-program budget withheld is disclosed everywhere it is described.**
+/// **`view.openFile` is the channel, and the open-image-view cap REFUSES rather than dropping.**
 ///
-/// A `view.openFile` of an image pushes the read's own prose into the window as the view's body, and
-/// a successful image read's prose ends `The image follows.` — true of the pictures the budget
-/// admitted and a lie about the one it did not. This drives five image views through the whole loop
-/// and reads the *provider's* copy of the next request, which is the only place the defect was
-/// visible: four messages carry a picture, the fifth carries none and says so instead of promising
-/// one, and the turn's feedback counts the withheld picture rather than leaving the view's body as
-/// the only statement that the model is not looking at the file it asked to see.
+/// Five mockups, a cap of four, and a program that catches its throws: the first four views carry
+/// their pictures into the window, the fifth is refused at the call site with a catchable
+/// `limit-exceeded` naming the cap and the remedy, and **no fifth view exists** — the shipped defect
+/// this replaced was a view whose body promised a picture the window did not carry. This drives the
+/// whole loop and reads the *provider's* copy of the next request, which is the only place the
+/// difference between "refused" and "opened without its picture" is visible.
 #[tokio::test]
-async fn a_view_of_a_picture_over_the_budget_says_so_instead_of_promising_an_image() {
+async fn the_fifth_image_view_is_refused_rather_than_opened_without_its_picture() {
     let dir = TempDir::new().unwrap();
     for name in ["a.png", "b.png", "c.png", "d.png", "e.png"] {
         std::fs::write(dir.path().join(name), TEST_PNG).unwrap();
@@ -817,39 +823,38 @@ async fn a_view_of_a_picture_over_the_budget_says_so_instead_of_promising_an_ima
         &dir,
         code_set("mock/primary", json!({})),
         vec![code_reply(
-            "for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\", \"e.png\"]) {\n\
-             \x20 view.openFile(p);\n\
-             }",
+            "const refused = [];
+             for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\", \"e.png\"]) {
+             \x20 try {
+             \x20   view.openFile(p);
+             \x20 } catch (error) {
+             \x20   refused.push(p + \": \" + error.code);
+             \x20 }
+             }
+             fs.writeFile(\"refused.txt\", refused.join(\"\\n\"));",
         )],
     )
     .await;
     assert_eq!(outcome, SessionOutcome::Ran);
 
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("refused.txt")).unwrap(),
+        "e.png: limit-exceeded",
+        "the program learns at the call site, in a form it can branch on"
+    );
+
     let after = requests.get(1).expect("a turn after the program ran");
     assert_eq!(
         after.iter().filter(|m| !m.images.is_empty()).count(),
         4,
-        "the budget admits exactly four pictures into the window"
+        "exactly four image views are open"
     );
 
     let body = |message: &Message| message.content.clone().unwrap_or_default();
-    let withheld = after
-        .iter()
-        .find(|m| body(m).contains("`e.png`"))
-        .expect("the fifth view is in the window");
     assert!(
-        withheld.images.is_empty(),
-        "the fifth view carries no picture"
-    );
-    assert!(
-        !body(withheld).contains("The image follows"),
-        "a view with no picture must not promise one: {}",
-        body(withheld)
-    );
-    assert!(
-        body(withheld).contains("is not being shown to you"),
-        "the view has to say what happened to its picture: {}",
-        body(withheld)
+        !after.iter().any(|m| body(m).contains("`e.png`")),
+        "the refused view must not exist at all: {:?}",
+        after.iter().map(body).collect::<Vec<_>>()
     );
 
     let feedback = after
@@ -857,9 +862,106 @@ async fn a_view_of_a_picture_over_the_budget_says_so_instead_of_promising_an_ima
         .find(|m| body(m).contains("Your program ran to completion."))
         .expect("the turn feedback");
     assert!(
-        body(feedback).contains("1 image(s) were read but not shown"),
-        "the turn's report has to count the withheld picture: {}",
+        body(feedback).contains("view refused:") && body(feedback).contains("MAX_OPEN_IMAGE_VIEWS"),
+        "the turn's report has to name the cap that refused the view: {}",
         body(feedback)
+    );
+    assert!(
+        body(feedback).contains("view.close(path)"),
+        "and the remedy the model can actually perform: {}",
+        body(feedback)
+    );
+}
+
+/// **A text file is never refused by the image cap**, however many pictures are open.
+///
+/// The cap bounds base64 in the window, and a source file carries none. A cap that refused a
+/// `view.openFile("src/a.ts")` because four mockups were open would make the feature unusable in
+/// exactly the run that needs it — one working from reference images.
+#[tokio::test]
+async fn a_text_view_is_never_refused_by_the_image_cap() {
+    let dir = TempDir::new().unwrap();
+    for name in ["a.png", "b.png", "c.png", "d.png"] {
+        std::fs::write(dir.path().join(name), TEST_PNG).unwrap();
+    }
+    std::fs::write(dir.path().join("notes.md"), "the written specification").unwrap();
+
+    let (outcome, _, requests) = drive_recorded_code_run(
+        &dir,
+        code_set("mock/primary", json!({})),
+        vec![code_reply(
+            "for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\"]) {
+             \x20 view.openFile(p);
+             }
+             view.openFile(\"notes.md\");",
+        )],
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let after = requests.get(1).expect("a turn after the program ran");
+    let body = |message: &Message| message.content.clone().unwrap_or_default();
+    assert!(
+        after
+            .iter()
+            .any(|m| body(m).contains("the written specification")),
+        "the text view opened with the image cap full: {:?}",
+        after.iter().map(body).collect::<Vec<_>>()
+    );
+    let feedback = after
+        .iter()
+        .find(|m| body(m).contains("Your program ran to completion."))
+        .expect("the turn feedback");
+    assert!(
+        !body(feedback).contains("view refused:"),
+        "nothing was refused: {}",
+        body(feedback)
+    );
+}
+
+/// **Re-opening a path that is already an open image view succeeds at exactly the cap.**
+///
+/// It supersedes an occupant rather than adding one, so the count does not move. Refusing it would
+/// leave an agent holding four mockups unable to *refresh* any of them — the state in which it most
+/// needs to, since a re-open is how it sees a file it just rewrote.
+#[tokio::test]
+async fn re_opening_an_open_image_view_succeeds_at_exactly_the_cap() {
+    let dir = TempDir::new().unwrap();
+    for name in ["a.png", "b.png", "c.png", "d.png"] {
+        std::fs::write(dir.path().join(name), TEST_PNG).unwrap();
+    }
+
+    let (outcome, _, requests) = drive_recorded_code_run(
+        &dir,
+        code_set("mock/primary", json!({})),
+        vec![code_reply(
+            "for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\"]) {
+             \x20 view.openFile(p);
+             }
+             let reopened = \"yes\";
+             try {
+             \x20 view.openFile(\"a.png\");
+             } catch (error) {
+             \x20 reopened = \"no: \" + error.code;
+             }
+             fs.writeFile(\"reopened.txt\", reopened);",
+        )],
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("reopened.txt")).unwrap(),
+        "yes",
+        "a supersede is not a new occupant and must not be refused"
+    );
+
+    let after = requests.get(1).expect("a turn after the program ran");
+    assert_eq!(
+        after.iter().filter(|m| !m.images.is_empty()).count(),
+        4,
+        "the same program opened it moments ago and nothing has been sent, so the re-open replaces \
+         the copy in place rather than leaving a corpse beside it"
     );
 }
 
@@ -935,7 +1037,7 @@ impl ModelClient for ImageWatchingClient {
             .unwrap()
             .push(messages.iter().any(|m| !m.images.is_empty()));
         let text = if self.turn.fetch_add(1, Ordering::SeqCst) == 0 {
-            "const read = fs.readFile(\"ref.png\");\nreturn read.kind;"
+            "const read = fs.readFile(\"ref.png\");\nfs.writeFile(\"kind.txt\", read.kind);"
         } else {
             "harness.finish(\"I have seen the mockup.\");"
         };

@@ -821,20 +821,6 @@ pub struct CodeResultContext {
     /// nothing, returned nothing and threw nothing — the one outcome that tells the model absolutely
     /// nothing, and therefore the one worth naming.
     pub silent: bool,
-    /// How many pictures the per-program budget withheld from the model, across **both** places a
-    /// picture can land: attached to this feedback by a bare `fs.readFile`, or carried into the
-    /// window by a `view.openFile`.
-    ///
-    /// A withheld picture is disclosed here as well as in the read's own result because the two
-    /// readers are different. The program is told through the sidecar it is handed
-    /// (`shown: false`), which it may never inspect; the *model* is told here, and — for a view —
-    /// by the view's own body, which says what the file is instead of saying that the image
-    /// follows.
-    pub images_dropped: u32,
-    /// How many pictures one program may show, per place a picture can land. Only rendered when
-    /// [`images_dropped`](Self::images_dropped) is non-zero, so a model told about the budget is
-    /// always told it in the moment it hit it.
-    pub image_budget: u32,
     /// The sandbox's note that the program deferred work into a microtask that ran after the program
     /// had already ended — the failure mode a `.then()` produces, which is otherwise invisible.
     pub deferred: Option<String>,

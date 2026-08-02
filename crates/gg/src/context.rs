@@ -1820,6 +1820,50 @@ impl ContextModel {
         open
     }
 
+    /// How many [file views](GgContextSource::FileView) open in the window **carry a picture** —
+    /// the occupancy the code path's image-view cap is measured against.
+    ///
+    /// # Derived, never accumulated
+    ///
+    /// This is computed from the live window on every call rather than counted up as views are
+    /// opened. A counter would have to be reset somewhere — per program, per turn, per compaction —
+    /// and every one of those is wrong for a set of views that outlives all three: a per-program
+    /// counter lets N programs open N times the cap and bounds nothing that matters. Worse, a
+    /// counter can drift from the window it claims to describe, and a drifted cap either refuses an
+    /// agent that has room or admits one that has none. There is nothing here to reset and nothing
+    /// to drift.
+    ///
+    /// # Pinned views are excluded, deliberately
+    ///
+    /// The only [`Pinned`](Retention::Pinned) file views are **locked**
+    /// [autoloaded specifications](https://docs.testcabinet.ai/gg/autoload-specifications/) — the
+    /// operator's choice, placed before the agent's first turn, and impossible for the agent to
+    /// close. Counting them would let a configuration that pins four reference mockups make the cap
+    /// permanently unreachable: the agent would be refused every image view it ever tried to open,
+    /// with the only remedy (`view.close`) unable to touch the views occupying the cap. What this
+    /// bounds is what the agent opened and can itself reclaim.
+    pub fn open_image_views(&self) -> usize {
+        self.items.iter().filter(|item| is_image_view(item)).count()
+    }
+
+    /// Whether an image-carrying [file view](GgContextSource::FileView) is already open under
+    /// exactly `(path, region)` — the key
+    /// [`open_file_view_deduped`](Self::open_file_view_deduped) supersedes on.
+    ///
+    /// This is the image-view cap's one exception: re-opening a path that is already an open image
+    /// view **replaces** an occupant rather than adding one, so it must not be refused at exactly
+    /// the ceiling. Without it an agent holding the maximum could never refresh any of them — the
+    /// same carve-out the open-text-view cap makes for a label that is already open.
+    ///
+    /// [`Pinned`](Retention::Pinned) copies are excluded for the reason
+    /// [`supersede_view`](Self::supersede_view) excludes them: a pinned view is never superseded,
+    /// so re-opening its path appends a *new* view beside it and is a new occupant after all.
+    pub fn holds_image_view(&self, path: &str, region: Option<FileRegion>) -> bool {
+        self.items.iter().any(|item| {
+            is_image_view(item) && item.label.as_deref() == Some(path) && item.region == region
+        })
+    }
+
     /// The [text views](GgContextSource::TextView) currently open, **with their bodies**, newest
     /// copy per label — what [agent persistence](crate::persistence) records against a profile so
     /// the next instance can be handed back what this one had composed.
@@ -1961,6 +2005,25 @@ fn source_label(source: GgContextSource) -> &'static str {
         GgContextSource::Board => "Board",
         GgContextSource::History => "History",
     }
+}
+
+/// Whether one item is an **open, agent-closable file view carrying a picture** — the shape
+/// [`ContextModel::open_image_views`] counts and [`ContextModel::holds_image_view`] looks for.
+///
+/// One predicate rather than two copies, because the count and the supersede check must agree about
+/// what an occupant of the cap is: a divergence between them would show up as an agent refused a
+/// view it could have replaced.
+///
+/// A superseded copy is deliberately *not* one. Retiring a view retags it to
+/// [`History`](GgContextSource::History) in place — the message, and with it the picture, stays in
+/// the window to protect a provider's cached prefix — so it no longer occupies the cap even though
+/// its bytes are still resident. That is the same accounting every other band uses for a retagged
+/// item, and the alternative (rewriting a message the provider has already cached) would cost the
+/// run every cached token after it.
+fn is_image_view(item: &ContextItem) -> bool {
+    item.source == GgContextSource::FileView
+        && !item.retention.is_pinned()
+        && !item.message.images.is_empty()
 }
 
 /// The body a [text view](GgContextSource::TextView) item was opened with, with the

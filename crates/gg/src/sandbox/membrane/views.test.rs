@@ -108,14 +108,14 @@ fn a_failed_read_opens_no_view_and_is_reported_as_a_refusal() {
     assert!(parts.view_refusals[0].contains("nope.ts"));
 }
 
-/// **A view of a picture puts the picture in the WINDOW, not on the turn's feedback.**
+/// **A view of a picture is the one way a picture enters the window.**
 ///
 /// This is the arrangement the feature replaces: a program's `readFile` of a mockup used to ride out
 /// on the turn's attachments, unattributable and gone the next turn. As a view it is one item, keyed
-/// by its path, evictable by it, and charged to the file-view band — so it must not *also* be
-/// attached to the feedback, or the same picture is paid for twice.
+/// by its path, evictable by it, and charged to the file-view band — and the read still reports the
+/// picture as shown, because through this call it is.
 #[test]
-fn a_viewed_picture_does_not_ride_out_on_the_turns_attachments() {
+fn a_view_of_a_picture_reports_it_as_shown() {
     let log = CallLog::default();
     let mut state = membrane(&log);
 
@@ -123,15 +123,18 @@ fn a_viewed_picture_does_not_ride_out_on_the_turns_attachments() {
         .open_file_view("mock.png".to_string(), None, None)
         .expect("the picture is read and shown");
     match read {
-        FileRead::Image(image) => assert_eq!(image.media_type, "image/png"),
+        FileRead::Image(image) => {
+            assert_eq!(image.media_type, "image/png");
+            assert!(
+                image.shown,
+                "the picture is in the window, as the view item"
+            );
+            assert!(image.not_shown_reason.is_none());
+        }
         FileRead::Text(_) => panic!("a .png is a picture"),
     }
 
     let parts = state.into_parts();
-    assert!(
-        parts.images.is_empty(),
-        "the picture belongs to the view item now"
-    );
     assert_eq!(parts.views_opened.len(), 1);
 }
 

@@ -113,12 +113,6 @@ pub use {
     transpile::UnreachableTail,
 };
 
-/// The most pictures one program may put in front of its model in a turn — the bound the
-/// [membrane](membrane) applies to the pictures a bare `fs.readFile` attaches to the turn's
-/// feedback, re-exported so the [loop](crate::agent) applies the same one to the pictures a
-/// `view.openFile` puts into the context window itself. Two places a picture can land, one number.
-pub(crate) use membrane::IMAGE_BUDGET;
-
 use crate::ending::EndingRole;
 use crate::tools::ToolRegistry;
 use membrane::{MembraneParts, MembraneState, Sandbox};
@@ -364,8 +358,6 @@ fn reclaim<A: ToolApi>(
             refusals_suppressed,
             logs,
             logs_suppressed,
-            images,
-            images_dropped,
             views_opened,
             views_closed,
             view_refusals,
@@ -385,8 +377,6 @@ fn reclaim<A: ToolApi>(
         refusals_suppressed,
         logs,
         logs_suppressed,
-        images,
-        images_dropped,
         views_opened,
         views_closed,
         view_refusals,

@@ -17,7 +17,7 @@
 //! [`open_file_view`](ViewsHost::open_file_view) **is** a `read_file`. It goes through
 //! [`dispatch`](MembraneState) against that tool name, so it keeps the wall-clock deadline guard,
 //! the enabled-set backstop (a run with reading withheld does not get a read through a side door),
-//! the pictures the read produced and the ordered roster entry — and, on the far side of the
+//! and the ordered roster entry — and, on the far side of the
 //! [api](ToolApi), the loop's own servicing: the compaction gate, the `ToolCall`/`ToolResult`
 //! telemetry pair and the replay capture. What it adds is the view itself: the read's result also
 //! becomes a context item, keyed by the path it came from.
@@ -31,10 +31,17 @@
 //! # Where the rules live
 //!
 //! Not here. The [caps](crate::agent) — the body and label ceilings, the open-text-view count, the
-//! per-program op budget — are enforced in `LoopToolApi`, because that is where the
-//! [`ContextModel`](crate::context::ContextModel) is and a cap that cannot see the window is a cap
-//! guessing. This file lowers what comes back into the typed WIT result, and records what happened
-//! for the turn's feedback.
+//! open-image-view count, the per-program op budget — are enforced in `LoopToolApi`, because that
+//! is where the [`ContextModel`](crate::context::ContextModel) is and a cap that cannot see the
+//! window is a cap guessing. This file lowers what comes back into the typed WIT result, and
+//! records what happened for the turn's feedback.
+//!
+//! # A picture reaches the model here or nowhere
+//!
+//! `view.openFile` is the **only** channel a picture has into the window: a bare `fs.readFile`
+//! reads and describes an image without showing it (see
+//! [`withhold_pictures`](super::capture::withhold_pictures)). That is what makes the open-image-view
+//! cap a cap on the whole arm rather than one of two budgets that cannot see each other.
 
 use super::test_cabinet::gg::types::ToolError;
 use super::test_cabinet::gg::views::{FileRead, Host as ViewsHost, OpenView, ViewKind, ViewRegion};
@@ -66,27 +73,19 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
     ) -> Result<FileRead, ToolError> {
         let (offset, limit) = read_window(offset, limit);
         let mut opened = None;
-        let mut withheld = 0;
         let outcome = self
             .call(READ_FILE_TOOL, |api| {
                 let ViewOpenOutcome {
                     outcome,
                     opened: view,
-                    images_dropped,
                 } = api.open_file_view(path, offset, limit);
                 opened = view;
-                withheld = images_dropped;
                 outcome
             })
             .inspect_err(|error| self.record_view_refusal(&error.message))?;
         if let Some(view) = opened {
             self.record_view_opened(view);
         }
-        // A picture the view could not carry is counted onto the same turn total a bare read's
-        // dropped picture is, so the one feedback line that discloses a withheld picture covers
-        // both places a picture can now land. Without it the view's own body would be the only
-        // statement that the model is not looking at the file it asked to see.
-        self.record_images_dropped(withheld);
         file_read(self, outcome.data)
     }
 

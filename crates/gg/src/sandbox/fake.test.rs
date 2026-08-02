@@ -446,8 +446,10 @@ impl ToolApi for FakeToolApi {
     /// asserting on the composed-call roster should see the same call the loop streamed.
     ///
     /// The pictures are taken out of the outcome exactly as the production api takes them: they
-    /// belong to the view item now, not to the turn's attachments, and leaving them behind would
-    /// let the membrane attach a copy of a picture the window already holds.
+    /// belong to the view item now, and leaving them behind would have the membrane mistake this
+    /// for a bare read and rewrite the descriptor to say the model is not being shown it. The
+    /// double never models the open-image-view cap — that is the production api's, decided against
+    /// the real window, and every test of it drives that api.
     fn open_file_view(
         &mut self,
         path: String,
@@ -462,7 +464,6 @@ impl ToolApi for FakeToolApi {
             return ViewOpenOutcome {
                 outcome,
                 opened: None,
-                images_dropped: 0,
             };
         }
         let region = match &outcome.data {
@@ -483,9 +484,6 @@ impl ToolApi for FakeToolApi {
         ViewOpenOutcome {
             outcome,
             opened: Some(opened),
-            // The double never models the picture budget: it is the production api's, spent against
-            // the real window, and every test of it drives that api.
-            images_dropped: 0,
         }
     }
 

@@ -128,16 +128,13 @@ pub struct ViewOpenOutcome {
     /// `fs.readFile` returns.
     pub outcome: ToolOutcome,
     /// The view that was opened, or `None` when the read failed or a cap refused the call.
-    pub opened: Option<SandboxViewOpened>,
-    /// How many pictures this read produced that the per-program picture budget withheld from the
-    /// view.
     ///
-    /// It travels out here rather than being counted where it happens because the budget is spent
-    /// on the api side (that is where the window is) while the turn's *disclosure* of a dropped
-    /// picture is the membrane's, alongside the pictures a bare `read_file` could not attach. A
-    /// model shown a view of an image it cannot see, with nothing in the feedback saying so, would
-    /// reason about a mockup it was never shown.
-    pub images_dropped: u32,
+    /// A cap refusal arrives here as a **failed** `outcome` rather than as a separate field: the
+    /// image-view cap can only be consulted once the read has revealed that the file is a picture,
+    /// so the refusal is made on the api side and replaces the read's outcome, which the membrane
+    /// then lowers into the catchable `limit-exceeded` the program sees thrown. Nothing is shown
+    /// and no view is created, which is why there is no half-open state to report.
+    pub opened: Option<SandboxViewOpened>,
 }
 
 /// The prefix of the synthetic call id a program-composed tool call is recorded under:

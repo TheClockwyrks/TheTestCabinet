@@ -61,7 +61,6 @@ use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened, ToolApi
 use super::limits::{MemoryLimiter, SandboxLimits};
 use super::{ProgramCompletion, ProgramError, ProgramErrorKind};
 use crate::ending::{Ending, EndingRole};
-use crate::model::ImageContent;
 use crate::tools::{ToolData, ToolFailure, ToolOutcome};
 
 mod capture;
@@ -72,8 +71,6 @@ mod knowledge;
 mod session;
 mod views;
 mod workspace;
-
-pub(crate) use capture::IMAGE_BUDGET;
 
 wasmtime::component::bindgen!({ world: "sandbox", path: "wit" });
 
@@ -147,10 +144,6 @@ pub(crate) struct MembraneState<A: ToolApi> {
     logs_suppressed: u64,
     /// Bytes of log kept so far, against [`MAX_LOG_BYTES`](capture::MAX_LOG_BYTES).
     log_bytes: usize,
-    /// The pictures to attach to this turn's feedback.
-    images: Vec<ImageContent>,
-    /// Pictures dropped because [`IMAGE_BUDGET`] was already spent.
-    images_dropped: u32,
     /// The views this program opened, in call order, up to
     /// [`MAX_RECORDED_VIEW_EVENTS`](capture::MAX_RECORDED_VIEW_EVENTS).
     views_opened: Vec<SandboxViewOpened>,
@@ -206,10 +199,6 @@ pub(crate) struct MembraneParts {
     pub logs: Vec<String>,
     /// How many earlier log lines the caps evicted.
     pub logs_suppressed: u64,
-    /// The pictures to attach to the turn.
-    pub images: Vec<ImageContent>,
-    /// How many pictures the budget dropped.
-    pub images_dropped: u32,
     /// The views the program opened, in call order.
     pub views_opened: Vec<SandboxViewOpened>,
     /// The selectors the program closed, in call order.
@@ -256,8 +245,6 @@ impl<A: ToolApi> MembraneState<A> {
             logs: VecDeque::new(),
             logs_suppressed: 0,
             log_bytes: 0,
-            images: Vec::new(),
-            images_dropped: 0,
             views_opened: Vec::new(),
             views_closed: Vec::new(),
             view_refusals: Vec::new(),
@@ -323,8 +310,6 @@ impl<A: ToolApi> MembraneState<A> {
             refusals_suppressed: self.refusals_suppressed,
             logs: self.logs.into(),
             logs_suppressed: self.logs_suppressed,
-            images: self.images,
-            images_dropped: self.images_dropped,
             views_opened: self.views_opened,
             views_closed: self.views_closed,
             view_refusals: self.view_refusals,
@@ -492,7 +477,9 @@ impl<A: ToolApi> MembraneState<A> {
         let started = Instant::now();
         let mut outcome = run(&mut self.api);
         self.charge_host_time(started.elapsed());
-        self.collect_images(&mut outcome);
+        // One channel: a picture enters the window through a view or not at all, so a bare read's
+        // picture is dropped here and its description corrected to say so.
+        capture::withhold_pictures(&mut outcome);
         let completed = completed(&outcome);
         self.record(tool, &outcome, completed);
         Ok(outcome)

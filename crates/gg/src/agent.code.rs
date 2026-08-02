@@ -44,7 +44,7 @@ use test_cabinet_core::gg_replay::GgShellOrigin;
 use crate::context::{EvictionResult, OpenViewInfo, ViewKind};
 use crate::ending::Ending;
 use crate::sandbox::{
-    IMAGE_BUDGET, SandboxViewOpened, ToolApi, ViewOpenOutcome, ViewRefusal, WorkflowStageInput,
+    SandboxViewOpened, ToolApi, ViewOpenOutcome, ViewRefusal, WorkflowStageInput,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -53,7 +53,7 @@ use crate::tools::{
     ListDirTool, OffloadPolicy, OwnedStructured, ReadMemoryTool, ReadSkillTool, RemoveEpicTool,
     RemoveIssueTool, RemoveTaskTool, SearchArchiveTool, SearchMemoriesTool, SetBlockedByTool,
     SetIssueBlockedByTool, UpdateIssueTool, UpdateMemoryTool, UpdateTaskTool, WriteFileTool,
-    WriteMemoryTool, human_bytes, read_only_refusal, run_command,
+    WriteMemoryTool, read_only_refusal, run_command,
 };
 
 // ---------------------------------------------------------------------------
@@ -79,10 +79,11 @@ pub(super) enum CodeTurnOutcome {
     /// The turn produced feedback for the model; the loop pushes it and takes another turn.
     Continue {
         /// The rendered feedback, pushed as an ephemeral user message.
+        ///
+        /// It carries **no pictures**. A picture reaches the model through a
+        /// [view](crate::context::ViewKind) — its own attributable, evictable context item — or not
+        /// at all; the turn report is gg's reporting, not a channel for workspace material.
         feedback: String,
-        /// The pictures a bridged `read_file` produced, attached to that message — what restores
-        /// vision inside a program.
-        images: Vec<ImageContent>,
         /// Why this turn was an error, or `None` for a turn that carried out its declared work.
         error: Option<TurnErrorKind>,
         /// One line describing what this turn produced, in gg's own words.
@@ -356,7 +357,6 @@ pub(super) async fn run_code_turn(
         },
         Err(error @ SandboxError::Transpile(_)) => CodeTurnOutcome::Continue {
             feedback: code_failure_feedback(error, &outcome),
-            images: Vec::new(),
             error: Some(TurnErrorKind::Transpile),
             report: "its last program did not compile".to_string(),
         },
@@ -367,7 +367,6 @@ pub(super) async fn run_code_turn(
             ));
             CodeTurnOutcome::Continue {
                 feedback: code_failure_feedback(error, &outcome),
-                images: outcome.images.clone(),
                 error: Some(TurnErrorKind::SandboxLimit),
                 report: "its last program was stopped by a sandbox limit".to_string(),
             }
@@ -380,7 +379,6 @@ pub(super) async fn run_code_turn(
                 .then_some(TurnErrorKind::ProgramFault);
             CodeTurnOutcome::Continue {
                 feedback: prompts::render_code_result(&code_result_context(&outcome, result)),
-                images: outcome.images.clone(),
                 error,
                 report,
             }
@@ -422,7 +420,6 @@ fn not_a_program(
             reason: reason.message(),
             ending_calls: turn.ending_calls(),
         }),
-        images: Vec::new(),
         error: Some(TurnErrorKind::NotAProgram),
         report: format!("its last reply was not a program ({})", reason.short()),
     }
@@ -634,14 +631,6 @@ fn code_result_context(outcome: &SandboxOutcome, result: &ProgramResult) -> Code
             && outcome.views_opened.is_empty()
             && outcome.views_closed.is_empty()
             && outcome.view_refusals.is_empty(),
-        // Counts BOTH places a picture can now fail to reach the model: one a bare `fs.readFile`
-        // could not attach to this feedback, and one a `view.openFile` could not put into the
-        // window. The two spend separate budgets of the same size, so the count is a sum and the
-        // budget below is the ceiling each of them hit — never the number attached, which for a
-        // turn whose only pictures went into views is zero while the budget that refused them is
-        // four.
-        images_dropped: outcome.images_dropped,
-        image_budget: IMAGE_BUDGET,
         deferred: outcome.deferred_note.clone(),
         unreachable: outcome.unreachable.as_ref().map(unreachable_note),
     }
@@ -875,15 +864,17 @@ pub(super) struct CodeTurnState {
 /// One thing is deliberately **not** replicated, and one thing deliberately is. A bare `read_file`
 /// result is *not* pushed as a [`FileView`](GgContextSource::FileView) context item: a program that
 /// reads forty files to grep them should not put forty files in the window, and consuming reads
-/// inside the program instead of the context is one of the reasons responses-as-code exists. The
-/// pictures such a read produced still reach the model — they ride out on
-/// [`SandboxOutcome::images`] and are attached to the turn's feedback.
+/// inside the program instead of the context is one of the reasons responses-as-code exists. That
+/// holds for **pictures too**: a bare read of a mockup reads and describes it (`shown: false`, with
+/// a reason naming the remedy) and shows the model nothing.
 ///
 /// A [`view.openFile`](ToolApi::open_file_view) *does* push one, and that is the whole distinction
 /// the model is taught in one line: **`fs.readFile` gets bytes for your program; `view.openFile`
 /// shows a file to you.** A view is an intent — *this should be visible* — so it is an attributable,
 /// evictable, persisted context item keyed by `(path, region)`, and the picture an opened mockup
-/// returned rides in that item rather than out on the feedback.
+/// returned rides in that item. One channel, which is what makes
+/// [`MAX_OPEN_IMAGE_VIEWS`] a bound on the whole arm rather than one of two budgets that cannot see
+/// each other.
 #[allow(clippy::too_many_arguments)]
 async fn run_code_program(
     source: &str,
@@ -937,7 +928,6 @@ async fn run_code_program(
         pending_compaction: turn.pending_compaction,
         serviced: 0,
         view_ops: 0,
-        view_images: 0,
     };
 
     let sandbox = tokio::task::spawn_blocking(move || {
@@ -977,8 +967,6 @@ async fn run_code_program(
                 refusals_suppressed: 0,
                 logs: Vec::new(),
                 logs_suppressed: 0,
-                images: Vec::new(),
-                images_dropped: 0,
                 // The views the program had already opened died with the window they were pushed
                 // into: the api owned the `ContextModel` and the panic took it. The turn is fatal
                 // regardless, and the loop never reads that window again.
@@ -1100,6 +1088,26 @@ const MAX_VIEW_LABEL_BYTES: usize = 200;
 /// never refused by this: it replaces a view rather than adding one.
 const MAX_OPEN_TEXT_VIEWS: usize = 50;
 
+/// The most **image-carrying** file views one agent may hold open at once.
+///
+/// A picture is tens of megabytes of base64 that is re-sent on *every* request for as long as its
+/// view is open, which is why this bounds **occupancy** rather than opens: a per-program budget
+/// would let N programs open N times this many and bound nothing that survived the turn. It is read
+/// from the live window ([`ContextModel::open_image_views`]) each time, so there is no counter to
+/// reset and no way for it to drift from what the window holds.
+///
+/// Three things it deliberately does not do. It does not touch a view of a **text** file. It does
+/// not refuse **re-opening** a path that is already an open image view, which replaces an occupant
+/// rather than adding one. And it does not count [pinned](crate::context) views — an autoloaded
+/// specification image is the operator's choice and the agent cannot close it, so counting four
+/// pinned mockups would make the cap permanently unreachable.
+///
+/// **Native tool calling is deliberately left uncapped.** A native `read_file` of an image pushes a
+/// file view with no budget at all. Capping it would move the *control* arm of the A/B this
+/// capability exists to measure in order to fix a defect in the treatment arm; the asymmetry is
+/// documented rather than closed.
+const MAX_OPEN_IMAGE_VIEWS: usize = 4;
+
 /// The most view operations — `openFile` + `openText` + `close` — one program may make.
 ///
 /// Not a cost bound (the three caps above are) but a *shape* bound: a program composing a hundred
@@ -1177,14 +1185,6 @@ pub(super) struct LoopToolApi {
     /// chose to attempt, and not counting them would leave a program that swallows the throws
     /// looping on a budget it can never spend.
     view_ops: u32,
-    /// How many pictures this program has already put into the window through a
-    /// [file view](ToolApi::open_file_view), against [`IMAGE_BUDGET`].
-    ///
-    /// Separate from the membrane's own per-turn picture budget, which bounds the pictures a bare
-    /// `fs.readFile` attaches to the turn's *feedback*. The two are the same number and the same
-    /// reason — tens of megabytes of base64 in one context window — applied to the two different
-    /// places a picture can now land.
-    view_images: u32,
 }
 
 #[allow(dead_code)]
@@ -1487,38 +1487,19 @@ impl LoopToolApi {
         Ok(())
     }
 
-    /// Move the pictures a `view.openFile` read produced out of its outcome and into the view item
-    /// that is about to be pushed, up to [`IMAGE_BUDGET`].
+    /// Decide whether the open-image-view cap refuses this `view.openFile`, having read the file
+    /// and discovered it is a picture.
     ///
-    /// A picture beyond the budget is withheld, and **everything that describes it is rewritten to
-    /// say so**: the sidecar the program is handed back (`shown: false` plus the reason) *and* the
-    /// outcome's prose, which for this one call is not only the program's own return value — it is
-    /// the body of the context item the model reads. A successful image read says `The image
-    /// follows.`, which is true of the pictures the budget admitted and a lie about this one, and a
-    /// model told a mockup is in front of it reasons about a mockup it was never shown.
-    ///
-    /// The `shown` flag belongs to the sidecar's one picture, and gg has exactly one tool that
-    /// produces pictures, one at a time.
-    fn admit_view_images(&mut self, path: &str, outcome: &mut ToolOutcome) -> ViewImages {
-        let offered = std::mem::take(&mut outcome.images);
-        if offered.is_empty() {
-            return ViewImages::default();
-        }
-        let room = IMAGE_BUDGET.saturating_sub(self.view_images) as usize;
-        if room == 0 {
-            withhold_view_image(path, outcome);
-            return ViewImages {
-                admitted: Vec::new(),
-                dropped: u32::try_from(offered.len()).unwrap_or(u32::MAX),
-            };
-        }
-        let dropped = u32::try_from(offered.len().saturating_sub(room)).unwrap_or(u32::MAX);
-        let mut admitted = offered;
-        admitted.truncate(room);
-        self.view_images = self
-            .view_images
-            .saturating_add(u32::try_from(admitted.len()).unwrap_or(u32::MAX));
-        ViewImages { admitted, dropped }
+    /// The cap is read from the **live window** rather than from a counter this api carries: views
+    /// outlive the program that opened them, so the only honest question is how many are open right
+    /// now. Re-opening a path that already holds an image view is a supersede — it replaces an
+    /// occupant instead of adding one — so it is admitted at exactly the ceiling; that check uses
+    /// the same `(path, region)` key the push itself supersedes on, so the two cannot disagree.
+    fn refuse_over_image_cap(&self, path: &str, region: Option<FileRegion>) -> Option<ViewRefusal> {
+        image_view_refusal(
+            self.context.open_image_views(),
+            self.context.holds_image_view(path, region),
+        )
     }
 
     /// Check one `view.openText` against the caps that bound a text view, then push it and report
@@ -1558,66 +1539,6 @@ impl LoopToolApi {
 // from the call and from what is already open. Keeping them out of `LoopToolApi` is what lets the
 // rules — and the exact words a refused model reads — be read and tested without standing up an
 // agent, a workspace and a tokio runtime.
-
-/// What [`LoopToolApi::admit_view_images`] did with the pictures one `view.openFile` produced.
-///
-/// The two halves are separate answers to two different readers: `admitted` is what the context item
-/// carries, and `dropped` is what the **turn's feedback** has to disclose. A picture that vanished
-/// from a view without either the view's body or the feedback saying so is the shape this type
-/// exists to make impossible to write.
-#[derive(Debug, Default)]
-struct ViewImages {
-    /// The pictures the budget admitted, which the view item carries.
-    admitted: Vec<ImageContent>,
-    /// How many the budget withheld.
-    dropped: u32,
-}
-
-/// Rewrite everything that describes an image read whose picture the per-program budget withheld,
-/// so nothing left behind claims a picture that is not there.
-///
-/// Two things describe it and both are read by somebody. The **sidecar** is what the program is
-/// handed back (`shown`, `not_shown_reason`), and is the same rewrite the membrane performs for a
-/// bare `read_file` whose picture could not be attached. The **prose** is what a bare read never has
-/// to worry about — it is the program's return value and nothing else — but for a `view.openFile` it
-/// becomes the body of the context item the model reads, and a successful image read's prose ends
-/// `The image follows.`
-///
-/// The replacement states the two facts a withheld read leaves: what the file is, and why it is not
-/// being shown. That is what [`read_image`](crate::tools) already writes at the point it decides not
-/// to show a picture (a text-only model, an over-large image); this decision is made later — the
-/// budget is only spent once the view is being pushed — so it has to be said later.
-fn withhold_view_image(path: &str, outcome: &mut ToolOutcome) {
-    let reason = format!(
-        "a program may put at most {IMAGE_BUDGET} pictures into your context window in one turn; \
-         this file was read and described, but is not being shown"
-    );
-    // Composed while the sidecar is borrowed, assigned after — the sidecar carries the label and
-    // the size the sentence needs.
-    let described = match outcome.data.as_mut() {
-        Some(ToolData::FileImage(image)) => {
-            image.shown = false;
-            image.not_shown_reason = Some(reason.clone());
-            Some(format!(
-                "`{path}` is a {} image ({}). It is not being shown to you: {reason}. Work from \
-                 the written specification, or open fewer image views in one program.",
-                image.label,
-                human_bytes(image.bytes)
-            ))
-        }
-        // No image sidecar to read the label and size off — a shape no gg tool produces, since the
-        // one that returns pictures always describes them. The body still must not claim a picture
-        // it does not carry, so the correction is appended to whatever prose there is.
-        _ => None,
-    };
-    outcome.output = match described {
-        Some(output) => output,
-        None => format!(
-            "{}\n\nThe image is not being shown to you: {reason}.",
-            outcome.output.trim_end()
-        ),
-    };
-}
 
 /// The refusal [`MAX_VIEW_OPS_PER_PROGRAM`] makes when a program has already spent its budget.
 fn view_ops_refusal(made: u32) -> Option<ViewRefusal> {
@@ -1684,6 +1605,33 @@ fn text_view_refusal(label: &str, body: &str, open: &[String]) -> Option<ViewRef
         });
     }
     None
+}
+
+/// The refusal [`MAX_OPEN_IMAGE_VIEWS`] makes about a `view.openFile` whose read turned out to be a
+/// picture, or `None` to let it through.
+///
+/// `open` is how many image views the window already holds; `superseding` is whether this call
+/// re-opens one of them. Superseding is never refused, for the reason re-opening an already-open
+/// label is never refused by [`MAX_OPEN_TEXT_VIEWS`]: it replaces an occupant instead of adding one,
+/// and refusing it would leave an agent at the ceiling unable to *refresh* any of the views holding
+/// it there.
+///
+/// It **refuses** rather than dropping the picture and pushing the view anyway. A drop leaves the
+/// model holding a view whose body says a picture is there and no picture — it learns about the loss
+/// afterwards, in a form it cannot branch on, if it learns at all. A refusal is a value the program
+/// catches at the call site, and nothing enters the window: no view, no read charged to it. So the
+/// message has to name both the cap and the way out, which is a close the agent can actually
+/// perform.
+fn image_view_refusal(open: usize, superseding: bool) -> Option<ViewRefusal> {
+    (open >= MAX_OPEN_IMAGE_VIEWS && !superseding).then(|| ViewRefusal {
+        failure: ToolFailure::LimitExceeded,
+        message: format!(
+            "you already have {MAX_OPEN_IMAGE_VIEWS} image views open (MAX_OPEN_IMAGE_VIEWS), \
+             which is the most one agent may hold — a picture is re-sent on every request for as \
+             long as its view is open. Nothing was shown and no view was opened. Close one with \
+             `view.close(path)` — `view.current()` lists what is open — and open this one again."
+        ),
+    })
 }
 
 /// The refusal a `view.close` earns for a selector that could never name anything.
@@ -2282,6 +2230,24 @@ impl ToolApi for LoopToolApi {
     /// The content is cloned rather than moved out of the outcome because the outcome goes on to
     /// become the program's own return value — the model is handed the bytes *and* shown the file
     /// for the price of one read, which is the reason this call exists at all.
+    ///
+    /// # The image cap is consulted here, and only for a picture
+    ///
+    /// A view is the only way a picture enters the window, so [`MAX_OPEN_IMAGE_VIEWS`] is enforced
+    /// on this one call. It can only be asked **after** the read, because nothing before it knows
+    /// the file is a picture — gg sniffs the magic bytes rather than trusting an extension — so the
+    /// order is read, then decide, then push. A read that produced no picture (a text file, or one
+    /// of [`read_image`](crate::tools)'s own two refusals: a text-only model, a file over the
+    /// display limit) is never touched by it: those already carry an honest `shown: false` and no
+    /// image, and refusing them for a cap they do not spend would answer "you cannot see this" with
+    /// "close something first".
+    ///
+    /// The refusal replaces the read's outcome, which the membrane lowers into the catchable
+    /// `limit-exceeded` the program sees thrown. The read itself already streamed its own
+    /// `ToolCall`/`ToolResult` pair and its replay entry — it really did happen, and the telemetry
+    /// says so — while the roster line the *model* reads next turn records the call it actually
+    /// made, which failed. Both are true of different readers, and the alternative (streaming no
+    /// telemetry for a read that ran) would leave the operator's stream with a gap.
     fn open_file_view(
         &mut self,
         path: String,
@@ -2301,7 +2267,6 @@ impl ToolApi for LoopToolApi {
             return ViewOpenOutcome {
                 outcome,
                 opened: None,
-                images_dropped: 0,
             };
         }
         let mut outcome = self.read_file(path.clone(), offset, limit);
@@ -2311,7 +2276,6 @@ impl ToolApi for LoopToolApi {
             return ViewOpenOutcome {
                 outcome,
                 opened: None,
-                images_dropped: 0,
             };
         }
         let region = match &outcome.data {
@@ -2322,17 +2286,25 @@ impl ToolApi for LoopToolApi {
             ),
             _ => None,
         };
-        let ViewImages { admitted, dropped } = self.admit_view_images(&path, &mut outcome);
-        // Cloned **after** the withholding rewrite, so the body the model reads and the picture the
-        // window actually carries can never disagree.
+        // The picture, if the read produced one, moves out of the outcome and into the view item:
+        // the model looks at it there, and leaving a copy behind would let the membrane attach a
+        // second one to the turn.
+        let images = std::mem::take(&mut outcome.images);
+        if !images.is_empty()
+            && let Some(refusal) = self.refuse_over_image_cap(&path, region)
+        {
+            return ViewOpenOutcome {
+                outcome: refusal.into_outcome(),
+                opened: None,
+            };
+        }
         let opened = self.context.open_file_view_deduped(
             path.clone(),
             region,
             outcome.output.clone(),
-            admitted,
+            images,
         );
         ViewOpenOutcome {
-            images_dropped: dropped,
             outcome,
             opened: Some(SandboxViewOpened {
                 kind: ViewKind::File,

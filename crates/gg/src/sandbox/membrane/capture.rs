@@ -1,18 +1,22 @@
 //! What a program is allowed to leave behind, and the caps that bound it.
 //!
-//! A program accumulates five things on its way to a result: an ordered roster of the calls it
-//! made, the calls that were refused, the lines it logged, the pictures it read, and the
-//! [views](super::views) it opened, closed and had refused. Every one of
-//! them is **fed back into the model's context window on the next turn**, and every one of them is
-//! written by the program itself — a `for` loop can produce a hundred thousand of any of them well
-//! within an execution timeout sized for real work. So each is bounded here, and what a bound discarded is
-//! **counted** rather than silently dropped: a model whose roster was cut needs to be told so, or
-//! it will read the shorter list as evidence that its loop never ran.
+//! A program accumulates four things on its way to a result: an ordered roster of the calls it
+//! made, the calls that were refused, the lines it logged, and the [views](super::views) it opened,
+//! closed and had refused. Every one of them is **fed back into the model's context window on the
+//! next turn**, and every one of them is written by the program itself — a `for` loop can produce a
+//! hundred thousand of any of them well within an execution timeout sized for real work. So each is
+//! bounded here, and what a bound discarded is **counted** rather than silently dropped: a model
+//! whose roster was cut needs to be told so, or it will read the shorter list as evidence that its
+//! loop never ran.
 //!
 //! Three of the four keep what came **first** and count the rest, because the first refusal, the
-//! first calls and the first pictures are the ones that explain what the program was doing. Logs
+//! first calls and the first views are the ones that explain what the program was doing. Logs
 //! are the exception and keep the **last** lines instead: a program logs per item and then logs its
 //! conclusion, so the end of the stream is the part written for the model to read.
+//!
+//! **Pictures are not one of them.** A view is the only channel into the window, so a bare
+//! `fs.readFile` of an image no longer attaches anything to the turn — see
+//! [`withhold_pictures`].
 //!
 //! The caps live together, away from the [membrane](super)'s dispatch policy, because they are one
 //! decision — how much of a program's exhaust is worth a context window — and because keeping them
@@ -69,14 +73,6 @@ pub(super) const MAX_RECORDED_REFUSALS: usize = 100;
 /// would let five failing commands put 80 KiB of duplicated text into the next turn's window, on
 /// top of what the program itself returned, while the logs beside it are capped at 16 KiB in total.
 pub(super) const MAX_CALL_ERROR_BYTES: usize = 512;
-
-/// The most pictures one program may attach to a turn.
-///
-/// A program that reads twenty mockups would otherwise put tens of megabytes of base64 into one
-/// context window. Further reads still succeed and still report their metadata — with `shown:
-/// false` and a reason naming this budget — so the program can carry on and the model is told why
-/// it is not looking at the picture.
-pub(crate) const IMAGE_BUDGET: u32 = 4;
 
 /// The most view records — opens, closes, refusals — one program's report keeps **of each kind**.
 ///
@@ -182,51 +178,49 @@ impl<A: ToolApi> MembraneState<A> {
         self.view_refusals
             .push(truncate(message.to_string(), MAX_CALL_ERROR_BYTES));
     }
+}
 
-    /// Count pictures a caller withheld on its own, outside [`collect_images`](Self::collect_images).
-    ///
-    /// [`open_file_view`](super::views) spends its own picture budget on the far side of the
-    /// [api](ToolApi) — that is where the window is — so the drop happens somewhere this state
-    /// cannot see. It still has to reach the same per-turn total, because that total is what the
-    /// feedback renders, and a picture that disappears from a view with nothing in the turn's report
-    /// saying so is exactly the silence this module refuses everywhere else.
-    pub(super) fn record_images_dropped(&mut self, dropped: u32) {
-        self.images_dropped = self.images_dropped.saturating_add(dropped);
+/// Drop the pictures a bridged call produced, and correct what its result says about them.
+///
+/// # One channel
+///
+/// Under [responses as code](crate::prompts) a [view](super::views) is the only way material enters
+/// the agent's window, and a picture is not an exception: an image is a **file view of an image
+/// file**, opened with `view.openFile`. A bare `fs.readFile` therefore reads and *describes* a
+/// picture without showing it — the same separation the model is taught for text (`fs.readFile`
+/// gets bytes for your program; `view.openFile` shows a file to you), applied to the one kind of
+/// content that used to be carved out of it.
+///
+/// The alternative — keeping the old arrangement, where a bare read's picture rode out on the
+/// turn's feedback — is two independent budgets for one context window: a program could put four
+/// pictures in through a view and four more through a read, and neither counter could see the
+/// other. Collapsing them by construction is what this deletion buys.
+///
+/// # Why the sidecar is corrected here and not in `read_image`
+///
+/// [`read_image`](crate::tools) is shared with the **native** tool-calling path, where the picture
+/// really is attached to the tool result and `shown: true` is the truth. Only this path withholds
+/// it, so only this path rewrites the sidecar — and the reason it writes names the remedy
+/// (`view.openFile`), because a program told merely that it cannot see a file it just read has
+/// been given a fact with no action attached to it.
+///
+/// The prose is deliberately left alone: on this path an image read's `output` is not the program's
+/// return value (the program is handed the sidecar) and never becomes a context item, so the only
+/// description anybody reads is the one corrected here. A `view.openFile` reaches this function
+/// with its pictures already moved into the view item, so nothing is dropped and the sidecar
+/// correctly still says `shown: true`.
+pub(super) fn withhold_pictures(outcome: &mut ToolOutcome) {
+    if outcome.images.is_empty() {
+        return;
     }
-
-    /// Move the pictures a call produced out of its outcome and into the turn's attachments, up to
-    /// [`IMAGE_BUDGET`].
-    ///
-    /// A picture beyond the budget is counted, and the outcome's own description of it is rewritten
-    /// to say it is not being shown and why — so the program's return value and the model's eyes
-    /// agree about what happened, rather than the program being told a picture was shown that the
-    /// model never sees.
-    ///
-    /// The description belongs to the outcome's **first** picture: a [`ToolData::FileImage`]
-    /// sidecar describes one picture, and gg has exactly one tool that produces pictures, one at a
-    /// time. Tracking acceptance per picture rather than "did anything get dropped?" is what keeps
-    /// that true if a tool ever returns several — the attached one is never described as unshown
-    /// because a later one was refused.
-    pub(super) fn collect_images(&mut self, outcome: &mut ToolOutcome) {
-        if outcome.images.is_empty() {
-            return;
-        }
-        let mut first_accepted = false;
-        for (index, image) in std::mem::take(&mut outcome.images).into_iter().enumerate() {
-            if u32::try_from(self.images.len()).unwrap_or(u32::MAX) >= IMAGE_BUDGET {
-                self.images_dropped = self.images_dropped.saturating_add(1);
-            } else {
-                self.images.push(image);
-                first_accepted |= index == 0;
-            }
-        }
-        if !first_accepted && let Some(ToolData::FileImage(image)) = outcome.data.as_mut() {
-            image.shown = false;
-            image.not_shown_reason = Some(format!(
-                "a program may attach at most {IMAGE_BUDGET} pictures to one turn; this file was \
-                 read and described, but is not being shown"
-            ));
-        }
+    outcome.images.clear();
+    if let Some(ToolData::FileImage(image)) = outcome.data.as_mut() {
+        image.shown = false;
+        image.not_shown_reason = Some(
+            "`fs.readFile` reads and describes an image but does not show it to you; open a view \
+             of it with `view.openFile(path)` to actually look at it"
+                .to_string(),
+        );
     }
 }
 

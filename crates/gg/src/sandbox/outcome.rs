@@ -17,11 +17,10 @@ use std::time::Duration;
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened};
 use super::transpile::{TranspileError, UnreachableTail};
 use crate::ending::Ending;
-use crate::model::ImageContent;
 
 /// Everything one program produced — its effects, its exhaust, and how it ended.
 ///
-/// The tool calls, logs, images and elapsed time are populated on **every** path, including a trap,
+/// The tool calls, logs and elapsed time are populated on **every** path, including a trap,
 /// for the reason the [module docs](self) open with. Only [`result`](Self::result) splits.
 #[derive(Debug)]
 pub struct SandboxOutcome {
@@ -56,10 +55,6 @@ pub struct SandboxOutcome {
     /// How many log lines the caps discarded. Added to `logs.len()` for the line count the feedback
     /// reports, so the model is told what its program did rather than what gg's buffer kept.
     pub logs_suppressed: u64,
-    /// Pictures a bridged `read_file` produced, for the loop to attach to the turn's feedback.
-    pub images: Vec<ImageContent>,
-    /// Pictures dropped because the per-program budget was already spent.
-    pub images_dropped: u32,
     /// The [views](crate::context::ViewKind) the program opened, in call order — what the turn's
     /// feedback reports back so the model can read its own accounting: which selector it showed,
     /// what that costs, and whether it *replaced* something rather than adding to it.
@@ -140,8 +135,6 @@ impl SandboxOutcome {
             refusals_suppressed: 0,
             logs: Vec::new(),
             logs_suppressed: 0,
-            images: Vec::new(),
-            images_dropped: 0,
             views_opened: Vec::new(),
             views_closed: Vec::new(),
             view_refusals: Vec::new(),

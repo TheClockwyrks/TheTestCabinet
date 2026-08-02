@@ -767,8 +767,6 @@ fn quiet_result() -> CodeResultContext {
         views_suppressed: 0,
         unreachable: None,
         silent: true,
-        images_dropped: 0,
-        image_budget: 0,
         deferred: None,
     }
 }
@@ -928,8 +926,8 @@ fn the_result_feedback_locates_a_throw_and_says_the_work_stands() {
     assert_no_blank_run(&bare);
 }
 
-/// The four things that would otherwise be invisible: refusals, view records the recording cap
-/// dropped, deferred work, and dropped pictures.
+/// The three things that would otherwise be invisible: refusals, view records the recording cap
+/// dropped, and deferred work.
 #[test]
 fn the_result_feedback_reports_what_was_dropped_refused_and_deferred() {
     let rendered = render_code_result(&CodeResultContext {
@@ -937,8 +935,6 @@ fn the_result_feedback_reports_what_was_dropped_refused_and_deferred() {
         refusals: vec!["`speculate` — the run has no worktree isolation".to_string()],
         refusals_suppressed: 3,
         deferred: Some("your program deferred work with `.then()`; it ran after the program had already ended.".to_string()),
-        images_dropped: 2,
-        image_budget: 4,
         silent: false,
         ..quiet_result()
     });
@@ -946,11 +942,6 @@ fn the_result_feedback_reports_what_was_dropped_refused_and_deferred() {
     assert!(rendered.contains("- refused: `speculate` — the run has no worktree isolation"));
     assert!(rendered.contains("(3 further refusal(s) were not listed"));
     assert!(rendered.contains("it ran after the program had already ended."));
-    assert!(
-        rendered.contains(
-            "(2 image(s) were read but not shown to you: at most 4 pictures per program)"
-        )
-    );
     assert_no_blank_run(&rendered);
 }
 

@@ -18,8 +18,6 @@ fn quiet_outcome() -> SandboxOutcome {
         refusals_suppressed: 0,
         logs: Vec::new(),
         logs_suppressed: 0,
-        images: Vec::new(),
-        images_dropped: 0,
         views_opened: Vec::new(),
         views_closed: Vec::new(),
         view_refusals: Vec::new(),

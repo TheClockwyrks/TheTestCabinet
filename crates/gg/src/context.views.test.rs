@@ -363,6 +363,153 @@ fn a_locked_specification_is_never_superseded_out_of_its_band() {
 }
 
 // ---------------------------------------------------------------------------
+// Counting the pictures that are open
+// ---------------------------------------------------------------------------
+
+/// The count is over **image-carrying** file views: a text view of the same window costs tokens but
+/// no megabytes of base64, and a file view of a text file is not what the cap is about.
+#[test]
+fn open_image_views_counts_only_the_file_views_that_carry_a_picture() {
+    let mut ctx = code_model();
+    ctx.begin_turn(1);
+    assert_eq!(ctx.open_image_views(), 0);
+
+    ctx.open_file_view_deduped("src/a.ts".to_string(), None, "code".to_string(), Vec::new());
+    ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
+    assert_eq!(ctx.open_image_views(), 0, "neither of those is a picture");
+
+    ctx.open_file_view_deduped(
+        "mock/a.png".to_string(),
+        None,
+        "a PNG".to_string(),
+        vec![image(1_024)],
+    );
+    ctx.open_file_view_deduped(
+        "mock/b.png".to_string(),
+        None,
+        "a PNG".to_string(),
+        vec![image(2_048)],
+    );
+    assert_eq!(ctx.open_image_views(), 2);
+}
+
+/// **Closing an image view frees its slot.** The count is derived from the live window, so this is
+/// not a counter that has to be decremented anywhere — it is simply what the window now holds.
+#[test]
+fn closing_an_image_view_frees_its_slot() {
+    let mut ctx = code_model();
+    ctx.begin_turn(1);
+    ctx.open_file_view_deduped(
+        "mock/a.png".to_string(),
+        None,
+        "a PNG".to_string(),
+        vec![image(1_024)],
+    );
+    assert_eq!(ctx.open_image_views(), 1);
+
+    ctx.evict_file_views(Some("mock/a.png"));
+    assert_eq!(ctx.open_image_views(), 0);
+}
+
+/// **A pinned autoloaded specification image does not count.**
+///
+/// It is the operator's choice, placed before the agent's first turn, and `view.close` cannot touch
+/// it. Counting it would let a configuration that pins four reference mockups make the cap
+/// permanently unreachable — every image view the agent ever tried to open refused, with the only
+/// remedy unable to reach the views occupying the cap.
+#[test]
+fn a_pinned_specification_image_does_not_occupy_the_cap() {
+    let mut ctx = code_model();
+    ctx.push_file_view_with_retention(
+        Some("specs/mockup.png".to_string()),
+        None,
+        "c1",
+        "the mockup",
+        vec![image(4_096)],
+        Retention::Pinned,
+    );
+    ctx.begin_turn(1);
+
+    assert_eq!(
+        ctx.open_image_views(),
+        0,
+        "a view the agent cannot close must not spend the budget it is refused against"
+    );
+    assert!(
+        !ctx.holds_image_view("specs/mockup.png", None),
+        "a pinned copy is never superseded, so re-opening the path is a NEW occupant"
+    );
+}
+
+/// The supersede check keys on `(path, region)` — the same key the push supersedes on — and knows
+/// the difference between a path that holds a picture and one that holds text.
+#[test]
+fn holds_image_view_answers_for_the_key_the_push_supersedes_on() {
+    let mut ctx = code_model();
+    ctx.begin_turn(1);
+    ctx.open_file_view_deduped(
+        "mock/a.png".to_string(),
+        None,
+        "a PNG".to_string(),
+        vec![image(1_024)],
+    );
+    ctx.open_file_view_deduped("src/a.ts".to_string(), None, "code".to_string(), Vec::new());
+
+    assert!(ctx.holds_image_view("mock/a.png", None));
+    assert!(
+        !ctx.holds_image_view("src/a.ts", None),
+        "a text view is not an image view"
+    );
+    assert!(!ctx.holds_image_view("mock/never-opened.png", None));
+    assert!(
+        !ctx.holds_image_view(
+            "mock/a.png",
+            Some(FileRegion {
+                offset: 1,
+                limit: 20
+            })
+        ),
+        "a different region is a different key, and would open a second view"
+    );
+}
+
+/// **A superseded copy stops occupying the cap.**
+///
+/// Re-opening across turns retags the older copy to `History` in place — its bytes stay in the
+/// window to protect a provider's cached prefix — but it is no longer a view, no longer closable by
+/// path, and therefore no longer an occupant. Counting it would leave an agent that refreshed one
+/// mockup four times unable to open anything, with `view.current()` listing a single view.
+#[test]
+fn a_superseded_image_view_stops_occupying_the_cap() {
+    let mut ctx = code_model();
+    ctx.begin_turn(1);
+    ctx.open_file_view_deduped(
+        "mock/a.png".to_string(),
+        None,
+        "a PNG".to_string(),
+        vec![image(1_024)],
+    );
+    ctx.begin_turn(2);
+    ctx.open_file_view_deduped(
+        "mock/a.png".to_string(),
+        None,
+        "a PNG, again".to_string(),
+        vec![image(1_024)],
+    );
+
+    assert_eq!(
+        ctx.items().len(),
+        2,
+        "the retagged copy stays in the window"
+    );
+    assert_eq!(
+        ctx.open_image_views(),
+        1,
+        "but only the live view occupies the cap"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Closing
 // ---------------------------------------------------------------------------
 

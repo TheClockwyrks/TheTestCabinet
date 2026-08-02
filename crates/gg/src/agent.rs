@@ -135,9 +135,7 @@ use crate::limits::{
 };
 use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};
 use crate::message_log::finish_reason_token;
-use crate::model::{
-    ImageContent, Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition,
-};
+use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
 use crate::modules::{
     CapabilityModules, HistorySetup, InheritedModules, Module, ModuleIdMint, ModuleIds, ModuleKind,
     ModuleResolveCtx, ModuleSet, Ownership, Refresh, TransferPlan, TransferReport,
@@ -6782,7 +6780,6 @@ impl Agent {
                             None => CodeTurnOutcome::Finished { ending },
                             Some(feedback) => CodeTurnOutcome::Continue {
                                 feedback,
-                                images: Vec::new(),
                                 error: None,
                                 report: "its ending was rejected by validation".to_string(),
                             },
@@ -6864,10 +6861,7 @@ impl Agent {
                         };
                     }
                     CodeTurnOutcome::Continue {
-                        feedback,
-                        images,
-                        report,
-                        ..
+                        feedback, report, ..
                     } => {
                         // Reclaim the per-turn state the code turn carried by value. It is present
                         // on every non-fatal path (only a panicked sandbox loses it, and that is
@@ -6890,14 +6884,14 @@ impl Agent {
                         *subagents = turn_subagents;
                         last_report = Some(report);
                         // The turn's feedback is pushed **before** the breach return, so a stopped
-                        // run's context still contains everything the turn produced. The program's
-                        // pictures ride on it, which is what restores vision inside a program: a
-                        // `readFile` of a reference mockup shows the model the picture, exactly as
-                        // the native path does.
+                        // run's context still contains everything the turn produced. It carries no
+                        // pictures: a program's `view.openFile` already pushed the mockup it opened
+                        // as its own file view, and a bare `fs.readFile` of one shows the model
+                        // nothing. One channel, so the picture is paid for exactly once.
                         context.push(
                             GgContextSource::ToolOutput,
                             Retention::Ephemeral,
-                            Message::user(feedback).with_images(images),
+                            Message::user(feedback),
                         );
                         // The copies this program declared. Started here, with the turn's feedback
                         // already in the window, so a copy inherits the conversation its forker is

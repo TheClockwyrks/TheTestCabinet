@@ -13,7 +13,6 @@ use std::time::{Duration, Instant};
 use serde_json::json;
 
 use super::*;
-use crate::model::ImageContent;
 use crate::sandbox::fake::{CallLog, all_tools, canned_outcome, membrane, membrane_with};
 use crate::sandbox::membrane::test_cabinet::gg::feedback::{ErrorKind, Host as FeedbackHost};
 use crate::sandbox::membrane::test_cabinet::gg::files::{FileRead, Host as FilesHost};
@@ -220,80 +219,87 @@ fn a_long_failure_message_is_capped_on_the_record() {
     assert!(recorded.ends_with('…'), "the cut was not marked");
 }
 
-/// Pictures are attached up to the budget; beyond it they are counted, and the read still succeeds
-/// with a description that says plainly it is not being shown.
+/// **A bare `fs.readFile` of a picture shows the model nothing — and says so, with the remedy.**
+///
+/// Views are the only channel into the window, and a picture is not an exception to that: an image
+/// is a file view of an image file. The read still *succeeds* and still returns the descriptor, so a
+/// program that reads a mockup to check its size or its format carries on unaffected; what it must
+/// not do is believe the model is looking at it. The reason therefore names `view.openFile`, because
+/// a program told only that it cannot see the file has been handed a fact with no action attached.
 #[test]
-fn images_are_collected_up_to_the_budget_and_the_rest_are_counted() {
+fn a_bare_read_of_a_picture_shows_nothing_and_names_the_view_that_would() {
     let log = CallLog::default();
     let mut state = membrane(&log);
 
-    for index in 0..IMAGE_BUDGET + 2 {
-        let read = state
-            .read_file(format!("mock-{index}.png"), None, None)
-            .expect("reading a picture succeeds");
-        let FileRead::Image(image) = read else {
-            panic!("a .png must read back as a picture");
-        };
-        if index < IMAGE_BUDGET {
-            assert!(image.shown, "picture {index} was within the budget");
-            assert!(image.not_shown_reason.is_none());
-        } else {
-            assert!(!image.shown, "picture {index} was past the budget");
-            assert!(
-                image
-                    .not_shown_reason
-                    .as_deref()
-                    .is_some_and(|reason| reason.contains("at most")),
-                "the reason must name the budget: {:?}",
-                image.not_shown_reason
-            );
-        }
-    }
-
-    let parts = state.into_parts();
-    assert_eq!(parts.images.len() as u32, IMAGE_BUDGET);
-    assert_eq!(parts.images_dropped, 2);
+    let read = state
+        .read_file("mock.png".to_string(), None, None)
+        .expect("reading a picture still succeeds");
+    let FileRead::Image(image) = read else {
+        panic!("a .png must read back as a picture");
+    };
+    assert_eq!(image.media_type, "image/png", "the descriptor is unchanged");
+    assert!(!image.shown, "a bare read shows the model nothing");
+    let why = image.not_shown_reason.expect("a withheld picture says why");
+    assert!(
+        why.contains("view.openFile"),
+        "the reason must name the way to actually see it: {why}"
+    );
 }
 
-/// A picture that WAS attached is never described as unshown.
+/// A read that produced **no** picture is left exactly as it was.
 ///
-/// The description belongs to the outcome's first picture. An outcome carrying several — which gg
-/// has no tool that produces today, and which the collection is nonetheless written to handle — must
-/// not have its attached first picture relabelled because a later one hit the budget.
+/// The two refusals [`read_image`](crate::tools) makes on its own — a text-only model, and a file
+/// over the display limit — already write an honest `shown: false` with their own reason, and
+/// overwriting it with this path's would answer "you cannot see this" with "open a view of it",
+/// which is advice that would not work.
 #[test]
-fn an_attached_picture_is_not_described_as_unshown_because_a_later_one_was_dropped() {
-    let log = CallLog::default();
-    let mut state = membrane(&log);
+fn a_read_that_carried_no_picture_is_not_rewritten() {
+    let mut outcome = ToolOutcome::ok("`big.png` is a PNG image (9.0 MB).", "too large").with_data(
+        ToolData::FileImage(FileImageData {
+            media_type: "image/png".to_string(),
+            label: "PNG".to_string(),
+            bytes: 9_437_184,
+            shown: false,
+            not_shown_reason: Some("the image is larger than the 4 MB display limit".to_string()),
+        }),
+    );
 
-    let mut outcome = ToolOutcome::ok("[PNG image]", "read an image")
-        .with_images(vec![
-            ImageContent::new("image/png", "aGk=", 1),
-            ImageContent::new("image/png", "aGk=", 2),
-        ])
+    withhold_pictures(&mut outcome);
+
+    let Some(ToolData::FileImage(image)) = outcome.data else {
+        panic!("the sidecar survives");
+    };
+    assert!(!image.shown);
+    assert_eq!(
+        image.not_shown_reason.as_deref(),
+        Some("the image is larger than the 4 MB display limit"),
+        "the tool's own reason must not be replaced by this path's"
+    );
+}
+
+/// A view of a picture reaches this path with its picture already moved into the view item, so
+/// nothing is dropped and the sidecar must keep saying the model **is** being shown it.
+#[test]
+fn a_picture_already_taken_into_a_view_keeps_its_shown_flag() {
+    let mut outcome = ToolOutcome::ok("`mock.png` — PNG image, 45 KB. The image follows.", "read")
         .with_data(ToolData::FileImage(FileImageData {
             media_type: "image/png".to_string(),
             label: "PNG".to_string(),
-            bytes: 1,
+            bytes: 46_080,
             shown: true,
             not_shown_reason: None,
         }));
 
-    // One slot left in the budget: the first picture is attached, the second is not.
-    for index in 0..IMAGE_BUDGET - 1 {
-        state
-            .read_file(format!("mock-{index}.png"), None, None)
-            .expect("reading a picture succeeds");
-    }
-    state.collect_images(&mut outcome);
+    withhold_pictures(&mut outcome);
 
     let Some(ToolData::FileImage(image)) = outcome.data else {
-        panic!("the sidecar survived the collection");
+        panic!("the sidecar survives");
     };
     assert!(
         image.shown,
-        "the picture the model IS being shown was described as unshown"
+        "a view's picture is in the window; saying otherwise would make the model ignore it"
     );
-    assert_eq!(state.into_parts().images_dropped, 1);
+    assert!(image.not_shown_reason.is_none());
 }
 
 /// The deferred-work note is recorded once: the shim sends it at most once per run, and a second

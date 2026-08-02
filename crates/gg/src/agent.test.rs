@@ -9038,6 +9038,108 @@ async fn a_provider_refusing_images_does_not_fail_the_run() {
     );
 }
 
+/// **The native tool-calling path still attaches pictures, and is deliberately uncapped.**
+///
+/// The one-channel rule — a picture enters the window through a `view.openFile` or not at all —
+/// belongs to [responses as code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) alone. On the
+/// native path every `read_file` result is already an attributable, evictable message, so an image
+/// rides on it exactly as it always has and no budget bounds how many. That asymmetry is the point:
+/// this arm is the **control** of the A/B the code capability exists to measure, and moving it to
+/// fix a defect in the treatment arm would measure something else.
+///
+/// Five mockups — one past the code arm's cap — read on one native turn, and the proof is the
+/// *provider's* view: every one of them is in front of the model.
+#[tokio::test]
+async fn the_native_path_still_attaches_pictures_and_caps_none_of_them() {
+    let dir = TempDir::new().unwrap();
+    for name in ["a.png", "b.png", "c.png", "d.png", "e.png"] {
+        std::fs::write(dir.path().join(name), TEST_PNG).unwrap();
+    }
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(
+        Some("run-native-images".to_string()),
+        Box::new(sink.clone()),
+    );
+
+    let seen = Arc::new(Mutex::new(Vec::<usize>::new()));
+    let recorded = Arc::clone(&seen);
+    let factory = Arc::new(ScriptedFactory::new().slot(ROOT_AGENT, move |b| {
+        Box::new(ImageReadingClient {
+            model_id: b.model_id.clone(),
+            turn: AtomicUsize::new(0),
+            seen: Arc::clone(&recorded),
+        })
+    }));
+
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/primary"));
+    assert_eq!(
+        run_with_factory(&inv, &emitter, factory).await,
+        SessionOutcome::Ran
+    );
+
+    let carried = seen.lock().unwrap().clone();
+    assert_eq!(
+        carried.first().copied(),
+        Some(0),
+        "the opening turn has read nothing yet"
+    );
+    assert_eq!(
+        carried.get(1).copied(),
+        Some(5),
+        "every picture a native read produced is in front of the model, cap or no cap: {carried:?}"
+    );
+}
+
+/// A client that reads five pictures on its first turn and then finishes, recording how many
+/// messages of each request it saw carried an image.
+struct ImageReadingClient {
+    model_id: String,
+    turn: AtomicUsize,
+    seen: Arc<Mutex<Vec<usize>>>,
+}
+
+#[async_trait::async_trait]
+impl ModelClient for ImageReadingClient {
+    async fn complete(
+        &self,
+        messages: &[Message],
+        _tools: &[ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        self.seen
+            .lock()
+            .unwrap()
+            .push(messages.iter().filter(|m| !m.images.is_empty()).count());
+        let tool_calls = if self.turn.fetch_add(1, Ordering::SeqCst) == 0 {
+            ["a.png", "b.png", "c.png", "d.png", "e.png"]
+                .iter()
+                .enumerate()
+                .map(|(index, path)| ToolCall {
+                    id: format!("call_read_{index}"),
+                    name: "read_file".to_string(),
+                    arguments: json!({ "path": path }),
+                })
+                .collect()
+        } else {
+            vec![ToolCall {
+                id: "call_finish".to_string(),
+                name: "finish".to_string(),
+                arguments: json!({ "summary": "done" }),
+            }]
+        };
+        Ok(ModelResponse {
+            text: Some("reading the mockups".to_string()),
+            finish_reason: FinishReason::ToolCalls,
+            tool_calls,
+            usage: TokenCounts::default(),
+            cost: None,
+        })
+    }
+
+    fn model_id(&self) -> &str {
+        &self.model_id
+    }
+}
+
 /// A newtype letting several agents share one scripted client through the factory.
 struct SharedClient(Arc<VisionRefusingClient>);
 

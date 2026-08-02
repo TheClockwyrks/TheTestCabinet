@@ -246,10 +246,11 @@ fn a_zero_offset_reads_from_the_first_line() {
 }
 
 /// A picture is a different *case*, so a program that treats one as text is caught by the variant
-/// rather than silently writing an empty string somewhere. Its bytes leave the outcome for the
-/// turn's attachments — the model looks at the picture, the program reads its description.
+/// rather than silently writing an empty string somewhere. The program reads its description; the
+/// bytes go nowhere, because a bare read is not a channel into the window — see
+/// [`withhold_pictures`](super::capture::withhold_pictures).
 #[test]
-fn read_file_returns_image_metadata_and_keeps_the_bytes() {
+fn read_file_returns_image_metadata_without_showing_the_picture() {
     let log = CallLog::default();
     let mut state = membrane(&log);
 
@@ -263,12 +264,16 @@ fn read_file_returns_image_metadata_and_keeps_the_bytes() {
     assert_eq!(image.media_type, "image/png");
     assert_eq!(image.label, "PNG");
     assert_eq!(image.bytes, 1_234);
-    assert!(image.shown);
-    assert!(image.not_shown_reason.is_none());
-
-    let parts = state.into_parts();
-    assert_eq!(parts.images.len(), 1, "the bytes must reach the turn");
-    assert_eq!(parts.images[0].media_type, "image/png");
+    assert!(
+        !image.shown,
+        "a bare read describes a picture; it does not show it"
+    );
+    assert!(
+        image
+            .not_shown_reason
+            .is_some_and(|why| why.contains("view.openFile")),
+        "the descriptor has to name the call that would show it"
+    );
 }
 
 /// The byte count comes back as a number a program can add up, not as prose to parse.
