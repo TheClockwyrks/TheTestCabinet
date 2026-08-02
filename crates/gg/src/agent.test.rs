@@ -473,6 +473,7 @@ fn no_amc() -> AmcSetup {
         archive: Arc::new(Mutex::new(ArchiveStore::new())),
         archive_id: "archive-0".to_string(),
         can_evict: false,
+        can_close_views: false,
         can_archive: false,
         top_file_views: 0,
     }
@@ -501,6 +502,8 @@ fn amc_with(archive: Arc<Mutex<ArchiveStore>>) -> AmcSetup {
         archive,
         archive_id: "archive-0".to_string(),
         can_evict: true,
+        // These `drive` e2es are tool-calling agents, so there is no `view` object to point at.
+        can_close_views: false,
         can_archive: true,
         top_file_views: 5,
     }
@@ -4009,6 +4012,8 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
         default.signal_options(),
         UsageSignalOptions {
             can_evict: true,
+            // A tool-calling agent has no `view` object, so the block must not point at `view.close`.
+            can_close_views: false,
             can_archive: true,
             top_file_views: DEFAULT_TOP_FILE_VIEWS,
         }
@@ -4031,6 +4036,14 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
     let narrowed = resolve(&without_evict);
     assert!(narrowed.enabled && narrowed.can_archive);
     assert!(!narrowed.can_evict);
+
+    // `view.close` is read off the responses-as-code capability rather than the registry, because
+    // `view` is not a tool: it is bound into every program's scope unconditionally. Without this an
+    // agent could be shown a `Text Views` band with no call named that reclaims it.
+    let mut code = on.clone();
+    code.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    assert!(resolve(&code).can_close_views);
 }
 
 /// The FileView token band of every emitted `ContextBreakdown`, in order.

@@ -1921,6 +1921,7 @@ fn the_context_usage_signal_renders() {
             },
         ],
         can_evict: true,
+        can_close_views: true,
         can_archive: true,
     });
     assert!(
@@ -1934,6 +1935,7 @@ fn the_context_usage_signal_renders() {
     assert!(full.contains("\n  - `src/foo.rs`: 4.6%\n"), "{full}");
     assert!(full.contains("\n- Tasks: 2.0%\n"), "{full}");
     assert!(full.contains("`evict_file_view`"), "{full}");
+    assert!(full.contains("`view.close`"), "{full}");
     assert!(full.contains("`archive_thread`"), "{full}");
 
     // An agent with neither reclaim tool is given the figures and no advice it cannot take.
@@ -1945,6 +1947,7 @@ fn the_context_usage_signal_renders() {
             top_files: Vec::new(),
         }],
         can_evict: false,
+        can_close_views: false,
         can_archive: false,
     });
     assert!(
@@ -1953,5 +1956,6 @@ fn the_context_usage_signal_renders() {
     );
     assert!(!bare.contains("Top File Views"), "{bare}");
     assert!(!bare.contains("evict_file_view"), "{bare}");
+    assert!(!bare.contains("view.close"), "{bare}");
     assert!(!bare.contains("archive_thread"), "{bare}");
 }

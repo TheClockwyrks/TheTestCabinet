@@ -844,7 +844,7 @@ outputs are **committed** into the Rust crate:
 
 | Artifact | What it is |
 | --- | --- |
-| `crates/gg/src/sandbox/gg-sandbox.component.wasm` | The baked component, embedded in the binary (13,939,240 bytes as committed). |
+| `crates/gg/src/sandbox/gg-sandbox.component.wasm` | The baked component, embedded in the binary (13,941,785 bytes as committed). |
 | `crates/gg/src/sandbox/signatures.json` | The signature catalogue rendered into the system prompt. |
 
 Committing them follows the precedent the `foray-ref-*` guests already set, and it is

@@ -715,10 +715,11 @@ fn a_turn_header_reports_the_results_own_cost_with_separators() {
 // Agent-managed context: the context-usage signal
 // ---------------------------------------------------------------------------
 
-/// The default options: an agent with both reclaim tools and a five-file breakdown.
+/// The default options: a tool-calling agent with both reclaim tools and a five-file breakdown.
 fn signal_options() -> UsageSignalOptions {
     UsageSignalOptions {
         can_evict: true,
+        can_close_views: false,
         can_archive: true,
         top_file_views: 5,
     }

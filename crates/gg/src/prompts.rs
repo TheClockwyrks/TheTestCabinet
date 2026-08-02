@@ -1566,6 +1566,12 @@ pub struct ContextPressureContext {
     pub categories: Vec<UsageCategoryView>,
     /// Whether to point the agent at `evict_file_view`.
     pub can_evict: bool,
+    /// Whether to point the agent at `view.close`, which is the reclaim call under
+    /// [responses-as-code](crate::agent) and the only one that can close a **text view**. Without
+    /// this the block can report a `Text Views` band whose tokens the agent is told no way to get
+    /// back — the exact defect the per-file breakdown's `can_evict` gate exists to prevent, one
+    /// level up.
+    pub can_close_views: bool,
     /// Whether to point the agent at `archive_thread`.
     pub can_archive: bool,
 }

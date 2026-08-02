@@ -244,7 +244,10 @@ function installDenials(): void {
  * Route every `console` method to the one `feedback.log` sink.
  *
  * There is no real stdout here, so there is no level distinction to preserve: `console.error` and
- * `console.log` are the same channel, and gg shows the model the tail of it.
+ * `console.log` are the same channel, and that channel goes to the run's **operator** — it is
+ * captured into the run record and shown on the console, and the model never sees a line of it.
+ * The way a program shows something to itself is `view.openText` / `view.openFile`, which put one
+ * message per view into the next prompt.
  */
 function installConsole(): void {
   const emit = (args: unknown[]): void => {
@@ -477,7 +480,8 @@ export function run(program: string, enabled: string[], ending: EndingKind): voi
         kind: "other",
         message:
           "your program returned a Promise. Every tool function is synchronous and returns its " +
-          "value directly — remove `async` and `await`, and `console.log` what you want to see.",
+          "value directly — remove `async` and `await`, and open a view on what you want to see " +
+          "(`view.openText(label, body)`).",
         location: undefined,
       });
       return;

@@ -49,6 +49,7 @@ Context Usage:
 - Text Views: 3.4%
 - Tasks: 2.0%
 Use `evict_file_view` to drop file views you no longer need; you can always read the file again.
+Use `view.close` to close views you no longer need, naming a file view's path or a text view's label. A file view you can always open again; a text view holds the only copy of what you composed, so write anything you still need to a file before closing it.
 Use `archive_thread` to move whole turns into the searchable archive, naming them by the turn numbers on your results.
 ```
 
@@ -58,13 +59,16 @@ with the per-file list nested inside the file-view band rather than added to it.
 holding nothing is **left out** rather than listed at `0.0%`: the block exists to say where
 the window is going, and a column of zeroes says nothing. The figures are computed over the
 conversation items alone, so the block never accounts for itself. The closing lines name
-only the reclaim tools this agent actually has — the two are separately
-[ablatable](/gg/toolset-ablation/), and pointing an agent at a call it was not given is
-worse than saying nothing at all.
+only the reclaim calls this agent actually has — `evict_file_view` and `archive_thread` are
+separately [ablatable](/gg/toolset-ablation/) and are read off the registry, `view.close`
+appears only under [responses-as-code](/gg/responses-as-code/) because that is where the
+`view` object exists at all, and pointing an agent at a call it was not given is worse than
+saying nothing at all.
 
 **Text Views** is the band a [responses-as-code](/gg/responses-as-code/) agent fills itself,
-with `view.openText`, and it is the one band an agent is always able to act on: `view.close`
-is bound whatever the capability set says. Unlike the file-view band it carries no nested
+with `view.openText`, and it is the one band such an agent is always able to act on:
+`view.close` is bound into every program's scope whatever the rest of the capability set
+says, so the block can always name it. Unlike the file-view band it carries no nested
 list, because its selectors are labels the agent chose and `view.current()` answers the same
 question on demand, for free, without spending a slot of the window every turn to do it.
 

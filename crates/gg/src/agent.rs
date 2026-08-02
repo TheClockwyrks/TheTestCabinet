@@ -7744,6 +7744,10 @@ struct AmcSetup {
     /// Whether this agent actually has `evict_file_view` — read off the registry rather than assumed
     /// from the capability, so the per-file breakdown appears exactly when a call could act on it.
     can_evict: bool,
+    /// Whether this agent is in [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode and so has
+    /// `view.close`. Read off the capability rather than the registry because `view` is not a tool:
+    /// it is bound into every program's scope unconditionally, so code mode *is* the condition.
+    can_close_views: bool,
     /// Whether this agent actually has `archive_thread`. This is also what arms the per-result
     /// [turn headers](ContextModel::turn_header): the header exists to give an archival its turn
     /// numbers, so an agent that cannot archive should not be paying for one on every result.
@@ -7767,6 +7771,7 @@ impl AmcSetup {
             archive,
             archive_id,
             can_evict: registry.offers(EVICT_FILE_VIEW_TOOL),
+            can_close_views: profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
             can_archive: registry.offers(ARCHIVE_THREAD_TOOL),
             top_file_views: profile
                 .capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
@@ -7780,6 +7785,7 @@ impl AmcSetup {
     fn signal_options(&self) -> UsageSignalOptions {
         UsageSignalOptions {
             can_evict: self.can_evict,
+            can_close_views: self.can_close_views,
             can_archive: self.can_archive,
             top_file_views: self.top_file_views,
         }

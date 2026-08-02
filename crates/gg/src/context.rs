@@ -515,6 +515,12 @@ pub struct UsageSignalOptions {
     /// omitted entirely — a ranked list of reads it cannot drop is exactly the noise this block was
     /// rewritten to remove.
     pub can_evict: bool,
+    /// Whether this agent is in [responses-as-code](crate::agent) mode, where the always-bound
+    /// `view` object gives it `view.close`. That is the only call that can close a
+    /// [text view](GgContextSource::TextView), so without it the block can name a `Text Views` band
+    /// and offer no way to reclaim it — a category the agent cannot act on, which is precisely what
+    /// this struct exists to prevent.
+    pub can_close_views: bool,
     /// Whether this agent has `archive_thread`, which decides whether the block closes by pointing at
     /// it — and, upstream of that, whether tool results carry
     /// [turn headers](ContextModel::turn_header) at all.
@@ -1384,6 +1390,7 @@ impl ContextModel {
             overall: percent(total),
             categories,
             can_evict: options.can_evict,
+            can_close_views: options.can_close_views,
             can_archive: options.can_archive,
         }))
     }

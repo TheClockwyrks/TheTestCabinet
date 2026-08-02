@@ -649,13 +649,15 @@ declare module "test-cabinet:gg/feedback" {
   }
 
   /**
-   * One line the program produced with `console.*`. The host caps how much it keeps, and this is
-   * the only channel a program has for showing gg a value.
+   * One line the program produced with `console.*`. The host caps how much it keeps, and what it
+   * keeps goes to the run's **operator** — the run record and the console. It is not a channel into
+   * the model's context: material a program wants to see on its next turn goes through
+   * `test-cabinet:gg/views` instead, one prompt message per open view.
    */
   export function log(line: string): void;
   /**
    * The program ended with a `return` that carried a value, which is discarded. Called at most once
-   * per run, so the host can tell the model to log it instead.
+   * per run, so the host can tell the model to open a view on it instead.
    */
   export function noteReturn(): void;
   /** A tool call happened after the program ended. Called at most once per run. */

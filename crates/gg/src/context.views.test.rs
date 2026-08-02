@@ -702,13 +702,18 @@ fn a_compaction_drops_text_views_like_any_other_ephemeral_item() {
     assert!(ctx.open_text_views().is_empty());
 }
 
+/// The usage block's whole premise is that it only reports what the reading agent can *do*
+/// something about. A text view is reclaimed by `view.close` and by nothing else — `evict_file_view`
+/// cannot touch it — so a block that names the `Text Views` band must also name that call, or it has
+/// charged the agent for tokens and told it no way to get them back.
 #[test]
-fn the_context_usage_signal_names_the_text_view_band() {
+fn the_context_usage_signal_names_the_text_view_band_and_the_call_that_closes_it() {
     let mut ctx = code_model();
     ctx.begin_turn(1);
     ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
     ctx.refresh_context_usage_signal(UsageSignalOptions {
         can_evict: true,
+        can_close_views: true,
         can_archive: false,
         top_file_views: 3,
     });
@@ -717,13 +722,44 @@ fn the_context_usage_signal_names_the_text_view_band() {
         .prompt_items()
         .find(|item| item.slot == PromptSlot::ContextUsage)
         .expect("a usage signal");
+    let text = signal
+        .message
+        .content
+        .as_deref()
+        .expect("the signal carries text");
     assert!(
-        signal
-            .message
-            .content
-            .as_deref()
-            .is_some_and(|text| text.contains("Text Views")),
-        "the signal must name the band the agent can act on: {:?}",
-        signal.message.content
+        text.contains("Text Views"),
+        "the signal must name the band the agent can act on: {text}"
     );
+    assert!(
+        text.contains("`view.close`"),
+        "the signal must name the only call that reclaims that band: {text}"
+    );
+}
+
+/// The mirror of the above: a tool-calling agent has no `view` object, so the block must not point
+/// at a call it cannot make. This is the same rule that keeps `evict_file_view` out of the block for
+/// an agent whose registry withholds it.
+#[test]
+fn a_tool_calling_agent_is_never_pointed_at_view_close() {
+    let mut ctx = code_model();
+    ctx.begin_turn(1);
+    ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
+    ctx.refresh_context_usage_signal(UsageSignalOptions {
+        can_evict: true,
+        can_close_views: false,
+        can_archive: false,
+        top_file_views: 3,
+    });
+
+    let signal = ctx
+        .prompt_items()
+        .find(|item| item.slot == PromptSlot::ContextUsage)
+        .expect("a usage signal");
+    let text = signal
+        .message
+        .content
+        .as_deref()
+        .expect("the signal carries text");
+    assert!(!text.contains("view.close"), "{text}");
 }
