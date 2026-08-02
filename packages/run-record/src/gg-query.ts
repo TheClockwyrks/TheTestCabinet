@@ -545,3 +545,133 @@ export type GgQueryBatchResponse = {
    */
   results: Array<GgQueryResponse>;
 };
+
+/**
+ * An operator's saved TCQ query: a question worth keeping, with the range it was
+ * asked over.
+ */
+export type GgSavedQuery = {
+  /**
+   * The query's opaque id (minted on create).
+   */
+  id: string;
+  /**
+   * The operator-chosen display name.
+   */
+  name: string;
+  /**
+   * A one-line note on what the query answers. Empty when unset.
+   */
+  description: string;
+  /**
+   * The query as TCQ **source text**, exactly as it was typed — never its
+   * compiled form, so `now-30d` re-resolves on every run.
+   */
+  query: string;
+  /**
+   * The time range the query was saved with, as the picker's token (`24h`, `7d`,
+   * `30d`, `90d`, `1y`, `all`). Beside the text rather than inside it, because the
+   * range is a control rather than an edit.
+   */
+  rangeId: string;
+  /**
+   * RFC 3339 of when the query was last saved.
+   */
+  updatedAt: string;
+};
+
+/**
+ * The create/update body for a saved query (the server assigns `id` and
+ * `updatedAt`).
+ */
+export type GgSavedQueryInput = {
+  /**
+   * The operator-chosen display name.
+   */
+  name: string;
+  /**
+   * A one-line note on what the query answers.
+   */
+  description: string;
+  /**
+   * The query as TCQ source text.
+   */
+  query: string;
+  /**
+   * The time range token to save with it. Defaults to the whole corpus.
+   */
+  rangeId: string;
+};
+
+/**
+ * One panel of a [dashboard](GgDashboard): a heading, a query, and how wide it sits.
+ */
+export type GgDashboardPanel = {
+  /**
+   * The panel's heading.
+   */
+  title: string;
+  /**
+   * The panel's query, as TCQ **source text**. A copy, even when the panel was
+   * built from a saved query — see the module docs.
+   */
+  query: string;
+  /**
+   * How many of the [twelve](DASHBOARD_COLUMNS) grid columns the panel spans,
+   * clamped to `1..=12`.
+   */
+  width: number;
+};
+
+/**
+ * An operator's saved dashboard: panels of TCQ over one board-level range.
+ */
+export type GgDashboard = {
+  /**
+   * The dashboard's opaque id (minted on create).
+   */
+  id: string;
+  /**
+   * The operator-chosen display name.
+   */
+  name: string;
+  /**
+   * A one-line note on what the board is for. Empty when unset.
+   */
+  description: string;
+  /**
+   * The board's panels, in render order, at most [`MAX_DASHBOARD_PANELS`].
+   */
+  panels: Array<GgDashboardPanel>;
+  /**
+   * The board-level time range, as the picker's token. **One per board** — a panel
+   * never gets its own.
+   */
+  rangeId: string;
+  /**
+   * RFC 3339 of when the dashboard was last saved.
+   */
+  updatedAt: string;
+};
+
+/**
+ * The create/update body for a dashboard (the server assigns `id` and `updatedAt`).
+ */
+export type GgDashboardInput = {
+  /**
+   * The operator-chosen display name.
+   */
+  name: string;
+  /**
+   * A one-line note on what the board is for.
+   */
+  description: string;
+  /**
+   * The board's panels, in render order.
+   */
+  panels: Array<GgDashboardPanel>;
+  /**
+   * The board-level time range token. Defaults to the whole corpus.
+   */
+  rangeId: string;
+};

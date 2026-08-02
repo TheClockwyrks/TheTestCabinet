@@ -1,6 +1,9 @@
 import { Route } from "react-router";
 import { routePatterns } from "../../routes";
+import { GgDashboardViewPage } from "./GgDashboardViewPage";
+import { GgDashboardsPage } from "./GgDashboardsPage";
 import { GgDiscoverPage } from "./GgDiscoverPage";
+import { GgSavedQueriesPage } from "./GgSavedQueriesPage";
 import { GgSessionsPage } from "./GgSessionsPage";
 import { GgLegacyRedirect } from "./discover/GgLegacyRedirect";
 
@@ -10,8 +13,12 @@ import { GgLegacyRedirect } from "./discover/GgLegacyRedirect";
 // these only when the host `canExecute`. Returned as a fragment so the app's single
 // <Routes> stitches every section's routes together.
 //
-// The index is the recorded sessions; `/gg/query` is Discover, the TCQ surface.
-// Dashboards and Saved mount here when they land.
+// The index is the recorded sessions; `/gg/query` is Discover, the TCQ surface;
+// `/gg/dashboards` is the boards list with `/gg/dashboards/:dashboardId` rendering one
+// (the built-in overview answers to the reserved `overview` id, resolved from code rather
+// than from the store); `/gg/saved` is the operator's saved queries. The static
+// `/gg/dashboards` outranks nothing it could collide with — its only sibling under that
+// prefix is its own `:dashboardId` child.
 //
 // The two `/gg/aggregate*` routes are the **legacy** aggregate surface's addresses. The
 // widget builder behind them is gone, but the best property of that implementation was
@@ -23,6 +30,15 @@ export function ggAnalysisRoutes(canExecute: boolean) {
     <>
       <Route path={routePatterns.ggAnalysis} element={<GgSessionsPage />} />
       <Route path={routePatterns.ggAnalysisDiscover} element={<GgDiscoverPage />} />
+      <Route
+        path={routePatterns.ggAnalysisDashboards}
+        element={<GgDashboardsPage />}
+      />
+      <Route
+        path={routePatterns.ggAnalysisDashboard}
+        element={<GgDashboardViewPage />}
+      />
+      <Route path={routePatterns.ggAnalysisSaved} element={<GgSavedQueriesPage />} />
       <Route
         path={routePatterns.ggAnalysisAggregateLegacy}
         element={<GgLegacyRedirect />}

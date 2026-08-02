@@ -179,8 +179,8 @@ export const routes = {
   // The gg **analysis** section (consoles only): its own top-level `/gg` space,
   // entered from the topbar's analyze control. It keeps the app's chrome but swaps
   // the mark for a back arrow and the section nav for gg's own tabs. It opens on
-  // the recorded sessions; Dashboards and Saved mount their own routes here when
-  // they land.
+  // the recorded sessions, with Dashboards, Discover and Saved as its siblings
+  // below.
   ggAnalysis: (): string => "/gg",
   // **Discover** — the TCQ query surface. The whole query rides in the URL as its
   // **source text**, never its compiled form: that is what keeps `now-30d`
@@ -193,6 +193,26 @@ export const routes = {
     if (opts?.range) params.set("range", opts.range);
     const search = params.toString();
     return search ? `/gg/query?${search}` : "/gg/query";
+  },
+  // **Dashboards** — the boards list. The built-in overview lives at the
+  // `overview` id below rather than in this list's storage: it is defined as
+  // ordinary query text through the same machinery a user board uses, so it cannot
+  // silently rot the way a hardcoded breakdown did.
+  ggAnalysisDashboards: (): string => "/gg/dashboards",
+  // One board, rendered. Deep-linkable, because a board is the thing people leave
+  // open — and answered by exactly one batched request whatever its panel count.
+  ggAnalysisDashboard: (dashboardId: string): string =>
+    `/gg/dashboards/${encodeURIComponent(dashboardId)}`,
+  // **Saved** — the operator's saved queries. `new` prefills the form from
+  // Discover's editor (`?q=` as **text**, `?range=` as the picker token), so a
+  // question is composed where the completer and the field sidebar are and saved
+  // without a second editor existing anywhere.
+  ggAnalysisSaved: (opts?: { create?: { query: string; range?: string } }): string => {
+    if (!opts?.create) return "/gg/saved";
+    const params = new URLSearchParams({ new: "1" });
+    if (opts.create.query) params.set("q", opts.create.query);
+    if (opts.create.range) params.set("range", opts.create.range);
+    return `/gg/saved?${params.toString()}`;
   },
   // The run's default (Verdict) tab. `edit` opens the review editor in revise
   // mode — used by the single-review page's Edit control to return here with the
@@ -339,6 +359,11 @@ export const routePatterns = {
   // list, and Discover is its sibling.
   ggAnalysis: "/gg",
   ggAnalysisDiscover: "/gg/query",
+  // Dashboards and Saved. `/gg/dashboards` is static and `/gg/dashboards/:id` its
+  // child, so neither collides with `/gg/query` or the legacy `/gg/aggregate*`.
+  ggAnalysisDashboards: "/gg/dashboards",
+  ggAnalysisDashboard: "/gg/dashboards/:dashboardId",
+  ggAnalysisSaved: "/gg/saved",
   // The **legacy** aggregate-surface routes. The widget builder and its results
   // page are gone, but the best property of that implementation was that the URL
   // *was* the query — so an old link is transcoded into equivalent TCQ text and

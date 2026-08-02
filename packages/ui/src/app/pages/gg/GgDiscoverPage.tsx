@@ -24,7 +24,7 @@
 // self-inflicted load test, and a result list that reshuffles under a half-typed clause is
 // harder to read than one that waits.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import type {
   GgFieldCatalog,
   GgQuery,
@@ -47,6 +47,7 @@ import {
   rangeFilter,
 } from "./discover/TimeRangePicker";
 import { GG_CHROME } from "./ggChrome";
+import { routes } from "../../routes";
 import styles from "./discover/GgDiscover.module.scss";
 
 /** An empty catalog — what the sidebar and the completer read before the fields land, and
@@ -198,6 +199,18 @@ export function GgDiscoverPage() {
         <div className={styles.main}>
           <div className={styles.controls}>
             <TimeRangePicker value={range} onChange={(next) => setRange(next.id)} />
+            {/* Saving carries the **text** and the range token, never the compiled
+                query, so the saved question re-resolves `now-30d` every time it runs.
+                It hands off to the Saved tab's form rather than opening a second
+                editor here: one editor, one place a name is typed. */}
+            <Link
+              className={styles.savedLink}
+              to={routes.ggAnalysisSaved({
+                create: { query: urlQuery, range: range.id },
+              })}
+            >
+              Save this query
+            </Link>
           </div>
 
           <QueryEditor

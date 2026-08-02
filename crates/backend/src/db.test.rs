@@ -3855,3 +3855,97 @@ async fn backfill_code_analyzer_version_lifts_the_column_but_analyses_nothing() 
         candidates.len(),
     );
 }
+
+#[tokio::test]
+async fn gg_saved_queries_round_trip_and_scope_to_account() {
+    let db = Db::connect_in_memory().await.unwrap();
+    assert!(db.list_gg_saved_queries("u1").await.unwrap().is_empty());
+
+    let saved = crate::api::GgSavedQuery {
+        id: "q1".to_string(),
+        name: "overflow by model".to_string(),
+        description: "how often context ran out".to_string(),
+        query: "has.summary:true | stats avg(summary.ranOutOfContext) by model".to_string(),
+        range_id: "30d".to_string(),
+        updated_at: "2026-08-01T00:00:00Z".to_string(),
+    };
+    db.insert_gg_saved_query("u1", &saved).await.unwrap();
+
+    // Stored and returned as source text — nothing on the read path parses it, so a
+    // relative range in the text survives the round trip verbatim.
+    let got = db.get_gg_saved_query("u1", "q1").await.unwrap().unwrap();
+    assert_eq!(got, saved);
+
+    // The corpus is deployment-wide; the *view* over it is not.
+    assert!(db.get_gg_saved_query("u2", "q1").await.unwrap().is_none());
+    assert!(db.list_gg_saved_queries("u2").await.unwrap().is_empty());
+
+    // Update in place (owner only).
+    let mut edited = saved.clone();
+    edited.query = "| stats count() by model".to_string();
+    edited.range_id = "all".to_string();
+    assert!(db.update_gg_saved_query("u1", &edited).await.unwrap());
+    assert!(!db.update_gg_saved_query("u2", &edited).await.unwrap());
+    let got = db.get_gg_saved_query("u1", "q1").await.unwrap().unwrap();
+    assert_eq!(got.query, "| stats count() by model");
+    assert_eq!(got.range_id, "all");
+
+    // Delete (owner only).
+    assert!(!db.delete_gg_saved_query("u2", "q1").await.unwrap());
+    assert!(db.delete_gg_saved_query("u1", "q1").await.unwrap());
+    assert!(db.list_gg_saved_queries("u1").await.unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn gg_dashboards_round_trip_and_scope_to_account() {
+    let db = Db::connect_in_memory().await.unwrap();
+    assert!(db.list_gg_dashboards("u1").await.unwrap().is_empty());
+
+    let board = crate::api::GgDashboard {
+        id: "d1".to_string(),
+        name: "compaction ablation".to_string(),
+        description: String::new(),
+        panels: vec![
+            crate::api::GgDashboardPanel {
+                title: "Sessions".to_string(),
+                query: "| stats count() by bucket(started, 1d)".to_string(),
+                width: 12,
+            },
+            crate::api::GgDashboardPanel {
+                title: "Outcomes".to_string(),
+                query: "| stats count() by state".to_string(),
+                width: 6,
+            },
+        ],
+        range_id: "90d".to_string(),
+        updated_at: "2026-08-01T00:00:00Z".to_string(),
+    };
+    db.insert_gg_dashboard("u1", &board).await.unwrap();
+
+    // The panel list is JSON text in the row, read and written whole — and it comes back
+    // in **render order**, which is the only binding between a panel and its answer once
+    // the board is drawn from one batched request.
+    let got = db.get_gg_dashboard("u1", "d1").await.unwrap().unwrap();
+    assert_eq!(got, board);
+
+    assert!(db.get_gg_dashboard("u2", "d1").await.unwrap().is_none());
+    assert!(db.list_gg_dashboards("u2").await.unwrap().is_empty());
+
+    let mut edited = board.clone();
+    edited.panels.truncate(1);
+    assert!(db.update_gg_dashboard("u1", &edited).await.unwrap());
+    assert!(!db.update_gg_dashboard("u2", &edited).await.unwrap());
+    assert_eq!(
+        db.get_gg_dashboard("u1", "d1")
+            .await
+            .unwrap()
+            .unwrap()
+            .panels
+            .len(),
+        1
+    );
+
+    assert!(!db.delete_gg_dashboard("u2", "d1").await.unwrap());
+    assert!(db.delete_gg_dashboard("u1", "d1").await.unwrap());
+    assert!(db.list_gg_dashboards("u1").await.unwrap().is_empty());
+}

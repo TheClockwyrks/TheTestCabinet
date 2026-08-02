@@ -1,0 +1,34 @@
+{
+  "$id": "https://docs.testcabinet.ai/schema/gg/saved-query.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "An operator's saved TCQ query: a question worth keeping, with the range it was\nasked over.",
+  "properties": {
+    "description": {
+      "description": "A one-line note on what the query answers. Empty when unset.",
+      "type": "string"
+    },
+    "id": {
+      "description": "The query's opaque id (minted on create).",
+      "type": "string"
+    },
+    "name": {
+      "description": "The operator-chosen display name.",
+      "type": "string"
+    },
+    "query": {
+      "description": "The query as TCQ **source text**, exactly as it was typed — never its\ncompiled form, so `now-30d` re-resolves on every run.",
+      "type": "string"
+    },
+    "rangeId": {
+      "description": "The time range the query was saved with, as the picker's token (`24h`, `7d`,\n`30d`, `90d`, `1y`, `all`). Beside the text rather than inside it, because the\nrange is a control rather than an edit.",
+      "type": "string"
+    },
+    "updatedAt": {
+      "description": "RFC 3339 of when the query was last saved.",
+      "type": "string"
+    }
+  },
+  "required": ["id", "name", "description", "query", "rangeId", "updatedAt"],
+  "title": "GgSavedQuery",
+  "type": "object"
+}

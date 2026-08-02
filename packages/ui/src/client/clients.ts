@@ -50,9 +50,15 @@ import type {
 import type { GgReplayRecord } from "@test-cabinet/run-record/gg-replay";
 import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import type {
+  GgDashboard,
+  GgDashboardInput,
   GgFieldCatalog,
   GgQuery,
+  GgQueryBatch,
+  GgQueryBatchResponse,
   GgQueryResponse,
+  GgSavedQuery,
+  GgSavedQueryInput,
 } from "@test-cabinet/run-record/gg-query";
 import type {
   CoverageGroup,
@@ -409,6 +415,20 @@ export interface BackendClient {
    */
   runGgQuery?(query: GgQuery, token: string): Promise<GgQueryResponse>;
   /**
+   * Evaluate a whole dashboard's worth of queries against **one** read of the
+   * document index (`POST /gg/query/batch`), results in request order.
+   *
+   * A board is one request, not one per panel. The panels of a board almost always
+   * share a filter and differ only in their aggregation, so answering them
+   * separately re-scans the same corpus N times — and because the index refreshes on
+   * a timer, two panels of the same board can come back from two different corpora,
+   * which reads as a data bug rather than as a stale cache.
+   */
+  runGgQueryBatch?(
+    batch: GgQueryBatch,
+    token: string,
+  ): Promise<GgQueryBatchResponse>;
+  /**
    * The corpus's field catalog (`GET /gg/fields`): every dotted field, its kind, its
    * **document count** and its top values.
    *
@@ -417,6 +437,48 @@ export interface BackendClient {
    * field visible *before* a query returns nothing rather than after.
    */
   getGgFields?(token: string): Promise<GgFieldCatalog>;
+
+  // The operator's saved **views** over that corpus (console-only, Bearer). The
+  // asymmetry is the model: the corpus is deployment-wide, a view over it is
+  // personal — so these carry the token as an owner filter while the query calls
+  // above carry it only as a gate. Both store query **source text**, so a relative
+  // `now-30d` re-resolves on every run and a later grammar addition never
+  // invalidates something already saved.
+  /** The operator's saved queries (`GET /gg/saved-queries`). */
+  listGgSavedQueries?(token: string): Promise<GgSavedQuery[]>;
+  /** Save a query (`POST /gg/saved-queries`), returning it with its new id. */
+  createGgSavedQuery?(
+    input: GgSavedQueryInput,
+    token: string,
+  ): Promise<GgSavedQuery>;
+  /** Update a saved query in place (`PUT /gg/saved-queries/{id}`). */
+  updateGgSavedQuery?(
+    id: string,
+    input: GgSavedQueryInput,
+    token: string,
+  ): Promise<GgSavedQuery>;
+  /** Delete a saved query (`DELETE /gg/saved-queries/{id}`). */
+  deleteGgSavedQuery?(id: string, token: string): Promise<void>;
+  /** The operator's dashboards (`GET /gg/dashboards`). */
+  listGgDashboards?(token: string): Promise<GgDashboard[]>;
+  /**
+   * One dashboard by id (`GET /gg/dashboards/{id}`), so a board is deep-linkable
+   * without loading every board the account owns.
+   */
+  getGgDashboard?(id: string, token: string): Promise<GgDashboard>;
+  /** Create a dashboard (`POST /gg/dashboards`), returning it with its new id. */
+  createGgDashboard?(
+    input: GgDashboardInput,
+    token: string,
+  ): Promise<GgDashboard>;
+  /** Update a dashboard in place (`PUT /gg/dashboards/{id}`). */
+  updateGgDashboard?(
+    id: string,
+    input: GgDashboardInput,
+    token: string,
+  ): Promise<GgDashboard>;
+  /** Delete a dashboard (`DELETE /gg/dashboards/{id}`). */
+  deleteGgDashboard?(id: string, token: string): Promise<void>;
 
   // The operator's saved harness/gg-config/model comparisons (console-only,
   // Bearer) — the A/B-testing capability that fixes every controlled variable and

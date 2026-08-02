@@ -72,9 +72,15 @@ import type {
 import type { GgReplayRecord } from "@test-cabinet/run-record/gg-replay";
 import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import type {
+  GgDashboard,
+  GgDashboardInput,
   GgFieldCatalog,
   GgQuery,
+  GgQueryBatch,
+  GgQueryBatchResponse,
   GgQueryResponse,
+  GgSavedQuery,
+  GgSavedQueryInput,
 } from "@test-cabinet/run-record/gg-query";
 import type {
   CoverageGroup,
@@ -671,8 +677,93 @@ export function createHttpBackend(baseUrl: string): BackendClient {
       return postJson<GgQueryResponse>(baseUrl, "/gg/query", query, token);
     },
 
+    // A whole board in one request. Not an optimisation: the batch is what makes
+    // every panel of a board answer from the same index read, so two panels can
+    // never disagree because the corpus refreshed between them.
+    async runGgQueryBatch(
+      batch: GgQueryBatch,
+      token: string,
+    ): Promise<GgQueryBatchResponse> {
+      return postJson<GgQueryBatchResponse>(
+        baseUrl,
+        "/gg/query/batch",
+        batch,
+        token,
+      );
+    },
+
     async getGgFields(token: string): Promise<GgFieldCatalog> {
       return getJson<GgFieldCatalog>(baseUrl, "/gg/fields", token);
+    },
+
+    // The operator's saved views over the corpus. Per-account, so every call carries
+    // the bearer token as an owner filter rather than only as a gate.
+    async listGgSavedQueries(token: string): Promise<GgSavedQuery[]> {
+      return getJson<GgSavedQuery[]>(baseUrl, "/gg/saved-queries", token);
+    },
+
+    async createGgSavedQuery(
+      input: GgSavedQueryInput,
+      token: string,
+    ): Promise<GgSavedQuery> {
+      return postJson<GgSavedQuery>(baseUrl, "/gg/saved-queries", input, token);
+    },
+
+    async updateGgSavedQuery(
+      id: string,
+      input: GgSavedQueryInput,
+      token: string,
+    ): Promise<GgSavedQuery> {
+      return putJson<GgSavedQuery>(
+        baseUrl,
+        `/gg/saved-queries/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteGgSavedQuery(id: string, token: string): Promise<void> {
+      await delVoid(
+        baseUrl,
+        `/gg/saved-queries/${encodeURIComponent(id)}`,
+        token,
+      );
+    },
+
+    async listGgDashboards(token: string): Promise<GgDashboard[]> {
+      return getJson<GgDashboard[]>(baseUrl, "/gg/dashboards", token);
+    },
+
+    async getGgDashboard(id: string, token: string): Promise<GgDashboard> {
+      return getJson<GgDashboard>(
+        baseUrl,
+        `/gg/dashboards/${encodeURIComponent(id)}`,
+        token,
+      );
+    },
+
+    async createGgDashboard(
+      input: GgDashboardInput,
+      token: string,
+    ): Promise<GgDashboard> {
+      return postJson<GgDashboard>(baseUrl, "/gg/dashboards", input, token);
+    },
+
+    async updateGgDashboard(
+      id: string,
+      input: GgDashboardInput,
+      token: string,
+    ): Promise<GgDashboard> {
+      return putJson<GgDashboard>(
+        baseUrl,
+        `/gg/dashboards/${encodeURIComponent(id)}`,
+        input,
+        token,
+      );
+    },
+
+    async deleteGgDashboard(id: string, token: string): Promise<void> {
+      await delVoid(baseUrl, `/gg/dashboards/${encodeURIComponent(id)}`, token);
     },
 
     async listComparisons(token: string): Promise<Comparison[]> {

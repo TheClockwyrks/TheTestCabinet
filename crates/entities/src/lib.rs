@@ -16,6 +16,8 @@ pub mod comparison;
 pub mod coverage_group;
 pub mod coverage_plan;
 pub mod gg_config;
+pub mod gg_dashboard;
+pub mod gg_saved_query;
 pub mod harness_config;
 pub mod job;
 pub mod model;

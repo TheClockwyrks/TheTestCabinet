@@ -35,8 +35,8 @@ use test_cabinet_core::run_record::{
 use test_cabinet_core::test_case::TestType;
 use test_cabinet_entities::{
     case_reference_build, case_reference_sheet, comparison, coverage_group, coverage_plan,
-    gg_config, harness_config, job, model, model_alias, model_price, publish_job, review,
-    review_plan, review_revision, run, run_link, snapshot_state, tournament,
+    gg_config, gg_dashboard, gg_saved_query, harness_config, job, model, model_alias, model_price,
+    publish_job, review, review_plan, review_revision, run, run_link, snapshot_state, tournament,
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -1961,6 +1961,204 @@ impl Db {
         Ok(res.rows_affected > 0)
     }
 
+    /// Every saved gg query the account owns, ordered by display name.
+    ///
+    /// The gg *corpus* is deployment-wide; a saved **view** over it is personal, which
+    /// is why this — and nothing on the query path — filters by account.
+    pub async fn list_gg_saved_queries(
+        &self,
+        user_id: &str,
+    ) -> Result<Vec<crate::api::GgSavedQuery>> {
+        Ok(gg_saved_query::Entity::find()
+            .filter(gg_saved_query::Column::UserId.eq(user_id))
+            .order_by_asc(gg_saved_query::Column::Name)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(gg_saved_query_from_row)
+            .collect())
+    }
+
+    /// One saved gg query by id, scoped to the owning account (`None` when the id is
+    /// unknown or belongs to someone else).
+    pub async fn get_gg_saved_query(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<crate::api::GgSavedQuery>> {
+        let Some(row) = gg_saved_query::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(gg_saved_query_from_row(row)))
+    }
+
+    /// Insert a new saved gg query (id already minted by the handler).
+    pub async fn insert_gg_saved_query(
+        &self,
+        user_id: &str,
+        saved: &crate::api::GgSavedQuery,
+    ) -> Result<()> {
+        gg_saved_query::ActiveModel {
+            id: Set(saved.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(saved.name.clone()),
+            description: Set(saved.description.clone()),
+            query_text: Set(saved.query.clone()),
+            range_id: Set(saved.range_id.clone()),
+            updated_at: Set(saved.updated_at.clone()),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Update a saved gg query in place, scoped to the owning account. Returns whether
+    /// a row matched.
+    pub async fn update_gg_saved_query(
+        &self,
+        user_id: &str,
+        saved: &crate::api::GgSavedQuery,
+    ) -> Result<bool> {
+        let res = gg_saved_query::Entity::update_many()
+            .col_expr(
+                gg_saved_query::Column::Name,
+                Expr::value(saved.name.clone()),
+            )
+            .col_expr(
+                gg_saved_query::Column::Description,
+                Expr::value(saved.description.clone()),
+            )
+            .col_expr(
+                gg_saved_query::Column::QueryText,
+                Expr::value(saved.query.clone()),
+            )
+            .col_expr(
+                gg_saved_query::Column::RangeId,
+                Expr::value(saved.range_id.clone()),
+            )
+            .col_expr(
+                gg_saved_query::Column::UpdatedAt,
+                Expr::value(saved.updated_at.clone()),
+            )
+            .filter(gg_saved_query::Column::Id.eq(saved.id.clone()))
+            .filter(gg_saved_query::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a saved gg query, scoped to the owning account. Returns whether a row
+    /// was removed. Dashboards built from it are unaffected — a panel carries its own
+    /// copy of the text.
+    pub async fn delete_gg_saved_query(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = gg_saved_query::Entity::delete_many()
+            .filter(gg_saved_query::Column::Id.eq(id))
+            .filter(gg_saved_query::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Every gg dashboard the account owns, ordered by display name.
+    pub async fn list_gg_dashboards(&self, user_id: &str) -> Result<Vec<crate::api::GgDashboard>> {
+        gg_dashboard::Entity::find()
+            .filter(gg_dashboard::Column::UserId.eq(user_id))
+            .order_by_asc(gg_dashboard::Column::Name)
+            .all(&self.conn())
+            .await?
+            .into_iter()
+            .map(gg_dashboard_from_row)
+            .collect()
+    }
+
+    /// One gg dashboard by id, scoped to the owning account (`None` when the id is
+    /// unknown or belongs to someone else).
+    pub async fn get_gg_dashboard(
+        &self,
+        user_id: &str,
+        id: &str,
+    ) -> Result<Option<crate::api::GgDashboard>> {
+        let Some(row) = gg_dashboard::Entity::find_by_id(id.to_string())
+            .one(&self.conn())
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.user_id != user_id {
+            return Ok(None);
+        }
+        Ok(Some(gg_dashboard_from_row(row)?))
+    }
+
+    /// Insert a new gg dashboard (id already minted by the handler).
+    pub async fn insert_gg_dashboard(
+        &self,
+        user_id: &str,
+        board: &crate::api::GgDashboard,
+    ) -> Result<()> {
+        gg_dashboard::ActiveModel {
+            id: Set(board.id.clone()),
+            user_id: Set(user_id.to_string()),
+            name: Set(board.name.clone()),
+            description: Set(board.description.clone()),
+            panels_json: Set(serde_json::to_string(&board.panels)?),
+            range_id: Set(board.range_id.clone()),
+            updated_at: Set(board.updated_at.clone()),
+        }
+        .insert(&self.conn())
+        .await?;
+        Ok(())
+    }
+
+    /// Update a gg dashboard in place, scoped to the owning account. Returns whether a
+    /// row matched.
+    pub async fn update_gg_dashboard(
+        &self,
+        user_id: &str,
+        board: &crate::api::GgDashboard,
+    ) -> Result<bool> {
+        let res = gg_dashboard::Entity::update_many()
+            .col_expr(gg_dashboard::Column::Name, Expr::value(board.name.clone()))
+            .col_expr(
+                gg_dashboard::Column::Description,
+                Expr::value(board.description.clone()),
+            )
+            .col_expr(
+                gg_dashboard::Column::PanelsJson,
+                Expr::value(serde_json::to_string(&board.panels)?),
+            )
+            .col_expr(
+                gg_dashboard::Column::RangeId,
+                Expr::value(board.range_id.clone()),
+            )
+            .col_expr(
+                gg_dashboard::Column::UpdatedAt,
+                Expr::value(board.updated_at.clone()),
+            )
+            .filter(gg_dashboard::Column::Id.eq(board.id.clone()))
+            .filter(gg_dashboard::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
+    /// Delete a gg dashboard, scoped to the owning account. Returns whether a row was
+    /// removed.
+    pub async fn delete_gg_dashboard(&self, user_id: &str, id: &str) -> Result<bool> {
+        let res = gg_dashboard::Entity::delete_many()
+            .filter(gg_dashboard::Column::Id.eq(id))
+            .filter(gg_dashboard::Column::UserId.eq(user_id))
+            .exec(&self.conn())
+            .await?;
+        Ok(res.rows_affected > 0)
+    }
+
     /// Every comparison the account owns, most-recently-updated first.
     pub async fn list_comparisons(&self, user_id: &str) -> Result<Vec<StoredComparison>> {
         comparison::Entity::find()
@@ -2286,6 +2484,33 @@ fn gg_config_from_row(row: gg_config::Model) -> Result<crate::api::GgConfig> {
         name: row.name,
         description: row.description,
         capability_set: serde_json::from_str(&row.capability_set_json)?,
+        updated_at: row.updated_at,
+    })
+}
+
+/// Rebuild a saved gg query from its stored row. Infallible: every column is a
+/// string, and the query is stored as *source text* rather than a compiled tree
+/// precisely so nothing on the read path has to parse it.
+fn gg_saved_query_from_row(row: gg_saved_query::Model) -> crate::api::GgSavedQuery {
+    crate::api::GgSavedQuery {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        query: row.query_text,
+        range_id: row.range_id,
+        updated_at: row.updated_at,
+    }
+}
+
+/// Rebuild a gg dashboard from its stored row, parsing the panel list held as JSON
+/// text.
+fn gg_dashboard_from_row(row: gg_dashboard::Model) -> Result<crate::api::GgDashboard> {
+    Ok(crate::api::GgDashboard {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        panels: serde_json::from_str(&row.panels_json)?,
+        range_id: row.range_id,
         updated_at: row.updated_at,
     })
 }

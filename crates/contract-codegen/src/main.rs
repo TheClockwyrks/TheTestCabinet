@@ -315,6 +315,11 @@ fn main() -> Result<()> {
         // evaluator is mirrored against these same shapes. The batch envelope is the
         // backend's own (a dashboard answers all its panels from one index read); the
         // public static site evaluates locally and has no use for it.
+        //
+        // The saved **views** (`/gg/saved-queries`, `/gg/dashboards`) live here too:
+        // they are per-account objects over a corpus that is not, and each one stores
+        // query *source text* rather than a compiled query — so they belong beside the
+        // language they are written in, not beside the run they describe.
         TsModule {
             file: "gg-query.ts",
             decls: ts_decls![&cfg;
@@ -327,6 +332,8 @@ fn main() -> Result<()> {
                 ggq::GgAggColumn, ggq::GgQueryResponse,
                 ggq::GgFieldKind, ggq::GgFieldValueCount, ggq::GgFieldInfo, ggq::GgFieldCatalog,
                 bapi::GgQueryBatch, bapi::GgQueryBatchResponse,
+                bapi::GgSavedQuery, bapi::GgSavedQueryInput,
+                bapi::GgDashboardPanel, bapi::GgDashboard, bapi::GgDashboardInput,
             ],
         },
         // The code-analysis contract: the deterministic, execute-nothing static read of
@@ -713,6 +720,22 @@ fn main() -> Result<()> {
             "gg/query-batch-response.schema.json",
             root_schema::<bapi::GgQueryBatchResponse>(),
         ),
+        // The operator's saved **views** over the corpus (`/gg/saved-queries`,
+        // `/gg/dashboards`) — per-account objects over a population that is not, which is
+        // the whole saved-object model. Documented beside the language they are written
+        // in rather than beside the run they describe, because what they store is query
+        // *source text*: neither schema references a run-record type at all. The
+        // dashboard owns its panel type, so that ref stays inline.
+        anon(
+            "gg/saved-query.schema.json",
+            root_schema::<bapi::GgSavedQuery>(),
+        ),
+        SchemaDoc {
+            rel_path: "gg/dashboard.schema.json",
+            root: Some("GgDashboard"),
+            owns: &["GgDashboardPanel"],
+            schema: root_schema::<bapi::GgDashboard>(),
+        },
         // The backend's run-queue (`/jobs`) control plane. These reference the core
         // run-record document by URL (the launch request, the claimed job, and the
         // driver's status update all carry or echo a `RunRecord`); any type local to

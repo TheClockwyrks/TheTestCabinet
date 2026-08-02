@@ -568,3 +568,17 @@
   color: t.$color-text-muted;
   font-size: 0.85em;
 }
+
+// The Save control in the filter row. A link rather than a button because saving is a
+// navigation: the question is carried as text to the Saved tab's form, so exactly one
+// query editor exists in the console.
+.savedLink {
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
+  text-decoration: none;
+
+  &:hover {
+    color: t.$color-text;
+    text-decoration: underline;
+  }
+}
