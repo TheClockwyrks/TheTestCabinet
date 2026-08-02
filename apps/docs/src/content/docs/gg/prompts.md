@@ -110,11 +110,10 @@ something about the run:
   tag, no prose around it, exactly one program per reply — with a top-level `return`
   named as the thing that ends it, since a model that pastes a second draft after the
   first is pasting it after a `return` — and nothing that narrates a result the model has
-  not seen yet. **No backtick fence appears anywhere in the rendered code-mode
-  prompt** — every worked example is indented instead, and a test asserts it — because an
-  example is the one part of a prompt a model copies verbatim, so a fenced one would both
-  re-teach the abolished contract and corrupt the instruction-following signal the
-  capability exists to collect.
+  not seen yet. The rule is about the shape of a **reply**, not about the shape of the
+  page it is stated on: the prompt's own worked examples *are* fenced, because a fence is
+  how a block of code reads as a block of code to whoever is reading it, and the model is
+  reading this prompt rather than sending it. What it sends is bare.
 - **Why not to fence**, gated on whether [healing](/gg/response-healing/)'s fence
   stripping is armed. With it off, a fence really is a syntax error on line 1 and the
   prompt says so; with it on, that sentence would be false — gg strips the fence and says

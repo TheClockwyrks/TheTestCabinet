@@ -597,7 +597,9 @@ on the **path**, and closes every page of it.
 **Images are not a third kind.** An image is a file view *of an image file*: the view item
 carries the picture, with the same magic-number detection, the same 8 MiB ceiling and the
 same [vision-recovery](/gg/filesystem/#models-that-cannot-see-images) behaviour the
-[native read](/gg/filesystem/#reading-images) has.
+[native read](/gg/filesystem/#reading-images) has. A view is therefore the **only** way a
+picture reaches a code agent's window — see [the caps](#the-caps-and-why-none-of-them-truncates)
+for the one number that bounds how many may be open at once.
 
 ### `fs.readFile` gets bytes; `view.openFile` shows a file
 
@@ -605,6 +607,17 @@ The separation is the point, and the prompt teaches it in exactly that one line.
 that reads forty files to grep them puts **nothing** in the window: it consumed those reads
 itself. A program that opens a view of one of them has put one file in the window, charged
 to its path, closable by its path, and countable against it.
+
+That is literal for pictures too, and it is the part worth stating twice, because a
+*description* of a mockup and a *sight* of it read almost the same in a program's output. A
+bare `fs.readFile` of a `.png` succeeds and hands the program its descriptor — label,
+format, byte size — and shows the model nothing: the result carries `shown: false` and says
+so in as many words (*`fs.readFile` reads and describes an image but does not show it to
+you; open a view of it with `view.openFile(path)` to actually look at it*). It used to be
+otherwise — a bare read attached up to four pictures to the turn's feedback, on a budget of
+its own, so one turn that both read a mockup and opened a view of it could put eight
+pictures in the window through two different doors, neither of which could see the other.
+One channel collapses that by construction rather than by reconciling two counters.
 
 ### Re-opening a selector replaces what was under it
 
@@ -644,7 +657,7 @@ behind its back is the failure mode this mechanism exists to remove.
 | `MAX_VIEW_LABEL_BYTES` | 200 | one `openText` label |
 | `MAX_OPEN_TEXT_VIEWS` | 50 | text views open at once, per agent |
 | `MAX_VIEW_OPS_PER_PROGRAM` | 100 | `openFile` + `openText` + `close` calls in one program |
-| `IMAGE_BUDGET` | 4 | pictures one turn's file views may put in the window |
+| [`imageViewCap`](#configuring-it) | 4, per agent | image-carrying **file** views open at once |
 
 An **empty label** is `invalid-argument`: a view with no selector could never be closed,
 superseded or attributed. So is an empty selector handed to `close` — a blank string is not a
@@ -652,20 +665,42 @@ name that happens to match nothing, it is a bug, and answering it with a cheerfu
 hide one. An empty **body** is allowed, because it is how a program says that something it was
 showing is now empty, and refusing it would make that unexpressible.
 
-The picture budget is worth reading twice, because there are two of them and they are
-separate on purpose. A bare `fs.readFile` of an image still attaches the picture to the
-**turn's feedback**, up to four per turn, exactly as it did before views existed — that is a
-picture the model sees once, in the report on its program. `view.openFile` instead moves the
-picture **into the view**, up to four per turn, where it stays until the view is closed. One
-number, two places a picture can land, and a program that does both can spend both.
+The last one is the only cap here that counts **occupancy** rather than events, and it has
+to. A picture is not sent once: it is re-sent whole on every request for as long as the view
+carrying it is open, so what costs the run is how many are *resident*, not how many were
+opened this turn. A per-turn budget would bound nothing that matters — four a turn is
+forty over ten turns, all of them still in the window. `imageViewCap` is therefore read off
+the live window at the moment `view.openFile` is about to attach a picture: there is no
+counter to reset, nothing that can drift from what the window actually holds, and
+`view.close(path)` frees a slot for the next mockup immediately.
 
-A picture either budget withholds is **said out loud in every place that describes it**. The
-read still succeeds and still reports what the file is; its result carries `shown: false` and
-the reason; the turn's feedback counts it (`2 image(s) were read but not shown to you: at most
-4 pictures per program`); and — this is the one that matters for a view — the view's own body
-says what the file is *instead of* saying that the image follows. A view whose picture was
-withheld must never leave the sentence `The image follows.` in the window: a model told a
-mockup is in front of it will reason about a mockup it was never shown.
+Over it **refuses**, like every other cap on this page. `view.openFile` throws
+`limit-exceeded` naming the cap and the remedy — close one with `view.close(path)`,
+`view.current()` lists what is open — **no view is opened and nothing is charged to the
+window**. The program learns at the call site, in a form it can branch on, instead of
+discovering afterwards that its window holds a view announcing a picture that is not in it.
+That last failure mode is gone by construction: there is no half-opened view left to
+describe an image the model was never shown.
+
+Three things sit outside the cap, deliberately:
+
+- A **text** view is never refused by it, however full the pictures are. The two are
+  different resources and the model should not have to close a mockup to show itself a
+  string.
+- **Re-opening a path that is already an open image view** is a supersede, not a new
+  occupant, so it is admitted at exactly the ceiling. Refusing an agent's re-read of a file
+  it is *already* looking at would be a cap punishing the case it exists to bound.
+- A **pinned** [autoloaded specification](/gg/autoload-specifications/) image occupies
+  nothing. It is the operator's choice rather than the agent's, the agent cannot close it,
+  and counting it would let a configuration that pins four mockups make the cap permanently
+  unreachable — an agent refused its first `view.openFile` of the session, with no remedy it
+  could act on.
+
+**Native tool calling stays uncapped, on purpose.** A native `read_file` of an image pushes
+its file view with no budget at all, and that did not change. Introducing a cap there to fix
+a defect in the code arm would move the **control** arm of the A/B this whole capability
+exists to measure, which is worse than an asymmetry — so the asymmetry is documented rather
+than closed.
 
 ### What the turn's feedback says about it
 
@@ -747,10 +782,11 @@ roster, the refusals, the counted log line — **plus one message per view the p
 The first is gg's report on the program; the second is the program's own material, each item
 charged to its band and tagged with its selector.
 
-A program's `fs.readFile` still pushes **no** [file view](/gg/context-visibility/): a program
-that reads forty files to search them should not put forty files in the window, and that is
-still what makes a code turn cheap. The difference is that the model can now say which of them
-it wants to keep looking at, with [`view.openFile`](#showing-yourself-things), one at a time.
+A program's `fs.readFile` still pushes **no** [file view](/gg/context-visibility/) and no
+picture: a program that reads forty files to search them should not put forty files in the
+window, and that is still what makes a code turn cheap. The difference is that the model can
+now say which of them it wants to keep looking at, with
+[`view.openFile`](#showing-yourself-things), one at a time.
 
 Everything a program can produce in a loop is bounded, and whatever a bound discarded is
 **counted** rather than silently dropped — a model whose roster was cut needs to be told,
@@ -762,7 +798,6 @@ or it will read the shorter list as evidence that its loop never ran:
 | Refusals described | 100 |
 | View operations described | 100 per kind (opened, closed, refused) |
 | Failure text kept per roster entry | 512 bytes |
-| Pictures attached to one turn's feedback | 4 |
 | Log lines kept | 200, 16 KiB in total, 2 KiB per line — the **last** lines, evicting from the front |
 
 The log caps no longer describe anything the model reads: logs ride out on the turn's
@@ -884,20 +919,28 @@ regenerates the signature catalogue and fails on a diff.
 ## Configuring it
 
 The capability is `responses-as-code`, under **Models & tools** in the
-[configuration](/gg/configurations/) editor, with three parameters:
+[configuration](/gg/configurations/) editor, with four parameters:
 
 | Param | Default | Notes |
 | --- | --- | --- |
 | `timeoutSecs` | `30` | The per-program guest-execution timeout, in seconds. |
 | `maxMemoryBytes` | `268435456` | The per-program linear-memory cap. |
+| `imageViewCap` | `4` | How many [image-carrying views](#the-caps-and-why-none-of-them-truncates) this agent may hold open at once. Labelled **Max open image views** in the editor. |
 | `healing` | every strategy on | Which [response-healing](/gg/response-healing/#configuration) repairs are armed. |
 
-The two numeric params each fall back to their default when absent, non-numeric, or
+The three numeric params each fall back to their default when absent, non-numeric, or
 non-positive. `timeoutSecs` is a wall-clock time, so a **fraction** is honoured — `0.5` is
 half a second, which a study measuring a very short ceiling has every reason to ask for —
-while `maxMemoryBytes` is a count and truncates a fraction towards zero. Neither is clamped
-— a study may starve the sandbox on purpose to measure what that does — so what protects an
-operator from a mystifying failure is the error message, which names the configured limit.
+while `maxMemoryBytes` and `imageViewCap` are counts and truncate a fraction towards zero.
+None of them is clamped — a study may starve the sandbox on purpose to measure what that
+does — so what protects an operator from a mystifying failure is the error message, which
+names the configured limit.
+
+All four are resolved **per agent**, from the profile that agent runs under, so a root that
+may look at four mockups and a reviewer subagent that may look at one are one
+configuration. `imageViewCap` lives here and not on `read-file` because it bounds only the
+code arm; hanging it off the read tool would imply it governs native reads, which it
+deliberately does not.
 
 The ceilings that bound the *run* rather than one program — turns, wall clock,
 consecutive errors, recent error rate, cost — are not params of this capability at all.

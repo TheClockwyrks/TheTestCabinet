@@ -100,6 +100,12 @@ decoding image bytes as lossy UTF-8 produces. It reads the picture as a picture:
   for a run to spend its whole context on a single call. Every reference mockup a test
   case ships clears the limit by a wide margin.
 
+Those four describe the `read_file` **tool**. Under
+[responses as code](/gg/responses-as-code/) the detection, the ceiling and the vision
+handling below are identical, but the attaching is not — a program's `fs.readFile`
+*describes* an image and `view.openFile` *shows* it. See
+[what this costs](#what-this-costs-the-context-window).
+
 ### Models that cannot see images
 
 The models a study sweeps are not uniform: some accept image input and some are
@@ -148,10 +154,23 @@ Under [responses as code](/gg/responses-as-code/) the same read costs the window
 `fs.readFile` hands the bytes to the program and stops there. What puts a file in the window
 is `view.openFile(path)`, which does the identical read — same line cap, same magic-number
 image detection, same 8 MiB ceiling — and *also* opens a file view of it, keyed by the path
-and closable by it. The picture comes with it, so a program that opens a view of a reference
-mockup shows the model the mockup rather than only describing it. The split is the point, and
-the prompt teaches it in one line: `fs.readFile` gets bytes for your program;
-`view.openFile` shows a file to you.
+and closable by it. The split is the point, and the prompt teaches it in one line:
+`fs.readFile` gets bytes for your program; `view.openFile` shows a file to you.
+
+**A picture obeys that split exactly, which is the one place it can surprise.** Under the
+code arm `fs.readFile` of a mockup *describes* it and `view.openFile` *shows* it — the bare
+read succeeds, returns the descriptor (label, format, byte size) and detects the format the
+same way, but attaches no picture anywhere: its result carries `shown: false` and the reason
+(*`fs.readFile` reads and describes an image but does not show it to you; open a view of it
+with `view.openFile(path)` to actually look at it*). A view is the only channel into a code
+agent's window, and a picture is not an exception to that. So a program that means to *look*
+at a reference mockup must open a view of it; one that only wants its dimensions or its bytes
+should not, and pays nothing. How many such views may be open at once is the per-agent
+[`imageViewCap`](/gg/responses-as-code/#configuring-it) (default 4); opening one past it is
+refused, not quietly dropped. The **native** `read_file` above is deliberately uncapped and
+attaches its picture as it always has — the two paths are the control and treatment arms of
+an experiment, and putting a ceiling on the control one to fix a defect in the treatment one
+would move what the study measures.
 
 Reads are **append-only**, as everything in the window is: a second read of the same file
 appends a second view rather than rewriting the first, and re-reading is how an agent

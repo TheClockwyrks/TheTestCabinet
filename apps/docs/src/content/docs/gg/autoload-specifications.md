@@ -54,8 +54,11 @@ The capability's one lever is **locked**, its `implementation`:
   degraded to its caption) and are spared even by a blanket eviction — including a
   [`view.close`](/gg/responses-as-code/#showing-yourself-things) naming the path, and they
   are left out of `view.current()` for the same reason: offering an agent a close that
-  would reclaim nothing is worse than not offering it. The full brief is guaranteed present
-  for the whole session.
+  would reclaim nothing is worse than not offering it. For the same reason again, a pinned
+  reference image does not count against the code arm's
+  [`imageViewCap`](/gg/responses-as-code/#configuring-it) — a cap the agent could fill but
+  never free would refuse it the first mockup it tried to open for itself. The full brief is
+  guaranteed present for the whole session.
 
 Locking trades window space for certainty: a large specification held pinned is context
 the working thread cannot reclaim, which on a long run is context [compaction](/gg/compaction/)
