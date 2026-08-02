@@ -332,6 +332,14 @@ export const SHELL_OUTPUT_HINT =
 export const DEFAULT_SHELL_MAX_LINES = 250;
 export const DEFAULT_SHELL_MAX_CHARS = 4096;
 
+// How many image-carrying file views a responses-as-code agent may hold open at once
+// when its configuration names no ceiling (`DEFAULT_IMAGE_VIEW_CAP` in
+// `crates/gg/src/sandbox/limits.rs`). This one bounds *occupancy* of the window rather
+// than the size of any one call: the count is derived from the views that are open, so
+// closing one frees a slot, and a pinned autoloaded specification image never occupies
+// a slot at all.
+export const DEFAULT_IMAGE_VIEW_CAP = 4;
+
 // Whether the autoload-specifications capability **locks** the injected specs into the
 // window. The values are gg's implementation ids (`crates/core/src/gg.rs`); the empty
 // value is the default (not locked — ordinary, droppable file reads), and `locked` pins
@@ -770,6 +778,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Max memory (bytes)",
         kind: "bytes",
         placeholder: "e.g. 67108864",
+      },
+      {
+        key: "imageViewCap",
+        label: "Max open image views",
+        kind: "number",
+        defaultValue: String(DEFAULT_IMAGE_VIEW_CAP),
+        hint: "How many views carrying a picture this agent may hold open at once — an occupancy ceiling on the window, not a per-turn budget, so closing one with `view.close` frees a slot for the next. Opening one past it is refused, not quietly dropped: `view.openFile` throws a catchable limit-exceeded error, no view is opened and nothing is shown. Text views are never refused, and a pinned autoloaded specification image does not occupy a slot.",
       },
       {
         key: "healing",

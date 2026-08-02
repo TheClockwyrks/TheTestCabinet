@@ -141,6 +141,34 @@ describe("a param the selected strategy does not read", () => {
   });
 });
 
+// The responses-as-code image-view cap is an ungated number — the capability has no
+// implementations, so the control is offered whenever the capability is on. The catalog
+// entry is the whole of this feature's UI, so rendering the form is the only thing that
+// says the generic param grid picked it up: a label that never appears is a cap an
+// operator can only reach by hand-editing the configuration's JSON.
+describe("the responses-as-code image-view cap", () => {
+  it("is offered whenever the capability is on, and holds what is typed into it", () => {
+    render(
+      <Harness
+        initial={draftWith("responses-as-code", "", { imageViewCap: "4" })}
+      />,
+    );
+    const row = capabilityRow("responses-as-code");
+
+    const field = within(row).getByLabelText(
+      /Max open image views/,
+    ) as HTMLInputElement;
+    expect(field.type).toBe("number");
+    expect(field.value).toBe("4");
+
+    fireEvent.change(field, { target: { value: "1" } });
+    expect(
+      (within(row).getByLabelText(/Max open image views/) as HTMLInputElement)
+        .value,
+    ).toBe("1");
+  });
+});
+
 describe("a capability param that names a model", () => {
   // The compaction model is the one model in a configuration that is not an agent's own
   // binding, and it has to be pickable at launch like every other one — otherwise a

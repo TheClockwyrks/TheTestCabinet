@@ -26,6 +26,7 @@ import {
 import {
   CAPABILITIES,
   DEFAULT_ERROR_RATE_WINDOW,
+  DEFAULT_IMAGE_VIEW_CAP,
   DEFAULT_MAX_CONSECUTIVE_ERRORS,
   DEFAULT_MAX_ERROR_RATE,
   DEFAULT_MAX_PARALLEL,
@@ -497,6 +498,53 @@ describe("gg response-healing toggles", () => {
   });
 });
 
+// The `responses-as-code` capability's `imageViewCap` param: how many image-carrying
+// views the agent may hold open at once. An ordinary number, but one whose per-agent
+// scoping is the point — a reviewer profile that may look at one mockup and a root that
+// may look at four are the same configuration.
+
+describe("gg open-image-view cap", () => {
+  it("round-trips a configured cap as a number", () => {
+    const configured = capSet([
+      { id: CODE, enabled: true, params: { imageViewCap: 2 } },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(draftCaps(draft)[CODE]?.params?.imageViewCap).toBe("2");
+    expect(draftCaps(draft)[CODE]?.extraParams).toEqual({});
+
+    const back = setCaps(capabilitySetFromDraft(draft, null)).find(
+      (cap) => cap.id === CODE,
+    );
+    expect(back?.params).toEqual({ imageViewCap: 2 });
+  });
+
+  it("is per agent, so two profiles can carry different caps", () => {
+    const configured: GgCapabilitySet = {
+      agents: [
+        agent({
+          name: "Root",
+          capabilities: [{ id: CODE, enabled: true, params: { imageViewCap: 3 } }],
+        }),
+        agent({
+          name: "Reviewer",
+          capabilities: [{ id: CODE, enabled: true, params: { imageViewCap: 1 } }],
+        }),
+      ],
+    };
+    const draft = draftFromCapabilitySet(configured);
+    expect(
+      draft.agents.map((a) => a.capabilities[CODE]?.params?.imageViewCap),
+    ).toEqual(["3", "1"]);
+
+    const back = capabilitySetFromDraft(draft, null);
+    expect(
+      back.agents.map(
+        (a) => a.capabilities.find((cap) => cap.id === CODE)?.params,
+      ),
+    ).toEqual([{ imageViewCap: 3 }, { imageViewCap: 1 }]);
+  });
+});
+
 // --- Completion ------------------------------------------------------------------
 
 const COMPLETION = "completion";
@@ -878,6 +926,12 @@ describe("params gated on the selected implementation", () => {
     );
     expect(paramOf("shell", "maxChars").defaultValue).toBe(
       String(DEFAULT_SHELL_MAX_CHARS),
+    );
+  });
+
+  it("seeds the open-image-view cap to the default gg would apply anyway", () => {
+    expect(paramOf("responses-as-code", "imageViewCap").defaultValue).toBe(
+      String(DEFAULT_IMAGE_VIEW_CAP),
     );
   });
 
