@@ -473,3 +473,144 @@ Naming these so no agent quietly adds them: a configuration toggle for the old
 `console.log` behaviour (§3); a third view kind (§1.1); extending the `compact` request
 to name views (§5.6); changing the native tool-calling `read_file` view semantics
 (§1.3); a new telemetry event for a view being opened (§5.1).
+
+---
+
+# Addendum — one picture channel, one configurable cap
+
+Follow-up to the work above, specified after review. Three items; §A is the substantial one.
+
+## A. Properly handling more image views than are allowed
+
+### A.1 What is wrong today
+
+Three defects, all of them consequences of keeping the pre-views arrangement alongside the
+views one:
+
+1. **Two budgets of four, so one turn can put eight pictures in.** `MembraneState::images`
+   bounds the pictures a bare `fs.readFile` attaches to the turn's *feedback*
+   (`capture.rs::collect_images`), and `LoopToolApi::view_images` independently bounds the
+   pictures a `view.openFile` puts into the *window*. `admit_view_images` empties
+   `outcome.images` inside the api closure, so a view's picture never reaches the
+   membrane's counter and the two never see each other.
+2. **The view cap is per-turn, but views persist across turns.** `view_images` is reset for
+   every program, so N turns open 4N image-bearing views and the number that is actually
+   resident in the window is unbounded. A per-turn counter bounds nothing that matters.
+3. **Over-cap is a disclosed drop, not a refusal** — the one view cap in the feature that
+   does not refuse, and the one that produced a shipped defect (a view body reading *"The
+   image follows."* with no image). `admit_view_images` also only rewrites the sidecar when
+   `room == 0`, so a partial admit still leaves an uncorrected description.
+
+### A.2 The change
+
+**One channel.** A bare `fs.readFile` no longer attaches pictures to a code turn's
+feedback. Views are the only way material enters the window — that is the premise of the
+whole feature, and honouring it collapses the two budgets by construction rather than by
+merging two counters. `fs.readFile` of an image still succeeds and still returns the
+descriptor (label, byte size); its sidecar reports `shown: false` with a reason naming
+`view.openFile` as the way to actually see it.
+
+Delete, rather than adapt: `MembraneState::images` / `images_dropped`, the image half of
+`collect_images`, `record_images_dropped`, `SandboxOutcome::images`,
+`CodeTurnOutcome::Continue::images` and the `with_images(images)` on the feedback message,
+`ViewImages`, `ViewOpenOutcome::images_dropped`, `withhold_view_image`, and
+`images_dropped` / `image_budget` on `CodeResultContext` with their `code-result.hbs`
+clause. `withhold_view_image` exists only to stop a view lying about a picture it does not
+carry; under a refusal the view is never created, so there is nothing to lie.
+
+**The cap counts open image views, not per-turn opens.** Derived from the live window —
+`ContextModel::open_image_views() -> usize`, counting **non-pinned** file-view items that
+carry at least one image. Not an accumulator: there is no counter to reset and no way for
+it to drift from what the window actually holds.
+
+Pinned views are excluded deliberately. An autoloaded specification image
+(`Retention::Pinned`) is the operator's choice, the agent cannot close it, and counting it
+would let a configuration that pins four mockups make the cap permanently unreachable.
+
+**Over-cap refuses.** `view.openFile` on a file that would carry a picture, when the cap is
+already spent, throws a catchable `limit-exceeded` `ToolError` naming the cap and the
+remedy — close an open image view with `view.close(path)` and try again. No view is
+created and no read is charged to the window. This is what every other view cap already
+does (§4), and it is strictly better than a drop: the program learns at the call site, in a
+form it can branch on, instead of discovering afterwards that its window holds a placeholder.
+
+Scope of the refusal, exactly:
+- `view.openFile` of a **text** file is never affected, whatever the cap says.
+- `read_image`'s own two pre-existing refusals — a text-only model, and a file over
+  `IMAGE_ATTACH_CAP` — are unchanged. They are different decisions ("cannot be shown"),
+  they already produce their own honest prose, and they fire before this cap is consulted.
+- Re-opening a path that is **already** an open image view is a supersede, not a new
+  occupant, so it must not be refused when the cap is exactly full.
+
+**Native tool calling is deliberately left uncapped.** A native `read_file` of an image
+pushes a file view with no budget at all, and that does not change. Introducing a cap there
+would move the *control* arm of the A/B this capability exists to measure, to fix a defect
+in the treatment arm. Document the asymmetry rather than closing it silently.
+
+### A.3 The parameter
+
+A fourth `responses-as-code` param, per-agent like the rest:
+
+| Param | Default | Notes |
+| --- | --- | --- |
+| `imageViewCap` | `4` | How many image-carrying views may be open at once. |
+
+On `responses-as-code` and not on `read-file` because it bounds only the code arm; putting
+it on `read-file` would imply it governs native reads, which it does not. It follows the
+existing numeric-param convention exactly (`crates/gg/src/sandbox/limits.rs:82-140`): falls
+back to the default when absent, non-numeric or non-positive, and is **not clamped** — a
+study may starve it on purpose.
+
+Resolve it beside the other two in `resolve_sandbox_limits(&GgAgentConfig)` and carry it on
+`SandboxLimits`, so it arrives per-agent through the existing `code_setup` path.
+
+## B. `gg/prompts.md` — the fence claim is false
+
+`apps/docs/src/content/docs/gg/prompts.md:113-117` asserts: *"**No backtick fence appears
+anywhere in the rendered code-mode prompt** — every worked example is indented instead, and
+a test asserts it"*. Both halves are false and have been since `4af242d9`:
+`crates/gg/templates/system-code.hbs` has fenced blocks at lines 53/58 and 81/85, and no
+such test exists anywhere in the crate.
+
+**Backtick fences in the system prompt are allowed and valid.** Fix the *document*, not the
+template — do not un-fence the examples and do not add an asserting test.
+
+Rewrite the bullet to say what is true: the contract is about the shape of a **reply**
+(the model's whole reply is the program — no fence, no language tag, no prose around it),
+and the prompt's own worked examples are fenced for legibility, which is a property of the
+page the model reads rather than of the reply it sends. Keep the surrounding two bullets
+intact — the *Why not to fence* bullet gated on healing's fence stripping is accurate and
+stays. Delete the "an example is the one part of a prompt a model copies verbatim"
+justification along with the claim it was justifying; do not leave a rationale attached to
+a rule that no longer exists.
+
+Then grep the docs tree for any other statement of the same claim.
+
+## C. Exposing the cap in the configuration UI
+
+`packages/ui/src/app/pages/runs/gg/ggCatalog.ts` is a declarative registry and the editor
+is generic, so this is one constant plus one `ParamSpec`:
+
+- a `DEFAULT_IMAGE_VIEW_CAP = 4` const beside the other mirrored defaults (~`:305-333`),
+- one `ParamSpec` pushed onto the `responses-as-code` `CapSpec.params` array
+  (~`:755-789`), `kind: "number"`, `defaultValue: String(DEFAULT_IMAGE_VIEW_CAP)`, units in
+  the label, behaviour in the `hint`. Copy the `lineCap` entry at ~`:718-725`.
+
+`GgConfigEditor.tsx` and `ggConfigDraft.ts` need **no** change — the generic number input,
+the `String(value)` load, the `Number(raw)` save and the per-agent scoping are already
+generic, and a param added to `CAPABILITIES` is automatically per-agent. Nothing in the
+contract or the JSON Schema changes either: `GgCapabilityConfig::params` is an untyped
+`Record<string, unknown>`, so `npm run gen:contract` produces no diff.
+
+Tests: copy the `lineCap` round-trip in `ggConfigDraft.test.ts:411-429` and the
+label-render case in `GgConfigEditor.test.tsx:79-103`.
+
+## D. Docs to correct
+
+- `gg/responses-as-code.md` — the caps table row, the fourth param-table row, and the
+  paragraph beginning *"One number, two places a picture can land, and a program that does
+  both can spend both"* (~`:655-660`), which this change makes false. State the refusal, the
+  open-views semantics, the pinned-view exclusion, and the deliberate native asymmetry.
+- `gg/filesystem.md` — reading images under the code arm: `fs.readFile` describes,
+  `view.openFile` shows.
+- `gg/prompts.md` — §B.
