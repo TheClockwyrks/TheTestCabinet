@@ -14,10 +14,10 @@ use std::time::Duration;
 use serde_json::json;
 use test_cabinet_core::gg::{GgCapabilitySet, GgContextSource};
 use test_cabinet_core::gg_replay::{
-    GgClientRole, GgReplayCommand, GgReplayEntry, GgReplayEntryKind, GgReplayInterner,
-    GgReplayModelError, GgReplayModelErrorKind, GgReplayPools, GgReplayPromptItem,
-    GgReplayPromptSlot, GgReplayRequestShape, GgReplayRetention, GgReplayToolCall,
-    GgReplayToolOutcome,
+    GgClientRole, GgReplayAgent, GgReplayAgentOrigin, GgReplayCommand, GgReplayEntry,
+    GgReplayEntryKind, GgReplayInterner, GgReplayModelError, GgReplayModelErrorKind, GgReplayPools,
+    GgReplayPromptItem, GgReplayPromptSlot, GgReplayRequestShape, GgReplayRetention,
+    GgReplayToolCall, GgReplayToolOutcome,
 };
 
 use super::*;
@@ -33,6 +33,7 @@ use crate::tools::ToolFailure;
 #[derive(Default)]
 struct Builder {
     pools: GgReplayPools,
+    agents: Vec<GgReplayAgent>,
     entries: Vec<GgReplayEntry>,
 }
 
@@ -273,9 +274,23 @@ impl Builder {
         )
     }
 
+    /// Add one row to the record's [provenance table](GgReplayRecord::agents), in creation
+    /// order — the table an assembled record carries, independently of what the agent recorded.
+    fn agent(&mut self, agent_id: &str, origin: GgReplayAgentOrigin) -> &mut Self {
+        self.agents.push(GgReplayAgent {
+            agent_id: agent_id.to_string(),
+            profile: "Worker".to_string(),
+            origin,
+            terminal_status: None,
+            limit_hit: None,
+        });
+        self
+    }
+
     fn build(&mut self) -> GgReplayRecord {
         let pools = std::mem::take(&mut self.pools).into_parts();
         let mut record = GgReplayRecord::new("run-inputs", GgCapabilitySet::minimal("mock/echo"));
+        record.agents = std::mem::take(&mut self.agents);
         record.messages = pools.messages;
         record.toolsets = pools.toolsets;
         record.texts = pools.texts;
@@ -342,6 +357,73 @@ fn each_agent_reads_its_own_inputs_in_recorded_order() {
         .collect();
     assert_eq!(tools, ["write_file", "shell"]);
     assert_eq!(inputs.next_git("root").expect("the git run").seq, 3);
+}
+
+/// The agent set comes from the record's **[provenance table](GgReplayRecord::agents)**, so an
+/// agent that ran and pinned nothing is still one of the run's agents.
+///
+/// This is the case deriving the set from the entries gets wrong, and it is not a corner: an agent
+/// parked behind the parallelism cap when the run was killed, or one whose first model call never
+/// returned, appears in the table and nowhere else. A reconstruction that learned its agents from
+/// the entries would quietly run a smaller fleet than the run did — and the divergence it reported
+/// would be about the work the missing agent never got asked to do.
+#[test]
+fn an_agent_the_table_names_but_no_entry_mentions_is_still_one_of_the_runs_agents() {
+    let record = Builder::default()
+        .agent("root", GgReplayAgentOrigin::Root)
+        .agent(
+            "agent-0",
+            GgReplayAgentOrigin::Spawn {
+                parent: "root".to_string(),
+                ordinal: 0,
+            },
+        )
+        .model("root", 0, "the only call anybody made")
+        .build();
+    assert!(
+        record.entries.iter().all(|entry| entry.agent_id == "root"),
+        "the premise: the spawned agent pinned nothing at all",
+    );
+
+    let inputs = ReplayInputs::new(record).expect("indexes");
+
+    assert_eq!(
+        inputs.agent_ids(),
+        ["root", "agent-0"],
+        "both agents, in the order the run created them",
+    );
+    // And it is a real, empty queue rather than an unknown agent: asking for an input it never
+    // recorded is exhaustion, which is what a reconstruction of it has to see.
+    assert_eq!(
+        inputs.next_model("agent-0").unwrap_err(),
+        ReplayError::Exhausted {
+            agent_id: "agent-0".to_string(),
+            kind: RecordedInputKind::Model,
+        },
+    );
+}
+
+/// A record captured **before** the provenance table existed still yields every agent its entries
+/// mention, and one the table missed is folded in after the ones it named.
+///
+/// The table is the better source, never the only one: the fallback is what keeps every record
+/// written by a pre-M7.5 gg readable rather than agent-less.
+#[test]
+fn an_agent_only_the_entries_mention_is_folded_in_after_the_table() {
+    let record = Builder::default()
+        .agent("root", GgReplayAgentOrigin::Root)
+        .model("agent-0", 0, "an agent the table never named")
+        .model("root", 1, "the root's own")
+        .build();
+
+    let inputs = ReplayInputs::new(record).expect("indexes");
+
+    assert_eq!(
+        inputs.agent_ids(),
+        ["root", "agent-0"],
+        "the table first, then whatever only the entries knew about",
+    );
+    assert_eq!(inputs.next_model("agent-0").expect("its call").seq, 0);
 }
 
 /// A cursor that runs out says which agent asked for what, rather than handing back a default.

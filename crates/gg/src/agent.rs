@@ -101,7 +101,9 @@ use test_cabinet_core::gg::{
     GgTelemetryKind, GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE,
     SHELL_OUTPUT_MODES,
 };
-use test_cabinet_core::gg_replay::GgReplayFidelity;
+use test_cabinet_core::gg_replay::{
+    GgReplayAgent, GgReplayAgentOrigin, GgReplayFidelity, GgReplayModalities,
+};
 use test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH;
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use tokio::sync::{mpsc, oneshot};
@@ -149,7 +151,7 @@ use crate::prompts::{
     NumberedItem, ReadFileView, ReviewBriefContext, ReviewChangesView, ReviewRecordView, ShellView,
     SpawnableAgentView, SystemContext, TasksView,
 };
-use crate::replay::{GgRecorder, RecordingClient};
+use crate::replay::{GgRecorder, RecordedSeed, RecordingClient};
 use crate::sandbox::{
     self, FunctionSummary, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError, SandboxLimits,
     SandboxOutcome, UnreachableTail, run_program, scope_tools,
@@ -765,6 +767,13 @@ pub(crate) async fn run_with_factory(
         &mut launch_warnings,
     ));
 
+    // Pin the run's fixed identity into the replay journal before the first turn: the prompt, the
+    // resolved windows and modalities, the baseline commit, and the seeded files. It goes here —
+    // rather than at teardown, where the resolved half of it is finally known — because the
+    // sessions whose envelope is most worth having are the ones that never reach a teardown.
+    // Anything it could not carry joins the launch warnings printed immediately below.
+    record_replay_seed(&orch, invocation, &mut launch_warnings);
+
     // Every declaration gg could not act on, named on the root's stream before the first turn:
     // a ceiling that cannot bound anything, a ceiling left on a capability where gg no longer reads
     // it, a healing key that names nothing. None of them ever fails a launch — a sweep's one shared
@@ -820,6 +829,7 @@ pub(crate) async fn run_with_factory(
         AgentRole::Root,
         client,
         root_inbox_rx,
+        GgReplayAgentOrigin::Root,
     )
     .await;
 
@@ -913,6 +923,11 @@ pub(crate) async fn run_with_factory(
     // than on the rare configured one. Nothing here feeds the summary: the tracker folds typed
     // events, and this emits a `Log`.
     if let Some(recorder) = &orch.replay {
+        // The modality half of the seed is only resolved now: a provider that refused an image
+        // denied that model for the rest of the run, and the envelope has to state where the
+        // session ended up rather than where it started. A no-op — not even a journal line — for
+        // the overwhelming majority of runs, in which nothing was ever denied.
+        recorder.record_resolved_modalities(replay_model_modalities(&orch, invocation));
         report_replay_capture(recorder, &root_emitter);
     }
 
@@ -969,6 +984,116 @@ fn start_replay_capture(
             None
         }
     }
+}
+
+/// Pin the run's [seed](test_cabinet_core::gg_replay::GgReplaySeed) — the invocation envelope a
+/// reconstruction starts from — into the [replay journal](crate::replay).
+///
+/// A no-op for a run whose journal could not be opened. Reading the seeded files is the only I/O
+/// here, and it happens once, at launch, before the first turn: a record has to be self-contained
+/// (a playback seeds an empty workspace from this alone), and the bytes are very nearly free
+/// because an autoloaded case's reference mockups reach the blob pool anyway.
+fn record_replay_seed(orch: &Orchestrator, invocation: &GgInvocation, warnings: &mut Vec<String>) {
+    let Some(recorder) = &orch.replay else {
+        return;
+    };
+    let provided_files =
+        crate::replay::read_seed_files(&orch.workspace_dir, &orch.provided_files, warnings);
+    recorder.record_seed(RecordedSeed {
+        prompt: &orch.prompt,
+        // gg's own observation of the workspace, kept alongside — not merged with — the host-side
+        // `RunRecord::seed_commit`. `None` for a run that never needed a repository (no board, no
+        // speculation), which is the honest answer rather than one committed for the record's sake.
+        baseline_commit: orch.baseline_commit.as_deref(),
+        model_windows: replay_model_windows(orch, invocation),
+        model_modalities: replay_model_modalities(orch, invocation),
+        provided_files: &provided_files,
+    });
+}
+
+/// The **resolved** context window every model this run may bind is measured against — the
+/// catalog's figure narrowed by any [override](CAPABILITY_CONTEXT_WINDOW_OVERRIDE) and reduced by
+/// the compaction headroom.
+///
+/// The resolved figure rather than the catalog's, because the resolved one is what the fullness
+/// signal and the compaction trigger are computed against: a reconstruction handed the raw window
+/// would compact at a different turn than the run did.
+///
+/// Keyed by model id over the **invocation's** map rather than over the capability set's bound
+/// agents, and deliberately over-inclusive: a compaction handoff may name a model no agent runs
+/// on, and a window recorded for a model the run never bound costs one map entry, while one
+/// missing for a model it did costs the reconstruction its compaction boundary.
+fn replay_model_windows(orch: &Orchestrator, invocation: &GgInvocation) -> BTreeMap<String, u64> {
+    replay_model_ids(invocation)
+        .into_iter()
+        .filter_map(|model_id| {
+            resolve_window_limit(&orch.caps, &orch.model_windows, &model_id)
+                .map(|window| (model_id, window))
+        })
+        .collect()
+}
+
+/// The **resolved** input modalities of every model this run may bind, as they stand at the moment
+/// of the call.
+///
+/// Read through the run's shared [vision registry](crate::vision::VisionSupport), so it answers
+/// with the catalog's declaration *and* any runtime denial — which is exactly the difference
+/// between the seed recorded at launch and the one recorded at teardown.
+fn replay_model_modalities(
+    orch: &Orchestrator,
+    invocation: &GgInvocation,
+) -> BTreeMap<String, GgReplayModalities> {
+    replay_model_ids(invocation)
+        .into_iter()
+        .map(|model_id| {
+            let vision = orch.vision.allows_images(&model_id);
+            (model_id, GgReplayModalities { vision })
+        })
+        .collect()
+}
+
+/// Every model id the launch said something about — the union of the invocation's window and
+/// modality maps, deduplicated and ordered.
+fn replay_model_ids(invocation: &GgInvocation) -> BTreeSet<String> {
+    invocation
+        .model_windows
+        .keys()
+        .chain(invocation.model_modalities.keys())
+        .cloned()
+        .collect()
+}
+
+/// Write one [provenance row](GgReplayAgent) for an agent into the run's replay journal.
+///
+/// Called twice for every agent: once as it comes into existence, with `terminal` `None`, and once
+/// when its loop ends, with the [end](LoopEnd) it reached. Assembly upserts the row, so the second
+/// supersedes the first — and an agent that never reaches an ending (a killed run, an agent still
+/// queued behind the parallelism cap) keeps the row it was born with, which is the whole reason
+/// the first write exists.
+fn record_replay_agent(
+    orch: &Orchestrator,
+    agent: &Agent,
+    origin: &GgReplayAgentOrigin,
+    terminal: Option<&LoopEnd>,
+) {
+    let Some(recorder) = &orch.replay else {
+        return;
+    };
+    recorder.record_agent(GgReplayAgent {
+        agent_id: agent.id.clone(),
+        profile: agent.slot.clone(),
+        origin: origin.clone(),
+        // The same two states the agent-tree telemetry reports, and read from the same predicate,
+        // so a record and a stream cannot disagree about how an agent ended.
+        terminal_status: terminal.map(|end| {
+            if is_failure_status(end.status) {
+                GgAgentStatus::Failed
+            } else {
+                GgAgentStatus::Done
+            }
+        }),
+        limit_hit: terminal.and_then(|end| end.limit.clone()),
+    });
 }
 
 /// Close the run's [replay capture](crate::replay) journal and say on the root stream what it
@@ -1235,6 +1360,16 @@ struct Orchestrator {
     /// A monotonic counter minting unique [workflow](run_workflow) ids, so each `run_workflow`
     /// invocation's stages group under one id in the telemetry.
     next_workflow_seq: AtomicU64,
+    /// The per-key ordinals a [replay agent origin](GgReplayAgentOrigin) is keyed by: a spawn's
+    /// position within its parent, a review round within its issue, a merge within its issue.
+    ///
+    /// Deliberately **not** the [agent counter](Self::next_seq). Every origin has to be a function
+    /// of something a reconstruction re-derives on its own — a parent's own ordered turn loop,
+    /// board state — because agent ids come off a global counter in the order agents happen to
+    /// reach their spawn, and a playback that removes model latency entirely will interleave two
+    /// concurrent agents differently. An origin keyed on the global counter would bind the wrong
+    /// agent, and an unbound agent dies on its first turn.
+    ordinals: Mutex<BTreeMap<String, u32>>,
     /// The shared [replay recorder](GgRecorder) every agent's model I/O, tool results and prompt
     /// frames are pinned into. Present on **every** run — capture is not a capability any more, only
     /// its [fidelity](GgReplayFidelity) is — so `None` means the journal could not be opened, which
@@ -1433,6 +1568,7 @@ impl Orchestrator {
             tasks: Mutex::new(Vec::new()),
             next_seq: AtomicU64::new(0),
             next_workflow_seq: AtomicU64::new(0),
+            ordinals: Mutex::new(BTreeMap::new()),
             // Capture is always on. `None` here means the journal could not be opened, never that
             // the run declined to be recorded.
             replay: start_replay_capture(invocation, &limits, warnings),
@@ -1469,6 +1605,16 @@ impl Orchestrator {
     /// Mint the next unique subagent id.
     fn next_agent_id(&self) -> String {
         format!("agent-{}", self.next_seq.fetch_add(1, Ordering::SeqCst))
+    }
+
+    /// Mint the next [ordinal](Self::ordinals) under `key` — `0` the first time the key is asked
+    /// for, and one more on each later ask.
+    fn next_ordinal(&self, key: String) -> u32 {
+        let mut ordinals = self.ordinals.lock().expect("replay ordinals lock");
+        let next = ordinals.entry(key).or_insert(0);
+        let ordinal = *next;
+        *next += 1;
+        ordinal
     }
 
     /// Mint the next unique [workflow](run_workflow) id, so a `run_workflow` invocation's stage
@@ -1890,6 +2036,13 @@ impl Orchestrator {
             retry,
         };
         let (_inbox_tx, inbox_rx) = mpsc::unbounded_channel();
+        // Bound by what it was dispatched *for*, never by its id: this agent has no parent, and
+        // its id came off the board rather than out of any agent's turn loop. The issue and the
+        // attempt number are both board state, which a reconstruction re-derives on its own.
+        let origin = GgReplayAgentOrigin::IssueAttempt {
+            issue: issue_id.clone(),
+            attempt: retry,
+        };
         let orch = Arc::clone(self);
         let spawn_emitter = emitter.clone();
         let handle = tokio::spawn(async move {
@@ -1905,7 +2058,7 @@ impl Orchestrator {
             // leaves the dispatching agent's turn alone. The agent's own workspace is resolved from
             // the map after this, so it still starts in the worktree it was given.
             orch.ensure_issue_worktree(&issue_id, &spawn_emitter).await;
-            run_agent(orch, agent, role, client, inbox_rx).await;
+            run_agent(orch, agent, role, client, inbox_rx, origin).await;
         });
         self.tasks.lock().expect("subagent tasks lock").push(handle);
     }
@@ -2274,12 +2427,20 @@ struct ProjectContext {
 /// the tree is uniform: recursion is just a subagent whose own loop spawns more agents that come
 /// back through here. `client` is resolved by the caller (the root's in [`run_with_factory`], a
 /// child's at spawn time) so a resolution failure is surfaced where it belongs.
+///
+/// `origin` is how this agent came to exist, supplied by the caller because only the caller knows
+/// it: the role says an agent is a subagent, not whether it is a delegation, an issue's reviewer or
+/// the merge agent, and the latter two carry keys (a round, a position) that exist nowhere on the
+/// role. It is recorded into the [replay journal](crate::replay) here — at the one point every
+/// agent goes through — rather than at each of the five sites that create one, and it is
+/// *re-pointed* at each [succession](Handoff), which is the sixth.
 async fn run_agent(
     orch: Arc<Orchestrator>,
     agent: Agent,
     mut role: AgentRole,
     client: Box<dyn ModelClient>,
     inbox_rx: mpsc::UnboundedReceiver<String>,
+    origin: GgReplayAgentOrigin,
 ) -> LoopEnd {
     // What this agent was **handed at birth**, when it is a [fork](crate::tools::FORK_TOOL): a copy
     // of everything its forker held. Taken out of the role here, before anything else reads the
@@ -2306,6 +2467,15 @@ async fn run_agent(
     // Resolved before the slot is taken, re-resolved (never carried) at each release, and
     // [exchanged](Scheduler::rekey) — never released — when a succession changes the profile.
     let mut exclusive = orch.exclusive_key(&agent.slot);
+
+    // How this agent came to exist, re-pointed at each succession so the row every incarnation
+    // records names the thing that created *it*.
+    let mut origin = origin;
+    // Its provenance row, written **before** the slot is acquired — which is the point. An agent
+    // parked behind the parallelism cap when the run is killed never takes a turn and never pins an
+    // input, so a table derived from the entries would have no idea it existed; the reconstruction
+    // would then quietly run a smaller fleet than the run did.
+    record_replay_agent(&orch, &agent, &origin, None);
 
     // Acquire a running slot before doing anything: a spawned agent blocks here until the
     // scheduler grants one (the root's is granted immediately). This is the parallelism cap. It is
@@ -2967,7 +3137,16 @@ async fn run_agent(
             turn_base: turns_taken,
         });
         pending_client = Some(successor_client);
-        agent = agent.succeeding(successor_id, successor_slot, successor_fsm);
+        // The fifth way an agent comes into existence, and the one that happens *inside* this
+        // function. Keyed on the predecessor and its own ordered position within it — never on the
+        // successor's id, which comes off the global agent counter a playback assigns differently.
+        let successor = agent.succeeding(successor_id, successor_slot, successor_fsm);
+        origin = GgReplayAgentOrigin::Succession {
+            predecessor: agent.id.clone(),
+            ordinal: orch.next_ordinal(format!("succession:{}", agent.id)),
+        };
+        record_replay_agent(&orch, &successor, &origin, None);
+        agent = successor;
     };
     let emitter = &agent_emitter;
 
@@ -2983,6 +3162,12 @@ async fn run_agent(
             GgAgentStatus::Done
         }));
     }
+    // The terminal row, superseding the one written when this incarnation was born. Recorded on
+    // every run, not only a multi-agent one: the status a reconstruction is compared against is as
+    // meaningful for a lone root agent as for a fleet. A predecessor that handed off keeps its
+    // opening row and no terminal status, which is the honest account — its loop did not end, it
+    // continued as somebody else.
+    record_replay_agent(&orch, &agent, &origin, Some(&end));
 
     match role {
         AgentRole::Root => {
@@ -3467,9 +3652,17 @@ fn dispatch_child(
         result: result_tx,
         finished: Arc::clone(&finished),
     };
+    // Keyed on the spawner and the spawn's position in the spawner's own strictly-ordered turn
+    // loop, counted across **all** spawn kinds rather than per profile: a fork runs the forker's
+    // own profile, so a fork child and a same-profile delegated subagent from one parent would
+    // otherwise compete for the same queue.
+    let origin = GgReplayAgentOrigin::Spawn {
+        parent: spawner.id.clone(),
+        ordinal: orch.next_ordinal(format!("spawn:{}", spawner.id)),
+    };
     let orch_for_task = Arc::clone(orch);
     let handle = tokio::spawn(async move {
-        run_agent(orch_for_task, child, role, client, inbox_rx).await;
+        run_agent(orch_for_task, child, role, client, inbox_rx, origin).await;
     });
     orch.tasks.lock().expect("subagent tasks lock").push(handle);
     sub.ctx.children.push(ChildHandle {
@@ -3984,10 +4177,14 @@ async fn run_issue_review(
     let changes = orch.review_changes(issue_id).await;
     let history = orch.review_history(issue_id);
     let worktree = orch.issue_worktree(issue_id);
+    // Which round of this issue's review this is — board state, so a reconstruction re-derives it
+    // rather than reading it off an agent id. It is what a reviewer's replay
+    // [origin](GgReplayAgentOrigin::Reviewer) is bound by, alongside its position within the round.
+    let round = orch.next_ordinal(format!("review:{issue_id}"));
     // Who has approved so far *this round*, in the order they ran: reported on whichever event ends
     // the round, so a verdict is attributable to an agent rather than to "the review".
     let mut approvals: Vec<GgReviewer> = Vec::new();
-    for profile in reviewers {
+    for (position, profile) in reviewers.into_iter().enumerate() {
         // Each reviewer is named under the implementer whose work it is reviewing (`AUTH-1.0i.0r`),
         // so the agent id says which attempt was reviewed and in what order.
         let agent_id = orch
@@ -4008,12 +4205,19 @@ async fn run_issue_review(
         );
         let returned = run_detached_agent(
             orch,
-            agent_id,
-            &profile,
-            review_brief,
-            Some(issue_id.to_string()),
-            worktree.clone(),
-            EndingRole::Review,
+            DetachedDispatch {
+                agent_id,
+                profile: &profile,
+                brief: review_brief,
+                issue_id: Some(issue_id.to_string()),
+                worktree: worktree.clone(),
+                ending: EndingRole::Review,
+                origin: GgReplayAgentOrigin::Reviewer {
+                    issue: issue_id.to_string(),
+                    round,
+                    position: position as u32,
+                },
+            },
         )
         .await;
         // The reviewer's verdict is read from what it **declared**, not from what it wrote. A
@@ -4221,12 +4425,21 @@ async fn resolve_merge_conflict(
     // dispatched with no worktree of its own.
     match run_detached_agent(
         orch,
-        orch.next_agent_id(),
-        &merge_agent,
-        brief,
-        Some(issue_id.to_string()),
-        None,
-        EndingRole::Standard,
+        DetachedDispatch {
+            agent_id: orch.next_agent_id(),
+            profile: &merge_agent,
+            brief,
+            issue_id: Some(issue_id.to_string()),
+            worktree: None,
+            ending: EndingRole::Standard,
+            // The row that proves why provenance keying is necessary at all: a merge agent's live
+            // id comes straight off the global agent counter, so it can only be bound by what it
+            // was dispatched *for* — this issue, and which merge of it this is.
+            origin: GgReplayAgentOrigin::Merge {
+                issue: issue_id.to_string(),
+                ordinal: orch.next_ordinal(format!("merge:{issue_id}")),
+            },
+        },
     )
     .await
     {
@@ -4314,16 +4527,25 @@ async fn remove_worktree(orch: &Orchestrator, worktree: &Worktree, emitter: &Emi
 /// because the recursion here is genuine — this dispatches an agent, whose own reconciliation may
 /// dispatch more — and the compiler cannot infer the `Send`-ness of a cycle. Naming it breaks the
 /// cycle by *asserting* the bound the `tokio::spawn` inside needs.
+///
+/// Everything the dispatch names travels in a [`DetachedDispatch`] rather than as a parameter list:
+/// the two callers pass seven values that are all "what this agent was dispatched for", and a
+/// positional list of that length is one transposed `Option<String>` away from reviewing the wrong
+/// issue.
 fn run_detached_agent<'a>(
     orch: &'a Arc<Orchestrator>,
-    agent_id: String,
-    profile: &'a str,
-    brief: String,
-    issue_id: Option<String>,
-    worktree: Option<Worktree>,
-    ending: EndingRole,
+    dispatch: DetachedDispatch<'a>,
 ) -> Pin<Box<dyn Future<Output = Result<AgentReturn, String>> + Send + 'a>> {
     Box::pin(async move {
+        let DetachedDispatch {
+            agent_id,
+            profile,
+            brief,
+            issue_id,
+            worktree,
+            ending,
+            origin,
+        } = dispatch;
         let binding = profile_binding(&orch.caps, profile)
             .map_err(|err| format!("could not be dispatched: {err}"))?;
         let client = orch.factory.client_for(&binding).map_err(|err| {
@@ -4357,13 +4579,36 @@ fn run_detached_agent<'a>(
         let (_inbox_tx, inbox_rx) = mpsc::unbounded_channel();
         let orch_for_task = Arc::clone(orch);
         let handle = tokio::spawn(async move {
-            run_agent(orch_for_task, agent, role, client, inbox_rx).await;
+            run_agent(orch_for_task, agent, role, client, inbox_rx, origin).await;
         });
         orch.tasks.lock().expect("subagent tasks lock").push(handle);
         result_rx
             .await
             .map_err(|_| "produced no result".to_string())
     })
+}
+
+/// What a [detached agent](run_detached_agent) is dispatched as, and for.
+struct DetachedDispatch<'a> {
+    /// The id to run under, supplied rather than minted because the two callers name their agents
+    /// differently: a reviewer after the issue and the attempt it reviews (`AUTH-1.0i.0r`), a merge
+    /// agent as an ordinary `agent-N` off the run's counter.
+    agent_id: String,
+    /// The [profile](GgAgentConfig) it runs on, which resolves its model, capabilities and prompt.
+    profile: &'a str,
+    /// The brief it is given as its opening instruction.
+    brief: String,
+    /// The board [issue](crate::board) it was dispatched for, when there is one.
+    issue_id: Option<String>,
+    /// The [worktree](Worktree) it works in — a reviewer gets the issue's; a merge agent gets none,
+    /// because the conflicted merge it is resolving lives in the main tree.
+    worktree: Option<Worktree>,
+    /// Which ending vocabulary it declares its result in.
+    ending: EndingRole,
+    /// How it came to exist, for the [replay](crate::replay) provenance table. Carried here rather
+    /// than derived inside, because *why* an orchestrator dispatched an agent is knowledge only the
+    /// dispatching site has: a reviewer and a merge agent arrive through this one function.
+    origin: GgReplayAgentOrigin,
 }
 
 /// What an [issue review](run_issue_review) tells its reviewers about the work: **where** it is and

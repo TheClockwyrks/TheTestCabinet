@@ -523,12 +523,12 @@ pub struct ReplayInputs {
     /// The record itself, kept so pooled payloads can be resolved on demand — the message pool is
     /// the bulk of a record's bytes and a reconstruction resolves only the frames it renders.
     record: Arc<GgReplayRecord>,
-    /// Every agent the record mentions, in the order it first appears.
+    /// Every agent the record mentions, in creation order.
     ///
-    /// Derived from the entries rather than read from
-    /// [`agents`](GgReplayRecord::agents), which assembly does not populate yet. When the binding
-    /// table lands it becomes the better source — it covers an agent that was spawned and recorded
-    /// nothing — and this stays as the fallback for every record captured before it.
+    /// Read from the [provenance table](GgReplayRecord::agents) first — it is the only source that
+    /// covers an agent which was created and pinned nothing — and extended from the entries, which
+    /// is what a record captured before the table (or one whose capture stopped before a spawn)
+    /// still has.
     agent_ids: Vec<String>,
     /// Each agent's prompt frames, in seq order. Never consumed.
     frames: BTreeMap<String, Vec<RecordedPromptFrame>>,
@@ -563,8 +563,24 @@ impl ReplayInputs {
         let mut owners: BTreeMap<u64, String> = BTreeMap::new();
         let mut unserved: BTreeSet<u64> = BTreeSet::new();
 
+        // The [provenance table](GgReplayRecord::agents) first, in the order the run created its
+        // agents. It is the better source precisely where the entries are silent: an agent that was
+        // spawned and pinned nothing — parked behind the parallelism cap when the run was killed,
+        // or still waiting on its first model call — appears here and nowhere else, and a
+        // reconstruction that never learned of it runs a smaller fleet than the run did.
+        for agent in &record.agents {
+            let agent_id = agent.agent_id.as_str();
+            if !queues.contains_key(agent_id) {
+                agent_ids.push(agent_id.to_string());
+                queues.insert(agent_id.to_string(), AgentQueues::default());
+                frames.insert(agent_id.to_string(), Vec::new());
+            }
+        }
+
         for entry in order {
             let agent_id = entry.agent_id.as_str();
+            // An agent the table did not name — every agent of a record captured before the table
+            // existed, and any the capture missed — still gets its queue from its own entries.
             if !queues.contains_key(agent_id) {
                 agent_ids.push(agent_id.to_string());
                 queues.insert(agent_id.to_string(), AgentQueues::default());
@@ -709,7 +725,9 @@ impl ReplayInputs {
         &self.record.seed
     }
 
-    /// Every agent the record mentions, in the order it first appears.
+    /// Every agent the record mentions, in creation order — the
+    /// [provenance table](GgReplayRecord::agents), extended by any agent that appears only in the
+    /// entries.
     pub fn agent_ids(&self) -> &[String] {
         &self.agent_ids
     }

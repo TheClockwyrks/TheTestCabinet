@@ -6,16 +6,18 @@
 //! recording session writes — the two sides of the format cannot drift apart in a test
 //! that constructs one of them itself.
 
+use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
 use super::*;
-use crate::gg::GgCapabilitySet;
+use crate::gg::{GgAgentStatus, GgCapabilitySet};
 use crate::gg_replay::{
-    GgClientRole, GgReplayCommand, GgReplayFidelity, GgReplayInterner, GgReplayRecord,
-    GgReplayRequestShape, GgReplayToolCall, GgReplayToolOutcome, GgShellCwd, GgShellOrigin,
+    GgClientRole, GgReplayAgentOrigin, GgReplayCommand, GgReplayFidelity, GgReplayInterner,
+    GgReplayModalities, GgReplayRecord, GgReplayRequestShape, GgReplaySeedFile, GgReplayToolCall,
+    GgReplayToolOutcome, GgShellCwd, GgShellOrigin,
 };
 use crate::gg_replay_journal::GgJournalInterner;
 
@@ -386,6 +388,353 @@ fn a_reported_ceiling_truncation_survives_assembly() {
         }),
     );
     assert_eq!(read_record(&output).truncation, assembly.truncation);
+}
+
+// --- the provenance lines ---------------------------------------------------
+
+/// One agent row, as the recorder writes it when the agent comes into existence.
+fn agent_line(agent_id: &str, profile: &str, origin: GgReplayAgentOrigin) -> GgJournalLine {
+    GgJournalLine::Agent {
+        agent: Box::new(GgReplayAgent {
+            agent_id: agent_id.to_string(),
+            profile: profile.to_string(),
+            origin,
+            terminal_status: None,
+            limit_hit: None,
+        }),
+    }
+}
+
+/// The same row once the agent's loop has ended.
+fn ended_agent_line(
+    agent_id: &str,
+    profile: &str,
+    origin: GgReplayAgentOrigin,
+    status: GgAgentStatus,
+) -> GgJournalLine {
+    let GgJournalLine::Agent { mut agent } = agent_line(agent_id, profile, origin) else {
+        unreachable!("agent_line writes an agent line")
+    };
+    agent.terminal_status = Some(status);
+    GgJournalLine::Agent { agent }
+}
+
+/// An envelope naming `prompt`, carrying `provided_files` as blob references.
+fn seed_line(prompt: &str, provided_files: Vec<GgReplaySeedFile>) -> GgJournalLine {
+    GgJournalLine::Seed {
+        seed: Box::new(GgReplaySeed {
+            baseline_commit: Some("abc123".to_string()),
+            prompt: prompt.to_string(),
+            model_windows: BTreeMap::from([("some/model".to_string(), 128_000)]),
+            model_modalities: BTreeMap::from([(
+                "some/model".to_string(),
+                GgReplayModalities { vision: true },
+            )]),
+            provided_files,
+        }),
+    }
+}
+
+#[test]
+fn the_invocation_envelope_and_the_agent_table_survive_assembly() {
+    let dir = tempfile::tempdir().expect("scratch");
+    let mut lines = vec![header(), seed_line("Build a tiny game.", Vec::new())];
+    lines.push(agent_line("root", "Root", GgReplayAgentOrigin::Root));
+    lines.push(agent_line(
+        "agent-0",
+        "Worker",
+        GgReplayAgentOrigin::Spawn {
+            parent: "root".to_string(),
+            ordinal: 0,
+        },
+    ));
+    lines.push(end(0));
+    let journal = write_journal(dir.path(), &lines);
+    let output = output_in(dir.path());
+
+    assemble_journal_to_gz(&journal, &output).expect("assemble");
+
+    let record = read_record(&output);
+    assert_eq!(record.seed.prompt, "Build a tiny game.");
+    assert_eq!(record.seed.baseline_commit.as_deref(), Some("abc123"));
+    assert_eq!(record.seed.model_windows["some/model"], 128_000);
+    assert!(record.seed.model_modalities["some/model"].vision);
+    assert_eq!(
+        record
+            .agents
+            .iter()
+            .map(|agent| agent.agent_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["root", "agent-0"],
+        "the table is in creation order, which is the order the rows were written",
+    );
+    assert_eq!(
+        record.agents[1].origin,
+        GgReplayAgentOrigin::Spawn {
+            parent: "root".to_string(),
+            ordinal: 0,
+        },
+        "and each row carries the keys a reconstruction binds the agent by",
+    );
+}
+
+/// The property the whole `agents` table exists for: an agent that pinned **no input** is still in
+/// it, because the table is written when an agent comes into existence rather than derived from
+/// what it happened to record.
+///
+/// This is the shape of every killed run with a fleet: an agent parked behind the parallelism cap,
+/// or one whose first model call never returned, ran and recorded nothing. A reconstruction that
+/// learned its agents from the entries would run a smaller fleet than the run did.
+#[test]
+fn an_agent_that_recorded_nothing_still_has_its_row() {
+    let dir = tempfile::tempdir().expect("scratch");
+    // The root records everything in `session()`; the subagent records not one entry.
+    let mut lines = vec![header()];
+    lines.push(agent_line("root", "Root", GgReplayAgentOrigin::Root));
+    lines.push(agent_line(
+        "agent-0",
+        "Worker",
+        GgReplayAgentOrigin::Spawn {
+            parent: "root".to_string(),
+            ordinal: 0,
+        },
+    ));
+    lines.extend(session().into_iter().skip(1));
+    // No `End` line at all: this is a session that was killed, which is exactly when the
+    // distinction matters.
+    let journal = write_journal(dir.path(), &lines);
+    let output = output_in(dir.path());
+
+    assemble_journal_to_gz(&journal, &output).expect("assemble");
+
+    let record = read_record(&output);
+    assert!(
+        record
+            .entries
+            .iter()
+            .all(|entry| entry.agent_id.as_str() == "root"),
+        "the premise: the subagent pinned nothing at all",
+    );
+    assert_eq!(
+        record
+            .agents
+            .iter()
+            .map(|agent| agent.agent_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["root", "agent-0"],
+        "and it is in the table regardless",
+    );
+    assert_eq!(
+        record.truncation.map(|truncation| truncation.reason),
+        Some(GgReplayTruncationReason::SessionKilled),
+    );
+}
+
+#[test]
+fn a_terminal_agent_row_supersedes_the_one_the_agent_was_born_with() {
+    let dir = tempfile::tempdir().expect("scratch");
+    let lines = vec![
+        header(),
+        agent_line("root", "Root", GgReplayAgentOrigin::Root),
+        agent_line(
+            "agent-0",
+            "Worker",
+            GgReplayAgentOrigin::Spawn {
+                parent: "root".to_string(),
+                ordinal: 0,
+            },
+        ),
+        ended_agent_line(
+            "root",
+            "Root",
+            GgReplayAgentOrigin::Root,
+            GgAgentStatus::Done,
+        ),
+        end(0),
+    ];
+    let journal = write_journal(dir.path(), &lines);
+    let output = output_in(dir.path());
+
+    assemble_journal_to_gz(&journal, &output).expect("assemble");
+
+    let record = read_record(&output);
+    assert_eq!(record.agents.len(), 2, "an upsert, not an append");
+    assert_eq!(
+        record.agents[0].terminal_status,
+        Some(GgAgentStatus::Done),
+        "the terminal row replaces the opening one",
+    );
+    assert_eq!(
+        record.agents[0].agent_id, "root",
+        "and in place, so the table stays in creation order",
+    );
+    assert_eq!(
+        record.agents[1].terminal_status, None,
+        "an agent that never ended keeps the row it was born with",
+    );
+}
+
+/// The envelope is rewritten when a value it could not know at launch resolves — today, a model
+/// the provider refused an image for. The **last** line wins, or a reconstruction would send
+/// images on the first image turn and diverge for a reason that has nothing to do with a change.
+#[test]
+fn the_last_envelope_supersedes_the_ones_before_it() {
+    let dir = tempfile::tempdir().expect("scratch");
+    let mut resolved = seed_line("Build a tiny game.", Vec::new());
+    let GgJournalLine::Seed { seed } = &mut resolved else {
+        unreachable!("seed_line writes a seed line")
+    };
+    seed.model_modalities.insert(
+        "some/model".to_string(),
+        GgReplayModalities { vision: false },
+    );
+    let lines = vec![
+        header(),
+        seed_line("Build a tiny game.", Vec::new()),
+        resolved,
+        end(0),
+    ];
+    let journal = write_journal(dir.path(), &lines);
+    let output = output_in(dir.path());
+
+    assemble_journal_to_gz(&journal, &output).expect("assemble");
+
+    let record = read_record(&output);
+    assert!(
+        !record.seed.model_modalities["some/model"].vision,
+        "the resolved state, not the declared one",
+    );
+    assert_eq!(
+        record.seed.prompt, "Build a tiny game.",
+        "and the rest of the envelope is unchanged",
+    );
+}
+
+/// A seeded file resolves against the blob pool, and one whose bytes a turn already carried costs
+/// the record **nothing beyond its reference** — which is the whole reason the seed is allowed to
+/// be self-contained.
+#[test]
+fn a_provided_file_resolves_against_the_pool_without_growing_the_record() {
+    let dir = tempfile::tempdir().expect("scratch");
+    // Incompressible enough that gzip cannot hide a second copy: a duplicated payload would show
+    // up in the size comparison below as tens of kilobytes.
+    let image = filler(7, 64 * 1024);
+
+    // A session whose tool result carried the image, with no seed at all.
+    let mut interner = GgJournalInterner::new();
+    let output_text = interner.intern_text("ok");
+    let blob = interner.intern_blob("image/png", 48 * 1024, &image);
+    let mut without_seed = vec![header()];
+    let pooled = interner.take_pending();
+    // Where the seed line goes below: after the pool lines, never before them. The recorder
+    // writes the two as one batch in exactly that order, because a seed that named a blob the
+    // walk had not read yet is the dangling reference assembly refuses outright.
+    let after_the_pool = 1 + pooled.len();
+    without_seed.extend(pooled);
+    without_seed.push(entry(
+        0,
+        GgReplayEntryKind::ToolResult {
+            call: GgReplayToolCall {
+                id: "call-1".to_string(),
+                name: "read_file".to_string(),
+                arguments: json!({ "path": "specs/mockup.png" }),
+                cwd: None,
+            },
+            outcome: GgReplayToolOutcome {
+                ok: true,
+                output: output_text,
+                summary: None,
+                images: vec![blob],
+                data: None,
+                data_text: None,
+                failure: None,
+            },
+        },
+    ));
+    without_seed.push(end(1));
+
+    // The same session, with the seed naming that same file. The recorder interns it through the
+    // same pool, so it lands on the entry the turn already minted.
+    let mut with_seed = without_seed.clone();
+    with_seed.insert(
+        after_the_pool,
+        seed_line(
+            "Build a tiny game.",
+            vec![GgReplaySeedFile {
+                path: "specs/mockup.png".to_string(),
+                blob,
+            }],
+        ),
+    );
+
+    let bare = output_in(&dir.path().join("bare"));
+    let seeded = output_in(&dir.path().join("seeded"));
+    let bare_bytes = assemble_journal_to_gz(
+        &write_journal(&dir.path().join("bare-journal"), &without_seed),
+        &bare,
+    )
+    .expect("assemble")
+    .compressed_bytes;
+    let seeded_bytes = assemble_journal_to_gz(
+        &write_journal(&dir.path().join("seeded-journal"), &with_seed),
+        &seeded,
+    )
+    .expect("assemble")
+    .compressed_bytes;
+
+    let record = read_record(&seeded);
+    assert_eq!(
+        record.blobs.len(),
+        1,
+        "the seeded file and the image the turn carried are one pool entry",
+    );
+    assert_eq!(
+        record.seed.provided_files[0].blob, blob,
+        "and the seed references it rather than carrying a second copy",
+    );
+    assert_eq!(
+        record.blobs[0].data_base64, image,
+        "the bytes a reconstruction seeds the workspace from are the exact ones",
+    );
+    let growth = seeded_bytes - bare_bytes;
+    assert!(
+        growth < 1024,
+        "the seed cost {growth} compressed bytes over a record without one, against a {} byte \
+         payload — it must cost the reference and the envelope, not the image",
+        image.len(),
+    );
+}
+
+#[test]
+fn an_envelope_referencing_past_the_blob_pool_is_refused_rather_than_assembled() {
+    // The same danger a dangling entry carries, and worse in one way: a reconstruction seeds a
+    // workspace from this, so a mis-resolved reference writes another file's bytes to this path.
+    let dir = tempfile::tempdir().expect("scratch");
+    let lines = vec![
+        header(),
+        seed_line(
+            "Build a tiny game.",
+            vec![GgReplaySeedFile {
+                path: "specs/mockup.png".to_string(),
+                blob: 3,
+            }],
+        ),
+        end(0),
+    ];
+    let journal = write_journal(dir.path(), &lines);
+    let output = output_in(dir.path());
+
+    let error = assemble_journal_to_gz(&journal, &output).expect_err("a dangling seed is refused");
+
+    assert!(
+        error.to_string().contains("dangling reference"),
+        "the error should say what is missing: {error}",
+    );
+    assert!(
+        error.to_string().contains("specs/mockup.png"),
+        "and name the file it could not resolve: {error}",
+    );
+    assert!(!output.exists());
 }
 
 // --- damage that is reported ------------------------------------------------

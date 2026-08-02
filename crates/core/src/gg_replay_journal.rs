@@ -41,9 +41,9 @@ use serde_json::Value;
 
 use crate::gg::GgCapabilitySet;
 use crate::gg_replay::{
-    GgReplayBlob, GgReplayEntry, GgReplayFidelity, GgReplayInterner, GgReplayMessage,
-    GgReplayRecorder, GgReplayTextClip, GgReplayToolset, GgReplayTruncation, clip_text,
-    fingerprint_exact, fingerprint_json,
+    GgReplayAgent, GgReplayBlob, GgReplayEntry, GgReplayFidelity, GgReplayInterner,
+    GgReplayMessage, GgReplayRecorder, GgReplaySeed, GgReplayTextClip, GgReplayToolset,
+    GgReplayTruncation, clip_text, fingerprint_exact, fingerprint_json,
 };
 
 /// Where a recording gg session writes its [journal](self), relative to the run workspace.
@@ -88,6 +88,43 @@ pub enum GgJournalLine {
         /// do not yet cover everything the set asked for.
         #[serde(default)]
         fidelity: GgReplayFidelity,
+    },
+    /// The run's **invocation envelope**: the fixed identity the session started from — the
+    /// prompt, the resolved windows and modalities, the baseline commit, and the seeded files
+    /// as [blob](GgReplayBlob) references.
+    ///
+    /// Written at launch rather than at the end, for the reason every other line is written as
+    /// it happens: the sessions whose envelope is most worth having are the ones that were
+    /// killed, and a seed assembled at teardown is exactly the seed those runs never get.
+    ///
+    /// It may be written **again**, and assembly keeps the **last** one. One field of the
+    /// envelope is not final until the session is: a provider that refuses an image
+    /// [denies](crate::gg_replay::GgReplayModalities::vision) that model for the rest of the
+    /// run, and a reconstruction that started from the un-denied state would send images on
+    /// the first image turn and drift for a reason that has nothing to do with any real
+    /// change. Rewriting the one line is how a streaming journal expresses a value that is
+    /// only resolved at the end while still carrying it from the start.
+    Seed {
+        /// The envelope, with its provided files already interned as blob references. Boxed
+        /// because it carries the whole build prompt.
+        seed: Box<GgReplaySeed>,
+    },
+    /// One agent the session created, and how it came to exist.
+    ///
+    /// Written when the agent **comes into existence** — before it takes a scheduler slot, let
+    /// alone a turn — and again when its loop ends, carrying the terminal state. Assembly
+    /// **upserts** by [`agent_id`](GgReplayAgent::agent_id), so the terminal row supersedes the
+    /// opening one and an agent that never reached an ending keeps the row it was born with.
+    ///
+    /// That ordering is the whole point of the line. Deriving the agent set from the entries
+    /// instead loses precisely the agents worth explaining: one parked behind the parallelism
+    /// cap when the run was killed, one whose first model call never returned, one spawned
+    /// into a session that ended before it spoke. Every one of them recorded nothing, and every
+    /// one of them ran.
+    Agent {
+        /// The row. Boxed for the same reason [`Entry`](Self::Entry) is: one large variant
+        /// should not size every line.
+        agent: Box<GgReplayAgent>,
     },
     /// One newly interned message body, at the message pool index it occupies.
     Message {

@@ -85,6 +85,7 @@
 //! across all agents from one counter, so ordering the entries by sequence reconstructs the true
 //! interleaving of concurrently-running agents.
 
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::Write;
 use std::path::Path;
@@ -92,20 +93,23 @@ use std::sync::Mutex;
 use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
 use std::thread::JoinHandle;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 use test_cabinet_core::gg::GgCapabilitySet;
 use test_cabinet_core::gg_replay::{
-    GG_REPLAY_FORMAT_VERSION, GG_REPLAY_STANDARD_TOOL_MAX_BYTES, GgClientRole, GgReplayCommand,
-    GgReplayEntry, GgReplayEntryKind, GgReplayFidelity, GgReplayFileRegion, GgReplayInterner,
-    GgReplayModelError, GgReplayModelErrorKind, GgReplayPromptItem, GgReplayPromptSlot,
-    GgReplayRecorder, GgReplayRequestShape, GgReplayRetention, GgReplayToolCall,
-    GgReplayToolOutcome, GgReplayTruncation, GgReplayTruncationReason, GgShellCwd, GgShellOrigin,
+    GG_REPLAY_FORMAT_VERSION, GG_REPLAY_STANDARD_TOOL_MAX_BYTES, GgClientRole, GgReplayAgent,
+    GgReplayCommand, GgReplayEntry, GgReplayEntryKind, GgReplayFidelity, GgReplayFileRegion,
+    GgReplayInterner, GgReplayModalities, GgReplayModelError, GgReplayModelErrorKind,
+    GgReplayPromptItem, GgReplayPromptSlot, GgReplayRecorder, GgReplayRequestShape,
+    GgReplayRetention, GgReplaySeed, GgReplaySeedFile, GgReplayToolCall, GgReplayToolOutcome,
+    GgReplayTruncation, GgReplayTruncationReason, GgShellCwd, GgShellOrigin,
 };
 use test_cabinet_core::gg_replay_journal::{GgJournalInterner, GgJournalLine};
 
 use crate::context::{PromptItem, PromptSlot, Retention};
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
-use crate::tools::{READ_FILE_CAP, ToolData, ToolOutcome};
+use crate::tools::{READ_FILE_CAP, ToolData, ToolOutcome, sniff_image};
 
 /// A standard capture must keep whole whatever the model was shown whole, and the largest such
 /// payload gg produces is a whole-file `read_file`. So the record's tool ceiling has to cover the
@@ -186,6 +190,51 @@ pub struct RecordedCall<'a> {
     pub duration_ms: Option<u64>,
 }
 
+/// The run's **invocation envelope**, as the launch hands it to the recorder — everything a
+/// reconstruction needs before it consumes its first entry.
+///
+/// The provided files arrive as bytes rather than as paths because interning them is the
+/// recorder's business and reading them is not: the same envelope is recorded from a launch that
+/// has already read the workspace, and a recorder that reached for the filesystem would be doing
+/// I/O on the runtime thread every agent shares.
+pub struct RecordedSeed<'a> {
+    /// The build prompt the root agent was invoked with.
+    pub prompt: &'a str,
+    /// The commit gg observed the seeded workspace at, when the run made one — the
+    /// [baseline](crate::git::ensure_baseline). Absent for a run that never needed a repository.
+    pub baseline_commit: Option<&'a str>,
+    /// The **resolved** context window each bound model is measured against — the catalog's
+    /// figure narrowed by any override and reduced by the compaction headroom, which is the
+    /// number the fullness signal and the compaction trigger actually use.
+    pub model_windows: BTreeMap<String, u64>,
+    /// The modality state of each bound model **as it stands now**. Recorded again at the end of
+    /// the run if it has moved, so the record carries the resolved state rather than the
+    /// declared one.
+    pub model_modalities: BTreeMap<String, GgReplayModalities>,
+    /// The files the workspace was seeded with, in the order `core` provided them.
+    pub provided_files: &'a [RecordedSeedFile],
+}
+
+/// One file the workspace was seeded with, read off disk for the [seed](RecordedSeed).
+///
+/// Carries the bytes because the record has to be self-contained — a reconstruction seeds its own
+/// empty workspace from this and nothing else — and carrying them is very nearly free: an
+/// [autoloaded](https://docs.testcabinet.ai/gg/autoload-specifications/) case's reference mockups
+/// were sent to the model, so the [blob pool](test_cabinet_core::gg_replay::GgReplayRecord::blobs)
+/// already holds exactly these bytes under exactly this content address and the seed costs one
+/// integer per file.
+pub struct RecordedSeedFile {
+    /// The file's workspace-relative path.
+    pub path: String,
+    /// Its IANA media type, sniffed from the content the way `read_file` sniffs it.
+    pub media_type: String,
+    /// Its size on disk, in bytes (decoded, not base64).
+    pub bytes: u64,
+    /// Its bytes, base64-encoded with the same engine the file tools encode an attached image
+    /// with — which is what makes the pool dedup the two into one entry.
+    pub data_base64: String,
+}
+
 /// One subprocess gg ran, as the seam that ran it hands it to the recorder.
 ///
 /// Borrowed rather than owned because both producers already hold the streams — a `git`
@@ -233,6 +282,68 @@ pub fn shell_cwd(workspace: &Path, dir: &Path) -> GgShellCwd {
             path: dir.display().to_string(),
         },
     }
+}
+
+/// How large a [provided file](RecordedSeed::provided_files) may be before the seed records
+/// nothing about it at all: 8 MiB, the same ceiling `read_file` refuses to attach an image above.
+///
+/// A seeded file past that is one gg would never show a model in full, so a record that carried it
+/// would be spending megabytes to be self-contained about bytes the session never used. The
+/// ceiling matters more than that arithmetic suggests, though: the seed is written as **one batch**
+/// at launch, and a batch that crosses the run's
+/// [byte ceiling](test_cabinet_core::gg::GgRunLimits::replay_max_bytes) stops capture for the whole
+/// run — so an unbounded seed would let one enormous seeded asset cost a run its entire record,
+/// before a single turn.
+const SEED_FILE_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Read the workspace-relative `paths` into [seed files](RecordedSeedFile), skipping — loudly —
+/// whatever cannot be carried.
+///
+/// Every skip appends to `warnings`, which the launch prints on the root's stream before the first
+/// turn. A seed that quietly listed fewer files than the workspace was given would be the worst
+/// possible shape for this: a reconstruction would seed a *different* workspace and report every
+/// consequence as model drift.
+pub fn read_seed_files(
+    workspace: &Path,
+    paths: &[std::path::PathBuf],
+    warnings: &mut Vec<String>,
+) -> Vec<RecordedSeedFile> {
+    let mut files = Vec::new();
+    for path in paths {
+        let absolute = workspace.join(path);
+        let display = path.display();
+        let bytes = match std::fs::read(&absolute) {
+            Ok(bytes) => bytes,
+            Err(err) => {
+                warnings.push(format!(
+                    "replay capture: the provided file `{display}` could not be read ({err}), so \
+                     the replay record's seed does not carry it."
+                ));
+                continue;
+            }
+        };
+        let size = bytes.len() as u64;
+        if size > SEED_FILE_MAX_BYTES {
+            warnings.push(format!(
+                "replay capture: the provided file `{display}` is {size} bytes, past the \
+                 {SEED_FILE_MAX_BYTES}-byte seed ceiling, so the replay record's seed does not \
+                 carry it."
+            ));
+            continue;
+        }
+        files.push(RecordedSeedFile {
+            path: display.to_string(),
+            // Sniffed from the content, exactly as `read_file` does it, so an image the model was
+            // shown is recorded under the media type it was shown as. Anything unrecognized is
+            // carried as opaque bytes rather than guessed at from an extension.
+            media_type: sniff_image(&bytes)
+                .map_or("application/octet-stream", |format| format.media_type)
+                .to_string(),
+            bytes: size,
+            data_base64: BASE64.encode(&bytes),
+        });
+    }
+    files
 }
 
 /// Translate a gg [`ModelError`] into the contract's [class-plus-detail](GgReplayModelError) form.
@@ -302,6 +413,13 @@ struct Capture {
     bytes: u64,
     /// The per-run byte ceiling, or `None` for unbounded capture.
     max_bytes: Option<u64>,
+    /// The [envelope](GgReplaySeed) last written to the journal, kept so the one field that is
+    /// not final until the session is — the resolved modalities — can be updated without the
+    /// launch having to hold (or re-read) the seeded files a second time.
+    ///
+    /// The only body this recorder retains, and it is retained for the same reason the interner
+    /// retains pool *ids*: it is bounded by the run's configuration rather than by its length.
+    seed: Option<GgReplaySeed>,
     /// Why capture stopped, once it has. Set exactly once; capture never resumes.
     stopped: Option<GgReplayTruncationReason>,
     /// Whether the terminating [`End`](GgJournalLine::End) line has been written.
@@ -329,6 +447,21 @@ impl Capture {
             self.entries += 1;
             self.last_seq = Some(seq);
         }
+    }
+
+    /// Write `seed` as the journal's current [envelope](GgJournalLine::Seed), together with any
+    /// blob lines interning its provided files produced.
+    ///
+    /// Remembered whether or not the batch lands. A batch that does not land has stopped capture,
+    /// so nothing further is written either way, and remembering it keeps the recorder's own view
+    /// of the envelope the one the journal would have carried.
+    fn write_seed(&mut self, seed: GgReplaySeed) {
+        let mut lines = self.interner.take_pending();
+        lines.push(GgJournalLine::Seed {
+            seed: Box::new(seed.clone()),
+        });
+        self.seed = Some(seed);
+        self.queue_batch(lines);
     }
 
     /// Queue `lines` as one indivisible batch, returning whether it landed.
@@ -457,6 +590,7 @@ impl GgRecorder {
                 last_seq: None,
                 bytes: 0,
                 max_bytes,
+                seed: None,
                 stopped: None,
                 finished: false,
             }),
@@ -490,6 +624,93 @@ impl GgRecorder {
     /// the journal header already told the reader to expect.
     pub fn fidelity(&self) -> GgReplayFidelity {
         self.fidelity
+    }
+
+    /// Record the run's **[seed](GgReplaySeed)**: the invocation envelope a reconstruction starts
+    /// from, before it consumes a single entry.
+    ///
+    /// Called by the launch, as soon as the orchestrator that resolved the envelope exists — not at
+    /// teardown, because the records that most need a seed belong to the sessions that never
+    /// reached one.
+    ///
+    /// The provided files are interned into the **blob pool**, which is what makes carrying them
+    /// nearly free: an autoloaded case's reference mockups are sent to the model, and the pool
+    /// keys on the [content address](test_cabinet_core::gg_replay::fingerprint_exact) of the
+    /// base64 payload, so the file the seed names and the image a turn carried collapse into one
+    /// entry and the seed costs an integer. A file nothing else reads is stored once, which is
+    /// what a self-contained record is worth paying.
+    pub fn record_seed(&self, seed: RecordedSeed<'_>) {
+        let mut capture = self.capture.lock().expect("replay capture lock");
+        if capture.stopped.is_some() {
+            return;
+        }
+        let provided_files: Vec<GgReplaySeedFile> = seed
+            .provided_files
+            .iter()
+            .map(|file| GgReplaySeedFile {
+                path: file.path.clone(),
+                blob: capture
+                    .interner
+                    .intern_blob(&file.media_type, file.bytes, &file.data_base64),
+            })
+            .collect();
+        capture.write_seed(GgReplaySeed {
+            baseline_commit: seed.baseline_commit.map(str::to_string),
+            prompt: seed.prompt.to_string(),
+            model_windows: seed.model_windows,
+            model_modalities: seed.model_modalities,
+            provided_files,
+        });
+    }
+
+    /// Update the recorded [seed](GgReplaySeed)'s **resolved** modality state, rewriting the
+    /// envelope only if it has actually moved.
+    ///
+    /// Called once at the end of the run. A model's modality state is not a launch fact: a
+    /// provider that refuses an image denies that model for the rest of the session, and a
+    /// reconstruction that started from the un-denied state would send images on the first image
+    /// turn and diverge for a reason that has nothing to do with a real change.
+    ///
+    /// The equality check is what keeps this free for the overwhelming majority of runs, in which
+    /// nothing was ever denied: no denial, no second envelope, no bytes. It also means the journal
+    /// carries a second seed line exactly when reading one is worthwhile.
+    pub fn record_resolved_modalities(&self, modalities: BTreeMap<String, GgReplayModalities>) {
+        let mut capture = self.capture.lock().expect("replay capture lock");
+        if capture.stopped.is_some() {
+            return;
+        }
+        let Some(seed) = capture.seed.clone() else {
+            return;
+        };
+        if seed.model_modalities == modalities {
+            return;
+        }
+        capture.write_seed(GgReplaySeed {
+            model_modalities: modalities,
+            ..seed
+        });
+    }
+
+    /// Record one **[agent](GgReplayAgent)** and how it came to exist.
+    ///
+    /// Called twice per agent: once the moment it exists — before it queues for a scheduler slot,
+    /// let alone takes a turn — and once when its loop ends, with the terminal status and any
+    /// ceiling that stopped it. Assembly upserts the row by
+    /// [`agent_id`](GgReplayAgent::agent_id), so the second supersedes the first and an agent that
+    /// never reached an ending keeps the row it was born with.
+    ///
+    /// Recorded at all — rather than derived from which agents happen to appear in the entries —
+    /// because the derivation silently omits the agents worth explaining: the one still queued
+    /// behind the parallelism cap when the run was killed, the one whose first model call never
+    /// returned. Both ran; neither pinned an input.
+    pub fn record_agent(&self, agent: GgReplayAgent) {
+        let mut capture = self.capture.lock().expect("replay capture lock");
+        if capture.stopped.is_some() {
+            return;
+        }
+        capture.queue_batch(vec![GgJournalLine::Agent {
+            agent: Box::new(agent),
+        }]);
     }
 
     /// Record one agent turn's **model I/O**: the `messages`/`tools` request sent to the model and

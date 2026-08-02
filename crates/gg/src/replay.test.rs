@@ -2,15 +2,16 @@
 //! the two properties the whole scheme rests on — capture stops **atomically**, and the journal
 //! always says whether it is complete.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde_json::json;
 use tempfile::TempDir;
-use test_cabinet_core::gg::GgCapabilitySet;
+use test_cabinet_core::gg::{GgAgentStatus, GgCapabilitySet};
 use test_cabinet_core::gg_replay::{
     GG_REPLAY_BLOB_REF_KEY, GG_REPLAY_FORMAT_VERSION, GG_REPLAY_STANDARD_STREAM_MAX_BYTES,
-    GG_REPLAY_STANDARD_TOOL_MAX_BYTES, GgReplayPools, fingerprint_exact,
+    GG_REPLAY_STANDARD_TOOL_MAX_BYTES, GgReplayAgentOrigin, GgReplayPools, fingerprint_exact,
 };
 use test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH;
 use test_cabinet_core::metrics::TokenCounts;
@@ -288,6 +289,240 @@ fn entries_are_stamped_by_agent_at_a_globally_monotonic_sequence() {
         entries[1].kind,
         GgReplayEntryKind::ToolResult { .. }
     ));
+}
+
+// --- provenance: the invocation envelope and the agent table ----------------
+
+/// A workspace file at `path` holding `bytes`, ready to be read into a [seed](RecordedSeed).
+fn seed_file(dir: &TempDir, path: &str, bytes: &[u8]) -> PathBuf {
+    let absolute = dir.path().join(path);
+    if let Some(parent) = absolute.parent() {
+        std::fs::create_dir_all(parent).expect("the seeded file's directory");
+    }
+    std::fs::write(&absolute, bytes).expect("the seeded file");
+    PathBuf::from(path)
+}
+
+/// The envelope as the launch hands it over, naming one model with a resolved window and the
+/// given vision state.
+fn recorded_seed<'a>(
+    prompt: &'a str,
+    vision: bool,
+    provided_files: &'a [RecordedSeedFile],
+) -> RecordedSeed<'a> {
+    RecordedSeed {
+        prompt,
+        baseline_commit: Some("abc123"),
+        model_windows: BTreeMap::from([("mock/echo".to_string(), 128_000)]),
+        model_modalities: BTreeMap::from([(
+            "mock/echo".to_string(),
+            GgReplayModalities { vision },
+        )]),
+        provided_files,
+    }
+}
+
+/// The [seed](GgJournalLine::Seed) lines the journal carries, in write order.
+fn seeds(lines: &[GgJournalLine]) -> Vec<&GgReplaySeed> {
+    lines
+        .iter()
+        .filter_map(|line| match line {
+            GgJournalLine::Seed { seed } => Some(seed.as_ref()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The [agent](GgJournalLine::Agent) rows the journal carries, in write order — **not** upserted,
+/// which is assembly's job: this is what a recorder actually emitted.
+fn agent_rows(lines: &[GgJournalLine]) -> Vec<&GgReplayAgent> {
+    lines
+        .iter()
+        .filter_map(|line| match line {
+            GgJournalLine::Agent { agent } => Some(agent.as_ref()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn the_seed_records_the_envelope_a_reconstruction_starts_from() {
+    let (dir, recorder) = recorder_in(None);
+    recorder.record_seed(recorded_seed("Build a tiny game.", true, &[]));
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let seeds = seeds(&lines);
+    assert_eq!(seeds.len(), 1);
+    assert_eq!(seeds[0].prompt, "Build a tiny game.");
+    assert_eq!(seeds[0].baseline_commit.as_deref(), Some("abc123"));
+    assert_eq!(seeds[0].model_windows["mock/echo"], 128_000);
+    assert!(seeds[0].model_modalities["mock/echo"].vision);
+}
+
+/// The reason the seed is allowed to be self-contained: a seeded file the session also **read**
+/// costs the record one integer, because both go through the one blob pool and the pool keys on
+/// the payload's content address.
+#[test]
+fn a_seeded_file_the_session_also_read_is_one_blob_not_two() {
+    let (dir, recorder) = recorder_in(None);
+    // The same bytes on both sides: base64 `QUJD` is `ABC`, which is what an attached image
+    // carries and what the file on disk holds.
+    let path = seed_file(&dir, "specs/mockup.png", b"ABC");
+    let mut warnings = Vec::new();
+    let provided = read_seed_files(dir.path(), std::slice::from_ref(&path), &mut warnings);
+    assert!(warnings.is_empty(), "the file is readable and small");
+
+    let mut message = Message::user("look at this");
+    message
+        .images
+        .push(ImageContent::new("image/png", "QUJD", 3));
+    recorder.record_model_io(
+        RecordedCall {
+            agent_id: "root",
+            role: GgClientRole::Agent,
+            shape: GgReplayRequestShape::Complete,
+            messages: std::slice::from_ref(&message),
+            tools: &[],
+            duration_ms: None,
+        },
+        &stop_response("ok"),
+    );
+    recorder.record_seed(recorded_seed("Build a tiny game.", true, &provided));
+    recorder.finish();
+
+    let lines = journal(&dir);
+    assert_eq!(
+        pool_indices(&lines, "blob"),
+        vec![0],
+        "the seeded file lands on the blob the turn already interned",
+    );
+    let seeds = seeds(&lines);
+    assert_eq!(seeds[0].provided_files.len(), 1);
+    assert_eq!(seeds[0].provided_files[0].path, "specs/mockup.png");
+    assert_eq!(
+        seeds[0].provided_files[0].blob, 0,
+        "and the seed carries the reference, not a second copy of the bytes",
+    );
+}
+
+/// Whatever the seed could not carry is said out loud on the launch's warnings. A seed that
+/// quietly listed fewer files than the workspace was given is the worst available failure: a
+/// reconstruction would seed a *different* workspace and report every consequence as model drift.
+#[test]
+fn a_provided_file_the_seed_cannot_carry_is_skipped_loudly() {
+    let dir = TempDir::new().expect("a temporary workspace");
+    let readable = seed_file(&dir, "specs/brief.md", b"build it");
+    let oversized = seed_file(
+        &dir,
+        "assets/huge.bin",
+        &vec![0u8; (SEED_FILE_MAX_BYTES + 1) as usize],
+    );
+    let missing = PathBuf::from("specs/absent.png");
+    let mut warnings = Vec::new();
+
+    let files = read_seed_files(dir.path(), &[readable, oversized, missing], &mut warnings);
+
+    assert_eq!(
+        files
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["specs/brief.md"],
+        "only what could be carried",
+    );
+    assert_eq!(warnings.len(), 2, "and one warning each for the rest");
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("huge.bin") && warning.contains("seed ceiling")),
+        "the oversized file is named along with the ceiling it crossed: {warnings:?}",
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.contains("absent.png") && warning.contains("could not be read")),
+        "and the unreadable one says so: {warnings:?}",
+    );
+}
+
+/// The modality state is not a launch fact. A provider that refused an image denies that model for
+/// the rest of the run, so the envelope is rewritten at teardown — and assembly keeps the last one.
+#[test]
+fn a_denial_rewrites_the_envelope_with_the_resolved_modalities() {
+    let (dir, recorder) = recorder_in(None);
+    recorder.record_seed(recorded_seed("Build a tiny game.", true, &[]));
+    recorder.record_resolved_modalities(BTreeMap::from([(
+        "mock/echo".to_string(),
+        GgReplayModalities { vision: false },
+    )]));
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let seeds = seeds(&lines);
+    assert_eq!(
+        seeds.len(),
+        2,
+        "the resolved envelope supersedes the opening one"
+    );
+    assert!(seeds[0].model_modalities["mock/echo"].vision);
+    assert!(!seeds[1].model_modalities["mock/echo"].vision);
+    assert_eq!(
+        seeds[1].prompt, "Build a tiny game.",
+        "and the rest of the envelope is carried across unchanged",
+    );
+}
+
+/// The overwhelmingly common run — nothing was ever denied — pays nothing for the resolved pass.
+#[test]
+fn an_unchanged_modality_state_writes_no_second_envelope() {
+    let (dir, recorder) = recorder_in(None);
+    recorder.record_seed(recorded_seed("Build a tiny game.", true, &[]));
+    recorder.record_resolved_modalities(BTreeMap::from([(
+        "mock/echo".to_string(),
+        GgReplayModalities { vision: true },
+    )]));
+    recorder.finish();
+
+    assert_eq!(seeds(&journal(&dir)).len(), 1);
+}
+
+/// An agent is written into the table when it **comes into existence** and again when its loop
+/// ends. Both rows, in that order, are what let assembly keep the terminal one while an agent that
+/// never reached an ending still has the row it was born with.
+#[test]
+fn an_agent_is_recorded_when_it_is_born_and_again_when_it_ends() {
+    let (dir, recorder) = recorder_in(None);
+    let born = GgReplayAgent {
+        agent_id: "agent-0".to_string(),
+        profile: "Worker".to_string(),
+        origin: GgReplayAgentOrigin::Spawn {
+            parent: "root".to_string(),
+            ordinal: 0,
+        },
+        terminal_status: None,
+        limit_hit: None,
+    };
+    recorder.record_agent(born.clone());
+    recorder.record_agent(GgReplayAgent {
+        terminal_status: Some(GgAgentStatus::Done),
+        ..born
+    });
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let rows = agent_rows(&lines);
+    assert_eq!(rows.len(), 2, "the opening row and the terminal one");
+    assert_eq!(rows[0].terminal_status, None);
+    assert_eq!(rows[1].terminal_status, Some(GgAgentStatus::Done));
+    assert_eq!(
+        rows[1].origin,
+        GgReplayAgentOrigin::Spawn {
+            parent: "root".to_string(),
+            ordinal: 0,
+        },
+        "and the terminal row repeats the keys the agent is bound by",
+    );
 }
 
 // --- pooling ----------------------------------------------------------------

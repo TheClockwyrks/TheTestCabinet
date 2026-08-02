@@ -41,8 +41,8 @@ use test_cabinet_core::gg::{
     GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::gg_replay::{
-    GG_REPLAY_BLOB_REF_KEY, GgClientRole, GgReplayEntry, GgReplayEntryKind, GgReplayModelErrorKind,
-    GgReplayPromptSlot, GgReplayRetention,
+    GG_REPLAY_BLOB_REF_KEY, GgClientRole, GgReplayAgent, GgReplayAgentOrigin, GgReplayEntry,
+    GgReplayEntryKind, GgReplayModelErrorKind, GgReplayPromptSlot, GgReplayRetention, GgReplaySeed,
 };
 use test_cabinet_core::gg_replay_journal::{GG_REPLAY_JOURNAL_PATH, GgJournalLine};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
@@ -8299,6 +8299,106 @@ async fn the_replay_capability_escalates_from_a_non_root_agent() {
     assert_eq!(journal_fidelity(dir.path()), GgReplayFidelity::Full);
 }
 
+/// A real session pins its **invocation envelope** and a row for **every agent it created**,
+/// alongside the inputs — the provenance a reconstruction binds itself to before it consumes a
+/// single entry.
+///
+/// The ordering assertion at the end is the load-bearing one, and it is what the whole agent table
+/// exists for: the row is written when the agent *comes into existence*, ahead of its first pinned
+/// input rather than derived from it. That is why an agent which records nothing — one parked
+/// behind the parallelism cap when the run is killed, one whose first model call never returns —
+/// is still in the table. A set derived from the entries silently drops exactly those agents, and a
+/// reconstruction would then run a smaller fleet than the run did.
+#[tokio::test]
+async fn a_captured_run_pins_its_envelope_and_every_agent_it_created() {
+    let dir = TempDir::new().unwrap();
+    let emitter = Emitter::with_sink(
+        Some("run-provenance".to_string()),
+        Box::new(CollectingSink::new()),
+    );
+    let set = subagent_set(1, 3, &["subagent"]);
+    let inv = invocation(dir.path(), set.clone());
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_AGENT, |b| {
+            Box::new(MockClient::with_subagent_parent_script(&b.model_id))
+        })
+        .slot("subagent", |b| {
+            Box::new(MockClient::with_subagent_child_script(&b.model_id))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    let lines = read_replay_journal(dir.path());
+
+    // The envelope, as the launch resolved it.
+    let seed = journal_seed(&lines).expect("the run pinned its invocation envelope");
+    assert_eq!(seed.prompt, "Build a tiny game.");
+    assert_eq!(
+        seed.model_windows.keys().collect::<Vec<_>>(),
+        vec!["mock/primary", "mock/subagent"],
+        "every model the run could bind, not only the root's",
+    );
+    assert_eq!(
+        seed.model_windows["mock/primary"],
+        resolve_window_limit(&set, &inv.model_windows, "mock/primary").expect("a resolved window"),
+        "the **resolved** window the fullness signal is measured against, not the catalog figure",
+    );
+    assert!(
+        seed.model_modalities["mock/primary"].vision,
+        "nothing was denied, so the resolved modality state is the optimistic offline default",
+    );
+
+    // The table: both agents, each keyed by how it came to exist.
+    let rows = journal_agent_table(&lines);
+    assert_eq!(
+        rows.iter()
+            .map(|row| row.agent_id.as_str())
+            .collect::<Vec<_>>(),
+        vec![ROOT_AGENT_ID, "agent-0"],
+        "the root and the child it spawned, in creation order",
+    );
+    assert_eq!(rows[0].origin, GgReplayAgentOrigin::Root);
+    assert_eq!(
+        rows[1].origin,
+        GgReplayAgentOrigin::Spawn {
+            parent: ROOT_AGENT_ID.to_string(),
+            ordinal: 0,
+        },
+        "keyed on the spawner and the spawn's position in its turn loop — never on the child's \
+         own id, which a playback assigns off its own counter",
+    );
+    assert_eq!(rows[1].profile, "subagent");
+    for row in &rows {
+        assert_eq!(
+            row.terminal_status,
+            Some(GgAgentStatus::Done),
+            "both loops ended, so both rows were superseded by a terminal one",
+        );
+    }
+
+    // And the child's row was written before it pinned anything at all.
+    let row_at = lines
+        .iter()
+        .position(
+            |line| matches!(line, GgJournalLine::Agent { agent } if agent.agent_id == "agent-0"),
+        )
+        .expect("the child's opening row");
+    let first_entry_at = lines
+        .iter()
+        .position(
+            |line| matches!(line, GgJournalLine::Entry { entry } if entry.agent_id == "agent-0"),
+        )
+        .expect("the child did record inputs, which is what makes the ordering meaningful");
+    assert!(
+        row_at < first_entry_at,
+        "the child is in the table before its first pinned input, so an agent that never \
+         reaches one is in the table too",
+    );
+}
+
 /// Read and parse the `.gg/replay.ndjson` capture journal a replay-captured run writes under
 /// `dir`, one [line](GgJournalLine) per record.
 fn read_replay_journal(dir: &Path) -> Vec<GgJournalLine> {
@@ -8311,6 +8411,35 @@ fn read_replay_journal(dir: &Path) -> Vec<GgJournalLine> {
                 .unwrap_or_else(|err| panic!("replay journal line `{line}`: {err}"))
         })
         .collect()
+}
+
+/// The **last** [invocation envelope](GgReplaySeed) a journal carries, which is the one assembly
+/// keeps: a later line supersedes an earlier one, because the resolved modality state is not known
+/// until the session ends.
+fn journal_seed(lines: &[GgJournalLine]) -> Option<&GgReplaySeed> {
+    lines.iter().rev().find_map(|line| match line {
+        GgJournalLine::Seed { seed } => Some(seed.as_ref()),
+        _ => None,
+    })
+}
+
+/// The [agent table](GgReplayAgent) a journal implies, folded the way assembly folds it: upserted
+/// by `agent_id`, in creation order, so the terminal row supersedes the opening one.
+fn journal_agent_table(lines: &[GgJournalLine]) -> Vec<GgReplayAgent> {
+    let mut table: Vec<GgReplayAgent> = Vec::new();
+    for line in lines {
+        let GgJournalLine::Agent { agent } = line else {
+            continue;
+        };
+        match table
+            .iter_mut()
+            .find(|existing| existing.agent_id == agent.agent_id)
+        {
+            Some(existing) => *existing = agent.as_ref().clone(),
+            None => table.push(agent.as_ref().clone()),
+        }
+    }
+    table
 }
 
 /// The pinned inputs a journal carries, in write order.

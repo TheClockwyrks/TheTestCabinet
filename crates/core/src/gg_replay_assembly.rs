@@ -116,6 +116,7 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
     );
 
     let mut header: Option<JournalHeader> = None;
+    let mut provenance = Provenance::default();
     let mut entries: u64 = 0;
     let mut last_seq: Option<u64> = None;
     // Set when the walk stops on damage; superseded by whatever the `End` line reports if
@@ -188,6 +189,13 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
                     fidelity,
                 });
             }
+            GgJournalLine::Seed { seed } => {
+                check_seed_references(journal, &segments, &seed)?;
+                // The last one wins: the recorder rewrites the envelope when a value it could
+                // not know at launch has since resolved (see the journal line's docs).
+                provenance.seed = *seed;
+            }
+            GgJournalLine::Agent { agent } => provenance.upsert_agent(*agent),
             GgJournalLine::Message { index, message } => {
                 expect_next_index(journal, "message", index, segments.messages.count)?;
                 segments.messages.push(&message)?;
@@ -243,7 +251,8 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
     // short write copying a segment in — would otherwise leave a truncated `.gz` at the
     // run tree root, which the driver would go on to mirror as the run's record.
     let staged = scratch.path().join("record.json.gz");
-    let compressed_bytes = write_record(&staged, &header, segments, truncation.as_ref())?;
+    let compressed_bytes =
+        write_record(&staged, &header, &provenance, segments, truncation.as_ref())?;
     std::fs::rename(&staged, output)?;
     Ok(GgReplayAssembly {
         entries,
@@ -334,6 +343,45 @@ struct JournalHeader {
     /// How completely it captured — copied through from the journal, never re-derived
     /// from the capability set.
     fidelity: GgReplayFidelity,
+}
+
+/// The record's **provenance**: the invocation envelope and the agent table, folded out of
+/// the journal's [`Seed`](GgJournalLine::Seed) and [`Agent`](GgJournalLine::Agent) lines.
+///
+/// The one part of an assembled record that is held **in memory** rather than streamed
+/// through a [segment file](Segment), and deliberately so: both are bounded by the run's
+/// *shape* — one envelope, one row per agent — rather than by its length, which is the term
+/// the segments exist to remove. A thousand-turn run has the same provenance as a two-turn
+/// one. They also cannot be streamed, because both are written more than once: a later line
+/// supersedes an earlier one, and a segment file only appends.
+#[derive(Debug, Default)]
+struct Provenance {
+    /// The fixed identity the session started from, as the **last**
+    /// [`Seed`](GgJournalLine::Seed) line stated it. Default — an empty envelope — for a
+    /// journal that carried none, which is every journal written before the line existed.
+    seed: GgReplaySeed,
+    /// One row per agent, in the order the run created them.
+    agents: Vec<GgReplayAgent>,
+}
+
+impl Provenance {
+    /// Add `agent`, or replace the row it already has.
+    ///
+    /// A linear scan rather than a map, for the reason the table is in memory at all: it is
+    /// bounded by the run's agent count — single digits for almost every run, and bounded by
+    /// the parallelism cap and the board for the rest — and the position matters. Replacing in
+    /// place is what keeps the table in **creation order** while letting the terminal row
+    /// supersede the opening one.
+    fn upsert_agent(&mut self, agent: GgReplayAgent) {
+        match self
+            .agents
+            .iter_mut()
+            .find(|existing| existing.agent_id == agent.agent_id)
+        {
+            Some(existing) => *existing = agent,
+            None => self.agents.push(agent),
+        }
+    }
 }
 
 /// What the terminating line reported, kept apart from the walk's own figures so the two
@@ -474,6 +522,28 @@ fn check_entry_references(
     Ok(())
 }
 
+/// Require every [seeded file](crate::gg_replay::GgReplaySeedFile) to reference a blob
+/// already read.
+///
+/// The same danger [an entry's references](check_entry_references) carry, and refused on the
+/// same terms: a seed naming a blob past the pool's end would hand a reconstruction seeding a
+/// workspace either nothing or — worse — another file's bytes under this file's path.
+fn check_seed_references(journal: &Path, segments: &Segments, seed: &GgReplaySeed) -> Result<()> {
+    for file in &seed.provided_files {
+        if u64::from(file.blob) >= segments.blobs.count {
+            return Err(journal_error(
+                journal,
+                format!(
+                    "has a dangling reference: the seed's provided file `{}` names blob {}, but \
+                     only {} have been read",
+                    file.path, file.blob, segments.blobs.count
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// A journal that cannot be assembled, named by path so a run's warning says *which*
 /// journal — a stage's error is the only place this surfaces.
 fn journal_error(journal: &Path, detail: impl Into<String>) -> Error {
@@ -599,6 +669,7 @@ impl Segments {
 fn write_record(
     output: &Path,
     header: &JournalHeader,
+    provenance: &Provenance,
     segments: Segments,
     truncation: Option<&GgReplayTruncation>,
 ) -> Result<u64> {
@@ -615,27 +686,16 @@ fn write_record(
     write_field(&mut out, "sessionId", &header.session_id)?;
     out.write_all(b",")?;
     write_field(&mut out, "capabilitySet", &header.capability_set)?;
-    // The journal carries no provenance lines yet, so an assembled record's seed and
-    // agent table are empty rather than absent: both are `#[serde(default)]`, and a
-    // reader that must know whether an agent row exists asks the table, not the format.
-    //
-    // **Both are unimplemented, not merely unpopulated**, and the distinction matters to
-    // anyone building on this: `GgReplayAgent` is constructed nowhere outside its own
-    // tests, so `agents` is empty on *every* record that has ever been produced, at both
-    // fidelities. The invocation envelope `GgReplaySeed` is specified to carry — the
-    // prompt, the model windows, the resolved modalities, the baseline commit and the
-    // provided files as blob refs — is likewise absent everywhere.
-    //
-    // This is a **blocking prerequisite for driving playback**, which binds live agents
-    // through the `agents` table and seeds a workspace from `seed`; deriving the agent
-    // set from the entries instead (as `ReplayInputs::agent_ids` does today) silently
-    // loses an agent that was spawned and recorded nothing. It is owned by **M7.5** in
-    // the build order — filed there precisely so that it stops being disclosed by each
-    // step in passing and belonging to none of them.
+    // The provenance the walk folded out of the journal's `Seed`/`Agent` lines. Both are
+    // written as values rather than as segments because both are bounded by the run's shape
+    // rather than its length, and both are supersedable (see `Provenance`). A journal that
+    // carried neither — every journal a pre-M7.5 gg wrote — yields an empty envelope and an
+    // empty table, which is what `#[serde(default)]` means on the record: a reader asks the
+    // table whether an agent row exists, never the format version.
     out.write_all(b",")?;
-    write_field(&mut out, "seed", &GgReplaySeed::default())?;
+    write_field(&mut out, "seed", &provenance.seed)?;
     out.write_all(b",")?;
-    write_field(&mut out, "agents", &Vec::<GgReplayAgent>::new())?;
+    write_field(&mut out, "agents", &provenance.agents)?;
 
     for (name, segment) in [
         ("messages", segments.messages),
