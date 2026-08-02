@@ -48,7 +48,10 @@
 //!   took a branch this build no longer takes). That is a real divergence rather than a bug, so the
 //!   wait is bounded: on expiry the **lowest** waiter is released, the inputs it stepped over are
 //!   abandoned, and the whole thing is recorded as a [`ReplayStall`] on
-//!   [`stalls`](ReplayInputs::stalls).
+//!   [`stalls`](ReplayInputs::stalls). A release is the one moment the barrier gives up its
+//!   ordering guarantee, so an abandoned input stays counted in
+//!   [`unserved`](ReplayInputs::unserved) and a [playback](crate::playback) turns every stall into
+//!   a divergence of its own — the give-up must not be able to hide behind its own tidying.
 //!
 //! # What is *not* served through a cursor
 //!
@@ -540,7 +543,19 @@ struct InputState {
     /// an input.
     queues: BTreeMap<String, AgentQueues>,
     /// The seqs of every consumable entry not yet served, ascending.
+    ///
+    /// A seq stays here once it has been [abandoned](Self::abandoned) — the two sets overlap on
+    /// purpose. An abandoned entry is still an input the record pinned and this reconstruction
+    /// never demanded, which is exactly what [`unserved`](ReplayInputs::unserved) reports, so
+    /// removing it here would make the barrier's own give-up *erase* the evidence of itself.
     unserved: BTreeSet<u64>,
+    /// The seqs a [stall](ReplayStall) gave up on: still unserved, but no longer blocking anybody.
+    ///
+    /// Kept separately from `unserved` rather than subtracted from it because the two questions are
+    /// different. The barrier asks *"is anything below me still coming?"* and must say no about an
+    /// abandoned entry or the release would not have released anything; the end-of-run report asks
+    /// *"what did the record pin that this build never asked for?"* and must say yes.
+    abandoned: BTreeSet<u64>,
     /// Agents currently parked in [`await_turn`](ReplayInputs::await_turn), keyed by the seq each is
     /// waiting to consume. Keys are unique because a seq belongs to exactly one entry, and an agent
     /// waits for its own next one.
@@ -549,6 +564,19 @@ struct InputState {
     retired: BTreeSet<String>,
     /// Barrier waits that expired.
     stalls: Vec<ReplayStall>,
+}
+
+impl InputState {
+    /// Take `seq` out of circulation entirely — it was served, or dropped by
+    /// [`disregard`](ReplayInputs::disregard).
+    ///
+    /// One function rather than two `remove` calls at five sites, because the two sets are only
+    /// correct together: a seq left in `abandoned` after being served would go on being skipped by
+    /// the gate, and one left in `unserved` would be reported as never demanded when it was.
+    fn consumed(&mut self, seq: u64) {
+        self.unserved.remove(&seq);
+        self.abandoned.remove(&seq);
+    }
 }
 
 /// One agent-keyed, ordered view of a [replay record](GgReplayRecord)'s pinned inputs.
@@ -571,8 +599,8 @@ pub struct ReplayInputs {
     frames: BTreeMap<String, Vec<RecordedPromptFrame>>,
     /// Which agent owes each consumable seq — how a blocked waiter names what is blocking it.
     owners: BTreeMap<u64, String>,
-    /// The seqs an agent can still owe **after its own turn loop has ended** — every `git`
-    /// invocation, and nothing else.
+    /// The seqs an agent can still owe **after its own turn loop has ended** — the `git`
+    /// invocations recorded past the last thing that agent's loop itself demanded, and nothing else.
     ///
     /// gg's own bookkeeping outlives the loop it belongs to, and by a long way: an issue is
     /// dispatched, worked, committed and *merged* under the root's name, and every one of those
@@ -581,6 +609,14 @@ pub struct ReplayInputs {
     /// provable [deadlock](ReplayError::Deadlock) — must not claim one behind a merge that has not
     /// run yet. Those waits fall back to the [stall](ReplayStall) ceiling, which is the right
     /// answer for a wait that *might* still be satisfied.
+    ///
+    /// **Narrowed to the git entries that are actually post-loop**, which is the whole category's
+    /// worth of exemption only for an agent that did nothing but bookkeeping. A record says where
+    /// an agent's loop ended without a marker for it: the loop's last act is its last *non-git*
+    /// entry, so a `git` below that one was demanded from inside a running loop and a retired agent
+    /// can never come back for it. Exempting those too — which the first cut of this did, by
+    /// inserting the entire category — meant no wait behind any `git` was ever provably stuck, and
+    /// every one of them paid the full [stall](ReplayStall) ceiling to reach the same conclusion.
     after_loop: BTreeSet<u64>,
     /// The consumed/waiting/retired state.
     state: Mutex<InputState>,
@@ -617,6 +653,22 @@ impl ReplayInputs {
         let mut owners: BTreeMap<u64, String> = BTreeMap::new();
         let mut unserved: BTreeSet<u64> = BTreeSet::new();
         let mut after_loop: BTreeSet<u64> = BTreeSet::new();
+
+        // Where each agent's own turn loop stopped asking for things: the seq of its last entry
+        // that is not `git` and not a prompt frame. A frame is written *for* a turn rather than
+        // demanded by one, and `git` is the category being classified, so neither can mark the end.
+        // Absent for an agent that only ever appears as bookkeeping — every one of its `git`
+        // entries is then post-loop, which is the truth for a merge recorded under an agent that
+        // pinned nothing else.
+        let mut loop_end: BTreeMap<&str, u64> = BTreeMap::new();
+        for entry in &order {
+            if !matches!(
+                entry.kind,
+                GgReplayEntryKind::Git { .. } | GgReplayEntryKind::PromptFrame { .. }
+            ) {
+                loop_end.insert(entry.agent_id.as_str(), entry.seq);
+            }
+        }
 
         // The [provenance table](GgReplayRecord::agents) first, in the order the run created its
         // agents. It is the better source precisely where the entries are silent: an agent that was
@@ -709,7 +761,9 @@ impl ReplayInputs {
                         .push_back(subprocess(&record, entry, Some(*origin), command)?)
                 }
                 GgReplayEntryKind::Git { command } => {
-                    after_loop.insert(seq);
+                    if loop_end.get(agent_id).is_none_or(|last| seq > *last) {
+                        after_loop.insert(seq);
+                    }
                     queue
                         .git
                         .push_back(subprocess(&record, entry, None, command)?)
@@ -754,6 +808,7 @@ impl ReplayInputs {
             state: Mutex::new(InputState {
                 queues,
                 unserved,
+                abandoned: BTreeSet::new(),
                 waiting: BTreeMap::new(),
                 retired: BTreeSet::new(),
                 stalls: Vec::new(),
@@ -904,9 +959,9 @@ impl ReplayInputs {
             let skipped: Vec<RecordedSubprocess> = queue.shell.drain(..position).collect();
             let found = queue.shell.pop_front().expect("the matched command");
             for run in &skipped {
-                state.unserved.remove(&run.seq);
+                state.consumed(run.seq);
             }
-            state.unserved.remove(&found.seq);
+            state.consumed(found.seq);
             drop(state);
             self.wake.notify_waiters();
             return match skipped.is_empty() {
@@ -934,7 +989,7 @@ impl ReplayInputs {
                 .expect("the owning agent's queue");
             let position = queue.shell.iter().position(matches).expect("the match");
             let found = queue.shell.remove(position).expect("the matched command");
-            state.unserved.remove(&found.seq);
+            state.consumed(found.seq);
             drop(state);
             self.wake.notify_waiters();
             return ShellLookup::CrossAgent {
@@ -995,7 +1050,7 @@ impl ReplayInputs {
             }
         }
         for seq in dropped {
-            state.unserved.remove(&seq);
+            state.consumed(seq);
         }
         drop(state);
         // Whatever was blocked behind them can go now.
@@ -1118,7 +1173,7 @@ impl ReplayInputs {
                     kind,
                 });
             };
-            state.unserved.remove(&taken.seq());
+            state.consumed(taken.seq());
             taken
         };
         // Outside the lock: a woken waiter takes it immediately.
@@ -1146,7 +1201,13 @@ impl ReplayInputs {
             // has nothing to wait its turn for.
             return Ok(Gate::Ready);
         };
-        let Some(&blocking) = state.unserved.range(..mine).next() else {
+        // Abandoned entries are skipped: a [stall](Self::release_stalled) already decided nobody is
+        // waiting for them, and re-blocking on one would undo the release that reported it.
+        let Some(&blocking) = state
+            .unserved
+            .range(..mine)
+            .find(|seq| !state.abandoned.contains(seq))
+        else {
             return Ok(Gate::Ready);
         };
         let owner = self
@@ -1183,9 +1244,17 @@ impl ReplayInputs {
         if state.waiting.keys().next() != Some(&waiting_for) {
             return false;
         }
-        let abandoned: Vec<u64> = state.unserved.range(..waiting_for).copied().collect();
+        // Stepped over, **not** consumed. They stop gating the barrier (that is the release) and
+        // they stay in `unserved` (that is the honesty): what the reconstruction never demanded is
+        // still what it never demanded, and the report counts it.
+        let abandoned: Vec<u64> = state
+            .unserved
+            .range(..waiting_for)
+            .filter(|seq| !state.abandoned.contains(seq))
+            .copied()
+            .collect();
         for seq in &abandoned {
-            state.unserved.remove(seq);
+            state.abandoned.insert(*seq);
         }
         state.stalls.push(ReplayStall {
             agent_id: agent_id.to_string(),

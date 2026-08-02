@@ -190,6 +190,21 @@ pub enum DriftKind {
     /// out of the order the run consumed them in — which is the one thing the barrier exists to
     /// prevent.
     Deadlock,
+    /// The [ordering barrier](crate::replay_inputs::ReplayInputs::await_turn) **gave up**: a wait
+    /// hit its ceiling, the waiter was released, and the recorded inputs below it were abandoned.
+    ///
+    /// The complement of [`Deadlock`](Self::Deadlock), and the reason it is a divergence in its own
+    /// right rather than a detail of the [unserved count](Self::UnservedInputs): a deadlock is a
+    /// wait that provably cannot advance and stops the agent, whereas a stall is a wait the barrier
+    /// stopped enforcing — the released turn is then served out of the order the run consumed it,
+    /// which is precisely what
+    /// [`await_turn`](crate::replay_inputs::ReplayInputs::await_turn) exists to prevent. A
+    /// reconstruction that stalled is therefore not faithful, however clean the rest of it looks.
+    ///
+    /// Reported rather than fatal, because what follows the release is still worth reading: the
+    /// released agent's very next turn is built from a window the run never had, and the
+    /// conversation drift that produces is the most legible statement of what changed.
+    OrderingStall,
     /// The record pinned inputs the reconstruction never demanded. Reported once, at the end, with
     /// the count.
     UnservedInputs,
@@ -225,6 +240,7 @@ impl DriftKind {
             Self::GitInvocation => "git-invocation",
             Self::ClippedRecord => "clipped-record",
             Self::Deadlock => "deadlock",
+            Self::OrderingStall => "ordering-stall",
             Self::UnservedInputs => "unserved-inputs",
             Self::Seed => "seed",
         }

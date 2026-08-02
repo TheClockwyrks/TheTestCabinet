@@ -893,28 +893,96 @@ const SLOW_ISSUE: &str = "RACE-1";
 /// The issue whose dispatched agent answers instantly, and therefore overtakes the slow one.
 const FAST_ISSUE: &str = "RACE-2";
 
-/// How long the slow agent's first model call takes in the recorded run.
+/// How long the slow agent's first model call will wait for the fast agent before giving up.
 ///
-/// Generous on purpose. It is not a timing assertion — it only has to be longer than the handful of
-/// instant turns the other issue's agent takes, and every one of those is a mock reply plus a small
-/// file write. Making it small would buy nothing and would make the *recorded* interleaving, which
-/// the whole test is built on, a race.
-const RECORDED_LATENCY: Duration = Duration::from_millis(400);
+/// **Not** the skew itself — the skew is a [rendezvous](RaceRendezvous), not a timer. This is only
+/// the escape hatch that turns "the fast agent never finished" from a hung test into the skew
+/// assertion failing with its own message, so a real regression is still legible. Nothing that
+/// passes ever waits anywhere near it.
+const RENDEZVOUS_CEILING: Duration = Duration::from_secs(30);
 
-/// A [`ModelClient`] that waits before answering its **first** call.
+/// The **happens-before** the recorded race is built on: the fast issue's agent finishes its whole
+/// run before the slow issue's agent gets its first answer.
+///
+/// The skew used to be a 400 ms `sleep` in the slow client, on the reasoning that a handful of mock
+/// replies and small file writes could not possibly take that long. They cannot — but the *dispatch*
+/// of the second issue can, and every gg agent shares one `current_thread` runtime, so on a
+/// contended machine the timer fired before the other agent had been dispatched at all and the
+/// recorded interleaving came out un-skewed. That is a flake in the test's own precondition rather
+/// than in the barrier, and a precondition asserted after the fact is exactly the thing that should
+/// not be left to a race: it is the whole premise of both barrier tests.
+///
+/// So the wait is on the event itself. The slow client parks until the fast issue's agent has
+/// *ended* — every one of its recorded entries is written by then, and the run's `git` is recorded
+/// under the root rather than under either issue agent, so "its loop ended" really is "it has
+/// nothing left to record". A [`SessionObserver`] is how a test can see that at all: it is the one
+/// place a live agent's id and its [provenance](GgReplayAgentOrigin) are both in hand, which is
+/// what lets this name the *fast* agent without knowing the id the counter gave it.
+#[derive(Debug, Default)]
+struct RaceRendezvous {
+    /// The live id the run minted for [`FAST_ISSUE`]'s agent, learned at its creation.
+    fast_agent: std::sync::Mutex<Option<String>>,
+    /// Set once that agent's loop has ended. Read *before* awaiting the notify, so an ending that
+    /// lands before the slow client parks is not missed.
+    finished: std::sync::atomic::AtomicBool,
+    /// Woken when `finished` is set.
+    wake: tokio::sync::Notify,
+}
+
+impl RaceRendezvous {
+    /// Park until the fast issue's agent has ended, or until [`RENDEZVOUS_CEILING`] — see the
+    /// constant for why giving up is better than hanging.
+    async fn await_fast_agent(&self) {
+        let _ = tokio::time::timeout(RENDEZVOUS_CEILING, async {
+            loop {
+                // Registered before the check, so an ending between the two still wakes this.
+                let notified = self.wake.notified();
+                if self.finished.load(std::sync::atomic::Ordering::SeqCst) {
+                    return;
+                }
+                notified.await;
+            }
+        })
+        .await;
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::observer::SessionObserver for RaceRendezvous {
+    fn agent_created(&self, agent_id: &str, origin: &GgReplayAgentOrigin) {
+        if matches!(origin, GgReplayAgentOrigin::IssueAttempt { issue, .. } if issue == FAST_ISSUE)
+        {
+            *self.fast_agent.lock().expect("rendezvous lock") = Some(agent_id.to_string());
+        }
+    }
+
+    fn agent_ended(&self, agent_id: &str) {
+        let fast = self.fast_agent.lock().expect("rendezvous lock").clone();
+        if fast.as_deref() == Some(agent_id) {
+            self.finished
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            self.wake.notify_waiters();
+        }
+    }
+}
+
+/// A [`ModelClient`] that holds its **first** call until the fast issue's agent has finished.
 ///
 /// The one thing a playback cannot reproduce and does not try to is model latency — that is the
 /// entire point of it — so a record whose interleaving was *caused* by latency is exactly the case
-/// the [barrier](Ordering::Seq) exists for. This produces one offline, deterministically: the agent
-/// dispatched for [`SLOW_ISSUE`] stalls long enough for the other issue's agent to finish, so the
-/// recorded `seq` order is one that a reconstruction, which answers both instantly, would never
-/// reach on its own.
+/// the [barrier](Ordering::Seq) exists for. This produces one offline: the agent dispatched for
+/// [`SLOW_ISSUE`] stands still for the whole of the other issue's agent, so the recorded `seq` order
+/// is one that a reconstruction, which answers both instantly, would never reach on its own. The
+/// hold is a [rendezvous](RaceRendezvous) rather than a sleep, so the skew is a happens-before and
+/// not a bet on how long a contended machine takes to dispatch an agent.
 struct SlowClient {
     /// The script underneath. Every call is answered by this; only the wait is added.
     inner: MockClient,
     /// Flipped by the first call, so only the interleaving is skewed rather than the whole run
-    /// being slow.
+    /// standing still.
     delayed: std::sync::atomic::AtomicBool,
+    /// What the first call waits on.
+    rendezvous: Arc<RaceRendezvous>,
 }
 
 #[async_trait::async_trait]
@@ -929,7 +997,7 @@ impl ModelClient for SlowClient {
         tools: &[crate::model::ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
         if !self.delayed.swap(true, std::sync::atomic::Ordering::SeqCst) {
-            tokio::time::sleep(RECORDED_LATENCY).await;
+            self.rendezvous.await_fast_agent().await;
         }
         self.inner.complete(messages, tools).await
     }
@@ -943,7 +1011,10 @@ impl ModelClient for SlowClient {
 /// and therefore the same model id. It is also the same key the record stores and the same key a
 /// reconstruction binds through, so the two issue agents get the same scripts in the same roles
 /// under a playback as they did in the run.
-struct BoardRaceFactory;
+struct BoardRaceFactory {
+    /// Handed to the [slow](SlowClient) client, which is the only thing that waits on it.
+    rendezvous: Arc<RaceRendezvous>,
+}
 
 impl ClientFactory for BoardRaceFactory {
     fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
@@ -963,6 +1034,7 @@ impl ClientFactory for BoardRaceFactory {
                 Box::new(SlowClient {
                     inner: MockClient::new(binding.model_id.clone(), slow_issue_script()),
                     delayed: std::sync::atomic::AtomicBool::new(false),
+                    rendezvous: Arc::clone(&self.rendezvous),
                 })
             }
             GgReplayAgentOrigin::IssueAttempt { .. } => Box::new(MockClient::new(
@@ -1096,12 +1168,22 @@ fn board_race_set() -> GgCapabilitySet {
 /// That is the interleaving a reconstruction cannot reach on its own, and it is the only reason
 /// there is anything for the barrier to restore.
 async fn drive_board_race(dir: &Path, session_id: &str) -> (GgReplayRecord, Vec<GgTelemetryEvent>) {
+    let rendezvous = Arc::new(RaceRendezvous::default());
     let capture = CapturingSink::new();
     let emitter = Emitter::with_sink(Some(session_id.to_string()), Box::new(capture.clone()));
     let outcome = crate::agent::run_with_seams(
         &invocation_with(dir, session_id, board_race_set()),
         &emitter,
-        SessionSeams::substituted(Arc::new(BoardRaceFactory), real_shell()),
+        SessionSeams::substituted(
+            Arc::new(BoardRaceFactory {
+                rendezvous: Arc::clone(&rendezvous),
+            }),
+            real_shell(),
+        )
+        // The rendezvous is the observer: an agent's live id and its provenance are only both in
+        // hand here, which is what lets the slow client wait for *the fast issue's* agent without
+        // knowing which id the counter gave it.
+        .observed_by(Arc::clone(&rendezvous) as Arc<dyn crate::observer::SessionObserver>),
     )
     .await;
     assert_eq!(outcome, SessionOutcome::Ran, "the driven session launched");
@@ -1214,6 +1296,210 @@ async fn without_the_barrier_a_concurrent_reconstruction_diverges_on_the_convers
             == DriftKind::Fingerprint(GgFingerprintComponent::Conversation)),
         "and it diverges on the conversation, which is where run-global prompt state lives: {:#?}",
         report.divergences,
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Delegation: a depth-2 spawn, a succession's sibling, and the recorded shell
+// ---------------------------------------------------------------------------
+
+/// The profile the root delegates to, which itself delegates again.
+const MID_AGENT: &str = "worker";
+
+/// The profile at the bottom of the delegation chain — a **depth-2** spawn, whose provenance names
+/// an agent that is not the root.
+const LEAF_AGENT: &str = "leaf";
+
+/// A set with three profiles that may all delegate to one another, and a `shell` on each.
+///
+/// The two things it exists to reach are the two the rest of this file cannot. A
+/// [`Spawn`](GgReplayAgentOrigin::Spawn) whose `parent` is **not** the root is the only shape in
+/// which that origin carries a counter-minted id, which is what the
+/// [origin translation](binding::AgentBindings::recorded_origin) has to undo; and a real `shell`
+/// call is the one seam of the four with no recorded-session coverage at all — every other session
+/// here reaches the model, the tools and `git`, and none of them runs a command.
+fn delegation_set() -> GgCapabilitySet {
+    use test_cabinet_core::gg::{
+        ALL_SUBAGENT_SCOPES, CAPABILITY_SHELL, CAPABILITY_SUBAGENTS, GgAgentConfig,
+        GgCapabilityConfig, GgSubagentRef, ROOT_AGENT, SHELL_OUTPUT_INLINE,
+    };
+    let mut subagents = GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS);
+    subagents.params = json!({ "maxParallel": 4, "maxDepth": 3 });
+    let allowlist: Vec<GgSubagentRef> = [ROOT_AGENT, MID_AGENT, LEAF_AGENT]
+        .into_iter()
+        .map(|agent| GgSubagentRef {
+            agent: agent.to_string(),
+            description: String::new(),
+            scopes: ALL_SUBAGENT_SCOPES.to_vec(),
+        })
+        .collect();
+    let profile = |name: &str, model: &str| {
+        let mut agent = GgAgentConfig {
+            name: name.to_string(),
+            model_id: model.to_string(),
+            subagents: allowlist.clone(),
+            ..GgAgentConfig::root()
+        };
+        agent.capabilities.push(subagents.clone());
+        // Inline output, deliberately, rather than the `adaptive` default. Under `adaptive` a
+        // command that *succeeds* comes back as the paths its stdout and stderr were written to —
+        // and those paths carry the capturing process's pid, so the recorded tool result names a
+        // file this reconstruction was never going to write. That is reported correctly (a
+        // non-fatal `ToolResult` drift, with the recorded outcome fed forward), but it would be
+        // reported on every single command, which would make this fixture's signal noise rather
+        // than a regression detector. Inline is the mode whose result is a function of the command.
+        agent.capabilities.retain(|cap| cap.id != CAPABILITY_SHELL);
+        agent.capabilities.push(GgCapabilityConfig {
+            implementation: Some(SHELL_OUTPUT_INLINE.to_string()),
+            ..GgCapabilityConfig::enabled(CAPABILITY_SHELL)
+        });
+        agent
+    };
+    GgCapabilitySet {
+        agents: vec![
+            profile(ROOT_AGENT, "mock/delegation-root"),
+            profile(MID_AGENT, "mock/delegation-mid"),
+            profile(LEAF_AGENT, "mock/delegation-leaf"),
+        ],
+        ..GgCapabilitySet::default()
+    }
+}
+
+/// One `spawn_subagent` turn.
+fn spawn_turn(id: &str, agent: &str, prompt: &str) -> ModelResponse {
+    call(
+        id,
+        "spawn_subagent",
+        json!({ "agent": agent, "prompt": prompt }),
+    )
+}
+
+/// One `shell` turn — the seam no other committed session reaches.
+fn shell_turn(id: &str, command: &str) -> ModelResponse {
+    call(id, "shell", json!({ "command": command }))
+}
+
+/// The root: delegate, wait, stop.
+fn delegation_root_script() -> Vec<ModelResponse> {
+    vec![
+        spawn_turn("call_mid", MID_AGENT, "Do the middle of the work."),
+        call("call_wait_root", "wait_for_subagents", json!({})),
+        finish("The delegated work is done."),
+    ]
+}
+
+/// The middle agent: delegate **again** (the depth-2 spawn), wait, run a command, stop.
+fn delegation_mid_script() -> Vec<ModelResponse> {
+    vec![
+        spawn_turn("call_leaf", LEAF_AGENT, "Do the leaf of the work."),
+        call("call_wait_mid", "wait_for_subagents", json!({})),
+        shell_turn(
+            "call_mid_shell",
+            "printf 'mid ran\n' > mid.txt && cat mid.txt",
+        ),
+        finish("The middle is done."),
+    ]
+}
+
+/// The leaf: run a command, stop.
+fn delegation_leaf_script() -> Vec<ModelResponse> {
+    vec![
+        shell_turn(
+            "call_leaf_shell",
+            "printf 'leaf ran\n' > leaf.txt && wc -l leaf.txt",
+        ),
+        finish("The leaf is done."),
+    ]
+}
+
+/// A factory keyed on the **profile's model id**, which is what tells the three scripts apart.
+///
+/// Keyed on the model rather than on the origin, unlike [`BoardRaceFactory`], because here the
+/// three agents run three *different* profiles — and because the origins are the thing under test:
+/// a factory that had to recognise a depth-2 spawn to answer it would be assuming what the
+/// reconstruction has to prove.
+struct DelegationFactory;
+
+impl ClientFactory for DelegationFactory {
+    fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
+        let script = match binding.model_id.as_str() {
+            "mock/delegation-mid" => delegation_mid_script(),
+            "mock/delegation-leaf" => delegation_leaf_script(),
+            _ => delegation_root_script(),
+        };
+        Ok(Box::new(MockClient::new(binding.model_id.clone(), script)))
+    }
+}
+
+/// Drive the three-deep delegation once, asserting the shape the whole point rests on: a spawn
+/// whose parent is **not** the root, and at least one recorded `shell` command.
+async fn drive_delegation(dir: &Path, session_id: &str) -> (GgReplayRecord, Vec<GgTelemetryEvent>) {
+    let capture = CapturingSink::new();
+    let emitter = Emitter::with_sink(Some(session_id.to_string()), Box::new(capture.clone()));
+    let outcome = crate::agent::run_with_seams(
+        &invocation_with(dir, session_id, delegation_set()),
+        &emitter,
+        SessionSeams::substituted(Arc::new(DelegationFactory), real_shell()),
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran, "the driven session launched");
+    let record = assembled_record(dir);
+
+    assert!(
+        record.agents.iter().any(|agent| matches!(
+            &agent.origin,
+            GgReplayAgentOrigin::Spawn { parent, .. } if parent != crate::agent::ROOT_AGENT_ID
+        )),
+        "the session really produced a spawn below the root — the only origin that carries a \
+         counter-minted id: {:?}",
+        record.agents,
+    );
+    assert!(
+        record.entries.iter().any(|entry| matches!(
+            entry.kind,
+            test_cabinet_core::gg_replay::GgReplayEntryKind::Shell { .. }
+        )),
+        "and it really ran a command, so the recorded shell seam is under a frozen record",
+    );
+
+    (record, capture.events())
+}
+
+/// **A delegated session reconstructs into the same session** — the two shapes nothing else in the
+/// suite reaches: an agent spawned *by a subagent*, and a real `shell` command.
+///
+/// Every other session here and every committed fixture creates its agents either as the root or
+/// off board state, and runs no command at all. This one produces a
+/// [`Spawn`](GgReplayAgentOrigin::Spawn) whose parent is another spawned agent — the origin that
+/// carries a counter-minted id — and drives both agents through the
+/// [recorded shell](shell)'s lookup ladder.
+///
+/// What it does **not** prove, and the reason
+/// [`an_origin_that_names_another_agent_is_translated_before_the_lookup`](binding::tests) exists
+/// beside it: this reconstruction happens to mint the *same* ids the run did, because the agents
+/// are created in one strictly ordered sequence with nothing concurrent to reorder them. So the
+/// origin translation is not under test here — the shape that needs it is. The unit test is where
+/// the two vocabularies are made to genuinely disagree.
+#[tokio::test]
+async fn a_delegated_session_reconstructs_into_the_same_session() {
+    let original = TempDir::new().unwrap();
+    let (record, recorded_events) = drive_delegation(original.path(), "run-delegation").await;
+
+    let replayed = TempDir::new().unwrap();
+    let report = Playback::new(record, replayed.path().join("tree"))
+        .run()
+        .await
+        .expect("the record is reconstructible");
+
+    assert!(
+        report.divergences.is_empty(),
+        "this build still produces the recorded delegated session: {:#?}",
+        report.divergences,
+    );
+    assert!(report.faithful);
+    assert_eq!(
+        report.context_projection,
+        ContextProjection::project(&recorded_events),
     );
 }
 

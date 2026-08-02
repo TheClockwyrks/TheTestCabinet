@@ -237,6 +237,74 @@ fn all_five_creation_paths_bind_on_provenance_and_not_on_an_id() {
     assert!(ledger.drifts().is_empty(), "{:?}", ledger.drifts());
 }
 
+/// The two origins that **name another agent** are translated out of this reconstruction's
+/// vocabulary before the record's table is consulted — so a spawn below the root is not keyed on
+/// the global counter after all.
+///
+/// The test above is not this test, and the difference is the whole point. It gives every live
+/// spawn a `parent` that already reads as the *recorded* id, which quietly assumes the answer:
+/// `Spawn { parent, .. }` and `Succession { predecessor, .. }` carry `spawner.id` and `agent.id`,
+/// which for anything but the root is `agent-N` straight off `Orchestrator::next_seq`. Here the two
+/// vocabularies genuinely disagree — the reconstruction called the parent `agent-0` where the run
+/// called it `rec-mid` — which is what a record whose interleaving a playback does not reproduce
+/// looks like. Without the translation the grandchild finds no row, dies on turn one with a
+/// spurious [`UnboundAgent`](DriftKind::UnboundAgent), and the module's *first* defence is gone.
+#[test]
+fn an_origin_that_names_another_agent_is_translated_before_the_lookup() {
+    let mid = GgReplayAgentOrigin::Spawn {
+        parent: "rec-root".to_string(),
+        ordinal: 0,
+    };
+    // The record's grandchild and successor both name `rec-mid` — the id the *run* minted.
+    let leaf = GgReplayAgentOrigin::Spawn {
+        parent: "rec-mid".to_string(),
+        ordinal: 0,
+    };
+    let successor = GgReplayAgentOrigin::Succession {
+        predecessor: "rec-mid".to_string(),
+        ordinal: 0,
+    };
+    let (bindings, _inputs, ledger) = table(
+        Builder::default()
+            .agent("rec-root", GgReplayAgentOrigin::Root)
+            .agent("rec-mid", mid.clone())
+            .agent("rec-leaf", leaf)
+            .agent("rec-successor", successor)
+            .build(),
+    );
+
+    // This reconstruction's counter is nowhere near the run's: its root is `root`, and its middle
+    // agent is `agent-0` where the run's was `rec-mid`.
+    bindings.agent_created("root", &GgReplayAgentOrigin::Root);
+    bindings.agent_created("agent-0", &mid);
+    bindings.agent_created(
+        "agent-1",
+        &GgReplayAgentOrigin::Spawn {
+            parent: "agent-0".to_string(),
+            ordinal: 0,
+        },
+    );
+    bindings.agent_created(
+        "agent-2",
+        &GgReplayAgentOrigin::Succession {
+            predecessor: "agent-0".to_string(),
+            ordinal: 0,
+        },
+    );
+
+    assert_eq!(
+        bindings.recorded_for_live("agent-1").as_deref(),
+        Some("rec-leaf"),
+        "a depth-2 spawn binds through its parent's binding, not through its parent's live id",
+    );
+    assert_eq!(
+        bindings.recorded_for_live("agent-2").as_deref(),
+        Some("rec-successor"),
+        "and so does a succession off an agent that is not the root",
+    );
+    assert!(ledger.drifts().is_empty(), "{:?}", ledger.drifts());
+}
+
 /// A provenance the record has no row for is a **reported** divergence, once, naming the live agent
 /// and reading the origin as a sentence rather than a debug dump.
 ///

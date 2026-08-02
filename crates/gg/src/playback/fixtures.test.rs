@@ -212,6 +212,7 @@ async fn the_concurrent_fixture_diverges_without_the_barrier() {
 /// | `issue-review` | the v0.7.0 multi-agent headline — an auto-dispatched issue, a reviewer that sends it back, a second dispatch — and therefore three agents gg creates with **no parent**, bound only by board state |
 /// | `responses-as-code` | the transpiler, the wasmtime sandbox, the typed membrane and the deferred-effect machinery, re-run against recorded program text |
 /// | `board-race` | two agents genuinely in flight at once, with an interleaving that **only latency produced** — the record the ordering barrier exists for |
+/// | `delegation` | a subagent that spawns *its own* subagent — the one origin carrying a counter-minted id — and the only recorded `shell` commands in the suite |
 #[tokio::test]
 #[ignore = "writes the committed fixtures into the source tree"]
 async fn capture_the_committed_fixtures() {
@@ -252,6 +253,13 @@ async fn capture_the_committed_fixtures() {
     let workspace = TempDir::new().unwrap();
     drive_board_race(workspace.path(), "fixture-board-race").await;
     freeze(workspace.path(), &dir.join("board-race.json.gz"));
+
+    // 5. Three-deep delegation, with commands. `drive_delegation` asserts both of the shapes this
+    //    slot is spent on — a spawn whose parent is not the root, and at least one recorded
+    //    `shell` entry — so a capture that produced neither fails here.
+    let workspace = TempDir::new().unwrap();
+    drive_delegation(workspace.path(), "fixture-delegation").await;
+    freeze(workspace.path(), &dir.join("delegation.json.gz"));
 }
 
 /// Drive one session under `set` through the **production** client factory — gg's own `mock/demo-*`

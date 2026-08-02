@@ -16,6 +16,20 @@ assembler from the journal a real turn loop wrote, not serialized from memory.
 | `issue-review.json.gz` | an auto-dispatched issue, a reviewer that sends it back, a second dispatch — three agents `gg` creates with **no parent**, bound only by board state |
 | `responses-as-code.json.gz` | the transpiler, the `wasmtime` sandbox, the typed membrane and the deferred-effect machinery, re-run against recorded program text |
 | `board-race.json.gz` | two agents genuinely in flight at once, interleaved by latency alone — the record the ordering barrier exists for |
+| `delegation.json.gz` | a subagent that spawns its **own** subagent (a depth-2 spawn, the one origin that names a counter-minted id), and the only recorded `shell` commands in the suite |
+
+## What the suite does and does not reach
+
+Across the five records the model seam, the tool seam, `git`, the ordering barrier and — since
+`delegation` — the `shell` seam are all exercised against a frozen record. Two things are
+still only covered by in-process tests rather than by a committed one:
+
+- **A handoff succession.** No fixture contains a `succession` origin, so compaction's
+  agent-to-agent handoff is pinned by the loop suite alone.
+- **A reconstruction whose agent ids disagree with the run's.** Every fixture replays into the
+  same ids it recorded, because each was captured from a session whose agents are created in one
+  ordered sequence. The origin translation that makes a depth-2 spawn bind regardless is pinned
+  by `playback::binding`'s unit tests instead.
 
 ## Provenance
 

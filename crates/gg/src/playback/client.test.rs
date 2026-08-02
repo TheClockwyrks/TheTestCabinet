@@ -368,6 +368,102 @@ async fn an_origin_the_table_does_not_know_is_unbound_rather_than_an_error() {
     ));
 }
 
+/// A recorded row a live agent already holds is **not handed to a second one**: the later
+/// resolution is unbound, and the recorded queue keeps answering only the agent that took it.
+///
+/// The [binding table](super::binding) has always refused the second binding and said in as many
+/// words that "the later one is unbound" — but that was a statement about the *table*, and this
+/// seam resolved through the record's static agent list without consulting it. Both live agents got
+/// a real client on one queue and interleaved each other's turns: agent A served agent B's
+/// responses, which is the single failure the provenance scheme exists to eliminate, reached
+/// through the one seam that was not asking.
+///
+/// The claim is made here, at resolution, rather than at creation, because the two happen in that
+/// order: a dispatch resolves the client and only then mints the child's id, so "is this the agent
+/// the row is bound to?" has no answer yet and "has anybody taken it?" does.
+#[tokio::test]
+async fn a_recorded_row_a_live_agent_already_holds_is_not_handed_to_a_second_one() {
+    let record = Builder::default()
+        .agent("root", "Root", GgReplayAgentOrigin::Root)
+        .turn("root", 0, &[user("hello")], "the root's answer")
+        .build();
+    let (factory, ledger) = factory(record, Strictness::Exact);
+
+    let first = factory
+        .client_for_agent(
+            &binding("primary", "mock/echo"),
+            &AgentIdentity::agent(GgReplayAgentOrigin::Root),
+        )
+        .expect("a bound client");
+    let second = factory
+        .client_for_agent(
+            &binding("primary", "mock/echo"),
+            &AgentIdentity::agent(GgReplayAgentOrigin::Root),
+        )
+        .expect("a contested row is not a resolution failure either");
+
+    // The second agent cannot call at all — it did not take the row.
+    assert!(
+        matches!(
+            second.complete(&[Message::user("hello")], &[]).await,
+            Err(ModelError::Playback(_)),
+        ),
+        "the later agent draws from nothing rather than from somebody else's queue",
+    );
+    // And the recorded turn is still there for the agent that did take it, which is the half a
+    // naive "unbind them both" would have got wrong.
+    assert_eq!(
+        first
+            .complete(&[Message::user("hello")], &[])
+            .await
+            .expect("the recorded turn")
+            .text
+            .as_deref(),
+        Some("the root's answer"),
+    );
+    assert!(
+        ledger.drifts().is_empty(),
+        "reported once by the table at the second agent's creation, not once per resolution: {:?}",
+        ledger.drifts(),
+    );
+}
+
+/// A [compaction](GgClientRole::Compaction) summarizer is a *second* client for an agent that
+/// already holds its row, so it resolves bound — an agent must not be able to contest itself.
+#[tokio::test]
+async fn the_compaction_client_does_not_contest_its_own_agents_row() {
+    let record = Builder::default()
+        .agent("root", "Root", GgReplayAgentOrigin::Root)
+        .turn("root", 0, &[user("hello")], "the root's answer")
+        .build();
+    let (factory, _ledger) = factory(record, Strictness::Exact);
+
+    let _agent = factory
+        .client_for_agent(
+            &binding("primary", "mock/echo"),
+            &AgentIdentity::agent(GgReplayAgentOrigin::Root),
+        )
+        .expect("a bound client");
+    let summarizer = factory
+        .client_for_agent(
+            &binding("primary", "mock/echo"),
+            &AgentIdentity::compaction(GgReplayAgentOrigin::Root),
+        )
+        .expect("a bound client");
+
+    // It draws from the same queue, and the *role* mismatch — not a binding failure — is what the
+    // ledger has to say about it. See the test below for that reporting.
+    assert_eq!(
+        summarizer
+            .complete(&[Message::user("hello")], &[])
+            .await
+            .expect("the recorded turn")
+            .text
+            .as_deref(),
+        Some("the root's answer"),
+    );
+}
+
 /// The compaction summarizer and the agent's own turn loop are told apart: a recorded call issued
 /// by the other client is reported, so one queue serving both is auditable.
 #[tokio::test]

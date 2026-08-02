@@ -46,7 +46,7 @@ use test_cabinet_core::gg_replay::{
     GgReplayRequestShape,
 };
 
-use super::binding::AgentBindings;
+use super::binding::{AgentBindings, RowClaim};
 use super::drift::{Drift, DriftKind, DriftLedger, DriftVerdict, Strictness, prompt_diff_region};
 use crate::client::{AgentIdentity, ClientFactory};
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolDefinition};
@@ -105,30 +105,62 @@ impl ClientFactory for RecordedClientFactory {
     /// before a single telemetry event, and at a spawn site it would report a dispatch failure the
     /// recorded run never had; the unbound client instead lets the loop keep its shape and ends
     /// that one agent, loudly, on its first turn.
+    ///
+    /// A row a *different* live agent already holds resolves the same way, and that is the whole
+    /// reason the agent's own client [claims](AgentBindings::claim_for_origin) its row rather than
+    /// merely looking it up. Two live agents on one recorded queue is "agent A is served agent B's
+    /// responses" — the failure this seam's binding scheme exists to eliminate — and it was
+    /// reachable straight through the front door while the [table](AgentBindings) was reporting the
+    /// double claim as though the later agent had been left unbound.
     fn client_for_agent(
         &self,
         binding: &GgSlotBinding,
         identity: &AgentIdentity,
     ) -> Result<Box<dyn ModelClient>, ModelError> {
-        let Some(agent_id) = self.bindings.recorded_for_origin(&identity.origin) else {
+        // The agent's own client is the one resolution that is one-to-one with an agent coming into
+        // existence, so it is the one that takes the row. A compaction summarizer is a second
+        // client for an agent that already holds it.
+        let claim = match identity.role {
+            GgClientRole::Agent => self.bindings.claim_for_origin(&identity.origin),
+            GgClientRole::Compaction => match self.bindings.recorded_for_origin(&identity.origin) {
+                Some(recorded) => RowClaim::Claimed(recorded.to_string()),
+                None => RowClaim::NoRow,
+            },
+        };
+        let agent_id = match claim {
+            RowClaim::Claimed(agent_id) => agent_id,
             // Reported by the [binding table](AgentBindings) at the agent's creation, which is the
             // one place that also knows the live id — so it is *not* reported a second time here.
             // A resolution and a creation are the same event twice, and two ledger entries for one
             // agent would make a `divergences.len()` assertion depend on how many clients an agent
-            // happened to resolve.
-            return Ok(Box::new(UnboundClient::new(
-                binding.model_id.clone(),
-                format!(
-                    "the record's agent table has no row for an agent created by {}",
-                    describe_origin(&identity.origin)
-                ),
-            )));
+            // happened to resolve. That holds for both refusals: `bind` reports the contested row
+            // at the moment the second agent is created, with both live ids in hand.
+            RowClaim::NoRow => {
+                return Ok(Box::new(UnboundClient::new(
+                    binding.model_id.clone(),
+                    format!(
+                        "the record's agent table has no row for an agent created by {}",
+                        describe_origin(&identity.origin)
+                    ),
+                )));
+            }
+            RowClaim::Contested(recorded) => {
+                return Ok(Box::new(UnboundClient::new(
+                    binding.model_id.clone(),
+                    format!(
+                        "another live agent created by {} is already answering from recorded agent \
+                         `{recorded}`, and two agents drawing from one recorded queue would serve \
+                         each other's turns",
+                        describe_origin(&identity.origin)
+                    ),
+                )));
+            }
         };
         Ok(Box::new(RecordedClient {
             inputs: Arc::clone(&self.inputs),
             ledger: Arc::clone(&self.ledger),
             strictness: self.strictness,
-            agent_id: agent_id.to_string(),
+            agent_id,
             model_id: binding.model_id.clone(),
             role: identity.role,
         }))

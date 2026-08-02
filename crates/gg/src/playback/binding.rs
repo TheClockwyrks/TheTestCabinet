@@ -25,7 +25,12 @@
 //!
 //! Both directions are kept, because both are asked for: the recorded shell and the tool
 //! comparison hold a live id and need a queue, and the [terminal comparison](super) holds a
-//! recorded row and needs to know whether the reconstruction ever produced it.
+//! recorded row and needs to know whether the reconstruction ever produced it. The live→recorded
+//! direction is also what makes the *first* arrow honest: two of the six origins identify an agent
+//! by naming another one, and the id they name is a live one, so a translation
+//! (`AgentBindings::recorded_origin`) runs before the table is consulted. Without it a spawn below
+//! the root would be keyed on the counter after all — see that function for the shape of the
+//! failure.
 //!
 //! # All five creation paths, and the one the table exists for
 //!
@@ -44,7 +49,7 @@
 //! the reconstruction says so on turn one. Neither mechanism has to be perfect alone — which
 //! matters, because this table is only ever as complete as the capture that wrote the record's.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -81,6 +86,32 @@ struct BindingState {
     live_to_recorded: BTreeMap<String, String>,
     /// Recorded id → live id, for the sweeps that hold a recorded row.
     recorded_to_live: BTreeMap<String, String>,
+    /// The recorded rows some live agent has already been given the **model client** for.
+    ///
+    /// A third set rather than a reading of `recorded_to_live`, because the two are filled at
+    /// different moments and the gap between them is the whole point: a client is resolved
+    /// *before* the agent it belongs to exists (`dispatch_child` mints the child's id after the
+    /// resolution, precisely so a refused dispatch cannot burn one), so at the instant the model
+    /// seam has to answer, `recorded_to_live` is still silent about the agent asking.
+    claimed_rows: BTreeSet<String>,
+}
+
+/// What [claiming](AgentBindings::claim_for_origin) a recorded row for a live agent's model client
+/// came back with.
+///
+/// Three outcomes rather than an `Option`, because the two failures are different events and the
+/// seam says different things about them: a record with no row for this provenance is a
+/// reconstruction that *gained* an agent, while a row somebody already holds is a reconstruction
+/// that produced two agents where the run had one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowClaim {
+    /// The row is this agent's, and no later agent can take it.
+    Claimed(String),
+    /// The record's agent table has no row for this provenance.
+    NoRow,
+    /// Another live agent already holds the row (named here, so the report can say which queue was
+    /// being contested).
+    Contested(String),
 }
 
 impl AgentBindings {
@@ -100,13 +131,86 @@ impl AgentBindings {
     /// the table is one row per agent (tens, at the very most), and the scan is made once per agent
     /// rather than once per turn. Building an index would trade a real derive-or-encode decision
     /// for nothing measurable.
+    ///
+    /// The origin is translated (`Self::recorded_origin`) first. Two of the six carry another
+    /// agent's **live** id, and comparing one of those against the record verbatim would key the
+    /// lookup on the very counter this whole module exists to avoid.
     pub fn recorded_for_origin(&self, origin: &GgReplayAgentOrigin) -> Option<&str> {
+        let origin = self.recorded_origin(origin);
         self.inputs
             .record()
             .agents
             .iter()
-            .find(|agent| &agent.origin == origin)
+            .find(|agent| agent.origin == origin)
             .map(|agent| agent.agent_id.as_str())
+    }
+
+    /// The same lookup as [`recorded_for_origin`](Self::recorded_for_origin), **taking** the row —
+    /// so a second live agent created by the same provenance cannot be handed the first one's
+    /// queue.
+    ///
+    /// The table (`Self::bind`) already refuses a second binding and reports it, and its message
+    /// says the later agent "is unbound". That was only true of the table: the model seam resolved
+    /// through the record's static agent list, so both live agents got a real client on one
+    /// recorded queue and interleaved each other's turns — which is the exact failure the whole
+    /// provenance scheme exists to rule out, arriving through the one seam that was not asking.
+    /// This is where the refusal is made real, and it is a *claim* rather than a lookup because it
+    /// has to be: the resolution happens before the asking agent has an id, so "is this the agent
+    /// the row is bound to" is a question with no answer yet. "Has anybody taken it" does have one.
+    ///
+    /// Claimed by the [agent's own client](test_cabinet_core::gg_replay::GgClientRole::Agent) only. A resolution and a live agent
+    /// are one-to-one for that role — every dispatch site resolves once and then certainly creates
+    /// the agent — whereas a [compaction](test_cabinet_core::gg_replay::GgClientRole::Compaction) summarizer is a *second* client
+    /// for an agent that already exists and has already claimed its row, and claiming again would
+    /// report an agent as contesting itself.
+    pub fn claim_for_origin(&self, origin: &GgReplayAgentOrigin) -> RowClaim {
+        let Some(recorded) = self.recorded_for_origin(origin).map(str::to_string) else {
+            return RowClaim::NoRow;
+        };
+        let mut state = self.state.lock().expect("agent bindings lock");
+        match state.claimed_rows.insert(recorded.clone()) {
+            true => RowClaim::Claimed(recorded),
+            false => RowClaim::Contested(recorded),
+        }
+    }
+
+    /// `origin` with any id it names rewritten from this reconstruction's vocabulary into the
+    /// record's — the translation that makes provenance keying actually independent of the counter.
+    ///
+    /// [`Spawn`](GgReplayAgentOrigin::Spawn) and
+    /// [`Succession`](GgReplayAgentOrigin::Succession) are the two origins that identify an agent
+    /// by naming *another* one, and the id they name is the live one — `spawner.id`, `agent.id` —
+    /// which for anything but the root is `agent-N` straight off the global counter. So a
+    /// depth-2 spawn's origin reads `Spawn { parent: "agent-4", .. }` here and
+    /// `Spawn { parent: "agent-7", .. }` in the record, and a raw comparison of the two is
+    /// counter-keyed after all: the module's first defence would collapse to the fingerprint alone,
+    /// with the grandchild either failing to bind (a spurious [`UnboundAgent`](DriftKind::UnboundAgent)
+    /// that ends it on turn one) or, on a collision, drawing from a different agent's queue.
+    ///
+    /// The parent is always bound before its child exists — a spawn happens inside the spawner's
+    /// own turn loop, a succession inside its predecessor's — so the map has the answer by the time
+    /// it is asked. An id it has no answer for is left as it stands: that means the *parent* was
+    /// unbound, whose own divergence is already reported, and passing it through unchanged gives
+    /// the child the same "no row for this provenance" reading rather than a second failure mode.
+    fn recorded_origin(&self, origin: &GgReplayAgentOrigin) -> GgReplayAgentOrigin {
+        let translate =
+            |live: &String| self.recorded_for_live(live).unwrap_or_else(|| live.clone());
+        match origin {
+            GgReplayAgentOrigin::Spawn { parent, ordinal } => GgReplayAgentOrigin::Spawn {
+                parent: translate(parent),
+                ordinal: *ordinal,
+            },
+            GgReplayAgentOrigin::Succession {
+                predecessor,
+                ordinal,
+            } => GgReplayAgentOrigin::Succession {
+                predecessor: translate(predecessor),
+                ordinal: *ordinal,
+            },
+            // Board state and the root: re-derived identically by any reconstruction, with no id in
+            // them to translate.
+            other => other.clone(),
+        }
     }
 
     /// The recorded agent a **live** agent is bound to, or `None` for a live agent the record has

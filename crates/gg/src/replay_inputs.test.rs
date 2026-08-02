@@ -854,6 +854,84 @@ async fn an_undemanded_input_stalls_and_releases_the_lowest_waiter() {
         .await_turn("agent-0")
         .await
         .expect("nothing left to wait for");
+    // And the evidence survives the release. The abandoned entry is exactly what its name says —
+    // an input the record pinned and this reconstruction never demanded — so it stays in the count
+    // a playback reports. Dropping it here (which the first cut of the release did) meant the
+    // barrier's own give-up erased the one remaining trace of itself.
+    assert_eq!(
+        inputs.unserved(),
+        1,
+        "the abandoned input is still an input nobody demanded",
+    );
+}
+
+/// An abandoned entry that is *later* demanded after all leaves the count, rather than being
+/// reported as undemanded forever.
+///
+/// The stall released the waiter early; it did not decide that the owner can never catch up. A
+/// record whose owner asks a moment after the ceiling expired is a stall (the ordering was given
+/// up on) but not an undemanded input, and the two figures have to be able to disagree.
+#[tokio::test]
+async fn a_stalled_entry_served_late_stops_counting_as_undemanded() {
+    let inputs = impatient(
+        Builder::default()
+            .model("root", 0, "demanded late")
+            .model("agent-0", 1, "waiting on it")
+            .build(),
+    );
+
+    inputs
+        .await_turn("agent-0")
+        .await
+        .expect("released by the ceiling");
+    assert_eq!(inputs.stalls().len(), 1, "the give-up is recorded");
+    assert_eq!(inputs.unserved(), 2, "with both entries still unserved");
+
+    inputs.next_model("root").expect("the late call");
+    assert_eq!(
+        inputs.unserved(),
+        1,
+        "and the one that arrived is no longer undemanded",
+    );
+}
+
+/// A `git` invocation recorded **inside** a running loop is provably stuck once its agent retires —
+/// only the bookkeeping recorded *past* the loop's last act is exempt.
+///
+/// The exemption exists for one shape (an issue's commit and merge, recorded under the root long
+/// after the root's own `finish`) and used to be granted to the whole `git` category, which meant no
+/// wait behind any `git` could ever be a provable [`ReplayError::Deadlock`] — every one of them paid
+/// the full stall ceiling to reach the same answer, and then, before stalls were reported, did so
+/// silently.
+#[tokio::test]
+async fn a_git_recorded_inside_a_retired_agents_loop_is_a_provable_deadlock() {
+    let inputs = ReplayInputs::new(
+        Builder::default()
+            // The root's loop demanded this `git` and then went on to another turn, so seq 0 is
+            // squarely inside the loop rather than past its end.
+            .git("root", 0, "git status --porcelain")
+            .model("root", 1, "the root's own next turn")
+            .model("agent-0", 2, "waiting behind the root's git")
+            .build(),
+    )
+    .expect("indexes")
+    .with_stall_timeout(Duration::from_secs(600));
+    inputs.retire("root");
+
+    let err = inputs
+        .await_turn("agent-0")
+        .await
+        .expect_err("the root will never come back for a git its loop asked for");
+    assert!(
+        matches!(
+            err,
+            ReplayError::Deadlock {
+                blocking_seq: 0,
+                ..
+            }
+        ),
+        "and it names the git that stopped it: {err:?}",
+    );
 }
 
 /// Retiring an agent releases the waiters it was blocking straight away, rather than making them

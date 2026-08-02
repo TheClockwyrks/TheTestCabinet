@@ -385,6 +385,7 @@ impl Playback {
 
         let events = capture.events();
         let agents = compare_terminals(&self.record, &events, &bindings, &ledger);
+        report_stalls(&inputs, &ledger);
         report_undemanded(&inputs, &ledger);
 
         Ok(PlaybackReport::new(
@@ -814,6 +815,46 @@ fn compare_terminals(
         outcomes.push(outcome);
     }
     outcomes
+}
+
+/// Report every wait the [ordering barrier](ReplayInputs::await_turn) gave up on.
+///
+/// A stall is the one event that removes the guarantee the whole reconstruction rests on. The
+/// barrier serves a recorded input only once every input below it has been served, because
+/// `seq` is a completion order and a gg run's window is built from run-global state — the board,
+/// inter-agent messages, collected subagent results. When a wait expires the waiter is released
+/// anyway, which is the right call (the alternative is hanging on a branch this build no longer
+/// takes) and is also, exactly, *"serving it anyway would build its window from run-global state as
+/// it never stood"* — the thing the barrier's own error message refuses to do.
+///
+/// So it is written down. Without this the release was invisible three times over: it produced no
+/// divergence, [`stalls`](ReplayInputs::stalls) had no reader, and it used to drop the abandoned
+/// seqs out of [`unserved`](ReplayInputs::unserved) — erasing the undemanded-input count that was
+/// the only remaining hint of it. A reconstruction could come back `faithful: true` with an empty
+/// divergence list after the ordering had silently been dropped.
+///
+/// One drift per stall rather than one summary, because each names a different agent and a
+/// different set of abandoned seqs, and the abandoned seqs are where a reader goes next.
+fn report_stalls(inputs: &ReplayInputs, ledger: &DriftLedger) {
+    for stall in inputs.stalls() {
+        let abandoned = stall
+            .abandoned
+            .iter()
+            .map(u64::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        ledger.record(Drift::reported(
+            DriftKind::OrderingStall,
+            &stall.agent_id,
+            format!(
+                "the ordering barrier gave up waiting to serve seq {}: recorded input(s) [{}] \
+                 below it were never demanded, so this agent took its turn out of the order the \
+                 run consumed it in and built that turn's window from run-global state as it never \
+                 stood",
+                stall.seq, abandoned,
+            ),
+        ));
+    }
 }
 
 /// Report the recorded inputs the reconstruction never demanded.
