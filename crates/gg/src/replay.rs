@@ -389,6 +389,18 @@ fn replay_model_error(error: &ModelError) -> GgReplayModelError {
             attempts: None,
             model_id: None,
         },
+        // A [playback](crate::playback) synthesized it, so the run being captured is itself a
+        // reconstruction. Recorded as the class the loop branched on — it is fatal and
+        // non-retryable, exactly like a refused request — with the message carrying the truth.
+        // The contract enum is deliberately *not* widened for it: no live run can produce this
+        // variant, and a record captured by a playback is never served anywhere.
+        ModelError::Playback(_) => GgReplayModelError {
+            kind: GgReplayModelErrorKind::Fatal,
+            message,
+            status: None,
+            attempts: None,
+            model_id: None,
+        },
     }
 }
 

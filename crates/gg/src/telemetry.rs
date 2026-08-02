@@ -391,15 +391,13 @@ pub fn now_rfc3339() -> String {
 /// writes to the same buffer, which is what makes the collected stream the *session's* rather than
 /// one agent's.
 // Nothing in a live run keeps a telemetry stream in memory — production writes to
-// [`StdoutSink`] — so until the playback entrypoint lands this is constructed only by the test
-// suite (as `CollectingSink`, its name there since before there was anything else to call it).
-#[allow(dead_code)]
+// [`StdoutSink`] — so its two constructors are a [playback](crate::playback) and the test suite
+// (where it is spelled `CollectingSink`, its name since before there was anything else to call it).
 #[derive(Clone, Default)]
 pub struct CapturingSink {
     lines: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
-#[allow(dead_code)]
 impl CapturingSink {
     /// A fresh, empty capturing sink.
     pub fn new() -> Self {

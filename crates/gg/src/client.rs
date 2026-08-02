@@ -3112,13 +3112,11 @@ pub struct AgentIdentity {
     /// How the agent came to exist — the same value recorded on its
     /// [replay row](test_cabinet_core::gg_replay::GgReplayAgent::origin), so a reconstruction
     /// matches a live resolution against the record with no translation in between.
-    #[allow(dead_code)]
     pub origin: GgReplayAgentOrigin,
     /// Which of gg's two model clients is being resolved. A
     /// [handoff compaction](crate::compaction) resolves a *second* client for the same agent, and
     /// without this the summarizer's calls and the agent's own next turn would answer from one
     /// indistinguishable queue.
-    #[allow(dead_code)]
     pub role: GgClientRole,
 }
 

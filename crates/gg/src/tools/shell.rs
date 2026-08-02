@@ -55,8 +55,7 @@ mod runner;
 /// [completion](crate::completion) gate's — whose tests substitute it.
 #[cfg(test)]
 pub(crate) use runner::StubShellRunner;
-use runner::{ShellExecution, ShellRequest, ShellStatus};
-pub(crate) use runner::{ShellRunner, real_shell};
+pub(crate) use runner::{ShellExecution, ShellRequest, ShellRunner, ShellStatus, real_shell};
 
 /// The tool's name, matched during dispatch and offered to the model.
 pub const SHELL_TOOL: &str = "shell";

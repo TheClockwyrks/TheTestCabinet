@@ -22,9 +22,16 @@
 //! delegated reconstruction is the older binary's output verbatim, and one reporter is what stops
 //! the same record from summarizing differently depending on which binary ran it.
 //!
+//! [`playback`] is the third public surface, and it is a *different thing* from the replay driver
+//! — a distinction worth keeping in code, docs and flags, because confusing them is how somebody
+//! ends up believing a transcript viewer proved a regression. The driver walks a record passively
+//! and performs no side effects at all; a playback re-runs the recorded session through the
+//! **real** turn loop, answering only the model call and the shell from the record and performing
+//! everything else for real, and reports where this build diverged from what was recorded.
+//!
 //! Everything else — the model client, the agent turn loop, tool dispatch, and the telemetry
 //! emitter — is internal to this crate; the binary, the replay driver and its command-line front
-//! end are the only public surfaces.
+//! end, and playback are the only public surfaces.
 
 mod agent;
 mod archive;
@@ -47,6 +54,7 @@ mod message_log;
 mod model;
 mod modules;
 mod persistence;
+pub mod playback;
 mod prompts;
 mod replay;
 pub mod replay_cli;

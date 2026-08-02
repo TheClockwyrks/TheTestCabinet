@@ -67,9 +67,8 @@ pub struct ShellRequest {
     /// path cannot know whose recorded commands to draw from, every shell divergence names an
     /// agent, and the [completion](crate::completion) gate's commands in particular have to be
     /// attributed to the agent whose ending they gate or they land on an unattributed queue.
-    /// [`RealShellRunner`] has no use for it — a real process is a real process — so nothing reads
-    /// it until the recorded runner lands.
-    #[allow(dead_code)]
+    /// [`RealShellRunner`] has no use for it — a real process is a real process — so the only
+    /// reader is a [playback](crate::playback)'s recorded runner.
     pub agent_id: String,
 }
 

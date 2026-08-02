@@ -250,7 +250,7 @@ const STATUS_AUTH_ERROR: &str = "auth_error";
 
 /// Whether a terminal loop status means the agent failed (as opposed to finishing,
 /// exhausting its turns, or timing out) — the two error statuses above.
-fn is_failure_status(status: &str) -> bool {
+pub(crate) fn is_failure_status(status: &str) -> bool {
     status == STATUS_MODEL_ERROR || status == STATUS_AUTH_ERROR
 }
 
@@ -8083,7 +8083,7 @@ fn describe_turns(turns: &[u64]) -> String {
 /// the agent's own fullness signal. A run whose window cannot be resolved must not start —
 /// [`validate_model_windows`] refuses it at launch, so this `None` is unreachable once a
 /// session is running.
-fn resolve_window_limit(
+pub(crate) fn resolve_window_limit(
     set: &GgCapabilitySet,
     windows: &BTreeMap<String, u64>,
     model_id: &str,
