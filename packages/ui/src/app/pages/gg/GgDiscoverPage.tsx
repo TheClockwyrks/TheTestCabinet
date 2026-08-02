@@ -30,11 +30,11 @@ import type {
   GgQuery,
   GgQueryResponse,
 } from "@test-cabinet/run-record/gg-query";
+import { formatTimestamp } from "../../format";
 import { PageLayout } from "../../components/PageLayout";
 import { PromptHeader } from "../../components/PromptHeader";
-import { useAuth } from "../../../client/auth";
-import { useBackend } from "../../../client/context";
 import { compileQuery, parseQuery } from "./query";
+import { useGgSource } from "./ggSource";
 import { GgBucketTable } from "./discover/GgBucketTable";
 import { GgDocTable } from "./discover/GgDocTable";
 import { GgFieldSidebar } from "./discover/GgFieldSidebar";
@@ -46,7 +46,7 @@ import {
   rangeById,
   rangeFilter,
 } from "./discover/TimeRangePicker";
-import { GG_CHROME } from "./ggChrome";
+import { ggChrome } from "./ggChrome";
 import { routes } from "../../routes";
 import styles from "./discover/GgDiscover.module.scss";
 
@@ -70,8 +70,9 @@ const DEFAULT_QUERY = "";
 
 export function GgDiscoverPage() {
   const [params, setParams] = useSearchParams();
-  const { token } = useAuth();
-  const { client: backend } = useBackend();
+  // One seam for both hosts: the console's backend index, or the static site's shipped
+  // snapshot corpus evaluated in the browser. Everything below is written once.
+  const source = useGgSource();
 
   const urlQuery = params.get("q") ?? DEFAULT_QUERY;
   const range = rangeById(params.get("range"));
@@ -107,15 +108,15 @@ export function GgDiscoverPage() {
     };
   }, [parse.query, range]);
 
-  const fetchFields = backend?.getGgFields;
   useEffect(() => {
-    if (!fetchFields || !token) {
+    if (!source) {
       setCatalogLoading(false);
       return;
     }
     let active = true;
     setCatalogLoading(true);
-    fetchFields(token)
+    source
+      .fields()
       .then((fields) => {
         if (!active) return;
         setCatalog(fields);
@@ -129,15 +130,15 @@ export function GgDiscoverPage() {
     return () => {
       active = false;
     };
-  }, [fetchFields, token]);
+  }, [source]);
 
-  const runQuery = backend?.runGgQuery;
   useEffect(() => {
-    if (!runQuery || !token) return;
+    if (!source) return;
     let active = true;
     setBusy(true);
     setError(null);
-    runQuery(compiled, token)
+    source
+      .runQuery(compiled)
       .then((response) => {
         if (!active) return;
         setResult(response);
@@ -152,7 +153,7 @@ export function GgDiscoverPage() {
     return () => {
       active = false;
     };
-  }, [runQuery, token, compiled]);
+  }, [source, compiled]);
 
   /** Commit the draft: the URL is what runs, so submitting is a navigation. */
   const submit = useCallback(() => {
@@ -186,8 +187,15 @@ export function GgDiscoverPage() {
   // without one.
   const aggregated = (result.columns?.length ?? 0) > 0;
 
+  // A live backend answers from its own index and is always current; the public site
+  // answers from a build-time export that legitimately lags by a publish cycle. Saying so
+  // beside the figures is the difference between "the corpus is smaller than I expected"
+  // and "the numbers are wrong".
+  const live = source?.live ?? true;
+  const asOf = source?.generatedAt ?? null;
+
   return (
-    <PageLayout chrome={GG_CHROME}>
+    <PageLayout chrome={ggChrome(live)}>
       <PromptHeader
         command="--gg query"
         comment={<>// find sessions, or aggregate over them</>}
@@ -202,15 +210,19 @@ export function GgDiscoverPage() {
             {/* Saving carries the **text** and the range token, never the compiled
                 query, so the saved question re-resolves `now-30d` every time it runs.
                 It hands off to the Saved tab's form rather than opening a second
-                editor here: one editor, one place a name is typed. */}
-            <Link
-              className={styles.savedLink}
-              to={routes.ggAnalysisSaved({
-                create: { query: urlQuery, range: range.id },
-              })}
-            >
-              Save this query
-            </Link>
+                editor here: one editor, one place a name is typed. A saved query is a
+                per-account object, so the affordance is absent — not disabled — where
+                there are no accounts. */}
+            {live && (
+              <Link
+                className={styles.savedLink}
+                to={routes.ggAnalysisSaved({
+                  create: { query: urlQuery, range: range.id },
+                })}
+              >
+                Save this query
+              </Link>
+            )}
           </div>
 
           <QueryEditor
@@ -236,6 +248,7 @@ export function GgDiscoverPage() {
                     }`
                   : ""}
                 {result.truncated && " · showing the first rows only"}
+                {asOf && ` · as of ${formatTimestamp(asOf)}`}
               </>
             )}
           </p>
@@ -261,6 +274,7 @@ export function GgDiscoverPage() {
               documents={result.documents ?? []}
               filter={compiled.filter}
               sort={compiled.sort}
+              linkRuns={live}
             />
           )}
         </div>

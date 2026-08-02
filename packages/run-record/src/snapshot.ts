@@ -9,6 +9,7 @@
 
 import type { ModelOut } from "./backend-api";
 import type { Comparison } from "./comparison";
+import type { GgRunDoc } from "./gg-query";
 import type {
   AssetKind,
   AssetSheet,
@@ -46,6 +47,11 @@ export type SnapshotIndex = {
    * (`<prefix>/comparisons/<id>.json`).
    */
   comparisonsPrefix: string;
+  /**
+   * Where this snapshot's gg document corpus lives (`<prefix>/gg-runs.json`) — the
+   * payload the public Discover surface evaluates in the browser.
+   */
+  ggRunsKey: string;
 };
 
 /**
@@ -625,3 +631,30 @@ export type ComparisonsIndex = {
  * One published comparison's own document (`comparisons/<id>.json`).
  */
 export type ComparisonFile = { schemaVersion: number; comparison: Comparison };
+
+/**
+ * The gg document corpus file (`gg-runs.json`): every exported gg run as one flat map
+ * of dotted fields, plus the instant the export was taken.
+ *
+ * This is the **whole** public analysis payload. The site's Discover surface runs the
+ * mirrored TypeScript evaluator over these documents and makes no backend call at all,
+ * which is only affordable because a document is an order of magnitude smaller than the
+ * record it derives from — no source, no prompts, no model output.
+ *
+ * It carries its own `generated_at` even though [`SnapshotIndex`] has one, because the
+ * public corpus legitimately lags the console's: every figure the site renders has to be
+ * labelled with the instant it was true, and a figure and its as-of time should travel
+ * in the same object rather than be joined at read time.
+ */
+export type GgRunsFile = {
+  schemaVersion: number;
+  /**
+   * When this corpus was exported (RFC 3339), rendered beside every public figure.
+   */
+  generatedAt: string;
+  /**
+   * The exported documents, already filtered and redacted (see
+   * [`SnapshotBuilder::with_gg_documents`]).
+   */
+  documents: Array<GgRunDoc>;
+};

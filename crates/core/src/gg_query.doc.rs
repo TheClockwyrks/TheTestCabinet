@@ -16,6 +16,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use super::GgRunDoc;
+use crate::code_analysis::{CodeAnalysisSummary, CodeLanguage};
 use crate::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AGENT_PERSISTENCE, CAPABILITY_AGENT_TRANSITIONS,
     CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_COMPACTION, CAPABILITY_COMPLETION,
@@ -92,6 +93,45 @@ pub const NO_LIMIT_HIT: &str = "none";
 
 /// The name a capability that selects no implementation reports under `cap.<id>.impl`.
 pub const DEFAULT_IMPLEMENTATION: &str = "default";
+
+/// The `code.language` value of a tree the analyzer parsed in **more than one**
+/// language.
+pub const CODE_LANGUAGE_MIXED: &str = "mixed";
+
+/// The `code.language` value of a tree the analyzer parsed in **no** language — one
+/// that is entirely JSON, Markdown, CSS, shaders and HTML, or one where every source
+/// file was refused. Deliberately a value rather than an absence, for the same reason
+/// [`NO_LIMIT_HIT`] is: "the model wrote nothing either front end could read" is an
+/// outcome a group-by must be able to show, not a gap in the data.
+pub const CODE_LANGUAGE_NONE: &str = "none";
+
+/// Fields the [public export](redacted_for_public) drops **by name**, whatever they
+/// hold.
+///
+/// One entry today, and it is a standing policy rather than a description of the
+/// current builder: `statusDetail` is the run status's free-text failure detail, which
+/// is a stack trace, a container error or an assertion message — the console's most
+/// useful triage field and precisely the class of string that has no business on a
+/// public site even after [scrubbing](crate::redact::SecretScrubber). The builder does
+/// not emit it today; the deny-list is here so that the day it does, the export already
+/// refuses it rather than shipping it in the first snapshot after the change.
+///
+/// The list is a *floor*, not the whole control. The length rule below is what catches
+/// the free text nobody thought to name — see [`redacted_for_public`].
+pub const GG_PRIVATE_FIELDS: &[&str] = &["statusDetail"];
+
+/// The longest string value the [public export](redacted_for_public) keeps.
+///
+/// Every field the builder writes on purpose is an identifier: a run id, a case slug, a
+/// model id, a status token, a capability implementation name. The longest of those —
+/// a fully qualified OpenRouter model id — runs to a few dozen characters, so this
+/// bound has an order of magnitude of headroom for anything deliberate while still
+/// being far below the size of the thing it exists to stop: a **capability parameter**.
+/// `cap.<id>.<param>` is flattened straight out of a run's configuration, so an
+/// operator who put a system-prompt override, a skill body or a pasted specification in
+/// a parameter has put it into every document — and publishing gg documents would
+/// publish it verbatim.
+pub const GG_PUBLIC_MAX_STRING: usize = 200;
 
 /// The run-lifecycle facts that live on the **store**, not on the record: whether the
 /// run was published, and what its reviewers concluded.
@@ -170,6 +210,7 @@ pub fn flatten_json(prefix: &str, value: &Value, out: &mut GgRunDoc) {
 /// | `summary.<path>` | the **whole** session summary, flattened |
 /// | `model.<id>.tokens`, `model.<id>.cost` | the per-`(slot, model)` spend rollup |
 /// | `metric.*` | run time, tokens and cost — **absent, never zero**, on a run that produced nothing |
+/// | `code.<path>`, `code.language` | the [code analysis](crate::code_analysis) summary, flattened, plus one derived scalar |
 /// | `has.<block>` | presence markers, so a rate's denominator is expressible |
 ///
 /// Two of those rows carry most of the design. `summary.<path>` **subsumes the entire
@@ -237,9 +278,15 @@ pub fn build_run_doc(record: &RunRecord, lifecycle: &GgDocLifecycle) -> GgRunDoc
     // --- resource metrics --------------------------------------------------------
     insert_metrics(&mut doc, record);
 
+    // --- what the model wrote ----------------------------------------------------
+    if let Some(code) = &record.code_analysis {
+        insert_code_analysis(&mut doc, code);
+    }
+
     // --- presence markers --------------------------------------------------------
     doc.insert("has.capabilitySet", subject.gg_capability_set.is_some());
     doc.insert("has.summary", subject.gg_summary.is_some());
+    doc.insert("has.codeAnalysis", record.code_analysis.is_some());
 
     doc
 }
@@ -403,6 +450,94 @@ fn insert_metrics(doc: &mut GgRunDoc, record: &RunRecord) {
     if let Some(cost) = metrics.cost.actual {
         doc.insert("metric.costActual", cost);
     }
+}
+
+/// Write the `code.*` namespace off the run's [code-analysis
+/// summary](CodeAnalysisSummary), plus the one field that cannot be flattened.
+///
+/// The whole typed block goes through [`flatten_json`] verbatim — one flattening rule
+/// for the document, not one per namespace — which is what makes a figure the analyzer
+/// starts emitting queryable the day it lands, with no change here and no contract
+/// regeneration. So `code.size.giniCodeLines`, `code.complexity.maxCyclomatic`,
+/// `code.notes.truncated` and the rest exist because the struct has those fields, not
+/// because anybody enumerated them.
+///
+/// The exception is `languages`, and it is the exception
+/// [rule 4](crate::gg_query#the-seven-semantic-rules) predicts: it is a `Vec`, so
+/// flattening contributes only the useless `code.languages.count`. The question people
+/// actually ask of it — "does this model write TypeScript or Rust, and does it mix
+/// them?" — needs a **scalar** to group by, so the builder derives one:
+///
+/// | Parsed languages | `code.language` |
+/// | --- | --- |
+/// | none | `"none"` |
+/// | exactly one | that language's [token](CodeLanguage::as_str) |
+/// | more than one | `"mixed"` |
+///
+/// Spelled through [`CodeLanguage::as_str`] rather than a local match, so a query, a
+/// chart legend and the Code tab cannot disagree about how a language is written.
+fn insert_code_analysis(doc: &mut GgRunDoc, code: &CodeAnalysisSummary) {
+    if let Ok(value) = serde_json::to_value(code) {
+        flatten_json("code", &value, doc);
+    }
+
+    // Derived from the deduplicated list the analyzer reports, so a tree parsed in one
+    // language a hundred times is still that one language.
+    let mut languages: Vec<CodeLanguage> = code.languages.clone();
+    languages.sort_unstable();
+    languages.dedup();
+    let language = match languages.as_slice() {
+        [] => CODE_LANGUAGE_NONE.to_string(),
+        [only] => only.as_str().to_string(),
+        _ => CODE_LANGUAGE_MIXED.to_string(),
+    };
+    doc.insert("code.language", language);
+}
+
+/// The document as the **public static site** may carry it.
+///
+/// The [export](https://docs.testcabinet.ai/gg/analysis/) is deliberately *not* gated on
+/// run publication — a document holds configuration ids and outcome numbers, no source
+/// and no model output, and restricting it to published runs would publish almost
+/// nothing and defeat the point. **Redaction is the control instead**, and it is applied
+/// here, to the document, rather than at the call site — so a second exporter cannot
+/// forget it and a field added to the builder tomorrow is subject to it today.
+///
+/// Two rules, and the second is the load-bearing one:
+///
+/// 1. **Named fields go** ([`GG_PRIVATE_FIELDS`]) — the deny-list, which only covers
+///    what somebody thought of.
+/// 2. **Any string longer than [`GG_PUBLIC_MAX_STRING`] goes**, whatever it is called.
+///    Every field the builder writes deliberately is an identifier or a token; a long
+///    string in a document is, in practice, a **capability parameter** carrying free
+///    text an operator pasted into a configuration. This rule is what makes the export
+///    safe by *construction* rather than by review: a namespace nobody has written yet
+///    is already covered.
+///
+/// What this is **not**: it is not secret scrubbing. A leaked API key is short and
+/// deliberately shaped, and it is caught downstream by
+/// [`SecretScrubber::scrub_json`](crate::redact::SecretScrubber::scrub_json) over the
+/// serialized export object. The two run in sequence and neither subsumes the other.
+///
+/// Nor does it decide *which* runs are exported: dropping an unreleased case's
+/// documents is the caller's job, because "is this case experimental" is a fact about
+/// the definition store rather than about the document.
+///
+/// Numbers and booleans are never dropped. They are the corpus.
+pub fn redacted_for_public(doc: &GgRunDoc) -> GgRunDoc {
+    let mut out = GgRunDoc::default();
+    for (field, value) in &doc.fields {
+        if GG_PRIVATE_FIELDS.contains(&field.as_str()) {
+            continue;
+        }
+        if let super::GgValue::String(text) = value
+            && text.chars().count() > GG_PUBLIC_MAX_STRING
+        {
+            continue;
+        }
+        out.fields.insert(field.clone(), value.clone());
+    }
+    out
 }
 
 /// Parse an RFC 3339 timestamp to epoch milliseconds, or `None` when it is not a

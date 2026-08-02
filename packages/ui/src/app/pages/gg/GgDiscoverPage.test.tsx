@@ -9,8 +9,12 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { GgQuery } from "@test-cabinet/run-record/gg-query";
+import type { GgQuery, GgRunDoc } from "@test-cabinet/run-record/gg-query";
 import { BackendProvider, type BackendContextValue } from "../../../client/context";
+import {
+  GalleryDataProvider,
+  type GalleryDataInput,
+} from "../../data/galleryContext";
 import { GgDiscoverPage } from "./GgDiscoverPage";
 import { GgLegacyRedirect } from "./discover/GgLegacyRedirect";
 
@@ -35,6 +39,25 @@ function backendValue(): BackendContextValue {
   } as unknown as BackendContextValue;
 }
 
+/** The minimum gallery data the page's chrome and its source hook read. `ggData` is the
+ *  static site's shipped corpus; a console leaves it absent. */
+function galleryValue(ggData?: GalleryDataInput["ggData"]): GalleryDataInput {
+  return {
+    producedSummaries: [],
+    localIds: new Set(),
+    writeups: {},
+    reviews: {},
+    runsLoading: false,
+    queryRunSummaries: async () => ({ summaries: [], total: 0 }),
+    testCases: [],
+    testCasesStatus: "ready",
+    models: [],
+    modelsStatus: "ready",
+    canExecute: false,
+    ggData,
+  } as unknown as GalleryDataInput;
+}
+
 /** Reports the current location, so a redirect can be asserted on. */
 function Where() {
   const location = useLocation();
@@ -44,14 +67,39 @@ function Where() {
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <BackendProvider value={backendValue()}>
+      <GalleryDataProvider value={galleryValue()}>
+        <BackendProvider value={backendValue()}>
+          <Where />
+          <Routes>
+            <Route path="/gg/query" element={<GgDiscoverPage />} />
+            <Route path="/gg/aggregate" element={<GgLegacyRedirect />} />
+            <Route path="/gg/aggregate/results" element={<GgLegacyRedirect />} />
+          </Routes>
+        </BackendProvider>
+      </GalleryDataProvider>
+    </MemoryRouter>,
+  );
+}
+
+/** One shipped document, as the snapshot's `gg-runs.json` carries it. */
+function doc(fields: Record<string, string | number | boolean>): GgRunDoc {
+  return { fields } as GgRunDoc;
+}
+
+/**
+ * Render Discover as the **public static site** does: no backend at all, the corpus
+ * shipped in the gallery data, and every query answered by the mirrored evaluator in the
+ * browser.
+ */
+function renderStatic(path: string, documents: GgRunDoc[], generatedAt: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <GalleryDataProvider value={galleryValue({ generatedAt, documents })}>
         <Where />
         <Routes>
           <Route path="/gg/query" element={<GgDiscoverPage />} />
-          <Route path="/gg/aggregate" element={<GgLegacyRedirect />} />
-          <Route path="/gg/aggregate/results" element={<GgLegacyRedirect />} />
         </Routes>
-      </BackendProvider>
+      </GalleryDataProvider>
     </MemoryRouter>,
   );
 }
@@ -174,5 +222,105 @@ describe("the legacy redirect", () => {
       op: "eq",
       value: "hung",
     });
+  });
+});
+
+describe("Discover on the public static site", () => {
+  const CORPUS: GgRunDoc[] = [
+    doc({
+      id: "run-a",
+      case: "pong",
+      model: "anthropic/claude-a",
+      state: "completed",
+      finished: 1_800_000_000_000,
+      "code.language": "typescript",
+    }),
+    doc({
+      id: "run-b",
+      case: "pong",
+      model: "openai/gpt-b",
+      state: "hung",
+      finished: 1_700_000_000_000,
+      "code.language": "rust",
+    }),
+  ];
+
+  it("answers from the shipped corpus and makes no backend call", async () => {
+    // The property the whole public surface rests on: **zero** requests. The mirrored
+    // evaluator runs the same compiled query in the browser that the backend would have
+    // run in Rust, so the site needs no query endpoint and no backend at all.
+    runGgQuery.mockReset();
+    getGgFields.mockReset();
+
+    renderStatic("/gg/query", CORPUS, "2026-07-30T09:00:00Z");
+
+    await waitFor(() => expect(screen.getByTitle("run-a")).toBeInTheDocument());
+    expect(runGgQuery).not.toHaveBeenCalled();
+    expect(getGgFields).not.toHaveBeenCalled();
+  });
+
+  it("prints run ids without linking them, because most have no public page", async () => {
+    // The corpus is decoupled from publication — it holds every recorded gg run while the
+    // public gallery holds only the published ones — so a table of links would mostly be
+    // a table of 404s.
+    renderStatic("/gg/query", CORPUS, "2026-07-30T09:00:00Z");
+    await waitFor(() => expect(screen.getByTitle("run-a")).toBeInTheDocument());
+    expect(screen.queryByRole("link", { name: /run-a/ })).not.toBeInTheDocument();
+  });
+
+  it("filters and aggregates locally with the same semantics", async () => {
+    // Not a smoke test of "something rendered": the query is compiled from the URL and
+    // evaluated against the corpus, so a divergence in the browser evaluator shows up
+    // here as a wrong count rather than as an empty page.
+    renderStatic(
+      "/gg/query?q=" + encodeURIComponent("state:hung"),
+      CORPUS,
+      "2026-07-30T09:00:00Z",
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          (_, element) =>
+            element?.tagName === "P" &&
+            (element.textContent ?? "").startsWith("1 run matched"),
+        ),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("renders the snapshot's build time beside the figures", async () => {
+    // The public corpus is a build-time export and legitimately lags the console's, so
+    // every figure it produces is labelled with the instant it was true. Without that,
+    // "the site disagrees with the console" is unanswerable.
+    renderStatic("/gg/query", CORPUS, "2026-07-30T09:00:00Z");
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          (_, element) =>
+            element?.tagName === "P" &&
+            (element.textContent ?? "").includes("as of"),
+        ),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("offers no save affordance, because there is no account to save under", async () => {
+    renderStatic("/gg/query", CORPUS, "2026-07-30T09:00:00Z");
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: "Query" })).toBeInTheDocument(),
+    );
+    expect(
+      screen.queryByRole("link", { name: "Save this query" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("builds the field catalog from the corpus, so the sidebar still works", async () => {
+    // The catalog is the *second* mirrored function. A field the corpus carries has to
+    // be offered here exactly as `GET /gg/fields` would offer it on a console — including
+    // the `code.*` namespace this milestone made publishable.
+    renderStatic("/gg/query", CORPUS, "2026-07-30T09:00:00Z");
+    await waitFor(() =>
+      expect(screen.getByText("code.language")).toBeInTheDocument(),
+    );
   });
 });

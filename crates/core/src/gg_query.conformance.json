@@ -2632,12 +2632,294 @@
           "kind": "compare",
           "field": "metric.cost",
           "op": "eq",
-          "value": "\uFEFF0.5"
+          "value": "﻿0.5"
         }
       },
       "expect": {
         "totalRuns": 0,
         "documentIds": []
+      }
+    },
+    {
+      "name": "code.language groups a derived scalar the analyzer only reports as a list",
+      "why": "The code analysis reports `languages` as an array, and rule 4 makes an array contribute only its length — so the document builder derives the scalar `code.language`. This pins that the published namespace aggregates identically in both evaluators, which is what the public site's figures depend on. The run with no analysis at all lands in the absence bucket rather than vanishing, which is what stops a published language breakdown from quietly reporting a subset as the whole.",
+      "documents": [
+        {
+          "fields": {
+            "id": "c1",
+            "finished": 1767229200000,
+            "code.language": "typescript",
+            "code.size.codeLines": 1200,
+            "code.notes.truncated": false,
+            "has.codeAnalysis": true
+          }
+        },
+        {
+          "fields": {
+            "id": "c2",
+            "finished": 1767225600000,
+            "code.language": "typescript",
+            "code.size.codeLines": 800,
+            "code.notes.truncated": true,
+            "has.codeAnalysis": true
+          }
+        },
+        {
+          "fields": {
+            "id": "c3",
+            "finished": 1767222000000,
+            "code.language": "mixed",
+            "code.size.codeLines": 400,
+            "code.notes.truncated": false,
+            "has.codeAnalysis": true
+          }
+        },
+        {
+          "fields": {
+            "id": "c4",
+            "finished": 1767218400000,
+            "has.codeAnalysis": false
+          }
+        }
+      ],
+      "query": {
+        "stats": {
+          "aggs": [
+            {
+              "func": "count"
+            },
+            {
+              "func": "avg",
+              "field": "code.size.codeLines"
+            }
+          ],
+          "groupBy": [
+            {
+              "kind": "field",
+              "field": "code.language"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "totalRuns": 4,
+        "columns": [
+          {
+            "name": "count()",
+            "func": "count"
+          },
+          {
+            "name": "avg(code.size.codeLines)",
+            "func": "avg",
+            "field": "code.size.codeLines"
+          }
+        ],
+        "buckets": [
+          {
+            "key": [
+              {
+                "field": "code.language",
+                "value": "typescript"
+              }
+            ],
+            "n": 2,
+            "values": [
+              {
+                "name": "count()",
+                "value": 2,
+                "contributing": 2
+              },
+              {
+                "name": "avg(code.size.codeLines)",
+                "value": 1000.0,
+                "contributing": 2
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "code.language",
+                "value": "mixed"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              },
+              {
+                "name": "avg(code.size.codeLines)",
+                "value": 400.0,
+                "contributing": 1
+              }
+            ]
+          },
+          {
+            "key": [
+              {
+                "field": "code.language"
+              }
+            ],
+            "n": 1,
+            "values": [
+              {
+                "name": "count()",
+                "value": 1,
+                "contributing": 1
+              },
+              {
+                "name": "avg(code.size.codeLines)",
+                "contributing": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "not code.notes.truncated keeps the runs that were never analysed at all",
+      "why": "A truncated analysis is excluded by the composable filter `not code.notes.truncated` rather than by a hidden default. Rule 1 makes `not` the only predicate an absent field passes, so a run with no code analysis — the majority of the corpus, since analysis is not backfilled — is *kept*. Getting this backwards would silently shrink every code aggregate to the analysed set, and the two evaluators would have to agree on the mistake.",
+      "documents": [
+        {
+          "fields": {
+            "id": "c1",
+            "finished": 1767229200000,
+            "code.language": "typescript",
+            "code.size.codeLines": 1200,
+            "code.notes.truncated": false,
+            "has.codeAnalysis": true
+          }
+        },
+        {
+          "fields": {
+            "id": "c2",
+            "finished": 1767225600000,
+            "code.language": "typescript",
+            "code.size.codeLines": 800,
+            "code.notes.truncated": true,
+            "has.codeAnalysis": true
+          }
+        },
+        {
+          "fields": {
+            "id": "c3",
+            "finished": 1767222000000,
+            "code.language": "mixed",
+            "code.size.codeLines": 400,
+            "code.notes.truncated": false,
+            "has.codeAnalysis": true
+          }
+        },
+        {
+          "fields": {
+            "id": "c4",
+            "finished": 1767218400000,
+            "has.codeAnalysis": false
+          }
+        }
+      ],
+      "query": {
+        "filter": {
+          "kind": "not",
+          "clause": {
+            "kind": "compare",
+            "field": "code.notes.truncated",
+            "op": "eq",
+            "value": true
+          }
+        }
+      },
+      "expect": {
+        "totalRuns": 3,
+        "documentIds": [
+          "c1",
+          "c3",
+          "c4"
+        ]
+      }
+    },
+    {
+      "name": "has.codeAnalysis is the denominator a code rate is scoped on",
+      "why": "Rule 2. Because code analysis is not backfilled, an unscoped average over `code.*` reports a figure whose denominator is invisible. The presence marker is how a query says which population it means, and it must be a stored boolean on both sides rather than an inference from `code.*` being absent.",
+      "documents": [
+        {
+          "fields": {
+            "id": "c1",
+            "finished": 1767229200000,
+            "code.language": "typescript",
+            "code.size.codeLines": 1200,
+            "code.notes.truncated": false,
+            "has.codeAnalysis": true
+          }
+        },
+        {
+          "fields": {
+            "id": "c2",
+            "finished": 1767225600000,
+            "code.language": "typescript",
+            "code.size.codeLines": 800,
+            "code.notes.truncated": true,
+            "has.codeAnalysis": true
+          }
+        },
+        {
+          "fields": {
+            "id": "c3",
+            "finished": 1767222000000,
+            "code.language": "mixed",
+            "code.size.codeLines": 400,
+            "code.notes.truncated": false,
+            "has.codeAnalysis": true
+          }
+        },
+        {
+          "fields": {
+            "id": "c4",
+            "finished": 1767218400000,
+            "has.codeAnalysis": false
+          }
+        }
+      ],
+      "query": {
+        "filter": {
+          "kind": "compare",
+          "field": "has.codeAnalysis",
+          "op": "eq",
+          "value": true
+        },
+        "stats": {
+          "aggs": [
+            {
+              "func": "count"
+            }
+          ],
+          "groupBy": []
+        }
+      },
+      "expect": {
+        "totalRuns": 3,
+        "columns": [
+          {
+            "name": "count()",
+            "func": "count"
+          }
+        ],
+        "buckets": [
+          {
+            "key": [],
+            "n": 3,
+            "values": [
+              {
+                "name": "count()",
+                "value": 3,
+                "contributing": 3
+              }
+            ]
+          }
+        ]
       }
     }
   ]

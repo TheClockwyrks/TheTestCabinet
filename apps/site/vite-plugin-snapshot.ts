@@ -45,6 +45,11 @@ interface SnapshotIndex {
   // Optional so a snapshot published before comparisons existed still loads (the
   // site then has none).
   comparisonsKey?: string;
+  // Where the gg document corpus lives (`<prefix>/gg-runs.json`) — the payload the
+  // public Discover surface evaluates in the browser. Optional so a snapshot published
+  // before the gg export existed still loads (the site then mounts no analysis
+  // surface at all).
+  ggRunsKey?: string;
 }
 
 interface SnapshotModelsFile {
@@ -57,6 +62,20 @@ interface SnapshotComparisonsFile {
   schemaVersion: number;
   // Wire `Comparison` shape (`@test-cabinet/run-record/comparison`); consumed as-is.
   comparisons: unknown[];
+}
+
+// The gg document corpus (`gg-runs.json`): every exported gg run as one flat map of
+// dotted fields, plus the instant the export was taken. Consumed as-is — the app's
+// mirrored evaluator reads `GgRunDoc` directly — and inlined into the bundle like every
+// other snapshot payload, so the public analysis surface makes no request at runtime.
+//
+// The documents arrive already **filtered** (no experimental case) and **field-redacted**;
+// neither can be re-checked here, which is why both happen at export time. A replay
+// record is never part of this file.
+interface SnapshotGgRunsFile {
+  schemaVersion: number;
+  generatedAt: string;
+  documents: unknown[];
 }
 
 // The flat summary index (`runs.json`, the snapshot's `ln` key): the full
@@ -311,6 +330,10 @@ interface AssembledSnapshot {
   // The published harness comparisons (wire `Comparison[]`), each already the full
   // read model the backend assembled. Empty when the snapshot has none.
   comparisons: unknown[];
+  // The gg document corpus and the instant it was exported, or null when the snapshot
+  // carries none — in which case the site mounts no analysis surface. Held whole rather
+  // than remapped: the app's evaluator reads these documents as they are.
+  ggRuns: { generatedAt: string; documents: unknown[] } | null;
   // Resolved proof media URLs, keyed by run id then by served file name
   // (`<proof-id>.<ext>`). The app's `proofMediaUrl(runId, file)` reads this.
   proofMediaUrls: Record<string, Record<string, string>>;
@@ -495,6 +518,7 @@ const EMPTY: AssembledSnapshot = {
   testCases: [],
   models: [],
   comparisons: [],
+  ggRuns: null,
   proofMediaUrls: {},
   assetMediaUrls: {},
   validationMediaUrls: {},
@@ -968,6 +992,24 @@ async function loadSnapshot(
     }
   }
 
+  // The gg document corpus. Absent from a snapshot published before the gg export
+  // existed, in which case the site mounts no analysis surface rather than an empty one.
+  let ggRuns: AssembledSnapshot["ggRuns"] = null;
+  if (index.ggRunsKey) {
+    try {
+      const ggRunsFile = await fetchJson<SnapshotGgRunsFile>(
+        joinUrl(base, index.ggRunsKey),
+      );
+      ggRuns = {
+        generatedAt: ggRunsFile.generatedAt,
+        documents: ggRunsFile.documents,
+      };
+    } catch {
+      // Missing/unreadable corpus: no analysis surface rather than a failed build,
+      // matching how every other optional snapshot payload degrades.
+    }
+  }
+
   return {
     // The already-fetched summary index — the bounded cards, verbatim. No extra
     // network calls.
@@ -977,6 +1019,7 @@ async function loadSnapshot(
     testCases: collapseCases(base, caseFiles),
     models,
     comparisons,
+    ggRuns,
     proofMediaUrls,
     assetMediaUrls,
     validationMediaUrls,
@@ -994,6 +1037,7 @@ function serialize(data: AssembledSnapshot): string {
     `export const testCases = ${JSON.stringify(data.testCases)};`,
     `export const models = ${JSON.stringify(data.models)};`,
     `export const comparisons = ${JSON.stringify(data.comparisons)};`,
+    `export const ggRuns = ${JSON.stringify(data.ggRuns)};`,
     `export const proofMediaUrls = ${JSON.stringify(data.proofMediaUrls)};`,
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,
     `export const validationMediaUrls = ${JSON.stringify(data.validationMediaUrls)};`,

@@ -20,6 +20,7 @@ import type {
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import type { Comparison } from "@test-cabinet/run-record/comparison";
+import type { GgRunDoc } from "@test-cabinet/run-record/gg-query";
 import {
   parseGlb,
   parseSkinnedGlb,
@@ -51,6 +52,22 @@ import type { RunQuery, RunQueryResult } from "./runQuery";
  * Hosts whose catalog is static (the public site) are always `"ready"`.
  */
 export type CatalogStatus = "loading" | "ready" | "error";
+
+/**
+ * The shipped gg **document corpus** a host with no backend answers analysis queries
+ * from: the documents themselves plus the instant they were exported.
+ *
+ * The static site builds this from the published snapshot's `gg-runs.json`. The corpus
+ * is deployment-wide (a gg document is not account-scoped, exactly as runs are not), and
+ * it is exported **filtered** — no experimental case — and **field-redacted**. A browser
+ * can re-check neither, which is why both happen at export time.
+ */
+export interface GgCorpus {
+  /** When the corpus was exported (RFC 3339), rendered beside every figure it produces. */
+  generatedAt: string;
+  /** The exported documents, in the order the export wrote them. */
+  documents: GgRunDoc[];
+}
 
 /**
  * A run's detail payload, resolved lazily by id: the full {@link RunRecord} plus
@@ -345,6 +362,21 @@ export interface GalleryDataInput {
    * connections drawer).
    */
   canExecute: boolean;
+  /**
+   * The shipped gg **document corpus**, for a host with no backend to query: the
+   * published snapshot's `gg-runs.json`, which the mirrored browser evaluator answers
+   * queries from directly.
+   *
+   * Supplied only by the static site. The consoles omit it — they have a live document
+   * index behind `POST /gg/query`, which is current where this is a build-time export —
+   * and `useGgSource` prefers the backend wherever both exist. Omitted *and* no backend
+   * means the analysis surface is not mounted at all.
+   *
+   * The documents arrive already filtered (no experimental case) and field-redacted; a
+   * browser cannot re-check either, so the export is where that is decided. Replay
+   * records are **never** part of it.
+   */
+  ggData?: GgCorpus;
   /**
    * Grafana's base URL, or null when this UI has no observability stack behind it
    * (the static gallery site always; a console whose backend reports no

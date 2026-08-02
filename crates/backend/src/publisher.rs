@@ -315,6 +315,14 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
             .push(crate::api::assemble_comparison(inner.db.as_ref(), &inner.store, stored).await?);
     }
 
+    // The gg document corpus the public Discover surface evaluates in the browser.
+    // Decoupled from publication (a document carries configuration ids and outcome
+    // numbers, so gating it on publication would export almost nothing), filtered
+    // against the experimental catalog gate, and field-redacted — all three composed in
+    // `gg_docs::public_documents`, which is the only door the site's gg data comes
+    // through. **Replay records are never exported**; nothing here loads one.
+    let gg_documents = crate::gg_docs::public_documents(inner.db.as_ref(), &inner.store).await?;
+
     let snapshot = SnapshotBuilder::new(runs, cases, inner.store.clone())
         .with_artifacts(inner.artifacts_url.clone(), inner.http.clone())
         .with_models(models)
@@ -323,6 +331,7 @@ async fn run_refresh(inner: &PublisherInner) -> Result<RefreshOutcome> {
         .with_existing_media(existing_media)
         .with_reviewer_pictures(reviewer_pictures)
         .with_comparisons(comparisons)
+        .with_gg_documents(gg_documents)
         .build(generated_at)
         .await?;
     let run_count = snapshot.run_count;

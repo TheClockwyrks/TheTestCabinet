@@ -55,6 +55,9 @@ index.json                                                              # top-le
 snapshots/<snapshotId>/runs.json                                        # the run index — summaries (published runs only)
 snapshots/<snapshotId>/runs/<run-id>.json                               # per-run: record + reviews + links + media keys
 snapshots/<snapshotId>/cases/<slug>/<version>.json                      # per-case-version metadata
+snapshots/<snapshotId>/models.json                                      # the composed model catalog
+snapshots/<snapshotId>/comparisons.json                                 # the published harness comparisons (+ one file each)
+snapshots/<snapshotId>/gg-runs.json                                     # the gg document corpus (every recorded gg run, redacted)
 media/runs/<run-id>/proof/<proof-id>.<ext>                              # a run's proof media (content-stable; shared across snapshots)
 media/runs/<run-id>/asset/<file>                                        # an asset-generation run's produced media (same)
 media/cases/<slug>/<version>/references/<scope>/<digest>-<view>.png     # rendered reference baselines (content-addressed)
@@ -89,7 +92,11 @@ run count, and the keys/prefixes the rest of the snapshot lives under.
   "runCount": 128,
   "runsKey": "snapshots/2026-06-17T2148Z-1a7b/runs.json",
   "runsPrefix": "snapshots/2026-06-17T2148Z-1a7b/runs/",
-  "casesPrefix": "snapshots/2026-06-17T2148Z-1a7b/cases/"
+  "casesPrefix": "snapshots/2026-06-17T2148Z-1a7b/cases/",
+  "modelsKey": "snapshots/2026-06-17T2148Z-1a7b/models.json",
+  "comparisonsKey": "snapshots/2026-06-17T2148Z-1a7b/comparisons.json",
+  "comparisonsPrefix": "snapshots/2026-06-17T2148Z-1a7b/comparisons/",
+  "ggRunsKey": "snapshots/2026-06-17T2148Z-1a7b/gg-runs.json"
 }
 ```
 
@@ -288,3 +295,39 @@ version already present and unchanged) does not, so the periodic refresh does no
 rebuild the gallery on every cycle.
 
 Schema: [`snapshot/case.schema.json`](https://docs.testcabinet.ai/schema/snapshot/case.schema.json).
+
+## `gg-runs.json` — the gg document corpus
+
+Every recorded [gg](/gg/overview/) run as one flat
+[document](/gg/analysis/query-language/) of dotted, typed fields, plus the instant
+the export was taken. This is the whole of the public analysis surface: the site's
+Discover page runs the **mirrored browser evaluator** over these documents, so
+`/gg/query` on the public gallery makes no backend request at all.
+
+Three rules govern what is in it, and they are the reason it can be published:
+
+- **It is decoupled from run publication.** A document carries configuration ids
+  and outcome numbers — no source, no prompts, no model output — and hardly any gg
+  run is ever published, so gating the export on publication would export an empty
+  corpus and defeat the point. Redaction is the control instead.
+- **It is *not* decoupled from the experimental catalog gate.** The backend
+  deliberately hides
+  [experimental](/development/frozen-versions/) case versions from the UI, and
+  exporting one's document would publish an unreleased case's slug, its existence,
+  its run count and its scores. Those documents are dropped, using the same
+  predicate the catalog itself uses.
+- **It is field-redacted and scrubbed.** Every string longer than a couple of
+  hundred characters is dropped whatever it is called — in practice that is a
+  capability parameter carrying free text an operator pasted into a configuration —
+  and the whole object then passes the [secret scrubber](/components/backend/overview/)
+  like every other published document.
+
+**A [replay record](/gg/analysis/replay-records/) is never exported.** A document is
+configuration and outcomes; a record is the complete model conversation verbatim.
+The distinction is what makes the corpus publishable and the record console-only.
+
+Because the corpus is a build-time export, it legitimately lags the console's live
+index — so the file carries its own `generatedAt` and the site renders it beside
+the figures.
+
+Schema: [`snapshot/gg-runs.schema.json`](https://docs.testcabinet.ai/schema/snapshot/gg-runs.schema.json).

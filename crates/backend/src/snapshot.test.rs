@@ -1993,3 +1993,112 @@ async fn a_run_s_code_analysis_publishes_inside_the_scrubbed_document_and_nowher
         snapshot.objects.iter().map(|o| &o.key).collect::<Vec<_>>(),
     );
 }
+
+// ── the gg document corpus ──────────────────────────────────────────────────
+
+/// A gg document with the given id and a couple of fields, standing in for what
+/// [`crate::gg_docs::public_documents`] hands the builder.
+fn gg_doc(id: &str) -> test_cabinet_core::gg_query::GgRunDoc {
+    let mut doc = test_cabinet_core::gg_query::GgRunDoc::default();
+    doc.insert("id", id.to_string());
+    doc.insert("case", "pong".to_string());
+    doc.insert("metric.cost", 0.42);
+    doc
+}
+
+#[tokio::test]
+async fn the_gg_corpus_is_published_and_the_index_points_at_it() {
+    // The whole public analysis payload is one object, and `index.json` is how the site
+    // finds it — a key the site cannot resolve is the same as no corpus at all.
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(vec![], vec![], store)
+        .with_gg_documents(vec![gg_doc("r1"), gg_doc("r2")])
+        .build(now())
+        .await
+        .unwrap();
+
+    let index: serde_json::Value = serde_json::from_slice(&snapshot.index.bytes).unwrap();
+    let key = index["ggRunsKey"]
+        .as_str()
+        .expect("the index names the corpus");
+    let object = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == key)
+        .expect("the corpus the index points at is uploaded");
+
+    let corpus: serde_json::Value = serde_json::from_slice(&object.bytes).unwrap();
+    assert_eq!(corpus["documents"].as_array().unwrap().len(), 2);
+    assert_eq!(corpus["documents"][0]["fields"]["id"], "r1");
+    // Its own build time, so a public figure can be rendered beside the instant it was
+    // true rather than joined against the index at read time.
+    assert_eq!(corpus["generatedAt"], index["generatedAt"]);
+}
+
+#[tokio::test]
+async fn the_gg_corpus_passes_the_scrubber_like_every_other_public_object() {
+    // R7, on the object this milestone adds. `build` scrubs the `PerRun` document by
+    // walking it individually, so **every sibling object has to opt in** — a new one
+    // reaches R2 unredacted by default, and that is a two-line change nothing else in
+    // the builder would notice. A gg document is derived from a run's configuration, and
+    // an operator who pasted a provider key into a capability parameter has put it into
+    // a field short enough to survive the document's own redaction.
+    let (_tmp, store) = empty_store();
+    let mut leaky = gg_doc("r1");
+    leaky.insert("cap.shell.env", "sk-ant-api03-notreal-value".to_string());
+
+    let snapshot = SnapshotBuilder::new(vec![], vec![], store)
+        .with_gg_documents(vec![leaky])
+        .build(now())
+        .await
+        .unwrap();
+
+    let object = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key.ends_with("/gg-runs.json"))
+        .expect("the gg corpus");
+    let body = String::from_utf8(object.bytes.clone()).unwrap();
+    assert!(!body.contains("sk-ant-api03-notreal-value"));
+    assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+}
+
+#[tokio::test]
+async fn a_replay_record_never_reaches_the_public_snapshot_even_beside_the_gg_corpus() {
+    // Owner decision Q1 is a **hard** boundary, and this milestone is where it is most
+    // at risk: the snapshot now carries gg data, so "the run's other gg artifact" is a
+    // short step away. A replay record is the complete model conversation verbatim; the
+    // exported documents are configuration ids and outcome numbers. Only the second
+    // travels.
+    let (_tmp, store) = empty_store();
+    store
+        .write_run_artifact("r1", "replay", b"{\"text\":\"the-verbatim-conversation\"}")
+        .unwrap();
+
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![],
+        store,
+    )
+    .with_gg_documents(vec![gg_doc("r1")])
+    .build(now())
+    .await
+    .unwrap();
+
+    for object in snapshot
+        .objects
+        .iter()
+        .chain(std::iter::once(&snapshot.index))
+    {
+        assert!(
+            !object.key.contains("replay"),
+            "a replay artifact was published as `{}`",
+            object.key
+        );
+        assert!(
+            !String::from_utf8_lossy(&object.bytes).contains("the-verbatim-conversation"),
+            "recorded conversation text leaked into `{}`",
+            object.key
+        );
+    }
+}

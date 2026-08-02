@@ -157,6 +157,11 @@ pub struct SnapshotBuilder {
     /// serializes them. Empty by default (the dev/single-box path and the unit
     /// tests), which emits an empty comparisons index.
     comparisons: Vec<test_cabinet_core::comparison::Comparison>,
+    /// The gg [documents](test_cabinet_core::gg_query::GgRunDoc) to export, already
+    /// filtered and redacted by the caller (see
+    /// [`crate::gg_docs::public_documents`]). Empty by default, which emits an empty
+    /// corpus file — the dev/single-box path and the unit tests.
+    gg_documents: Vec<test_cabinet_core::gg_query::GgRunDoc>,
 }
 
 impl SnapshotBuilder {
@@ -180,7 +185,28 @@ impl SnapshotBuilder {
             existing_media: std::collections::HashSet::new(),
             reviewer_pictures: std::collections::HashMap::new(),
             comparisons: Vec::new(),
+            gg_documents: Vec::new(),
         }
+    }
+
+    /// Supply the gg documents to export as this snapshot's `gg-runs.json`.
+    ///
+    /// The caller hands over documents that are **already** filtered (no experimental
+    /// case) and **already** [redacted](test_cabinet_core::gg_query::redacted_for_public),
+    /// because both of those are decisions about the definition store and the field
+    /// vocabulary rather than about snapshot assembly — see
+    /// [`crate::gg_docs::public_documents`], which is the one place that composes them.
+    /// The builder still runs the [secret scrubber](SecretScrubber) over the serialized
+    /// file, as it does over every other public object.
+    ///
+    /// Empty (the default) emits an empty corpus, which the site renders as a Discover
+    /// surface with nothing in it rather than as an error.
+    pub fn with_gg_documents(
+        mut self,
+        gg_documents: Vec<test_cabinet_core::gg_query::GgRunDoc>,
+    ) -> Self {
+        self.gg_documents = gg_documents;
+        self
     }
 
     /// Supply the published comparisons to fold into this snapshot, each already
@@ -482,6 +508,36 @@ impl SnapshotBuilder {
             },
         )?);
 
+        // gg-runs.json — the gg **document** corpus, which the public site's Discover
+        // surface evaluates in the browser with the mirrored evaluator. No backend, no
+        // query endpoint, no round trip.
+        //
+        // Two boundaries meet here and both are load-bearing.
+        //
+        // **A replay record is never exported.** A document carries configuration ids
+        // and outcome numbers; a replay record carries the complete model conversation
+        // verbatim, which is why the corpus is publishable at all and the record is not.
+        // The distinction is enforced upstream (nothing assembles a record into a
+        // snapshot object) and asserted in this module's tests, because it is exactly
+        // the kind of rule that erodes when someone reaches for "the run's other gg
+        // artifact".
+        //
+        // **The scrubber runs here too.** `build` scrubs the per-run document by walking
+        // it individually, so every *sibling* object it pushes has to opt in — a new
+        // object added beside them bypasses redaction by default. This one opts in.
+        let mut gg_runs = serde_json::to_value(GgRunsFile {
+            schema_version: SCHEMA_VERSION,
+            generated_at: generated_at
+                .format(&Rfc3339)
+                .map_err(|e| BackendError::Snapshot(format!("formatting generatedAt: {e}")))?,
+            documents: self.gg_documents.clone(),
+        })
+        .map_err(|e| BackendError::Snapshot(format!("serializing the gg documents: {e}")))?;
+        if scrubber.scrub_json(&mut gg_runs) {
+            tracing::warn!("redacted leaked API key(s) from the published gg document corpus");
+        }
+        objects.push(json_object(format!("{prefix}/gg-runs.json"), &gg_runs)?);
+
         let index = json_object(
             "index.json".to_string(),
             &SnapshotIndex {
@@ -497,6 +553,7 @@ impl SnapshotBuilder {
                 models_key: format!("{prefix}/models.json"),
                 comparisons_key: format!("{prefix}/comparisons.json"),
                 comparisons_prefix: format!("{prefix}/comparisons/"),
+                gg_runs_key: format!("{prefix}/gg-runs.json"),
             },
         )?;
 
@@ -1346,6 +1403,33 @@ pub struct SnapshotIndex {
     /// The prefix each published comparison's own document lives under
     /// (`<prefix>/comparisons/<id>.json`).
     pub comparisons_prefix: String,
+    /// Where this snapshot's gg document corpus lives (`<prefix>/gg-runs.json`) — the
+    /// payload the public Discover surface evaluates in the browser.
+    pub gg_runs_key: String,
+}
+
+/// The gg document corpus file (`gg-runs.json`): every exported gg run as one flat map
+/// of dotted fields, plus the instant the export was taken.
+///
+/// This is the **whole** public analysis payload. The site's Discover surface runs the
+/// mirrored TypeScript evaluator over these documents and makes no backend call at all,
+/// which is only affordable because a document is an order of magnitude smaller than the
+/// record it derives from — no source, no prompts, no model output.
+///
+/// It carries its own `generated_at` even though [`SnapshotIndex`] has one, because the
+/// public corpus legitimately lags the console's: every figure the site renders has to be
+/// labelled with the instant it was true, and a figure and its as-of time should travel
+/// in the same object rather than be joined at read time.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgRunsFile {
+    pub schema_version: u32,
+    /// When this corpus was exported (RFC 3339), rendered beside every public figure.
+    pub generated_at: String,
+    /// The exported documents, already filtered and redacted (see
+    /// [`SnapshotBuilder::with_gg_documents`]).
+    pub documents: Vec<test_cabinet_core::gg_query::GgRunDoc>,
 }
 
 /// The comparisons index file (`comparisons.json`): every published harness

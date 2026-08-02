@@ -19,6 +19,7 @@ import {
   testCases as catalogTestCases,
   models as catalogModels,
   comparisons as publishedComparisons,
+  ggRuns as publishedGgRuns,
   proofMediaUrls as publishedProofMediaUrls,
   assetMediaUrls as publishedAssetMediaUrls,
   validationMediaUrls as publishedValidationMediaUrls,
@@ -281,6 +282,12 @@ export function useStaticGallery(): GalleryDataInput {
     readComparison: (id: string) =>
       (publishedComparisons as Comparison[]).find((c) => c.id === id) ?? null,
     canExecute: false,
+    // The exported gg document corpus, inlined at build time. This is the whole of the
+    // site's analysis surface: `useGgSource` evaluates every query against these
+    // documents in the browser with the mirrored evaluator, so `/gg/query` makes no
+    // request at all. A snapshot without the corpus (one published before the export
+    // existed) leaves this undefined, and the section is simply not mounted.
+    ggData: publishedGgRuns ?? undefined,
     // The public gallery has no backend to ask for a Grafana URL, and its readers
     // have no access to one — the observability stack is VPN-only. Always null, so
     // the run view never offers a link nobody could follow.

@@ -170,6 +170,14 @@ describe("the TCQ conformance fixture", () => {
       "fourth group key",
       "trailing star",
       "byte-order mark",
+      // The hazards the **publishable** `code.*` namespace brought: a derived scalar
+      // standing in for an array, the composable truncation filter (whose absent-field
+      // reading is the easy one to get backwards), and the presence marker every code
+      // rate is scoped on. These are the fields the public site ships, so a divergence
+      // here is a wrong number on the open internet rather than in a console.
+      "code.language groups",
+      "not code.notes.truncated",
+      "has.codeAnalysis",
     ]) {
       expect(
         names.some((name) => name.includes(needle)),

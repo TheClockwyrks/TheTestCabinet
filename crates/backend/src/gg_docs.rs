@@ -57,7 +57,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use test_cabinet_core::gg_query::{GgDocLifecycle, GgRunDoc, build_run_doc};
+use test_cabinet_core::gg_query::{GgDocLifecycle, GgRunDoc, build_run_doc, redacted_for_public};
 
 use crate::db::{Db, StoredRun};
 use crate::error::Result;
@@ -313,6 +313,65 @@ async fn reconcile_into(
     Ok(delta)
 }
 
+/// The gg corpus as the **public static site** may carry it: every stored gg run's
+/// document, minus the experimental cases, each one
+/// [redacted](redacted_for_public).
+///
+/// Built straight from the store rather than from the [index](GgDocIndex), deliberately.
+/// The index is a console-request cache with a TTL and a lazy first load; the snapshot
+/// refresh is a periodic batch job that already reads the whole published set, the whole
+/// model catalog and the whole media listing. Reading the corpus once more there is a
+/// fraction of what that job costs, and it keeps the export's contents a pure function
+/// of the database at the instant the snapshot was cut instead of a function of whatever
+/// a console request happened to have warmed.
+///
+/// Three rules govern what comes out, and only the middle one is a judgement call:
+///
+/// 1. **Publication is not the gate.** A gg document holds configuration ids and outcome
+///    numbers — no source, no prompts, no model output — and almost no gg run is ever
+///    published, so gating on publication would export an empty corpus and defeat the
+///    feature. [Redaction](redacted_for_public) is the control instead.
+/// 2. **The experimental catalog gate still applies.** The backend deliberately hides
+///    experimental case versions from the UI; exporting their documents would publish an
+///    unreleased case's slug, its existence, its run count and its scores. Asked through
+///    [`DefinitionStore::is_experimental`](crate::store::DefinitionStore::is_experimental)
+///    so there is exactly one definition of "experimental" in the process — which also
+///    means a run whose case is **not ingested at all** is exported, matching how the
+///    catalog treats a version whose manifest it cannot read.
+/// 3. **A replay record is never involved.** Nothing here touches one. The corpus is
+///    documents; the record — the complete model conversation — is console-only, and
+///    this function is the only door the public site's gg data comes through.
+///
+/// Ordered by run id, the order [`Db::gg_run_versions`] returns, so two refreshes of an
+/// unchanged corpus produce byte-identical output and R2 stores one object rather than
+/// two.
+pub async fn public_documents(db: &Db, store: &DefinitionStore) -> Result<Vec<GgRunDoc>> {
+    let ids: Vec<String> = db
+        .gg_run_versions()
+        .await?
+        .into_iter()
+        .map(|version| version.id)
+        .collect();
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let runs = db.gg_runs_by_id(&ids).await?;
+    let mut scores = CatalogScores::new(store);
+    // One manifest read per `(slug, version)` for the whole export, not one per run:
+    // the score resolver already caches manifests, and the experimental predicate is
+    // asked against the same cache rather than re-reading the store per run.
+    let mut documents = Vec::with_capacity(runs.len());
+    for run in &runs {
+        if scores.is_experimental(run) {
+            continue;
+        }
+        let doc = build_run_doc(&run.record, &lifecycle_of(run, scores.score(run)));
+        documents.push(redacted_for_public(&doc));
+    }
+    Ok(documents)
+}
+
 /// The store-side lifecycle facts a document carries, which the record itself does
 /// not: whether the run is published, what its reviewers concluded, and how many of
 /// them there were.
@@ -338,7 +397,9 @@ fn lifecycle_of(run: &StoredRun, score: Option<f64>) -> GgDocLifecycle {
 /// un-ingested case is not re-read per run — because a reconcile of a whole corpus
 /// otherwise reads the same few manifests thousands of times. The cache is per
 /// resolver, so it never outlives one reconcile and cannot serve a stale manifest
-/// after a re-ingest.
+/// after a re-ingest. The [public export](public_documents) borrows the same cache for
+/// its [experimental](Self::is_experimental) filter, which is the other question a
+/// case's manifest answers.
 pub struct CatalogScores<'a> {
     /// The definition store the checklist weights are read from.
     store: &'a DefinitionStore,
@@ -362,20 +423,45 @@ impl<'a> CatalogScores<'a> {
     /// stored `0` would violate by dragging every average down).
     pub fn score(&mut self, run: &StoredRun) -> Option<f64> {
         let subject = &run.record.subject;
+        let manifest = self.manifest(run)?;
+        run_summary_score(manifest, &subject.variant, &run.reviews)
+            .filter(|score| score.total > 0)
+            .map(|score| score.earned / score.total as f64)
+    }
+
+    /// Whether the run's case version is flagged **experimental** — the catalog gate the
+    /// [public export](public_documents) inherits rather than decides for itself.
+    ///
+    /// Answered off the same cached manifest the score is, so exporting a corpus reads a
+    /// case's manifest once rather than twice per run. A version whose manifest is
+    /// missing or unreadable reports `false`, matching
+    /// [`DefinitionStore::is_experimental`](crate::store::DefinitionStore::is_experimental)
+    /// exactly: the catalog treats an unreadable manifest as visible, and a second,
+    /// stricter definition of the same word here would mean the public site and the
+    /// console disagreed about which cases exist.
+    pub fn is_experimental(&mut self, run: &StoredRun) -> bool {
+        self.manifest(run)
+            .is_some_and(|manifest| manifest.experimental)
+    }
+
+    /// The run's case manifest, read once per `(slug, version)` and cached — including
+    /// the **absence** of one, so an un-ingested case is not re-read per run. The cache
+    /// is per resolver, so it never outlives one reconcile (or one export) and cannot
+    /// serve a stale manifest after a re-ingest.
+    fn manifest(&mut self, run: &StoredRun) -> Option<&StoredManifest> {
+        let subject = &run.record.subject;
         let key = (
             subject.test_case_slug.clone(),
             subject.test_case_version.clone(),
         );
         let store = self.store;
-        let manifest = self.manifests.entry(key).or_insert_with(|| {
-            store
-                .read_manifest(&subject.test_case_slug, &subject.test_case_version)
-                .ok()
-        });
-        manifest.as_ref().and_then(|manifest| {
-            run_summary_score(manifest, &subject.variant, &run.reviews)
-                .filter(|score| score.total > 0)
-                .map(|score| score.earned / score.total as f64)
-        })
+        self.manifests
+            .entry(key)
+            .or_insert_with(|| {
+                store
+                    .read_manifest(&subject.test_case_slug, &subject.test_case_version)
+                    .ok()
+            })
+            .as_ref()
     }
 }

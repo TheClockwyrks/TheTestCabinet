@@ -9,6 +9,7 @@ declare module "virtual:tcab-snapshot" {
   import type { TestCaseSummary } from "@test-cabinet/ui/app";
   import type { Model } from "@test-cabinet/ui/client";
   import type { Comparison } from "@test-cabinet/run-record/comparison";
+  import type { GgRunDoc } from "@test-cabinet/run-record/gg-query";
 
   /**
    * The flat summary index (`runs.json`), newest first — the bounded run-summary
@@ -29,6 +30,16 @@ declare module "virtual:tcab-snapshot" {
   export const models: Model[];
   /** The published harness comparisons, each the full read model (rendered read-only). */
   export const comparisons: Comparison[];
+  /**
+   * The exported gg **document corpus** and the instant it was taken, or null when the
+   * snapshot carries none — in which case the site mounts no analysis surface.
+   *
+   * These documents are what the public Discover surface evaluates, in the browser, with
+   * the mirrored evaluator: no backend, no query endpoint, no request. They arrive
+   * already filtered (no experimental case) and field-redacted, and they never contain a
+   * replay record.
+   */
+  export const ggRuns: { generatedAt: string; documents: GgRunDoc[] } | null;
   /**
    * Resolved proof-of-implementation media URLs, keyed by run id then by served
    * file name (`<proof-id>.<ext>`).

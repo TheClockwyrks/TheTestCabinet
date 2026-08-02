@@ -108,7 +108,10 @@ mod doc;
 #[path = "gg_query.eval.rs"]
 mod eval;
 
-pub use doc::{GG_CAPABILITY_CATALOG, GG_DATE_FIELDS, GgDocLifecycle, build_run_doc, flatten_json};
+pub use doc::{
+    GG_CAPABILITY_CATALOG, GG_DATE_FIELDS, GG_PRIVATE_FIELDS, GG_PUBLIC_MAX_STRING, GgDocLifecycle,
+    build_run_doc, flatten_json, redacted_for_public,
+};
 pub use eval::{evaluate, field_catalog};
 
 /// The most group-by keys one [`stats`](GgStatsStage) stage may carry. Visualizations

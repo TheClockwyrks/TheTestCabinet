@@ -410,6 +410,7 @@ fn main() -> Result<()> {
                 snap::CaseMetadata,
                 snap::ModelCatalogFile,
                 snap::ComparisonsIndex, snap::ComparisonFile,
+                snap::GgRunsFile,
             ],
         },
         // The backend HTTP API response envelopes (error + catalog/versions).
@@ -857,6 +858,13 @@ fn main() -> Result<()> {
             root_schema::<snap::RunsIndex>(),
         ),
         anon("snapshot/run.schema.json", root_schema::<snap::PerRun>()),
+        // The gg document corpus the public site's Discover surface evaluates in the
+        // browser. `GgRunDoc` is owned by `gg/run-document.schema.json`, so its ref here
+        // becomes a cross-document URL.
+        anon(
+            "snapshot/gg-runs.schema.json",
+            root_schema::<snap::GgRunsFile>(),
+        ),
         anon(
             "snapshot/case.schema.json",
             root_schema::<snap::CaseMetadata>(),

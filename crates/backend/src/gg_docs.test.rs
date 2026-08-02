@@ -708,3 +708,155 @@ async fn a_reconcile_within_the_ttl_is_skipped_and_serves_the_same_corpus() {
         .unwrap();
     assert_eq!(third.len(), 2);
 }
+
+// --- the public export ---------------------------------------------------------
+
+#[tokio::test]
+async fn the_public_export_is_decoupled_from_publication_but_not_from_the_catalog_gate() {
+    // The two halves of owner decision Q1, together, because they are easy to state and
+    // easy to get backwards. A gg document carries configuration ids and outcome
+    // numbers, so **publication is not the gate** — almost no gg run is ever published
+    // and gating on it would export an empty corpus. But the backend deliberately hides
+    // experimental case versions, and exporting one's document would publish an
+    // unreleased case's slug, its existence, its run count and its scores — so **the
+    // catalog gate still applies**.
+    let db = Db::connect_in_memory().await.unwrap();
+    let (_dir, store) = ingested_store();
+    // A second case, ingested and flagged experimental.
+    let mut wip = manifest();
+    wip.slug = "wip".to_string();
+    wip.experimental = true;
+    store.write_manifest(&wip).expect("write the wip manifest");
+
+    // Neither run is published.
+    db.push(&gg_record("r1", "mock/echo"), &RunLinks::default(), None)
+        .await
+        .unwrap();
+    let mut hidden = gg_record("r2", "mock/echo");
+    hidden.subject.test_case_slug = "wip".to_string();
+    db.push(&hidden, &RunLinks::default(), None).await.unwrap();
+
+    let documents = public_documents(&db, &store).await.unwrap();
+    let ids: Vec<&str> = documents.iter().map(|doc| doc.id()).collect();
+    assert_eq!(
+        ids,
+        vec!["r1"],
+        "an unpublished run exports; an experimental case's run does not"
+    );
+    assert!(
+        !documents
+            .iter()
+            .any(|doc| doc.get("case") == Some(&GgValue::String("wip".to_string()))),
+        "the experimental case's very slug must not appear in the export"
+    );
+}
+
+#[tokio::test]
+async fn every_exported_document_is_redacted() {
+    // Redaction is applied by the composer, not by the snapshot builder, so a second
+    // exporter cannot forget it. Prove it end to end rather than by unit-testing
+    // `redacted_for_public` twice: a capability parameter carrying pasted free text is
+    // in the console's own document and out of the exported one.
+    let db = Db::connect_in_memory().await.unwrap();
+    let (_dir, store) = ingested_store();
+
+    let mut record = gg_record("r1", "mock/echo");
+    let pasted = "The player must be able to serve. ".repeat(30);
+    if let Some(set) = record.subject.gg_capability_set.as_mut() {
+        // The preset already declares `skills`; the *first* declaration is the one the
+        // builder reads, so configure that one rather than appending a second.
+        let agent = &mut set.agents[0];
+        agent
+            .capabilities
+            .retain(|cfg| cfg.id != test_cabinet_core::gg::CAPABILITY_SKILLS);
+        agent
+            .capabilities
+            .push(test_cabinet_core::gg::GgCapabilityConfig {
+                id: test_cabinet_core::gg::CAPABILITY_SKILLS.to_string(),
+                enabled: true,
+                implementation: None,
+                params: serde_json::json!({ "brief": pasted, "budget": 3 }),
+            });
+    }
+    db.push(&record, &RunLinks::default(), None).await.unwrap();
+
+    // What the console serves.
+    let index = GgDocIndex::with_ttl(Duration::ZERO);
+    let mut scores = CatalogScores::new(&store);
+    let console = index
+        .documents(&db, &mut |run| scores.score(run))
+        .await
+        .unwrap();
+    assert!(
+        doc_of(&console, "r1")
+            .expect("the console's document")
+            .get("cap.skills.brief")
+            .is_some(),
+        "the console keeps the parameter — redaction is the export's job",
+    );
+
+    // What the public site gets.
+    let exported = public_documents(&db, &store).await.unwrap();
+    let public = exported.first().expect("the exported document");
+    assert!(public.get("cap.skills.brief").is_none());
+    assert_eq!(public.get("cap.skills.budget"), Some(&GgValue::Number(3.0)));
+    assert_eq!(
+        public.get("case"),
+        Some(&GgValue::String("pong".to_string())),
+        "everything else is untouched",
+    );
+}
+
+#[tokio::test]
+async fn the_export_is_documents_and_never_a_replay_record() {
+    // Owner decision Q1, as a regression rather than a comment. A gg document is a flat
+    // map of scalars — configuration ids and outcome numbers. A **replay record** is the
+    // complete model conversation verbatim, and it lives in this very store, one call
+    // away from the composer. The distinction is the whole reason the corpus is
+    // publishable at all, and folding a record in would be a small, plausible-looking
+    // change that nothing else would notice.
+    let db = Db::connect_in_memory().await.unwrap();
+    let (_dir, store) = ingested_store();
+    // The record exists for this run, so this asserts a choice rather than an absence of
+    // data.
+    store
+        .write_run_artifact(
+            "r1",
+            "replay",
+            br#"{"messages":[{"role":"user","text":"the-verbatim-conversation"}]}"#,
+        )
+        .expect("store the run's replay record");
+    db.push(&gg_record("r1", "mock/echo"), &RunLinks::default(), None)
+        .await
+        .unwrap();
+
+    let documents = public_documents(&db, &store).await.unwrap();
+    let json = serde_json::to_string(&documents).unwrap();
+    assert!(
+        !json.contains("the-verbatim-conversation"),
+        "the export carried recorded conversation text",
+    );
+
+    for doc in &documents {
+        for (field, value) in &doc.fields {
+            // A scalar map is the whole shape: nothing nested — a message list, a pool,
+            // a blob — has anywhere to ride.
+            assert!(
+                matches!(
+                    value,
+                    GgValue::Bool(_) | GgValue::Number(_) | GgValue::String(_)
+                ),
+                "{field} is not a scalar",
+            );
+            // `cap.replay` is a legitimate field (the capability's enablement flag), so
+            // the assertion is on the *conversation* vocabulary rather than on the word
+            // "replay": no document namespace carries messages, pools or blobs.
+            for forbidden in ["message", "conversation", "blob", "toolset", "transcript"] {
+                assert!(
+                    !field.to_ascii_lowercase().contains(forbidden),
+                    "{field} looks like recorded conversation, not a document field",
+                );
+            }
+        }
+    }
+}

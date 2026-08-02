@@ -11,10 +11,15 @@
 use serde::Deserialize;
 
 use super::*;
+use crate::code_analysis::{
+    CodeAnalysisNotes, CodeAnalysisSummary, CodeApiSummary, CodeAuthoredBasis,
+    CodeComplexitySummary, CodeDuplicationSummary, CodeGraphSummary, CodeLanguage, CodeSizeSummary,
+    CodeTestSummary, CodeTreeBasis,
+};
 use crate::gg::{
-    CAPABILITY_COMPACTION, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_SHELL, GgAgentConfig,
-    GgCapabilityConfig, GgCapabilitySet, GgHealingSummary, GgRunLimits, GgSessionSummary,
-    GgSlotCost,
+    CAPABILITY_COMPACTION, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_SHELL,
+    CAPABILITY_SKILLS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgHealingSummary,
+    GgRunLimits, GgSessionSummary, GgSlotCost,
 };
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::run_record::{
@@ -187,6 +192,14 @@ fn the_conformance_fixture_covers_the_named_hazards() {
         "fourth group key",
         "trailing star",
         "byte-order mark",
+        // The hazards the **publishable** `code.*` namespace brought: a derived scalar
+        // standing in for an array, the composable truncation filter (whose absent-field
+        // reading is the easy one to get backwards), and the presence marker every code
+        // rate is scoped on. These are the fields the public site ships, so a divergence
+        // here is a wrong number on the open internet rather than in a console.
+        "code.language groups",
+        "not code.notes.truncated",
+        "has.codeAnalysis",
     ] {
         assert!(
             names.iter().any(|name| name.contains(needle)),
@@ -748,6 +761,210 @@ fn the_capability_catalog_covers_every_capability_gg_ships() {
             GG_CAPABILITY_CATALOG.contains(&id),
             "capability {id:?} is not in GG_CAPABILITY_CATALOG, so `cap.{id}` would be \
              sparse instead of total"
+        );
+    }
+}
+
+// --- the code-analysis namespace ----------------------------------------------
+
+/// A code-analysis summary parsed in `languages`, with a couple of figures set so the
+/// flattening has something recognisable to produce.
+fn code_summary(languages: Vec<CodeLanguage>) -> CodeAnalysisSummary {
+    CodeAnalysisSummary {
+        analyzer_version: 1,
+        authored_basis: CodeAuthoredBasis::SeedCommit,
+        tree_basis: CodeTreeBasis::PreValidation,
+        languages,
+        size: CodeSizeSummary {
+            files: 12,
+            code_lines: 1_400,
+            gini_code_lines: 0.42,
+            ..CodeSizeSummary::default()
+        },
+        complexity: CodeComplexitySummary::default(),
+        graph: CodeGraphSummary::default(),
+        api: CodeApiSummary::default(),
+        typescript: None,
+        rust: None,
+        tests: CodeTestSummary::default(),
+        duplication: CodeDuplicationSummary::default(),
+        notes: CodeAnalysisNotes::default(),
+    }
+}
+
+/// The whole typed block is flattened, so a figure the analyzer emits is queryable with
+/// no arm anywhere — the same property `summary.*` has, and the reason
+/// [`crate::gg_query::flatten_json`] is shared rather than reimplemented per namespace.
+#[test]
+fn the_code_namespace_is_the_whole_analysis_flattened() {
+    let mut record = gg_record();
+    record.code_analysis = Some(code_summary(vec![CodeLanguage::TypeScript]));
+    let doc = build_run_doc(&record, &GgDocLifecycle::default());
+
+    assert_eq!(doc.get("code.size.files"), Some(&GgValue::Number(12.0)));
+    assert_eq!(
+        doc.get("code.size.codeLines"),
+        Some(&GgValue::Number(1_400.0))
+    );
+    assert_eq!(
+        doc.get("code.size.giniCodeLines"),
+        Some(&GgValue::Number(0.42))
+    );
+    assert_eq!(doc.get("code.analyzerVersion"), Some(&GgValue::Number(1.0)));
+    assert_eq!(
+        doc.get("code.authoredBasis"),
+        Some(&GgValue::String("seedCommit".to_string()))
+    );
+    assert_eq!(
+        doc.get("code.treeBasis"),
+        Some(&GgValue::String("preValidation".to_string()))
+    );
+    // The composable filter the truncation rule is expressed as, rather than a hidden
+    // default on a query.
+    assert_eq!(doc.get("code.notes.truncated"), Some(&GgValue::Bool(false)));
+    // Nothing here was enumerated: a block the analyzer did not fill is simply absent.
+    assert!(doc.get("code.typescript.anyAnnotations").is_none());
+}
+
+/// **`code.language` is a derived scalar**, because `languages` is an array and
+/// [rule 4](crate::gg_query#the-seven-semantic-rules) makes an array contribute only its
+/// length. Without it, "which language does this model write?" — the first question code
+/// analysis invites — would be unaskable in the language built to ask it.
+#[test]
+fn the_language_list_surfaces_as_a_groupable_scalar() {
+    let cases = [
+        (vec![], "none"),
+        (vec![CodeLanguage::TypeScript], "typescript"),
+        (vec![CodeLanguage::Rust], "rust"),
+        (vec![CodeLanguage::Rust, CodeLanguage::TypeScript], "mixed"),
+        // Deduplicated: the same language twice is still one language.
+        (vec![CodeLanguage::Rust, CodeLanguage::Rust], "rust"),
+    ];
+    for (languages, expected) in cases {
+        let mut record = gg_record();
+        let count = languages.len();
+        record.code_analysis = Some(code_summary(languages));
+        let doc = build_run_doc(&record, &GgDocLifecycle::default());
+        assert_eq!(
+            doc.get("code.language"),
+            Some(&GgValue::String(expected.to_string())),
+            "a tree parsed in {count} language(s) should report {expected:?}"
+        );
+        // The array itself contributes only its length, which is exactly why the
+        // derived scalar has to exist.
+        assert_eq!(
+            doc.get("code.languages.count"),
+            Some(&GgValue::Number(count as f64))
+        );
+    }
+}
+
+/// The presence marker, so a rate over the code corpus has an honest denominator
+/// ([rule 2](crate::gg_query#the-seven-semantic-rules)). Code analysis is **not
+/// backfilled**, so a large part of the corpus has no `code.*` at all and every code
+/// aggregate must be able to scope itself.
+#[test]
+fn a_run_without_code_analysis_says_so_rather_than_going_quiet() {
+    let without = build_run_doc(&gg_record(), &GgDocLifecycle::default());
+    assert_eq!(without.get("has.codeAnalysis"), Some(&GgValue::Bool(false)));
+    assert!(without.get("code.language").is_none());
+    assert!(without.get("code.size.files").is_none());
+
+    let mut record = gg_record();
+    record.code_analysis = Some(code_summary(vec![CodeLanguage::Rust]));
+    let with = build_run_doc(&record, &GgDocLifecycle::default());
+    assert_eq!(with.get("has.codeAnalysis"), Some(&GgValue::Bool(true)));
+}
+
+// --- the public export's redaction --------------------------------------------
+
+/// The length rule, on the field it exists for.
+///
+/// A capability parameter is flattened straight out of a run's configuration, so an
+/// operator who pasted a system-prompt override into one has put it in every document.
+/// Publishing documents would publish it verbatim — this is the rule that makes the
+/// export safe without anyone having to notice the parameter.
+#[test]
+fn a_long_capability_parameter_never_reaches_the_public_export() {
+    let mut record = gg_record();
+    let long = "You are a meticulous engineer. ".repeat(40);
+    assert!(long.chars().count() > GG_PUBLIC_MAX_STRING);
+    if let Some(set) = record.subject.gg_capability_set.as_mut() {
+        set.agents[0].capabilities.push(GgCapabilityConfig {
+            id: CAPABILITY_SKILLS.to_string(),
+            enabled: true,
+            implementation: None,
+            params: serde_json::json!({ "systemPrompt": long, "budget": 4 }),
+        });
+    }
+
+    let doc = build_run_doc(&record, &GgDocLifecycle::default());
+    assert!(
+        doc.get("cap.skills.systemPrompt").is_some(),
+        "the console's own document keeps the parameter — redaction is the export's job"
+    );
+
+    let public = redacted_for_public(&doc);
+    assert!(public.get("cap.skills.systemPrompt").is_none());
+    // Only the long string goes: the numbers beside it are the corpus.
+    assert_eq!(public.get("cap.skills.budget"), Some(&GgValue::Number(4.0)));
+    assert_eq!(public.get("cap.skills"), Some(&GgValue::Bool(true)));
+}
+
+/// The deny-list, on a document that carries the field.
+///
+/// The builder does not emit `statusDetail` today; the export refuses it by name so the
+/// day something does, the first snapshot after that change does not carry a stack trace
+/// to the public internet.
+#[test]
+fn a_denied_field_is_dropped_by_name_however_short_it_is() {
+    let mut doc = build_run_doc(&gg_record(), &GgDocLifecycle::default());
+    for field in GG_PRIVATE_FIELDS {
+        doc.insert(*field, "boom".to_string());
+    }
+    let public = redacted_for_public(&doc);
+    for field in GG_PRIVATE_FIELDS {
+        assert!(
+            public.get(field).is_none(),
+            "{field} is on the deny-list but survived the export"
+        );
+    }
+}
+
+/// Redaction drops fields and changes nothing else. A public figure that disagreed with
+/// the console's would be indistinguishable from an evaluator bug, which is the failure
+/// mode the whole mirrored-evaluator conformance fixture exists to prevent — so the
+/// export must not become a second place a number can change.
+#[test]
+fn redaction_only_ever_removes() {
+    let mut record = gg_record();
+    record.code_analysis = Some(code_summary(vec![CodeLanguage::TypeScript]));
+    let doc = build_run_doc(&record, &GgDocLifecycle::default());
+    let public = redacted_for_public(&doc);
+
+    assert!(public.fields.len() <= doc.fields.len());
+    for (field, value) in &public.fields {
+        assert_eq!(
+            doc.get(field),
+            Some(value),
+            "{field} changed value on its way to the public export"
+        );
+    }
+    // The fields that carry the corpus survive, including the whole code namespace —
+    // publishing code metrics is the point of exporting at all.
+    for field in [
+        "id",
+        "case",
+        "model",
+        "state",
+        "metric.cost",
+        "code.language",
+        "code.size.codeLines",
+        "has.codeAnalysis",
+    ] {
+        assert!(
+            public.get(field).is_some(),
+            "{field} is corpus, not disclosure, and must survive the export"
         );
     }
 }

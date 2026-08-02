@@ -143,7 +143,12 @@ export function PageLayout({
   fill = false,
   chrome,
 }: PageLayoutProps) {
-  const { canExecute } = useGalleryData();
+  const { canExecute, ggData } = useGalleryData();
+  // The analysis surface exists on a console (a live backend answers its queries) and on
+  // the public site (the published snapshot ships a gg document corpus the browser
+  // evaluates). Gated on the union, and it must stay the same condition the router mounts
+  // the section on — a control leading to an unmounted route is a dead end.
+  const hasGgData = ggData != null;
   // The consoles reach run configuration through the Settings gear; the static
   // site keeps the About link in the nav. Both surface the Settings gear — on
   // the site it opens the Appearance-only settings (the sun and feed-style
@@ -217,12 +222,13 @@ export function PageLayout({
             {/* The square glyph controls as one tight cluster, so they read as a
                 set and leave room for the account control beside them. */}
             <div className={styles.iconControls}>
-              {/* Analyze: enters the gg analysis UI (its own chrome and tabs).
-                  Console-only, like the bell — the static site records no gg
-                  sessions to analyze. */}
-              {canExecute && (
+              {/* Analyze: enters the gg analysis UI (its own chrome and tabs). A
+                  console lands on the Sessions index; the static site has no Sessions
+                  tab (see `ggChrome`) and lands straight in Discover, which is the
+                  whole of its analysis surface. */}
+              {(canExecute || hasGgData) && (
                 <NavLink
-                  to={routes.ggAnalysis()}
+                  to={canExecute ? routes.ggAnalysis() : routes.ggAnalysisDiscover()}
                   className={exec.gear}
                   aria-label="Analyze gg runs"
                   title="Analyze gg runs"

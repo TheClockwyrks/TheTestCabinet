@@ -12,17 +12,18 @@ import { otherRoutes } from "./other/router";
 
 // Single place that assembles every page's routes. Each page subtree owns its
 // own router.tsx; this just stitches them together under one <Routes>. The runs
-// section gains its run-execution routes only where the host can execute runs, and
-// the gg analysis section mounts on the same condition (its queries need a worker).
+// section gains its run-execution routes only where the host can execute runs; the gg
+// analysis section mounts on a console **or** on a host carrying a shipped gg corpus
+// (the static site), in the reduced shape its own router describes.
 export function AppRoutes() {
-  const { canExecute, harnessAuth } = useGalleryData();
+  const { canExecute, harnessAuth, ggData } = useGalleryData();
   return (
     <Routes>
       {homeRoutes()}
       {testCasesRoutes()}
       {modelsRoutes()}
       {runsRoutes(canExecute)}
-      {ggAnalysisRoutes(canExecute)}
+      {ggAnalysisRoutes(canExecute, ggData != null)}
       {otherRoutes(canExecute)}
       {aboutRoutes()}
       {settingsRoutes(canExecute, harnessAuth != null)}

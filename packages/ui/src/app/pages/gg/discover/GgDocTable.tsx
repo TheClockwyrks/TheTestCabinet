@@ -21,6 +21,16 @@ interface GgDocTableProps {
   filter?: GgFilter;
   /** An explicit sort, whose fields become extra columns for the same reason. */
   sort?: readonly GgSortKey[];
+  /**
+   * Whether a row's id links to that run's detail page. Default `true` — the console,
+   * where every recorded run has a page.
+   *
+   * `false` on the public site, where the corpus is deliberately **decoupled from
+   * publication**: it holds every recorded gg run while the gallery holds only the
+   * published ones, so most ids have no page to open. A table of links that mostly 404
+   * is worse than a table of plain ids.
+   */
+  linkRuns?: boolean;
 }
 
 /**
@@ -39,7 +49,12 @@ const CORE_COLUMNS: readonly string[] = [
   "score",
 ];
 
-export function GgDocTable({ documents, filter, sort }: GgDocTableProps) {
+export function GgDocTable({
+  documents,
+  filter,
+  sort,
+  linkRuns = true,
+}: GgDocTableProps) {
   const columns = [...CORE_COLUMNS];
   for (const field of queryFields(filter, sort)) {
     if (!columns.includes(field)) columns.push(field);
@@ -72,10 +87,12 @@ export function GgDocTable({ documents, filter, sort }: GgDocTableProps) {
                   if (column === "id") {
                     return (
                       <td key={column}>
-                        {runId ? (
+                        {runId && linkRuns ? (
                           <Link to={routes.runDetail(runId)} title={runId}>
                             {shortId(runId)}
                           </Link>
+                        ) : runId ? (
+                          <span title={runId}>{shortId(runId)}</span>
                         ) : (
                           <span className={styles.absent}>{ABSENT}</span>
                         )}

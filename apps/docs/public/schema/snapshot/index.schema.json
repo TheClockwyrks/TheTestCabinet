@@ -17,6 +17,10 @@
     "generatedAt": {
       "type": "string"
     },
+    "ggRunsKey": {
+      "description": "Where this snapshot's gg document corpus lives (`<prefix>/gg-runs.json`) — the\npayload the public Discover surface evaluates in the browser.",
+      "type": "string"
+    },
     "modelsKey": {
       "description": "Where this snapshot's model catalog lives (`<prefix>/models.json`).",
       "type": "string"
@@ -51,7 +55,8 @@
     "casesPrefix",
     "modelsKey",
     "comparisonsKey",
-    "comparisonsPrefix"
+    "comparisonsPrefix",
+    "ggRunsKey"
   ],
   "title": "SnapshotIndex",
   "type": "object"
