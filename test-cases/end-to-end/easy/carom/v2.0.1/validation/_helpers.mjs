@@ -182,6 +182,18 @@ export async function actGoal(api, { max = 360, poll = 6 } = {}) {
 // ---- Paddle contact --------------------------------------------------------
 
 /**
+ * The run-up filmed ahead of a driven paddle contact, in ticks.
+ *
+ * A contact drive poses the ball a few px off the paddle face, so with no lead the
+ * bounce lands within a couple of ticks and `act` — which IS the clip — opens on the
+ * rebound already in progress. A reviewer then sees only where the ball went, never
+ * that it went there BECAUSE it struck the paddle. Half a second of approach makes
+ * the contact itself unambiguous, at the cost of nothing: the rebound the assertions
+ * read is still the real one the real physics produces, just later in the drive.
+ */
+export const LEAD_TICKS = 60; // 0.5 s at 120 Hz
+
+/**
  * ARRANGE half of a paddle contact on `side` ("left" or "right"): pose that paddle
  * (`cy`, `vy`) and an incoming ball aimed straight at its front face at height
  * `ballY`. The ball starts just in front of the struck paddle and travels toward it
@@ -190,17 +202,43 @@ export async function actGoal(api, { max = 360, poll = 6 } = {}) {
  * real bounce — angle, speed multiply, and spin from the paddle's actual motion — is
  * what `actPaddleHit` then reads back; nothing about the rebound is posed here.
  *
- * Pair with `actPaddleHit` for the same `side`.
+ * `leadTicks` (see `LEAD_TICKS`) buys the clip a visible approach: the ball starts
+ * that much further out, and — because a posed `vy` PERSISTS across steps
+ * (specs/instrumentation.md), so a swinging paddle keeps travelling for the whole
+ * run-up — the paddle starts the matching distance UPSTREAM, arriving at `cy` as the
+ * ball arrives at the face. The contact is therefore the same one the zero-lead pose
+ * makes immediately; only the footage in front of it differs.
+ *
+ * A caller adding lead to a SWINGING paddle must leave it room: the start `cy - vy *
+ * lead` has to stay inside the [55, 665] clamp, or the paddle opens pinned against a
+ * bound (which zeroes its velocity) instead of sweeping into the ball. Callers that
+ * need a long run-up against a still paddle — the bound-pinned contact, which must
+ * stay pinned — pass `startX` explicitly and leave `leadTicks` at 0 here, leading the
+ * ball alone.
+ *
+ * Pair with `actPaddleHit` for the same `side`, passing it the same `leadTicks`.
  */
 export async function arrangePaddleHit(
   api,
   side,
-  { cy = 360, vy = 0, ballY = 360, approachSpeed = 400, startX } = {},
+  {
+    cy = 360,
+    vy = 0,
+    ballY = 360,
+    approachSpeed = 400,
+    startX,
+    leadTicks = 0,
+  } = {},
 ) {
   const other = side === "left" ? "right" : "left";
-  await api.call("setPaddle", side, { cy, vy });
+  const lead = leadTicks / TICK_HZ; // the run-up, in seconds of real flight
+  await api.call("setPaddle", side, { cy: cy - vy * lead, vy });
   await api.call("setPaddle", other, { cy: 150, vy: 0 });
-  const x = startX ?? (side === "left" ? 85 : FIELD_W - 85);
+  // 85 (and its mirror) is the ball's zero-lead start, a few px off the face; the
+  // run-up pushes it back by exactly the distance it covers in `lead`.
+  const near = side === "left" ? 85 : FIELD_W - 85;
+  const runUp = approachSpeed * lead;
+  const x = startX ?? (side === "left" ? near + runUp : near - runUp);
   const vx = side === "left" ? -approachSpeed : approachSpeed;
   await api.call("setBall", 0, { x, y: ballY, vx, vy: 0, spin: 0 });
 }
@@ -212,14 +250,21 @@ export async function arrangePaddleHit(
  * or curves the flight. Polls one tick at a time because the exact instant of the
  * bounce is what is read.
  *
+ * `leadTicks` is the run-up its arrange half posed, and simply widens the sweep by
+ * that much: the cap bounds the CONTACT, not the flight in front of it.
+ *
  * Pair with `arrangePaddleHit` for the same `side`. Returns `{ ball, paddle, hit }`,
  * where `paddle` is the struck paddle.
  */
-export async function actPaddleHit(api, side, { max = 72, poll = TICK } = {}) {
-  // 72 ticks = the old 0.6s cap.
+export async function actPaddleHit(
+  api,
+  side,
+  { max = 72, leadTicks = 0, poll = TICK } = {},
+) {
+  // 72 ticks = the old 0.6s cap, plus however long the posed run-up takes to fly.
   const rebounded =
     side === "left" ? (s) => ball0(s).vx > 0 : (s) => ball0(s).vx < 0;
-  const r = await api.until(rebounded, { max, poll });
+  const r = await api.until(rebounded, { max: max + leadTicks, poll });
   return { ball: ball0(r.snap), paddle: r.snap.paddles[side], hit: r.hit };
 }
 
