@@ -117,8 +117,8 @@ two stages.
 modalities OpenRouter reports per model, and the launch pushes them into the run
 alongside each model's [context window](/gg/configurations/#model-slots). A model declared *without*
 `image` is simply never sent one: `read_file` describes the file instead of attaching it,
-the system prompt tells the model up front that it cannot see images and that re-reading
-will not change that, and no request is wasted.
+the system prompt states up front — in a section it renders only when the run offers
+`read_file` at all — that reading images is not supported, and no request is wasted.
 
 **Learned, at runtime.** A model the catalog has no modality list for is treated
 **optimistically** — unknown is not the same as text-only, and withholding a test case's
@@ -154,7 +154,8 @@ Under [responses as code](/gg/responses-as-code/) the same read costs the window
 `fs.readFile` hands the bytes to the program and stops there. What puts a file in the window
 is `view.openFile(path)`, which does the identical read — same line cap, same magic-number
 image detection, same 8 MiB ceiling — and *also* opens a file view of it, keyed by the path
-and closable by it. The split is the point, and the prompt teaches it in one line:
+and closable by it. The split is the point, and `view.openFile`'s own
+[`.docs()`](/gg/responses-as-code/#the-typed-tool-surface) teaches it in one line:
 `fs.readFile` gets bytes for your program; `view.openFile` shows a file to you.
 
 **A picture obeys that split exactly, which is the one place it can surprise.** Under the

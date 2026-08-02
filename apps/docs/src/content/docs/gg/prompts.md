@@ -74,8 +74,7 @@ So each system template is one `{{#if}}` section per capability, over a renderin
 that carries both _whether_ each capability is on and _how it is configured_. A run's actual
 limits are interpolated inline rather than restated in prose:
 
-- the `read_file` [line cap](/gg/filesystem/#read-modes), and whether it is a hard
-  ceiling or a default the agent may exceed;
+- the `read_file` [line cap](/gg/filesystem/#read-modes), when one is in force;
 - the [memories](/gg/memories/) budget (count, per-memory length, total length);
 - the [task](/gg/tasks/) count ceiling;
 - the [Project management](/gg/project-management/) epic and issue ceilings;
@@ -103,32 +102,37 @@ on the run's execution mode. An operator's per-agent template override still ren
 the same context in either mode; the console seeds its editor with whichever built-in default
 matches the agent's mode.
 
-The code arm teaches three things the tool-calling arm has no need of, and each is gated on
-something about the run:
+The code arm teaches four things the tool-calling arm has no need of:
 
-- **What a reply _is_.** The model's whole reply is the program: no fence, no language
-  tag, no prose around it, exactly one program per reply — with a top-level `return`
-  named as the thing that ends it, since a model that pastes a second draft after the
-  first is pasting it after a `return` — and nothing that narrates a result the model has
-  not seen yet. The rule is about the shape of a **reply**, not about the shape of the
-  page it is stated on: the prompt's own worked examples *are* fenced, because a fence is
-  how a block of code reads as a block of code to whoever is reading it, and the model is
-  reading this prompt rather than sending it. What it sends is bare.
-- **Why not to fence**, gated on whether [healing](/gg/response-healing/)'s fence
-  stripping is armed. With it off, a fence really is a syntax error on line 1 and the
-  prompt says so; with it on, that sentence would be false — gg strips the fence and says
-  it did — and a model that tested the claim would learn that gg's rules are negotiable.
-  The armed arm therefore states the repair honestly and calls it a repair rather than
-  the contract.
-- **How to show itself something.** A program's values live and die inside the turn, so the
-  code arm carries a *Showing yourself things* section for the
-  [`view` object](/gg/responses-as-code/#showing-yourself-things) — the worked example that
-  opens a view, the rule that re-opening a selector replaces what was under it, and the one
-  line that separates the two reads (*`fs.readFile` gets bytes for your program;
-  `view.openFile` shows a file to you*). The object itself is bound whatever a run enables,
-  so the section is never withheld; the half of it that names `view.openFile` is gated on
-  `read_file`, since an example naming a call this run does not bind is a `ReferenceError`
-  the model copies verbatim.
+- **What a reply _is_.** The model's whole reply is the program, and the prompt says so
+  in as many words: no plain text, no Markdown formatting, no other non-code text. The
+  rule is about the shape of a **reply**, not about the shape of the page it is stated
+  on — the one fenced block the template can render illustrates a message the model
+  *receives*, not one it sends.
+- **That every call is synchronous.** `await` is not a thing to reach for and a return
+  value is not a promise. A model brings the opposite reflex to a tool API, and it is
+  worth a line up front rather than a wasted turn: a continuation parked on a promise
+  would resume only after the program had already returned, which is why
+  [healing](/gg/response-healing/) unwraps an `async` wrapper rather than running one.
+- **How to show itself something.** A program's values live and die inside the turn, so
+  the opening paragraphs name the
+  [`view` object](/gg/responses-as-code/#showing-yourself-things) as the channel that
+  carries — `view.openText(slug, contents)` for a value the program computed,
+  `view.openFile(path)` for a file — and say plainly that `console.log()` will not be
+  visible, which is the one sentence keeping a model from writing its answer somewhere
+  only the operator can read it. `openText` is never withheld (the object is bound
+  whatever a run enables, since a run with no tools at all must still be able to show its
+  model something); the `openFile` line is gated on `read_file`, because naming a call
+  this run does not bind is a `ReferenceError` the model copies verbatim.
+- **What is in scope, and how to read its documentation.** One line per API object — its
+  name and what it is for — and then the two discovery calls, `<object>.list()` and
+  `fn.docs()`. No signatures and no type declarations: the surface is
+  [read on demand](/gg/responses-as-code/#the-typed-tool-surface) rather than dumped up
+  front, and what a call's options are, what it throws, and the rest of the `view`
+  object's own functions (`view.close`, `view.current`) are answers the model asks for
+  rather than paragraphs it is handed. The rules those functions obey are documented for *humans* on
+  the [responses as code](/gg/responses-as-code/#showing-yourself-things) page; the model
+  gets them from `.docs()`.
 
 The code arm also lists the **message headings** a run can produce — the `<label>\n----\n`
 rule every message it receives obeys — and that list is gated the same way everything else

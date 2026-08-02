@@ -14,9 +14,9 @@ Name the winning attempt with `{{ending.selectWinner}}`.
 {{/if}}
 A reply with no tool call is an error.
 
+{{#if readFile.offered}}
 ## Reading Files
 
-{{#if readFile.offered}}
 {{#if readFile.capped}}Reading a file returns at most {{readFile.lineCap}} lines per call.{{/if}}
 
 {{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}

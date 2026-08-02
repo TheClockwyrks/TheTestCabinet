@@ -145,6 +145,11 @@ fn tidy_collapses_blank_runs() {
 
 /// With every capability off, the base prompt is (almost) nothing: no custom instructions, no code
 /// section, no image or read guidance, and none of the capability sections.
+///
+/// `## Reading Files` is in the list because a heading is as much a leak as a sentence is. It sits
+/// inside the `readFile.offered` guard rather than above it, so a run that withholds `read_file`
+/// does not end on a section title with nothing underneath it — which is what a model reads as
+/// *there was supposed to be something here*.
 #[test]
 fn a_bare_run_renders_almost_nothing() {
     let prompt = render_system(&bare_system(), None);
@@ -152,6 +157,7 @@ fn a_bare_run_renders_almost_nothing() {
         "## Responses as Code",
         "## Tasks",
         "## Subagents",
+        "## Reading Files",
         "Reading images",
         "Your APIs",
     ] {

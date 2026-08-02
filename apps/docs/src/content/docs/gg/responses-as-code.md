@@ -16,9 +16,10 @@ sandbox The Test Cabinet's [Foray](/testing/adversarial/foray/architecture/) eng
 runs untrusted controllers in), so it is a low-risk capability to bring to gg.
 
 It is a capability like any other, which is the point. Turn it on and the model is
-offered **no native tool definitions at all** — the toolset arrives as TypeScript
-signatures in the [system prompt](/gg/prompts/) instead; turn it off and the same run
-executes as ordinary tool calling. Freeze the model, the test case and the rest of the
+offered **no native tool definitions at all** — the [system prompt](/gg/prompts/) names
+the API objects the program is given, and the model reads the functions on them on demand
+with `object.list()` and `fn.docs()`; turn it off and the same run executes as ordinary
+tool calling. Freeze the model, the test case and the rest of the
 [capability set](/gg/overview/#the-capability-set), vary this one toggle, and the
 difference is attributable to the shape of the response. That A/B — do code-shaped
 responses help a model tackle the large [Hard](/testing/end-to-end/) cases? — is what
@@ -39,9 +40,11 @@ if (missing.length === 0) harness.finish(`Checked all ${specs.length} spec files
 
 That example is fenced **on this page**, because this page is written for humans. The
 model's reply carries no fence, no `ts` tag and no prose around the code, and the
-[prompt](/gg/prompts/) says so in as many words — its own worked examples are indented
-rather than fenced, so that nothing gg shows a model can re-teach the shape it is
-asking the model not to send.
+[prompt](/gg/prompts/) says so in as many words: *do not include any plain text, Markdown
+formatting, or other non-code text in your responses*. A fence is Markdown formatting, so
+the rule that forbids the prose forbids the fence with it. The one fenced block the prompt
+itself can render is not a counter-example — it illustrates a message the model
+**receives** (the `<label>\n----\n` heading rule), not a reply it sends.
 
 - **`view` is how anything reaches the model.** A program that computed something worth
   seeing next turn *opens a view* of it, and gg pushes **one message per view** into the
@@ -264,10 +267,9 @@ The program is TypeScript, but nothing type-*checks* it. gg erases the types wit
 guest. An `interface` declaration disappears, `const x: Entry[] = …` becomes
 `const x = …`, and a call that passes a string where a number was declared runs anyway.
 
-The prompt says so in as many words, because a model that believes its types were
-checked writes different (worse) code than one that knows they were not. What catches
-the mistakes that actually matter is **run-time validation in the SDK wrappers**, on
-the three shapes that are otherwise silent or unreadable:
+The prompt does not warn about this, and does not claim a check that never happens
+either. What catches the mistakes that actually matter is **run-time validation in the
+SDK wrappers**, on the three shapes that are otherwise silent or unreadable:
 
 - `shell("npm test", 300)` — a positional argument where an options object belongs
   would quietly read `timeoutSecs` off a number, get `undefined`, and use the default.
@@ -478,12 +480,12 @@ not shown the `TaskUsage` type either. That is the property
 [toolset ablation](/gg/toolset-ablation/) depends on — the toolset and its description
 come from one source and cannot disagree.
 
-It extends to the section's **prose**, not just its listing. The prompt's worked example is
-the one that opens a view, and its `view.openFile` line — along with the sentence that
-draws the `fs.readFile` / `view.openFile` split — renders only for a run that binds
-`read_file`; the `.docs()` example is written against `view.openText`, which nothing gates.
-An example is the one part of a prompt a model copies verbatim, so an ungated one would
-hand a reduced-toolset run a `ReferenceError` on its first turn.
+It extends to the section's **prose**, not just its listing. The line teaching
+`view.openFile` renders only for a run that binds `read_file`, and the `.docs()` call the
+prompt demonstrates is spelled `view.openText.docs()` — against the one view function
+nothing gates. A call named in a prompt is the part of it a model copies verbatim, so
+naming an ungated one would hand a reduced-toolset run a `ReferenceError` on its first
+turn.
 
 The [filesystem capabilities](/gg/filesystem/) compose the same way: a run with
 `read-file` off has no `fs.readFile`, no `fs.readTextFile` and no `view.openFile`, and a
@@ -531,10 +533,11 @@ every call returns `{ ok, output }` forces a branch after every line, and the wo
 example at the top of this page becomes unwritable. Three things keep it honest:
 
 1. **The throw is catchable and typed.** `catch (e) { if (e.code === "conflict") … }` is
-   the shape the prompt teaches, and `ToolError` is bound into the program's scope so
-   `e instanceof ToolError` works. It also serialises: a plain `Error`'s `message` is
-   non-enumerable, so without an explicit `toJSON` a failure a program logged — or put in
-   a [view](#showing-yourself-things) — would arrive as `{}`.
+   the shape a function's `.docs()` teaches — `fs.editFile`'s names that very code — and
+   `ToolError` is bound into the program's scope so `e instanceof ToolError` works. It
+   also serialises: a plain `Error`'s `message` is non-enumerable, so without an explicit
+   `toJSON` a failure a program logged — or put in a [view](#showing-yourself-things) —
+   would arrive as `{}`.
 2. **The work before it stands, and is reported.** Every call the program landed before
    the throw is in the turn's roster, and the model is told which statement threw, on
    which line of *its own* program — the guest remaps the line out of the interpreter's
@@ -603,10 +606,16 @@ for the one number that bounds how many may be open at once.
 
 ### `fs.readFile` gets bytes; `view.openFile` shows a file
 
-The separation is the point, and the prompt teaches it in exactly that one line. A program
-that reads forty files to grep them puts **nothing** in the window: it consumed those reads
-itself. A program that opens a view of one of them has put one file in the window, charged
-to its path, closable by its path, and countable against it.
+The separation is the point, and it is taught where the model meets the call: in those
+words, as the second sentence of `view.openFile`'s own
+[`.docs()`](#the-typed-tool-surface). It used to be a line in the system prompt as well and
+is not any more — the prompt names the two calls and leaves what separates them to the
+documentation the model asks for, so the fact arrives attached to the function it is about
+rather than screens away from it.
+
+A program that reads forty files to grep them puts **nothing** in the window: it consumed
+those reads itself. A program that opens a view of one of them has put one file in the
+window, charged to its path, closable by its path, and countable against it.
 
 That is literal for pictures too, and it is the part worth stating twice, because a
 *description* of a mockup and a *sight* of it read almost the same in a program's output. A
@@ -834,8 +843,12 @@ The component is built with clocks and randomness disabled, so inside a program:
 - `crypto.getRandomValues()` and `crypto.randomUUID()` **throw** rather than returning
   the same value forever while looking authoritative.
 
-The prompt names all three, and — when the run offers `shell` — tells the model to reach
-for it when it genuinely needs the real time, a random value, or the network.
+None of that is stated in the system prompt: a program discovers it by reaching for a
+clock that does not move or a `crypto` call that throws, and the throw is an ordinary
+located program error naming what is missing (see below). A run that genuinely needs the
+real time, a random value or the network still has `system.shell` as the way to it, when
+the capability set offers one — but nothing tells the model so in advance, and a program
+that wants the wall clock has to think of `date` on its own.
 
 This is what makes two runs of the same program **comparable**: given the same tool
 outcomes, it takes the same path and composes the same calls in the same order, so a
@@ -904,7 +917,7 @@ outputs are **committed** into the Rust crate:
 | Artifact | What it is |
 | --- | --- |
 | `crates/gg/src/sandbox/gg-sandbox.component.wasm` | The baked component, embedded in the binary (13,941,785 bytes as committed). |
-| `crates/gg/src/sandbox/signatures.json` | The signature catalogue rendered into the system prompt. |
+| `crates/gg/src/sandbox/signatures.json` | The signature catalogue the model reads through `object.list()` and `fn.docs()`. |
 
 Committing them follows the precedent the `foray-ref-*` guests already set, and it is
 what means **no build or CI step ever needs `componentize-js`**: the host
