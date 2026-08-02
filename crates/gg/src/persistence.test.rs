@@ -10,7 +10,7 @@ use test_cabinet_core::gg::{
 };
 
 use super::*;
-use crate::context::{FileRegion, HeuristicTokenEstimator, Retention};
+use crate::context::{FileRegion, HeuristicTokenEstimator, OpenTextView, Retention};
 use crate::telemetry::CollectingSink;
 
 /// A context model measuring with the deterministic heuristic estimator, in tool-calling mode.
@@ -69,6 +69,22 @@ fn whole(path: &str) -> OpenFileView {
     }
 }
 
+/// A desk holding `files` and no text views — the shape every pre-views test asserts against.
+fn desk(files: Vec<OpenFileView>) -> PersistedDesk {
+    PersistedDesk {
+        files,
+        texts: Vec::new(),
+    }
+}
+
+/// A text view with `label` and `body`, as `open_text_views` reports one.
+fn text(label: &str, body: &str) -> OpenTextView {
+    OpenTextView {
+        label: label.to_string(),
+        body: body.to_string(),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // The exclusivity key
 // ---------------------------------------------------------------------------
@@ -111,12 +127,12 @@ fn a_disabled_persistence_capability_takes_no_key() {
 #[test]
 fn the_record_is_per_profile_and_starts_empty() {
     let store = AgentPersistence::new();
-    assert!(store.views("Owner").is_empty());
+    assert!(store.desk("Owner").files.is_empty());
 
-    store.record("Owner", vec![whole("src/main.rs")]);
-    store.record("Reviewer", vec![whole("README.md")]);
-    assert_eq!(store.views("Owner"), vec![whole("src/main.rs")]);
-    assert_eq!(store.views("Reviewer"), vec![whole("README.md")]);
+    store.record("Owner", desk(vec![whole("src/main.rs")]));
+    store.record("Reviewer", desk(vec![whole("README.md")]));
+    assert_eq!(store.desk("Owner").files, vec![whole("src/main.rs")]);
+    assert_eq!(store.desk("Reviewer").files, vec![whole("README.md")]);
 }
 
 /// Recording **replaces** rather than merges: the record is the desk as the last instance left it, so
@@ -124,13 +140,13 @@ fn the_record_is_per_profile_and_starts_empty() {
 #[test]
 fn recording_replaces_the_previous_desk() {
     let store = AgentPersistence::new();
-    store.record("Owner", vec![whole("a.rs"), whole("b.rs")]);
-    store.record("Owner", vec![whole("b.rs")]);
-    assert_eq!(store.views("Owner"), vec![whole("b.rs")]);
+    store.record("Owner", desk(vec![whole("a.rs"), whole("b.rs")]));
+    store.record("Owner", desk(vec![whole("b.rs")]));
+    assert_eq!(store.desk("Owner").files, vec![whole("b.rs")]);
 
-    store.record("Owner", Vec::new());
+    store.record("Owner", PersistedDesk::default());
     assert!(
-        store.views("Owner").is_empty(),
+        store.desk("Owner").files.is_empty(),
         "an instance that finished with nothing open leaves nothing behind"
     );
 }
@@ -154,17 +170,17 @@ fn the_setup_records_only_for_a_persistent_profile() {
     let plain = PersistenceSetup::resolve(set.agent("Worker").unwrap(), Arc::clone(&store));
     assert!(!plain.enabled());
     plain.record(&window);
-    assert!(store.views("Worker").is_empty());
-    assert!(plain.restored().is_empty());
+    assert!(store.desk("Worker").files.is_empty());
+    assert_eq!(plain.restored(), PersistedDesk::default());
 
     let owner = PersistenceSetup::resolve(set.agent("Owner").unwrap(), Arc::clone(&store));
     assert!(owner.enabled());
     owner.record(&window);
-    assert_eq!(owner.restored(), vec![whole("src/main.rs")]);
+    assert_eq!(owner.restored(), desk(vec![whole("src/main.rs")]));
 
     // A *second* instance of the profile — a fresh setup over the same run-global record — sees it.
     let next = PersistenceSetup::resolve(set.agent("Owner").unwrap(), Arc::clone(&store));
-    assert_eq!(next.restored(), vec![whole("src/main.rs")]);
+    assert_eq!(next.restored(), desk(vec![whole("src/main.rs")]));
 }
 
 // ---------------------------------------------------------------------------
@@ -454,4 +470,196 @@ async fn an_empty_record_seeds_nothing() {
     // Nothing was added to the thread; the system prompt is a slot, not an item.
     assert!(window.items().is_empty());
     assert!(window.system().is_some());
+}
+
+// ---------------------------------------------------------------------------
+// Text views on the desk
+// ---------------------------------------------------------------------------
+
+/// The desk is **both** bands, and they are recorded by two different rules: a file view by
+/// reference (path and region, never the bytes) and a text view **with its body**.
+///
+/// The asymmetry is the point. A file has an on-disk truth the reference stays true against; a text
+/// view is whatever the agent composed and the window is its only copy, so a reference to it would
+/// name nothing re-readable and restore an empty desk while reporting a full one.
+#[test]
+fn the_desk_records_files_by_reference_and_text_views_by_body() {
+    let mut window = context();
+    window.push_file_view(
+        Some("a.rs".to_string()),
+        None,
+        "c1",
+        "the bytes of a",
+        vec![],
+    );
+    window.open_text_view("plan".to_string(), "1. read\n2. fix".to_string());
+
+    let recorded = PersistedDesk::of(&window);
+    assert_eq!(recorded.files, vec![whole("a.rs")]);
+    assert_eq!(recorded.texts, vec![text("plan", "1. read\n2. fix")]);
+    assert!(
+        !format!("{:?}", recorded.files).contains("the bytes of a"),
+        "a file view records the reference, never what the read returned: {:?}",
+        recorded.files
+    );
+}
+
+/// Restoring a text view hands the body back **byte for byte** under its own label, as an ordinary
+/// ephemeral item the agent can close — and the restored window records the same desk again, so the
+/// material survives an arbitrary succession of instances rather than degrading at each hop.
+#[test]
+fn restoring_a_text_view_hands_the_body_back_verbatim() {
+    let desk = vec![
+        text("plan", "1. read\n2. fix"),
+        text("failures", "x.ts:12 expected 3, got 4"),
+    ];
+    let mut window = context();
+    assert_eq!(restore_text_views(&mut window, &desk), 2);
+
+    assert_eq!(window.open_text_views(), desk);
+    assert_eq!(
+        window.close_text_views(None).items,
+        2,
+        "a restored view is ordinary working material, not a pinned one"
+    );
+
+    // A second hop: the window that was restored into records exactly what it was handed.
+    let mut again = context();
+    restore_text_views(&mut again, &desk);
+    assert_eq!(PersistedDesk::of(&again).texts, desk);
+}
+
+/// The text half of the restore is **idempotent by construction**: re-opening a label supersedes
+/// rather than duplicates, so — unlike the file half, which needs an explicit already-open skip —
+/// running it twice leaves one view per label.
+#[test]
+fn restoring_the_same_text_view_twice_leaves_one_of_it() {
+    let desk = vec![text("plan", "1. read\n2. fix")];
+    let mut window = context();
+    restore_text_views(&mut window, &desk);
+    restore_text_views(&mut window, &desk);
+    assert_eq!(window.open_text_views(), desk);
+}
+
+/// A view the agent **closed** is off the desk, exactly as an evicted file view is: the record is
+/// the desk as the last instance left it, and material it decided it was done with must not follow
+/// it into the next session.
+#[test]
+fn a_closed_text_view_is_not_carried_over() {
+    let mut window = context();
+    window.open_text_view("plan".to_string(), "1. read".to_string());
+    window.open_text_view("scratch".to_string(), "noise".to_string());
+    window.close_text_views(Some("scratch"));
+
+    assert_eq!(
+        PersistedDesk::of(&window).texts,
+        vec![text("plan", "1. read")]
+    );
+}
+
+/// The note an instance logs names **which mechanism** brought what back, because the two make
+/// different promises: the file views are the workspace as it stands now (and may well differ from
+/// what the last instance saw), while the text views are that instance's own material reproduced
+/// exactly.
+#[test]
+fn the_restore_note_says_which_mechanism_brought_what_back() {
+    let none = restore_note(0, 0);
+    assert!(none.contains("nothing carried over"), "{none}");
+
+    let files = restore_note(2, 0);
+    assert!(files.contains("re-opened 2 file view(s)"), "{files}");
+    assert!(files.contains("as it stands now"), "{files}");
+    assert!(!files.contains("text view"), "{files}");
+
+    let texts = restore_note(0, 3);
+    assert!(texts.contains("restored 3 text view(s)"), "{texts}");
+    assert!(!texts.contains("file view"), "{texts}");
+
+    let both = restore_note(2, 3);
+    assert!(both.contains("re-opened 2 file view(s)"), "{both}");
+    assert!(both.contains("restored 3 text view(s)"), "{both}");
+}
+
+// ---------------------------------------------------------------------------
+// Responses-as-code
+// ---------------------------------------------------------------------------
+
+/// **The claim the handoff asked to be verified rather than asserted:** persistence now works for a
+/// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) agent, and the file half
+/// of it needed no change to this module at all.
+///
+/// It used to record nothing because a program's reads were consumed inside the program and never
+/// reached the window. `view.openFile` and `view.openText` push real context items, so
+/// `open_file_views` and `open_text_views` see them like any other — this drives the two
+/// `ContextModel` entry points the loop's `LoopToolApi` calls, over a **code-mode** window (the
+/// heading a text view carries is code-mode-only, and it must not leak into the recorded body).
+///
+/// The loop-side half of the same claim — that a finishing code-mode instance really hands its desk
+/// to the next one — is `agent.persistence.test.rs`.
+#[tokio::test]
+async fn a_code_mode_window_records_and_restores_the_views_a_program_opened() {
+    let (dir, ctx) = workspace(&[("game.js", "// the first draft\n")]);
+    let (emitter, _sink) = emitter();
+
+    // A code-mode window, as an agent running programs holds one.
+    let mut window = ContextModel::new(
+        Arc::new(HeuristicTokenEstimator::new()),
+        Some(100_000),
+        true,
+    );
+    // What `LoopToolApi::open_file_view` and `open_text_view` do, and all a program's `view.*` calls
+    // ever amount to.
+    window.open_file_view_deduped(
+        "game.js".to_string(),
+        None,
+        "// the first draft\n".to_string(),
+        vec![],
+    );
+    window.open_text_view("plan".to_string(), "1. read\n2. fix".to_string());
+
+    let recorded = PersistedDesk::of(&window);
+    assert_eq!(
+        recorded.files,
+        vec![whole("game.js")],
+        "a program's view.openFile is on the desk"
+    );
+    assert_eq!(
+        recorded.texts,
+        vec![text("plan", "1. read\n2. fix")],
+        "the recorded body is what the program supplied, without the window's `View:` heading"
+    );
+
+    // Somebody else rewrites the file while the profile is idle.
+    std::fs::write(dir.path().join("game.js"), "// rewritten by someone else\n").unwrap();
+
+    let mut next = ContextModel::new(
+        Arc::new(HeuristicTokenEstimator::new()),
+        Some(100_000),
+        true,
+    );
+    let files = restore_file_views(
+        &mut next,
+        &recorded.files,
+        ReadPolicy::Unlimited,
+        &ctx,
+        &emitter,
+    )
+    .await;
+    let texts = restore_text_views(&mut next, &recorded.texts);
+    assert_eq!((files, texts), (1, 1));
+
+    // The file came back as the workspace stands *now*; the text view came back as it was composed.
+    let bodies: String = next
+        .items()
+        .iter()
+        .filter_map(|item| item.message().content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(bodies.contains("rewritten by someone else"), "{bodies}");
+    assert!(!bodies.contains("the first draft"), "{bodies}");
+    assert!(
+        bodies.contains("View: plan\n----\n1. read\n2. fix"),
+        "{bodies}"
+    );
+    assert_eq!(PersistedDesk::of(&next), recorded);
 }

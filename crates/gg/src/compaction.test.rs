@@ -605,6 +605,82 @@ fn the_summary_is_the_last_item_in_the_restarted_window() {
     assert!(last.contains("THE RECAP"), "got {last}");
 }
 
+/// **Text views do not survive a compaction, and that is deliberate.**
+///
+/// A text view is an ordinary [`Ephemeral`](Retention::Ephemeral) item, so `clear_ephemeral` drops
+/// it with everything else the boundary drops, and the `compact` request's `files` list re-seeds
+/// **files only** — there is no way for a model to name a view it wants carried across, on purpose:
+/// extending the request to name views is a separate feature, and until it exists a model that wants
+/// composed material to outlive a boundary must write it to a file (and re-open it by path) or to a
+/// memory.
+///
+/// Asserted through the whole rewrite rather than against `clear_ephemeral` alone, because it is the
+/// conjunction that matters: the file comes back, the view does not.
+#[test]
+fn a_text_view_does_not_survive_a_compaction_but_a_named_file_does() {
+    let setup = setup(CompactionStrategy::SelfCompaction, 0.5, true);
+    let mut ctx = model(400);
+    ctx.set_system("SYSTEM PROMPT");
+    ctx.push_assistant(Some("ephemeral chatter ".repeat(10)), Vec::new());
+    ctx.open_file_view_deduped(
+        "src/main.ts".to_string(),
+        None,
+        "FILE BODY".to_string(),
+        Vec::new(),
+    );
+    ctx.open_text_view("plan".to_string(), "COMPOSED PLAN".to_string());
+    assert_eq!(ctx.open_text_views().len(), 1);
+
+    let event = apply_compaction(
+        &mut ctx,
+        &setup,
+        RetainedCounts::default(),
+        &CompactionRequest {
+            summary: "the recap".to_string(),
+            // The request names a file. There is no view field to name a view with.
+            files: vec!["src/main.ts".to_string()],
+        },
+        vec![RestoredFile {
+            path: "src/main.ts".to_string(),
+            body: "FILE BODY".to_string(),
+            images: Vec::new(),
+        }],
+        false,
+    );
+
+    assert!(
+        ctx.open_text_views().is_empty(),
+        "the boundary dropped the text view"
+    );
+    assert_eq!(ctx.tokens_for(GgContextSource::TextView), 0);
+    let all: String = ctx
+        .messages()
+        .iter()
+        .filter_map(|m| m.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(!all.contains("COMPOSED PLAN"), "{all}");
+    assert!(
+        all.contains("FILE BODY"),
+        "the file the request named came back: {all}"
+    );
+
+    // And the event says so, so an analysis reading the band composition sees the view band emptied
+    // rather than having to infer it.
+    match event {
+        GgTelemetryKind::Compaction {
+            before_by_source,
+            after_by_source,
+            ..
+        } => {
+            assert!(band_tokens(&before_by_source, GgContextSource::TextView) > 0);
+            assert_eq!(band_tokens(&after_by_source, GgContextSource::TextView), 0);
+            assert!(band_tokens(&after_by_source, GgContextSource::FileView) > 0);
+        }
+        other => panic!("expected a Compaction event, got {other:?}"),
+    }
+}
+
 /// A failed condensation is recorded as one. The fallback note is a real summary as far as the
 /// window is concerned — the compaction still happens, because the window is full either way — but
 /// the event says it fell back, so a study reads it as the failure it is rather than as a terse

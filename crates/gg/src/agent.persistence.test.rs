@@ -7,12 +7,14 @@
 //! very first turn on those views, re-read from the workspace as it stands then. Both live in
 //! [`Agent::drive`], so they are only testable here.
 //!
-//! Every test drives the tool-calling path: it is the mode that puts file views in the window at all
-//! (a program's reads are consumed inside the program), which is exactly what persistence carries.
+//! Most tests drive the tool-calling path, where a `read_file` is what puts a file view in the
+//! window. The last one drives [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), which used to put
+//! nothing in the window at all and therefore persisted nothing: a program's `view.openFile` and
+//! `view.openText` now push real context items, so the same desk is recorded and restored.
 
 use super::*;
-use crate::context::{FileRegion, OpenFileView};
-use test_cabinet_core::gg::CAPABILITY_AGENT_PERSISTENCE;
+use crate::context::{FileRegion, OpenFileView, OpenTextView};
+use test_cabinet_core::gg::{CAPABILITY_AGENT_PERSISTENCE, CAPABILITY_RESPONSES_AS_CODE};
 
 /// The line cap [`paging_profile`] reads under — small enough that the 300-line fixture below is read
 /// in pages rather than whole.
@@ -56,15 +58,28 @@ fn paging_profile() -> GgAgentConfig {
     profile
 }
 
-/// Drive one instance of `profile` against `script` in `dir`, sharing `store` with every other
-/// instance — the run-global record two instances of one profile meet through.
-///
-/// The read policy is resolved from the profile, exactly as `run_agent` resolves it, so the cap the
-/// loop describes and the cap the dispatched reads honor are always the same one.
+/// Drive one instance of `profile` against `script` in `dir` on the **tool-calling** path, sharing
+/// `store` with every other instance — the run-global record two instances of one profile meet
+/// through.
 async fn drive_instance(
     dir: &TempDir,
     profile: &GgAgentConfig,
     store: Arc<AgentPersistence>,
+    script: Vec<ModelResponse>,
+) -> (LoopEnd, Vec<GgTelemetryEvent>, Vec<Vec<Message>>) {
+    drive_instance_in(dir, profile, store, no_code(), script).await
+}
+
+/// [`drive_instance`], with the [execution mode](CodeSetup) chosen by the caller — the one axis the
+/// code-mode desk test varies.
+///
+/// The read policy is resolved from the profile, exactly as `run_agent` resolves it, so the cap the
+/// loop describes and the cap the dispatched reads honor are always the same one.
+async fn drive_instance_in(
+    dir: &TempDir,
+    profile: &GgAgentConfig,
+    store: Arc<AgentPersistence>,
+    code: CodeSetup,
     script: Vec<ModelResponse>,
 ) -> (LoopEnd, Vec<GgTelemetryEvent>, Vec<Vec<Message>>) {
     let ctx = ToolContext::new(dir.path());
@@ -80,7 +95,7 @@ async fn drive_instance(
             &registry,
             &ctx,
             &emitter,
-            &mut test_modules(test_context_setup(), no_code().enabled)
+            &mut test_modules(test_context_setup(), code.enabled)
                 .with(ModuleHandle::Skills(SkillsRuntime::disabled()))
                 .with(ModuleHandle::Memories(MemoriesRuntime::disabled()))
                 .with(ModuleHandle::Tasks(TasksRuntime::disabled()))
@@ -94,7 +109,7 @@ async fn drive_instance(
                 read_policy: read_policy(profile),
                 shell_offload: OffloadPolicy::default(),
                 speculative: false,
-                code: no_code(),
+                code,
                 completion: no_completion(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
@@ -156,7 +171,7 @@ async fn a_finished_instance_hands_its_open_views_to_the_next_one() {
     .await;
     assert_eq!(first.status, "completed");
     assert_eq!(
-        store.views("Owner"),
+        store.desk("Owner").files,
         vec![OpenFileView {
             path: "game.js".to_string(),
             region: None,
@@ -225,7 +240,7 @@ async fn an_instance_stopped_by_a_ceiling_leaves_the_record_alone() {
     )
     .await;
     assert_eq!(first.status, "completed");
-    let recorded = store.views("Owner");
+    let recorded = store.desk("Owner").files;
     assert_eq!(recorded.len(), 1);
     assert_eq!(recorded[0].path, "kept.js");
 
@@ -239,7 +254,7 @@ async fn an_instance_stopped_by_a_ceiling_leaves_the_record_alone() {
     .await;
     assert_eq!(second.status, "exhausted");
     assert_eq!(
-        store.views("Owner"),
+        store.desk("Owner").files,
         recorded,
         "a stopped instance does not overwrite the last finished one's desk"
     );
@@ -266,7 +281,7 @@ async fn a_non_persistent_profile_carries_nothing() {
     )
     .await;
     assert_eq!(first.status, "completed");
-    assert!(store.views("Worker").is_empty());
+    assert!(store.desk("Worker").files.is_empty());
 
     let (second, events, requests) = drive_instance(
         &dir,
@@ -337,7 +352,7 @@ async fn every_page_of_a_paged_file_is_carried_over() {
         },
     ];
     assert_eq!(
-        store.views("Owner"),
+        store.desk("Owner").files,
         both_windows,
         "both windows are recorded, in the order they were opened"
     );
@@ -368,7 +383,7 @@ async fn every_page_of_a_paged_file_is_carried_over() {
     );
     // And what the second instance records is those same two windows — re-read, re-recorded, byte for
     // byte the same desk — so the pages do not decay over a chain of instances.
-    assert_eq!(store.views("Owner"), both_windows);
+    assert_eq!(store.desk("Owner").files, both_windows);
 }
 
 /// The desk records the window a read **returned**, not the one it asked for. Under an unlimited read
@@ -396,11 +411,123 @@ async fn an_ignored_offset_records_no_region() {
     .await;
     assert_eq!(end.status, "completed");
     assert_eq!(
-        store.views("Owner"),
+        store.desk("Owner").files,
         vec![OpenFileView {
             path: "big.rs".to_string(),
             region: None,
         }],
         "both reads returned the whole file, so the desk holds one whole-file view"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Responses as code
+// ---------------------------------------------------------------------------
+
+/// [`persistent_profile`] running its turns as programs.
+fn persistent_code_profile() -> GgAgentConfig {
+    let mut profile = persistent_profile();
+    profile
+        .capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    profile
+}
+
+/// A [`CodeSetup`] with responses-as-code on, resolved as `run_agent` resolves it.
+fn code_on() -> CodeSetup {
+    CodeSetup {
+        enabled: true,
+        limits: SandboxLimits::default(),
+        healing: HealingConfig::default(),
+        assistant_messages: AssistantMessageMode::None,
+    }
+}
+
+/// **A persistent code-mode agent has a desk.**
+///
+/// This is the claim the views feature makes about persistence, driven end to end rather than
+/// asserted: a program opens a file view and a text view, the instance finishes, and the *next*
+/// instance opens its very first turn on both — the file re-read from the workspace as it stands
+/// then (an edit made in between is what it sees), the text view reproduced exactly, because the
+/// window was its only copy.
+///
+/// Before views, a code-mode profile recorded and restored nothing at all: `fs.readFile` fetches
+/// bytes for the program and puts nothing in the window, which is still true and is the separation
+/// `view.openFile` exists beside.
+#[tokio::test]
+async fn a_persistent_code_mode_instance_hands_its_views_to_the_next_one() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("game.js"), "// the first draft\n").unwrap();
+    let profile = persistent_code_profile();
+    let store = AgentPersistence::new();
+
+    // Instance one: show itself the file and its own plan, then finish.
+    let (first, _events, _requests) = drive_instance_in(
+        &dir,
+        &profile,
+        Arc::clone(&store),
+        code_on(),
+        vec![code_reply(
+            "view.openFile(\"game.js\");\n\
+             view.openText(\"plan\", \"1. read the game\\n2. fix the bug\");\n\
+             harness.finish(\"looked at the game\");",
+        )],
+    )
+    .await;
+    assert_eq!(first.status, "completed");
+
+    let desk = store.desk("Owner");
+    assert_eq!(
+        desk.files,
+        vec![OpenFileView {
+            path: "game.js".to_string(),
+            region: None,
+        }],
+        "a program's view.openFile is on the desk"
+    );
+    assert_eq!(
+        desk.texts,
+        vec![OpenTextView {
+            label: "plan".to_string(),
+            body: "1. read the game\n2. fix the bug".to_string(),
+        }],
+        "and so is the material the program composed, body and all"
+    );
+
+    // Somebody else rewrites the file while the profile is idle.
+    std::fs::write(dir.path().join("game.js"), "// rewritten by someone else\n").unwrap();
+
+    // Instance two: finish immediately, so everything in its window was seeded before its first turn.
+    let (second, _events, requests) = drive_instance_in(
+        &dir,
+        &profile,
+        Arc::clone(&store),
+        code_on(),
+        vec![code_reply("harness.finish(\"done\");")],
+    )
+    .await;
+    assert_eq!(second.status, "completed");
+
+    let opening: String = requests
+        .first()
+        .expect("one model call was made")
+        .iter()
+        .filter_map(|message| message.content.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        opening.contains("rewritten by someone else"),
+        "the file view is the workspace as it stands now: {opening}"
+    );
+    assert!(
+        !opening.contains("the first draft"),
+        "not as the last instance saw it: {opening}"
+    );
+    assert!(
+        opening.contains("View: plan\n----\n1. read the game\n2. fix the bug"),
+        "the text view is reproduced exactly, under its own heading: {opening}"
+    );
+
+    // And the second instance re-records the same desk, so it does not decay over a chain.
+    assert_eq!(store.desk("Owner"), desk);
 }

@@ -471,6 +471,35 @@ fn a_code_mode_transcript_is_not_headed_twice() {
     assert_eq!(body, "Task\n----\nBUILD PROMPT");
 }
 
+/// A **text view** is the one band whose heading carries more than its band word — it reads
+/// `View: {label}`, because the label is the only thing telling two of them apart. So the
+/// already-headed check has to compare against the item's own heading rather than against the bare
+/// word, or the transcript would carry `View\n----\nView: plan\n----\n…` and the compaction model
+/// would reasonably read the second heading as content.
+#[test]
+fn a_text_view_keeps_its_selector_and_is_not_headed_twice() {
+    let mut ctx = model(true);
+    ctx.open_text_view("plan".to_string(), "1. read\n2. fix".to_string());
+    let body = handoff_messages(&ctx)
+        .first()
+        .and_then(|m| m.content.clone())
+        .unwrap_or_default();
+    assert_eq!(body, "View: plan\n----\n1. read\n2. fix");
+}
+
+/// The same item in a **tool-calling** window carries no heading of its own, so the transcript adds
+/// one — and it is still the qualified form, so the summarizer can tell one view from another.
+#[test]
+fn a_text_view_in_a_tool_calling_window_is_headed_by_the_transcript() {
+    let mut ctx = model(false);
+    ctx.open_text_view("plan".to_string(), "1. read\n2. fix".to_string());
+    let body = handoff_messages(&ctx)
+        .first()
+        .and_then(|m| m.content.clone())
+        .unwrap_or_default();
+    assert_eq!(body, "View: plan\n----\n1. read\n2. fix");
+}
+
 /// The two handoff prompts open by telling the reader the thread is **a session transcript it has
 /// been handed**, not its own work — the claim the flattening makes structurally true, and what
 /// stops a first-person summary of work the compaction model never did.

@@ -295,8 +295,8 @@ impl Emitter {
     /// `request` is the turn's messages in order, each with the [`GgContextSource`] band it
     /// occupies *this turn*, its estimated tokens, and its selector tag (from
     /// [`ContextModel::prompt_items`](crate::context::ContextModel::prompt_items)) — the tag
-    /// travels onto the pooled definition, so a file view's tokens stay attributable to the
-    /// path that filled the window. `response`
+    /// travels onto the pooled definition, so a view's tokens stay attributable to the selector
+    /// that filled the window (a file view's path, a text view's label). `response`
     /// is the assistant reply the turn produced and its estimated tokens — pooled like any
     /// message (so it reappears, its id unchanged, as a request pointer next turn), or `None`
     /// when the turn produced no assistant message. `usage`/`cost`/`finish_reason` are the

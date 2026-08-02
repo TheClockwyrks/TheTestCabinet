@@ -71,7 +71,7 @@ use test_cabinet_core::gg::{
     GgCapabilitySet, GgContextSource, GgRetainedState, GgTelemetryKind,
 };
 
-use crate::context::{ContextModel, Retention, code_heading};
+use crate::context::{ContextModel, Retention, item_heading};
 use crate::memories::MemoryCalls;
 use crate::model::{ImageContent, Message, ModelClient, Role};
 use crate::prompts::{self, CompactionPromptContext};
@@ -625,7 +625,7 @@ pub fn handoff_messages(context: &ContextModel) -> Vec<Message> {
                 GgContextSource::System | GgContextSource::Skill | GgContextSource::Memory
             )
         })
-        .map(|item| handoff_message(item.source, item.message))
+        .map(|item| handoff_message(item.source, item.label, item.message))
         .collect()
 }
 
@@ -635,14 +635,13 @@ pub fn handoff_messages(context: &ContextModel) -> Vec<Message> {
 /// of narration with no actions in it).
 ///
 /// A message that already opens with its own heading — every synthesized `user` message in a
-/// [code-mode](crate::context::code_heading) run does — is left as it is rather than headed twice.
-fn handoff_message(source: GgContextSource, message: &Message) -> Message {
-    let label = handoff_label(source, message.role);
+/// [code-mode](crate::context::item_heading) run does — is left as it is rather than headed twice.
+fn handoff_message(source: GgContextSource, label: Option<&str>, message: &Message) -> Message {
+    let heading = format!("{}\n----\n", handoff_label(source, label, message.role));
     let mut body = message.content.clone().unwrap_or_default();
     for call in &message.tool_calls {
         body.push_str(&format!("\n→ called `{}`({})", call.name, call.arguments));
     }
-    let heading = format!("{label}\n----\n");
     if body.starts_with(&heading) {
         return Message::user(body);
     }
@@ -651,16 +650,22 @@ fn handoff_message(source: GgContextSource, message: &Message) -> Message {
 
 /// The heading one window item carries in a [handoff transcript](handoff_messages).
 ///
-/// It is read off the item's [source](GgContextSource) — the same vocabulary
-/// [`code_heading`] defines, so a run that already heads its messages is not relabelled — except
-/// for an assistant turn, which has no code heading (a program is the model's own output, never
-/// gg's synthesis) and is exactly the item the flattening must label. `Assistant` is what the
-/// handoff system prompts name it.
-fn handoff_label(source: GgContextSource, role: Role) -> &'static str {
+/// It is read off the item's [source](GgContextSource) **and its selector tag** — the same
+/// [`item_heading`] a code-mode window already prefixes its own messages with, so a run that heads
+/// its messages is not relabelled. The tag matters for exactly one band: a
+/// [text view](GgContextSource::TextView) is headed `View: {label}`, and asking here for the bare
+/// `View` would fail the already-headed check above and hand the summarizer
+/// `View\n----\nView: notes\n----\n…` — two headings for one message, the second of which it would
+/// reasonably read as content.
+///
+/// The exception is an assistant turn, which has no code heading (a program is the model's own
+/// output, never gg's synthesis) and is exactly the item the flattening must label. `Assistant` is
+/// what the handoff system prompts name it.
+fn handoff_label(source: GgContextSource, label: Option<&str>, role: Role) -> String {
     if role == Role::Assistant || source == GgContextSource::Assistant {
-        return "Assistant";
+        return "Assistant".to_string();
     }
-    code_heading(source).unwrap_or("Message")
+    item_heading(source, label).unwrap_or_else(|| "Message".to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -927,6 +932,18 @@ pub struct RestoredFile {
 /// model asked to keep are re-seeded as ordinary (ephemeral, re-readable, evictable) file views;
 /// then the summary is appended last, so the last thing the model reads is the recap that tells it
 /// where to continue.
+///
+/// # Views do not survive the boundary
+///
+/// A [text view](GgContextSource::TextView) — material a
+/// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) program composed for
+/// itself — is an ordinary ephemeral item, so it is dropped here with everything else, and the
+/// request carries **`files` only**: there is no way for a model to name a view it wants carried
+/// across. That is deliberate rather than an oversight. The window is a text view's only copy, so
+/// carrying one across would mean re-seeding bytes the boundary exists to reclaim, and the material
+/// a model wants to outlive a compaction has two homes that already survive one — a file it can
+/// name in `files`, or a [memory](test_cabinet_core::gg::CAPABILITY_MEMORIES). A file view *is*
+/// carried across when the model names its path, because re-reading it is cheap and truthful.
 ///
 /// `fallback` marks a summary that is gg's fixed note rather than a real recap, so a study reads a
 /// failed condensation as a failure rather than as a terse strategy.

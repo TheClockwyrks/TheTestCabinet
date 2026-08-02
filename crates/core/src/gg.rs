@@ -180,16 +180,20 @@ pub const AUTOLOAD_LOCKED_IMPL: &str = "locked";
 ///   agent waits on. An instance that suspends itself (blocking on its subagents or on an
 ///   issue) is not running, so it releases the profile to the next queued instance and
 ///   re-takes it when it resumes.
-/// - **Its open file views carry over.** When an instance finishes its work successfully, the
-///   set of [file views](GgContextSource::FileView) it had open — each path, and the
-///   `offset`/`limit` region of a paged read — is recorded against the profile. The next
-///   instance re-opens exactly those views as its first act, reading each file **fresh from
-///   disk at that moment** rather than replaying the bytes the last instance saw.
+/// - **Its open views carry over.** When an instance finishes its work successfully, the set
+///   of views it had open is recorded against the profile — the
+///   [file views](GgContextSource::FileView) as each path plus the `offset`/`limit` region of a
+///   paged read, and the [text views](GgContextSource::TextView) *with their bodies*. The next
+///   instance re-opens exactly those views as its first act. A file is read **fresh from disk
+///   at that moment** rather than replaying the bytes the last instance saw; a text view is
+///   handed back verbatim, because the agent composed it and the window is its only copy, so
+///   there is nothing fresher to read it from.
 ///
 /// Together those make a profile behave like a long-lived worker with a desk: it comes back to
-/// the files it was last working on, in their current state, having never had two of itself
-/// editing at once. Off (the default), instances of a profile are independent — they run as
-/// concurrently as the run's cap allows and each opens with an empty desk.
+/// the files it was last working on, in their current state, and to the notes it made about
+/// them, having never had two of itself editing at once. Off (the default), instances of a
+/// profile are independent — they run as concurrently as the run's cap allows and each opens
+/// with an empty desk.
 ///
 /// The recorded views are re-opened **when the instance starts its first turn**, not when it
 /// was spawned. A queued instance may wait a long time behind the one ahead of it, and the

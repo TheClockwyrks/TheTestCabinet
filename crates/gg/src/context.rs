@@ -1895,7 +1895,7 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
 /// Every other band keeps the bare word, including [`FileView`](GgContextSource::FileView) —
 /// deliberately, because a file view's body opens with the read's own path header, so `File` plus
 /// the path would say the path twice.
-fn item_heading(source: GgContextSource, label: Option<&str>) -> Option<String> {
+pub(crate) fn item_heading(source: GgContextSource, label: Option<&str>) -> Option<String> {
     let heading = code_heading(source)?;
     match (source, label) {
         (GgContextSource::TextView, Some(label)) => Some(format!("{heading}: {label}")),

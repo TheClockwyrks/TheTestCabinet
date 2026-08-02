@@ -6153,34 +6153,28 @@ impl Agent {
                 .await;
         }
 
-        // Re-open the file views this agent's profile had open when one of its instances last
-        // finished — [agent persistence](crate::persistence). Deliberately here, as part of
-        // setting up the first turn, rather than at spawn time: a persistent agent's instances are
-        // serialized, so this one may have sat queued for a long while behind the instance ahead of it,
-        // and the files are re-read as they stand *now* rather than as that instance last saw them.
+        // Re-open the views this agent's profile had open when one of its instances last finished —
+        // [agent persistence](crate::persistence). Deliberately here, as part of setting up the
+        // first turn, rather than at spawn time: a persistent agent's instances are serialized, so
+        // this one may have sat queued for a long while behind the instance ahead of it, and the
+        // files are re-read as they stand *now* rather than as that instance last saw them.
         // After autoload, so a path the specs already seeded is not opened twice.
+        //
+        // Files first, then the text views the last instance composed — so the desk opens the way
+        // it was assembled (workspace material, then the agent's own notes on it) and the text
+        // views, which are the thing nothing else could reconstruct, sit closest to the tail.
         if persistence.enabled() && !carried {
-            let restored = persistence.restored();
-            let reopened = crate::persistence::restore_file_views(
+            let desk = persistence.restored();
+            let files = crate::persistence::restore_file_views(
                 context,
-                &restored,
+                &desk.files,
                 read_policy,
                 tool_ctx,
                 emitter,
             )
             .await;
-            emitter.emit(log(
-                "info",
-                match reopened {
-                    0 => "agent persistence enabled; no file views carried over from an earlier \
-                          session of this agent."
-                        .to_string(),
-                    count => format!(
-                        "agent persistence enabled; re-opened {count} file view(s) this agent had \
-                         open when it last finished, re-read from the workspace as it stands now."
-                    ),
-                },
-            ));
+            let texts = crate::persistence::restore_text_views(context, &desk.texts);
+            emitter.emit(log("info", crate::persistence::restore_note(files, texts)));
         }
 
         // Pin the blocks whose modules arrived holding something.

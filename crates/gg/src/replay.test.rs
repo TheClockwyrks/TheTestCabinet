@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use serde_json::json;
 use tempfile::TempDir;
-use test_cabinet_core::gg::{GgAgentStatus, GgCapabilitySet};
+use test_cabinet_core::gg::{GgAgentStatus, GgCapabilitySet, GgContextSource};
 use test_cabinet_core::gg_replay::{
     GG_REPLAY_BLOB_REF_KEY, GG_REPLAY_FORMAT_VERSION, GG_REPLAY_STANDARD_STREAM_MAX_BYTES,
     GG_REPLAY_STANDARD_TOOL_MAX_BYTES, GgReplayAgentOrigin, GgReplayPools, fingerprint_exact,
@@ -131,6 +131,24 @@ fn pool_indices(lines: &[GgJournalLine], pool: &str) -> Vec<u32> {
             _ => None,
         })
         .collect()
+}
+
+/// The `content` of the pooled message at `index` — how a test reads what a frame's item actually
+/// says rather than only which pool slot it points at.
+fn message_body(lines: &[GgJournalLine], index: u32) -> String {
+    lines
+        .iter()
+        .find_map(|line| match line {
+            GgJournalLine::Message {
+                index: at, message, ..
+            } if *at == index => Some(message.body.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("no pooled message at index {index}"))
+        .get("content")
+        .and_then(|content| content.as_str())
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn tool_call(id: &str, name: &str) -> ToolCall {
@@ -811,6 +829,50 @@ fn a_prompt_frame_records_the_window_model_fields_the_request_cannot_carry() {
     assert_eq!(
         items.iter().map(|item| item.message).collect::<Vec<_>>(),
         vec![0, 1, 2, 3]
+    );
+}
+
+/// A **text view** round-trips through the frame with no contract change: `source: "text_view"`,
+/// the label the agent gave it as the selector, and no region.
+///
+/// The frame was built to carry a file view's `(path, region)` key, and a text view fits it because
+/// the three fields were never file-specific — the label *is* the selector for both bands. Pinned
+/// here because it is the whole justification for adding no replay contract for views: a playback
+/// that could not name which view a band's tokens belonged to would reconstruct a window it could
+/// not attribute.
+#[test]
+fn a_prompt_frame_records_a_text_view_by_its_label_with_no_region() {
+    let (dir, recorder) = recorder_in(None);
+    let mut ctx = ContextModel::new(Arc::new(HeuristicTokenEstimator), Some(10_000), true);
+    ctx.begin_turn(3);
+    ctx.open_text_view(
+        "changed-files".to_string(),
+        "src/main.rs\nsrc/lib.rs".to_string(),
+    );
+    let items: Vec<PromptItem<'_>> = ctx.prompt_items().collect();
+    recorder.record_prompt_frame("root", &items);
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let GgReplayEntryKind::PromptFrame { items } = &entries(&lines)[0].kind else {
+        panic!("expected a prompt-frame entry");
+    };
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].source, GgContextSource::TextView);
+    assert_eq!(items[0].label.as_deref(), Some("changed-files"));
+    assert_eq!(items[0].region, None, "a text view covers no file region");
+    assert_eq!(items[0].retention, GgReplayRetention::Ephemeral);
+    assert_eq!(items[0].turn, 3);
+
+    // The band's wire tag is the one the console keys its palette and its attribution off.
+    let raw = serde_json::to_value(items[0].source).unwrap();
+    assert_eq!(raw, serde_json::json!("text_view"));
+
+    // The body reaches the pool intact, heading and all, so a playback renders what the model read.
+    let body = message_body(&lines, items[0].message);
+    assert_eq!(
+        body, "View: changed-files\n----\nsrc/main.rs\nsrc/lib.rs",
+        "the pooled body is the message the model was sent"
     );
 }
 

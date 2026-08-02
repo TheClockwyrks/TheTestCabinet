@@ -10,32 +10,48 @@
 //!   profile's name as an [exclusivity key](crate::subagents::ExclusiveKey), so the existing
 //!   [scheduler](crate::subagents::Scheduler) queues the second instance behind the first — inside
 //!   the run's one global parallelism pool, not beside it. [`exclusive_key`] is the whole of it.
-//! - **The desk carries over.** [`AgentPersistence`] is the run-global record of which
-//!   [file views](crate::context::OpenFileView) each persistent profile had open when one of its
-//!   instances last finished successfully. The next instance
-//!   [re-opens them](restore_file_views) as the first thing in its window.
+//! - **The desk carries over.** [`AgentPersistence`] is the run-global record of the
+//!   [views](crate::context::ContextModel::open_views) — [files](crate::context::OpenFileView) and
+//!   [text](crate::context::OpenTextView) alike — each persistent profile had open when one of its
+//!   instances last finished successfully. The next instance re-opens them
+//!   ([files](restore_file_views), then [text](restore_text_views)) as the first thing in its
+//!   window.
 //!
-//! # Why re-read rather than replay
+//! # Why a file view is re-read rather than replayed
 //!
-//! What is recorded is the *reference* to each read — the path and the `offset`/`limit` region — never
-//! the bytes it returned. An instance may sit queued for a long time behind the one ahead of it, and
-//! the instance ahead of it is very often editing the exact files in question. Replaying the stored
-//! text would hand the next instance a confident, wrong picture of the workspace; re-reading hands it
-//! the file as it stands the moment it starts work. That is also why the restore happens at the top of
-//! [`crate::agent`]'s turn loop (which runs *after* the slot is granted) rather than when the instance
-//! was spawned.
+//! What is recorded for a **file** view is the *reference* to the read — the path and the
+//! `offset`/`limit` region — never the bytes it returned. An instance may sit queued for a long time
+//! behind the one ahead of it, and the instance ahead of it is very often editing the exact files in
+//! question. Replaying the stored text would hand the next instance a confident, wrong picture of the
+//! workspace; re-reading hands it the file as it stands the moment it starts work. That is also why
+//! the restore happens at the top of [`crate::agent`]'s turn loop (which runs *after* the slot is
+//! granted) rather than when the instance was spawned.
+//!
+//! # Why a text view is the exception
+//!
+//! A [text view](crate::context::OpenTextView) is recorded **with its body**, and that is not an
+//! inconsistency — it is the same rule applied to material of a different kind. "Record the
+//! reference, never the bytes" earns its keep because a file has an on-disk truth that can move
+//! under a stored snapshot, so a reference is the only thing that stays true. A text view is
+//! whatever the agent composed — a diff it computed, a table it assembled, a subagent's answer — and
+//! it exists nowhere but the window. There is no truth for it to go stale against, and a reference
+//! to it would name nothing re-readable: recording the label alone would restore an empty desk while
+//! reporting a full one. So the body is the record, and the next instance is handed back exactly
+//! what the last one had in front of it.
 //!
 //! # What is not persisted
 //!
-//! Only file views. Not the thread, not the task list, not memories, not skills — an agent that
-//! carried its whole conversation over would be one long agent with a confusing turn count, and
+//! Only views. Not the thread, not the task list, not memories, not skills — an agent that carried
+//! its whole conversation over would be one long agent with a confusing turn count, and
 //! [memories](test_cabinet_core::gg::CAPABILITY_MEMORIES) already exist for state a profile wants to
-//! *narrate* across sessions. Persistence answers the narrower question of which files the worker was
+//! *narrate* across sessions. Persistence answers the narrower question of what the worker was
 //! looking at.
 //!
-//! A [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) agent puts no file view
-//! in its window at all (a program's reads are consumed inside the program), so a persistent code-mode
-//! profile records and restores nothing. Its one-instance-at-a-time half still applies.
+//! Both halves work under [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE)
+//! as they do under tool calling: a program's `view.openFile` pushes a real file view and its
+//! `view.openText` a real text view, so a code-mode profile's desk is recorded and restored like any
+//! other. (A bare `fs.readFile` still puts nothing in the window and so persists nothing — it fetches
+//! bytes for the program rather than showing a file to the agent, and that separation is the point.)
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
@@ -43,7 +59,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::json;
 use test_cabinet_core::gg::{CAPABILITY_AGENT_PERSISTENCE, GgAgentConfig, GgTelemetryKind};
 
-use crate::context::{ContextModel, OpenFileView};
+use crate::context::{ContextModel, OpenFileView, OpenTextView};
 use crate::model::ToolCall;
 use crate::telemetry::Emitter;
 use crate::tools::{READ_FILE_TOOL, ReadFileTool, ReadPolicy, Tool, ToolContext};
@@ -75,6 +91,33 @@ pub fn exclusive_key(profile: &GgAgentConfig) -> Option<String> {
     is_persistent(profile).then(|| profile.name.clone())
 }
 
+/// One persistent profile's **desk**: everything an instance of it had open in its window when it
+/// last finished successfully, in the order it opened each.
+///
+/// The two kinds are held apart rather than in one list because they are restored by two different
+/// mechanisms — a file view is [re-read from disk](restore_file_views) and a text view is
+/// [handed back verbatim](restore_text_views) — and because only one of them can fail to come back.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PersistedDesk {
+    /// The [file views](OpenFileView) open in the window: a path and the region of it the read
+    /// covered, never the bytes. See the module's *Why a file view is re-read rather than replayed*.
+    pub files: Vec<OpenFileView>,
+    /// The [text views](OpenTextView) open in the window, **with their bodies** — the agent composed
+    /// them and the window is their only copy. See the module's *Why a text view is the exception*.
+    pub texts: Vec<OpenTextView>,
+}
+
+impl PersistedDesk {
+    /// The desk a [`ContextModel`] currently holds — what a successfully finished instance
+    /// [records](PersistenceSetup::record) for the next one.
+    pub fn of(context: &ContextModel) -> Self {
+        Self {
+            files: context.open_file_views(),
+            texts: context.open_text_views(),
+        }
+    }
+}
+
 /// The run-global record of what each **persistent** profile had open when one of its instances last
 /// finished successfully, keyed by profile name.
 ///
@@ -84,10 +127,10 @@ pub fn exclusive_key(profile: &GgAgentConfig) -> Option<String> {
 /// opens.
 #[derive(Debug, Default)]
 pub struct AgentPersistence {
-    /// The open [file views](OpenFileView) recorded against each profile, replaced wholesale each time
-    /// one of its instances finishes. Guarded because instances of *different* persistent profiles run
+    /// The [desk](PersistedDesk) recorded against each profile, replaced wholesale each time one of
+    /// its instances finishes. Guarded because instances of *different* persistent profiles run
     /// concurrently.
-    views: Mutex<BTreeMap<String, Vec<OpenFileView>>>,
+    desks: Mutex<BTreeMap<String, PersistedDesk>>,
 }
 
 impl AgentPersistence {
@@ -96,24 +139,25 @@ impl AgentPersistence {
         Arc::new(Self::default())
     }
 
-    /// Record `views` as what the profile named `agent` has open, replacing whatever it had recorded
+    /// Record `desk` as what the profile named `agent` has open, replacing whatever it had recorded
     /// before.
     ///
     /// A wholesale replacement rather than a union: the record is meant to be the desk as the last
-    /// instance left it, so a file that instance closed (evicted, or summarized away by
-    /// [compaction](crate::compaction)) must not come back. An instance that finishes with nothing open
-    /// therefore clears the record, which is the honest reading of "this is what I had open".
-    pub fn record(&self, agent: &str, views: Vec<OpenFileView>) {
-        self.views
+    /// instance left it, so a view that instance closed (evicted, closed by `view.close`, or
+    /// summarized away by [compaction](crate::compaction)) must not come back. An instance that
+    /// finishes with nothing open therefore clears the record, which is the honest reading of "this
+    /// is what I had open".
+    pub fn record(&self, agent: &str, desk: PersistedDesk) {
+        self.desks
             .lock()
             .expect("agent persistence lock")
-            .insert(agent.to_string(), views);
+            .insert(agent.to_string(), desk);
     }
 
-    /// The file views recorded against the profile named `agent`, in the order they were opened —
-    /// empty when nothing has been recorded for it.
-    pub fn views(&self, agent: &str) -> Vec<OpenFileView> {
-        self.views
+    /// The [desk](PersistedDesk) recorded against the profile named `agent` — bare when nothing has
+    /// been recorded for it.
+    pub fn desk(&self, agent: &str) -> PersistedDesk {
+        self.desks
             .lock()
             .expect("agent persistence lock")
             .get(agent)
@@ -161,20 +205,21 @@ impl PersistenceSetup {
         self.agent.is_some()
     }
 
-    /// The file views this agent's profile last recorded — empty when it is not persistent or when no
-    /// instance of it has finished yet.
-    pub fn restored(&self) -> Vec<OpenFileView> {
+    /// The [desk](PersistedDesk) this agent's profile last recorded — bare when it is not persistent
+    /// or when no instance of it has finished yet.
+    pub fn restored(&self) -> PersistedDesk {
         match &self.agent {
-            Some(agent) => self.store.views(agent),
-            None => Vec::new(),
+            Some(agent) => self.store.desk(agent),
+            None => PersistedDesk::default(),
         }
     }
 
-    /// Record the file views `context` currently holds against this agent's profile — what a
-    /// successfully finished instance hands to the next one. A no-op for a non-persistent agent.
+    /// Record the [desk](PersistedDesk) `context` currently holds against this agent's profile —
+    /// what a successfully finished instance hands to the next one. A no-op for a non-persistent
+    /// agent.
     pub fn record(&self, context: &ContextModel) {
         if let Some(agent) = &self.agent {
-            self.store.record(agent, context.open_file_views());
+            self.store.record(agent, PersistedDesk::of(context));
         }
     }
 }
@@ -258,6 +303,57 @@ pub async fn restore_file_views(
         restored += 1;
     }
     restored
+}
+
+/// Re-open `views` in `context` as the [text views](crate::context::ContextModel::open_text_view)
+/// they were: each label carrying the body the last instance composed for it, byte for byte.
+///
+/// The counterpart of [`restore_file_views`], and deliberately *not* the same mechanism. There is
+/// nothing to re-read — a text view is a diff the agent computed, a table it assembled, a subagent's
+/// answer — so there is no fresher truth to prefer and no read that can fail. Handing the body back
+/// is the only restore that restores anything (see the module's *Why a text view is the exception*).
+///
+/// No skip-if-already-open pass either, unlike the file half: opening a label that is already open
+/// [supersedes](crate::context::ContextModel::open_text_view) it rather than duplicating it, so the
+/// restore is idempotent by construction. The views land as ordinary
+/// [ephemeral](crate::context::Retention::Ephemeral) items the agent can close and a
+/// [compaction](crate::compaction) will drop — exactly as if it had opened them itself, which it
+/// effectively did. Returns how many were re-opened.
+pub fn restore_text_views(context: &mut ContextModel, views: &[OpenTextView]) -> usize {
+    for view in views {
+        context.open_text_view(view.label.clone(), view.body.clone());
+    }
+    views.len()
+}
+
+/// The one-line note a restored instance logs about the desk it opened on — what came back, and by
+/// which of the two mechanisms.
+///
+/// The distinction is worth the words to an operator reading the stream: the file views are the
+/// workspace **as it stands now**, which may differ from what the last instance saw, while the text
+/// views are that instance's own material reproduced exactly. An agent whose window disagrees with
+/// its predecessor's is behaving correctly on the first count and would be broken on the second.
+pub fn restore_note(files: usize, texts: usize) -> String {
+    let mut parts = Vec::new();
+    if files > 0 {
+        parts.push(format!(
+            "re-opened {files} file view(s), re-read from the workspace as it stands now"
+        ));
+    }
+    if texts > 0 {
+        parts.push(format!(
+            "restored {texts} text view(s) exactly as it composed them"
+        ));
+    }
+    if parts.is_empty() {
+        return "agent persistence enabled; nothing carried over from an earlier session of this \
+                agent."
+            .to_string();
+    }
+    format!(
+        "agent persistence enabled; {} — what this agent had open when it last finished.",
+        parts.join(", and ")
+    )
 }
 
 #[cfg(test)]

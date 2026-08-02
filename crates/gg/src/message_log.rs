@@ -90,13 +90,13 @@ pub fn finish_reason_token(reason: &FinishReason) -> String {
 
 /// Build the [`ContextMessage`](GgTelemetryKind::ContextMessage) event that records
 /// `message`'s full body under its [`fingerprint`] `id`, charged at `tokens` estimated
-/// tokens and tagged with the window item's `label` (a file view's path, or `None` for an
-/// ordinary message).
+/// tokens and tagged with the window item's `label` — a **view's selector**: a file view's
+/// workspace path or a text view's label, and `None` for an ordinary message.
 ///
 /// The label rides on the pooled definition rather than on each turn's
 /// [reference](test_cabinet_core::gg::GgPromptRef) because it is a property of the
-/// *material*, not of the turn: a file view shows the same file every turn it survives, so
-/// carrying the path once with the body is both cheaper and the thing a reader wants
+/// *material*, not of the turn: a view shows the same material every turn it survives, so
+/// carrying its selector once with the body is both cheaper and the thing a reader wants
 /// alongside the content.
 ///
 /// Images become [descriptors](GgLoggedImage) (media type + decoded size) rather than
