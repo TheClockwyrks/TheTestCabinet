@@ -11,6 +11,7 @@ import {
   arrangeLeftPaddleHit,
   actLeftPaddleHit,
   startPlaying,
+  LEAD_TICKS,
 } from "../_helpers.mjs";
 
 function angleDeg(ball) {
@@ -28,14 +29,23 @@ export default function item() {
     // point, with no spin from paddle motion mixed in.
     async arrange(api) {
       await startPlaying(api);
-      await arrangeLeftPaddleHit(api, { cy: 360, vy: 0, ballY: 360 });
+      // The run-up puts half a second of level approach in front of the contact, so
+      // the clip shows the ball MEET the paddle center rather than opening on a
+      // return already under way — the outgoing line means nothing to a reviewer who
+      // never saw where it came off. The paddle is still, so it simply waits there.
+      await arrangeLeftPaddleHit(api, {
+        cy: 360,
+        vy: 0,
+        ballY: 360,
+        leadTicks: LEAD_TICKS,
+      });
     },
 
     // Run the real bounce and read the ball the instant it rebounds, before spin can
     // decay or curve the flight. This IS the clip: the reviewer watches the approach
     // and then the return, which the tail holds on long enough to read as straight.
     async act(api) {
-      center = await actLeftPaddleHit(api);
+      center = await actLeftPaddleHit(api, { leadTicks: LEAD_TICKS });
       await api.advance(120); // 120 ticks (1s) of return flight, so the clip shows the line
     },
 

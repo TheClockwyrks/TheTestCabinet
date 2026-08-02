@@ -10,6 +10,7 @@ import {
   actLeftPaddleHit,
   arrangeLeftPaddleHit,
   startPlaying,
+  LEAD_TICKS,
 } from "../_helpers.mjs";
 
 export default function item() {
@@ -24,11 +25,20 @@ export default function item() {
     // `act`.
     async arrange(api) {
       await startPlaying(api);
-      await arrangeLeftPaddleHit(api, { cy: 360, vy: 0, ballY: 360 });
+      // Half a second of level approach ahead of the contact, so the clip shows the
+      // ball reach the still paddle and come off it. Filming from the rebound alone
+      // shows a straight line without showing that a paddle produced it — which is
+      // the whole point of a no-spin return.
+      await arrangeLeftPaddleHit(api, {
+        cy: 360,
+        vy: 0,
+        ballY: 360,
+        leadTicks: LEAD_TICKS,
+      });
     },
 
     async act(api) {
-      still = await actLeftPaddleHit(api);
+      still = await actLeftPaddleHit(api, { leadTicks: LEAD_TICKS });
       // Let the returned ball travel on so the clip shows the very thing checked:
       // a stationary-paddle return crossing straight, with no curve.
       await api.advance(192); // 192 ticks = the old 1600ms clip hold
