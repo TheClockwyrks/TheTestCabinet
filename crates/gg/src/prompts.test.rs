@@ -149,7 +149,7 @@ fn tidy_collapses_blank_runs() {
 fn a_bare_run_renders_almost_nothing() {
     let prompt = render_system(&bare_system(), None);
     for absent in [
-        "## Responses as code",
+        "## Responses as Code",
         "## Tasks",
         "## Subagents",
         "Reading images",
@@ -193,7 +193,7 @@ fn code_mode_names_objects_and_teaches_discovery() {
     };
     let prompt = render_system(&context, None);
     let flat = flat(&prompt);
-    assert!(prompt.contains("## Responses as code"), "{prompt}");
+    assert!(prompt.contains("## Responses as Code"), "{prompt}");
     // Each object is named and described — the name and a distinctive phrase from its description,
     // not the separator (`:` / ` — `) the template happens to put between them.
     for keyword in [
@@ -221,9 +221,15 @@ fn code_mode_names_objects_and_teaches_discovery() {
 /// operator's stream — so the prompt has to name the channel that carries, show it being used, and
 /// say plainly where logging goes instead.
 ///
-/// The worked example is drawn from what the run actually binds: `view.openText` is ungated (a run
-/// with no tools at all must still be able to show its model something), while the `view.openFile`
-/// line and the `fs.readFile` split it teaches appear only when this run offers `read_file`.
+/// The teaching is drawn from what the run actually binds: `view.openText` is ungated (a run with
+/// no tools at all must still be able to show its model something), while the `view.openFile` line
+/// appears only when this run offers `read_file`.
+///
+/// It is taught in the opening paragraphs rather than under a section of its own — the rewrite in
+/// `b60d2798` folded the old *Showing yourself things* section into the intro, on the reasoning
+/// that the one fact a code-mode model has to hold from its first turn should not be four screens
+/// down. So these assertions pin the *content* — the calls, the gating, where logging goes — and
+/// not the heading it happens to sit under.
 #[test]
 fn code_mode_teaches_views_rather_than_logging() {
     let with_reads = render_system(
@@ -244,28 +250,29 @@ fn code_mode_teaches_views_rather_than_logging() {
         None,
     );
     let flat_reads = flat(&with_reads);
-    assert!(
-        with_reads.contains("### Showing yourself things"),
-        "{with_reads}"
-    );
-    assert!(
-        with_reads.contains("view.openText(\"changed-files\""),
-        "{with_reads}"
-    );
-    assert!(
-        with_reads.contains("view.openFile(\"specs/rules.md\")"),
-        "{with_reads}"
-    );
-    // The §2.2 split, in one line, exactly where the model meets both calls.
+    // The channel that carries: views are what the next turn is built from, and the call that opens
+    // one is spelled out where the model first meets it.
     assert!(
         flat_reads.contains(
-            "`fs.readFile` gets bytes for your program; `view.openFile` shows a file to you."
+            "Any views that your code opens will be provided to you on the next \
+                             turn."
         ),
+        "{with_reads}"
+    );
+    assert!(
+        with_reads.contains("`view.openText(slug: str, contents: str)`"),
+        "{with_reads}"
+    );
+    assert!(
+        with_reads.contains("`view.openFile(path: str)`"),
         "{with_reads}"
     );
     // Logging is named once, as the thing that does NOT reach the model — never as an instruction.
     assert!(
-        flat_reads.contains("`console.log()` goes to the run's operator rather than to you"),
+        flat_reads.contains(
+            "Views are the only way that you can read data from your code. `console.log()` will \
+             not be visible."
+        ),
         "{with_reads}"
     );
     assert!(
@@ -277,8 +284,8 @@ fn code_mode_teaches_views_rather_than_logging() {
         "blank-line run:\n{with_reads}"
     );
 
-    // A run that withholds `read_file` is taught neither the file view nor the split — the same
-    // ablation discipline every other section follows — but keeps the text view, which nothing gates.
+    // A run that withholds `read_file` is not taught the file view — the same ablation discipline
+    // every other section follows — but keeps the text view, which nothing gates.
     let no_reads = render_system(
         &SystemContext {
             responses_as_code: true,
@@ -291,14 +298,10 @@ fn code_mode_teaches_views_rather_than_logging() {
         None,
     );
     assert!(
-        no_reads.contains("view.openText(\"changed-files\""),
+        no_reads.contains("`view.openText(slug: str, contents: str)`"),
         "{no_reads}"
     );
     assert!(!no_reads.contains("view.openFile"), "{no_reads}");
-    assert!(
-        !flat(&no_reads).contains("gets bytes for your program"),
-        "{no_reads}"
-    );
     assert!(!no_reads.contains("\n\n\n"), "blank-line run:\n{no_reads}");
 }
 
@@ -726,7 +729,7 @@ fn code_mode_with_no_workspace_tools_still_names_harness() {
 fn the_tool_calling_prompt_names_no_tools() {
     // `full_system()` is a tool-calling context (`responses_as_code` is false).
     let prompt = render_system(&full_system(), None);
-    assert!(!prompt.contains("## Responses as code"), "{prompt}");
+    assert!(!prompt.contains("## Responses as Code"), "{prompt}");
     assert!(!prompt.contains("Your APIs"), "{prompt}");
     assert!(!prompt.contains("`fs`"), "{prompt}");
     assert!(!prompt.contains("write_file"), "{prompt}");
