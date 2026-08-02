@@ -872,9 +872,9 @@ pub(super) struct CodeTurnState {
 /// the model is taught in one line: **`fs.readFile` gets bytes for your program; `view.openFile`
 /// shows a file to you.** A view is an intent — *this should be visible* — so it is an attributable,
 /// evictable, persisted context item keyed by `(path, region)`, and the picture an opened mockup
-/// returned rides in that item. One channel, which is what makes
-/// [`MAX_OPEN_IMAGE_VIEWS`] a bound on the whole arm rather than one of two budgets that cannot see
-/// each other.
+/// returned rides in that item. One channel, which is what makes the
+/// [open-image-view cap](crate::sandbox::SandboxLimits::image_view_cap) a bound on the whole arm
+/// rather than one of two budgets that cannot see each other.
 #[allow(clippy::too_many_arguments)]
 async fn run_code_program(
     source: &str,
@@ -928,6 +928,9 @@ async fn run_code_program(
         pending_compaction: turn.pending_compaction,
         serviced: 0,
         view_ops: 0,
+        // The one ceiling on `limits` that is not enforced by the store: it bounds what stays in
+        // the window rather than what this program may spend, so it travels onto the api instead.
+        image_view_cap: limits.image_view_cap,
     };
 
     let sandbox = tokio::task::spawn_blocking(move || {
@@ -1088,25 +1091,12 @@ const MAX_VIEW_LABEL_BYTES: usize = 200;
 /// never refused by this: it replaces a view rather than adding one.
 const MAX_OPEN_TEXT_VIEWS: usize = 50;
 
-/// The most **image-carrying** file views one agent may hold open at once.
-///
-/// A picture is tens of megabytes of base64 that is re-sent on *every* request for as long as its
-/// view is open, which is why this bounds **occupancy** rather than opens: a per-program budget
-/// would let N programs open N times this many and bound nothing that survived the turn. It is read
-/// from the live window ([`ContextModel::open_image_views`]) each time, so there is no counter to
-/// reset and no way for it to drift from what the window holds.
-///
-/// Three things it deliberately does not do. It does not touch a view of a **text** file. It does
-/// not refuse **re-opening** a path that is already an open image view, which replaces an occupant
-/// rather than adding one. And it does not count [pinned](crate::context) views — an autoloaded
-/// specification image is the operator's choice and the agent cannot close it, so counting four
-/// pinned mockups would make the cap permanently unreachable.
-///
-/// **Native tool calling is deliberately left uncapped.** A native `read_file` of an image pushes a
-/// file view with no budget at all. Capping it would move the *control* arm of the A/B this
-/// capability exists to measure in order to fix a defect in the treatment arm; the asymmetry is
-/// documented rather than closed.
-const MAX_OPEN_IMAGE_VIEWS: usize = 4;
+// The most **image-carrying** file views one agent may hold open at once is deliberately NOT a
+// constant here. It is `SandboxLimits::image_view_cap` — configured per agent by the `imageViewCap`
+// param and carried onto `LoopToolApi::image_view_cap` with the rest of that agent's ceilings —
+// because it is the one view cap an experiment has a reason to move: it decides how much of a
+// context window a run spends on pictures. The caps above it bound the *shape* of a window (a label
+// is a name, a hundred views in one turn is a loop), which no arm needs to vary.
 
 /// The most view operations — `openFile` + `openText` + `close` — one program may make.
 ///
@@ -1185,6 +1175,14 @@ pub(super) struct LoopToolApi {
     /// chose to attempt, and not counting them would leave a program that swallows the throws
     /// looping on a budget it can never spend.
     view_ops: u32,
+    /// How many image-carrying views **this agent** may hold open at once — the
+    /// [`imageViewCap`](crate::sandbox::SandboxLimits::image_view_cap) param, resolved from this
+    /// agent's own profile and carried in on its [ceilings](SandboxLimits).
+    ///
+    /// It is a ceiling and not a counter: what it is compared against is counted from the live
+    /// window ([`ContextModel::open_image_views`]) at each call, so views that outlived the program
+    /// that opened them are counted and nothing has to be reset between turns.
+    image_view_cap: usize,
 }
 
 #[allow(dead_code)]
@@ -1495,8 +1493,13 @@ impl LoopToolApi {
     /// now. Re-opening a path that already holds an image view is a supersede — it replaces an
     /// occupant instead of adding one — so it is admitted at exactly the ceiling; that check uses
     /// the same `(path, region)` key the push itself supersedes on, so the two cannot disagree.
+    ///
+    /// The ceiling itself is **this agent's**: it comes from the `imageViewCap` its own profile
+    /// resolved, so a reviewer that is only ever shown one screenshot and a builder working from
+    /// four mockups can be configured differently in one run.
     fn refuse_over_image_cap(&self, path: &str, region: Option<FileRegion>) -> Option<ViewRefusal> {
         image_view_refusal(
+            self.image_view_cap,
             self.context.open_image_views(),
             self.context.holds_image_view(path, region),
         )
@@ -1607,14 +1610,20 @@ fn text_view_refusal(label: &str, body: &str, open: &[String]) -> Option<ViewRef
     None
 }
 
-/// The refusal [`MAX_OPEN_IMAGE_VIEWS`] makes about a `view.openFile` whose read turned out to be a
-/// picture, or `None` to let it through.
+/// The refusal the [open-image-view cap](crate::sandbox::SandboxLimits::image_view_cap) makes about
+/// a `view.openFile` whose read turned out to be a picture, or `None` to let it through.
 ///
-/// `open` is how many image views the window already holds; `superseding` is whether this call
-/// re-opens one of them. Superseding is never refused, for the reason re-opening an already-open
+/// `cap` is the agent's own configured ceiling — its `imageViewCap` — `open` is how many image
+/// views its window already holds, and `superseding` is whether this call re-opens one of them.
+/// Superseding is never refused, for the reason re-opening an already-open
 /// label is never refused by [`MAX_OPEN_TEXT_VIEWS`]: it replaces an occupant instead of adding one,
 /// and refusing it would leave an agent at the ceiling unable to *refresh* any of the views holding
 /// it there.
+///
+/// A cap of zero is honourable and reachable: it refuses every picture, which is exactly what an
+/// arm measuring a run that cannot look at anything asks for. (The
+/// [resolver](crate::sandbox::resolve_sandbox_limits) will not *produce* zero from a param — a zero
+/// param reads as "not configured" — but nothing here depends on that.)
 ///
 /// It **refuses** rather than dropping the picture and pushing the view anyway. A drop leaves the
 /// model holding a view whose body says a picture is there and no picture — it learns about the loss
@@ -1622,14 +1631,14 @@ fn text_view_refusal(label: &str, body: &str, open: &[String]) -> Option<ViewRef
 /// catches at the call site, and nothing enters the window: no view, no read charged to it. So the
 /// message has to name both the cap and the way out, which is a close the agent can actually
 /// perform.
-fn image_view_refusal(open: usize, superseding: bool) -> Option<ViewRefusal> {
-    (open >= MAX_OPEN_IMAGE_VIEWS && !superseding).then(|| ViewRefusal {
+fn image_view_refusal(cap: usize, open: usize, superseding: bool) -> Option<ViewRefusal> {
+    (open >= cap && !superseding).then(|| ViewRefusal {
         failure: ToolFailure::LimitExceeded,
         message: format!(
-            "you already have {MAX_OPEN_IMAGE_VIEWS} image views open (MAX_OPEN_IMAGE_VIEWS), \
-             which is the most one agent may hold — a picture is re-sent on every request for as \
-             long as its view is open. Nothing was shown and no view was opened. Close one with \
-             `view.close(path)` — `view.current()` lists what is open — and open this one again."
+            "you already have {open} image views open, and {cap} is the most this agent may hold \
+             (its `imageViewCap`) — a picture is re-sent on every request for as long as its view \
+             is open. Nothing was shown and no view was opened. Close one with `view.close(path)` \
+             — `view.current()` lists what is open — and open this one again."
         ),
     })
 }
@@ -2233,7 +2242,8 @@ impl ToolApi for LoopToolApi {
     ///
     /// # The image cap is consulted here, and only for a picture
     ///
-    /// A view is the only way a picture enters the window, so [`MAX_OPEN_IMAGE_VIEWS`] is enforced
+    /// A view is the only way a picture enters the window, so this agent's
+    /// [open-image-view cap](crate::sandbox::SandboxLimits::image_view_cap) is enforced
     /// on this one call. It can only be asked **after** the read, because nothing before it knows
     /// the file is a picture — gg sniffs the magic bytes rather than trusting an extension — so the
     /// order is read, then decide, then push. A read that produced no picture (a text file, or one

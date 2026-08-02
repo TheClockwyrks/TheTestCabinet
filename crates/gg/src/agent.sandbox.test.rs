@@ -862,7 +862,7 @@ async fn the_fifth_image_view_is_refused_rather_than_opened_without_its_picture(
         .find(|m| body(m).contains("Your program ran to completion."))
         .expect("the turn feedback");
     assert!(
-        body(feedback).contains("view refused:") && body(feedback).contains("MAX_OPEN_IMAGE_VIEWS"),
+        body(feedback).contains("view refused:") && body(feedback).contains("imageViewCap"),
         "the turn's report has to name the cap that refused the view: {}",
         body(feedback)
     );
@@ -962,6 +962,85 @@ async fn re_opening_an_open_image_view_succeeds_at_exactly_the_cap() {
         4,
         "the same program opened it moments ago and nothing has been sent, so the re-open replaces \
          the copy in place rather than leaving a corpse beside it"
+    );
+}
+
+/// **The cap is the `imageViewCap` of the agent whose turn it is, and two agents in one run differ.**
+///
+/// The whole reason the cap is a capability param rather than a constant is that a run is not one
+/// agent: a builder working from reference art and a reviewer that only ever needs one screenshot
+/// want different numbers, and responses-as-code is resolved per agent. This drives both in one
+/// configuration — a root at three, a subagent at one — and has each open the same three pictures.
+/// The root opens all three; the subagent is refused on the second and the third. A cap read once
+/// from the run (or from the root's profile, which is the plausible mistake) would give both agents
+/// the same number and one half of this would fail.
+#[tokio::test]
+async fn each_agents_image_cap_is_its_own() {
+    let dir = TempDir::new().unwrap();
+    for name in ["a.png", "b.png", "c.png"] {
+        std::fs::write(dir.path().join(name), TEST_PNG).unwrap();
+    }
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-code-caps".to_string()), Box::new(sink.clone()));
+
+    // One configuration, two agents, two different caps.
+    let mut set = subagent_set(2, 3, &["reviewer"]);
+    for agent in &mut set.agents {
+        let cap = if agent.name == ROOT_AGENT { 3 } else { 1 };
+        let mut code = GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE);
+        code.params = json!({ "imageViewCap": cap });
+        agent.capabilities.push(code);
+    }
+    let inv = invocation(dir.path(), set);
+
+    // The same program for both, writing where each was refused: whatever differs is the cap.
+    let open_three = |into: &str| {
+        format!(
+            "const refused = [];
+             for (const p of [\"a.png\", \"b.png\", \"c.png\"]) {{
+             \x20 try {{
+             \x20   view.openFile(p);
+             \x20 }} catch (error) {{
+             \x20   refused.push(p + \":\" + error.code);
+             \x20 }}
+             }}
+             fs.writeFile(\"{into}\", refused.join(\",\") || \"none\");"
+        )
+    };
+    let root_program = format!(
+        "{}\nconst child = agents.spawnSubagent({{ agent: \"reviewer\", prompt: \"Look at it.\" \
+         }});\nagents.waitForSubagents([child.id]);",
+        open_three("root.txt")
+    );
+    let reviewer_program = format!("{}\n{FINISHING_PROGRAM}", open_three("reviewer.txt"));
+    let factory = ScriptedFactory::new()
+        .slot(ROOT_AGENT, move |b| {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![code_reply(&root_program), code_reply(FINISHING_PROGRAM)],
+            ))
+        })
+        .slot("reviewer", move |b| {
+            Box::new(MockClient::new(
+                &b.model_id,
+                vec![code_reply(&reviewer_program)],
+            ))
+        });
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
+        SessionOutcome::Ran
+    );
+
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("root.txt")).unwrap(),
+        "none",
+        "the root's cap of three admits three pictures"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("reviewer.txt")).unwrap(),
+        "b.png:limit-exceeded,c.png:limit-exceeded",
+        "the subagent's own cap of one refuses everything after the first, in the same run"
     );
 }
 

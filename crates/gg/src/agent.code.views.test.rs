@@ -8,6 +8,14 @@
 
 use super::*;
 use crate::context::EvictionResult;
+use crate::sandbox::SandboxLimits;
+
+/// The open-image-view cap an agent that configures no `imageViewCap` runs under — read from the
+/// [ceilings](SandboxLimits) rather than restated, so a change to the default cannot leave these
+/// cases asserting against a number nothing uses.
+fn default_cap() -> usize {
+    SandboxLimits::default().image_view_cap
+}
 
 /// A body under the ceiling, with a label, is simply allowed.
 #[test]
@@ -182,9 +190,9 @@ fn a_close_reports_the_band_it_reclaimed_from() {
 /// Under the ceiling, nothing is refused — including the call that fills the last slot.
 #[test]
 fn the_image_cap_admits_everything_up_to_the_ceiling() {
-    for open in 0..MAX_OPEN_IMAGE_VIEWS {
+    for open in 0..default_cap() {
         assert!(
-            image_view_refusal(open, false).is_none(),
+            image_view_refusal(default_cap(), open, false).is_none(),
             "{open} open image views is under the cap"
         );
     }
@@ -196,11 +204,21 @@ fn the_image_cap_admits_everything_up_to_the_ceiling() {
 /// ceiling it hit and that the way out is a close it can actually perform. It also has to be told
 /// that nothing happened, because the alternative reading — that the view was opened without its
 /// picture — is exactly the shipped defect this replaced.
+///
+/// The cap names itself by its **configured** name, `imageViewCap`, and not by a Rust constant:
+/// there is no longer a constant to name, and an operator reading the transcript can find the knob
+/// that produced this number in the run's own configuration.
 #[test]
 fn the_image_cap_refuses_a_new_picture_and_names_the_way_out() {
-    let refusal = image_view_refusal(MAX_OPEN_IMAGE_VIEWS, false).expect("the window is full");
+    let refusal =
+        image_view_refusal(default_cap(), default_cap(), false).expect("the window is full");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
-    assert!(refusal.message.contains("MAX_OPEN_IMAGE_VIEWS"));
+    assert!(refusal.message.contains("imageViewCap"));
+    assert!(
+        refusal.message.contains("4"),
+        "the number in force has to be in the message, not just the name of the knob: {}",
+        refusal.message
+    );
     assert!(
         refusal.message.contains("view.close(path)"),
         "the model has to be told what to close: {}",
@@ -213,6 +231,39 @@ fn the_image_cap_refuses_a_new_picture_and_names_the_way_out() {
     );
 }
 
+/// **The cap that is enforced is the configured one, whatever the default says.**
+///
+/// A configured arm is only an arm if the number it set is the number the refusal uses: a cap of two
+/// admits the second picture and refuses the third, and a cap of eight admits what the default would
+/// have refused.
+#[test]
+fn the_configured_cap_is_the_one_enforced() {
+    assert!(
+        image_view_refusal(2, 1, false).is_none(),
+        "under a cap of 2"
+    );
+    let refusal = image_view_refusal(2, 2, false).expect("a cap of 2 is spent at 2");
+    assert!(
+        refusal.message.contains('2'),
+        "the configured number, not the default, is what the model is told: {}",
+        refusal.message
+    );
+    assert!(
+        image_view_refusal(8, default_cap(), false).is_none(),
+        "a wider arm admits what the default would refuse"
+    );
+}
+
+/// A cap of **zero** refuses the very first picture, rather than wrapping into something permissive.
+///
+/// The [resolver](crate::sandbox::resolve_sandbox_limits) never produces zero from a param — a zero
+/// param reads as "not configured" — but the decision itself must not depend on that, since a cap
+/// arriving from anywhere else would then silently mean "unlimited".
+#[test]
+fn a_cap_of_zero_refuses_the_first_picture() {
+    assert!(image_view_refusal(0, 0, false).is_some());
+}
+
 /// **Re-opening a path that is already an open image view is never refused.**
 ///
 /// It replaces an occupant rather than adding one, so the count does not move. Refusing it would
@@ -221,11 +272,11 @@ fn the_image_cap_refuses_a_new_picture_and_names_the_way_out() {
 #[test]
 fn the_image_cap_admits_a_supersede_at_exactly_the_ceiling() {
     assert!(
-        image_view_refusal(MAX_OPEN_IMAGE_VIEWS, true).is_none(),
+        image_view_refusal(default_cap(), default_cap(), true).is_none(),
         "re-opening an open image view replaces one; it does not add one"
     );
     assert!(
-        image_view_refusal(MAX_OPEN_IMAGE_VIEWS + 3, true).is_none(),
+        image_view_refusal(default_cap(), default_cap() + 3, true).is_none(),
         "a window somehow over the cap can still be refreshed, which is how it gets back under it"
     );
 }
