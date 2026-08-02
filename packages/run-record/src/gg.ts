@@ -575,6 +575,7 @@ export type GgContextSource =
   | "assistant"
   | "tool_output"
   | "file_view"
+  | "text_view"
   | "skill"
   | "memory"
   | "task_list"
@@ -1114,12 +1115,16 @@ export type GgRetainedState = {
  * The [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)
  * capability lets a disciplined agent reclaim window space itself rather than waiting for
  * the automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer
- * needs (safe — it can re-read the file later) or [archive a section of its
+ * needs (safe — it can re-read the file later), [close text views](Self::CloseTextViews)
+ * it composed and no longer wants in front of it, or [archive a section of its
  * thread](Self::ArchiveThread) (removed from the live window but kept **searchable** via
- * `search_archive`). Both reclaim tokens; a `search_archive` call reclaims nothing and so
- * is reported only as an ordinary tool result, not as a `ContextManaged` action.
+ * `search_archive`). All three reclaim tokens; a `search_archive` call reclaims nothing and
+ * so is reported only as an ordinary tool result, not as a `ContextManaged` action.
  */
-export type GgContextAction = "evict_file_views" | "archive_thread";
+export type GgContextAction =
+  | "evict_file_views"
+  | "close_text_views"
+  | "archive_thread";
 
 /**
  * The lifecycle status of an agent in the [subagent tree](https://docs.testcabinet.ai/gg/subagents/),

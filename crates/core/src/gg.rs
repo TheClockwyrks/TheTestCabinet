@@ -2370,6 +2370,20 @@ pub enum GgContextSource {
     /// agent-managed context capability may drop these; ordinary tool output is not a
     /// file view).
     FileView,
+    /// Material the agent **composed** and put in its own window — a value a
+    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program
+    /// computed and opened as a labelled view, rather than something read off the
+    /// workspace or reported back by gg.
+    ///
+    /// It is the third party to the two bands either side of it, and the distinction is
+    /// about *authorship*, not about content: a [`FileView`](Self::FileView) is workspace
+    /// material (gg read a path the agent named, and the file on disk is the truth the
+    /// view is a snapshot of), [`ToolOutput`](Self::ToolOutput) is gg's own per-turn
+    /// reporting back to the agent, and a text view is the agent's own material — a
+    /// summary, a diff, a table, a subagent's answer — that exists nowhere but the window.
+    /// Each one is keyed by the label the agent gave it, so it can be attributed, superseded
+    /// and closed by name exactly as a file view is by path.
+    TextView,
     /// A [skill](https://docs.testcabinet.ai/gg/skills/) shown or read — retained across
     /// a compaction boundary.
     Skill,
@@ -2392,12 +2406,13 @@ impl GgContextSource {
     /// Every source, in a stable order. A [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown)
     /// reports one entry per source in this order (zero when a source contributed
     /// nothing), so the console's stacked graph keeps stable bands across turns.
-    pub const ALL: [GgContextSource; 10] = [
+    pub const ALL: [GgContextSource; 11] = [
         GgContextSource::System,
         GgContextSource::UserPrompt,
         GgContextSource::Assistant,
         GgContextSource::ToolOutput,
         GgContextSource::FileView,
+        GgContextSource::TextView,
         GgContextSource::Skill,
         GgContextSource::Memory,
         GgContextSource::TaskList,
@@ -2875,10 +2890,11 @@ pub struct GgRetainedState {
 /// The [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)
 /// capability lets a disciplined agent reclaim window space itself rather than waiting for
 /// the automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer
-/// needs (safe — it can re-read the file later) or [archive a section of its
+/// needs (safe — it can re-read the file later), [close text views](Self::CloseTextViews)
+/// it composed and no longer wants in front of it, or [archive a section of its
 /// thread](Self::ArchiveThread) (removed from the live window but kept **searchable** via
-/// `search_archive`). Both reclaim tokens; a `search_archive` call reclaims nothing and so
-/// is reported only as an ordinary tool result, not as a `ContextManaged` action.
+/// `search_archive`). All three reclaim tokens; a `search_archive` call reclaims nothing and
+/// so is reported only as an ordinary tool result, not as a `ContextManaged` action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -2887,6 +2903,15 @@ pub enum GgContextAction {
     /// `read_file`) from the live window, reclaiming their tokens. The file is unchanged on
     /// disk and can be re-read.
     EvictFileViews,
+    /// The agent closed one or more [text views](GgContextSource::TextView) — material it
+    /// had composed and opened by label — from the live window, reclaiming their tokens.
+    ///
+    /// Distinct from [`EvictFileViews`](Self::EvictFileViews) because the two are not the
+    /// same trade: an evicted file view is recoverable by re-reading the path, whereas a
+    /// closed text view held the agent's only copy of something it computed, so closing one
+    /// discards it unless the agent wrote it down. A close request naming a workspace path
+    /// is reported as `EvictFileViews`; one naming a view label is reported here.
+    CloseTextViews,
     /// The agent archived a section of its [thread](GgContextSource::History) — the oldest
     /// ephemeral turns — removing it from the live window while keeping it searchable and
     /// recoverable through `search_archive`.

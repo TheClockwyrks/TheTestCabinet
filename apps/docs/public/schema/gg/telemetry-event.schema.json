@@ -237,11 +237,16 @@
       ]
     },
     "GgContextAction": {
-      "description": "The kind of agent-managed-context action a [`ContextManaged`](GgTelemetryKind::ContextManaged)\nevent reports — the model-facing window management that is the complement to\n[compaction](CAPABILITY_COMPACTION).\n\nThe [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)\ncapability lets a disciplined agent reclaim window space itself rather than waiting for\nthe automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer\nneeds (safe — it can re-read the file later) or [archive a section of its\nthread](Self::ArchiveThread) (removed from the live window but kept **searchable** via\n`search_archive`). Both reclaim tokens; a `search_archive` call reclaims nothing and so\nis reported only as an ordinary tool result, not as a `ContextManaged` action.",
+      "description": "The kind of agent-managed-context action a [`ContextManaged`](GgTelemetryKind::ContextManaged)\nevent reports — the model-facing window management that is the complement to\n[compaction](CAPABILITY_COMPACTION).\n\nThe [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)\ncapability lets a disciplined agent reclaim window space itself rather than waiting for\nthe automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer\nneeds (safe — it can re-read the file later), [close text views](Self::CloseTextViews)\nit composed and no longer wants in front of it, or [archive a section of its\nthread](Self::ArchiveThread) (removed from the live window but kept **searchable** via\n`search_archive`). All three reclaim tokens; a `search_archive` call reclaims nothing and\nso is reported only as an ordinary tool result, not as a `ContextManaged` action.",
       "oneOf": [
         {
           "const": "evict_file_views",
           "description": "The agent evicted one or more [file views](GgContextSource::FileView) (the results of\n`read_file`) from the live window, reclaiming their tokens. The file is unchanged on\ndisk and can be re-read.",
+          "type": "string"
+        },
+        {
+          "const": "close_text_views",
+          "description": "The agent closed one or more [text views](GgContextSource::TextView) — material it\nhad composed and opened by label — from the live window, reclaiming their tokens.\n\nDistinct from [`EvictFileViews`](Self::EvictFileViews) because the two are not the\nsame trade: an evicted file view is recoverable by re-reading the path, whereas a\nclosed text view held the agent's only copy of something it computed, so closing one\ndiscards it unless the agent wrote it down. A close request naming a workspace path\nis reported as `EvictFileViews`; one naming a view label is reported here.",
           "type": "string"
         },
         {
@@ -277,6 +282,11 @@
         {
           "const": "file_view",
           "description": "The contents of a file the agent viewed — evictable working material (an\nagent-managed context capability may drop these; ordinary tool output is not a\nfile view).",
+          "type": "string"
+        },
+        {
+          "const": "text_view",
+          "description": "Material the agent **composed** and put in its own window — a value a\n[responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program\ncomputed and opened as a labelled view, rather than something read off the\nworkspace or reported back by gg.\n\nIt is the third party to the two bands either side of it, and the distinction is\nabout *authorship*, not about content: a [`FileView`](Self::FileView) is workspace\nmaterial (gg read a path the agent named, and the file on disk is the truth the\nview is a snapshot of), [`ToolOutput`](Self::ToolOutput) is gg's own per-turn\nreporting back to the agent, and a text view is the agent's own material — a\nsummary, a diff, a table, a subagent's answer — that exists nowhere but the window.\nEach one is keyed by the label the agent gave it, so it can be attributed, superseded\nand closed by name exactly as a file view is by path.",
           "type": "string"
         },
         {

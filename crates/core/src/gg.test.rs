@@ -701,8 +701,23 @@ fn the_module_vocabulary_serializes_in_its_documented_spelling() {
 #[test]
 fn context_source_all_covers_every_variant_in_stable_order() {
     // `ALL` constructs every variant (so none is dead) and fixes the band order.
-    assert_eq!(GgContextSource::ALL.len(), 10);
+    assert_eq!(GgContextSource::ALL.len(), 11);
     assert_eq!(GgContextSource::ALL[0], GgContextSource::System);
+    // A text view sits immediately after the file view: the two view bands are adjacent,
+    // and every band after them keeps its relative order (the console's palette is keyed
+    // by index, so this order is the contract).
+    assert_eq!(
+        &GgContextSource::ALL[4..7],
+        &[
+            GgContextSource::FileView,
+            GgContextSource::TextView,
+            GgContextSource::Skill,
+        ]
+    );
+    assert_eq!(
+        serde_json::to_value(GgContextSource::TextView).unwrap(),
+        json!("text_view")
+    );
     assert_eq!(
         serde_json::to_value(GgContextSource::TaskList).unwrap(),
         json!("task_list")
@@ -930,10 +945,14 @@ fn context_managed_serializes_the_action_and_reclaim() {
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
     assert_eq!(kind, back);
 
-    // The other action variant tags snake_case too.
+    // The other action variants tag snake_case too.
     assert_eq!(
         serde_json::to_value(GgContextAction::ArchiveThread).unwrap(),
         json!("archive_thread")
+    );
+    assert_eq!(
+        serde_json::to_value(GgContextAction::CloseTextViews).unwrap(),
+        json!("close_text_views")
     );
 }
 
