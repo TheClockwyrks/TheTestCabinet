@@ -270,12 +270,31 @@ this page all read one flag and cannot drift apart.
 
 ## Publishing and the analyzer version
 
-Three ranking-relevant figures are lifted onto every run's public summary, so a
-"which model writes the tightest code?" ordering can be computed from the bounded
-summary set without loading every record. The full document is published as its own
-content-stable object, **scrubbed** — model-written source contains hard-coded
-credentials often enough that redaction exists at all, and a symbol name or a file
-path is text like any other.
+Three ranking-relevant figures — **code lines**, the **size Gini**, and **mean
+cognitive complexity** — are lifted onto every run's public summary card, so a "which
+model writes the tightest code?" ordering can be computed from the bounded summary set
+without loading every record. They travel with the analyzer generation, the authored and
+tree basis, and the truncation flag, because two analysed runs are not automatically
+comparable and a card carrying only numbers would let a list rank two incomparable ones
+side by side with nothing to say so.
+
+The full document is published as its own content-stable object with **the generation in
+its key** (`media/runs/<id>/code-analysis/v2.json`), which does two jobs at once: a
+snapshot refresh that finds it already in the bucket references it without re-reading or
+re-uploading, so N refreshes upload it once; and a re-analysis under a newer generation
+mints a *new* object rather than silently overwriting figures an already-published
+snapshot still points at. It is **scrubbed** on its way out — model-written source
+contains hard-coded credentials often enough that redaction exists at all, and a symbol
+name or a file path is text like any other, and the snapshot builder redacts the per-run
+document and only that document, so a sibling object that skipped the scrubber would
+reach the open internet unredacted.
+
+An **absent** figure is the common case and means *never measured*. Every surface that
+renders one says so — the run log's CODE cell reads "not measured" rather than drawing a
+zero, and an aggregate over `code.*` reports the contributing count against the bucket's
+size. That is not politeness: with no backfill, a chart that quietly plots only
+post-analyzer runs beside older ones reads as "these models wrote no code", which is a
+false claim about the models rather than an honest one about the measurement.
 
 Every result is stamped with the **analyzer version** — the generation of the
 analyzer that computed it — lifted onto a column of the run row so it can be sliced

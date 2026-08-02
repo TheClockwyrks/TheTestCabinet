@@ -427,6 +427,97 @@ describe("RunLog model/config cell", () => {
   });
 });
 
+describe("RunLog code cell", () => {
+  beforeEach(() => localStorage.clear());
+
+  function renderWithCodeColumn(runs: RunSummary[]) {
+    function CodeHarness() {
+      const table = useRunTable({
+        runs,
+        localIds: new Set(),
+        localWriteups: {},
+        externalOrder: true,
+      });
+      return <RunLog rows={table.rows} controls={table.controls} />;
+    }
+    const rendered = render(
+      <MemoryRouter>
+        <GalleryDataProvider value={galleryValue()}>
+          <CodeHarness />
+        </GalleryDataProvider>
+      </MemoryRouter>,
+    );
+    // The column starts hidden: with an un-backfilled corpus a default-on CODE column
+    // is a column of dashes, so it lives in the picker.
+    fireEvent.click(screen.getByRole("button", { name: "Choose columns" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "CODE" }));
+    return rendered;
+  }
+
+  function codeCell(container: HTMLElement): HTMLElement {
+    const cell = container.querySelector('[data-label="Code"]');
+    if (!(cell instanceof HTMLElement)) throw new Error("no CODE cell rendered");
+    return cell;
+  }
+
+  // The card's whole reason for existing: an ordering over the analysed corpus without
+  // fetching a single run record.
+  it("renders the code figure lifted onto the summary card", () => {
+    const run = summary("r-code", "alpha");
+    run.code = {
+      analyzerVersion: 2,
+      authoredBasis: "seedCommit",
+      treeBasis: "preValidation",
+      truncated: false,
+      codeLines: 1250,
+      giniCodeLines: 0.42,
+      meanCognitive: 3.1,
+    };
+    const { container } = renderWithCodeColumn([run]);
+    const cell = codeCell(container);
+    expect(cell.textContent).toBe("1,250");
+    expect(cell.getAttribute("title")).toContain("analyzer v2");
+    expect(cell.getAttribute("title")).not.toContain("truncated");
+  });
+
+  // R5, and the reason this step exists at all. Analysis is deliberately not
+  // backfilled, so most of the corpus has no figure — and a cell that read as a zero
+  // would turn "we never measured this" into "this model wrote no code", which is a
+  // different and false claim about the model.
+  it("says an unanalysed run was not measured rather than showing a zero", () => {
+    const { container } = renderWithCodeColumn([summary("r-none", "alpha")]);
+    const cell = codeCell(container);
+    expect(cell.textContent).toBe("—");
+    expect(cell.getAttribute("title")).toMatch(/not measured/i);
+    expect(cell.getAttribute("title")).toMatch(/not backfilled/i);
+    expect(cell.getAttribute("title")).toMatch(/not a claim/i);
+  });
+
+  // Two analysed runs are not automatically comparable. A figure measured over the
+  // whole tree counts code the run was *given*; one measured after validation counts
+  // build output; a truncated one stopped short. The cell marks each rather than
+  // presenting all of them as the same number.
+  it("marks a figure whose basis makes it incomparable", () => {
+    const run = summary("r-loose", "alpha");
+    run.code = {
+      analyzerVersion: 2,
+      authoredBasis: "allFiles",
+      treeBasis: "postValidation",
+      truncated: true,
+      codeLines: 90000,
+      giniCodeLines: 0.9,
+      meanCognitive: 12,
+    };
+    const { container } = renderWithCodeColumn([run]);
+    const cell = codeCell(container);
+    expect(cell.textContent).toBe("90,000*");
+    const title = cell.getAttribute("title") ?? "";
+    expect(title).toContain("seeded files included");
+    expect(title).toContain("after validation");
+    expect(title).toContain("truncated");
+  });
+});
+
 describe("sortStateToQuery", () => {
   it("defaults to date/desc for no sort", () => {
     expect(sortStateToQuery(null)).toEqual({ sort: "date", dir: "desc" });

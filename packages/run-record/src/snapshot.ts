@@ -8,6 +8,7 @@
 // in the same pass.
 
 import type { ModelOut } from "./backend-api";
+import type { CodeAuthoredBasis, CodeTreeBasis } from "./code-analysis";
 import type { Comparison } from "./comparison";
 import type { GgRunDoc } from "./gg-query";
 import type {
@@ -132,6 +133,25 @@ export type RunSummary = {
    * fuel needs no checklist weights — so [`RunSummary::from_stored`] fills it.
    */
   performance?: PerformanceSummaryOut | null;
+  /**
+   * The ranking-relevant slice of the run's [code
+   * analysis](test_cabinet_core::code_analysis), lifted onto the card so a
+   * "which model writes the tightest code?" ordering can be computed from the
+   * bounded summary set without loading every run's full record. See
+   * [`CodeSummaryOut`], which also explains why the provenance rides along with
+   * the figures.
+   *
+   * `None` means the run was **never analysed** — not that it wrote no code. The
+   * corpus is [not backfilled], so every run that finished before the analyzer
+   * shipped carries `None` forever, and any view that renders this must say
+   * "not measured" rather than draw a zero.
+   *
+   * Catalog-free (the figures are already on the record), so
+   * [`RunSummary::from_stored`] fills it.
+   *
+   * [not backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version
+   */
+  code?: CodeSummaryOut | null;
   links: LinksOut;
 };
 
@@ -184,6 +204,69 @@ export type PerformanceSummaryOut = {
    * run earns no leaderboard placement.
    */
   totalFuel: number | null;
+};
+
+/**
+ * The code analysis as a summary card carries it: three ranking-relevant figures,
+ * plus the provenance a reader needs before comparing two of them.
+ *
+ * The full [`CodeAnalysisSummary`](test_cabinet_core::code_analysis::CodeAnalysisSummary)
+ * is ninety-odd leaves and already rides on the record inside the per-run document;
+ * this is the part a *list* sorts on, so it stays small — the same bargain
+ * [`PerformanceSummaryOut`] strikes for fuel, and catalog-free for the same reason.
+ *
+ * **The provenance fields are not decoration.** Two things make a bare figure
+ * dishonest here. Analysis is [never backfilled], so an absent `code` on a card means
+ * *not measured*, and among the cards that do carry one an
+ * [`allFiles`](test_cabinet_core::code_analysis::CodeAuthoredBasis::AllFiles) authored
+ * basis or a [`postValidation`](test_cabinet_core::code_analysis::CodeTreeBasis::PostValidation)
+ * tree basis measured a different population than the exact one — the silent-degradation
+ * risk the basis fields exist for. And a
+ * [truncated](test_cabinet_core::code_analysis::CodeAnalysisNotes::truncated) analysis is
+ * excluded from aggregation by default, so a view that ranks it beside complete ones
+ * ranks a partial figure that looks complete. Carrying all four alongside the numbers is
+ * what lets a card say so without fetching the record.
+ *
+ * [never backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version
+ */
+export type CodeSummaryOut = {
+  /**
+   * The [analyzer generation](test_cabinet_core::code_analysis::CODE_ANALYZER_VERSION)
+   * that produced these figures, so a corpus spanning two generations is visible
+   * rather than reading as a step change in the models.
+   */
+  analyzerVersion: number;
+  /**
+   * How the authored set was resolved — how much of this tree is actually the
+   * model's work.
+   */
+  authoredBasis: CodeAuthoredBasis;
+  /**
+   * Which state of the tree was measured.
+   */
+  treeBasis: CodeTreeBasis;
+  /**
+   * Whether a tree-wide cap stopped the analysis short. A truncated result is
+   * excluded from aggregation by default.
+   */
+  truncated: boolean;
+  /**
+   * How much code the model wrote: non-blank, non-comment lines across the
+   * authored set.
+   */
+  codeLines: number;
+  /**
+   * The Gini coefficient of code lines across files — zero when every file is the
+   * same size, approaching one when a single file holds everything. The one number
+   * that answers "did the model split the work?".
+   */
+  giniCodeLines: number;
+  /**
+   * Mean Sonar cognitive complexity per function. Cognitive rather than cyclomatic
+   * because cyclomatic is blind to nesting, and nesting is what makes generated code
+   * unreadable.
+   */
+  meanCognitive: number;
 };
 
 /**
@@ -255,6 +338,26 @@ export type PerRun = {
    * named by snapshot-relative key. Empty for a non-asset-generation run.
    */
   assetMedia: Array<RunAssetOut>;
+  /**
+   * The snapshot-relative key of the run's **unbounded**
+   * [code-analysis document](test_cabinet_core::code_analysis::CodeAnalysisDocument) —
+   * every authored file, every scored function, every import edge, cycle and clone
+   * group — published as its own object so the public Code tab can fetch it on demand
+   * rather than inflating this document (and therefore every run's page load) with a
+   * tier only one tab reads.
+   *
+   * Content-stable and **generation-keyed**
+   * (`media/runs/<id>/code-analysis/v<analyzerVersion>.json`), so a refresh that finds
+   * the object already in the bucket references it without re-reading or re-uploading
+   * the bytes — and a *re-analysis under a newer generation* mints a different key
+   * rather than silently overwriting figures a published snapshot still points at.
+   *
+   * `None` when the run was never analysed, and also when it was but the document's
+   * bytes are no longer readable (the backend store is ephemeral) — the bounded summary
+   * on the record survives either way, so the tab degrades to the figures instead of
+   * offering a link that 404s.
+   */
+  codeAnalysisKey?: string;
 };
 
 /**

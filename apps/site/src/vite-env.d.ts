@@ -58,6 +58,15 @@ declare module "virtual:tcab-snapshot" {
    */
   export const validationMediaUrls: Record<string, Record<string, string>>;
   /**
+   * Resolved code-analysis document URLs, keyed by run id — one per run, since a run
+   * has exactly one analysis.
+   *
+   * A run id **absent** from this map was never analysed, which is most of the corpus:
+   * analysis is deliberately not backfilled, so it starts on the day the analyzer
+   * shipped. That absence means "not measured", never "wrote no code".
+   */
+  export const codeAnalysisUrls: Record<string, string>;
+  /**
    * Resolved *baseline* automated-validation media URLs (the reference
    * implementation's debug-script outputs), keyed by a `<slug>/<version>/<variant>`
    * subject key then by the flat `<item>__<output>.<ext>` name. Case-scoped.

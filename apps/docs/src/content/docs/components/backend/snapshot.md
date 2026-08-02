@@ -233,6 +233,47 @@ bucket costs neither an upload nor an ffmpeg transcode.
 Computing the digest needs a local store read, which is cheap; it is the upload and
 the transcode that the skip avoids.
 
+## Code analysis
+
+A run's [code analysis](/gg/analysis/code-analysis/) is published in the same two tiers
+it is computed in, and the split is what keeps a run's page load bounded.
+
+The **bounded summary** rides on the record inside the per-run document, and its
+ranking-relevant slice — code lines, the size Gini, mean cognitive complexity — is
+additionally lifted onto the run's summary card in `runs.json` as `code`, alongside the
+analyzer generation, the authored/tree basis and the truncation flag. That is what lets
+"which model writes the tightest code?" be answered from one file instead of one fetch
+per run. The provenance travels with the figures deliberately: two analysed runs are not
+automatically comparable, and a card that carried only the numbers would let a list rank
+two incomparable ones side by side with nothing to say so.
+
+The **unbounded document** — every authored file, every scored function, every import
+edge, cycle and clone group — is published as its own object with the analyzer generation
+in its key:
+
+```text
+media/runs/<run-id>/code-analysis/v2.json
+```
+
+Like run media it sits under `media/`, so `with_existing_media` skips it on every refresh
+after the first and two refreshes upload it exactly once. Unlike run media it is *not*
+immutable per run: a re-analysis under a newer generation is a different document, and the
+generation in the key is what makes it mint a new object rather than silently overwrite
+figures a published snapshot still points at. The per-run document names it as
+`codeAnalysisKey`, and the site's Code tab fetches it on demand.
+
+Two things follow that the surfaces above must honour:
+
+- **The object is scrubbed on its own.** The builder redacts the per-run document and
+  only that document, so a sibling object bypasses redaction entirely. This one is a
+  static read of model-written source — every path and symbol name the model wrote — so it
+  is parsed and passed through the same secret scrubber before it becomes an object.
+- **An absent `code` means never measured.** The corpus is
+  [not backfilled](/gg/analysis/code-analysis/#publishing-and-the-analyzer-version), so
+  every run that finished before the analyzer shipped carries no figures and never will.
+  A view that draws a zero there turns a gap in the measurement into a claim about the
+  model.
+
 ## Pruning superseded generations
 
 Every refresh writes a whole new `snapshots/<snapshotId>/` generation and cuts over

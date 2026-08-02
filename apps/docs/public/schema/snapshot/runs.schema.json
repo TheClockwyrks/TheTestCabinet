@@ -1,5 +1,54 @@
 {
   "$defs": {
+    "CodeSummaryOut": {
+      "description": "The code analysis as a summary card carries it: three ranking-relevant figures,\nplus the provenance a reader needs before comparing two of them.\n\nThe full [`CodeAnalysisSummary`](test_cabinet_core::code_analysis::CodeAnalysisSummary)\nis ninety-odd leaves and already rides on the record inside the per-run document;\nthis is the part a *list* sorts on, so it stays small — the same bargain\n[`PerformanceSummaryOut`] strikes for fuel, and catalog-free for the same reason.\n\n**The provenance fields are not decoration.** Two things make a bare figure\ndishonest here. Analysis is [never backfilled], so an absent `code` on a card means\n*not measured*, and among the cards that do carry one an\n[`allFiles`](test_cabinet_core::code_analysis::CodeAuthoredBasis::AllFiles) authored\nbasis or a [`postValidation`](test_cabinet_core::code_analysis::CodeTreeBasis::PostValidation)\ntree basis measured a different population than the exact one — the silent-degradation\nrisk the basis fields exist for. And a\n[truncated](test_cabinet_core::code_analysis::CodeAnalysisNotes::truncated) analysis is\nexcluded from aggregation by default, so a view that ranks it beside complete ones\nranks a partial figure that looks complete. Carrying all four alongside the numbers is\nwhat lets a card say so without fetching the record.\n\n[never backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version",
+      "properties": {
+        "analyzerVersion": {
+          "description": "The [analyzer generation](test_cabinet_core::code_analysis::CODE_ANALYZER_VERSION)\nthat produced these figures, so a corpus spanning two generations is visible\nrather than reading as a step change in the models.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "authoredBasis": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/code-analysis.schema.json#/$defs/CodeAuthoredBasis",
+          "description": "How the authored set was resolved — how much of this tree is actually the\nmodel's work."
+        },
+        "codeLines": {
+          "description": "How much code the model wrote: non-blank, non-comment lines across the\nauthored set.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "giniCodeLines": {
+          "description": "The Gini coefficient of code lines across files — zero when every file is the\nsame size, approaching one when a single file holds everything. The one number\nthat answers \"did the model split the work?\".",
+          "format": "double",
+          "type": "number"
+        },
+        "meanCognitive": {
+          "description": "Mean Sonar cognitive complexity per function. Cognitive rather than cyclomatic\nbecause cyclomatic is blind to nesting, and nesting is what makes generated code\nunreadable.",
+          "format": "double",
+          "type": "number"
+        },
+        "treeBasis": {
+          "$ref": "https://docs.testcabinet.ai/schema/core/code-analysis.schema.json#/$defs/CodeTreeBasis",
+          "description": "Which state of the tree was measured."
+        },
+        "truncated": {
+          "description": "Whether a tree-wide cap stopped the analysis short. A truncated result is\nexcluded from aggregation by default.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "analyzerVersion",
+        "authoredBasis",
+        "treeBasis",
+        "truncated",
+        "codeLines",
+        "giniCodeLines",
+        "meanCognitive"
+      ],
+      "type": "object"
+    },
     "LinksOut": {
       "description": "A run's outbound links as the snapshot carries them.",
       "properties": {
@@ -69,6 +118,17 @@
       "properties": {
         "caseName": {
           "type": "string"
+        },
+        "code": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CodeSummaryOut"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The ranking-relevant slice of the run's [code\nanalysis](test_cabinet_core::code_analysis), lifted onto the card so a\n\"which model writes the tightest code?\" ordering can be computed from the\nbounded summary set without loading every run's full record. See\n[`CodeSummaryOut`], which also explains why the provenance rides along with\nthe figures.\n\n`None` means the run was **never analysed** — not that it wrote no code. The\ncorpus is [not backfilled], so every run that finished before the analyzer\nshipped carries `None` forever, and any view that renders this must say\n\"not measured\" rather than draw a zero.\n\nCatalog-free (the figures are already on the record), so\n[`RunSummary::from_stored`] fills it.\n\n[not backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version"
         },
         "finishedAt": {
           "type": "string"

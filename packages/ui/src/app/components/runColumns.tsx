@@ -172,6 +172,60 @@ function modelCell(configName: string | null, modelName: string): ReactNode {
   );
 }
 
+// The CODE cell: how many lines of code the model wrote, or an explicit "not
+// measured".
+//
+// The distinction the tooltip carries is the whole point of the cell. A run with no
+// analysis is not a run that wrote no code — the corpus is deliberately not backfilled,
+// so every run that finished before the analyzer shipped has no figure and never will.
+// Rendering a zero there (or leaving a bare dash to be read as one) would turn a gap in
+// the measurement into a claim about the model, which is exactly the silent-absence
+// failure the summary was lifted onto the card to avoid.
+//
+// The figure itself also carries its provenance, because two analysed runs are not
+// automatically comparable: an analysis over the whole tree (no seed commit to
+// subtract) counts code the run was *given*, one measured after validation counts build
+// output, and a truncated one stopped short of the tree. Each is a real figure and each
+// means something different, so the cell says which it is rather than presenting all
+// three as the same number.
+function codeCell(code: RunSummary["code"]): ReactNode {
+  if (!code) {
+    return (
+      <span
+        className={`${styles.num} ${styles.noRating}`}
+        data-label="Code"
+        title="Not measured — code analysis is not backfilled, so runs from before it shipped carry no figures. This is not a claim that the run wrote no code."
+      >
+        &mdash;
+      </span>
+    );
+  }
+  const caveats = [
+    code.authoredBasis !== "seedCommit"
+      ? `authored set: ${code.authoredBasis === "allFiles" ? "the whole tree (seeded files included)" : "a heuristic baseline"}`
+      : null,
+    code.treeBasis === "postValidation"
+      ? "measured after validation built the tree"
+      : null,
+    code.truncated ? "truncated — a cap stopped the analysis short" : null,
+  ].filter((caveat): caveat is string => caveat !== null);
+  const title = [
+    `${code.codeLines.toLocaleString("en-US")} lines of code (analyzer v${code.analyzerVersion})`,
+    ...caveats,
+  ].join(" · ");
+  return (
+    <span
+      className={styles.num}
+      data-label="Code"
+      title={title}
+      data-qualified={caveats.length > 0 ? "" : undefined}
+    >
+      {code.codeLines.toLocaleString("en-US")}
+      {caveats.length > 0 && "*"}
+    </span>
+  );
+}
+
 // The full column set, left→right. The caret gutter leads; the test name anchors
 // each row; the metric group and rating trail. Every data column is `optional`
 // so the picker can show or hide any of them; only the caret gutter is fixed.
@@ -397,6 +451,28 @@ export const RUN_COLUMNS: readonly RunColumn[] = [
       </span>
     ),
     renderActive: () => activeDash("Cost", true),
+  },
+  {
+    id: "code",
+    label: "CODE",
+    default: "5.5rem",
+    min: 64,
+    numeric: true,
+    optional: true,
+    // Off by default, and the reason is the corpus rather than the column. Code
+    // analysis is deliberately **not backfilled** — it starts on the day the analyzer
+    // shipped — so for most of the run log this column is a column of dashes. Shipping
+    // it on by default would trade a real figure for a wall of "not measured"; shipping
+    // it in the picker keeps it one click away for anyone comparing analysed runs.
+    defaultVisible: false,
+    // No `sortKey`, for the same reason POINTS has none: the server cannot sort by it
+    // (only the analyzer *version* is lifted to a run column, not the figures), so on a
+    // server-ordered page a sort affordance here would highlight a header and silently
+    // return date order. The ranking this figure exists for is done over the published
+    // summary set — by the Discover surface, or by anything reading `runs.json` — not by
+    // this header.
+    render: (row) => codeCell(row.summary.code),
+    renderActive: () => activeDash("Code", true),
   },
   {
     id: "points",

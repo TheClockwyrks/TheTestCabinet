@@ -7,11 +7,6 @@ import type {
   CodeAnalysisDocument,
   CodeAnalysisSummary,
 } from "@test-cabinet/run-record/code-analysis";
-import {
-  BackendProvider,
-  type BackendContextValue,
-} from "../../../../client/context";
-import type { BackendClient } from "../../../../client/clients";
 import { RunCodePage } from "./RunCodePage";
 
 // The page's chrome reads app-wide contexts that say nothing about the analysis. Stub
@@ -29,10 +24,19 @@ vi.mock("../../../data/useTestCaseName", () => ({
 vi.mock("../../../data/useModels", () => ({
   useFindModel: () => () => null,
 }));
-const fixture = vi.hoisted(() => ({ detail: null as unknown }));
+// The document tier is a **host hook**, not a client call — a console reads the backend
+// route, the static site fetches the snapshot object — so it is stubbed here on the
+// gallery, which is the seam the page actually reads.
+const fixture = vi.hoisted(() => ({
+  detail: null as unknown,
+  readCodeAnalysis: undefined as
+    | ((runId: string) => Promise<unknown>)
+    | undefined,
+}));
 vi.mock("../../../data/galleryContext", () => ({
   useGalleryData: () => ({
     fetchRun: async () => fixture.detail,
+    readCodeAnalysis: fixture.readCodeAnalysis,
     localIds: new Set<string>(),
     writeups: {},
     canExecute: false,
@@ -167,23 +171,11 @@ const DOCUMENT = {
   clones: [],
 } as unknown as CodeAnalysisDocument;
 
-function backendValue(
-  readCodeAnalysis?: BackendClient["readCodeAnalysis"],
-): BackendContextValue {
-  return {
-    client: { readCodeAnalysis } as unknown as BackendClient,
-    identity: null,
-    status: "ready",
-    error: null,
-    url: "http://backend",
-    setUrl: () => {},
-  };
-}
-
 function renderPage(
   codeAnalysis: CodeAnalysisSummary | undefined,
-  readCodeAnalysis?: BackendClient["readCodeAnalysis"],
+  readCodeAnalysis?: (runId: string) => Promise<unknown>,
 ) {
+  fixture.readCodeAnalysis = readCodeAnalysis;
   fixture.detail = {
     record: {
       id: RUN_ID,
@@ -204,11 +196,9 @@ function renderPage(
   };
   return render(
     <MemoryRouter initialEntries={[`/runs/${RUN_ID}/code`]}>
-      <BackendProvider value={backendValue(readCodeAnalysis)}>
-        <Routes>
-          <Route path="/runs/:runId/code" element={<RunCodePage />} />
-        </Routes>
-      </BackendProvider>
+      <Routes>
+        <Route path="/runs/:runId/code" element={<RunCodePage />} />
+      </Routes>
     </MemoryRouter>,
   );
 }

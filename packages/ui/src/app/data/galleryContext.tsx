@@ -19,6 +19,7 @@ import type {
   TournamentRecord,
 } from "@test-cabinet/run-record";
 import type { RunSummary } from "@test-cabinet/run-record/snapshot";
+import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import type { Comparison } from "@test-cabinet/run-record/comparison";
 import type { GgRunDoc } from "@test-cabinet/run-record/gg-query";
 import {
@@ -411,6 +412,23 @@ export interface GalleryDataInput {
     runId: string,
     onProgress?: ProgressCallback,
   ) => Promise<RunEventStreams | null>;
+  /**
+   * Fetch a run's **unbounded** code-analysis document — every authored file, every
+   * scored function, every import edge, cycle and clone group — for the run-detail
+   * Code tab's explorer. The *bounded* summary rides on the run record, so the tab's
+   * provenance strip and figure table never wait on this; only the explorer does.
+   *
+   * A host hook rather than a client call because the two hosts source it completely
+   * differently, exactly as they do for {@link fetchRunEvents}: a console reads the
+   * backend's `GET /runs/{id}/code-analysis`, the static site fetches the
+   * generation-keyed snapshot object the publish emitted. Omitted by a host that
+   * cannot reach the document at all, which the tab reports as "not available here".
+   *
+   * Resolves `null` when the run has **no** document — which is most of the corpus,
+   * since analysis is deliberately not backfilled. That is "never measured", and the
+   * tab must say so rather than render an empty explorer.
+   */
+  readCodeAnalysis?: (runId: string) => Promise<CodeAnalysisDocument | null>;
   /**
    * Resolve one run's full record by id, directly from the host's store. The
    * gallery no longer holds full records in memory — pages fetch summary cards a

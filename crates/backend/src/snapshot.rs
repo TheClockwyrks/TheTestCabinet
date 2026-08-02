@@ -361,6 +361,12 @@ impl SnapshotBuilder {
             let (validation_media, validation_objects) =
                 self.run_validation_media(&run.record).await;
             let (asset_media, asset_objects) = self.run_assets(run).await;
+            // The unbounded code-analysis document is the one per-run object whose
+            // bytes are not media: it is published beside the run rather than inside
+            // it, so it is scrubbed *here*, on its own, before it becomes an object
+            // (see [`Self::run_code_analysis`]).
+            let (code_analysis_key, code_analysis_object) =
+                self.run_code_analysis(&run.record, &scrubber);
             // Serialize the public document, then redact any leaked secret from
             // it (across the record, its events, and any other captured text)
             // before it becomes a snapshot object bound for R2.
@@ -377,6 +383,7 @@ impl SnapshotBuilder {
                 proof_media,
                 validation_media,
                 asset_media,
+                code_analysis_key,
             })
             .map_err(|e| {
                 BackendError::Snapshot(format!(
@@ -397,6 +404,7 @@ impl SnapshotBuilder {
             objects.extend(proof_objects);
             objects.extend(validation_objects);
             objects.extend(asset_objects);
+            objects.extend(code_analysis_object);
         }
 
         // pfp/<reviewer-id> — each reviewer's profile picture, exported once under
@@ -1111,6 +1119,112 @@ impl SnapshotBuilder {
         (metas, objects)
     }
 
+    /// Publish a run's **unbounded** code-analysis document as its own object, and
+    /// return the key the per-run document points at it by.
+    ///
+    /// Three properties are load-bearing, and each is asserted by a test.
+    ///
+    /// **The record decides, not the store.** The bounded summary on the record is the
+    /// authoritative statement that this run was analysed — the same posture proofs take
+    /// — so a document left in the store by a run whose record carries none is not
+    /// published. Absent an analysis there is nothing to publish and nothing to link.
+    ///
+    /// **The generation is in the key.** `media/runs/<id>/code-analysis/v<gen>.json`,
+    /// keyed by the generation *the document was computed under* (off the record, not
+    /// off [`CODE_ANALYZER_VERSION`](test_cabinet_core::code_analysis::CODE_ANALYZER_VERSION)
+    /// — a later binary must not relabel an older result). That is what makes the object
+    /// content-stable: [`with_existing_media`](Self::with_existing_media) skips it on
+    /// every refresh after the first, so two refreshes upload it **once**, while a genuine
+    /// re-analysis under a newer generation mints a new key instead of overwriting figures
+    /// a published snapshot still points at.
+    ///
+    /// **It is scrubbed on its own.** [`build`](Self::build) walks and redacts the
+    /// `PerRun` document and only that document, so a sibling object bypasses redaction
+    /// entirely (R7). This one is a static read of model-written source — file paths and
+    /// symbol names are text like any other, and model-written source contains hard-coded
+    /// credentials often enough that the scrubber exists at all — so it goes through
+    /// [`SecretScrubber::scrub_json`] here, as a parsed document rather than as opaque
+    /// bytes.
+    ///
+    /// The stored bytes are gzip (what the driver mirrors from the run tree) or plain
+    /// JSON (what a hand-written fixture or an older mirror holds); both are accepted, by
+    /// the gzip magic, exactly as the serving route does. Anything unreadable or
+    /// unparseable yields `None` and a warning rather than failing the refresh: the
+    /// bounded summary still reaches the card and the record, so the surface degrades to
+    /// the figures instead of offering a link that 404s. There is no artifact-service
+    /// fallback for this document (the service exposes no route for a tree-root file), so
+    /// a run whose ephemeral store copy is lost before its first publish keeps its summary
+    /// and loses its explorer.
+    fn run_code_analysis(
+        &self,
+        record: &RunRecord,
+        scrubber: &SecretScrubber,
+    ) -> (Option<String>, Option<SnapshotObject>) {
+        let Some(summary) = record.code_analysis.as_ref() else {
+            return (None, None);
+        };
+        let run_id = &record.id;
+        let key = format!(
+            "{MEDIA_PREFIX}/{run_id}/code-analysis/v{}.json",
+            summary.analyzer_version
+        );
+        // Already in the bucket under this exact generation: reference it without
+        // reading the source bytes, re-scrubbing or re-uploading. This is the whole
+        // point of putting the generation in the key.
+        if self.existing_media.contains(&key) {
+            return (Some(key), None);
+        }
+
+        let Ok(stored) = self.store.read_run_code_analysis(run_id) else {
+            tracing::warn!(
+                run.id = %run_id,
+                "run record carries a code analysis but its document is not stored; \
+                 publishing the summary without the explorer"
+            );
+            return (None, None);
+        };
+        let plain = match decode_maybe_gzip(&stored) {
+            Some(plain) => plain,
+            None => {
+                tracing::warn!(
+                    run.id = %run_id,
+                    "decoding the stored code-analysis document failed; publishing the \
+                     summary without the explorer"
+                );
+                return (None, None);
+            }
+        };
+        let mut document: serde_json::Value = match serde_json::from_slice(&plain) {
+            Ok(document) => document,
+            Err(err) => {
+                tracing::warn!(
+                    run.id = %run_id,
+                    error = %err,
+                    "the stored code-analysis document is not JSON; publishing the \
+                     summary without the explorer"
+                );
+                return (None, None);
+            }
+        };
+        if scrubber.scrub_json(&mut document) {
+            tracing::warn!(
+                run.id = %run_id,
+                "redacted leaked API key(s) from a published code-analysis document"
+            );
+        }
+        let Ok(bytes) = serde_json::to_vec(&document) else {
+            return (None, None);
+        };
+        (
+            Some(key.clone()),
+            Some(SnapshotObject {
+                key,
+                bytes,
+                content_type: "application/json".to_string(),
+            }),
+        )
+    }
+
     /// Resolve one run media file (`kind` is `proof` or `asset`) to its bytes,
     /// preferring the local store and falling back to the artifact service.
     ///
@@ -1330,6 +1444,27 @@ fn media_content_type(extension: &str) -> &'static str {
     }
 }
 
+/// Decode stored run-tree artifact bytes that may or may not be gzip, by the gzip
+/// magic (RFC 1952 §2.3.1). `None` only when the bytes *claim* to be gzip and the
+/// inflate fails.
+///
+/// The store holds these opaquely: the driver mirrors the run tree's `.json.gz`
+/// verbatim, while a hand-written fixture (and an older mirror) holds plain JSON. The
+/// serving route sniffs the same two bytes for the same reason — a JSON document never
+/// begins `0x1f 0x8b`, so this cannot be ambiguous.
+fn decode_maybe_gzip(stored: &[u8]) -> Option<Vec<u8>> {
+    if !stored.starts_with(&[0x1f, 0x8b]) {
+        return Some(stored.to_vec());
+    }
+    let mut plain = Vec::new();
+    std::io::Read::read_to_end(
+        &mut flate2::read::GzDecoder::new(std::io::Cursor::new(stored)),
+        &mut plain,
+    )
+    .ok()?;
+    Some(plain)
+}
+
 /// Serialize a value to a pretty JSON [`SnapshotObject`].
 fn json_object<T: Serialize>(key: String, value: &T) -> Result<SnapshotObject> {
     Ok(SnapshotObject {
@@ -1507,6 +1642,24 @@ pub struct RunSummary {
     /// fuel needs no checklist weights — so [`RunSummary::from_stored`] fills it.
     #[cfg_attr(feature = "contract", ts(optional = nullable))]
     pub performance: Option<PerformanceSummaryOut>,
+    /// The ranking-relevant slice of the run's [code
+    /// analysis](test_cabinet_core::code_analysis), lifted onto the card so a
+    /// "which model writes the tightest code?" ordering can be computed from the
+    /// bounded summary set without loading every run's full record. See
+    /// [`CodeSummaryOut`], which also explains why the provenance rides along with
+    /// the figures.
+    ///
+    /// `None` means the run was **never analysed** — not that it wrote no code. The
+    /// corpus is [not backfilled], so every run that finished before the analyzer
+    /// shipped carries `None` forever, and any view that renders this must say
+    /// "not measured" rather than draw a zero.
+    ///
+    /// Catalog-free (the figures are already on the record), so
+    /// [`RunSummary::from_stored`] fills it.
+    ///
+    /// [not backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub code: Option<CodeSummaryOut>,
     pub links: LinksOut,
 }
 
@@ -1526,6 +1679,71 @@ pub struct PerformanceSummaryOut {
     /// better). `None` for an incorrect run, where the fuel is meaningless and the
     /// run earns no leaderboard placement.
     pub total_fuel: Option<u64>,
+}
+
+/// The code analysis as a summary card carries it: three ranking-relevant figures,
+/// plus the provenance a reader needs before comparing two of them.
+///
+/// The full [`CodeAnalysisSummary`](test_cabinet_core::code_analysis::CodeAnalysisSummary)
+/// is ninety-odd leaves and already rides on the record inside the per-run document;
+/// this is the part a *list* sorts on, so it stays small — the same bargain
+/// [`PerformanceSummaryOut`] strikes for fuel, and catalog-free for the same reason.
+///
+/// **The provenance fields are not decoration.** Two things make a bare figure
+/// dishonest here. Analysis is [never backfilled], so an absent `code` on a card means
+/// *not measured*, and among the cards that do carry one an
+/// [`allFiles`](test_cabinet_core::code_analysis::CodeAuthoredBasis::AllFiles) authored
+/// basis or a [`postValidation`](test_cabinet_core::code_analysis::CodeTreeBasis::PostValidation)
+/// tree basis measured a different population than the exact one — the silent-degradation
+/// risk the basis fields exist for. And a
+/// [truncated](test_cabinet_core::code_analysis::CodeAnalysisNotes::truncated) analysis is
+/// excluded from aggregation by default, so a view that ranks it beside complete ones
+/// ranks a partial figure that looks complete. Carrying all four alongside the numbers is
+/// what lets a card say so without fetching the record.
+///
+/// [never backfilled]: https://docs.testcabinet.ai/gg/analysis/code-analysis/#publishing-and-the-analyzer-version
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct CodeSummaryOut {
+    /// The [analyzer generation](test_cabinet_core::code_analysis::CODE_ANALYZER_VERSION)
+    /// that produced these figures, so a corpus spanning two generations is visible
+    /// rather than reading as a step change in the models.
+    pub analyzer_version: u32,
+    /// How the authored set was resolved — how much of this tree is actually the
+    /// model's work.
+    pub authored_basis: test_cabinet_core::code_analysis::CodeAuthoredBasis,
+    /// Which state of the tree was measured.
+    pub tree_basis: test_cabinet_core::code_analysis::CodeTreeBasis,
+    /// Whether a tree-wide cap stopped the analysis short. A truncated result is
+    /// excluded from aggregation by default.
+    pub truncated: bool,
+    /// How much code the model wrote: non-blank, non-comment lines across the
+    /// authored set.
+    pub code_lines: u32,
+    /// The Gini coefficient of code lines across files — zero when every file is the
+    /// same size, approaching one when a single file holds everything. The one number
+    /// that answers "did the model split the work?".
+    pub gini_code_lines: f64,
+    /// Mean Sonar cognitive complexity per function. Cognitive rather than cyclomatic
+    /// because cyclomatic is blind to nesting, and nesting is what makes generated code
+    /// unreadable.
+    pub mean_cognitive: f64,
+}
+
+impl CodeSummaryOut {
+    /// Lift the card's slice off the bounded summary the run record carries.
+    fn from_summary(code: &test_cabinet_core::code_analysis::CodeAnalysisSummary) -> Self {
+        Self {
+            analyzer_version: code.analyzer_version,
+            authored_basis: code.authored_basis,
+            tree_basis: code.tree_basis,
+            truncated: code.notes.truncated,
+            code_lines: code.size.code_lines,
+            gini_code_lines: code.size.gini_code_lines,
+            mean_cognitive: code.complexity.mean_cognitive,
+        }
+    }
 }
 
 /// A run's aggregate reviewer score: mean earned checklist weight across its
@@ -1593,6 +1811,12 @@ impl RunSummary {
                     correct: p.correct,
                     total_fuel: p.total_fuel,
                 }),
+            // Catalog-free for the same reason: the figures are already on the
+            // record. `None` here is "never analysed", never "wrote no code".
+            code: record
+                .code_analysis
+                .as_ref()
+                .map(CodeSummaryOut::from_summary),
             links: links_out(&run.links),
         }
     }
@@ -1674,6 +1898,26 @@ pub struct PerRun {
     /// An asset-generation run's media (regenerated/preview image + action log),
     /// named by snapshot-relative key. Empty for a non-asset-generation run.
     pub asset_media: Vec<RunAssetOut>,
+    /// The snapshot-relative key of the run's **unbounded**
+    /// [code-analysis document](test_cabinet_core::code_analysis::CodeAnalysisDocument) —
+    /// every authored file, every scored function, every import edge, cycle and clone
+    /// group — published as its own object so the public Code tab can fetch it on demand
+    /// rather than inflating this document (and therefore every run's page load) with a
+    /// tier only one tab reads.
+    ///
+    /// Content-stable and **generation-keyed**
+    /// (`media/runs/<id>/code-analysis/v<analyzerVersion>.json`), so a refresh that finds
+    /// the object already in the bucket references it without re-reading or re-uploading
+    /// the bytes — and a *re-analysis under a newer generation* mints a different key
+    /// rather than silently overwriting figures a published snapshot still points at.
+    ///
+    /// `None` when the run was never analysed, and also when it was but the document's
+    /// bytes are no longer readable (the backend store is ephemeral) — the bounded summary
+    /// on the record survives either way, so the tab degrades to the figures instead of
+    /// offering a link that 404s.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub code_analysis_key: Option<String>,
 }
 
 /// A proof media file exposed in a per-run document. `id` matches the proof's

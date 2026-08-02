@@ -144,6 +144,13 @@ interface SnapshotRunFile {
   // clip). Absent for a run with no debug scripts and for snapshots written before
   // automated validation existed.
   validationMedia?: Array<{ file: string; key: string }>;
+  // The snapshot-relative key of the run's unbounded code-analysis document (every
+  // authored file, scored function, import edge, cycle and clone group), published as
+  // its own generation-keyed object so the Code tab fetches it on demand instead of
+  // this document carrying a tier only one tab reads. Absent when the run was never
+  // analysed — the corpus is deliberately not backfilled, so that is most of it — and
+  // for snapshots written before code analysis existed.
+  codeAnalysisKey?: string;
 }
 
 // `cases/<slug>/<version>.json`: the site-facing slice of a test-case version.
@@ -345,6 +352,15 @@ interface AssembledSnapshot {
   // flat `<item>__<output>.<ext>` name the reviewer UI requests. The app's
   // `validationMediaUrl(runId, file)` reads this.
   validationMediaUrls: Record<string, Record<string, string>>;
+  // Resolved code-analysis document URLs, keyed by run id — one URL per run, not a
+  // map of files, because a run has exactly one analysis. The app's
+  // `readCodeAnalysis(runId)` fetches this on demand.
+  //
+  // A run id absent from this map was **never analysed**, which is most of the corpus:
+  // analysis is deliberately not backfilled, so it starts on the day the analyzer
+  // shipped. The Code tab reads that absence as "not measured" and says so; it must
+  // never be read as "this model wrote no code".
+  codeAnalysisUrls: Record<string, string>;
   // Resolved *baseline* automated-validation media URLs, keyed by a
   // `<slug>/<version>/<variant>` subject key then by the flat `<item>__<output>.<ext>`
   // name. Case-scoped, so keyed by subject rather than run id. The app's
@@ -522,6 +538,7 @@ const EMPTY: AssembledSnapshot = {
   proofMediaUrls: {},
   assetMediaUrls: {},
   validationMediaUrls: {},
+  codeAnalysisUrls: {},
   validationBaselineUrls: {},
   referenceMediaUrls: {},
 };
@@ -844,6 +861,7 @@ async function loadSnapshot(
   const proofMediaUrls: Record<string, Record<string, string>> = {};
   const assetMediaUrls: Record<string, Record<string, string>> = {};
   const validationMediaUrls: Record<string, Record<string, string>> = {};
+  const codeAnalysisUrls: Record<string, string> = {};
   const validationBaselineUrls: Record<string, Record<string, string>> = {};
   const referenceMediaUrls: Record<string, Record<string, string>> = {};
   // The case-version keys referenced by published runs; deduplicated.
@@ -895,6 +913,12 @@ async function loadSnapshot(
         byFile[media.file] = joinUrl(base, media.key);
       }
       validationMediaUrls[summary.id] = byFile;
+    }
+    // The run's unbounded code-analysis document, resolved to the absolute URL of its
+    // own generation-keyed object. Absent for a run that was never analysed, which is
+    // the honest default rather than an empty document.
+    if (runFile.codeAnalysisKey) {
+      codeAnalysisUrls[summary.id] = joinUrl(base, runFile.codeAnalysisKey);
     }
     // Emit the run's recorded events as a standalone asset (only when present),
     // so the Events tab can fetch `run-events/<id>.json` without the bundle
@@ -1022,6 +1046,7 @@ async function loadSnapshot(
     ggRuns,
     proofMediaUrls,
     assetMediaUrls,
+    codeAnalysisUrls,
     validationMediaUrls,
     validationBaselineUrls,
     referenceMediaUrls,
@@ -1040,6 +1065,7 @@ function serialize(data: AssembledSnapshot): string {
     `export const ggRuns = ${JSON.stringify(data.ggRuns)};`,
     `export const proofMediaUrls = ${JSON.stringify(data.proofMediaUrls)};`,
     `export const assetMediaUrls = ${JSON.stringify(data.assetMediaUrls)};`,
+    `export const codeAnalysisUrls = ${JSON.stringify(data.codeAnalysisUrls)};`,
     `export const validationMediaUrls = ${JSON.stringify(data.validationMediaUrls)};`,
     `export const validationBaselineUrls = ${JSON.stringify(data.validationBaselineUrls)};`,
     `export const referenceMediaUrls = ${JSON.stringify(data.referenceMediaUrls)};`,

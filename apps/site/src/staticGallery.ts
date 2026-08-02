@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { RunRecord, RunSubject } from "@test-cabinet/run-record";
+import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import type { Comparison } from "@test-cabinet/run-record/comparison";
 import type { HarnessEvent, ProgressCallback } from "@test-cabinet/ui/client";
 import { readTextWithProgress } from "@test-cabinet/ui/client";
@@ -20,6 +21,7 @@ import {
   models as catalogModels,
   comparisons as publishedComparisons,
   ggRuns as publishedGgRuns,
+  codeAnalysisUrls as publishedCodeAnalysisUrls,
   proofMediaUrls as publishedProofMediaUrls,
   assetMediaUrls as publishedAssetMediaUrls,
   validationMediaUrls as publishedValidationMediaUrls,
@@ -148,6 +150,27 @@ export function useStaticGallery(): GalleryDataInput {
     },
     [],
   );
+
+  // The Code tab's explorer tier on the static site: a published run's unbounded
+  // code-analysis document, emitted at build time as its own generation-keyed snapshot
+  // object and fetched here on demand (the bounded summary rides on the record, so the
+  // provenance strip and figure table never wait on this).
+  //
+  // A run absent from the URL map resolves to `null`, which the tab renders as "never
+  // analysed" — the honest reading, since the corpus is deliberately not backfilled and
+  // therefore starts on the day the analyzer shipped. Stable identity so the tab doesn't
+  // refetch on every render.
+  const readCodeAnalysis = useCallback(async (runId: string) => {
+    const url = publishedCodeAnalysisUrls[runId];
+    if (!url) return null;
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(
+        `code analysis fetch failed: ${response.status} ${response.statusText}`,
+      );
+    }
+    return (await response.json()) as CodeAnalysisDocument;
+  }, []);
 
   // Lazily resolve one run's detail — its full record plus every review. The
   // bundle no longer inlines full records: a published run's record is emitted at
@@ -293,6 +316,7 @@ export function useStaticGallery(): GalleryDataInput {
     // the run view never offers a link nobody could follow.
     grafanaUrl: null,
     fetchRunEvents,
+    readCodeAnalysis,
     // The host's lazy single-run fetcher; the gallery context's `fetchRun`
     // delegates to it (falling back to the in-memory `runs` internally).
     readRun: fetchRun,

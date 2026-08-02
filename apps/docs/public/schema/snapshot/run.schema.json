@@ -66,6 +66,10 @@
       },
       "type": "array"
     },
+    "codeAnalysisKey": {
+      "description": "The snapshot-relative key of the run's **unbounded**\n[code-analysis document](test_cabinet_core::code_analysis::CodeAnalysisDocument) —\nevery authored file, every scored function, every import edge, cycle and clone\ngroup — published as its own object so the public Code tab can fetch it on demand\nrather than inflating this document (and therefore every run's page load) with a\ntier only one tab reads.\n\nContent-stable and **generation-keyed**\n(`media/runs/<id>/code-analysis/v<analyzerVersion>.json`), so a refresh that finds\nthe object already in the bucket references it without re-reading or re-uploading\nthe bytes — and a *re-analysis under a newer generation* mints a different key\nrather than silently overwriting figures a published snapshot still points at.\n\n`None` when the run was never analysed, and also when it was but the document's\nbytes are no longer readable (the backend store is ephemeral) — the bounded summary\non the record survives either way, so the tab degrades to the figures instead of\noffering a link that 404s.",
+      "type": ["string", "null"]
+    },
     "events": {
       "description": "The run's recorded normalized event stream (a JSON array), omitted when the\nrun captured none. The site emits this as a per-run static asset its Events\ntab fetches; raw harness output is never included."
     },

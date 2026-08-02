@@ -574,6 +574,26 @@ export function useLiveGallery(
     [backend, workerClient, localIds],
   );
 
+  // Resolve a run's unbounded code-analysis document from the backend's store-backed
+  // route. Console-only in practice: the worker holds a run's tree, not the mirrored
+  // document, so a produced run's explorer waits on the run reaching the backend. A
+  // transport that cannot reach it (`NotSupportedError`, or no backend at all) resolves
+  // to null, which the tab reports as "not available here" rather than as an error; a
+  // run that was simply never analysed resolves to null the same way through the
+  // client's 404 handling.
+  const readCodeAnalysis = useCallback(
+    async (runId: string) => {
+      if (!backend?.readCodeAnalysis) return null;
+      try {
+        return await backend.readCodeAnalysis(runId);
+      } catch (e) {
+        if (e instanceof NotSupportedError) return null;
+        throw e;
+      }
+    },
+    [backend],
+  );
+
   // Resolve a single run's detail by id for a run the loaded list doesn't carry
   // (an infrastructure failure, in no worklist; or a run off the current page).
   // A produced (local) run is read from its worker, any other from the backend;
@@ -630,6 +650,7 @@ export function useLiveGallery(
     grafanaUrl,
     queryRunSummaries,
     fetchRunEvents,
+    readCodeAnalysis,
     readRun,
     proofMediaUrl,
     assetMediaUrl,

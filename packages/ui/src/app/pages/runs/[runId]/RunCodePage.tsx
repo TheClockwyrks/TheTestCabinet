@@ -3,7 +3,7 @@ import { MetricTile, Spinner } from "@test-cabinet/ui";
 import type { RunRecord } from "@test-cabinet/run-record";
 import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
-import { useBackend } from "../../../../client/context";
+import { useGalleryData } from "../../../data/galleryContext";
 import {
   CodeCyclesCallout,
   CodeExplorer,
@@ -52,18 +52,21 @@ type LoadState =
 
 function RunCodeBody({ run }: { run: RunRecord }) {
   const summary = run.codeAnalysis;
-  const { client } = useBackend();
+  // A host hook, not a client call: a console reads the backend route, the static site
+  // fetches the snapshot object the publish emitted, and the site mounts no backend
+  // provider at all — so reaching for one here would throw on the very host this tier
+  // was published for.
+  const { readCodeAnalysis } = useGalleryData();
   const [load, setLoad] = useState<LoadState>({ kind: "loading" });
 
   useEffect(() => {
-    if (!client?.readCodeAnalysis) {
+    if (!readCodeAnalysis) {
       setLoad({ kind: "unsupported" });
       return;
     }
     let cancelled = false;
     setLoad({ kind: "loading" });
-    client
-      .readCodeAnalysis(run.id)
+    readCodeAnalysis(run.id)
       .then((document) => {
         if (cancelled) return;
         setLoad(document ? { kind: "ready", document } : { kind: "empty" });
@@ -75,7 +78,7 @@ function RunCodeBody({ run }: { run: RunRecord }) {
     return () => {
       cancelled = true;
     };
-  }, [run.id, client]);
+  }, [run.id, readCodeAnalysis]);
 
   // Reachable by typing the URL for a run recorded before the analyzer shipped — the tab
   // itself is not offered for one. Says which of the two it is, because "not analysed" and

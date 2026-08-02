@@ -1856,13 +1856,13 @@ fn generation_timestamp_round_trips_a_real_snapshot_id() {
 
 #[tokio::test]
 async fn a_stored_run_tree_artifact_never_reaches_the_public_snapshot() {
-    // R7. `build` walks the published run set and emits exactly one document per run
-    // — the `PerRun` value it scrubs on the way out. A run-tree artifact (a replay
-    // record; tomorrow a code-analysis document) lives beside that run's media in the
-    // very store this builder holds, and is *not* published: it is a private,
-    // whole-run capture of everything the model was sent, so it never goes to R2 at
-    // all (and could not be redacted usefully if it did — it is opaque, possibly
-    // gzipped bytes the scrubber cannot walk).
+    // R7, and owner decision Q1. The **replay record** is never published: it is a
+    // private, whole-run capture of everything the model was sent, so it never goes to
+    // R2 at all (and could not be redacted usefully if it did — it is opaque, possibly
+    // gzipped bytes the scrubber cannot walk). A code-analysis document *is* published
+    // now, but only when the run **record** says the run was analysed — the store
+    // holding one is not the authority, exactly as it is not for proofs. This run's
+    // record carries none, so neither artifact becomes an object.
     //
     // This is the regression that would be silent: adding a new sibling object to the
     // snapshot is a two-line change, and nothing else in the builder would notice.
@@ -1948,30 +1948,70 @@ fn code_analysis_summary() -> test_cabinet_core::CodeAnalysisSummary {
     .summary
 }
 
-#[tokio::test]
-async fn a_run_s_code_analysis_publishes_inside_the_scrubbed_document_and_nowhere_else() {
-    // R7: `SnapshotBuilder::build` scrubs the `PerRun` document and *only* that document,
-    // so a sibling object put beside it bypasses redaction entirely. Model-written source
-    // contains hard-coded credentials often enough that the scrubber exists at all, and a
-    // symbol name or a file path is text like any other — so the unbounded code-analysis
-    // document must not become such a sibling here. Publishing it is M9's, with its own
-    // scrub; this milestone publishes the bounded summary and does so *inside* the
-    // document the scrubber walks.
-    let (_tmp, store) = empty_store();
-    // The document exists in the store for this run, so this asserts a choice rather than
-    // an absence of data.
+/// A published run that carries a real code analysis, plus its stored unbounded document.
+/// The document is written as **gzip**, which is what the driver actually mirrors from the
+/// run tree's `code-analysis.json.gz`.
+fn analysed_run(store: &DefinitionStore, id: &str, document: serde_json::Value) -> StoredRun {
+    use std::io::Write;
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder
+        .write_all(&serde_json::to_vec(&document).expect("serialize the document"))
+        .expect("gzip the document");
     store
-        .write_run_code_analysis("r1", br#"{"analyzerVersion":2}"#)
+        .write_run_code_analysis(id, &encoder.finish().expect("finish the gzip stream"))
         .expect("store the run's code-analysis document");
 
-    let mut run = stored_run("r1", "2026-06-17T21:40:00Z");
+    let mut run = stored_run(id, "2026-06-17T21:40:00Z");
     run.record.code_analysis = Some(code_analysis_summary());
+    run
+}
+
+/// The snapshot-relative key a run's code-analysis object is published under, for the
+/// current analyzer generation.
+fn code_analysis_key(run_id: &str) -> String {
+    format!(
+        "media/runs/{run_id}/code-analysis/v{}.json",
+        test_cabinet_core::code_analysis::CODE_ANALYZER_VERSION
+    )
+}
+
+#[tokio::test]
+async fn a_run_s_code_analysis_publishes_as_a_summary_on_the_card_and_a_keyed_document() {
+    // The two tiers, and the seam between them. The **card** in `runs.json` carries the
+    // ranking-relevant slice plus its provenance, so an ordering over the whole corpus
+    // costs one file; the **per-run document** carries the full bounded summary on the
+    // record (as it always has) and now a `codeAnalysisKey` pointing at the unbounded
+    // document published as its own object.
+    let (_tmp, store) = empty_store();
+    let run = analysed_run(
+        &store,
+        "r1",
+        serde_json::json!({ "analyzerVersion": 2, "files": [{ "path": "src/main.ts" }] }),
+    );
     let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
         .build(now())
         .await
         .unwrap();
 
     let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let runs_index = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs.json"))
+        .expect("the runs index");
+    let index: serde_json::Value = serde_json::from_slice(&runs_index.bytes).unwrap();
+    let card = &index["runs"][0]["code"];
+    assert_eq!(card["analyzerVersion"], 2);
+    assert_eq!(card["authoredBasis"], "allFiles");
+    assert_eq!(card["treeBasis"], "preValidation");
+    assert_eq!(card["truncated"], false);
+    assert_eq!(
+        card["codeLines"], 3,
+        "the card carries the ranking figures, not just the provenance",
+    );
+    assert!(card["giniCodeLines"].is_number());
+    assert!(card["meanCognitive"].is_number());
+
     let per_run = snapshot
         .objects
         .iter()
@@ -1980,17 +2020,237 @@ async fn a_run_s_code_analysis_publishes_inside_the_scrubbed_document_and_nowher
     let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
     assert_eq!(
         parsed["record"]["codeAnalysis"]["treeBasis"], "preValidation",
-        "the bounded summary rides inside the one document `scrub_json` walked",
+        "the bounded summary still rides inside the document `scrub_json` walked",
+    );
+    assert_eq!(
+        parsed["codeAnalysisKey"],
+        code_analysis_key("r1"),
+        "the per-run document points at the unbounded tier by its generation-keyed key",
     );
 
+    let document = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == code_analysis_key("r1"))
+        .expect("the unbounded code-analysis document is published as its own object");
+    assert_eq!(document.content_type, "application/json");
+    let body: serde_json::Value = serde_json::from_slice(&document.bytes).unwrap();
+    assert_eq!(
+        body["files"][0]["path"], "src/main.ts",
+        "the stored gzip is decoded and republished as plain JSON",
+    );
+}
+
+#[tokio::test]
+async fn the_published_code_analysis_document_is_scrubbed() {
+    // R7. `build` scrubs the `PerRun` document and *only* that document, so a sibling
+    // object bypasses redaction entirely. This one is a static read of model-written
+    // source — every authored path and every symbol name it wrote — and model-written
+    // source contains hard-coded credentials often enough that the scrubber exists at
+    // all, so it is parsed and scrubbed on its own way out. The leak below is a file the
+    // model named after the key it was handed, which is exactly the shape that reaches an
+    // *unbounded* document while the bounded summary (all numbers) can never carry one.
+    let (_tmp, store) = empty_store();
+    let run = analysed_run(
+        &store,
+        "r1",
+        serde_json::json!({
+            "analyzerVersion": 2,
+            "files": [{ "path": "src/keys/sk-ant-api03-notreal-value.ts" }],
+        }),
+    );
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let document = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == code_analysis_key("r1"))
+        .expect("the code-analysis object");
+    let body = String::from_utf8(document.bytes.clone()).unwrap();
+    assert!(
+        !body.contains("sk-ant-api03-notreal-value"),
+        "a leaked key reached R2 through the code-analysis object: {body}",
+    );
+    assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+}
+
+#[tokio::test]
+async fn two_snapshot_refreshes_upload_the_code_analysis_object_once() {
+    // **The property the generation-in-the-key exists for.** The document is immutable
+    // for a given (run, analyzer generation), so a refresh that finds the object already
+    // in the bucket must reference it rather than re-read, re-scrub and re-upload it —
+    // otherwise every refresh re-exports the whole analysed corpus, which is the growing
+    // cost `with_existing_media` was introduced to stop for media.
+    //
+    // The second build is handed exactly what the first uploaded, which is what the
+    // publisher does (it lists the `media/` prefix before building).
+    let (_tmp, store) = empty_store();
+    let run = analysed_run(&store, "r1", serde_json::json!({ "analyzerVersion": 2 }));
+
+    let first = SnapshotBuilder::new(vec![run.clone()], vec![manifest()], store.clone())
+        .build(now())
+        .await
+        .unwrap();
+    assert!(
+        first
+            .objects
+            .iter()
+            .any(|o| o.key == code_analysis_key("r1")),
+        "the first refresh uploads it",
+    );
+
+    let uploaded: std::collections::HashSet<String> = first
+        .objects
+        .iter()
+        .map(|o| o.key.clone())
+        .filter(|key| key.starts_with("media/"))
+        .collect();
+    let second = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_existing_media(uploaded)
+        .build(now())
+        .await
+        .unwrap();
+
+    assert!(
+        !second
+            .objects
+            .iter()
+            .any(|o| o.key == code_analysis_key("r1")),
+        "the second refresh re-uploaded the code-analysis object: {:?}",
+        second.objects.iter().map(|o| &o.key).collect::<Vec<_>>(),
+    );
+
+    let prefix = format!("snapshots/{}", second.snapshot_id);
+    let per_run = second
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/r1.json"))
+        .expect("the per-run document");
+    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    assert_eq!(
+        parsed["codeAnalysisKey"],
+        code_analysis_key("r1"),
+        "skipping the upload must still point the document at the object already there",
+    );
+}
+
+#[tokio::test]
+async fn a_newer_analyzer_generation_mints_a_new_code_analysis_key() {
+    // The other half of putting the generation in the key: the skip must be scoped to the
+    // generation that produced the bytes. A re-analysis under a newer generation is a
+    // different document, so it gets a different key rather than silently overwriting
+    // figures an already-published snapshot still points at — and the older object's
+    // presence in the bucket must not suppress it.
+    let (_tmp, store) = empty_store();
+    let mut run = analysed_run(&store, "r1", serde_json::json!({ "analyzerVersion": 99 }));
+    run.record.code_analysis.as_mut().unwrap().analyzer_version = 99;
+
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .with_existing_media(std::collections::HashSet::from([code_analysis_key("r1")]))
+        .build(now())
+        .await
+        .unwrap();
+
+    let key = "media/runs/r1/code-analysis/v99.json";
+    assert!(
+        snapshot.objects.iter().any(|o| o.key == key),
+        "the generation the record carries keys the object, not the running binary's: {:?}",
+        snapshot.objects.iter().map(|o| &o.key).collect::<Vec<_>>(),
+    );
+}
+
+#[tokio::test]
+async fn an_unanalysed_run_carries_no_code_summary_and_no_key() {
+    // Absence is explicit, and it is the common case: the corpus is deliberately not
+    // backfilled (owner decision Q2), so every run that finished before the analyzer
+    // shipped carries no analysis forever. The card must therefore omit `code` entirely
+    // rather than serialize a zeroed block — a zero reads as "wrote no code", which is a
+    // different and false claim.
+    let (_tmp, store) = empty_store();
+    let snapshot = SnapshotBuilder::new(
+        vec![stored_run("r1", "2026-06-17T21:40:00Z")],
+        vec![manifest()],
+        store,
+    )
+    .build(now())
+    .await
+    .unwrap();
+
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let index: serde_json::Value = serde_json::from_slice(
+        &snapshot
+            .objects
+            .iter()
+            .find(|o| o.key == format!("{prefix}/runs.json"))
+            .unwrap()
+            .bytes,
+    )
+    .unwrap();
+    assert!(
+        index["runs"][0]["code"].is_null(),
+        "an unanalysed run's card must not claim a figure",
+    );
+
+    let parsed: serde_json::Value = serde_json::from_slice(
+        &snapshot
+            .objects
+            .iter()
+            .find(|o| o.key == format!("{prefix}/runs/r1.json"))
+            .unwrap()
+            .bytes,
+    )
+    .unwrap();
+    assert!(parsed["codeAnalysisKey"].is_null());
+}
+
+#[tokio::test]
+async fn an_analysed_run_whose_document_is_gone_still_publishes_its_summary() {
+    // The backend store is an ephemeral emptyDir in production and there is no
+    // artifact-service route for a tree-root file, so a run can legitimately reach a
+    // refresh with its bounded summary on the record and no document bytes anywhere. The
+    // card and the record still carry the figures; only the key is omitted, so the
+    // explorer is simply not offered rather than offering a link that 404s.
+    let (_tmp, store) = empty_store();
+    let mut run = stored_run("r1", "2026-06-17T21:40:00Z");
+    run.record.code_analysis = Some(code_analysis_summary());
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let index: serde_json::Value = serde_json::from_slice(
+        &snapshot
+            .objects
+            .iter()
+            .find(|o| o.key == format!("{prefix}/runs.json"))
+            .unwrap()
+            .bytes,
+    )
+    .unwrap();
+    assert_eq!(index["runs"][0]["code"]["codeLines"], 3);
+
+    let parsed: serde_json::Value = serde_json::from_slice(
+        &snapshot
+            .objects
+            .iter()
+            .find(|o| o.key == format!("{prefix}/runs/r1.json"))
+            .unwrap()
+            .bytes,
+    )
+    .unwrap();
+    assert!(
+        parsed["codeAnalysisKey"].is_null(),
+        "a key with no object behind it would 404 the Code tab",
+    );
     assert!(
         !snapshot
             .objects
             .iter()
-            .any(|object| object.key.contains("code-analysis")),
-        "no code-analysis object may be published beside the per-run document — it would \
-         reach R2 without ever passing the scrubber: {:?}",
-        snapshot.objects.iter().map(|o| &o.key).collect::<Vec<_>>(),
+            .any(|o| o.key.contains("code-analysis")),
     );
 }
 
