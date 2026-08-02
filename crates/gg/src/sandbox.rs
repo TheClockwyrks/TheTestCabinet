@@ -103,10 +103,17 @@ pub use outcome::{
 // The rest of the sandbox's surface, re-exported so `sandbox` is the single name the loop and the
 // prompt import from.
 pub use {
-    invoker::FunctionSummary, invoker::PROGRAM_CALL_ID_PREFIX, limits::resolve_sandbox_limits,
+    invoker::FunctionSummary, invoker::PROGRAM_CALL_ID_PREFIX, invoker::SandboxViewOpened,
+    invoker::ViewOpenOutcome, invoker::ViewRefusal, limits::resolve_sandbox_limits,
     signatures::CatalogueFunction, signatures::catalogue_functions, signatures::type_declaration,
     transpile::UnreachableTail,
 };
+
+/// The most pictures one program may put in front of its model in a turn — the bound the
+/// [membrane](membrane) applies to the pictures a bare `fs.readFile` attaches to the turn's
+/// feedback, re-exported so the [loop](crate::agent) applies the same one to the pictures a
+/// `view.openFile` puts into the context window itself. Two places a picture can land, one number.
+pub(crate) use membrane::IMAGE_BUDGET;
 
 use crate::ending::EndingRole;
 use crate::tools::ToolRegistry;
@@ -187,7 +194,9 @@ pub fn run_program<A: ToolApi>(
 }
 
 /// A linker carrying the whole membrane and nothing else: every one of the thirty-two typed gg tool
-/// functions, the [`finish`](FINISH_FUNCTION) that ends the run, and the shim's feedback channel.
+/// functions, the three model-facing carve-outs that are not tools (the
+/// [`finish`](FINISH_FUNCTION) that ends the run, the documentation lookups, and the view calls a
+/// program puts material into its own window with), and the shim's feedback channel.
 ///
 /// Building it per run rather than once per process is deliberate and free: a `Linker` is cheap,
 /// and the expensive artifact (the compiled [`Component`](wasmtime::component::Component)) is the
@@ -353,6 +362,10 @@ fn reclaim<A: ToolApi>(
             logs_suppressed,
             images,
             images_dropped,
+            views_opened,
+            views_closed,
+            view_refusals,
+            views_suppressed,
             deferred_note,
             returned_value,
             completion,
@@ -370,6 +383,10 @@ fn reclaim<A: ToolApi>(
         logs_suppressed,
         images,
         images_dropped,
+        views_opened,
+        views_closed,
+        view_refusals,
+        views_suppressed,
         deferred_note,
         returned_value,
         // Carried out of the group that survives every exit path, because the flag lives in the

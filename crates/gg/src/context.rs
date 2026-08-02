@@ -1553,10 +1553,7 @@ impl ContextModel {
 }
 
 // The view surface the responses-as-code sandbox membrane drives: `LoopToolApi` services a
-// program's `view.*` calls against the window it holds by value for the turn. The membrane lands in
-// a later phase, so the binary build currently sees these as unconstructed; the tests below drive
-// them directly.
-#[allow(dead_code)]
+// program's `view.*` calls against the window it holds by value for the turn.
 impl ContextModel {
     /// Close [`TextView`](GgContextSource::TextView) items from the live window, reclaiming their
     /// tokens. With `label` `Some`, only the view keyed by that label is closed; with `None`,

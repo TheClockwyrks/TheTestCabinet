@@ -11,10 +11,12 @@
 // exactly one name in `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs); a test asserts the two sets are
 // equal, so a tool cannot be added, renamed, or removed without a typed signature following it.
 //
-// Two interfaces stand outside that correspondence, and each is separate for exactly that reason:
-// `feedback` is the shim's private channel back to gg and is never model-facing at all, and
-// `session` carries the one model-facing function that is not a gg tool — the call that ends the
-// run. Keeping both out of the tool interfaces is what lets the bijection above be checked
+// Four interfaces stand outside that correspondence, and each is separate for exactly that reason:
+// `feedback` is the shim's private channel back to gg and is never model-facing at all; `session`
+// carries the model-facing calls that end the run; `docs` is the always-bound documentation lookup;
+// and `views` is how a program puts material into its own context window. None of the three
+// model-facing ones is a gg tool — no capability offers them and nothing dispatches them by name —
+// so keeping them out of the tool interfaces is what lets the bijection above be checked
 // mechanically rather than by reading.
 package test-cabinet:gg;
 
@@ -649,6 +651,89 @@ interface docs {
     read-docs: func(name: string) -> result<string, tool-error>;
 }
 
+/// Putting material into your own context window — the third model-facing carve-out, and like
+/// `session` and `docs` NOT a set of gg tools.
+///
+/// Under responses-as-code a whole program's `console.*` output used to collapse into one anonymous
+/// blob in the next prompt: unlabelled, uncharged to anything but `tool-output`, un-evictable,
+/// un-persisted and un-restored after a compaction. A view is the counterpart of one tool result per
+/// tool call — the program registers what should be VISIBLE to it, and gg emits one attributable
+/// message per view.
+///
+/// There are exactly two kinds and the taxonomy is closed. Everything on disk is a **file**;
+/// everything a program can compute is a **string**, so a directory listing, a `shell` result, a
+/// subagent's answer, a computed diff and an assembled table are all text views. An image is not a
+/// third kind either: it is a file view of an image file, and the view carries the picture.
+///
+/// `open-text-view`, `close-view` and `current-views` are bound into every program's scope whatever
+/// a run enables — a run with no tools at all must still be able to show its model something.
+/// `open-file-view` is bound only when the `read-file` tool is: it is a read, and a run with reading
+/// withheld must not get one through a side door.
+interface views {
+    use types.{tool-error};
+    use files.{file-read};
+
+    /// Which of the two kinds a view is.
+    enum view-kind {
+        /// A file view, keyed by its workspace path (and, for a paged read, its region).
+        file,
+        /// A text view, keyed by the label the program gave it.
+        text,
+    }
+
+    /// The line window a **paged** file view covers. Absent for a whole-file view and for every
+    /// text view.
+    record view-region {
+        /// The 1-based first line the view shows.
+        offset: u32,
+        /// How many lines it shows.
+        limit: u32,
+    }
+
+    /// One view currently open in your context window.
+    record open-view {
+        /// Whether it is a file or a text view.
+        kind: view-kind,
+        /// What `close-view` takes: a file view's workspace path, or a text view's label.
+        selector: string,
+        /// Roughly what holding it costs, in tokens.
+        tokens: u64,
+        /// The window a paged file view covers.
+        region: option<view-region>,
+    }
+
+    /// Read a workspace file AND show it to yourself: the read's result comes back exactly as
+    /// `read-file` returns it, and the file is added to your context window as its own attributable
+    /// item.
+    ///
+    /// The separation from `read-file` is the point: `read-file` gets bytes for your PROGRAM,
+    /// `open-file-view` shows a file to YOU. A program that reads forty files to grep them still
+    /// puts nothing in your window.
+    ///
+    /// The key is `(path, region)`, so two pages of one file are two views and coexist. Re-opening
+    /// the SAME page replaces it rather than piling up a duplicate — this call names an intent
+    /// ("this file should be visible"), and re-stating an intent replaces it.
+    open-file-view: func(path: string, offset: option<u32>, limit: option<u32>)
+        -> result<file-read, tool-error>;
+
+    /// Show yourself a value you computed, under `label`. Opening the same label again replaces what
+    /// it showed.
+    ///
+    /// An empty label is `invalid-argument` — a view with no selector could never be closed,
+    /// replaced or attributed. An empty BODY is allowed: it is how a program says that something it
+    /// was showing is now empty. A body or label over gg's caps is `limit-exceeded` naming the cap,
+    /// never a silent truncation.
+    open-text-view: func(label: string, body: string) -> result<_, tool-error>;
+
+    /// Close every view whose selector matches — for a file, every page of that path — and return
+    /// how many were closed. Closing a selector that is not open returns `0`; it is not a failure.
+    close-view: func(selector: string) -> result<u32, tool-error>;
+
+    /// What is open in your window right now. Named `current-views` rather than `list` because every
+    /// API object already carries a `list()` that lists the object's own functions.
+    current-views: func() -> list<open-view>;
+}
+
 /// Delegating work to child agents.
 interface delegation {
     use types.{tool-error};
@@ -876,6 +961,7 @@ world sandbox {
     import context;
     import session;
     import docs;
+    import views;
     import delegation;
     import feedback;
 

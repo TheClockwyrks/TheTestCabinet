@@ -21,9 +21,9 @@
 use std::time::Duration;
 
 use crate::board::IssueStatus;
-use crate::context::TurnRange;
+use crate::context::{OpenViewInfo, TurnRange, ViewKind};
 use crate::tasks::TaskStatus;
-use crate::tools::ToolOutcome;
+use crate::tools::{ToolFailure, ToolOutcome};
 
 /// One function in an API object's directory, as [`list_functions`](ToolApi::list_functions)
 /// returns it: the name a program calls it by and a one-line summary. The host counterpart of the
@@ -70,6 +70,65 @@ pub struct SandboxRefusal {
     pub name: String,
     /// Why — the same text the program's `ToolError` carried.
     pub message: String,
+}
+
+/// One view a program opened, as the turn's feedback reports it back to the model.
+///
+/// [`superseded`](Self::superseded) is what makes "opened" and "replaced" different facts. A program
+/// that re-opens a selector in a loop must be able to read its own accounting correctly — one view,
+/// re-stated — rather than believing it opened a second one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SandboxViewOpened {
+    /// Whether it is a file view or a text view.
+    pub kind: ViewKind,
+    /// The view's selector: a file view's workspace path, or a text view's label.
+    pub selector: String,
+    /// Roughly what the newly opened view costs the window, in tokens.
+    pub tokens: u64,
+    /// Whether it replaced a view that was already open under the same selector.
+    pub superseded: bool,
+}
+
+/// Why a `view.*` call was refused, in a shape the membrane lowers into a typed `tool-error`.
+///
+/// It carries a [`ToolFailure`] rather than the membrane's generated `error-code` for the same
+/// reason [`FunctionSummary`] is spelled out here: this trait must not depend on the `bindgen!`
+/// types. The membrane maps the one onto the other with the conversion every failed
+/// [`ToolOutcome`] already goes through, so a refused view is classified exactly as a failed tool
+/// call is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ViewRefusal {
+    /// The failure class — `invalid-argument` for a selector that could never be acted on,
+    /// `limit-exceeded` for a cap.
+    pub failure: ToolFailure,
+    /// The model-facing guidance, which for a cap **names the cap** rather than truncating behind
+    /// the model's back.
+    pub message: String,
+}
+
+impl ViewRefusal {
+    /// A refusal as a failed [`ToolOutcome`] — the shape `open_file_view` reports it in, because
+    /// that one call is bridged through the membrane's ordinary tool dispatch and so must answer in
+    /// the currency dispatch speaks.
+    pub fn into_outcome(self) -> ToolOutcome {
+        ToolOutcome::failed(self.failure, self.message)
+    }
+}
+
+/// What one `view.openFile` produced: the read's own outcome, and — when a view was actually opened
+/// — the record of it.
+///
+/// The two travel together because the call is one thing to the model and two things to gg: a
+/// `read_file` that is dispatched, serviced, streamed and rostered exactly as any other, plus a
+/// context item pushed from what it returned. A read that failed opens nothing, so `opened` is
+/// `None`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ViewOpenOutcome {
+    /// The read's outcome, which the membrane converts into the same `file-read` a bare
+    /// `fs.readFile` returns.
+    pub outcome: ToolOutcome,
+    /// The view that was opened, or `None` when the read failed or a cap refused the call.
+    pub opened: Option<SandboxViewOpened>,
 }
 
 /// The prefix of the synthetic call id a program-composed tool call is recorded under:
@@ -207,6 +266,35 @@ pub trait ToolApi: Send + 'static {
     ) -> ToolOutcome;
     fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary>;
     fn read_docs(&mut self, name: &str) -> Option<String>;
+    /// Read a workspace file **and** open a file view of it — the one place the code path
+    /// deliberately does push a [`FileView`](test_cabinet_core::gg::GgContextSource::FileView).
+    ///
+    /// The read is an ordinary serviced `read_file`: the same tool, the same telemetry, the same
+    /// replay entry, the same roster line. What differs is what happens to the result — it also
+    /// becomes a context item keyed by `(path, region)`, and the picture a mockup returned rides in
+    /// that item rather than out on the turn's feedback.
+    fn open_file_view(
+        &mut self,
+        path: String,
+        offset: Option<usize>,
+        limit: Option<usize>,
+    ) -> ViewOpenOutcome;
+    /// Open (or replace) the text view keyed by `label`: material the program computed, pushed into
+    /// the window as its own attributable item.
+    ///
+    /// Not a tool and not dispatched — it touches this agent's context window directly, which is
+    /// why it is also where the [caps](crate::agent) on a view live.
+    fn open_text_view(
+        &mut self,
+        label: String,
+        body: String,
+    ) -> Result<SandboxViewOpened, ViewRefusal>;
+    /// Close every view whose selector matches — for a file, every page of that path — and report
+    /// how many were closed. A selector that is not open closes `0`, which is not a failure.
+    fn close_view(&mut self, selector: String) -> Result<u32, ViewRefusal>;
+    /// What is open in this agent's window right now, in the order it was opened. Charged against
+    /// no cap: it opens nothing and reads nothing off disk.
+    fn current_views(&mut self) -> Vec<OpenViewInfo>;
 }
 
 /// One stage of a declared run_workflow, lowered from the WIT record to primitive fields.

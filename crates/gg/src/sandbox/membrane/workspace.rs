@@ -91,34 +91,9 @@ impl<A: ToolApi> FilesHost for MembraneState<A> {
         offset: Option<u32>,
         limit: Option<u32>,
     ) -> Result<FileRead, ToolError> {
-        // `offset` is 1-based on the far side of this call and unconstrained on the near side, so
-        // the one value the two disagree about is normalised rather than argued over.
-        let offset = offset.map(|offset| offset.max(FIRST_LINE_OFFSET) as usize);
-        let limit = limit.map(|limit| limit as usize);
+        let (offset, limit) = read_window(offset, limit);
         let outcome = self.call(READ_FILE_TOOL, |api| api.read_file(path, offset, limit))?;
-        match outcome.data {
-            // The text is MOVED out of the outcome rather than cloned: a 256 KiB read is the
-            // largest thing that crosses this membrane, and it crosses once.
-            Some(ToolData::FileText(text)) => Ok(FileRead::Text(TextRead {
-                contents: text.contents,
-                first_line: text.first_line,
-                last_line: text.last_line,
-                total_lines: text.total_lines,
-                byte_truncated: text.byte_truncated,
-                limit_reduced: text.limit_reduced,
-            })),
-            // A picture's bytes never enter the program: the shared call helper moved them onto
-            // the turn's attachments, so the model *looks* at the picture, and what comes back
-            // here is the description — including whether it is in fact being shown.
-            Some(ToolData::FileImage(image)) => Ok(FileRead::Image(ImageRead {
-                media_type: image.media_type,
-                label: image.label,
-                bytes: image.bytes,
-                shown: image.shown,
-                not_shown_reason: image.not_shown_reason,
-            })),
-            other => Err(self.missing_data(READ_FILE_TOOL, other.as_ref())),
-        }
+        file_read(self, outcome.data)
     }
 
     fn write_file(&mut self, path: String, contents: String) -> Result<u64, ToolError> {
@@ -149,6 +124,59 @@ impl<A: ToolApi> FilesHost for MembraneState<A> {
             Some(ToolData::DirEntries(entries)) => Ok(entries.into_iter().map(entry).collect()),
             other => Err(self.missing_data(LIST_DIR_TOOL, other.as_ref())),
         }
+    }
+}
+
+/// The `offset`/`limit` a read is actually made with, normalised from what the membrane declares
+/// into what gg's `read_file` accepts.
+///
+/// Shared with [`views`](super::views), whose `open-file-view` is the same read under a different
+/// name: the two must normalise identically or a paged view would cover different lines from the
+/// paged read the model wrote beside it.
+pub(super) fn read_window(
+    offset: Option<u32>,
+    limit: Option<u32>,
+) -> (Option<usize>, Option<usize>) {
+    // `offset` is 1-based on the far side of this call and unconstrained on the near side, so
+    // the one value the two disagree about is normalised rather than argued over.
+    (
+        offset.map(|offset| offset.max(FIRST_LINE_OFFSET) as usize),
+        limit.map(|limit| limit as usize),
+    )
+}
+
+/// What a read returned, as the membrane's `file-read` variant — or the defect diagnostic if the
+/// tool answered `ok` with no [structured sidecar](ToolData).
+///
+/// Shared by `read-file` and [`open-file-view`](super::views), which differ in what gg does with the
+/// result and not at all in what the program is handed back.
+pub(super) fn file_read<A: ToolApi>(
+    state: &mut MembraneState<A>,
+    data: Option<ToolData>,
+) -> Result<FileRead, ToolError> {
+    match data {
+        // The text is MOVED out of the outcome rather than cloned: a 256 KiB read is the
+        // largest thing that crosses this membrane, and it crosses once.
+        Some(ToolData::FileText(text)) => Ok(FileRead::Text(TextRead {
+            contents: text.contents,
+            first_line: text.first_line,
+            last_line: text.last_line,
+            total_lines: text.total_lines,
+            byte_truncated: text.byte_truncated,
+            limit_reduced: text.limit_reduced,
+        })),
+        // A picture's bytes never enter the program: they were moved onto the turn's attachments
+        // (a bare read) or into the file view's own context item (`open-file-view`), so the model
+        // *looks* at the picture, and what comes back here is the description — including whether
+        // it is in fact being shown.
+        Some(ToolData::FileImage(image)) => Ok(FileRead::Image(ImageRead {
+            media_type: image.media_type,
+            label: image.label,
+            bytes: image.bytes,
+            shown: image.shown,
+            not_shown_reason: image.not_shown_reason,
+        })),
+        other => Err(state.missing_data(READ_FILE_TOOL, other.as_ref())),
     }
 }
 

@@ -41,8 +41,11 @@ use tokio::runtime::Handle;
 use test_cabinet_core::gg::GgSubagentRef;
 use test_cabinet_core::gg_replay::GgShellOrigin;
 
+use crate::context::{EvictionResult, OpenViewInfo, ViewKind};
 use crate::ending::Ending;
-use crate::sandbox::{ToolApi, WorkflowStageInput};
+use crate::sandbox::{
+    IMAGE_BUDGET, SandboxViewOpened, ToolApi, ViewOpenOutcome, ViewRefusal, WorkflowStageInput,
+};
 use crate::tasks::TaskStatus;
 use crate::tools::{
     AddTaskTool, ArchiveThreadTool, CompactTool, CompleteTaskTool, CreateEpicTool, CreateIssueTool,
@@ -815,11 +818,18 @@ pub(super) struct CodeTurnState {
 /// [`Fatal`](CodeTurnOutcome::Fatal) (after which the loop ends the session and never reads the
 /// window again).
 ///
-/// One thing is deliberately **not** replicated: a `read_file` result is *not* pushed as a
-/// [`FileView`](GgContextSource::FileView) context item. A program that reads forty files should not
-/// put forty files in the window — consuming reads inside the program instead of the context is one
-/// of the reasons responses-as-code exists. The pictures a read produced still reach the model:
-/// they ride out on [`SandboxOutcome::images`] and are attached to the turn's feedback.
+/// One thing is deliberately **not** replicated, and one thing deliberately is. A bare `read_file`
+/// result is *not* pushed as a [`FileView`](GgContextSource::FileView) context item: a program that
+/// reads forty files to grep them should not put forty files in the window, and consuming reads
+/// inside the program instead of the context is one of the reasons responses-as-code exists. The
+/// pictures such a read produced still reach the model — they ride out on
+/// [`SandboxOutcome::images`] and are attached to the turn's feedback.
+///
+/// A [`view.openFile`](ToolApi::open_file_view) *does* push one, and that is the whole distinction
+/// the model is taught in one line: **`fs.readFile` gets bytes for your program; `view.openFile`
+/// shows a file to you.** A view is an intent — *this should be visible* — so it is an attributable,
+/// evictable, persisted context item keyed by `(path, region)`, and the picture an opened mockup
+/// returned rides in that item rather than out on the feedback.
 #[allow(clippy::too_many_arguments)]
 async fn run_code_program(
     source: &str,
@@ -872,6 +882,8 @@ async fn run_code_program(
         speculative_active: turn.speculative_active,
         pending_compaction: turn.pending_compaction,
         serviced: 0,
+        view_ops: 0,
+        view_images: 0,
     };
 
     let sandbox = tokio::task::spawn_blocking(move || {
@@ -913,6 +925,13 @@ async fn run_code_program(
                 logs_suppressed: 0,
                 images: Vec::new(),
                 images_dropped: 0,
+                // The views the program had already opened died with the window they were pushed
+                // into: the api owned the `ContextModel` and the panic took it. The turn is fatal
+                // regardless, and the loop never reads that window again.
+                views_opened: Vec::new(),
+                views_closed: Vec::new(),
+                view_refusals: Vec::new(),
+                views_suppressed: 0,
                 deferred_note: None,
                 returned_value: false,
                 completion: None,
@@ -1002,6 +1021,39 @@ fn pin_docs(context: &mut ContextModel, text: &str) {
 }
 
 // ---------------------------------------------------------------------------
+// The caps a program's views are held to
+// ---------------------------------------------------------------------------
+//
+// Every one of these is enforced in `LoopToolApi`, because that is where the `ContextModel` is: a
+// cap that cannot see the window is a cap guessing. Breaching one is a **catchable** `ToolError`
+// with code `limit-exceeded` **naming the cap** — never a silent truncation. A view is a program's
+// only channel into its own context, and quietly cutting the model's output in half behind its back
+// is the exact failure mode this whole feature exists to remove: the model can split the material,
+// trim it, or write it to a file and open a file view of that, but only if it is told.
+
+/// The most bytes one `view.openText` body may carry.
+///
+/// 64 KiB is four times what a `shell` result is truncated to and roughly a sixth of a small model's
+/// whole window — comfortably more than any value a program assembles on purpose, and small enough
+/// that one call cannot fill the window by itself.
+const MAX_TEXT_VIEW_BYTES: usize = 65_536;
+
+/// The most bytes one text view's label may carry. A label is a *selector* — the handle the model
+/// closes and replaces the view by — so it is a name, not a description.
+const MAX_VIEW_LABEL_BYTES: usize = 200;
+
+/// The most text views one agent may hold open at once. Re-opening a label that is already open is
+/// never refused by this: it replaces a view rather than adding one.
+const MAX_OPEN_TEXT_VIEWS: usize = 50;
+
+/// The most view operations — `openFile` + `openText` + `close` — one program may make.
+///
+/// Not a cost bound (the three caps above are) but a *shape* bound: a program composing a hundred
+/// views in one turn has stopped showing the model material and started writing its window with a
+/// loop. `current()` is not charged against it, because listing what is open opens nothing.
+const MAX_VIEW_OPS_PER_PROGRAM: u32 = 100;
+
+// ---------------------------------------------------------------------------
 // The native `ToolApi`: the loop's own state, servicing each typed call inline
 // ---------------------------------------------------------------------------
 
@@ -1066,6 +1118,19 @@ pub(super) struct LoopToolApi {
     speculative_active: bool,
     pending_compaction: Option<PendingCompaction>,
     serviced: u64,
+    /// How many view operations this program has made, against
+    /// [`MAX_VIEW_OPS_PER_PROGRAM`]. Refused ones count: a refusal is an operation the program
+    /// chose to attempt, and not counting them would leave a program that swallows the throws
+    /// looping on a budget it can never spend.
+    view_ops: u32,
+    /// How many pictures this program has already put into the window through a
+    /// [file view](ToolApi::open_file_view), against [`IMAGE_BUDGET`].
+    ///
+    /// Separate from the membrane's own per-turn picture budget, which bounds the pictures a bare
+    /// `fs.readFile` attaches to the turn's *feedback*. The two are the same number and the same
+    /// reason — tens of megabytes of base64 in one context window — applied to the two different
+    /// places a picture can now land.
+    view_images: u32,
 }
 
 #[allow(dead_code)]
@@ -1353,6 +1418,199 @@ impl LoopToolApi {
             format!("wait registered for issue `{issue_id}`"),
         )
     }
+
+    /// Charge one view operation against [`MAX_VIEW_OPS_PER_PROGRAM`], refusing when the budget is
+    /// spent.
+    ///
+    /// Charged before anything else a view call does, and charged for refusals too — a program that
+    /// catches the throw and keeps calling has still made the call, and a budget that only counted
+    /// successes would never actually stop one.
+    fn charge_view_op(&mut self) -> Result<(), ViewRefusal> {
+        if let Some(refusal) = view_ops_refusal(self.view_ops) {
+            return Err(refusal);
+        }
+        self.view_ops += 1;
+        Ok(())
+    }
+
+    /// Move the pictures a `view.openFile` read produced out of its outcome and into the view item
+    /// that is about to be pushed, up to [`IMAGE_BUDGET`].
+    ///
+    /// A picture beyond the budget is dropped and the outcome's own description of it is rewritten
+    /// to say it is not being shown and why — the same bargain the membrane strikes for a bare read,
+    /// so the value the program is handed and the picture the model can actually see never disagree.
+    /// The `shown` flag belongs to the sidecar's one picture, and gg has exactly one tool that
+    /// produces pictures, one at a time.
+    fn admit_view_images(&mut self, outcome: &mut ToolOutcome) -> Vec<ImageContent> {
+        let offered = std::mem::take(&mut outcome.images);
+        if offered.is_empty() {
+            return offered;
+        }
+        let room = IMAGE_BUDGET.saturating_sub(self.view_images) as usize;
+        if room == 0 {
+            if let Some(ToolData::FileImage(image)) = outcome.data.as_mut() {
+                image.shown = false;
+                image.not_shown_reason = Some(format!(
+                    "a program may put at most {IMAGE_BUDGET} pictures into your context window in \
+                     one turn; this file was read and described, but is not being shown"
+                ));
+            }
+            return Vec::new();
+        }
+        let mut admitted = offered;
+        admitted.truncate(room);
+        self.view_images = self
+            .view_images
+            .saturating_add(u32::try_from(admitted.len()).unwrap_or(u32::MAX));
+        admitted
+    }
+
+    /// Check one `view.openText` against the caps that bound a text view, then push it and report
+    /// what the push did.
+    ///
+    /// The count cap needs the window (how many text views are open, and whether this label is one
+    /// of them), so it is resolved here and decided by [`text_view_refusal`].
+    fn push_text_view(
+        &mut self,
+        label: String,
+        body: String,
+    ) -> Result<SandboxViewOpened, ViewRefusal> {
+        let open: Vec<String> = self
+            .context
+            .open_text_views()
+            .into_iter()
+            .map(|view| view.label)
+            .collect();
+        if let Some(refusal) = text_view_refusal(&label, &body, &open) {
+            return Err(refusal);
+        }
+        let opened = self.context.open_text_view(label.clone(), body);
+        Ok(SandboxViewOpened {
+            kind: ViewKind::Text,
+            selector: label,
+            tokens: opened.tokens as u64,
+            superseded: opened.superseded,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// What the view caps decide
+// ---------------------------------------------------------------------------
+//
+// Free functions rather than methods, and pure: every one of them is a decision about a call, made
+// from the call and from what is already open. Keeping them out of `LoopToolApi` is what lets the
+// rules — and the exact words a refused model reads — be read and tested without standing up an
+// agent, a workspace and a tokio runtime.
+
+/// The refusal [`MAX_VIEW_OPS_PER_PROGRAM`] makes when a program has already spent its budget.
+fn view_ops_refusal(made: u32) -> Option<ViewRefusal> {
+    (made >= MAX_VIEW_OPS_PER_PROGRAM).then(|| ViewRefusal {
+        failure: ToolFailure::LimitExceeded,
+        message: format!(
+            "this program has already made {MAX_VIEW_OPS_PER_PROGRAM} view operations \
+             (MAX_VIEW_OPS_PER_PROGRAM), which is the most one program may make. The views it \
+             already opened are in your window; open the rest next turn, or show fewer, larger \
+             views."
+        ),
+    })
+}
+
+/// The refusal the text-view caps make about one `view.openText`, or `None` to let it through.
+///
+/// `open` is the labels already open. The count cap is checked against **new** labels only:
+/// re-opening a label that is already open replaces a view rather than adding one, so refusing it
+/// at the ceiling would leave an agent with fifty views unable to correct any of them.
+///
+/// An empty **body** is deliberately allowed: it is how a program says that something it was
+/// showing is now empty, and refusing it would make that unexpressible.
+fn text_view_refusal(label: &str, body: &str, open: &[String]) -> Option<ViewRefusal> {
+    if label.trim().is_empty() {
+        return Some(ViewRefusal {
+            failure: ToolFailure::InvalidArgument,
+            message:
+                "a view needs a non-empty label: it is the selector you close and replace the \
+                      view by, so a view without one could never be closed, replaced or attributed."
+                    .to_string(),
+        });
+    }
+    if label.len() > MAX_VIEW_LABEL_BYTES {
+        return Some(ViewRefusal {
+            failure: ToolFailure::LimitExceeded,
+            message: format!(
+                "that label is {} bytes; a view label may be at most {MAX_VIEW_LABEL_BYTES} \
+                 (MAX_VIEW_LABEL_BYTES). A label is the short name you close the view by, not a \
+                 description — put the description in the body.",
+                label.len()
+            ),
+        });
+    }
+    if body.len() > MAX_TEXT_VIEW_BYTES {
+        return Some(ViewRefusal {
+            failure: ToolFailure::LimitExceeded,
+            message: format!(
+                "that body is {} bytes; one text view may be at most {MAX_TEXT_VIEW_BYTES} \
+                 (MAX_TEXT_VIEW_BYTES). Nothing was truncated and nothing was shown — split it \
+                 across several views, trim it, or write it to a file and open a file view of that.",
+                body.len()
+            ),
+        });
+    }
+    if open.len() >= MAX_OPEN_TEXT_VIEWS && !open.iter().any(|open| open == label) {
+        return Some(ViewRefusal {
+            failure: ToolFailure::LimitExceeded,
+            message: format!(
+                "you already have {MAX_OPEN_TEXT_VIEWS} text views open (MAX_OPEN_TEXT_VIEWS), \
+                 which is the most one agent may hold. Close one with `view.close(label)` — \
+                 `view.current()` lists them — or re-open an existing label to replace what it \
+                 shows."
+            ),
+        });
+    }
+    None
+}
+
+/// The refusal a `view.close` earns for a selector that could never name anything.
+///
+/// A selector that is *open under nothing* is not a failure — that closes `0` — but a blank one is:
+/// it is not a name at all, and answering it with a cheerful zero would hide a typo.
+fn close_selector_refusal(selector: &str) -> Option<ViewRefusal> {
+    selector.trim().is_empty().then(|| ViewRefusal {
+        failure: ToolFailure::InvalidArgument,
+        message: "`view.close` needs a non-empty selector: a file view's path or a text view's \
+                  label. `view.current()` lists what is open."
+            .to_string(),
+    })
+}
+
+/// The [`ContextManaged`](GgTelemetryKind::ContextManaged) event one band of a `view.close`
+/// produced, or `None` when that band held nothing to close.
+///
+/// A close reports as the same two actions the native path does — `EvictFileViews` for a path,
+/// `CloseTextViews` for a label — because it *is* the same reclaim, reached by a different call.
+/// Keeping the two apart matters to whoever reads the stream: an evicted file view is recoverable
+/// by re-reading the file, and a closed text view held the agent's only copy of what it showed.
+fn view_close_event(
+    action: GgContextAction,
+    selector: &str,
+    result: &EvictionResult,
+) -> Option<GgTelemetryKind> {
+    if result.items == 0 {
+        return None;
+    }
+    let what = match action {
+        GgContextAction::CloseTextViews => "text view(s)",
+        _ => "file view(s)",
+    };
+    Some(GgTelemetryKind::ContextManaged {
+        action,
+        reclaimed_tokens: result.tokens,
+        items: result.items as u64,
+        detail: format!(
+            "Closed {} {what} for `{selector}`, reclaiming ~{} tokens.",
+            result.items, result.tokens
+        ),
+    })
 }
 
 /// A `TaskStatus` in the spelling gg's schema declares, for the telemetry `args` value only.
@@ -1895,4 +2153,111 @@ impl ToolApi for LoopToolApi {
             read.text
         })
     }
+    /// Read a file and show it to the model — the one place a code turn pushes a
+    /// [`FileView`](GgContextSource::FileView).
+    ///
+    /// The read itself is [`read_file`](Self::read_file) verbatim, so the gate, the telemetry pair,
+    /// the replay entry, the roster line and the read policy are the ones a bare `fs.readFile`
+    /// gets; there is no second, quieter read path. What follows it is the view: the `(path,
+    /// region)` key comes from what the tool actually **returned** rather than from what the call
+    /// asked for (an unlimited read policy ignores the window; a hard cap reduces it), so
+    /// re-opening the same page supersedes it instead of stacking a second copy beside it.
+    ///
+    /// The content is cloned rather than moved out of the outcome because the outcome goes on to
+    /// become the program's own return value — the model is handed the bytes *and* shown the file
+    /// for the price of one read, which is the reason this call exists at all.
+    fn open_file_view(
+        &mut self,
+        path: String,
+        offset: Option<usize>,
+        limit: Option<usize>,
+    ) -> ViewOpenOutcome {
+        if let Err(refusal) = self.charge_view_op() {
+            // Refused as a **serviced** call rather than as a silent nothing, exactly as the
+            // compaction and memory gates refuse one: the roster the model reads next turn is
+            // counted against the number of `ToolCall`/`ToolResult` pairs the turn streamed, and a
+            // refusal that skipped the pair would make the two disagree.
+            let outcome = self.serviced(
+                READ_FILE_TOOL,
+                json!({ "path": path, "offset": offset, "limit": limit }),
+                |_api| refusal.into_outcome(),
+            );
+            return ViewOpenOutcome {
+                outcome,
+                opened: None,
+            };
+        }
+        let mut outcome = self.read_file(path.clone(), offset, limit);
+        if !outcome.ok {
+            // The read failed; there is nothing to show. The failure is already a rostered,
+            // streamed, replayed `read_file` result, and the membrane throws it at the program.
+            return ViewOpenOutcome {
+                outcome,
+                opened: None,
+            };
+        }
+        let region = match &outcome.data {
+            Some(ToolData::FileText(text)) => FileRegion::covered(
+                text.first_line.into(),
+                text.last_line.into(),
+                text.total_lines.into(),
+            ),
+            _ => None,
+        };
+        let images = self.admit_view_images(&mut outcome);
+        let opened = self.context.open_file_view_deduped(
+            path.clone(),
+            region,
+            outcome.output.clone(),
+            images,
+        );
+        ViewOpenOutcome {
+            outcome,
+            opened: Some(SandboxViewOpened {
+                kind: ViewKind::File,
+                selector: path,
+                tokens: opened.tokens as u64,
+                superseded: opened.superseded,
+            }),
+        }
+    }
+    fn open_text_view(
+        &mut self,
+        label: String,
+        body: String,
+    ) -> Result<SandboxViewOpened, ViewRefusal> {
+        self.charge_view_op()?;
+        self.push_text_view(label, body)
+    }
+    /// Close every view carrying `selector` — every page of a path, or the text view under a label.
+    ///
+    /// Both bands are swept, because a selector is what the *model* wrote and it has no obligation
+    /// to tell gg which kind it meant. A selector that names nothing closes `0`, which is a
+    /// successful call: a program that tidies up unconditionally should not have to guard every
+    /// call with a `current()` check.
+    fn close_view(&mut self, selector: String) -> Result<u32, ViewRefusal> {
+        self.charge_view_op()?;
+        if let Some(refusal) = close_selector_refusal(&selector) {
+            return Err(refusal);
+        }
+        let files = self.context.evict_file_views(Some(&selector));
+        let texts = self.context.close_text_views(Some(&selector));
+        for event in [
+            view_close_event(GgContextAction::EvictFileViews, &selector, &files),
+            view_close_event(GgContextAction::CloseTextViews, &selector, &texts),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            self.emitter.emit(event);
+        }
+        Ok(saturating_u32(files.items + texts.items))
+    }
+    fn current_views(&mut self) -> Vec<OpenViewInfo> {
+        self.context.open_views()
+    }
 }
+
+#[cfg(test)]
+#[path = "agent.code.views.test.rs"]
+mod view_tests;

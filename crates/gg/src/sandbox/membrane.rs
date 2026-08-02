@@ -21,11 +21,15 @@
 //! schema already declares, call, and convert the [structured sidecar](crate::tools::ToolData) into
 //! its typed WIT result.
 //!
-//! A handful of functions dispatch nothing and therefore bypass it: the four
-//! [session-ending calls](session) — the model-facing functions on this
-//! membrane that are not gg tools — set this agent's ending flag through
-//! [`MembraneState::declare`], because ending a session is the one thing a program may ask for that
-//! no capability governs and no spent budget may withhold.
+//! A handful of functions dispatch nothing and therefore bypass it. The four
+//! [session-ending calls](session) — the model-facing functions on this membrane that are not gg
+//! tools — set this agent's ending flag through [`MembraneState::declare`], because ending a session
+//! is the one thing a program may ask for that no capability governs and no spent budget may
+//! withhold. The [documentation lookups](docs) and three of the four [view calls](views) go straight
+//! to the [api](ToolApi) for the same reason: both of `dispatch`'s guards are wrong for a call that
+//! is not a tool, and a program that cannot show itself what it computed has nothing to report at
+//! all. The fourth view call, `open-file-view`, **is** a bridged `read_file` and goes through
+//! `dispatch` like any other read.
 //!
 //! # The state is the agent's, not the program's
 //!
@@ -53,7 +57,7 @@
 use std::collections::{BTreeSet, VecDeque};
 use std::time::{Duration, Instant};
 
-use super::invoker::{SandboxRefusal, SandboxToolCall, ToolApi};
+use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened, ToolApi};
 use super::limits::{MemoryLimiter, SandboxLimits};
 use super::{ProgramCompletion, ProgramError, ProgramErrorKind};
 use crate::ending::{Ending, EndingRole};
@@ -66,7 +70,10 @@ mod delegation;
 mod docs;
 mod knowledge;
 mod session;
+mod views;
 mod workspace;
+
+pub(crate) use capture::IMAGE_BUDGET;
 
 wasmtime::component::bindgen!({ world: "sandbox", path: "wit" });
 
@@ -144,6 +151,18 @@ pub(crate) struct MembraneState<A: ToolApi> {
     images: Vec<ImageContent>,
     /// Pictures dropped because [`IMAGE_BUDGET`] was already spent.
     images_dropped: u32,
+    /// The views this program opened, in call order, up to
+    /// [`MAX_RECORDED_VIEW_EVENTS`](capture::MAX_RECORDED_VIEW_EVENTS).
+    views_opened: Vec<SandboxViewOpened>,
+    /// The selectors this program closed, in call order — one entry per `close-view` that actually
+    /// closed something.
+    views_closed: Vec<String>,
+    /// Every view call that was refused: a cap, an unusable selector, or a read that failed. Kept so
+    /// the turn's feedback can say the material never reached the window, which is the one thing a
+    /// silent refusal could not do.
+    view_refusals: Vec<String>,
+    /// How many view records the recording cap discarded across the three lists above.
+    views_suppressed: u64,
     /// The shim's note that the program deferred work which ran after it ended.
     deferred_note: Option<String>,
     /// Whether the program ended with a `return` that carried a value — a value gg discarded. The
@@ -191,6 +210,14 @@ pub(crate) struct MembraneParts {
     pub images: Vec<ImageContent>,
     /// How many pictures the budget dropped.
     pub images_dropped: u32,
+    /// The views the program opened, in call order.
+    pub views_opened: Vec<SandboxViewOpened>,
+    /// The selectors the program closed, in call order.
+    pub views_closed: Vec<String>,
+    /// Every view call that was refused, in call order.
+    pub view_refusals: Vec<String>,
+    /// How many view records the recording cap discarded.
+    pub views_suppressed: u64,
     /// The deferred-work note, when the shim reported one.
     pub deferred_note: Option<String>,
     /// Whether the program ended by returning a value, which gg discarded.
@@ -231,6 +258,10 @@ impl<A: ToolApi> MembraneState<A> {
             log_bytes: 0,
             images: Vec::new(),
             images_dropped: 0,
+            views_opened: Vec::new(),
+            views_closed: Vec::new(),
+            view_refusals: Vec::new(),
+            views_suppressed: 0,
             deferred_note: None,
             returned_value: false,
             completion: None,
@@ -294,6 +325,10 @@ impl<A: ToolApi> MembraneState<A> {
             logs_suppressed: self.logs_suppressed,
             images: self.images,
             images_dropped: self.images_dropped,
+            views_opened: self.views_opened,
+            views_closed: self.views_closed,
+            view_refusals: self.view_refusals,
+            views_suppressed: self.views_suppressed,
             deferred_note: self.deferred_note,
             returned_value: self.returned_value,
             completion: self.completion,

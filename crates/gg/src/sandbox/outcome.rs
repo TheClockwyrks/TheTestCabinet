@@ -14,7 +14,7 @@
 
 use std::time::Duration;
 
-use super::invoker::{SandboxRefusal, SandboxToolCall};
+use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened};
 use super::transpile::{TranspileError, UnreachableTail};
 use crate::ending::Ending;
 use crate::model::ImageContent;
@@ -51,6 +51,29 @@ pub struct SandboxOutcome {
     pub images: Vec<ImageContent>,
     /// Pictures dropped because the per-program budget was already spent.
     pub images_dropped: u32,
+    // The four view fields below are populated here and rendered by the turn's feedback template,
+    // which lands in the next change. The `expect` is deliberate rather than an `allow`: it makes
+    // the compiler say so the moment the renderer starts reading them, instead of leaving a
+    // permanent suppression behind.
+    /// The [views](crate::context::ViewKind) the program opened, in call order — what the turn's
+    /// feedback reports back so the model can read its own accounting: which selector it showed,
+    /// what that costs, and whether it *replaced* something rather than adding to it.
+    #[expect(dead_code, reason = "rendered by the turn feedback in the next change")]
+    pub views_opened: Vec<SandboxViewOpened>,
+    /// The selectors the program closed, in call order. Only closes that actually closed something
+    /// are here: `view.close` of a selector that is not open is a successful no-op by design.
+    #[expect(dead_code, reason = "rendered by the turn feedback in the next change")]
+    pub views_closed: Vec<String>,
+    /// Every view call that was refused — a cap, an unusable selector, or a read that failed.
+    ///
+    /// A refused view is the one thing this feature must never let happen quietly: the material
+    /// never reached the window, and a model that was not told would read the silence as evidence
+    /// its program never ran.
+    #[expect(dead_code, reason = "rendered by the turn feedback in the next change")]
+    pub view_refusals: Vec<String>,
+    /// How many view records the recording cap discarded, across all three lists.
+    #[expect(dead_code, reason = "rendered by the turn feedback in the next change")]
+    pub views_suppressed: u64,
     /// The shim's note that the program deferred work into a microtask which ran after it ended.
     /// `None` when it did not.
     pub deferred_note: Option<String>,
@@ -117,6 +140,10 @@ impl SandboxOutcome {
             logs_suppressed: 0,
             images: Vec::new(),
             images_dropped: 0,
+            views_opened: Vec::new(),
+            views_closed: Vec::new(),
+            view_refusals: Vec::new(),
+            views_suppressed: 0,
             deferred_note: None,
             returned_value: false,
             completion: None,

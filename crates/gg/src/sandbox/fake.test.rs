@@ -15,9 +15,11 @@ use std::time::Instant;
 
 use serde_json::{Value, json};
 
+use super::invoker::{SandboxViewOpened, ViewOpenOutcome, ViewRefusal};
 use super::membrane::MembraneState;
 use super::{FunctionSummary, SandboxLimits, ToolApi, WorkflowStageInput};
 use crate::board::IssueStatus;
+use crate::context::{FileRegion, OpenViewInfo, ViewKind};
 use crate::ending::EndingRole;
 use crate::model::ImageContent;
 use crate::tasks::TaskStatus;
@@ -106,6 +108,14 @@ pub(crate) struct FakeToolApi {
     log: CallLog,
     /// How a call is answered. Boxed so a test can substitute a failing or asserting responder.
     responder: Box<Responder>,
+    /// The views this double is holding open, in the order they were opened.
+    ///
+    /// The production api keeps these in the agent's real [`ContextModel`](crate::context), which
+    /// the membrane's own tests have no reason to stand up. What they *do* need is that the four
+    /// view calls behave like one another — that an open is visible to a `current`, that a close
+    /// removes what it names and reports how many — so the double models exactly that and no more.
+    /// The caps are not modelled at all: they live in `LoopToolApi`, which is where the window is.
+    views: Vec<OpenViewInfo>,
 }
 
 #[allow(dead_code)]
@@ -124,6 +134,7 @@ impl FakeToolApi {
         Self {
             log: log.clone(),
             responder: Box::new(responder),
+            views: Vec::new(),
         }
     }
 
@@ -134,6 +145,39 @@ impl FakeToolApi {
             args: args.clone(),
         });
         (self.responder)(name, &args)
+    }
+
+    /// Open a view of `kind` under `selector`, replacing any that already carried it — the
+    /// supersede rule the real [`ContextModel`](crate::context::ContextModel) implements, modelled
+    /// here because "did that call open a view or replace one?" is exactly what the membrane
+    /// reports back.
+    fn open_view(
+        &mut self,
+        kind: ViewKind,
+        selector: String,
+        tokens: u64,
+        region: Option<FileRegion>,
+    ) -> SandboxViewOpened {
+        let existing = self
+            .views
+            .iter()
+            .position(|view| view.kind == kind && view.selector == selector);
+        let view = OpenViewInfo {
+            kind,
+            selector: selector.clone(),
+            tokens,
+            region,
+        };
+        match existing {
+            Some(index) => self.views[index] = view,
+            None => self.views.push(view),
+        }
+        SandboxViewOpened {
+            kind,
+            selector,
+            tokens,
+            superseded: existing.is_some(),
+        }
     }
 }
 
@@ -393,6 +437,85 @@ impl ToolApi for FakeToolApi {
     /// a `not-found`.
     fn read_docs(&mut self, name: &str) -> Option<String> {
         Some(format!("documentation for `{name}`"))
+    }
+
+    /// The read, recorded as the `read_file` it really is, plus the view it opens.
+    ///
+    /// It is logged under the **tool name** rather than under the function the program called,
+    /// because that is what production records: `view.openFile` dispatches a `read_file`, and a test
+    /// asserting on the composed-call roster should see the same call the loop streamed.
+    ///
+    /// The pictures are taken out of the outcome exactly as the production api takes them: they
+    /// belong to the view item now, not to the turn's attachments, and leaving them behind would
+    /// let the membrane attach a copy of a picture the window already holds.
+    fn open_file_view(
+        &mut self,
+        path: String,
+        offset: Option<usize>,
+        limit: Option<usize>,
+    ) -> ViewOpenOutcome {
+        let mut outcome = self.call(
+            "read_file",
+            json!({ "path": path, "offset": offset, "limit": limit }),
+        );
+        if !outcome.ok {
+            return ViewOpenOutcome {
+                outcome,
+                opened: None,
+            };
+        }
+        let region = match &outcome.data {
+            Some(ToolData::FileText(text)) => FileRegion::covered(
+                text.first_line.into(),
+                text.last_line.into(),
+                text.total_lines.into(),
+            ),
+            _ => None,
+        };
+        outcome.images.clear();
+        let opened = self.open_view(
+            ViewKind::File,
+            path,
+            outcome.output.len() as u64 / 4,
+            region,
+        );
+        ViewOpenOutcome {
+            outcome,
+            opened: Some(opened),
+        }
+    }
+
+    /// Opens the text view, modelling only the one rule the membrane can observe: an empty label is
+    /// refused. The size caps are the production api's, and are exercised where they live.
+    fn open_text_view(
+        &mut self,
+        label: String,
+        body: String,
+    ) -> Result<SandboxViewOpened, ViewRefusal> {
+        if label.trim().is_empty() {
+            return Err(ViewRefusal {
+                failure: ToolFailure::InvalidArgument,
+                message: "a view needs a non-empty label".to_string(),
+            });
+        }
+        let tokens = body.len() as u64 / 4;
+        Ok(self.open_view(ViewKind::Text, label, tokens, None))
+    }
+
+    fn close_view(&mut self, selector: String) -> Result<u32, ViewRefusal> {
+        if selector.trim().is_empty() {
+            return Err(ViewRefusal {
+                failure: ToolFailure::InvalidArgument,
+                message: "`view.close` needs a non-empty selector".to_string(),
+            });
+        }
+        let before = self.views.len();
+        self.views.retain(|view| view.selector != selector);
+        Ok((before - self.views.len()) as u32)
+    }
+
+    fn current_views(&mut self) -> Vec<OpenViewInfo> {
+        self.views.clone()
     }
 }
 

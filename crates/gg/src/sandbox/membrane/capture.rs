@@ -1,7 +1,8 @@
 //! What a program is allowed to leave behind, and the caps that bound it.
 //!
-//! A program accumulates four things on its way to a result: an ordered roster of the calls it
-//! made, the calls that were refused, the lines it logged, and the pictures it read. Every one of
+//! A program accumulates five things on its way to a result: an ordered roster of the calls it
+//! made, the calls that were refused, the lines it logged, the pictures it read, and the
+//! [views](super::views) it opened, closed and had refused. Every one of
 //! them is **fed back into the model's context window on the next turn**, and every one of them is
 //! written by the program itself — a `for` loop can produce a hundred thousand of any of them well
 //! within an execution timeout sized for real work. So each is bounded here, and what a bound discarded is
@@ -19,7 +20,8 @@
 
 use super::feedback;
 use super::{
-    MembraneState, ProgramError, ProgramErrorKind, SandboxRefusal, SandboxToolCall, ToolApi,
+    MembraneState, ProgramError, ProgramErrorKind, SandboxRefusal, SandboxToolCall,
+    SandboxViewOpened, ToolApi,
 };
 use crate::tools::{ToolData, ToolOutcome};
 
@@ -74,7 +76,19 @@ pub(super) const MAX_CALL_ERROR_BYTES: usize = 512;
 /// context window. Further reads still succeed and still report their metadata — with `shown:
 /// false` and a reason naming this budget — so the program can carry on and the model is told why
 /// it is not looking at the picture.
-pub(super) const IMAGE_BUDGET: u32 = 4;
+pub(crate) const IMAGE_BUDGET: u32 = 4;
+
+/// The most view records — opens, closes, refusals — one program's report keeps **of each kind**.
+///
+/// A view call is cheap to make in a loop and every kept record is charged to the next turn's
+/// window, so the same bound the roster and the log carry applies here. It matters most for
+/// refusals: once a program has spent its per-program view budget every further view call is
+/// refused, and `for (;;) { try { view.close("x") } catch {} }` would otherwise spin appending
+/// strings until the execution timeout stopped it.
+///
+/// What the cap drops is counted in [`MembraneState::views_suppressed`] rather than dropped
+/// silently, for the reason the module opens with.
+pub(super) const MAX_RECORDED_VIEW_EVENTS: usize = 100;
 
 impl<A: ToolApi> MembraneState<A> {
     /// Push the ordered record of one serviced call.
@@ -132,6 +146,41 @@ impl<A: ToolApi> MembraneState<A> {
             name: tool.to_string(),
             message: message.to_string(),
         });
+    }
+
+    /// Record a view the program opened, so the turn's feedback can tell it what its own call did.
+    pub(super) fn record_view_opened(&mut self, view: SandboxViewOpened) {
+        if self.views_opened.len() >= MAX_RECORDED_VIEW_EVENTS {
+            self.views_suppressed = self.views_suppressed.saturating_add(1);
+            return;
+        }
+        self.views_opened.push(view);
+    }
+
+    /// Record a selector the program closed. Only a close that actually closed something is
+    /// recorded: `view.close` of a selector that is not open returns `0` by design, and reporting
+    /// that back as a closure would tell the model it reclaimed something it did not.
+    pub(super) fn record_view_closed(&mut self, selector: &str) {
+        if self.views_closed.len() >= MAX_RECORDED_VIEW_EVENTS {
+            self.views_suppressed = self.views_suppressed.saturating_add(1);
+            return;
+        }
+        self.views_closed.push(selector.to_string());
+    }
+
+    /// Record a view call that was refused — a cap, an unusable selector, or a read that failed.
+    ///
+    /// Bounded by the same [`MAX_CALL_ERROR_BYTES`] a failed call's roster entry is, and for the
+    /// same reason: a *cap* message is gg's own text and comfortably under it, but a refusal
+    /// carrying a failed tool's whole output is not, and the model has already been thrown that
+    /// text once.
+    pub(super) fn record_view_refusal(&mut self, message: &str) {
+        if self.view_refusals.len() >= MAX_RECORDED_VIEW_EVENTS {
+            self.views_suppressed = self.views_suppressed.saturating_add(1);
+            return;
+        }
+        self.view_refusals
+            .push(truncate(message.to_string(), MAX_CALL_ERROR_BYTES));
     }
 
     /// Move the pictures a call produced out of its outcome and into the turn's attachments, up to
