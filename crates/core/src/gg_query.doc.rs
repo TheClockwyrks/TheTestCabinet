@@ -499,20 +499,27 @@ fn insert_code_analysis(doc: &mut GgRunDoc, code: &CodeAnalysisSummary) {
 /// The [export](https://docs.testcabinet.ai/gg/analysis/) is deliberately *not* gated on
 /// run publication — a document holds configuration ids and outcome numbers, no source
 /// and no model output, and restricting it to published runs would publish almost
-/// nothing and defeat the point. **Redaction is the control instead**, and it is applied
-/// here, to the document, rather than at the call site — so a second exporter cannot
-/// forget it and a field added to the builder tomorrow is subject to it today.
+/// nothing and defeat the point. **Redaction is the control instead**, and it is a rule
+/// about the document rather than about any one exporter: it is applied by the composer
+/// that builds the public corpus *and* again by the snapshot builder that turns that
+/// corpus into a public object, which is free because it is idempotent. Two applications
+/// rather than one on purpose — the second is the object boundary, and an exporter written
+/// tomorrow reaches that boundary whether or not it has read this.
 ///
 /// Two rules, and the second is the load-bearing one:
 ///
 /// 1. **Named fields go** ([`GG_PRIVATE_FIELDS`]) — the deny-list, which only covers
 ///    what somebody thought of.
-/// 2. **Any string longer than [`GG_PUBLIC_MAX_STRING`] goes**, whatever it is called.
-///    Every field the builder writes deliberately is an identifier or a token; a long
-///    string in a document is, in practice, a **capability parameter** carrying free
-///    text an operator pasted into a configuration. This rule is what makes the export
-///    safe by *construction* rather than by review: a namespace nobody has written yet
-///    is already covered.
+/// 2. **Anything longer than [`GG_PUBLIC_MAX_STRING`] goes**, whatever it is called — the
+///    *value* when it is a string, and the field **name** too. Every field the builder
+///    writes deliberately is an identifier or a token; a long string in a document is, in
+///    practice, a **capability parameter** carrying free text an operator pasted into a
+///    configuration. The name is bounded for the same reason and not as an afterthought:
+///    [`flatten_json`] mints field names from arbitrary configuration keys
+///    (`cap.<id>.<key>` all the way down), so a name is operator-authored text exactly as a
+///    value is, and a rule that covered only half of it would not be the construction
+///    argument it claims to be. This is what makes the export safe by *construction*
+///    rather than by review: a namespace nobody has written yet is already covered.
 ///
 /// What this is **not**: it is not secret scrubbing. A leaked API key is short and
 /// deliberately shaped, and it is caught downstream by
@@ -528,6 +535,12 @@ pub fn redacted_for_public(doc: &GgRunDoc) -> GgRunDoc {
     let mut out = GgRunDoc::default();
     for (field, value) in &doc.fields {
         if GG_PRIVATE_FIELDS.contains(&field.as_str()) {
+            continue;
+        }
+        // The name is checked as well as the value. A field name is a path built out of
+        // configuration keys, so an operator can put free text in one just as readily as
+        // in a value — and a dropped name takes its value with it.
+        if field.chars().count() > GG_PUBLIC_MAX_STRING {
             continue;
         }
         if let super::GgValue::String(text) = value

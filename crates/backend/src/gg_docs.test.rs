@@ -752,6 +752,46 @@ async fn the_public_export_is_decoupled_from_publication_but_not_from_the_catalo
 }
 
 #[tokio::test]
+async fn a_case_this_process_cannot_classify_is_withheld_from_the_export() {
+    // The gate's direction of failure, which is the one thing about it that is a
+    // judgement call. `DefinitionStore::is_experimental` fails **open** — an unreadable
+    // manifest is a case the console still lists — and inheriting that here would mean
+    // the export publishes exactly the versions it exists to withhold whenever the
+    // definition store cannot answer.
+    //
+    // That is not a contrived state. In production the def store is an `emptyDir`
+    // wiped on every restart while the snapshot's dirty flag is durable in Postgres, so
+    // a refresh pending at the last restart runs against a store that knows about no
+    // case at all — and every experimental version in the corpus would go to public R2.
+    // An empty store here is that window, exactly.
+    let db = Db::connect_in_memory().await.unwrap();
+    let dir = TempDir::new().expect("temp dir");
+    let store = DefinitionStore::open(dir.path()).expect("open store");
+
+    db.push(&gg_record("r1", "mock/echo"), &RunLinks::default(), None)
+        .await
+        .unwrap();
+
+    let documents = public_documents(&db, &store).await.unwrap();
+    assert!(
+        documents.is_empty(),
+        "a run whose case manifest cannot be read is not publishable: {:?}",
+        documents.iter().map(GgRunDoc::id).collect::<Vec<_>>(),
+    );
+
+    // And the withholding is the *store's* answer rather than a permanent verdict: the
+    // same corpus exports the moment the case is ingested, which is what makes a cold
+    // store a delay rather than data loss.
+    store.write_manifest(&manifest()).expect("write manifest");
+    let documents = public_documents(&db, &store).await.unwrap();
+    assert_eq!(
+        documents.iter().map(GgRunDoc::id).collect::<Vec<_>>(),
+        vec!["r1"],
+        "the next refresh after the store is back exports it",
+    );
+}
+
+#[tokio::test]
 async fn every_exported_document_is_redacted() {
     // Redaction is applied by the composer, not by the snapshot builder, so a second
     // exporter cannot forget it. Prove it end to end rather than by unit-testing

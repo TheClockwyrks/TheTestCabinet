@@ -2324,6 +2324,40 @@ async fn the_gg_corpus_passes_the_scrubber_like_every_other_public_object() {
 }
 
 #[tokio::test]
+async fn the_builder_redacts_the_corpus_itself_rather_than_trusting_its_caller() {
+    // The other half of R7, and the one the scrubber cannot cover. A pasted system
+    // prompt in a capability parameter is neither short nor key-shaped, so the scrubber
+    // has nothing to match on: the *document* redaction is what drops it. Applying that
+    // in the composer alone made it a caller's discipline at the one seam where the
+    // object stops being a value in this process and becomes bytes in a public bucket —
+    // so it is applied here too, which the idempotence of the rule makes free.
+    let (_tmp, store) = empty_store();
+    let mut leaky = gg_doc("r1");
+    let pasted = "You are a careful reviewer. ".repeat(64);
+    leaky.insert("cap.review.instructions", pasted.clone());
+
+    let snapshot = SnapshotBuilder::new(vec![], vec![], store)
+        .with_gg_documents(vec![leaky])
+        .build(now())
+        .await
+        .unwrap();
+
+    let object = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key.ends_with("/gg-runs.json"))
+        .expect("the gg corpus");
+    let body = String::from_utf8(object.bytes.clone()).unwrap();
+    assert!(
+        !body.contains("You are a careful reviewer"),
+        "free text long enough to be prose never reaches the public object",
+    );
+    // And the corpus is still a corpus: redaction drops the field, not the document.
+    let corpus: serde_json::Value = serde_json::from_slice(&object.bytes).unwrap();
+    assert_eq!(corpus["documents"][0]["fields"]["id"], "r1");
+}
+
+#[tokio::test]
 async fn a_replay_record_never_reaches_the_public_snapshot_even_beside_the_gg_corpus() {
     // Owner decision Q1 is a **hard** boundary, and this milestone is where it is most
     // at risk: the snapshot now carries gg data, so "the run's other gg artifact" is a

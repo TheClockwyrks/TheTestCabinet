@@ -931,6 +931,33 @@ fn a_denied_field_is_dropped_by_name_however_short_it_is() {
     }
 }
 
+/// The length rule covers the field **name**, not only the value.
+///
+/// A document's field names are not a closed vocabulary: `flatten_json` mints them from
+/// arbitrary configuration keys, so `cap.<id>.<key>` bottoms out in whatever an operator
+/// typed. Free text pasted as a *key* — a note above a parameter, a whole instruction
+/// used as a map entry — would otherwise cross into the public corpus while the identical
+/// text pasted one position to the right would not.
+#[test]
+fn a_field_whose_name_is_itself_free_text_is_dropped() {
+    let mut doc = build_run_doc(&gg_record(), &GgDocLifecycle::default());
+    let long_name = format!("cap.skills.{}", "you-are-a-meticulous-engineer-".repeat(20));
+    assert!(long_name.chars().count() > GG_PUBLIC_MAX_STRING);
+    doc.insert(&long_name, 4.0);
+
+    let public = redacted_for_public(&doc);
+    assert!(
+        public.get(&long_name).is_none(),
+        "a field name long enough to be prose is prose, whatever its value is"
+    );
+    // And the bound is a bound, not a namespace ban: the short sibling stays.
+    doc.insert("cap.skills.budget", 4.0);
+    assert_eq!(
+        redacted_for_public(&doc).get("cap.skills.budget"),
+        Some(&GgValue::Number(4.0)),
+    );
+}
+
 /// Redaction drops fields and changes nothing else. A public figure that disagreed with
 /// the console's would be indistinguishable from an evaluator bug, which is the failure
 /// mode the whole mirrored-evaluator conformance fixture exists to prevent — so the

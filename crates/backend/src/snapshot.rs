@@ -191,13 +191,23 @@ impl SnapshotBuilder {
 
     /// Supply the gg documents to export as this snapshot's `gg-runs.json`.
     ///
-    /// The caller hands over documents that are **already** filtered (no experimental
-    /// case) and **already** [redacted](test_cabinet_core::gg_query::redacted_for_public),
-    /// because both of those are decisions about the definition store and the field
-    /// vocabulary rather than about snapshot assembly — see
-    /// [`crate::gg_docs::public_documents`], which is the one place that composes them.
-    /// The builder still runs the [secret scrubber](SecretScrubber) over the serialized
-    /// file, as it does over every other public object.
+    /// **Redaction is applied here**, on the way in, rather than trusted to the caller.
+    /// This is the object boundary — the last point at which a document is still a value
+    /// in this process and not bytes on their way to a public bucket — so it is where the
+    /// invariant belongs. `redacted_for_public` is idempotent (a second pass over an
+    /// already-redacted document drops nothing), which is what lets the composer keep
+    /// applying it too: [`crate::gg_docs::public_documents`] redacts because the console's
+    /// index and the export share a builder and the two must not, and this redacts because
+    /// a *future* second exporter has no reason to know that.
+    ///
+    /// Which runs are exported is still the caller's decision, and deliberately not
+    /// re-checked here: "is this case experimental" is a fact about the definition store,
+    /// which the builder has no handle on.
+    ///
+    /// The builder additionally runs the [secret scrubber](SecretScrubber) over the
+    /// serialized file, as it does over every other public object. The two are not
+    /// substitutes — redaction drops long free text whatever it is called, scrubbing
+    /// catches short, deliberately-shaped credentials — and neither subsumes the other.
     ///
     /// Empty (the default) emits an empty corpus, which the site renders as a Discover
     /// surface with nothing in it rather than as an error.
@@ -205,7 +215,10 @@ impl SnapshotBuilder {
         mut self,
         gg_documents: Vec<test_cabinet_core::gg_query::GgRunDoc>,
     ) -> Self {
-        self.gg_documents = gg_documents;
+        self.gg_documents = gg_documents
+            .iter()
+            .map(test_cabinet_core::gg_query::redacted_for_public)
+            .collect();
         self
     }
 

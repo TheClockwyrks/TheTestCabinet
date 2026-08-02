@@ -331,13 +331,19 @@ async fn reconcile_into(
 ///    numbers — no source, no prompts, no model output — and almost no gg run is ever
 ///    published, so gating on publication would export an empty corpus and defeat the
 ///    feature. [Redaction](redacted_for_public) is the control instead.
-/// 2. **The experimental catalog gate still applies.** The backend deliberately hides
-///    experimental case versions from the UI; exporting their documents would publish an
-///    unreleased case's slug, its existence, its run count and its scores. Asked through
-///    [`DefinitionStore::is_experimental`](crate::store::DefinitionStore::is_experimental)
-///    so there is exactly one definition of "experimental" in the process — which also
-///    means a run whose case is **not ingested at all** is exported, matching how the
-///    catalog treats a version whose manifest it cannot read.
+/// 2. **The case has to be one this process can see is releasable.** The backend
+///    deliberately hides experimental case versions from the UI; exporting their documents
+///    would publish an unreleased case's slug, its existence, its run count and its scores.
+///    Asked through [`CatalogScores::is_publishable`], which is the catalog's experimental
+///    predicate **plus** the one place the two must differ: a manifest this process cannot
+///    read is *not* publishable, where the catalog treats it as visible. The catalog is
+///    answering "what should the console list", and failing open there shows a case; an
+///    export is answering "what leaves the building", and failing open there is a
+///    disclosure. The asymmetry is not theoretical — in production the definition store is
+///    an `emptyDir` that is empty after every restart while the snapshot's dirty flag is
+///    durable in Postgres, so a refresh can and does run against a store that knows about
+///    no cases at all. Under this rule that window exports nothing instead of exporting
+///    every experimental case in the corpus.
 /// 3. **A replay record is never involved.** Nothing here touches one. The corpus is
 ///    documents; the record — the complete model conversation — is console-only, and
 ///    this function is the only door the public site's gg data comes through.
@@ -359,11 +365,11 @@ pub async fn public_documents(db: &Db, store: &DefinitionStore) -> Result<Vec<Gg
     let runs = db.gg_runs_by_id(&ids).await?;
     let mut scores = CatalogScores::new(store);
     // One manifest read per `(slug, version)` for the whole export, not one per run:
-    // the score resolver already caches manifests, and the experimental predicate is
+    // the score resolver already caches manifests, and the publishable predicate is
     // asked against the same cache rather than re-reading the store per run.
     let mut documents = Vec::with_capacity(runs.len());
     for run in &runs {
-        if scores.is_experimental(run) {
+        if !scores.is_publishable(run) {
             continue;
         }
         let doc = build_run_doc(&run.record, &lifecycle_of(run, scores.score(run)));
@@ -398,7 +404,7 @@ fn lifecycle_of(run: &StoredRun, score: Option<f64>) -> GgDocLifecycle {
 /// otherwise reads the same few manifests thousands of times. The cache is per
 /// resolver, so it never outlives one reconcile and cannot serve a stale manifest
 /// after a re-ingest. The [public export](public_documents) borrows the same cache for
-/// its [experimental](Self::is_experimental) filter, which is the other question a
+/// its [publishable](Self::is_publishable) filter, which is the other question a
 /// case's manifest answers.
 pub struct CatalogScores<'a> {
     /// The definition store the checklist weights are read from.
@@ -429,19 +435,31 @@ impl<'a> CatalogScores<'a> {
             .map(|score| score.earned / score.total as f64)
     }
 
-    /// Whether the run's case version is flagged **experimental** — the catalog gate the
-    /// [public export](public_documents) inherits rather than decides for itself.
+    /// Whether the run's case version may leave the building — the gate the
+    /// [public export](public_documents) uses, answered off the same cached manifest the
+    /// score is read from (so exporting a corpus reads a case's manifest once rather than
+    /// twice per run).
     ///
-    /// Answered off the same cached manifest the score is, so exporting a corpus reads a
-    /// case's manifest once rather than twice per run. A version whose manifest is
-    /// missing or unreadable reports `false`, matching
-    /// [`DefinitionStore::is_experimental`](crate::store::DefinitionStore::is_experimental)
-    /// exactly: the catalog treats an unreadable manifest as visible, and a second,
-    /// stricter definition of the same word here would mean the public site and the
-    /// console disagreed about which cases exist.
-    pub fn is_experimental(&mut self, run: &StoredRun) -> bool {
+    /// This is the catalog's
+    /// [experimental](crate::store::DefinitionStore::is_experimental) filter inverted,
+    /// **plus the unresolvable manifest** — and that difference is the whole reason it is a
+    /// predicate of its own rather than a `!is_experimental(..)` call. The two are asked of
+    /// the same fact and fail in opposite directions on purpose: the catalog asks *"should
+    /// the console list this"* and shows a case it cannot classify, while an export asks
+    /// *"may this be published"* and must withhold one it cannot classify. A gate whose
+    /// safe default is "allow" is not a gate.
+    ///
+    /// The failure it forecloses is a live one rather than a hypothetical. In production
+    /// the definition store is an `emptyDir` — empty after every restart, refilled by a
+    /// re-ingest — while the snapshot's dirty flag is durable in Postgres, so a refresh
+    /// pending at the last restart runs immediately on the next start, against a store that
+    /// can answer for no case at all. Every experimental version's slug, existence, run
+    /// count and reviewer scores would go to public R2 in that window. Under this predicate
+    /// the same window exports nothing, which the next refresh corrects the moment the
+    /// store is back.
+    pub fn is_publishable(&mut self, run: &StoredRun) -> bool {
         self.manifest(run)
-            .is_some_and(|manifest| manifest.experimental)
+            .is_some_and(|manifest| !manifest.experimental)
     }
 
     /// The run's case manifest, read once per `(slug, version)` and cached — including

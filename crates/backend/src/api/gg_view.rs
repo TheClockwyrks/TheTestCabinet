@@ -190,6 +190,27 @@ pub async fn list_saved_queries(
     Ok(Json(saved))
 }
 
+/// `GET /gg/saved-queries/{id}` — one saved query by id, so a query is deep-linkable
+/// without loading every query the account owns. 404 when the id is not the caller's.
+///
+/// The mirror of [`get_dashboard`]. Both halves of a saved view are addressable for the
+/// same reason: a link to *the query behind this panel* is the natural next click from a
+/// dashboard, and resolving it by filtering the whole list client-side would make the
+/// link's meaning depend on what else the account happens to have saved.
+pub async fn get_saved_query(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<GgSavedQuery>, ApiError> {
+    state
+        .db
+        .get_gg_saved_query(&user.0.id, &id)
+        .await
+        .map_err(ApiError::from)?
+        .map(Json)
+        .ok_or_else(|| ApiError::not_found("saved query not found"))
+}
+
 /// `POST /gg/saved-queries` — save a query.
 pub async fn create_saved_query(
     State(state): State<AppState>,

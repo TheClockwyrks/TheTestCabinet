@@ -349,7 +349,9 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/gg/saved-queries/{id}",
-            put(gg_view::update_saved_query).delete(gg_view::delete_saved_query),
+            get(gg_view::get_saved_query)
+                .put(gg_view::update_saved_query)
+                .delete(gg_view::delete_saved_query),
         )
         .route(
             "/gg/dashboards",
