@@ -1102,3 +1102,73 @@ async fn mock_client_for_selects_the_named_subagent_scripts() {
     let first = other.complete(&[], &[]).await.expect("default turn 1");
     assert_eq!(first.tool_calls[0].name, "read_skill");
 }
+
+// ---------------------------------------------------------------------------
+// The identity seam
+// ---------------------------------------------------------------------------
+
+/// A factory that answers only the anonymous [`ClientFactory::client_for`], recording the bindings
+/// it was asked for — every factory that existed before the identity seam, in miniature.
+#[derive(Default)]
+struct AnonymousFactory {
+    asked: std::sync::Mutex<Vec<String>>,
+}
+
+impl ClientFactory for AnonymousFactory {
+    fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
+        self.asked.lock().unwrap().push(binding.model_id.clone());
+        Ok(Box::new(MockClient::new(
+            binding.model_id.clone(),
+            Vec::new(),
+        )))
+    }
+}
+
+/// The default [`ClientFactory::client_for_agent`] delegates to [`ClientFactory::client_for`] and
+/// ignores the identity.
+///
+/// This is what keeps the seam free. Every factory gg and its test suite already had answers the
+/// anonymous method only, and none of them has any use for who is asking — an identity changes
+/// *which recorded queue* answers, never what a live provider does. A default that did anything
+/// else would have made this a breaking change to every implementation.
+#[test]
+fn the_default_identity_resolution_delegates_to_the_anonymous_one() {
+    let factory = AnonymousFactory::default();
+    let binding = GgSlotBinding::new(PRIMARY_SLOT, "mock/primary");
+
+    let client = factory
+        .client_for_agent(
+            &binding,
+            &AgentIdentity::agent(GgReplayAgentOrigin::Spawn {
+                parent: "root".to_string(),
+                ordinal: 3,
+            }),
+        )
+        .expect("the default delegates rather than refusing an identity it does not read");
+
+    assert_eq!(client.model_id(), "mock/primary");
+    assert_eq!(factory.asked.lock().unwrap().as_slice(), ["mock/primary"]);
+}
+
+/// The two roles are distinguishable on the identity, and both carry the agent's own origin.
+///
+/// The handoff summarizer is the *same agent's second client*, not a second agent — so it must
+/// share the origin and differ only in role. Were it given an origin of its own, a reconstruction
+/// would look for an agent that never existed; were it given no role, its calls and the agent's own
+/// next turn would answer from one indistinguishable queue.
+#[test]
+fn an_agents_two_clients_share_its_origin_and_differ_only_in_role() {
+    let origin = GgReplayAgentOrigin::IssueAttempt {
+        issue: "AUTH-1".to_string(),
+        attempt: 2,
+    };
+
+    let own = AgentIdentity::agent(origin.clone());
+    let summarizer = AgentIdentity::compaction(origin.clone());
+
+    assert_eq!(own.origin, origin);
+    assert_eq!(summarizer.origin, origin);
+    assert_eq!(own.role, GgClientRole::Agent);
+    assert_eq!(summarizer.role, GgClientRole::Compaction);
+    assert_ne!(own, summarizer);
+}

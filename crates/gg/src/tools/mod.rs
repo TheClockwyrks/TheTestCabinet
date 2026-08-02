@@ -112,8 +112,10 @@ pub use memories::{
     CreateMemoryTool, DeleteMemoryTool, EditMemoryTool, ReadMemoryTool, SearchMemoriesTool,
     UpdateMemoryTool, WriteMemoryTool, is_memory_tool, read_only_refusal,
 };
+#[cfg(test)]
+pub(crate) use shell::StubShellRunner;
 pub use shell::{OffloadPolicy, SHELL_TOOL};
-pub(crate) use shell::{run_command, run_command_capturing};
+pub(crate) use shell::{ShellRunner, real_shell, run_command, run_command_capturing};
 pub use skills::{READ_SKILL_TOOL, ReadSkillTool};
 pub(crate) use subagents::handled_by_loop;
 pub use subagents::{
@@ -258,6 +260,13 @@ pub fn shell_offload(capabilities: &GgAgentConfig) -> OffloadPolicy {
 /// shell; every path a tool touches is resolved relative to
 /// [`workspace_dir`](Self::workspace_dir) (the seeded workspace `core` prepared) and
 /// prevented from escaping it.
+///
+/// It is also where the **shell seam** lives. Three call paths reach a command line — the
+/// [`shell`](SHELL_TOOL) tool, a [responses-as-code](crate::sandbox) program's `system.shell(…)`,
+/// and the [completion](crate::completion) gate's validation commands — and the only thing all
+/// three share is this type, so [`shell`](Self::shell) (what runs a command) and
+/// [`agent_id`](Self::agent_id) (whose command it is) ride here rather than being threaded through
+/// each path separately. See [`ShellRunner`].
 #[derive(Debug, Clone)]
 pub struct ToolContext {
     /// The workspace root every tool is rooted at — the invocation's
@@ -268,6 +277,24 @@ pub struct ToolContext {
     /// attaches the image itself or only describes it — the one tool whose result
     /// depends on the model rather than only on the workspace.
     pub vision: VisionContext,
+    /// The id of the agent whose turn this call belongs to — empty for a dispatch with no agent
+    /// behind it (a bare [`new`](Self::new) context, which is what most tests build).
+    ///
+    /// Carried because a substituted [`shell`](Self::shell) is keyed **per agent**: a runner given
+    /// only a workspace path cannot know whose recorded commands to draw from, and a
+    /// [completion](crate::completion) gate's commands in particular have to be attributed to the
+    /// agent whose ending they gate or they land on an unattributed queue.
+    pub agent_id: String,
+    /// What actually starts a process for this call. [`RealShellRunner`] in a live run;
+    /// substituted wholesale by a
+    /// [playback](https://docs.testcabinet.ai/gg/analysis/playback/), which is the only way to
+    /// reconstruct a session without re-running its `npm install`.
+    ///
+    /// Shared (`Arc`) because gg builds a context per agent per turn and clones it into every
+    /// [responses-as-code](crate::sandbox) program's api, all of which must reach the *same*
+    /// runner — a per-context copy of a recorded queue would hand every turn the first command
+    /// again.
+    pub shell: Arc<dyn ShellRunner>,
 }
 
 /// The model-dependent half of a [`ToolContext`]: who is asking, and whether they can
@@ -312,11 +339,19 @@ impl VisionContext {
 
 impl ToolContext {
     /// A context rooted at `workspace_dir`, with no model bound — images are allowed,
-    /// since nothing has declared or denied them.
+    /// since nothing has declared or denied them — no agent behind it, and the
+    /// [real shell](RealShellRunner).
+    ///
+    /// The defaults are what keep the seam free: every one of this constructor's call sites (the
+    /// loop's, the [completion](crate::completion) gate's, and every test's) predates it and is
+    /// unaffected, and a context that was never told otherwise runs real commands, which is the
+    /// only safe direction for that default to fall.
     pub fn new(workspace_dir: impl Into<PathBuf>) -> Self {
         Self {
             workspace_dir: workspace_dir.into(),
             vision: VisionContext::unknown(),
+            agent_id: String::new(),
+            shell: real_shell(),
         }
     }
 
@@ -329,6 +364,34 @@ impl ToolContext {
             support,
         };
         self
+    }
+
+    /// This context attributed to `agent_id` — whose turn the call belongs to.
+    pub fn with_agent(mut self, agent_id: impl Into<String>) -> Self {
+        self.agent_id = agent_id.into();
+        self
+    }
+
+    /// This context running its commands through `shell` instead of the real one.
+    pub fn with_shell(mut self, shell: Arc<dyn ShellRunner>) -> Self {
+        self.shell = shell;
+        self
+    }
+
+    /// This context, re-rooted at `workspace_dir` — everything else (the agent, its vision, the
+    /// shell runner) carried across unchanged.
+    ///
+    /// For a call that runs somewhere other than the agent's own root, which today means a
+    /// [validation command](crate::completion) declaring a `cwd`. Deriving rather than building a
+    /// fresh context is what keeps that command on its agent's queue: a bare
+    /// [`new`](Self::new) would silently hand it the real shell and no attribution.
+    pub fn rooted_at(&self, workspace_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            workspace_dir: workspace_dir.into(),
+            vision: self.vision.clone(),
+            agent_id: self.agent_id.clone(),
+            shell: Arc::clone(&self.shell),
+        }
     }
 }
 

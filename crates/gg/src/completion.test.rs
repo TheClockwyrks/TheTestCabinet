@@ -350,3 +350,49 @@ async fn a_validation_command_is_recorded_with_its_origin_cwd_and_streams() {
         "boom\n"
     );
 }
+
+/// The completion gate's commands run through the **calling agent's** shell seam, including one
+/// that declared its own `cwd`.
+///
+/// This is the path the seam is easiest to lose: gg runs these commands on the agent's behalf, they
+/// never reach tool dispatch, and a command with a `cwd` needs a re-rooted context. Building that
+/// context fresh would silently hand the one input that decides whether a session may end back to
+/// the real shell — during a reconstruction, that means running a real `npm test` against a scratch
+/// tree — and would leave its commands on an unattributed queue.
+#[tokio::test]
+async fn validation_commands_run_through_the_calling_agent_s_shell() {
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir(dir.path().join("web")).unwrap();
+    let stub = std::sync::Arc::new(crate::tools::StubShellRunner::exiting(0, ""));
+    let ctx = ToolContext::new(dir.path())
+        .with_agent("agent-4")
+        .with_shell(stub.clone());
+
+    let commands = vec![
+        ValidationCommand::from_value(&json!("npm test")).unwrap(),
+        ValidationCommand::from_value(&json!({ "command": "npm run build", "cwd": "web" }))
+            .unwrap(),
+    ];
+    assert!(
+        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter(), None)
+            .await
+            .is_none(),
+        "the stub answers both commands successfully"
+    );
+
+    let requests = stub.requests();
+    assert_eq!(requests.len(), 2, "both commands went through the seam");
+    assert_eq!(requests[0].command, "npm test");
+    assert_eq!(requests[0].cwd, dir.path());
+    assert_eq!(requests[1].command, "npm run build");
+    assert_eq!(
+        requests[1].cwd,
+        dir.path().join("web"),
+        "a declared `cwd` re-roots the context rather than replacing it"
+    );
+    // Attributed to the agent whose ending they gate, both of them — the re-rooted one included.
+    assert!(
+        requests.iter().all(|request| request.agent_id == "agent-4"),
+        "every validation command names the agent it gates"
+    );
+}

@@ -64,6 +64,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{GgPromptCacheTtl, GgSlotBinding, ROOT_AGENT};
+use test_cabinet_core::gg_replay::{GgClientRole, GgReplayAgentOrigin};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use crate::model::{
@@ -3068,7 +3069,78 @@ fn mock_client_for(model_id: &str) -> MockClient {
 pub trait ClientFactory: Send + Sync {
     /// Build a fresh client for `binding`, or a [`ModelError`] when it cannot be resolved (for
     /// example a live binding with no credential).
+    ///
+    /// The **anonymous** resolution: nothing about it says who is asking. Every one of gg's own
+    /// resolutions goes through [`client_for_agent`](Self::client_for_agent) instead; this stays
+    /// as the method an implementation writes, and as the answer for a resolution that is not an
+    /// agent binding a client at all — the [`fork`](crate::tools::FORK_TOOL) tool re-resolving its
+    /// forker's own binding purely to *name* a model in the answer it hands back.
     fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError>;
+
+    /// Build a fresh client for `binding` on behalf of `identity` — the resolution gg's turn loop
+    /// actually makes.
+    ///
+    /// The identity is the whole reason this method exists. A
+    /// [playback](https://docs.testcabinet.ai/gg/analysis/playback/) answers each agent's calls
+    /// from *that agent's* recorded queue, and it cannot key on the agent id: ids come off a global
+    /// counter in the order agents reach their spawn, and a playback removes model latency
+    /// entirely, so two concurrent agents interleave differently and an id-keyed lookup would hand
+    /// agent A the responses recorded for agent B. So the caller states the agent's
+    /// [provenance](AgentIdentity::origin) — which is a function of things a reconstruction
+    /// re-derives on its own — and which of gg's [two clients](GgClientRole) it is asking for.
+    ///
+    /// The default ignores it and delegates, which is exactly right for every factory that does
+    /// not care who is asking ([`DefaultClientFactory`] and the test suite's scripted ones): the
+    /// identity changes *which recorded queue* answers, never *what a live provider does*.
+    fn client_for_agent(
+        &self,
+        binding: &GgSlotBinding,
+        identity: &AgentIdentity,
+    ) -> Result<Box<dyn ModelClient>, ModelError> {
+        let _ = identity;
+        self.client_for(binding)
+    }
+}
+
+/// Who is asking a [`ClientFactory`] for a client, and for which of gg's two clients.
+///
+/// Not an agent *id*: see [`client_for_agent`](ClientFactory::client_for_agent) for why an id
+/// cannot identify an agent across a reconstruction. Every field is a key a reconstruction
+/// re-derives from a parent's own ordered turn loop or from board state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentIdentity {
+    /// How the agent came to exist — the same value recorded on its
+    /// [replay row](test_cabinet_core::gg_replay::GgReplayAgent::origin), so a reconstruction
+    /// matches a live resolution against the record with no translation in between.
+    #[allow(dead_code)]
+    pub origin: GgReplayAgentOrigin,
+    /// Which of gg's two model clients is being resolved. A
+    /// [handoff compaction](crate::compaction) resolves a *second* client for the same agent, and
+    /// without this the summarizer's calls and the agent's own next turn would answer from one
+    /// indistinguishable queue.
+    #[allow(dead_code)]
+    pub role: GgClientRole,
+}
+
+impl AgentIdentity {
+    /// The agent identified by `origin`, binding the client its own turn loop will call
+    /// ([`Agent`](GgClientRole::Agent)).
+    pub fn agent(origin: GgReplayAgentOrigin) -> Self {
+        Self {
+            origin,
+            role: GgClientRole::Agent,
+        }
+    }
+
+    /// The agent identified by `origin`, binding the second client its
+    /// [handoff compaction](crate::compaction) summarizes on
+    /// ([`Compaction`](GgClientRole::Compaction)).
+    pub fn compaction(origin: GgReplayAgentOrigin) -> Self {
+        Self {
+            origin,
+            role: GgClientRole::Compaction,
+        }
+    }
 }
 
 /// The production [`ClientFactory`]: resolves each binding through [`client_for_slot`], honoring

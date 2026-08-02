@@ -9264,3 +9264,132 @@ async fn a_vision_refusal_records_the_error_the_retry_and_the_frame_in_that_orde
         "the frame attached to the call that was actually sent, which carried no images"
     );
 }
+
+// ---------------------------------------------------------------------------
+// The model seam: who is asking
+// ---------------------------------------------------------------------------
+
+/// A [`ClientFactory`] that records the [identity](AgentIdentity) behind every resolution, and
+/// delegates the client itself to a [`ScriptedFactory`].
+///
+/// The whole point of the identity seam is that gg's own resolution sites *state* whose client they
+/// are asking for — so the only way to test them is a real session, driven through the real
+/// dispatch paths, with a factory that watches.
+struct IdentityWatchingFactory {
+    inner: ScriptedFactory,
+    seen: Arc<Mutex<Vec<(String, AgentIdentity)>>>,
+    /// Resolutions made through the **anonymous** method, which by design is the `fork` tool's
+    /// model-naming lookup and nothing else.
+    anonymous: Arc<Mutex<Vec<String>>>,
+}
+
+impl IdentityWatchingFactory {
+    fn new(inner: ScriptedFactory) -> Self {
+        Self {
+            inner,
+            seen: Arc::new(Mutex::new(Vec::new())),
+            anonymous: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+}
+
+impl ClientFactory for IdentityWatchingFactory {
+    fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
+        self.anonymous
+            .lock()
+            .expect("anonymous lock")
+            .push(binding.slot.clone());
+        self.inner.client_for(binding)
+    }
+
+    fn client_for_agent(
+        &self,
+        binding: &GgSlotBinding,
+        identity: &AgentIdentity,
+    ) -> Result<Box<dyn ModelClient>, ModelError> {
+        self.seen
+            .lock()
+            .expect("identity lock")
+            .push((binding.slot.clone(), identity.clone()));
+        self.inner.client_for(binding)
+    }
+}
+
+/// Every agent in a real session binds its client under a **provenance**, never under its id — and
+/// an agent's second client (the compaction handoff summarizer) binds under the same provenance and
+/// a different role.
+///
+/// This is the property the whole playback binding rests on. Subagent ids come off a global counter
+/// in the order agents reach their spawn, and a playback removes model latency entirely, so two
+/// concurrent agents interleave differently and an id-keyed lookup would hand agent A the responses
+/// recorded for agent B — silent, and catastrophic. Provenance is a function of a parent's own
+/// ordered turn loop, which a reconstruction re-derives.
+#[tokio::test]
+async fn every_agent_binds_its_client_under_its_provenance() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-seams".to_string()), Box::new(sink.clone()));
+
+    // A delegating root that also condenses on a **second** model, so both of one agent's client
+    // resolutions happen in one session.
+    let mut set = subagent_set(1, 3, &["subagent"]);
+    let mut compaction = GgCapabilityConfig::enabled(CAPABILITY_COMPACTION);
+    compaction.implementation =
+        Some(test_cabinet_core::gg::COMPACTION_STRATEGY_HANDOFF_SUMMARIZATION.to_string());
+    compaction.params = json!({ "model": "mock/condenser" });
+    set.agents[0].capabilities.push(compaction);
+    let mut inv = invocation(dir.path(), set);
+    inv.model_windows
+        .insert("mock/condenser".to_string(), TEST_CONTEXT_WINDOW);
+
+    let factory = Arc::new(IdentityWatchingFactory::new(
+        ScriptedFactory::new()
+            .slot(ROOT_AGENT, |b| {
+                Box::new(MockClient::with_subagent_parent_script(&b.model_id))
+            })
+            .slot("subagent", |b| {
+                Box::new(MockClient::with_subagent_child_script(&b.model_id))
+            }),
+    ));
+    let seen = Arc::clone(&factory.seen);
+    let anonymous = Arc::clone(&factory.anonymous);
+
+    assert_eq!(
+        run_with_factory(&inv, &emitter, factory).await,
+        SessionOutcome::Ran
+    );
+
+    let seen = seen.lock().expect("identity lock").clone();
+
+    // The root: bound trivially, on its own turn-loop client.
+    assert!(
+        seen.iter().any(|(slot, identity)| slot == ROOT_AGENT
+            && *identity == AgentIdentity::agent(GgReplayAgentOrigin::Root)),
+        "the root binds as `Root`: {seen:?}"
+    );
+    // Its handoff summarizer: the **same** origin, under the compaction role. A second origin here
+    // would send a reconstruction looking for an agent that never existed.
+    assert!(
+        seen.iter().any(|(slot, identity)| slot == COMPACTION_SLOT
+            && *identity == AgentIdentity::compaction(GgReplayAgentOrigin::Root)),
+        "the handoff summarizer binds as the root's compaction client: {seen:?}"
+    );
+    // The delegated child: keyed on its spawner and its position in that spawner's own strictly
+    // ordered turn loop — not on `agent-0`, the id it happened to draw.
+    assert!(
+        seen.iter().any(|(slot, identity)| slot == "subagent"
+            && *identity
+                == AgentIdentity::agent(GgReplayAgentOrigin::Spawn {
+                    parent: ROOT_AGENT_ID.to_string(),
+                    ordinal: 0,
+                })),
+        "the spawned child binds on (spawner, spawn ordinal): {seen:?}"
+    );
+
+    // And nothing in this session resolved anonymously: the only site that does is the `fork`
+    // tool's model-naming lookup, which this run never reaches.
+    assert!(
+        anonymous.lock().expect("anonymous lock").is_empty(),
+        "every resolution in an ordinary session states whose it is"
+    );
+}

@@ -377,18 +377,31 @@ pub fn now_rfc3339() -> String {
         .unwrap_or_default()
 }
 
-/// An in-memory [`EventSink`] that collects emitted NDJSON lines, for tests that
-/// assert on the exact telemetry stream. Cloneable so a test can keep a handle to
-/// inspect the lines after the emitter has written to it.
-#[cfg(test)]
+/// An in-memory [`EventSink`] that keeps every emitted NDJSON line instead of writing it out.
+///
+/// Two consumers, and they want the same thing for different reasons. A test asserts on the exact
+/// stream a scenario produced. A
+/// [playback](https://docs.testcabinet.ai/gg/analysis/playback/) needs the stream *itself* — the
+/// telemetry a reconstruction emits is the product of the reconstruction, and what a round trip
+/// compares against the record it was driven from — so this is not test scaffolding and is not
+/// `#[cfg(test)]`.
+///
+/// Cloneable, sharing one buffer: an [`Emitter`] takes ownership of the sink it writes through, so
+/// a caller keeps a clone to read afterwards. Every agent's [scoped](Emitter::for_agent) emitter
+/// writes to the same buffer, which is what makes the collected stream the *session's* rather than
+/// one agent's.
+// Nothing in a live run keeps a telemetry stream in memory — production writes to
+// [`StdoutSink`] — so until the playback entrypoint lands this is constructed only by the test
+// suite (as `CollectingSink`, its name there since before there was anything else to call it).
+#[allow(dead_code)]
 #[derive(Clone, Default)]
-pub struct CollectingSink {
+pub struct CapturingSink {
     lines: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
-#[cfg(test)]
-impl CollectingSink {
-    /// A fresh, empty collecting sink.
+#[allow(dead_code)]
+impl CapturingSink {
+    /// A fresh, empty capturing sink.
     pub fn new() -> Self {
         Self::default()
     }
@@ -409,12 +422,17 @@ impl CollectingSink {
     }
 }
 
-#[cfg(test)]
-impl EventSink for CollectingSink {
+impl EventSink for CapturingSink {
     fn write_line(&self, line: &str) {
         self.lines.lock().expect("sink lock").push(line.to_string());
     }
 }
+
+/// The name gg's test suite has always called [`CapturingSink`] by, kept so that promoting the type
+/// out of `#[cfg(test)]` — which is all that happened to it — did not touch a hundred and seventy
+/// call sites that assert nothing new.
+#[cfg(test)]
+pub type CollectingSink = CapturingSink;
 
 #[cfg(test)]
 #[path = "telemetry.test.rs"]

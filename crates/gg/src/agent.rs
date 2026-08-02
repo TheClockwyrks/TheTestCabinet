@@ -112,7 +112,7 @@ use tokio::task::JoinHandle;
 use crate::archive::ArchiveStore;
 use crate::board::{self, BoardCaps, BoardRuntime, IssuePolicy, IssueStatus};
 use crate::cancel::CancelWatch;
-use crate::client::{ClientFactory, DefaultClientFactory, provider_for};
+use crate::client::{AgentIdentity, ClientFactory, DefaultClientFactory, provider_for};
 use crate::compaction::{
     self, CompactionRequest, CompactionSetup, PendingCompaction, RestoredFile,
 };
@@ -167,12 +167,12 @@ use crate::tools::{
     ARCHIVE_THREAD_TOOL, AgentFacts, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL,
     EVICT_FILE_VIEW_TOOL, EXEC_TOOL, FORK_TOOL, OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL,
     RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy, ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL,
-    SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SpeculationData, SubagentHandleData, SubagentResultData,
-    TRANSITION_STATE_TOOL, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, ToolRegistry,
-    WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData, handled_by_loop, is_board_tool,
-    is_context_reclaim_tool, is_memory_tool, is_subagent_tool, is_task_tool, parse_archive_ranges,
-    parse_compact_request, parse_evict_path, read_policy, saturating_u32, saturating_u64,
-    shell_offload, unknown_disabled_tools,
+    SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, ShellRunner, SpeculationData, SubagentHandleData,
+    SubagentResultData, TRANSITION_STATE_TOOL, Tool, ToolContext, ToolData, ToolFailure,
+    ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData,
+    handled_by_loop, is_board_tool, is_context_reclaim_tool, is_memory_tool, is_subagent_tool,
+    is_task_tool, parse_archive_ranges, parse_compact_request, parse_evict_path, read_policy,
+    real_shell, saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
 };
 use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
@@ -667,30 +667,97 @@ fn merge_agent_name(set: &GgCapabilitySet) -> Option<String> {
 /// tagged with the root agent's id, and each spawned subagent scopes a fresh emitter from its own
 /// id and its spawner's id.
 pub async fn run(invocation: &GgInvocation, emitter: &Emitter) -> SessionOutcome {
-    // Production resolves every agent's client through the default factory (the
-    // `TCAB_GG_FAKE_MODEL`/`mock` rules, else live OpenRouter). Tests inject a scripted factory so
-    // a parent and its subagents run distinct offline scripts. The factory carries the run's
-    // session id as the shared sticky-session key, so every agent's requests route to one provider
-    // endpoint and reuse each other's — and their own turns' — cached prompt prefix.
-    let factory = Arc::new(DefaultClientFactory::new(Some(
-        invocation.session_id.clone(),
-    )));
-    run_with_factory(invocation, emitter, factory).await
+    run_with_seams(
+        invocation,
+        emitter,
+        SessionSeams::live(Some(invocation.session_id.clone())),
+    )
+    .await
+}
+
+/// The two inputs a gg session has that are **not** a function of its own state: the model call and
+/// the shell.
+///
+/// Between them they are ~all of a run's wall clock and ~all of its cost, and replacing both is
+/// what makes a [playback](https://docs.testcabinet.ai/gg/analysis/playback/) — a recorded session
+/// re-run through the *real* turn loop in seconds, for free — possible at all.
+///
+/// **They travel together, in one parameter, on purpose.** A reconstruction that answered the
+/// model from a record while running the shell for real would run real installs against a scratch
+/// tree while claiming to reconstruct a session, and there must be no way to assemble that by
+/// forgetting an argument. Hence one constructor taking [both](Self::substituted) and no
+/// field-by-field builder — [`live`](Self::live) is a name for one particular pair, not a way to
+/// fill in half.
+///
+/// It is deliberately **not** a capability and **not** an invocation field. An unrecognized
+/// capability value is a warning rather than a launch failure, and an older gg deserializing a
+/// newer invocation ignores the unknown field — so under either spelling a "run from the record"
+/// request handed to a gg that does not have this feature would resolve silently to the real thing
+/// and make real, paid API calls. A parameter cannot be ignored.
+pub struct SessionSeams {
+    /// Where every agent's model client comes from.
+    pub factory: Arc<dyn ClientFactory>,
+    /// What starts a process for every command line the run reaches — the `shell` tool, a
+    /// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and the
+    /// [completion](crate::completion) gate's validation commands alike.
+    pub shell: Arc<dyn ShellRunner>,
+}
+
+impl SessionSeams {
+    /// Both seams live: real clients (the `TCAB_GG_FAKE_MODEL`/`mock` rules, else live OpenRouter)
+    /// and real commands. What [`run`] uses, and the only shape a paid run has ever had.
+    ///
+    /// `session_key` is the run's session id, stamped on every live client the factory builds, so
+    /// all of a run's agents share one sticky-session key and a subagent reuses the cached opening
+    /// prefix a sibling already warmed instead of paying for it uncached.
+    pub fn live(session_key: Option<String>) -> Self {
+        Self::substituted(
+            Arc::new(DefaultClientFactory::new(session_key)),
+            real_shell(),
+        )
+    }
+
+    /// Both seams named explicitly. The **only** constructor, so a recorded model can never be
+    /// paired with a real shell by omission — the pairing has to be written down.
+    ///
+    /// gg's own suite uses it with a scripted factory and [`real_shell`], which is a deliberate
+    /// pairing rather than an accidental one: a scripted model answering real commands in a
+    /// `TempDir` is what the loop tests have always been. A playback passes substitutes for both.
+    pub fn substituted(factory: Arc<dyn ClientFactory>, shell: Arc<dyn ShellRunner>) -> Self {
+        Self { factory, shell }
+    }
 }
 
 /// [`run`], but with an injectable [`ClientFactory`] so a test can drive the root and its
-/// subagents from scripted offline clients. Owns the session frame: it scopes the root emitter,
-/// emits [`SessionStarted`](GgTelemetryKind::SessionStarted), performs the launch checks (slot
-/// validation, the [context windows](validate_model_windows) every bound model must carry, and
-/// the root's client resolution — the only three [launch failures](SessionOutcome)),
-/// builds the [`Orchestrator`], drives the [root agent](ROOT_AGENT_ID), then joins every spawned
-/// subagent, streams the [per-slot](SlotAccounting) rollups the run accumulated, and emits the
-/// terminal [`SessionEnded`](GgTelemetryKind::SessionEnded).
+/// subagents from scripted offline clients — against the **real** shell, which is what a loop test
+/// wants and what [`SessionSeams::substituted`] makes it state rather than assume.
+#[cfg(test)]
 pub(crate) async fn run_with_factory(
     invocation: &GgInvocation,
     emitter: &Emitter,
     factory: Arc<dyn ClientFactory>,
 ) -> SessionOutcome {
+    run_with_seams(
+        invocation,
+        emitter,
+        SessionSeams::substituted(factory, real_shell()),
+    )
+    .await
+}
+
+/// [`run`], with both [seams](SessionSeams) supplied. Owns the session frame: it scopes the root
+/// emitter, emits [`SessionStarted`](GgTelemetryKind::SessionStarted), performs the launch checks
+/// (slot validation, the [context windows](validate_model_windows) every bound model must carry,
+/// and the root's client resolution — the only three [launch failures](SessionOutcome)),
+/// builds the [`Orchestrator`], drives the [root agent](ROOT_AGENT_ID), then joins every spawned
+/// subagent, streams the [per-slot](SlotAccounting) rollups the run accumulated, and emits the
+/// terminal [`SessionEnded`](GgTelemetryKind::SessionEnded).
+pub(crate) async fn run_with_seams(
+    invocation: &GgInvocation,
+    emitter: &Emitter,
+    seams: SessionSeams,
+) -> SessionOutcome {
+    let SessionSeams { factory, shell } = seams;
     let set = &invocation.capability_set;
 
     // Scope the stream to the root up front, so every event (launch diagnostics included) is
@@ -732,7 +799,9 @@ pub(crate) async fn run_with_factory(
     // Launch check 3: the root's model client must resolve (a missing credential fails here). A
     // subagent's client is resolved at spawn time instead, where a failure is reported to its
     // spawner rather than failing the whole process.
-    let client = match factory.client_for(&binding) {
+    let client = match factory
+        .client_for_agent(&binding, &AgentIdentity::agent(GgReplayAgentOrigin::Root))
+    {
         Ok(client) => client,
         Err(err) => {
             root_emitter.emit(log(
@@ -763,6 +832,7 @@ pub(crate) async fn run_with_factory(
         invocation,
         emitter,
         factory,
+        shell,
         worktrees,
         &mut launch_warnings,
     ));
@@ -1312,6 +1382,12 @@ struct Orchestrator {
     base_emitter: Emitter,
     /// The offered model factory each agent resolves its slot's client through.
     factory: Arc<dyn ClientFactory>,
+    /// The run's [shell seam](ShellRunner), stamped onto every agent's
+    /// [tool context](ToolContext) so all three of gg's command-line paths — the `shell` tool, a
+    /// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and the
+    /// [completion](crate::completion) gate's validation commands — start their processes through
+    /// the one runner the session was launched with.
+    shell: Arc<dyn ShellRunner>,
     /// The shared skills library (loaded once), cloned into each agent's own skills runtime.
     skills_library: Arc<SkillLibrary>,
     /// Whether the [skills](CAPABILITY_SKILLS) capability is on.
@@ -1415,6 +1491,7 @@ impl Orchestrator {
         invocation: &GgInvocation,
         emitter: &Emitter,
         factory: Arc<dyn ClientFactory>,
+        shell: Arc<dyn ShellRunner>,
         worktrees: WorktreesSetup,
         warnings: &mut Vec<String>,
     ) -> Self {
@@ -1553,6 +1630,7 @@ impl Orchestrator {
             accounting: Mutex::new(SlotAccounting::default()),
             base_emitter: emitter.clone(),
             factory,
+            shell,
             skills_library: skills.library(),
             skills_enabled: set.is_enabled(CAPABILITY_SKILLS),
             estimator: Arc::new(BpeTokenEstimator::new()),
@@ -1615,6 +1693,27 @@ impl Orchestrator {
         let ordinal = *next;
         *next += 1;
         ordinal
+    }
+
+    /// What [`next_ordinal`](Self::next_ordinal) would hand back for `key`, **without** taking it.
+    ///
+    /// For the one creation path that has to name an agent's [origin](GgReplayAgentOrigin) *before*
+    /// it is committed to creating it: [`dispatch_child`] resolves a client — which needs to say
+    /// whose it is — and a resolution failure is an ordinary tool error the spawner recovers from
+    /// and may spawn again after. Minting there would spend an ordinal on a child that never
+    /// existed and shift every later sibling's, so the ordinal is peeked for the identity and taken
+    /// only once the dispatch is going ahead.
+    ///
+    /// Not racy despite the gap: ordinals are keyed per spawner, and a spawner's own turn loop is
+    /// strictly sequential — it is the only thing that can take from its own key, and it is inside
+    /// this call when it does.
+    fn peek_ordinal(&self, key: &str) -> u32 {
+        self.ordinals
+            .lock()
+            .expect("replay ordinals lock")
+            .get(key)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Mint the next unique [workflow](run_workflow) id, so a `run_workflow` invocation's stage
@@ -2017,7 +2116,18 @@ impl Orchestrator {
             Ok(binding) => binding,
             Err(err) => return self.abort_issue_dispatch(&issue_id, &slot, &err, emitter),
         };
-        let client = match self.factory.client_for(&binding) {
+        // Bound by what it was dispatched *for*, never by its id: this agent has no parent, and
+        // its id came off the board rather than out of any agent's turn loop. The issue and the
+        // attempt number are both board state, which a reconstruction re-derives on its own.
+        // Resolved before the client so the resolution can *state* whose it is.
+        let origin = GgReplayAgentOrigin::IssueAttempt {
+            issue: issue_id.clone(),
+            attempt: retry,
+        };
+        let client = match self
+            .factory
+            .client_for_agent(&binding, &AgentIdentity::agent(origin.clone()))
+        {
             Ok(client) => client,
             Err(err) => {
                 return self.abort_issue_dispatch(&issue_id, &slot, &err.to_string(), emitter);
@@ -2036,13 +2146,6 @@ impl Orchestrator {
             retry,
         };
         let (_inbox_tx, inbox_rx) = mpsc::unbounded_channel();
-        // Bound by what it was dispatched *for*, never by its id: this agent has no parent, and
-        // its id came off the board rather than out of any agent's turn loop. The issue and the
-        // attempt number are both board state, which a reconstruction re-derives on its own.
-        let origin = GgReplayAgentOrigin::IssueAttempt {
-            issue: issue_id.clone(),
-            attempt: retry,
-        };
         let orch = Arc::clone(self);
         let spawn_emitter = emitter.clone();
         let handle = tokio::spawn(async move {
@@ -2600,7 +2703,7 @@ async fn run_agent(
             Some(client) => client,
             None => match profile_binding(&orch.caps, &agent.slot).and_then(|binding| {
                 orch.factory
-                    .client_for(&binding)
+                    .client_for_agent(&binding, &AgentIdentity::agent(origin.clone()))
                     .map_err(|err| err.to_string())
             }) {
                 Ok(client) => client,
@@ -2756,8 +2859,15 @@ async fn run_agent(
         // The tool context carries this agent's model alongside its workspace root, because
         // one tool's answer depends on it: `read_file` attaches a picture only when the model
         // asking can see one. The registry behind it is the run's, not this agent's.
+        //
+        // It also carries the run's [shell seam](ShellRunner) and this agent's id — which is what
+        // makes every command line the agent reaches (its `shell` tool, its programs'
+        // `system.shell(…)`, and the commands its own [completion](crate::completion) gate runs on
+        // its behalf) start through one runner, attributed to one agent.
         let tool_ctx = ToolContext::new(workspace_dir.clone())
-            .with_vision(&model_id, Arc::clone(&orch.vision));
+            .with_vision(&model_id, Arc::clone(&orch.vision))
+            .with_agent(&agent.id)
+            .with_shell(Arc::clone(&orch.shell));
 
         // What gates this agent's ending, when anything does: the validation commands its own
         // profile configures. *How* it ends is not a profile's business — that is its dispatched
@@ -2836,7 +2946,14 @@ async fn run_agent(
         // one-shot summary request, so an extended entry would be paid for and never read.
         if let Some(model) = compaction::handoff_model_id(&profile) {
             let binding = GgSlotBinding::new(COMPACTION_SLOT, &model);
-            match orch.factory.client_for(&binding) {
+            // Resolved under the **compaction** role of this agent's identity, not under a second
+            // identity of its own: it is the same agent's second client. Without the role a
+            // reconstruction would interleave the summarizer's calls and the agent's own next turn
+            // into one indistinguishable queue and answer both from the wrong end of it.
+            match orch
+                .factory
+                .client_for_agent(&binding, &AgentIdentity::compaction(origin.clone()))
+            {
                 Ok(client) => {
                     // Wrapped in the recorder like the agent's own client, but under the
                     // **compaction** client role. gg's second model client went unwrapped for the
@@ -3053,13 +3170,24 @@ async fn run_agent(
             None => (handoff.profile.clone(), handoff.fsm.clone()),
         };
         let successor_profile = orch.profile_or_root(&successor_slot).clone();
+        // The fifth way an agent comes into existence, and the one that happens *inside* this
+        // function. Keyed on the predecessor and its own ordered position within it — never on the
+        // successor's id, which comes off the global agent counter a playback assigns differently.
+        //
+        // Minted here, before the client resolution, because the resolution has to say whose client
+        // it is. A resolution that fails ends this agent's loop for good, so an ordinal spent on a
+        // successor that never ran cannot shift a later one: there is no later one.
+        let successor_origin = GgReplayAgentOrigin::Succession {
+            predecessor: agent.id.clone(),
+            ordinal: orch.next_ordinal(format!("succession:{}", agent.id)),
+        };
         // The successor's window limit and execution mode, which its modules are re-resolved
         // against: an agent moving from a million-token window onto a 32k one is over its window the
         // instant it arrives, and its first turn's compaction check is what has to see that.
         let successor_client = match profile_binding(&orch.caps, &successor_slot).and_then(
             |binding| {
                 orch.factory
-                    .client_for(&binding)
+                    .client_for_agent(&binding, &AgentIdentity::agent(successor_origin.clone()))
                     .map_err(|err| err.to_string())
             },
         ) {
@@ -3137,14 +3265,8 @@ async fn run_agent(
             turn_base: turns_taken,
         });
         pending_client = Some(successor_client);
-        // The fifth way an agent comes into existence, and the one that happens *inside* this
-        // function. Keyed on the predecessor and its own ordered position within it — never on the
-        // successor's id, which comes off the global agent counter a playback assigns differently.
         let successor = agent.succeeding(successor_id, successor_slot, successor_fsm);
-        origin = GgReplayAgentOrigin::Succession {
-            predecessor: agent.id.clone(),
-            ordinal: orch.next_ordinal(format!("succession:{}", agent.id)),
-        };
+        origin = successor_origin;
         record_replay_agent(&orch, &successor, &origin, None);
         agent = successor;
     };
@@ -3606,17 +3728,34 @@ fn dispatch_child(
             format!("cannot spawn agent `{slot}`: {err}"),
         )
     })?;
+    // Keyed on the spawner and the spawn's position in the spawner's own strictly-ordered turn
+    // loop, counted across **all** spawn kinds rather than per profile: a fork runs the forker's
+    // own profile, so a fork child and a same-profile delegated subagent from one parent would
+    // otherwise compete for the same queue.
+    //
+    // *Peeked* rather than taken, because the resolution below may still refuse the dispatch and a
+    // refusal is a tool error the spawner recovers from: an ordinal spent on a child that never
+    // existed would shift every later sibling's. It is taken, to the same value, once the dispatch
+    // is going ahead.
+    let spawn_key = format!("spawn:{}", spawner.id);
+    let origin = GgReplayAgentOrigin::Spawn {
+        parent: spawner.id.clone(),
+        ordinal: orch.peek_ordinal(&spawn_key),
+    };
     // The profile is bound but its client would not resolve — a missing credential, a provider that
     // could not be built. Nothing about the call was wrong, so it is an I/O-class failure.
-    let client = orch.factory.client_for(&binding).map_err(|err| {
-        DispatchError::new(
-            ToolFailure::IoError,
-            format!(
-                "cannot spawn agent `{slot}` (model `{}`): {err}",
-                binding.model_id
-            ),
-        )
-    })?;
+    let client = orch
+        .factory
+        .client_for_agent(&binding, &AgentIdentity::agent(origin.clone()))
+        .map_err(|err| {
+            DispatchError::new(
+                ToolFailure::IoError,
+                format!(
+                    "cannot spawn agent `{slot}` (model `{}`): {err}",
+                    binding.model_id
+                ),
+            )
+        })?;
     let model_id = client.model_id().to_string();
 
     // Build the child's identity, wiring, and role, then schedule it. The child clones the
@@ -3652,14 +3791,18 @@ fn dispatch_child(
         result: result_tx,
         finished: Arc::clone(&finished),
     };
-    // Keyed on the spawner and the spawn's position in the spawner's own strictly-ordered turn
-    // loop, counted across **all** spawn kinds rather than per profile: a fork runs the forker's
-    // own profile, so a fork child and a same-profile delegated subagent from one parent would
-    // otherwise compete for the same queue.
-    let origin = GgReplayAgentOrigin::Spawn {
-        parent: spawner.id.clone(),
-        ordinal: orch.next_ordinal(format!("spawn:{}", spawner.id)),
-    };
+    // Take the ordinal the identity above was peeked at, now that the child is certainly being
+    // created. Debug-asserted equal because the two diverging would silently bind this child to a
+    // sibling's recorded queue — the exact failure provenance keying exists to rule out.
+    let taken = orch.next_ordinal(spawn_key);
+    debug_assert_eq!(
+        GgReplayAgentOrigin::Spawn {
+            parent: spawner.id.clone(),
+            ordinal: taken,
+        },
+        origin,
+        "a spawn's peeked ordinal and the one it took must agree"
+    );
     let orch_for_task = Arc::clone(orch);
     let handle = tokio::spawn(async move {
         run_agent(orch_for_task, child, role, client, inbox_rx, origin).await;
@@ -4548,12 +4691,19 @@ fn run_detached_agent<'a>(
         } = dispatch;
         let binding = profile_binding(&orch.caps, profile)
             .map_err(|err| format!("could not be dispatched: {err}"))?;
-        let client = orch.factory.client_for(&binding).map_err(|err| {
-            format!(
-                "could not be dispatched (model `{}`): {err}",
-                binding.model_id
-            )
-        })?;
+        // The dispatch already carries this agent's origin — a reviewer's issue/round/position, or
+        // a merge agent's issue/ordinal — because it is the only thing that knows it. Both are
+        // board state, which is what makes them re-derivable; neither agent has a parent to be
+        // keyed by.
+        let client = orch
+            .factory
+            .client_for_agent(&binding, &AgentIdentity::agent(origin.clone()))
+            .map_err(|err| {
+                format!(
+                    "could not be dispatched (model `{}`): {err}",
+                    binding.model_id
+                )
+            })?;
         let (result_tx, result_rx) = oneshot::channel();
         let agent = Agent {
             id: agent_id,

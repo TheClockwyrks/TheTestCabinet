@@ -405,6 +405,15 @@ pub(super) fn handle_fork(
     }
     // The copy runs the forker's own profile, so its binding is the forker's — resolved here purely
     // to fail *now* rather than after the turn, and to name the model in the answer.
+    //
+    // The one resolution in gg that goes through the **anonymous**
+    // [`client_for`](crate::client::ClientFactory::client_for): nobody is binding a client here.
+    // The copy does not exist yet (it is dispatched after the turn, through
+    // [`dispatch_child`](super::dispatch_child), which resolves its own), and asking on the
+    // forker's identity would draw a second client against the forker's own queue for a call that
+    // only ever reads `model_id()`. A substituted factory answers this with an unbound client —
+    // right model id, and an error on any completion — so the fork's answer stays true and no live
+    // call is possible.
     let model_id = match profile_binding(&orch.caps, &spawner.slot)
         .map_err(|err| err.to_string())
         .and_then(|binding| {

@@ -24,22 +24,39 @@
 //!
 //! Both execution modes go through [`run_command`], so the policy governs a JSON tool call and a
 //! [responses-as-code](crate::sandbox) program's `system.shell(…)` identically.
+//!
+//! # The seam
+//!
+//! Starting the process is **not** this module's job: it belongs to the
+//! [`ShellRunner`] the [`ToolContext`] carries, so a
+//! [playback](https://docs.testcabinet.ai/gg/analysis/playback/) can answer a recorded session's
+//! commands from its record while everything here — the merge, the policy, the truncation notes,
+//! the [`ToolOutcome`] — stays this build of gg's. See [`runner`] for where the line is drawn and
+//! why.
 
 use std::path::PathBuf;
-use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
-use tokio::io::AsyncReadExt;
-use tokio::process::Command;
 
 use super::{
     ArgumentError, ShellData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, required_str,
 };
 use crate::model::ToolDefinition;
+
+#[path = "shell.runner.rs"]
+mod runner;
+
+/// The seam's [test double](runner::StubShellRunner), re-exported for the modules on the other two
+/// command-line paths — a [responses-as-code](crate::sandbox) program's and the
+/// [completion](crate::completion) gate's — whose tests substitute it.
+#[cfg(test)]
+pub(crate) use runner::StubShellRunner;
+use runner::{ShellExecution, ShellRequest, ShellStatus};
+pub(crate) use runner::{ShellRunner, real_shell};
 
 /// The tool's name, matched during dispatch and offered to the model.
 pub const SHELL_TOOL: &str = "shell";
@@ -51,9 +68,6 @@ const DEFAULT_TIMEOUT_SECS: f64 = 120.0;
 /// [offload](OffloadPolicy::Offload) it is the backstop behind a line/character ceiling
 /// generous enough to still exceed it.
 const MAX_OUTPUT_BYTES: usize = 16 * 1024;
-/// After a timeout kill, how long to wait for the reader tasks to drain whatever was
-/// already captured before giving up (a forked grandchild may hold the pipe open).
-const OUTPUT_GRACE: Duration = Duration::from_millis(250);
 
 /// The shell capability's `maxLines` param: how many trailing **lines** of a command's output come
 /// back inline under [offloading](SHELL_OUTPUT_OFFLOAD) — and, for a failed command, under
@@ -329,15 +343,19 @@ fn parse_timeout(args: &Value) -> Result<Duration, ArgumentError> {
     }
 }
 
-/// Spawn `command` under `sh -c` in the workspace, enforce `timeout`, and turn the
-/// result into a [`ToolOutcome`] under `offload`. `ok` is true only for a clean exit (status `0`).
+/// Run `command` through the context's [shell runner](ShellRunner), enforce `timeout`, and turn
+/// the result into a [`ToolOutcome`] under `offload`. `ok` is true only for a clean exit
+/// (status `0`).
 ///
 /// This is the **standard, typed** `shell` API function both call paths reach: the JSON
 /// tool-calling [adapter](Tool::invoke) after it parses `command`/`timeout_secs`, and the
 /// [responses-as-code membrane](crate::sandbox) directly with the command and the
 /// budget-clamped timeout a program passed. Because the [output policy](OffloadPolicy) is applied
 /// here rather than in either adapter, a program's `system.shell(…)` is offloaded on exactly the
-/// terms a tool call is.
+/// terms a tool call is — and because the *process* is started behind
+/// [`ctx.shell`](ToolContext::shell) rather than here, a
+/// [playback](https://docs.testcabinet.ai/gg/analysis/playback/) answers all three call paths from
+/// one substitution.
 pub(crate) async fn run_command(
     command: &str,
     timeout: Duration,
@@ -366,8 +384,9 @@ pub(crate) struct CommandCapture {
 }
 
 impl CommandCapture {
-    /// The capture for a command that never ran at all — a spawn failure. Distinct from a command
-    /// that ran and printed nothing, which is why the exit code is absent rather than zero.
+    /// The capture for a command that never ran at all — a
+    /// [launch failure](ShellStatus::LaunchFailed). Distinct from a command that ran and printed
+    /// nothing, which is why the exit code is absent rather than zero.
     fn never_ran() -> Self {
         Self {
             exit_code: None,
@@ -384,76 +403,39 @@ pub(crate) async fn run_command_capturing(
     offload: &OffloadPolicy,
     ctx: &ToolContext,
 ) -> (ToolOutcome, CommandCapture) {
-    let mut command_builder = Command::new("sh");
-    command_builder
-        .arg("-c")
-        .arg(command)
-        .current_dir(&ctx.workspace_dir)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        // Reap the child if we drop it (e.g. on an early return).
-        .kill_on_drop(true);
-    // Put the command in its own process group so a timeout kill reaches the whole
-    // tree — `sh` may fork the command into a grandchild that would otherwise survive
-    // (and hold the output pipe open) when only `sh` is killed.
-    #[cfg(unix)]
-    command_builder.process_group(0);
+    // The one place a command line becomes a process — behind the context's
+    // [seam](ShellRunner), so a reconstruction answers it from a record while everything below
+    // (the output policy, gg's notes, the outcome's shape) stays this build of gg's.
+    let ShellExecution {
+        status,
+        stdout,
+        stderr,
+    } = ctx
+        .shell
+        .run(ShellRequest {
+            command: command.to_string(),
+            cwd: ctx.workspace_dir.clone(),
+            timeout,
+            agent_id: ctx.agent_id.clone(),
+        })
+        .await;
 
-    let mut child = match command_builder.spawn() {
-        Ok(child) => child,
-        Err(err) => {
-            // Nothing ran, so there is no exit code to report and no `ShellData` to attach: this
-            // is the one shell failure that is a failure *of the call* rather than a result of it.
-            return (
-                ToolOutcome::failed(
-                    ToolFailure::from_io(&err),
-                    format!("failed to launch shell command: {err}"),
-                ),
-                CommandCapture::never_ran(),
-            );
-        }
-    };
-
-    // Drain both pipes concurrently with the wait so a command that fills a pipe
-    // buffer cannot deadlock, and partial output survives a timeout kill.
-    let mut stdout = child.stdout.take();
-    let mut stderr = child.stderr.take();
-    let out_task = tokio::spawn(async move { read_stream(&mut stdout).await });
-    let err_task = tokio::spawn(async move { read_stream(&mut stderr).await });
-
-    let waited = tokio::time::timeout(timeout, child.wait()).await;
-
-    let timed_out = waited.is_err();
-    if timed_out {
-        // The command overran its budget; signal a kill so it cannot wedge the run.
-        // We do not `.await` the kill (or the reader tasks unboundedly): a forked
-        // grandchild can keep the pipe's write end open past the kill, so we bound the
-        // final output collection with a short grace below rather than block on it.
-        let _ = child.start_kill();
+    // Nothing ran, so there is no exit code to report, no `ShellData` to attach, and no output to
+    // apply a policy to: this is the one shell failure that is a failure *of the call* rather than
+    // a result of it.
+    if let ShellStatus::LaunchFailed { failure, message } = status {
+        return (
+            ToolOutcome::failed(failure, message),
+            CommandCapture::never_ran(),
+        );
     }
 
-    // Collect the captured output. On a clean exit the pipes are already closed, so the
-    // readers finish immediately; on a timeout a lingering grandchild might hold a pipe
-    // open, so we wait only a short grace for whatever was captured and then move on.
-    let collect = async {
-        let stdout = out_task.await.unwrap_or_default();
-        let stderr = err_task.await.unwrap_or_default();
-        (stdout, stderr)
-    };
-    let (stdout, stderr) = if timed_out {
-        tokio::time::timeout(OUTPUT_GRACE, collect)
-            .await
-            .unwrap_or_default()
-    } else {
-        collect.await
-    };
     // Whether the command worked, which the [adaptive](OffloadPolicy::Adaptive) policy decides on.
     // A timeout kill and a failed `wait()` both count as "did not succeed": in either case the
     // agent is about to be told something went wrong, and the output is the part that says what.
-    let succeeded = matches!(&waited, Ok(Ok(status)) if status.success());
+    let succeeded = matches!(status, ShellStatus::Exited { code: Some(0) });
     // What comes back inline, under whichever output policy is in force. Computed before the
-    // timeout branch so a killed command's partial output is offloaded on the same terms a
+    // terminal branches so a killed command's partial output is offloaded on the same terms a
     // completed one's is — a command that hung after printing a hundred megabytes is exactly the
     // case offloading exists for.
     let Captured {
@@ -462,38 +444,23 @@ pub(crate) async fn run_command_capturing(
         explained,
     } = capture_output(&stdout, &stderr, offload, succeeded).await;
 
-    if timed_out {
-        let mut output = format!(
-            "command timed out after {:.3}s and was killed.",
-            timeout.as_secs_f64()
-        );
-        if !body.is_empty() {
-            output.push_str("\n\n");
-            output.push_str(&body);
-        }
-        // A gg-side ceiling killed a command that was otherwise running fine, which is a different
-        // thing from the command failing — so it is classified as the limit it is, and carries no
-        // `ShellData`: there is no exit code, and whatever the process had printed is already in
-        // the message.
-        return (
-            ToolOutcome::failed(ToolFailure::LimitExceeded, output),
-            CommandCapture {
-                exit_code: None,
-                stdout,
-                stderr,
-            },
-        );
-    }
-
-    let status = match waited {
-        Ok(Ok(status)) => status,
-        // `child.wait()` itself failed (rare): report it rather than pretend success.
-        Ok(Err(err)) => {
+    let code = match status {
+        ShellStatus::Exited { code } => code,
+        ShellStatus::TimedOut => {
+            let mut output = format!(
+                "command timed out after {:.3}s and was killed.",
+                timeout.as_secs_f64()
+            );
+            if !body.is_empty() {
+                output.push_str("\n\n");
+                output.push_str(&body);
+            }
+            // A gg-side ceiling killed a command that was otherwise running fine, which is a
+            // different thing from the command failing — so it is classified as the limit it is,
+            // and carries no `ShellData`: there is no exit code, and whatever the process had
+            // printed is already in the message.
             return (
-                ToolOutcome::failed(
-                    ToolFailure::from_io(&err),
-                    format!("waiting on shell command: {err}"),
-                ),
+                ToolOutcome::failed(ToolFailure::LimitExceeded, output),
                 CommandCapture {
                     exit_code: None,
                     stdout,
@@ -501,11 +468,20 @@ pub(crate) async fn run_command_capturing(
                 },
             );
         }
-        Err(_) => unreachable!("the timeout branch is handled above"),
+        ShellStatus::WaitFailed { failure, message } => {
+            return (
+                ToolOutcome::failed(failure, message),
+                CommandCapture {
+                    exit_code: None,
+                    stdout,
+                    stderr,
+                },
+            );
+        }
+        ShellStatus::LaunchFailed { .. } => unreachable!("the launch-failure branch is above"),
     };
 
-    let code = status.code();
-    let ok = status.success();
+    let ok = code == Some(0);
     let mut output = match code {
         Some(code) => format!("exit code: {code}\n"),
         None => "exit code: (terminated by signal)\n".to_string(),
@@ -551,21 +527,6 @@ pub(crate) async fn run_command_capturing(
             stderr,
         },
     )
-}
-
-/// Read a captured pipe to EOF as lossy UTF-8 (build output is not guaranteed valid
-/// UTF-8). A `None` handle (unexpected) reads as empty.
-async fn read_stream<R>(reader: &mut Option<R>) -> String
-where
-    R: AsyncReadExt + Unpin,
-{
-    let Some(reader) = reader.as_mut() else {
-        return String::new();
-    };
-    let mut buf = Vec::new();
-    // A read error mid-stream still yields whatever was captured before it.
-    let _ = reader.read_to_end(&mut buf).await;
-    String::from_utf8_lossy(&buf).into_owned()
 }
 
 /// Merge stdout and stderr into one block: stdout first, then stderr, each labeled

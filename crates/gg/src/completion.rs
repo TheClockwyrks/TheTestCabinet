@@ -292,7 +292,12 @@ pub(crate) async fn run_validation(
                 }
             }
         };
-        let ctx = ToolContext::new(cwd);
+        // Derived from the agent's own context rather than built fresh, so a command that declared
+        // a `cwd` still runs through *this agent's* [shell runner](crate::tools::ShellRunner) and
+        // still names the agent whose ending it gates. A bare `ToolContext::new` would silently
+        // give it the real shell and no attribution — which for the one input that decides whether
+        // a session may end is the worst place in gg to lose either.
+        let ctx = base.rooted_at(cwd);
         let (outcome, captured) =
             run_command_capturing(&command.command, command.timeout, offload, &ctx).await;
         if let Some((recorder, agent_id)) = replay {
