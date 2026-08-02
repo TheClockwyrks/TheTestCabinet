@@ -97,10 +97,11 @@ pub use backend_client::{
 };
 pub use cancel::RunCancellation;
 pub use code_analysis::{
-    CODE_ANALYZER_VERSION, CODE_METRICS, CodeAnalysisDocument, CodeAnalysisNotes,
-    CodeAnalysisSummary, CodeApiSummary, CodeAuthoredBasis, CodeCloneGroup, CodeCloneInstance,
-    CodeComplexitySummary, CodeDuplicationSummary, CodeFileEntry, CodeGraphSummary, CodeImportEdge,
-    CodeLanguage, CodeMetricDef, CodeMetricUnit, CodeRustSummary, CodeSizeSummary, CodeSymbolEntry,
+    CODE_ANALYSIS_ARTIFACT, CODE_ANALYSIS_TREE_ARTIFACT, CODE_ANALYZER_VERSION, CODE_METRICS,
+    CodeAnalysisDocument, CodeAnalysisNotes, CodeAnalysisSummary, CodeApiSummary,
+    CodeAuthoredBasis, CodeCloneGroup, CodeCloneInstance, CodeComplexitySummary,
+    CodeDuplicationSummary, CodeFileEntry, CodeGraphSummary, CodeImportEdge, CodeLanguage,
+    CodeMetricDef, CodeMetricUnit, CodeRustSummary, CodeSizeSummary, CodeSymbolEntry,
     CodeTestSummary, CodeTreeBasis, CodeTruncationCap, CodeTypeScriptSummary,
 };
 pub use container::{CliArtifactCollector, CliContainerRuntime};
@@ -1546,6 +1547,14 @@ where
             // the run was given from the code the model actually wrote — exactly,
             // rather than by guessing at the tree's root commit.
             seed_commit: Some(seeded.initial_commit.clone()),
+            // The bounded code-analysis summary the post-run seam produced, if a host
+            // wired an analyzer. It is folded in here rather than written by the stage
+            // because the record does not exist when the stage runs — and it must not,
+            // since the whole point of the seam's placement is that the analysis
+            // measures the tree *before* validation rewrites it. `None` leaves the
+            // field off the record entirely, which is the honest encoding of "this run
+            // was never analysed" as distinct from "this run measured nothing".
+            code_analysis: post_run.code_analysis,
         };
 
         self.write_record(&record, &artifacts)?;
@@ -1775,6 +1784,10 @@ fn build_failed_record(
         // seed commit to name. Left absent rather than empty so a consumer can tell "no
         // seed was recorded" from "the seed was the empty hash".
         seed_commit: None,
+        // A run that failed before producing a tree has no code to analyse, and the
+        // post-run seam it would have been analysed at is downstream of the failure.
+        // Absent, never an empty measurement.
+        code_analysis: None,
     }
 }
 

@@ -103,16 +103,26 @@ pub struct PostRunContext<'a> {
 ///
 /// This is also the channel by which a stage contributes to the **run record**: a
 /// stage that computes a typed summary destined for a record field returns it
-/// here, and the engine folds it into the record it builds. Nothing does that yet
-/// — the replay assembly writes a file and nothing else — so the struct carries
-/// only the artifact list today. It is the growth point, which is why the seam
-/// returns a struct rather than `()`.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+/// here, and the engine folds it into the record it builds. The code analyzer is
+/// the first stage to use it — it writes the unbounded document as an artifact and
+/// hands back the bounded summary — which is why the seam returns a struct rather
+/// than `()`.
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct PostRunReport {
     /// Paths of the artifacts the stage wrote, for the run's log line. Empty when
     /// the stage had nothing to do (a replay assembly on a non-gg run) or wrote
     /// nothing.
     pub artifacts: Vec<PathBuf>,
+    /// The bounded [code-analysis summary](crate::code_analysis::CodeAnalysisSummary)
+    /// destined for [`RunRecord::code_analysis`](crate::RunRecord::code_analysis),
+    /// when a stage computed one.
+    ///
+    /// Returned rather than written straight onto the record because the record does
+    /// not exist yet when a stage runs — the seam is deliberately upstream of it, so
+    /// that an analysis measures the tree before validation touches it. `None` from
+    /// every stage that is not the analyzer, and from an analyzer that had nothing to
+    /// measure.
+    pub code_analysis: Option<crate::code_analysis::CodeAnalysisSummary>,
 }
 
 impl PostRunReport {
@@ -126,13 +136,35 @@ impl PostRunReport {
     pub fn artifact(path: impl Into<PathBuf>) -> Self {
         Self {
             artifacts: vec![path.into()],
+            code_analysis: None,
+        }
+    }
+
+    /// A report for a stage that computed the run's [code
+    /// analysis](crate::code_analysis): the document it wrote, and the bounded
+    /// summary destined for the record.
+    pub fn analysis(
+        path: impl Into<PathBuf>,
+        summary: crate::code_analysis::CodeAnalysisSummary,
+    ) -> Self {
+        Self {
+            artifacts: vec![path.into()],
+            code_analysis: Some(summary),
         }
     }
 
     /// Fold another stage's report into this one, accumulating what the run's
     /// stages produced between them.
+    ///
+    /// A summary already folded in is **kept**: exactly one wired stage produces one,
+    /// so a second is a wiring mistake rather than a merge, and preferring the first
+    /// keeps the fold order-independent instead of letting the last stage in the list
+    /// silently win.
     fn merge(&mut self, other: Self) {
         self.artifacts.extend(other.artifacts);
+        if self.code_analysis.is_none() {
+            self.code_analysis = other.code_analysis;
+        }
     }
 }
 

@@ -98,6 +98,7 @@ fn sample_record() -> RunRecord {
         tool_calls: BTreeMap::new(),
         game_jam_prior_entries: Vec::new(),
         seed_commit: None,
+        code_analysis: None,
     }
 }
 
@@ -215,6 +216,20 @@ fn seed_commit_round_trips_and_is_absent_for_older_records() {
     // today — still deserializes, with the field absent rather than failing the parse.
     let parsed: RunRecord = serde_json::from_value(absent).expect("deserialize");
     assert!(parsed.seed_commit.is_none());
+}
+
+#[test]
+fn code_analysis_is_absent_rather_than_empty_when_a_run_was_never_analysed() {
+    // The distinction the `Option` exists for: "this run was never analysed" must not be
+    // representable as "this run measured an empty tree", which would read as a model
+    // that wrote nothing. So a run with no analysis writes no key at all…
+    let absent = serde_json::to_value(sample_record()).expect("serialize");
+    assert!(absent.get("codeAnalysis").is_none());
+
+    // …and every record in the corpus today — all written before the field existed —
+    // still deserializes, with the field absent rather than failing the parse.
+    let parsed: RunRecord = serde_json::from_value(absent).expect("deserialize");
+    assert!(parsed.code_analysis.is_none());
 }
 
 #[test]

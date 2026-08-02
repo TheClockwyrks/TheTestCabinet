@@ -71,6 +71,11 @@ contract = ["dep:ts-rs", "dep:schemars", "test-cabinet-core/contract"]
 [dev-dependencies]
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
+# Tests only. A `CodeAnalysisSummary` has ~95 required leaves, so the honest way to get
+# one for a fixture is to run the real analyzer over a two-line tree rather than to write
+# out a literal that would drift from the contract on the next field added. The backend
+# itself never analyses anything — the driver does, at the post-run seam.
+test-cabinet-code-analysis = { path = "../code-analysis" }
 
 [lints]
 workspace = true

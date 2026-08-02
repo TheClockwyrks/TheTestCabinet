@@ -299,6 +299,20 @@ pub enum Error {
         detail: String,
     },
 
+    /// A finished run's [code analysis](crate::code_analysis) could not be
+    /// produced.
+    ///
+    /// Only for the ways the *stage* can fail: writing the document out, or a
+    /// panic escaping the thread a parser was pointed at model-written source on.
+    /// The analysis itself never fails — every degradation it can suffer (a tree
+    /// that is not a repository, a file that will not parse, a cap that fires) is
+    /// reported *in* the result, because a caller that gets an error learns
+    /// nothing about the tree. Like the replay assembly this runs at the
+    /// [post-run seam](crate::post_run), so it never fails the run it describes:
+    /// it costs the run its `codeAnalysis` and nothing else.
+    #[error("code analysis failed: {0}")]
+    CodeAnalysis(String),
+
     /// Failed to (de)serialize a value, typically the run record.
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),

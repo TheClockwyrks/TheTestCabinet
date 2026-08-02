@@ -6902,6 +6902,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "test-cabinet-code-analysis",
  "test-cabinet-core",
  "test-cabinet-db-auth",
  "test-cabinet-entities",
@@ -6941,6 +6942,8 @@ dependencies = [
 name = "test-cabinet-code-analysis"
 version = "0.0.0"
 dependencies = [
+ "async-trait",
+ "flate2",
  "ignore",
  "oxc",
  "proc-macro2",
@@ -6949,7 +6952,9 @@ dependencies = [
  "syn 2.0.117",
  "tempfile",
  "test-cabinet-core",
+ "tokio",
  "toml 0.8.2",
+ "tracing",
 ]
 
 [[package]]
@@ -7091,6 +7096,7 @@ dependencies = [
  "serde_json",
  "tar",
  "tempfile",
+ "test-cabinet-code-analysis",
  "test-cabinet-core",
  "test-cabinet-telemetry",
  "thiserror 2.0.18",

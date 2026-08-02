@@ -307,6 +307,20 @@ pub trait BackendClient: Send + Sync {
         Ok(())
     }
 
+    /// Upload a run's [code-analysis](crate::code_analysis) document — the unbounded tier of the
+    /// static read of the code its model wrote — served back to the per-run Code tab.
+    /// (`POST /runs/{id}/code-analysis`) Idempotent: identical bytes overwrite.
+    ///
+    /// Store-only, by the run-tree artifact convention: the driver uploads before the terminal
+    /// status post that creates the run row, so nothing is patched and the lifted analyzer-version
+    /// column is set from the record on the ordinary insert.
+    ///
+    /// Defaults to a no-op so a backend without code-analysis support (or a test stub) stays valid;
+    /// the HTTP client overrides it.
+    async fn publish_run_code_analysis(&self, _run_id: &str, _bytes: Vec<u8>) -> Result<()> {
+        Ok(())
+    }
+
     /// Fetch a gg run's stored replay record. (`GET /runs/{id}/replay`) Used by
     /// `tcab gg-replay <RUN_ID>` to reconstruct a published run without first hunting down its
     /// run tree.
@@ -1140,6 +1154,27 @@ impl BackendClient for HttpBackendClient {
     )]
     async fn publish_run_replay(&self, run_id: &str, bytes: Vec<u8>) -> Result<()> {
         let url = self.url(&format!("/runs/{}/replay", encode(run_id)));
+        let headers = self.headers();
+        let response = self
+            .http
+            .post(&url)
+            .headers(headers)
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|err| backend_err(&url, err))?;
+        error_for_status(&url, response).await?;
+        Ok(())
+    }
+
+    #[instrument(
+        skip(self, bytes),
+        fields(otel.kind = "client", http.request.method = "POST", run.id = %run_id),
+        err,
+    )]
+    async fn publish_run_code_analysis(&self, run_id: &str, bytes: Vec<u8>) -> Result<()> {
+        let url = self.url(&format!("/runs/{}/code-analysis", encode(run_id)));
         let headers = self.headers();
         let response = self
             .http

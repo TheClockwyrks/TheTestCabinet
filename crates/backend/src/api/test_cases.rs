@@ -385,6 +385,49 @@ pub async fn put_run_replay(
     Ok((StatusCode::NO_CONTENT, ()).into_response())
 }
 
+/// `GET /runs/{id}/code-analysis` — a run's stored
+/// [code-analysis](test_cabinet_core::code_analysis) document: the unbounded tier of the
+/// static read of the code its model wrote, with every file, symbol, import edge, cycle and
+/// clone group.
+///
+/// Served through [`run_artifact_response`] exactly as the replay record is: a browser (the
+/// per-run Code tab) gets the stored gzip moved verbatim, and a gzip-unaware client on the
+/// workspace `reqwest` gets it decoded here.
+///
+/// Offered for every harness's runs. The gg-only constraint binds on the *aggregate* query
+/// surface, not on a per-run document that costs nothing harness-specific to produce.
+pub async fn run_code_analysis(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let bytes = state
+        .store
+        .read_run_code_analysis(&id)
+        .map_err(ApiError::from)?;
+    run_artifact_response(&headers, crate::store::CODE_ANALYSIS_ARTIFACT, bytes)
+}
+
+/// `POST /runs/{id}/code-analysis` — store a run's code-analysis document, mirrored in by
+/// the driver from the collected run tree. The raw request body is the bytes.
+///
+/// **Store-only**, by the run-tree artifact convention: the driver uploads *before* the
+/// terminal status post that creates the run row, so there is nothing here to patch. The
+/// lifted `run.code_analyzer_version` column is set from the record on the ordinary insert,
+/// which is why this handler never touches the database and why a document arriving for a
+/// run that does not exist yet is not an error.
+pub async fn put_run_code_analysis(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    body: axum::body::Bytes,
+) -> Result<Response, ApiError> {
+    state
+        .store
+        .write_run_code_analysis(&id, &body)
+        .map_err(ApiError::from)?;
+    Ok((StatusCode::NO_CONTENT, ()).into_response())
+}
+
 /// Map a [`StoredManifest`] to the §1.2 wire response, building reference
 /// screenshot URLs from the version's store layout and rendering each variant's
 /// prompt the way a real run receives it.

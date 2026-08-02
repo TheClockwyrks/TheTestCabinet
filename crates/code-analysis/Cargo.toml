@@ -53,10 +53,19 @@ sha2 = { workspace = true }
 # that without resolving the dependency graph (which needs the registry, and therefore the
 # network) is to read the `[package] name` out of each `Cargo.toml` directly.
 toml = { workspace = true }
+# The post-run stage: serializing the exploration document, gzipping it into the run
+# tree by the shared artifact convention, and reporting what it produced. `async-trait`
+# is what core declares `PostRunStage` with; `tokio` is used for exactly one thing —
+# `spawn_blocking`, so that a multi-second parse never stalls the tasks the host is
+# still running around it. The runtime itself belongs to whoever wired the stage in.
+serde_json = { workspace = true }
+flate2 = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-serde_json = { workspace = true }
 
 [lints]
 workspace = true

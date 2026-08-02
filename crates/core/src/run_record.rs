@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::code_analysis::CodeAnalysisSummary;
 use crate::gg::{GgCapabilitySet, GgSessionSummary};
 use crate::metrics::RunMetrics;
 use crate::validation::ValidationSummary;
@@ -654,6 +655,32 @@ pub struct RunRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub seed_commit: Option<String>,
+    /// The **bounded** tier of the run's [code analysis](crate::code_analysis): a
+    /// deterministic, execute-nothing static read of the code the model wrote,
+    /// computed on the host at the [post-run seam](crate::post_run) — after the tree
+    /// is collected and **before** validation rewrites it.
+    ///
+    /// Roughly ninety-five scalars, every leaf a number, a boolean or a small enum, so
+    /// the whole block flattens into the query language's `code.*` namespace and is
+    /// directly aggregable. The unbounded tier — every file, symbol, import edge, cycle
+    /// and clone group — is the run tree's
+    /// [`code-analysis.json.gz`](crate::code_analysis::CODE_ANALYSIS_TREE_ARTIFACT)
+    /// artifact instead, because a record is deserialized on every run listing.
+    ///
+    /// **Nothing in here influences the run's score or verdict.** A run is judged on
+    /// what it built, never on what a metric said about it; the polarity a metric
+    /// definition carries orients a sort and nothing else.
+    ///
+    /// Absent for a run whose host wired no analyzer, for a run analysed by a build
+    /// that predates the analyzer, and for a run whose tree could not be read at all.
+    /// Defaulted and omitted when absent so records written before the field existed
+    /// still deserialize, and so a run that carries no analysis is not confused with
+    /// one that measured an empty tree — the distinction that
+    /// [`CodeAuthoredBasis`](crate::code_analysis::CodeAuthoredBasis) exists to keep
+    /// honest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub code_analysis: Option<CodeAnalysisSummary>,
 }
 
 /// A pointer to one earlier game-jam entry a run was seeded with: which run it was

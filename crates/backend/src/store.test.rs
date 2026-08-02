@@ -645,3 +645,59 @@ fn publish_staged_version_swaps_a_fresh_build_into_place() {
         "staging area should be empty after publish, found {leaked:?}"
     );
 }
+
+#[test]
+fn the_code_analysis_slot_is_the_generic_artifact_slot_named_code_analysis() {
+    let (_dir, store) = temp_store();
+    // Same rule as the replay slot: the named wrappers must resolve to the same bytes as
+    // the generic slot, because the artifact name is one constant shared by the store
+    // slot, the route segment and the run tree's file stem — and the convention only
+    // holds if the three cannot drift apart.
+    store
+        .write_run_code_analysis("run-xyz", br#"{"analyzerVersion":2}"#)
+        .unwrap();
+    assert_eq!(
+        store
+            .read_run_artifact("run-xyz", CODE_ANALYSIS_ARTIFACT)
+            .unwrap(),
+        br#"{"analyzerVersion":2}"#
+    );
+    assert_eq!(
+        store.run_code_analysis_path("run-xyz"),
+        store.run_artifact_path("run-xyz", CODE_ANALYSIS_ARTIFACT)
+    );
+    assert!(
+        store
+            .run_code_analysis_path("run-xyz")
+            .ends_with("code-analysis.json")
+    );
+    // The route segment is the same string, and it is the stem of the run tree's file.
+    assert_eq!(
+        test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT,
+        format!("{CODE_ANALYSIS_ARTIFACT}.json.gz"),
+    );
+}
+
+#[test]
+fn run_code_analysis_document_round_trips_and_guards_the_run_id() {
+    let (_dir, store) = temp_store();
+    let bytes = br#"{"analyzerVersion":2,"summary":{},"files":[]}"#;
+    store.write_run_code_analysis("run-xyz", bytes).unwrap();
+    assert_eq!(store.read_run_code_analysis("run-xyz").unwrap(), bytes);
+    // A run that was never analysed reads as not-found, not a panic: every run-tree
+    // artifact is optional by construction.
+    assert!(matches!(
+        store.read_run_code_analysis("run-none").unwrap_err(),
+        BackendError::NotFound(_)
+    ));
+    assert!(matches!(
+        store
+            .write_run_code_analysis("../escape", bytes)
+            .unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+    assert!(matches!(
+        store.read_run_code_analysis("../escape").unwrap_err(),
+        BackendError::BadRequest(_)
+    ));
+}

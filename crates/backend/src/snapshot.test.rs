@@ -70,6 +70,7 @@ fn stored_run(id: &str, published_at: &str) -> StoredRun {
             tool_calls: Default::default(),
             game_jam_prior_entries: Vec::new(),
             seed_commit: None,
+            code_analysis: None,
         },
         reviews: vec![StoredReview {
             reviewer: crate::db::Reviewer {
@@ -1926,4 +1927,69 @@ async fn every_published_run_document_is_scrubbed_on_its_way_out() {
     let body = String::from_utf8(per_run.bytes.clone()).unwrap();
     assert!(!body.contains("sk-ant-api03-notreal-value"));
     assert!(body.contains(test_cabinet_core::redact::PLACEHOLDER));
+}
+
+/// A real `CodeAnalysisSummary`, produced by pointing the real analyzer at a two-file
+/// tree. Cheaper and far more durable than a ninety-five-field literal, which would drift
+/// from the contract the moment a metric is added.
+fn code_analysis_summary() -> test_cabinet_core::CodeAnalysisSummary {
+    let tree = TempDir::new().expect("temp dir");
+    std::fs::create_dir_all(tree.path().join("src")).expect("a source directory");
+    std::fs::write(
+        tree.path().join("src/main.ts"),
+        "export function boot(): number {\n  return 1;\n}\n",
+    )
+    .expect("a source file");
+    test_cabinet_code_analysis::analyze(&test_cabinet_code_analysis::AnalysisRequest {
+        root: tree.path(),
+        seed_commit: None,
+        tree_basis: test_cabinet_core::CodeTreeBasis::PreValidation,
+    })
+    .summary
+}
+
+#[tokio::test]
+async fn a_run_s_code_analysis_publishes_inside_the_scrubbed_document_and_nowhere_else() {
+    // R7: `SnapshotBuilder::build` scrubs the `PerRun` document and *only* that document,
+    // so a sibling object put beside it bypasses redaction entirely. Model-written source
+    // contains hard-coded credentials often enough that the scrubber exists at all, and a
+    // symbol name or a file path is text like any other — so the unbounded code-analysis
+    // document must not become such a sibling here. Publishing it is M9's, with its own
+    // scrub; this milestone publishes the bounded summary and does so *inside* the
+    // document the scrubber walks.
+    let (_tmp, store) = empty_store();
+    // The document exists in the store for this run, so this asserts a choice rather than
+    // an absence of data.
+    store
+        .write_run_code_analysis("r1", br#"{"analyzerVersion":2}"#)
+        .expect("store the run's code-analysis document");
+
+    let mut run = stored_run("r1", "2026-06-17T21:40:00Z");
+    run.record.code_analysis = Some(code_analysis_summary());
+    let snapshot = SnapshotBuilder::new(vec![run], vec![manifest()], store)
+        .build(now())
+        .await
+        .unwrap();
+
+    let prefix = format!("snapshots/{}", snapshot.snapshot_id);
+    let per_run = snapshot
+        .objects
+        .iter()
+        .find(|o| o.key == format!("{prefix}/runs/r1.json"))
+        .expect("the per-run document");
+    let parsed: serde_json::Value = serde_json::from_slice(&per_run.bytes).unwrap();
+    assert_eq!(
+        parsed["record"]["codeAnalysis"]["treeBasis"], "preValidation",
+        "the bounded summary rides inside the one document `scrub_json` walked",
+    );
+
+    assert!(
+        !snapshot
+            .objects
+            .iter()
+            .any(|object| object.key.contains("code-analysis")),
+        "no code-analysis object may be published beside the per-run document — it would \
+         reach R2 without ever passing the scrubber: {:?}",
+        snapshot.objects.iter().map(|o| &o.key).collect::<Vec<_>>(),
+    );
 }

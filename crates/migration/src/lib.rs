@@ -41,6 +41,7 @@ mod m20260727_000021_create_comparison;
 mod m20260731_000022_add_run_gg_preset;
 mod m20260731_000023_add_job_test_type;
 mod m20260801_000024_add_run_updated_at;
+mod m20260801_000025_add_run_code_analyzer_version;
 
 pub struct Migrator;
 
@@ -72,6 +73,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260731_000022_add_run_gg_preset::Migration),
             Box::new(m20260731_000023_add_job_test_type::Migration),
             Box::new(m20260801_000024_add_run_updated_at::Migration),
+            Box::new(m20260801_000025_add_run_code_analyzer_version::Migration),
         ]
     }
 }

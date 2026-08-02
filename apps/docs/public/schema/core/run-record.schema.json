@@ -1824,6 +1824,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The complete run record emitted by every run.\n\nThis is the contract consumed by the site and published with each run. Its\nshape is deliberately fixed; the `packages/run-record` bindings and the\npublished JSON Schema are generated from it (see the module docs).",
   "properties": {
+    "codeAnalysis": {
+      "anyOf": [
+        {
+          "$ref": "https://docs.testcabinet.ai/schema/core/code-analysis.schema.json#/$defs/CodeAnalysisSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The **bounded** tier of the run's [code analysis](crate::code_analysis): a\ndeterministic, execute-nothing static read of the code the model wrote,\ncomputed on the host at the [post-run seam](crate::post_run) — after the tree\nis collected and **before** validation rewrites it.\n\nRoughly ninety-five scalars, every leaf a number, a boolean or a small enum, so\nthe whole block flattens into the query language's `code.*` namespace and is\ndirectly aggregable. The unbounded tier — every file, symbol, import edge, cycle\nand clone group — is the run tree's\n[`code-analysis.json.gz`](crate::code_analysis::CODE_ANALYSIS_TREE_ARTIFACT)\nartifact instead, because a record is deserialized on every run listing.\n\n**Nothing in here influences the run's score or verdict.** A run is judged on\nwhat it built, never on what a metric said about it; the polarity a metric\ndefinition carries orients a sort and nothing else.\n\nAbsent for a run whose host wired no analyzer, for a run analysed by a build\nthat predates the analyzer, and for a run whose tree could not be read at all.\nDefaulted and omitted when absent so records written before the field existed\nstill deserialize, and so a run that carries no analysis is not confused with\none that measured an empty tree — the distinction that\n[`CodeAuthoredBasis`](crate::code_analysis::CodeAuthoredBasis) exists to keep\nhonest."
+    },
     "environment": {
       "$ref": "#/$defs/RunEnvironment",
       "description": "The container environment the run executed in."

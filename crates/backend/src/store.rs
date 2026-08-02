@@ -47,6 +47,15 @@ const SIDECAR: &str = ".tcab";
 /// drift apart.
 pub const REPLAY_ARTIFACT: &str = "replay";
 
+/// The [run-tree artifact](DefinitionStore::run_artifact_path) name of a run's **code
+/// analysis** document, re-exported from the contract that owns it.
+///
+/// Unlike [`REPLAY_ARTIFACT`] the string cannot live here: the analyzer writes
+/// `code-analysis.json.gz` into the run tree from another crate entirely, and the driver
+/// mirrors it in from a third, so the name has to sit somewhere all three already depend
+/// on. Aliased here so the store's two artifact slots read alike at their use sites.
+pub use test_cabinet_core::CODE_ANALYSIS_ARTIFACT;
+
 /// Owns the on-disk definition store rooted at a single directory.
 #[derive(Debug, Clone)]
 pub struct DefinitionStore {
@@ -1324,6 +1333,30 @@ impl DefinitionStore {
     /// [`read_run_artifact`](Self::read_run_artifact).
     pub fn read_run_replay(&self, run_id: &str) -> Result<Vec<u8>> {
         self.read_run_artifact(run_id, REPLAY_ARTIFACT)
+    }
+
+    /// Where a run's [code-analysis](test_cabinet_core::code_analysis) document is stored:
+    /// `runs/<run_id>/code-analysis.json`. The unbounded tier — every file, symbol, import
+    /// edge, cycle and clone group — mirrored here by the driver from the run tree so the
+    /// per-run Code tab can fetch it without the run archive. Its bounded sibling rides on
+    /// the run record itself.
+    ///
+    /// Offered for every harness's runs, not just gg's: analysing a directory involves no
+    /// harness-specific work, and restricting the slot would cost coverage for nothing.
+    pub fn run_code_analysis_path(&self, run_id: &str) -> PathBuf {
+        self.run_artifact_path(run_id, CODE_ANALYSIS_ARTIFACT)
+    }
+
+    /// Persist a run's code-analysis document. The named wrapper over
+    /// [`write_run_artifact`](Self::write_run_artifact) — see it for the convention.
+    pub fn write_run_code_analysis(&self, run_id: &str, bytes: &[u8]) -> Result<()> {
+        self.write_run_artifact(run_id, CODE_ANALYSIS_ARTIFACT, bytes)
+    }
+
+    /// Read a run's stored code-analysis document. The named wrapper over
+    /// [`read_run_artifact`](Self::read_run_artifact).
+    pub fn read_run_code_analysis(&self, run_id: &str) -> Result<Vec<u8>> {
+        self.read_run_artifact(run_id, CODE_ANALYSIS_ARTIFACT)
     }
 
     // --- Per-run asset-generation media -------------------------------------

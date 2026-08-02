@@ -39,6 +39,10 @@
       "types": "./dist/gg-system-prompt.d.ts",
       "default": "./dist/gg-system-prompt.js"
     },
+    "./code-analysis": {
+      "types": "./dist/code-analysis.d.ts",
+      "default": "./dist/code-analysis.js"
+    },
     "./gg-query": {
       "types": "./dist/gg-query.d.ts",
       "default": "./dist/gg-query.js"

@@ -64,6 +64,22 @@ pub struct Model {
     /// How many reviews the run carries. Maintained alongside `rating` on
     /// review-add; `0` for a pushed-but-unreviewed run.
     pub review_count: i64,
+    /// The generation of the static code analyzer that produced this run's
+    /// `record.codeAnalysis` figures, or `NULL` for a run that carries none.
+    ///
+    /// Lifted so a corpus spanning two analyzer generations is *sliceable* rather than
+    /// silently incomparable: a metric whose definition (or cap) changed produces a step
+    /// change in the aggregate that reads exactly like a model getting worse, and this is
+    /// the column that makes the mix visible without deserializing every record.
+    ///
+    /// `NULL` means **never analysed** — there is no backfill of the analysis itself,
+    /// because a historical run's tree can only be re-read post-validation and those are
+    /// not the same figures. Rows written before the column existed but carrying a
+    /// summary are filled by the startup backfill.
+    ///
+    /// Nothing reads this to score or rank a run.
+    #[sea_orm(nullable)]
+    pub code_analyzer_version: Option<i32>,
     /// Whether the produced build loaded (lifted from the validation summary).
     pub loaded: bool,
     /// Whether the run has been published. A pushed run starts unpublished

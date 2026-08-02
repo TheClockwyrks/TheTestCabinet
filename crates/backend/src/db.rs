@@ -354,6 +354,7 @@ impl Db {
             run_time_seconds: Set(lifted.run_time_seconds),
             total_tokens: Set(lifted.total_tokens),
             cost_comparable: Set(lifted.cost_comparable),
+            code_analyzer_version: Set(lifted.code_analyzer_version),
             rating: Set(None),
             review_count: Set(0),
             loaded: Set(record.validation.loaded),
@@ -388,6 +389,7 @@ impl Db {
                     run::Column::RunTimeSeconds,
                     run::Column::TotalTokens,
                     run::Column::CostComparable,
+                    run::Column::CodeAnalyzerVersion,
                     run::Column::Loaded,
                     run::Column::RecordJson,
                     run::Column::EventsJson,
@@ -1594,6 +1596,9 @@ struct LiftedRunMetrics {
     total_tokens: i64,
     /// Comparable cost (USD), or `None` when the cost is unknown.
     cost_comparable: Option<f64>,
+    /// The static code analyzer's generation, from `record.code_analysis`, or `None` for a
+    /// run that carries no analysis (see [`lifted_code_analyzer_version`]).
+    code_analyzer_version: Option<i32>,
 }
 
 /// Lift the record-derived sort columns out of a run's record. Reuses the core
@@ -1606,7 +1611,26 @@ fn lifted_run_metrics(record: &RunRecord) -> LiftedRunMetrics {
         run_time_seconds: record.metrics.run_time_seconds,
         total_tokens: record.metrics.tokens.total().unwrap_or(0) as i64,
         cost_comparable: record.metrics.cost.comparable,
+        code_analyzer_version: lifted_code_analyzer_version(record),
     }
+}
+
+/// The lifted `run.code_analyzer_version` column value: which generation of the static
+/// analyzer produced the run's code figures, or `None`.
+///
+/// Read straight off the record rather than from this build's
+/// [`CODE_ANALYZER_VERSION`](test_cabinet_core::CODE_ANALYZER_VERSION) constant, and the
+/// distinction is the whole point: a backend redeployed with a newer analyzer must not
+/// restamp an older run's figures with a generation that did not compute them. The column
+/// describes the *stored result*, not the server.
+///
+/// Single-sided like [`lifted_gg_preset`]: a `NULL` means the run carries no analysis at
+/// all, so a consumer may treat absence as "never analysed" without re-deriving anything.
+fn lifted_code_analyzer_version(record: &RunRecord) -> Option<i32> {
+    record
+        .code_analysis
+        .as_ref()
+        .map(|analysis| analysis.analyzer_version as i32)
 }
 
 /// The lifted `run.gg_preset` column value: the name of the gg configuration the
@@ -3619,6 +3643,7 @@ impl Db {
             active.run_time_seconds = Set(lifted.run_time_seconds);
             active.total_tokens = Set(lifted.total_tokens);
             active.cost_comparable = Set(lifted.cost_comparable);
+            active.code_analyzer_version = Set(lifted.code_analyzer_version);
             active.rating = Set(rating);
             active.review_count = Set(review_count);
             active.gg_preset = Set(lifted.gg_preset);
@@ -3661,6 +3686,47 @@ impl Db {
             let id = row.id.clone();
             let mut active = row.into_active_model();
             active.gg_preset = Set(Some(preset));
+            active.update(&self.conn()).await?;
+            touch_run(&self.conn(), &id).await?;
+            backfilled += 1;
+        }
+        Ok(backfilled)
+    }
+
+    /// Backfill the lifted `code_analyzer_version` column for runs whose record already
+    /// carries a code analysis but which were stored before the column existed.
+    ///
+    /// **This does not analyse anything.** There is no backfill of the analysis itself,
+    /// deliberately: a historical run's tree can only be re-read in its archived,
+    /// post-validation state — carrying build output, a rewritten lockfile and toolchain
+    /// caches — and those are not the figures a fresh run reports. Stamping them into the
+    /// same corpus would create exactly the silent incomparability the version column
+    /// exists to prevent. So the corpus starts at ship day and this routine only lifts a
+    /// number that is *already in the record blob* into a column that can be queried.
+    ///
+    /// Scoped to rows that are still `NULL`, which is genuinely ambiguous — it means
+    /// either "not yet lifted" or "this run carries no analysis". So, exactly like
+    /// [`Self::backfill_gg_presets`], it cannot settle to an empty candidate set; it
+    /// settles to a **no-write** one, re-parsing the analysis-less residue on every boot
+    /// and rewriting none of it. Best-effort per row: a record that no longer
+    /// deserializes is left for a later boot. Returns how many rows were filled.
+    pub async fn backfill_code_analyzer_version(&self) -> Result<usize> {
+        let rows = run::Entity::find()
+            .filter(run::Column::CodeAnalyzerVersion.is_null())
+            .all(&self.conn())
+            .await?;
+
+        let mut backfilled = 0usize;
+        for row in rows {
+            let Ok(record) = serde_json::from_str::<RunRecord>(&row.record_json) else {
+                continue;
+            };
+            let Some(version) = lifted_code_analyzer_version(&record) else {
+                continue;
+            };
+            let id = row.id.clone();
+            let mut active = row.into_active_model();
+            active.code_analyzer_version = Set(Some(version));
             active.update(&self.conn()).await?;
             touch_run(&self.conn(), &id).await?;
             backfilled += 1;

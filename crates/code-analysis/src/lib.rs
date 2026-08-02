@@ -51,9 +51,15 @@ pub mod facts;
 pub mod graph;
 mod rollup;
 pub mod rust;
+pub mod stage;
 pub mod text;
 pub mod typescript;
 pub mod walk;
+
+/// The run pipeline's entry point: wire one of these into
+/// [`RunEngine::analyzer`](test_cabinet_core::RunEngine) and every run gets analysed at
+/// the [post-run seam](test_cabinet_core::post_run).
+pub use stage::StaticCodeAnalyzer;
 
 use std::path::Path;
 

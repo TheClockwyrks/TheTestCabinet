@@ -440,3 +440,35 @@ async fn a_corrupt_stored_artifact_fails_loudly_rather_than_serving_garbage() {
     let (status, _, _) = read_response(error.into_response()).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
 }
+
+#[tokio::test]
+async fn the_code_analysis_route_negotiates_exactly_as_the_replay_route_does() {
+    // Both run-tree artifacts go through one response helper, deliberately: the
+    // convention (gzip on disk, negotiate on the request's `Accept-Encoding`) is only a
+    // convention if the second artifact cannot quietly grow its own handler. The Code tab
+    // is a browser and gets the stored bytes verbatim; a gzip-unaware client gets them
+    // decoded.
+    let stored = gzipped(br#"{"analyzerVersion":2}"#);
+    let browser = run_artifact_response(
+        &accept_encoding(Some("gzip, deflate, br")),
+        crate::store::CODE_ANALYSIS_ARTIFACT,
+        stored.clone(),
+    )
+    .unwrap();
+    let (status, headers, body) = read_response(browser).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CONTENT_ENCODING], "gzip");
+    assert_eq!(headers[header::CONTENT_TYPE], "application/json");
+    assert_eq!(body, stored);
+
+    let cli = run_artifact_response(
+        &accept_encoding(None),
+        crate::store::CODE_ANALYSIS_ARTIFACT,
+        stored,
+    )
+    .unwrap();
+    let (status, headers, body) = read_response(cli).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!headers.contains_key(header::CONTENT_ENCODING));
+    assert_eq!(body, br#"{"analyzerVersion":2}"#);
+}

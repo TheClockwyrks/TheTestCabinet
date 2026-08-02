@@ -263,6 +263,18 @@ pub fn router(state: AppState) -> Router {
                 .post(test_cases::put_run_replay)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
+        // A run's code-analysis document — the unbounded tier of the static read of the
+        // code its model wrote (every file, symbol, import edge, cycle and clone group),
+        // mirrored in by the driver from the run tree's `code-analysis.json.gz` (POST) and
+        // served to the per-run Code tab (GET). Same convention as the replay record above,
+        // and offered for **every** harness: analysing a directory involves no
+        // harness-specific work, so restricting the route would cost coverage for nothing.
+        .route(
+            "/runs/{id}/code-analysis",
+            get(test_cases::run_code_analysis)
+                .post(test_cases::put_run_code_analysis)
+                .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
+        )
         // The published run's recorded, normalized event stream (TTC events only;
         // raw harness output is never published). Backs the run-detail Events tab
         // for the web console reading published runs.

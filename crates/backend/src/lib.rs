@@ -113,6 +113,17 @@ pub async fn build(config: Config) -> error::Result<Backend> {
         Err(err) => tracing::warn!(error = %err, "skipping run gg-configuration backfill"),
     }
 
+    // The static analyzer's generation, lifted out of records that already carry a code
+    // analysis but were stored before the column existed. This lifts a number the record
+    // blob already holds — it never *analyses* anything, because a historical run's tree
+    // can only be re-read post-validation and those are not comparable figures. Same
+    // contract as the two above: idempotent, best-effort, never blocks startup.
+    match db.backfill_code_analyzer_version().await {
+        Ok(0) => {}
+        Ok(backfilled) => tracing::info!(backfilled, "backfilled run code-analyzer versions"),
+        Err(err) => tracing::warn!(error = %err, "skipping run code-analyzer-version backfill"),
+    }
+
     let db = Arc::new(db);
 
     // Reconcile orphaned in-flight jobs before serving — but only single-box,

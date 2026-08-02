@@ -502,6 +502,7 @@ fn run_dir_with_validation(validation: ValidationSummary, media: &[(&str, &[u8])
         tool_calls: Default::default(),
         game_jam_prior_entries: Vec::new(),
         seed_commit: None,
+        code_analysis: None,
     };
     fs::write(
         dir.path().join("run-record.json"),

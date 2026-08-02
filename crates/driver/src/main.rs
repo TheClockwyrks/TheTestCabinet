@@ -232,6 +232,10 @@ async fn main() -> ExitCode {
             // `.gg/replay.json` record into the backend store so `GET /runs/{id}/replay`
             // can serve it to a replay driver. A no-op for any run that captured none.
             finalize_replay_backend_upload(&config, &record).await;
+            // Same for the run's code-analysis document, which every harness produces:
+            // the per-run Code tab reads it from the backend store, so mirror it there or
+            // the tab degrades to the bounded summary on the record alone.
+            finalize_code_analysis_backend_upload(&config, &record).await;
 
             // A run that wound down for an operator's kill took this same path — it is
             // an ordinary engine outcome, produced by the ordinary post-session stages,
@@ -369,6 +373,11 @@ async fn report_canceled(
             // cleanly still leaves a salvaged, truncated record in the run tree, and this
             // is the only path that would mirror it.
             finalize_replay_backend_upload(config, &record).await;
+            // The code analysis is a no-op here in practice — this path is reached when
+            // the engine never got to the post-run seam — but it is wired for the same
+            // reason the replay upload is: whatever *did* land in the run tree is the only
+            // account of the run, and this is the only path that would mirror it.
+            finalize_code_analysis_backend_upload(config, &record).await;
             record
         }
         Err(err) => {
@@ -572,6 +581,35 @@ async fn finalize_replay_backend_upload(config: &Config, record: &test_cabinet_c
             run_id = %record.id,
             error = %err,
             "could not upload the gg replay record to the backend store",
+        );
+    }
+}
+
+/// Mirror a run's code-analysis document into the **backend store**, so
+/// `GET /runs/{id}/code-analysis` can serve the per-run Code tab its unbounded tier —
+/// every file, symbol, import edge, cycle and clone group.
+///
+/// Applies to every harness, unlike the replay mirror. A no-op for a run with no document
+/// at the run tree's root. Reads it from the produced tree the driver still holds on disk;
+/// an upload failure is logged but never fatal, exactly like the proof and validation
+/// uploads. **No figure in the document affects the run's score or verdict**, so a lost
+/// upload costs a tab and nothing else.
+async fn finalize_code_analysis_backend_upload(
+    config: &Config,
+    record: &test_cabinet_core::RunRecord,
+) {
+    let out_dir = config.work_dir.join("out");
+    if let Err(err) = test_cabinet_driver::artifacts::upload_code_analysis_to_backend(
+        &config.backend_url,
+        record,
+        &out_dir,
+    )
+    .await
+    {
+        tracing::warn!(
+            run_id = %record.id,
+            error = %err,
+            "could not upload the run's code-analysis document to the backend store",
         );
     }
 }

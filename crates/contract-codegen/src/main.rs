@@ -22,9 +22,9 @@ use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_c
 
 use test_cabinet_backend::{api as bapi, error as berr, relay, snapshot as snap};
 use test_cabinet_core::{
-    accounts as acct, comparison as cmp, comparison_stats as cstats, event as ev, gg,
-    gg_query as ggq, gg_replay as ggr, match_play as mp, metrics as m, review as rv,
-    run_record as rr, test_case as tc, validation as val,
+    accounts as acct, code_analysis as code, comparison as cmp, comparison_stats as cstats,
+    event as ev, gg, gg_query as ggq, gg_replay as ggr, match_play as mp, metrics as m,
+    review as rv, run_record as rr, test_case as tc, validation as val,
 };
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
@@ -102,6 +102,33 @@ const RUN_RECORD_DEFS: &[&str] = &[
     "PerformanceCaseResult",
     "PerformanceCaseKind",
     "PerformanceSnapshotCheck",
+];
+
+/// The code-analysis schema's `$defs`: every type in the `CodeAnalysisDocument` tree
+/// except the root. `CodeAnalysisSummary` is listed here rather than with the run record's
+/// defs even though the record carries it — the document embeds the same block, and one
+/// owner per type is what turns the record's reference into a cross-document `$ref`
+/// instead of a second copy that can drift.
+const CODE_ANALYSIS_DEFS: &[&str] = &[
+    "CodeAnalysisSummary",
+    "CodeAuthoredBasis",
+    "CodeTreeBasis",
+    "CodeLanguage",
+    "CodeTruncationCap",
+    "CodeSizeSummary",
+    "CodeComplexitySummary",
+    "CodeGraphSummary",
+    "CodeApiSummary",
+    "CodeTypeScriptSummary",
+    "CodeRustSummary",
+    "CodeTestSummary",
+    "CodeDuplicationSummary",
+    "CodeAnalysisNotes",
+    "CodeFileEntry",
+    "CodeSymbolEntry",
+    "CodeImportEdge",
+    "CodeCloneGroup",
+    "CodeCloneInstance",
 ];
 
 /// The tournament schema's `$defs`. `AdversarialOutcome` is *not* listed: it is
@@ -263,6 +290,28 @@ fn main() -> Result<()> {
                 ggq::GgAggColumn, ggq::GgQueryResponse,
                 ggq::GgFieldKind, ggq::GgFieldValueCount, ggq::GgFieldInfo, ggq::GgFieldCatalog,
                 bapi::GgQueryBatch, bapi::GgQueryBatchResponse,
+            ],
+        },
+        // The code-analysis contract: the deterministic, execute-nothing static read of
+        // the code a run's model wrote. Two tiers in one module, because they are one
+        // pass and the document embeds the summary: `CodeAnalysisSummary` is the bounded
+        // block that rides on the run record (so `index.ts` imports it from here), and
+        // `CodeAnalysisDocument` is the unbounded per-run artifact the Code tab loads.
+        //
+        // Its own module rather than more of `index.ts` for the reason the replay record
+        // has one: the document is a self-contained artifact fetched on one tab, and
+        // nothing that merely lists runs should pay for its types.
+        TsModule {
+            file: "code-analysis.ts",
+            decls: ts_decls![&cfg;
+                code::CodeAuthoredBasis, code::CodeTreeBasis, code::CodeLanguage,
+                code::CodeTruncationCap,
+                code::CodeSizeSummary, code::CodeComplexitySummary, code::CodeGraphSummary,
+                code::CodeApiSummary, code::CodeTypeScriptSummary, code::CodeRustSummary,
+                code::CodeTestSummary, code::CodeDuplicationSummary, code::CodeAnalysisNotes,
+                code::CodeAnalysisSummary,
+                code::CodeFileEntry, code::CodeSymbolEntry, code::CodeImportEdge,
+                code::CodeCloneInstance, code::CodeCloneGroup, code::CodeAnalysisDocument,
             ],
         },
         // The harness-comparison (A/B) contract: the stored config (controls and the
@@ -520,6 +569,17 @@ fn main() -> Result<()> {
             root: Some("GgReplayRecordV1"),
             owns: &["GgReplayEntryV1", "GgReplayEntryKindV1"],
             schema: root_schema::<gg::GgReplayRecordV1>(),
+        },
+        // The code-analysis document: the unbounded per-run artifact
+        // (`{run}/code-analysis.json.gz`, served at `GET /runs/{id}/code-analysis`).
+        // Rooted at the document rather than at the summary because the document embeds
+        // the summary, so one schema owns the whole vocabulary and the run-record
+        // document's reference to `CodeAnalysisSummary` becomes a cross-document `$ref`.
+        SchemaDoc {
+            rel_path: "core/code-analysis.schema.json",
+            root: Some("CodeAnalysisDocument"),
+            owns: CODE_ANALYSIS_DEFS,
+            schema: root_schema::<code::CodeAnalysisDocument>(),
         },
         // The gg replay step-through view: the per-agent, per-turn "what the agent saw
         // and did" data model a debugging UI renders, derived from the record above. Its

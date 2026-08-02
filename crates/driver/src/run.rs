@@ -15,6 +15,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use test_cabinet_code_analysis::StaticCodeAnalyzer;
 use test_cabinet_core::gg_replay_assembly::GgReplayAssembler;
 use test_cabinet_core::{
     ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
@@ -308,9 +309,13 @@ where
         // (the assembly streams through segment files). A no-op for a
         // third-party-harness run, which has no journal.
         replay_assembler: Some(Box::new(GgReplayAssembler)),
-        // The static code analysis lands in the same seam; until it does a run
-        // simply produces no analysis artifact.
-        analyzer: None,
+        // …and the static code analysis lands in the same seam, immediately after,
+        // which is the order that matters: the replay assembly lifts gg's journal
+        // *out* of the collected tree first, so a full conversation transcript can
+        // never be counted as code the model wrote. It runs for every harness (the
+        // pass is harness-agnostic), it writes the run tree's
+        // `code-analysis.json.gz`, and the summary it hands back rides on the record.
+        analyzer: Some(Box::new(StaticCodeAnalyzer)),
         validator: DispatchValidator::new(screenshot_dir),
         prices: OpenRouterPrices::new(),
         output_dir: out_dir.to_path_buf(),

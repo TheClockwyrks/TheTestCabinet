@@ -204,10 +204,10 @@ skipped for a cancellation because it is fresh work that judges output; analysis
 neither — it reads bytes that already exist and renders no verdict. This matches
 the established posture that killed runs keep their metrics.
 
-Because a backfill over historical runs can only ever see the **archived,
-post-validation** tree, which tree was measured is itself recorded and queryable, a
-backfill refuses to overwrite a pristine result with a post-validation one without
-an explicit flag, and a bucket spanning both says so.
+A tree can only ever be re-read later in its **archived, post-validation** state, so
+which state was measured is itself recorded and queryable, and a bucket spanning
+both says so. That is also why there is no backfill: see
+[below](#publishing-and-the-analyzer-version).
 
 ### Offline, against any directory
 
@@ -268,7 +268,7 @@ The label is a **field on the metric definition**, not a sentence in a doc. That
 matters: it means the field sidebar, the chart axis, the symbol table header, and
 this page all read one flag and cannot drift apart.
 
-## Publishing and backfill
+## Publishing and the analyzer version
 
 Three ranking-relevant figures are lifted onto every run's public summary, so a
 "which model writes the tightest code?" ordering can be computed from the bounded
@@ -277,22 +277,26 @@ content-stable object, **scrubbed** — model-written source contains hard-coded
 credentials often enough that redaction exists at all, and a symbol name or a file
 path is text like any other.
 
-The whole document is derived from the collected tree, so a later analyzer
-generation can recompute it. That is what the **analyzer version** is for, and it is
-load-bearing in three ways: it gives the backfill a cheap query pushdown instead of
-a full-table scan; it makes a mixed corpus *visible* rather than a silent step
-change that reads as a model getting worse; and — the real reason — it **licenses
-improving the analyzer**. Without a version, every improvement is a silent
-data-corruption event, so nobody makes one.
+Every result is stamped with the **analyzer version** — the generation of the
+analyzer that computed it — lifted onto a column of the run row so it can be sliced
+in SQL rather than by deserializing every record. It makes a mixed corpus *visible*
+rather than a silent step change that reads as a model getting worse, and — the real
+reason — it **licenses improving the analyzer**. Without a version, every improvement
+is a silent data-corruption event, so nobody makes one.
 
 The bump policy: bump when an existing metric's **definition** changes **or when
 any cap changes** — a cap change is a definition change, because it changes which
 files contribute. Do not bump for a purely additive metric, which older records
 simply lack.
 
-One backfill command re-analyses the historical corpus off the ungated run archive,
-and **the same command re-runs when the analyzer improves**. There is no separate
-mechanism, deliberately: a backfill path used once rots.
+**The historical corpus is not backfilled.** It is tempting — the document is
+derived from a tree that is still archived, so a later generation could recompute it
+— but that tree can only be read in its **post-validation** state, carrying build
+output, a rewritten lockfile and toolchain caches in amounts that differ per case and
+per run. Stamping those figures into the same corpus as freshly-measured ones would
+manufacture exactly the incomparability the version exists to prevent. So the corpus
+starts on the day the analyzer shipped, an absent version means *never analysed*, and
+the column is forward comparability only.
 
 ## What it is not
 

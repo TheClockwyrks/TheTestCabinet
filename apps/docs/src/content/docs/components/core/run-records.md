@@ -191,6 +191,14 @@ artifacts:
   came from and the line's verbatim text.
 - `events.jsonl` — the [normalized events](/components/core/events/) translated
   from that raw output, one event per line, in the order they were produced.
+- `code-analysis.json.gz` — the unbounded tier of the run's
+  [code analysis](/gg/analysis/code-analysis/): every authored file, symbol, import
+  edge, cycle and clone group. Its bounded summary rides on the record itself. One of
+  the run tree's **analysis artifacts**, written at the tree's root (never inside
+  `implementation/`, which is a verbatim copy of what the model produced) and mirrored
+  into the backend so it can be served per run; a [gg](/gg/overview/) run's
+  [replay record](/gg/analysis/replay-records/) sits beside it as `replay.json.gz`
+  under the same convention.
 - `writeup.md` — a local [review](/components/core/results/#reviews) of the run,
   when one has been written. This is the operator's own review, used by the solo
   [`tcab publish`](/components/core/results/#tcab-publish-the-solo-path) path; a

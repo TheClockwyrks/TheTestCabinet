@@ -80,6 +80,7 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
         tool_calls: Default::default(),
         game_jam_prior_entries: Vec::new(),
         seed_commit: None,
+        code_analysis: None,
     }
 }
 

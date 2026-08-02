@@ -15,6 +15,10 @@ path = "src/lib.rs"
 
 [dependencies]
 test-cabinet-core = { path = "../core" }
+# The static code analyzer, wired into the engine's post-run seam. Pulled in *here*
+# rather than in core because it carries two parsers (`oxc`, `syn`); the driver is the
+# one host that runs test cases, so it is the one binary that should link them.
+test-cabinet-code-analysis = { path = "../code-analysis" }
 # The driver is a binary: it owns telemetry init, so it pulls the heavy `otlp`
 # feature (the propagation-only default is for libraries like `core`), exactly as
 # the worker's main does.

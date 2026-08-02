@@ -88,6 +88,7 @@ fn record(id: &str) -> RunRecord {
         tool_calls: Default::default(),
         game_jam_prior_entries: Vec::new(),
         seed_commit: None,
+        code_analysis: None,
     }
 }
 
@@ -560,10 +561,22 @@ async fn the_updated_at_migration_seeds_existing_rows_from_finished_at() {
     db.push(&record("r1"), &links(), None).await.unwrap();
     let conn = db.connection();
 
-    test_cabinet_migration::Migrator::down(&conn, Some(1))
+    // How many migrations to roll back to reach — and re-run — the one under test.
+    // Derived from the registered list rather than hardcoded to `1`: `down` counts
+    // steps from the head, so every migration added after this one would silently
+    // move the test onto a different migration and leave this assertion passing
+    // without ever running the code it names.
+    let migrations = test_cabinet_migration::Migrator::migrations();
+    let index = migrations
+        .iter()
+        .position(|migration| migration.name() == "m20260801_000024_add_run_updated_at")
+        .expect("the `updated_at` migration is registered");
+    let steps = (migrations.len() - index) as u32;
+
+    test_cabinet_migration::Migrator::down(&conn, Some(steps))
         .await
         .unwrap();
-    test_cabinet_migration::Migrator::up(&conn, Some(1))
+    test_cabinet_migration::Migrator::up(&conn, Some(steps))
         .await
         .unwrap();
 
@@ -3710,4 +3723,119 @@ async fn the_comparison_publish_gate_waives_review_only_for_an_auto_validated_ru
     // refused — there is nothing to stand in for the missing review.
     assert!(db.ensure_publishable_comparison_run("auto").await.is_ok());
     assert!(db.ensure_publishable_comparison_run("bare").await.is_err());
+}
+
+/// A record carrying a **real** code analysis, produced by pointing the real analyzer at a
+/// two-file tree. A ninety-five-field literal would drift from the contract on the next
+/// metric added; this cannot.
+fn record_with_code_analysis(id: &str) -> RunRecord {
+    let mut record = record_with_metrics(id);
+    let tree = tempfile::TempDir::new().expect("temp dir");
+    std::fs::create_dir_all(tree.path().join("src")).expect("a source directory");
+    std::fs::write(
+        tree.path().join("src/main.ts"),
+        "export function boot(): number {\n  return 1;\n}\n",
+    )
+    .expect("a source file");
+    record.code_analysis = Some(
+        test_cabinet_code_analysis::analyze(&test_cabinet_code_analysis::AnalysisRequest {
+            root: tree.path(),
+            seed_commit: None,
+            tree_basis: test_cabinet_core::CodeTreeBasis::PreValidation,
+        })
+        .summary,
+    );
+    record
+}
+
+#[tokio::test]
+async fn push_lifts_the_code_analyzer_version_and_leaves_it_null_without_an_analysis() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_with_code_analysis("analysed"), &links(), None)
+        .await
+        .unwrap();
+    db.push(&record_with_metrics("unanalysed"), &links(), None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        lifted(&db, "analysed").await.code_analyzer_version,
+        Some(test_cabinet_core::CODE_ANALYZER_VERSION as i32),
+    );
+    // NULL means *never analysed*, not "analysed by an unknown generation": there is no
+    // backfill of the analysis itself, so absence is a durable, meaningful state.
+    assert_eq!(lifted(&db, "unanalysed").await.code_analyzer_version, None);
+}
+
+#[tokio::test]
+async fn the_lifted_analyzer_version_describes_the_stored_result_not_the_server() {
+    // A backend redeployed with a newer analyzer must not restamp an older run's figures
+    // with a generation that did not compute them — the column would then say the corpus
+    // is homogeneous when it is not, which is the exact failure it exists to prevent.
+    let db = Db::connect_in_memory().await.unwrap();
+    let mut record = record_with_code_analysis("older");
+    record.code_analysis.as_mut().unwrap().analyzer_version = 1;
+    db.push(&record, &links(), None).await.unwrap();
+
+    assert_eq!(lifted(&db, "older").await.code_analyzer_version, Some(1));
+    assert_ne!(test_cabinet_core::CODE_ANALYZER_VERSION, 1);
+}
+
+#[tokio::test]
+async fn a_code_analysis_changes_no_other_column_on_the_run_row() {
+    // Q8: no code figure may influence a run's score or verdict. Structurally that means
+    // the analysis must be inert everywhere but its own column — so pushing the same run
+    // with and without one must produce byte-identical rows apart from
+    // `code_analyzer_version` and the record blob that carries it.
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_with_metrics("without"), &links(), None)
+        .await
+        .unwrap();
+    let mut with = record_with_code_analysis("with");
+    with.subject = record_with_metrics("with").subject;
+    db.push(&with, &links(), None).await.unwrap();
+
+    let without = lifted(&db, "without").await;
+    let with = lifted(&db, "with").await;
+    assert_eq!(with.run_state, without.run_state);
+    assert_eq!(with.rating, without.rating);
+    assert_eq!(with.review_count, without.review_count);
+    assert_eq!(with.loaded, without.loaded);
+    assert_eq!(with.run_time_seconds, without.run_time_seconds);
+    assert_eq!(with.total_tokens, without.total_tokens);
+    assert_eq!(with.cost_comparable, without.cost_comparable);
+    assert_eq!(with.test_type, without.test_type);
+    assert_ne!(with.code_analyzer_version, without.code_analyzer_version);
+}
+
+#[tokio::test]
+async fn backfill_code_analyzer_version_lifts_the_column_but_analyses_nothing() {
+    let db = Db::connect_in_memory().await.unwrap();
+    db.push(&record_with_code_analysis("analysed"), &links(), None)
+        .await
+        .unwrap();
+    db.push(&record_with_metrics("unanalysed"), &links(), None)
+        .await
+        .unwrap();
+
+    // Simulate rows that predate the column: it read NULL for both.
+    for id in ["analysed", "unanalysed"] {
+        let mut active = lifted(&db, id).await.into_active_model();
+        active.code_analyzer_version = Set(None);
+        active.update(&db.connection()).await.unwrap();
+    }
+
+    assert_eq!(db.backfill_code_analyzer_version().await.unwrap(), 1);
+    assert_eq!(
+        lifted(&db, "analysed").await.code_analyzer_version,
+        Some(test_cabinet_core::CODE_ANALYZER_VERSION as i32),
+    );
+    // The run with no analysis stays NULL. The backfill lifts a number the record blob
+    // already holds; it never *analyses* a tree, because a historical run's tree can only
+    // be re-read post-validation and those are not comparable figures.
+    assert_eq!(lifted(&db, "unanalysed").await.code_analyzer_version, None);
+
+    // Settles to a no-write pass: the analysis-less residue is re-read every boot and
+    // rewritten never.
+    assert_eq!(db.backfill_code_analyzer_version().await.unwrap(), 0);
 }

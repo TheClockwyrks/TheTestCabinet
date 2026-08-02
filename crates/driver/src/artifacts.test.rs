@@ -22,8 +22,8 @@ use test_cabinet_core::test_case::{MediaKind, SheetSpec};
 use test_cabinet_core::validation::*;
 
 use super::{
-    upload_adversarial_to_backend, upload_assets_to_backend, upload_proofs_to_backend,
-    upload_replay_to_backend, upload_validation_to_backend,
+    upload_adversarial_to_backend, upload_assets_to_backend, upload_code_analysis_to_backend,
+    upload_proofs_to_backend, upload_replay_to_backend, upload_validation_to_backend,
 };
 
 /// One upload the stub backend received: its request path and body byte length.
@@ -203,6 +203,7 @@ fn record(adversarial: Option<AdversarialResult>) -> RunRecord {
         tool_calls: Default::default(),
         game_jam_prior_entries: Vec::new(),
         seed_commit: None,
+        code_analysis: None,
     }
 }
 
@@ -950,5 +951,60 @@ async fn a_run_that_assembled_no_replay_uploads_nothing() {
     assert!(
         received.lock().unwrap().is_empty(),
         "a run with no assembled replay record makes no request",
+    );
+}
+
+/// Write a code-analysis document into the run tree's **root**, where the post-run
+/// analyzer stage puts it — never inside `implementation/`, which is a verbatim copy of
+/// what the model produced.
+fn write_code_analysis_artifact(out_dir: &std::path::Path, bytes: &[u8]) {
+    let path = out_dir
+        .join("run-1")
+        .join(test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, bytes).unwrap();
+}
+
+#[tokio::test]
+async fn uploads_the_code_analysis_document_from_the_run_tree_root() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // Gzip magic + arbitrary payload: the mirror uploads the bytes as they are, because
+    // the store keeps run-tree artifacts opaque and the serving route content-negotiates.
+    let bytes = b"\x1f\x8b\x08\x00code-analysis".to_vec();
+    write_code_analysis_artifact(out.path(), &bytes);
+
+    upload_code_analysis_to_backend(&backend_url, &record(None), out.path())
+        .await
+        .expect("the code-analysis upload succeeds");
+
+    let uploads = received.lock().unwrap().clone();
+    assert_eq!(
+        uploads.iter().map(|u| u.path.clone()).collect::<Vec<_>>(),
+        vec!["/runs/run-1/code-analysis".to_string()],
+        "the document is POSTed to the run's code-analysis slot; got {uploads:?}",
+    );
+    assert_eq!(
+        uploads[0].body_len,
+        bytes.len(),
+        "the gzipped document is uploaded verbatim, not re-encoded",
+    );
+}
+
+#[tokio::test]
+async fn a_run_with_no_code_analysis_uploads_nothing() {
+    let (backend_url, received) = stub_backend().await;
+    let out = TempDir::new().unwrap();
+
+    // A run collected before the analyzer shipped, or one whose tree never reached the
+    // host: absence is ordinary, not a failure.
+    upload_code_analysis_to_backend(&backend_url, &record(None), out.path())
+        .await
+        .expect("no-op succeeds");
+
+    assert!(
+        received.lock().unwrap().is_empty(),
+        "a run with no code-analysis document makes no request",
     );
 }

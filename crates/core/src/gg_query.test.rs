@@ -426,6 +426,7 @@ fn gg_record() -> RunRecord {
         tool_calls: Default::default(),
         game_jam_prior_entries: Vec::new(),
         seed_commit: Some("abc123".to_string()),
+        code_analysis: None,
     }
 }
 

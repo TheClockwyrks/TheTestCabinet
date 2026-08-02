@@ -346,6 +346,42 @@ pub async fn upload_replay_to_backend(
         .await
 }
 
+/// Mirror a run's **code-analysis document** into the backend store, keyed by run id — the
+/// analyzer's counterpart to [`upload_replay_to_backend`], for the same reason and by the same
+/// convention.
+///
+/// The post-run stage writes the unbounded document to
+/// [`{out_dir}/{id}/code-analysis.json.gz`](test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT) at the
+/// run tree's **root**, and its bounded summary rides on the record. Nothing else writes the
+/// backend store's `runs/{id}/code-analysis.json` for a backend-driven run, so without this mirror
+/// the document never reaches `GET /runs/{id}/code-analysis` and the per-run Code tab has only the
+/// summary to show — no file explorer, no symbol table, no cycles.
+///
+/// Applies to **every** harness, unlike the replay mirror: the analysis is harness-agnostic.
+///
+/// The gzipped bytes are uploaded as they are, for the same reason the replay record's are: the
+/// store keeps run-tree artifacts opaque and the serving route content-negotiates, so decompressing
+/// here would only cost the transfer and be re-done on the way out.
+///
+/// Best-effort: a no-op for a run with no document (a run collected before the analyzer shipped, or
+/// one whose tree never reached the host). A rejected upload is surfaced so the caller can log it.
+pub async fn upload_code_analysis_to_backend(
+    backend_url: &str,
+    record: &RunRecord,
+    out_dir: &Path,
+) -> test_cabinet_core::Result<()> {
+    let path = out_dir
+        .join(&record.id)
+        .join(test_cabinet_core::CODE_ANALYSIS_TREE_ARTIFACT);
+    let Ok(bytes) = std::fs::read(&path) else {
+        // No analysis for this run — nothing to mirror.
+        return Ok(());
+    };
+    HttpBackendClient::new(backend_url)
+        .publish_run_code_analysis(&record.id, bytes)
+        .await
+}
+
 /// Mirror an asset-generation run's media into the **backend store**, keyed by run
 /// id — the asset-gen counterpart to [`upload_proofs_to_backend`], for the same
 /// reason: the public snapshot reads a run's asset media from the backend store
