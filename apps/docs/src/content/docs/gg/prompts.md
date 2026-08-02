@@ -20,7 +20,7 @@ renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-templa
 | `board.hbs`                | The pinned [Project management](/gg/project-management/) board block.                                                                                                                  |
 | `memories.hbs`             | The pinned [memories](/gg/memories/) block.                                                                                                                                            |
 | `memory-notice.hbs`        | The per-turn notice a holder of a [linked memory instance](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote) is given when **another** holder wrote, revised or deleted one. |
-| `code-result.hbs`          | The turn feedback for a [responses-as-code](/gg/responses-as-code/) program that ran — its call roster, its output, and anything it needs telling.                                     |
+| `code-result.hbs`          | The turn feedback for a [responses-as-code](/gg/responses-as-code/) program that ran — its call roster, the [views](/gg/responses-as-code/#showing-yourself-things) it opened, closed or was refused, and anything it needs telling. |
 | `code-transpile-error.hbs` | The turn feedback for a [program](/gg/responses-as-code/) that did not compile, so nothing ran.                                                                                        |
 | `code-sandbox-error.hbs`   | The turn feedback for a [program](/gg/responses-as-code/) the sandbox could not run to a result — a memory ceiling or a trap.                                                          |
 | `code-timeout.hbs`         | The turn feedback for a [program](/gg/responses-as-code/) the sandbox stopped at its execution timeout — its own message, because a timeout means a program that did not terminate.    |
@@ -103,7 +103,7 @@ on the run's execution mode. An operator's per-agent template override still ren
 the same context in either mode; the console seeds its editor with whichever built-in default
 matches the agent's mode.
 
-The code arm teaches two things the tool-calling arm has no need of, and each is gated on
+The code arm teaches three things the tool-calling arm has no need of, and each is gated on
 something about the run:
 
 - **What a reply _is_.** The model's whole reply is the program: no fence, no language
@@ -121,6 +121,23 @@ something about the run:
   it did — and a model that tested the claim would learn that gg's rules are negotiable.
   The armed arm therefore states the repair honestly and calls it a repair rather than
   the contract.
+- **How to show itself something.** A program's values live and die inside the turn, so the
+  code arm carries a *Showing yourself things* section for the
+  [`view` object](/gg/responses-as-code/#showing-yourself-things) — the worked example that
+  opens a view, the rule that re-opening a selector replaces what was under it, and the one
+  line that separates the two reads (*`fs.readFile` gets bytes for your program;
+  `view.openFile` shows a file to you*). The object itself is bound whatever a run enables,
+  so the section is never withheld; the half of it that names `view.openFile` is gated on
+  `read_file`, since an example naming a call this run does not bind is a `ReferenceError`
+  the model copies verbatim.
+
+The code arm also lists the **message headings** a run can produce — the `<label>\n----\n`
+rule every message it receives obeys — and that list is gated the same way everything else
+is: a heading whose capability is off (`Tasks`, `Memory`, `Board`, `File`) is not described,
+because a model should never be told about a message kind this run cannot send it. `View` is
+one of the rows nothing gates, since the object that produces it is bound whatever a run
+enables, and it is the only heading **qualified by a selector** — `View: changed-files`
+rather than a bare word — because a label is the sole thing telling two views apart.
 
 Both arms then carry an **Ending your session** section naming this agent's own
 [ending calls](/gg/completion/#ending-calls) — `finish`, the two review verdicts, or

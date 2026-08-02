@@ -98,8 +98,9 @@ Read or grep those files if you need more than what is shown above.]
 ```
 
 The note is part of the command's **output** rather than prose gg wraps around it, so a
-[responses-as-code](/gg/responses-as-code/) program that prints a `ShellOutput.output` sees
-the paths exactly as a tool-calling agent does. The `shell` tool's own description states
+[responses-as-code](/gg/responses-as-code/) program that shows itself a `ShellOutput.output`
+— `view.openText("test-run", out.output)` — puts the paths in front of the model exactly as
+a tool-calling agent sees them. The `shell` tool's own description states
 the rule up front as well, because a model that first meets it in a truncated build log
 will assume the missing output is *gone* and re-run the command with a narrower filter,
 rather than grepping the file it was just handed.

@@ -22,6 +22,12 @@ compaction — a run must name it in its capability set. When it is off, none of
 tools below are offered, no context-usage signal is rendered, and the ablation's off arm
 behaves exactly as a run without the feature.
 
+One reclaim call is deliberately **outside** the capability:
+[`view.close`](#closing-views-which-no-capability-gates), which a
+[responses-as-code](/gg/responses-as-code/#showing-yourself-things) program uses to close the
+views it opened itself. Everything else on this page is a privilege a study may withhold;
+undoing your own act is not.
+
 ## The context-usage signal
 
 Each turn — after the pinned blocks (skills, memories, tasks, the board) are refreshed
@@ -40,6 +46,7 @@ Context Usage:
 - Top File Views:
   - `src/main.rs`: 12.7%
   - `src/sim/world.rs`: 4.6%
+- Text Views: 3.4%
 - Tasks: 2.0%
 Use `evict_file_view` to drop file views you no longer need; you can always read the file again.
 Use `archive_thread` to move whole turns into the searchable archive, naming them by the turn numbers on your results.
@@ -54,6 +61,12 @@ conversation items alone, so the block never accounts for itself. The closing li
 only the reclaim tools this agent actually has — the two are separately
 [ablatable](/gg/toolset-ablation/), and pointing an agent at a call it was not given is
 worse than saying nothing at all.
+
+**Text Views** is the band a [responses-as-code](/gg/responses-as-code/) agent fills itself,
+with `view.openText`, and it is the one band an agent is always able to act on: `view.close`
+is bound whatever the capability set says. Unlike the file-view band it carries no nested
+list, because its selectors are labels the agent chose and `view.current()` answers the same
+question on demand, for free, without spending a slot of the window every turn to do it.
 
 ### Shares of named categories, and the files inside them
 
@@ -109,6 +122,31 @@ time.
 The tool result reports what was reclaimed, and the next
 [context breakdown](/gg/context-visibility/) shows the file-view band fall.
 
+## Closing views, which no capability gates
+
+Under [responses as code](/gg/responses-as-code/#showing-yourself-things) a program opens the
+material in its own window, and `view.close(selector)` closes it again: every view carrying
+that selector — for a file, every page of that path — returning how many it closed. Closing
+something that is not open returns `0` rather than failing, so a program that tidies up
+unconditionally does not have to guard every call.
+
+It sits **beside** `evict_file_view` rather than inside it, and the two differences are the
+whole reason it is documented separately:
+
+- **It is not gated.** `evict_file_view` is one of this capability's tools and an ablation
+  can withhold it. `view.close` is bound whatever a run enables, because closing material the
+  agent opened *itself* is not a privilege gg has any business withholding — an agent that
+  could open views but never close them would have a window it can only fill.
+- **The trade is not the same.** An evicted file view is recoverable: the file is unchanged
+  on disk and can be read again. A closed **text** view held the agent's only copy of
+  something it computed, so closing one discards it unless the agent wrote it down first. The
+  telemetry keeps the two apart for that reason — a close naming a workspace path is reported
+  as an `evict_file_views` action, one naming a view label as `close_text_views`.
+
+`view.close` reclaims from the live window exactly as an eviction does, so it resets the
+provider's cache prefix from that point on, and the next
+[context breakdown](/gg/context-visibility/) shows the band fall.
+
 ## Every result says which turn it is and what it costs
 
 An agent that can archive is handed the two facts an archival needs. Every tool result in
@@ -142,8 +180,11 @@ tokens, which is well inside what "estimate" already means here.
 Headers are attached **only** for an agent that actually has `archive_thread`, so nothing
 pays for them that cannot use them: without archival they would be a per-result tax on the
 window buying the model nothing. Under
-[responses-as-code](/gg/responses-as-code/) the code-mode heading (`Output`, `File`) still
-leads the message and the turn header sits directly beneath it.
+[responses-as-code](/gg/responses-as-code/) the code-mode heading (`Output`, `File`, or
+`View: <label>` for a view the agent [opened itself](/gg/responses-as-code/#showing-yourself-things))
+still leads the message, and the turn header sits directly beneath it on the results that
+carry one. A view does not: it is a `user` message rather than a tool result, so it carries
+its heading alone and is named by its selector rather than by a turn number.
 
 ## Archiving the thread, and searching it back
 
@@ -216,9 +257,14 @@ stays a glance rather than a directory listing.
 
 ## What the console sees
 
-Evict and archive each emit a `ContextManaged` telemetry event carrying the `action`,
+Evict, [close](#closing-views-which-no-capability-gates) and archive each emit a
+`ContextManaged` telemetry event carrying the `action`,
 the `reclaimedTokens`, the number of `items` removed, and a human-readable `detail`
-(the evicted paths, or how many turns were archived and the archive's new size). The
+(the evicted paths, the closed labels, or how many turns were archived and the archive's new
+size). A `view.close` reports `evict_file_views` when it named a path and
+`close_text_views` when it named a label, so the console can draw a **close** marker where
+the trade is "the agent's only copy is gone" and an **evict** marker where it is "the file
+can be read again". The
 underlying `ToolCall`/`ToolResult` still stream too; the `ContextManaged` event carries
 the *effect*, which the console draws as a marker on the timeline and the context graph
 next to the band drop the following breakdown shows. `search_archive` reclaims nothing,

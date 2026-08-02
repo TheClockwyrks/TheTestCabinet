@@ -27,12 +27,20 @@ running, so it releases the profile to the next queued instance and re-takes it 
 resumes. That is what keeps a persistent agent that waits on a child of its own profile from
 deadlocking against itself.
 
-## The open files carry over
+## The open views carry over
 
 When an instance **finishes its work successfully**, gg records the set of
-[file views](/gg/context-visibility/) it still had open: each path, plus the lines a paged read
-covered. The next instance of the profile re-opens exactly those views as the first thing in its
-window, before its first turn.
+[views](/gg/context-visibility/) it still had open — its **desk**. The next instance of the
+profile re-opens exactly those views as the first thing in its window, before its first turn.
+
+A desk has two halves, and they are recorded on opposite principles because the two kinds of
+view are:
+
+- **File views** — each path, plus the lines a paged read covered. Recorded as a
+  **reference**, and re-read from the workspace when the next instance starts.
+- **Text views** — the material a [responses-as-code](/gg/responses-as-code/#showing-yourself-things)
+  program showed itself with `view.openText`. Recorded **with their bodies**, and handed back
+  verbatim.
 
 A file the agent read in **several windows** is several views, and every one of them comes back
 over its own lines — the desk is a list of `(path, region)` pairs, not a set of paths, so an agent
@@ -42,8 +50,9 @@ the call asked for: under an unlimited read mode `offset`/`limit` are not part o
 schema and the whole file comes back, and a `limit` above a hard cap is reduced to it. Recording
 the ask instead would give a view a window it never had.
 
-What is recorded is the **reference** to each read, never the bytes it returned. The next
-instance re-reads each file from the workspace, so it opens on what the files say *now*:
+What is recorded for a file is the **reference** to each read, never the bytes it returned.
+The next instance re-reads each file from the workspace, so it opens on what the files say
+*now*:
 
 ```
 instance 1   read_file src/game.js  →  // the first draft
@@ -74,14 +83,40 @@ The agent is told all of this in its [system prompt](/gg/prompts/), because it h
 it never made, sitting at the top of a fresh session, are otherwise indistinguishable from a
 hallucination.
 
+### A text view is replayed, not re-read
+
+The "record the reference, never the bytes" principle is exactly right for a file and does
+**not** transfer to a text view, so gg does the opposite for that half of the desk and stores
+the body.
+
+The principle exists because a file has an on-disk truth that can move under a stored
+snapshot; replaying the bytes would hand the next instance a confident, wrong picture of a
+workspace somebody else has been editing. A text view has no on-disk truth to go stale
+against. It is the summary, diff or table the *agent itself* composed, and the window is the
+only place it ever existed — so a reference to it would name nothing, and there is nothing
+fresher to read it from. The next instance therefore gets it back byte for byte, under the
+same label, and can close it with `view.close` like any other.
+
+That also makes the two halves fail differently, which is worth knowing when a restore looks
+short: a file view can be **skipped** (the file was deleted or moved), while a text view
+cannot fail at all — handing a string back has nothing in it to go wrong. The instance logs
+one line naming both counts.
+
+Only a code-mode profile has this half of a desk: `view.openText` is a
+[responses-as-code](/gg/responses-as-code/) call, and a tool-calling agent has no way to open
+a text view.
+
 ### What "still had open" means
 
-The desk is whatever file views are in the window at the moment the agent finishes — so the
+The desk is whatever views are in the window at the moment the agent finishes — so the
 capability composes with the rest of the context machinery rather than fighting it:
 
-- A file the agent **evicted**, or that a compaction **summarized away**, is not open, so it
-  is not carried over. Recording is a wholesale replacement, not a union: the desk as the last
-  instance left it, including an instance that finished with nothing open.
+- A file the agent **evicted**, a text view it **closed**, or anything a compaction
+  **summarized away**, is not open, so it is not carried over. Recording is a wholesale
+  replacement, not a union: the desk as the last instance left it, including an instance that
+  finished with nothing open. A [compaction](/gg/compaction/#a-text-view-does-not-survive-a-compaction)
+  therefore empties the text half of a desk outright, which is one more reason to write
+  anything durable to a memory or a file.
 - A **locked** [autoloaded specification](/gg/autoload-specifications/) is not carried over
   either — autoload re-seeds and re-pins it for the next instance, and persisting it as an
   ordinary evictable read would give the same file two entries.
@@ -109,24 +144,34 @@ successor is moving into is already held by somebody else.
 
 ## What is not persisted
 
-Only file views. Not the thread, not the [task list](/gg/tasks/), not
+Only the desk — the open views. Not the thread, not the [task list](/gg/tasks/), not
 [memories](/gg/memories/), not read [skills](/gg/skills/). Two instances of a profile are two
 separate agents that happen to share a desk, and an instance that inherited the previous one's
 whole conversation would be one long agent with a confusing turn count. Memories already exist
 for state a profile wants to *narrate* across sessions — a persistent profile with
 `"scope": "shared"` [memories](/gg/memories/#scoping-whose-memories-are-these) gets both, which
-is the interesting configuration. Persistence answers the narrower question of **which files
-the worker was looking at**.
+is the interesting configuration. Persistence answers the narrower question of **what the
+worker was looking at**.
 
 Carrying a whole conversation forward is a different feature with different mechanics:
 [`exec`](/gg/fork-and-exec/) and an [FSM transition](/gg/fsms/) transfer live
 [modules](/gg/modules/) between two incarnations of **one** agent — one slot, one return value,
 one continuous turn count — rather than between two instances that each stand on their own.
 
-A [responses-as-code](/gg/responses-as-code/) agent puts no file view in its window at all
-(a program's reads are consumed inside the program, which is one of the reasons that mode
-exists), so a persistent code-mode profile records and restores nothing. Its
-one-instance-at-a-time half still applies.
+## A reversal: a code-mode profile used to have no desk at all
+
+This page previously said that a [responses-as-code](/gg/responses-as-code/) agent puts no
+file view in its window at all — a program's reads being consumed inside the program — and
+therefore that a persistent code-mode profile **recorded and restored nothing**. That was
+true, and it made the capability inert in the mode that arguably needed it most: the mode
+whose whole premise is that the model does the work in bulk and comes back with a summary.
+
+What changed is [views](/gg/responses-as-code/#showing-yourself-things). A program's
+`fs.readFile` still puts nothing in the window — that part was never the problem — but
+`view.openFile` and `view.openText` now do, as ordinary attributable window items, so a
+code-mode agent has a desk like any other and both halves of it carry over. Nothing about
+this capability had to change to make that work; what it needed was for the mode below it to
+have a set of open views at all.
 
 ## Configuring it
 

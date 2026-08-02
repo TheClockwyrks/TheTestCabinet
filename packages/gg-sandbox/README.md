@@ -55,6 +55,15 @@ run enables, for the same reason `finish` is; `openFile` carries
 `requires: "read_file"`, because it is a read and a run with reading withheld must
 not get one through a side door.
 
+That makes **four** of the WIT's interfaces non-tool ones — `feedback` (the shim's
+private channel back to gg, never model-facing), `session`, `docs` and `views` —
+against **eight** tool interfaces whose functions stand in exact one-to-one
+correspondence with `ALL_TOOL_NAMES`. Adding a fifth `view` function means editing
+four places (`crates/gg/wit/gg-sandbox.wit`, `src/membrane.d.ts`,
+`src/tools/views.ts`, `VIEW_ENTRIES` in `src/catalogue.ts`) and then rebuilding both
+artifacts; a gg test asserts the catalogue carries exactly the four, so the SDK and
+the catalogue cannot disagree quietly.
+
 ## Refreshing the artifacts
 
 ```sh

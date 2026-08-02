@@ -186,6 +186,38 @@ to carry over.
 compaction: compaction is the automatic backstop when the window fills; agent-managed
 context lets a disciplined agent avoid ever hitting it.
 
+## A text view does not survive a compaction
+
+Everything the retained list above does not name is ephemeral working material, and a
+compaction summarizes it away. That includes the **agent views** a
+[responses-as-code](/gg/responses-as-code/#showing-yourself-things) program opened with
+`view.openText` — the summaries, diffs and tables it composed and showed itself. They are
+dropped like any other ephemeral item, and nothing re-seeds them: a `compact` call's `files`
+list re-reads **files**, and there is no equivalent for a view whose contents exist nowhere
+but the window that is being emptied.
+
+That asymmetry is the honest one rather than an oversight. A file view can be re-seeded
+because the file is still on disk and gg can go and read it; a text view is the agent's only
+copy of something it computed, so "re-seed it" would mean copying it across the boundary
+verbatim, which is the one thing compaction exists **not** to do — carrying an unbounded set
+of agent-composed text through a boundary would defeat the reclaim it was triggered for.
+
+So an agent that wants working state to outlive a boundary writes it somewhere with a truth
+of its own:
+
+- a [memory](/gg/memories/), which is retained verbatim across every boundary and is the
+  mechanism built for exactly this (the `memory-compaction` strategy above is that idea
+  taken to its conclusion); or
+- a **file** in the workspace, which it can then name in a `compact` call's `files` list, or
+  simply re-open with `view.openFile` afterwards.
+
+The summary itself is the third option and often the right one: a view worth keeping is
+usually worth describing in the recap the thread restarts from.
+
+Extending the `compact` request to name views was considered and is deliberately not done:
+it would give the model a second list to curate at the moment its window is fullest, for
+material it can already preserve through either of the two mechanisms above.
+
 ## A succession compacts before its first turn
 
 When an agent [becomes another agent](/gg/fork-and-exec/) — an `exec`, or an

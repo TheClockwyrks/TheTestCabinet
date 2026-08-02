@@ -3,7 +3,8 @@ title: "Context visibility"
 ---
 
 gg **tracks what is consuming the context window**, broken down by source: skills,
-memories, file contents, the thread/history, tool output, and so on.
+memories, file contents, material an agent composed and showed itself, the
+thread/history, tool output, and so on.
 
 - Internally this is the accounting that powers the context-usage signal in
   [agent-managed context](/gg/agent-managed-context/) and the trigger in
@@ -129,9 +130,10 @@ and a multi-megabyte inline picture is neither readable nor worth storing once p
 read.
 
 A pooled message also carries its window item's **selector tag** (`label`) where it has
-one — for a **file view**, the workspace path it shows. That is what makes the window's
+one — for a **file view**, the workspace path it shows; for an **agent view**, the label
+the agent opened it under. That is what makes the window's
 _material_ attributable and not merely its bands: it is how the console totals a run's
-context spend **per file** (see
+context spend **per view** (see
 [what filled the window](/gg/telemetry/#what-filled-the-window-and-what-it-cost)), and,
 because the tag is a property of the item rather than of the message envelope, it is
 what survives a [compaction](/gg/compaction/) re-framing a pinned view as a `user`
@@ -202,8 +204,36 @@ How much _enters_ the window per read is configurable: under a capped
 [read mode](/gg/filesystem/#read-modes) a view holds only the window that call returned,
 and paging through a file appends one view per page.
 
-Three things do remove material from the middle of the window, and each is a deliberate
+**Views a program opened.** Under [responses as code](/gg/responses-as-code/) a program
+puts material in front of itself by opening a **view** — `view.openFile(path)` for a file,
+`view.openText(label, body)` for something it computed — and gg pushes one message per open
+view into the next prompt. A file view lands in the same band a `read_file` result does; a
+text view lands in a band of its own, **Agent views**, keyed by the label the agent gave it.
+The band is separate because the *authorship* is: a file view is workspace material with an
+on-disk truth behind it, tool output is gg's own reporting back to the agent, and an agent
+view exists nowhere but the window.
+
+Re-opening a selector **supersedes** the view that was under it, which is the one place this
+page's append-per-read rule does not apply — and the difference is what the two calls name:
+
+- `read_file` names an **action**. It happened; it returned what the file said at that
+  moment; each one appends. Collapsing two reads would be rewriting the thread.
+- `view.openFile` / `view.openText` name an **intent** — _this should be visible to me_.
+  Re-stating an intent replaces it. A program that loops over changed files and re-opens
+  each one would otherwise pile up a duplicate per turn, and the per-item accounting the
+  view mechanism exists to deliver would be worse than the single blob it replaced.
+
+Superseding still honours append-only: a copy already sent on an earlier turn is left where
+it sits and retagged as ordinary history with its selector cleared, and the new copy is
+appended at the tail — exactly what a changed mutable block does. A copy pushed **in the
+current turn**, which no provider has seen, is replaced in place instead, because there is
+no cached prefix to protect and no history worth keeping; a view opened and closed inside
+one program therefore reaches the window not at all.
+
+Four things do remove material from the middle of the window, and each is a deliberate
 choice whose point is to reclaim tokens: `evict_file_view` and `archive_thread`, both
-[invoked by the agent](/gg/agent-managed-context/), and a
-[compaction](/gg/compaction/) boundary, which rewrites the window wholesale. Each
-necessarily resets the cache; that is the price of the space they buy back.
+[invoked by the agent](/gg/agent-managed-context/); `view.close(selector)`, which a code-mode
+program may call whether or not it holds the agent-managed-context capability, since closing
+what it opened itself is not a privilege; and a [compaction](/gg/compaction/) boundary, which
+rewrites the window wholesale. Each necessarily resets the cache; that is the price of the
+space they buy back.

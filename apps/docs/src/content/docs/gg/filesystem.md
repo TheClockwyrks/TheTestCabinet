@@ -144,6 +144,15 @@ window it returned into the context, so the two capped modes and the eviction to
 different answers to the same problem: one rations what enters the window, the other
 reclaims it after the fact. They compose, and comparing them is a reasonable study.
 
+Under [responses as code](/gg/responses-as-code/) the same read costs the window **nothing**:
+`fs.readFile` hands the bytes to the program and stops there. What puts a file in the window
+is `view.openFile(path)`, which does the identical read — same line cap, same magic-number
+image detection, same 8 MiB ceiling — and *also* opens a file view of it, keyed by the path
+and closable by it. The picture comes with it, so a program that opens a view of a reference
+mockup shows the model the mockup rather than only describing it. The split is the point, and
+the prompt teaches it in one line: `fs.readFile` gets bytes for your program;
+`view.openFile` shows a file to you.
+
 Reads are **append-only**, as everything in the window is: a second read of the same file
 appends a second view rather than rewriting the first, and re-reading is how an agent
 sees a file it has changed. See

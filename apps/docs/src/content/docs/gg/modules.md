@@ -12,7 +12,7 @@ There are six kinds, and the list is closed:
 
 | Kind | What it holds |
 | --- | --- |
-| `history` | The agent's conversation window — every message, file view and pinned block. Always present. |
+| `history` | The agent's conversation window — every message, open view and pinned block. Always present. |
 | `memories` | The [memories](/gg/memories/) it curates, under whichever strategy the capability configures. |
 | `tasks` | The [task](/gg/tasks/) list — the blocked-by DAG it steers by. |
 | `board` | The [project-management](/gg/project-management/) board. Run-global: every holder holds the *same* board. |

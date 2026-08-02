@@ -244,8 +244,10 @@ So the console folds the [message log](/gg/context-visibility/#the-message-log-t
 turn by turn. Each turn's **reported** input tokens (uncached + cached) and the cost
 those carry at the agent's model's rates are split across that turn's request messages
 in proportion to each message's estimated share of the request. Summing per message —
-then per band, per file, and per tool — gives what each is answerable for across the
-whole run, grounded in reported usage rather than estimates alone. Two figures come out
+then per band, per view, and per tool — gives what each is answerable for across the
+whole run, grounded in reported usage rather than estimates alone. (The console's own word
+for the middle grain is **Views**, since a view is what a window item is: a file the agent
+read, or material it composed and showed itself.) Two figures come out
 of it and they mean different things: the material's **own size** (each message counted
 once — what it cost to *bring in*) and its **billed tokens** (the same material summed
 over every turn it was resident — what it cost to *keep*). The bars rank the second.
@@ -254,9 +256,11 @@ Only the **input** side is attributed. Output and reasoning tokens are what the 
 produced, not material the window carried, so they are no file's or tool's doing and
 stay with the Cost widget's own account.
 
-Attributing a file view to a *path* is what the `context_message` event's **`label`**
-carries: the window item's selector tag — the same tag `evict_file_view { path }`
-targets. It rides on the pooled definition (emitted once per distinct message) rather
+Attributing a view to its *selector* is what the `context_message` event's **`label`**
+carries: the window item's selector tag — a file view's workspace path, the same tag
+`evict_file_view { path }` targets, or the label a program opened an
+[agent view](/gg/responses-as-code/#showing-yourself-things) under, which
+`view.close(label)` targets. It rides on the pooled definition (emitted once per distinct message) rather
 than on each turn's pointer, because it is a property of the material, not of the turn.
 The tag also survives what the message envelope does not: a **locked**, autoloaded
 specification is re-framed as a `user` message across a
@@ -264,8 +268,10 @@ specification is re-framed as a `user` message across a
 synthesized read was answered under — so the tag is the only thing left that says which
 file the biggest band in the window is. A stream recorded before gg carried the tag
 falls back to the `read_file` call the view answers; whatever neither resolves is
-reported as unattributed rather than dropped, so the file list never quietly
-understates the band it decomposes.
+reported as unattributed rather than dropped, so the view list never quietly
+understates the band it decomposes. A path and a label are kept apart even when they read
+the same: a workspace file called `notes` and a view an agent labelled `notes` are two
+different things, and summing them would invent a row that was never in the window.
 
 ## Where a turn's time went
 
