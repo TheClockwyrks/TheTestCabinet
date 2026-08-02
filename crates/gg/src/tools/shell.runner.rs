@@ -37,6 +37,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
+use test_cabinet_core::gg_replay::GgShellOrigin;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
@@ -70,6 +71,17 @@ pub struct ShellRequest {
     /// [`RealShellRunner`] has no use for it — a real process is a real process — so the only
     /// reader is a [playback](crate::playback)'s recorded runner.
     pub agent_id: String,
+    /// **Which of gg's three command paths** this line came from: the [`shell`](super::SHELL_TOOL)
+    /// tool, a [responses-as-code](crate::sandbox) program's `system.shell(…)`, or the
+    /// [completion](crate::completion) gate's validation commands.
+    ///
+    /// Carried on the request rather than derived at the recorder, because the seam is the *only*
+    /// place all three meet and by the time a command reaches it the caller is gone. It is what
+    /// keeps a completion gate's command off the agent's ordinary queue — a validation command and
+    /// a `shell` tool call are different inputs even when the text is identical — and it is the one
+    /// field [`RealShellRunner`] ignores and a
+    /// [recording](crate::replay::RecordingShellRunner) one exists for.
+    pub origin: GgShellOrigin,
 }
 
 /// How a command's process ended, as the [runner](ShellRunner) saw it.

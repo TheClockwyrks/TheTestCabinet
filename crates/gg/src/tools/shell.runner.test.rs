@@ -5,6 +5,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use test_cabinet_core::gg_replay::GgShellOrigin;
+
 use super::{RealShellRunner, ShellRequest, ShellRunner, ShellStatus, StubShellRunner, real_shell};
 use crate::tools::{OffloadPolicy, ToolContext, run_command};
 
@@ -15,6 +17,7 @@ fn request(command: &str, cwd: &std::path::Path, agent: &str) -> ShellRequest {
         cwd: cwd.to_path_buf(),
         timeout: Duration::from_secs(30),
         agent_id: agent.to_string(),
+        origin: GgShellOrigin::Tool,
     }
 }
 
@@ -63,6 +66,7 @@ async fn the_real_runner_reports_a_timeout_as_its_own_status() {
             cwd: dir.path().to_path_buf(),
             timeout: Duration::from_millis(200),
             agent_id: "root".to_string(),
+            origin: GgShellOrigin::Tool,
         })
         .await;
 
@@ -123,6 +127,7 @@ async fn a_substituted_runner_replaces_the_process_entirely() {
         Duration::from_secs(5),
         &OffloadPolicy::Inline,
         &ctx,
+        GgShellOrigin::Tool,
     )
     .await;
 
@@ -153,6 +158,7 @@ async fn a_substituted_runner_is_told_the_command_the_directory_and_the_agent() 
         Duration::from_secs(11),
         &OffloadPolicy::Inline,
         &ctx,
+        GgShellOrigin::Tool,
     )
     .await;
 
@@ -178,6 +184,7 @@ async fn the_callers_output_policy_still_applies_to_a_substituted_runner() {
         Duration::from_secs(5),
         &OffloadPolicy::Inline,
         &ctx,
+        GgShellOrigin::Tool,
     )
     .await;
 

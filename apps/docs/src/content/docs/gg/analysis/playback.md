@@ -43,10 +43,20 @@ claim a fork that does not exist.
 tool, a [responses-as-code](/gg/responses-as-code/) program's `system.shell(…)`,
 and the [completion](/gg/completion/) gate's validation commands — and the only
 thing all three share is the tool context. So the seam goes there, and it carries
-**the calling agent**: a runner given only a workspace path cannot know whose
-recorded commands to draw from, and every shell divergence names an agent. The
-completion path in particular must be attributed to the agent whose ending it
-gates, or its commands land on an unattributed queue.
+**the calling agent** and **which of the three paths it came from**: a runner given
+only a workspace path cannot know whose recorded commands to draw from, every shell
+divergence names an agent, and a validation command has to stay off the agent's
+ordinary queue. The completion path in particular must be attributed to the agent
+whose ending it gates, or its commands land on an unattributed queue.
+
+Capture rides the same seam, as a decorator around whatever runner is installed.
+That is not an incidental symmetry: the seam is the only place all three paths meet,
+and a capture that sits above it — as the completion gate's briefly did, because that
+call site happened to hold a recorder — records one path and silently misses the
+other two. Recording *below* the seam also pins what the process did, before the
+output policy merged the streams and added gg's notes, which is the right side of
+that line: a reconstruction re-applies this build's presentation to the recorded
+bytes.
 
 The two seams travel together as one parameter into the loop. A playback with a
 recorded model and a *real* shell would run real installs against a scratch tree
@@ -82,7 +92,7 @@ cannot be asked for one.
 | --- | --- | --- |
 | Model requests | **stubbed** | The cost and ~all the wall clock |
 | `sh -c` — tool, program, completion validation | **stubbed** | Reaches the network, the clock, and the machine's toolchain |
-| `git` subprocesses, worktrees, merges | **real** | gg's own bookkeeping, and the hardest paths to test |
+| `git` subprocesses, worktrees, merges | **real**, and *watched* | gg's own bookkeeping, and the hardest paths to test — but see the barrier below, which needs to know when a merge landed |
 | `write_file` / `edit_file` | **real**, into a scratch tree | An `edit_file` needs the file the previous `write_file` made |
 | `read_file` / `list_dir` / `read_skill` | **real**, compared against the record | Pure functions of workspace + args, so a difference is a regression signal |
 | The scheduler, parallelism, exclusive keys | **real** | Loop behaviour |
@@ -101,6 +111,16 @@ playback reconstructs, and worktree/merge/conflict handling is *loop behaviour
 worth exercising* — a playback that stubbed it would prove nothing about the
 [issue-worktree](/gg/project-management/) or [speculation](/gg/speculative-execution/)
 paths, which are the hardest to test any other way.
+
+Real, but not invisible. Each real invocation **retires the recorded one it
+corresponds to**, and that retirement is load-bearing: an issue's
+accept-and-merge is a `git` sequence, it moves the board, and the board is
+rendered into every agent's pinned prompt. Without it the merge would be the one
+run-global state change the barrier below does not order, and every concurrent
+board record would drift on exactly the block that matters. The comparison that
+rides along is deliberately over the invocation's *shape* — the subcommand, its
+flags, its refs — and not its absolute paths, because a playback builds somewhere
+else on purpose and a worktree names its own location.
 
 ### The playback workspace is not the produced tree
 
@@ -171,13 +191,32 @@ Lookup for a given agent, in order:
 3. **Cross-agent** — the pair occurs in another agent's remaining commands. The
    safety net for an imperfect agent binding; reporting it is what makes the binding
    auditable.
-4. **Miss** — stop (the default), synthesize a classified failure whose text says
-   the command was not recorded, or actually execute it (never without an explicit
+4. **Miss** — synthesize a classified failure whose text says the command was not
+   recorded (the default), stop, or actually execute it (never without an explicit
    flag).
+
+Synthesizing is the default rather than stopping because the *model's* next answer
+still comes from the record, so the fingerprint check on the very next turn is what
+actually settles whether the session diverged — and it says something far more
+precise than "a command was missing". Stopping is available for a caller who would
+rather have nothing than a session in which a build's output was invented.
 
 A directory mismatch on an otherwise-identical command falls to step 2 or 3 and is
 reported, never silently accepted: the same command in a different tree is a
 different command.
+
+Steps 2 and 3 differ in what they consume. Stepping over commands within one agent
+**consumes them**, because a recorded command the reconstruction demonstrably did not
+ask for must not stay in the queue to answer a later one by accident — and because
+leaving it in would block the ordering barrier behind an entry nobody will ever take.
+A cross-agent hit takes only the entry it matched: the other agent has not finished,
+and its earlier commands are still its own to ask for.
+
+One thing a served command cannot give back is a stream a standard-fidelity capture
+clipped. Unlike a re-executed tool there is no live payload to prefer instead — the
+command did not run — so the tail is served and the clip is reported, because the
+conversation drift it causes a turn or two later is otherwise inexplicable. Its
+answer is to re-record at full fidelity.
 
 ### The other tools
 
@@ -213,7 +252,7 @@ there are two kinds of creation:
 | Root | trivially | — |
 | Spawn — delegate, workflow, speculate, **fork** | recorded spawner + spawn ordinal | A parent's spawns are strictly ordered within its own turn loop |
 | Succession | recorded predecessor + ordinal | Same |
-| Issue attempt | issue + attempt | A function of board state |
+| Issue attempt | issue + **dispatch ordinal** | A function of board state |
 | Reviewer | issue + round and position | A function of board state |
 | **Merge agent** | issue + merge ordinal | Its live id comes off the **global counter**, so it can only be bound by what it was dispatched *for* |
 
@@ -227,6 +266,14 @@ is not an edge case.
 The spawn key is an ordinal across **all** spawn kinds, not per profile: a fork runs
 the forker's own profile, so a fork child and a same-profile delegated subagent from
 one parent would otherwise compete for the same queue.
+
+The issue key is the **dispatch** ordinal and not the retry count, which is a
+distinction learned the hard way. A review that requests changes re-dispatches the
+issue to a fresh agent and deliberately does *not* charge the retry budget — rework
+asked for by a reviewer is not a failed attempt — so keying on the retry count gave
+two genuinely different agents one identical origin, and a reconstruction served the
+second one the first one's turns. The same reasoning as the spawn key: the key has to
+be unique per agent, and "which attempt" is not.
 
 **The fingerprint is a second, independent check on the binding.** A mis-bound
 agent's very first request carries a different profile's system prompt and toolset,
@@ -259,16 +306,60 @@ unserved entry may belong to an agent blocked on something else, or be an entry 
 reconstruction never demands. That is a real divergence, not a bug, so the wait is
 bounded and expiry releases the lowest waiter and reports it.
 
+A consumer also has to say which categories of input it **does not serve**, once,
+before the first turn, because a waiter blocks on *every* lower unserved seq and a
+single entry nobody will ever consume would otherwise block every agent behind it
+for the whole reconstruction. For a playback those are the clock and the cancel
+probe, which it does not reproduce at all.
+
+`git` is deliberately not among them even though a playback does not *serve* it
+either: it re-runs each invocation for real and retires the recorded one, which is
+what puts an issue's merge back in the recorded order. That has one consequence
+worth naming, because it is the case a concurrent board record hits immediately:
+gg's own bookkeeping **outlives the loop that dispatched it**. An issue is
+dispatched, worked, committed and merged under the root's name, and every one of
+those invocations is recorded after the root's own `finish`. So an agent's
+retirement covers what its *loop* owes and not what its `git` still owes — a wait
+behind a merge that has not run yet is a real wait, not a provable deadlock.
+
+The barrier can be turned **off**, and that is deliberate: a claim about it that could
+not be turned off would be an argument rather than a measurement. Reconstruct a
+two-issue board record both ways — one issue's agent slow, the other's fast, so the
+recorded interleaving is one that *only* latency produced — and the ordered
+reconstruction is faithful while the unordered one diverges on the conversation,
+because the slow agent's second turn is built before the other issue merged rather
+than after. Note that the difference only shows on a record whose agents were
+genuinely in flight at once: a review→rework→approve cycle on a single issue is
+sequential, and so is a speculation fan-out where each attempt has a window of its
+own, so both reconstruct identically either way.
+
+One thing gg's own commits had to change for any of this to be reachable. A commit id
+hashes the timestamps as well as the tree, and an issue review brief names the commit
+the work is measured against so the reviewer can diff it — so a clock-derived commit
+date made every issue-worktree run impossible to reconstruct, for a reason that had
+nothing to do with the run. gg now stamps a fixed date on its own commits alongside the
+fixed identity it already stamped, which makes its git history a pure function of its
+content. Nobody reads those dates; `git log` is topological.
+
 The waits must yield. gg runs every agent on one `current_thread` runtime, so a
 blocking spin deadlocks the process rather than stalling one agent.
 
-**What the barrier does not claim.** It orders the *serving of recorded inputs*, not
-everything else a run does. For every run-global prompt input gg has today — the
-board, messages, subagent results, all of which mutate only at a tool call, i.e. at
-a recorded input — that is sufficient, and a round-trip test over a real multi-agent
-record is what proves it empirically rather than by argument. A future capability
-that mutates run-global prompt state *between* recorded inputs would make it
-insufficient, and the resulting drift is reported rather than hidden.
+**What the barrier does not claim.** It orders the *recorded inputs*, not everything
+else a run does — and "recorded inputs" had to be read literally rather than
+generously. The first concurrent board record built to test this found the gap
+immediately: the board's `in review → done` transition happens at an issue's
+**merge**, which is not a served input, so the recorded interleaving was restored
+everywhere except at the one state change the record was built to exercise. That is
+why gg's own `git` invocations retire against the record rather than being ignored;
+with them ordered, every run-global prompt input gg has today — the board,
+inter-agent messages, collected subagent results — moves at a point the barrier
+holds, and a round-trip over a concurrent record proves it empirically rather than
+by argument.
+
+The general shape of the hazard remains, and is worth stating as the rule: run-global
+prompt state that mutates at a point the record does not pin is state the barrier
+cannot order. The resulting drift is reported rather than hidden, which is how this
+one was found.
 
 ## Endings
 

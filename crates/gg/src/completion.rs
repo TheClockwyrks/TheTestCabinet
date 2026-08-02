@@ -25,10 +25,9 @@ use test_cabinet_core::gg_replay::GgShellOrigin;
 use crate::ending::EndingRole;
 use crate::model::ToolDefinition;
 use crate::prompts::{self, ValidationFailureContext};
-use crate::replay::{GgRecorder, RecordedCommand, shell_cwd};
 use crate::sandbox::FINISH_FUNCTION;
 use crate::telemetry::Emitter;
-use crate::tools::{OffloadPolicy, ToolContext, run_command_capturing};
+use crate::tools::{OffloadPolicy, ToolContext, run_command};
 
 /// The `validation` param key: an array of validation commands on the
 /// [completion](CAPABILITY_COMPLETION) capability.
@@ -258,19 +257,17 @@ pub(crate) fn role_tool_definitions(role: EndingRole) -> Vec<ToolDefinition> {
 /// — so it runs under the agent's own [output policy](OffloadPolicy). A failing test suite is
 /// exactly the kind of output that arrives by the megabyte, and under offloading the agent is shown
 /// the tail that names the failure and can grep the rest out of the file pair.
-/// `replay` is the run's [capture](crate::replay) and the id of the agent whose ending is being
-/// gated, when a run is recording. A validation command runs `sh -c` through the same code path a
-/// `shell` tool call does but never reaches tool dispatch, so before this seam existed it was
-/// recorded nowhere at all — and it decides whether the session is allowed to end, which is as
-/// control-flow-changing as an input gets. Recorded under
-/// [`CompletionValidation`](GgShellOrigin::CompletionValidation), which is what keeps it off the
-/// agent's ordinary queue.
+/// A validation command runs `sh -c` through the same code path a `shell` tool call does but never
+/// reaches tool dispatch, and it decides whether the session is allowed to end — which is as
+/// control-flow-changing as an input gets. It is [captured](crate::replay) like every other command
+/// line, at the [shell seam](crate::tools::ShellRunner) the context carries, under the
+/// [`CompletionValidation`](GgShellOrigin::CompletionValidation) origin this function stamps on it —
+/// which is what keeps it off the agent's ordinary queue.
 pub(crate) async fn run_validation(
     commands: &[ValidationCommand],
     base: &ToolContext,
     offload: &OffloadPolicy,
     emitter: &Emitter,
-    replay: Option<(&GgRecorder, &str)>,
 ) -> Option<String> {
     let total = commands.len();
     emitter.emit(GgTelemetryKind::Log {
@@ -298,25 +295,18 @@ pub(crate) async fn run_validation(
         // give it the real shell and no attribution — which for the one input that decides whether
         // a session may end is the worst place in gg to lose either.
         let ctx = base.rooted_at(cwd);
-        let (outcome, captured) =
-            run_command_capturing(&command.command, command.timeout, offload, &ctx).await;
-        if let Some((recorder, agent_id)) = replay {
-            recorder.record_shell(
-                agent_id,
-                GgShellOrigin::CompletionValidation,
-                RecordedCommand {
-                    command: &command.command,
-                    // Relative to the **agent's workspace**, not to the directory the command ran
-                    // in: a validation command declaring `cwd: "web"` and one declaring nothing are
-                    // different commands, and a record that resolved both to "here" would say they
-                    // were the same.
-                    cwd: shell_cwd(&base.workspace_dir, &ctx.workspace_dir),
-                    exit_code: captured.exit_code.unwrap_or(-1),
-                    stdout: &captured.stdout,
-                    stderr: &captured.stderr,
-                },
-            );
-        }
+        // The capture happens **below** this call, at the shell seam: the recording runner is
+        // rooted at the agent's own workspace, so a command declaring `cwd: "web"` and one
+        // declaring nothing are recorded as the different commands they are, rather than both
+        // resolved to "here".
+        let outcome = run_command(
+            &command.command,
+            command.timeout,
+            offload,
+            &ctx,
+            GgShellOrigin::CompletionValidation,
+        )
+        .await;
         if outcome.ok {
             emitter.emit(GgTelemetryKind::Log {
                 level: "info".to_string(),

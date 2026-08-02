@@ -8,19 +8,20 @@
 //! [projection](ContextProjection), with wall clock excluded.
 
 use std::path::Path;
+use std::time::Duration;
 
 use base64::Engine as _;
 use serde_json::{Value, json};
 use tempfile::TempDir;
 use test_cabinet_core::gg::{GgCapabilitySet, GgSlotBinding};
 use test_cabinet_core::gg_replay::{
-    GgReplayAgent, GgReplayAgentOrigin, GgReplayBlob, GgReplaySeedFile,
+    GgFingerprintComponent, GgReplayAgent, GgReplayAgentOrigin, GgReplayBlob, GgReplaySeedFile,
 };
 use test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH;
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use super::*;
-use crate::client::{ClientFactory, MockClient};
+use crate::client::{AgentIdentity, ClientFactory, MockClient};
 use crate::config::GgInvocation;
 use crate::model::{FinishReason, ModelClient, ModelError, ModelResponse, ToolCall};
 use crate::tools::real_shell;
@@ -646,4 +647,566 @@ async fn a_caller_supplied_sink_sees_the_same_stream() {
 
     assert_eq!(watcher.events(), report.events);
     assert!(!report.events.is_empty(), "there was a stream to compare");
+}
+
+// ---------------------------------------------------------------------------
+// Multi-agent: the barrier, the binding table, and board-dispatched agents
+// ---------------------------------------------------------------------------
+
+/// The agent topology for the offline **issue-review** end-to-end, driven by the production
+/// `DefaultClientFactory`'s `mock/demo-*` scripts.
+///
+/// It is the shape this milestone exists for: the root files an issue, gg **auto-dispatches** an
+/// implementer for it, a reviewer is dispatched to judge the result, the reviewer sends it back, the
+/// implementer is re-invoked, and a required merge agent lands it. Three of those agents — the issue
+/// attempt, the reviewer and the merge agent — are created by gg itself with **no parent at all**,
+/// which is precisely why the [binding table](binding) needs board state and not a spawner.
+fn issue_review_set() -> GgCapabilitySet {
+    use test_cabinet_core::gg::{
+        CAPABILITY_PROJECT_MANAGEMENT, GgAgentConfig, GgCapabilityConfig, GgSubagentRef,
+        GgSubagentScope, ROOT_AGENT,
+    };
+    let mut root = GgAgentConfig {
+        model_id: "mock/demo-issue-review-parent".to_string(),
+        ..GgAgentConfig::root()
+    };
+    root.capabilities.push(GgCapabilityConfig {
+        params: json!({ "mergeAgent": ROOT_AGENT }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+    });
+    root.subagents = vec![
+        GgSubagentRef::new(ROOT_AGENT, &[GgSubagentScope::Implementer]),
+        GgSubagentRef::new("reviewer", &[GgSubagentScope::Reviewer]),
+    ];
+    let reviewer = GgAgentConfig {
+        name: "reviewer".to_string(),
+        model_id: "mock/demo-review-reviewer".to_string(),
+        ..GgAgentConfig::root()
+    };
+    GgCapabilitySet {
+        agents: vec![root, reviewer],
+        ..GgCapabilitySet::default()
+    }
+}
+
+/// An invocation over `set`, with a context window declared for every model it binds.
+fn invocation_with(dir: &Path, session_id: &str, set: GgCapabilitySet) -> GgInvocation {
+    GgInvocation {
+        session_id: session_id.to_string(),
+        workspace_dir: dir.to_path_buf(),
+        prompt: "Build a tiny game.".to_string(),
+        model_windows: set
+            .bound_model_ids()
+            .into_iter()
+            .map(|id| (id.to_string(), TEST_CONTEXT_WINDOW))
+            .collect(),
+        capability_set: set,
+        model_modalities: BTreeMap::new(),
+        provided_files: Vec::new(),
+        cancel_file: None,
+    }
+}
+
+/// **The multi-agent round trip.** A recorded, board-dispatched session — issue attempt, reviewer,
+/// re-invocation and merge — reconstructs into the same session.
+///
+/// This is the milestone's headline claim, and it is asserted rather than argued because every
+/// piece of it can only be wrong together: the [binding table](binding) has to place three agents
+/// gg created with no parent and with ids off a global counter, the [barrier](Ordering::Seq) has to
+/// restore the interleaving that a run-global board block is rendered from, the recorded
+/// [shell](shell) has to answer per agent, and the [tool comparison](binding) has to keep every
+/// re-executed outcome equal to the recorded one. A single one of them wrong shows up here.
+///
+/// It is driven through `run` — the production `DefaultClientFactory` and its `mock/demo-*` scripts
+/// — rather than through an in-crate scripted factory, because the thing under test is gg's real
+/// dispatch machinery and a hand-built script could not reach it.
+///
+/// It is also what turned up the one thing about this path that was not reconstructable at all: a
+/// review brief names the **commit** the work is measured against, and a commit id hashes the
+/// timestamps as well as the tree — so before gg's own commits were made
+/// [content-addressed](crate::git) this passed only when the recorded baseline and the
+/// reconstruction's happened to land in the same second.
+#[tokio::test]
+async fn a_board_dispatched_session_reconstructs_into_the_same_session() {
+    let original = TempDir::new().unwrap();
+    let capture = CapturingSink::new();
+    let emitter = Emitter::with_sink(Some("run-board".to_string()), Box::new(capture.clone()));
+    let outcome = crate::agent::run(
+        &invocation_with(original.path(), "run-board", issue_review_set()),
+        &emitter,
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran, "the driven session launched");
+    let record = assembled_record(original.path());
+    let recorded_events = capture.events();
+
+    // Non-vacuity: the record really does carry the three parentless board-dispatched rows this
+    // test exists for. An assertion about binding them would otherwise pass over an empty set.
+    let origins: Vec<&GgReplayAgentOrigin> =
+        record.agents.iter().map(|agent| &agent.origin).collect();
+    assert!(
+        origins
+            .iter()
+            .any(|origin| matches!(origin, GgReplayAgentOrigin::IssueAttempt { .. })),
+        "an auto-dispatched issue attempt: {origins:?}",
+    );
+    assert!(
+        origins
+            .iter()
+            .any(|origin| matches!(origin, GgReplayAgentOrigin::Reviewer { .. })),
+        "a dispatched reviewer: {origins:?}",
+    );
+    // The issue is dispatched **twice** — once to implement it, once after the review sends it
+    // back — and the two dispatches must carry different origins. They are the case that proved
+    // keying on the retry count was wrong: a reviewer's rework deliberately does not charge the
+    // retry budget, so both agents read as attempt 0 and a reconstruction served the second one the
+    // first one's turns. (No merge agent appears here: one is dispatched only for a *conflicted*
+    // merge, which this clean cycle never produces. That origin is covered in `binding.test.rs`.)
+    let attempts: Vec<u32> = origins
+        .iter()
+        .filter_map(|origin| match origin {
+            GgReplayAgentOrigin::IssueAttempt { attempt, .. } => Some(*attempt),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        attempts,
+        vec![0, 1],
+        "two dispatches, two keys: {origins:?}"
+    );
+
+    let replayed = TempDir::new().unwrap();
+    let report = Playback::new(record, replayed.path().join("tree"))
+        .run()
+        .await
+        .expect("the record is reconstructible");
+
+    assert!(
+        report.divergences.is_empty(),
+        "this build still produces the recorded multi-agent session: {:#?}",
+        report.divergences,
+    );
+    assert!(report.faithful, "no divergence of any kind, under Exact");
+    assert_eq!(
+        report.context_projection,
+        ContextProjection::project(&recorded_events),
+        "the reconstruction's stream is the recorded session's, wall clock excluded",
+    );
+    // And every recorded agent was placed: a subagent's id comes off a global counter, so this is
+    // the assertion that the match was made on provenance rather than on an id that happened to
+    // line up.
+    for agent in &report.agents {
+        assert!(
+            agent.reconstructed.is_some(),
+            "every recorded agent was bound and reconstructed: {:?}",
+            report.agents,
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Responses as code
+// ---------------------------------------------------------------------------
+
+/// A **responses-as-code** session reconstructs, which means the recorded program really was
+/// re-run: the transpiler, the wasmtime sandbox, the typed membrane and the deferred-effect
+/// machinery all execute against real recorded model output, in sequence, with the real tool results
+/// the program was composing over.
+///
+/// This is the case the whole feature is most valuable for. gg's responses-as-code loop suite is
+/// otherwise driven entirely by hand-written programs — string literals an engineer wrote — and the
+/// repeated lesson of this repository is that the assumption a developer knows what a model writes
+/// keeps being wrong. The proof that the sandbox really ran is the file the program's `writeFile`
+/// left in the reconstruction's own tree.
+#[tokio::test]
+async fn a_responses_as_code_session_reconstructs_into_the_same_session() {
+    use crate::client::MOCK_CODE_LEVEL_FILES;
+    use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgCapabilityConfig};
+    let mut root = GgAgentConfig {
+        model_id: "mock/demo-responses-as-code".to_string(),
+        ..GgCapabilitySet::minimal("mock/demo-responses-as-code").agents[0].clone()
+    };
+    root.capabilities
+        .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
+    let set = GgCapabilitySet {
+        agents: vec![root],
+        ..GgCapabilitySet::default()
+    };
+
+    let original = TempDir::new().unwrap();
+    let capture = CapturingSink::new();
+    let emitter = Emitter::with_sink(Some("run-code".to_string()), Box::new(capture.clone()));
+    let outcome =
+        crate::agent::run(&invocation_with(original.path(), "run-code", set), &emitter).await;
+    assert_eq!(outcome, SessionOutcome::Ran, "the driven session launched");
+    assert!(
+        original.path().join(MOCK_CODE_LEVEL_FILES[0]).exists(),
+        "the recorded run's program really ran",
+    );
+    let record = assembled_record(original.path());
+    let recorded_events = capture.events();
+
+    let replayed = TempDir::new().unwrap();
+    let workspace = replayed.path().join("tree");
+    let report = Playback::new(record, &workspace)
+        .run()
+        .await
+        .expect("the record is reconstructible");
+
+    assert!(
+        report.divergences.is_empty(),
+        "this build still produces the recorded code-mode session: {:#?}",
+        report.divergences,
+    );
+    assert!(report.faithful);
+    assert_eq!(
+        report.context_projection,
+        ContextProjection::project(&recorded_events),
+    );
+    assert!(
+        workspace.join(MOCK_CODE_LEVEL_FILES[0]).exists(),
+        "the program was really executed in the sandbox during the reconstruction, not replayed \
+         as a transcript — the file it wrote is in the playback's own tree",
+    );
+    assert_eq!(
+        report
+            .summary
+            .as_ref()
+            .map(|summary| summary.execution_mode.as_str()),
+        Some("responses_as_code"),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The ordering barrier, measured
+// ---------------------------------------------------------------------------
+
+/// The issue whose dispatched agent answers **slowly** in the recorded run.
+const SLOW_ISSUE: &str = "RACE-1";
+
+/// The issue whose dispatched agent answers instantly, and therefore overtakes the slow one.
+const FAST_ISSUE: &str = "RACE-2";
+
+/// How long the slow agent's first model call takes in the recorded run.
+///
+/// Generous on purpose. It is not a timing assertion — it only has to be longer than the handful of
+/// instant turns the other issue's agent takes, and every one of those is a mock reply plus a small
+/// file write. Making it small would buy nothing and would make the *recorded* interleaving, which
+/// the whole test is built on, a race.
+const RECORDED_LATENCY: Duration = Duration::from_millis(400);
+
+/// A [`ModelClient`] that waits before answering its **first** call.
+///
+/// The one thing a playback cannot reproduce and does not try to is model latency — that is the
+/// entire point of it — so a record whose interleaving was *caused* by latency is exactly the case
+/// the [barrier](Ordering::Seq) exists for. This produces one offline, deterministically: the agent
+/// dispatched for [`SLOW_ISSUE`] stalls long enough for the other issue's agent to finish, so the
+/// recorded `seq` order is one that a reconstruction, which answers both instantly, would never
+/// reach on its own.
+struct SlowClient {
+    /// The script underneath. Every call is answered by this; only the wait is added.
+    inner: MockClient,
+    /// Flipped by the first call, so only the interleaving is skewed rather than the whole run
+    /// being slow.
+    delayed: std::sync::atomic::AtomicBool,
+}
+
+#[async_trait::async_trait]
+impl ModelClient for SlowClient {
+    fn model_id(&self) -> &str {
+        self.inner.model_id()
+    }
+
+    async fn complete(
+        &self,
+        messages: &[crate::model::Message],
+        tools: &[crate::model::ToolDefinition],
+    ) -> Result<ModelResponse, ModelError> {
+        if !self.delayed.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            tokio::time::sleep(RECORDED_LATENCY).await;
+        }
+        self.inner.complete(messages, tools).await
+    }
+}
+
+/// A factory that picks a script by the asking agent's **provenance**, and hands the agent
+/// dispatched for [`SLOW_ISSUE`] a [slow](SlowClient) one.
+///
+/// Keying on the origin rather than on a creation counter is what makes the two issue agents
+/// distinguishable at all: both are dispatched by gg itself, with no parent, onto the same profile
+/// and therefore the same model id. It is also the same key the record stores and the same key a
+/// reconstruction binds through, so the two issue agents get the same scripts in the same roles
+/// under a playback as they did in the run.
+struct BoardRaceFactory;
+
+impl ClientFactory for BoardRaceFactory {
+    fn client_for(&self, binding: &GgSlotBinding) -> Result<Box<dyn ModelClient>, ModelError> {
+        Ok(Box::new(MockClient::new(
+            binding.model_id.clone(),
+            board_root_script(),
+        )))
+    }
+
+    fn client_for_agent(
+        &self,
+        binding: &GgSlotBinding,
+        identity: &AgentIdentity,
+    ) -> Result<Box<dyn ModelClient>, ModelError> {
+        Ok(match &identity.origin {
+            GgReplayAgentOrigin::IssueAttempt { issue, .. } if issue == SLOW_ISSUE => {
+                Box::new(SlowClient {
+                    inner: MockClient::new(binding.model_id.clone(), slow_issue_script()),
+                    delayed: std::sync::atomic::AtomicBool::new(false),
+                })
+            }
+            GgReplayAgentOrigin::IssueAttempt { .. } => Box::new(MockClient::new(
+                binding.model_id.clone(),
+                fast_issue_script(),
+            )),
+            _ => Box::new(MockClient::new(
+                binding.model_id.clone(),
+                board_root_script(),
+            )),
+        })
+    }
+}
+
+/// The root's script: an epic, then **two independent issues**, then a stop.
+///
+/// Independent is the load-bearing word. Neither issue blocks the other, so gg auto-dispatches both
+/// and the two agents are genuinely in flight at the same time — which is the only shape in which
+/// the barrier is doing anything at all.
+fn board_root_script() -> Vec<ModelResponse> {
+    vec![
+        call(
+            "call_epic",
+            "create_epic",
+            json!({
+                "prefix": "RACE",
+                "title": "The build",
+                "description": "The work for this session.",
+            }),
+        ),
+        call(
+            "call_slow",
+            "create_issue",
+            json!({
+                "title": "The slow half",
+                "inScope": "Write the slow half's file.",
+                "outOfScope": "Anything else.",
+                "completionCriteria": "The file exists.",
+                "epicId": "RACE",
+                "agent": test_cabinet_core::gg::ROOT_AGENT,
+            }),
+        ),
+        call(
+            "call_fast",
+            "create_issue",
+            json!({
+                "title": "The fast half",
+                "inScope": "Write the fast half's files.",
+                "outOfScope": "Anything else.",
+                "completionCriteria": "The files exist.",
+                "epicId": "RACE",
+                "agent": test_cabinet_core::gg::ROOT_AGENT,
+            }),
+        ),
+        finish("Both issues are filed."),
+    ]
+}
+
+/// The slow issue agent's script: one file, then a stop.
+///
+/// Short on purpose. Its second turn is the one the whole test turns on — it is built *after* the
+/// other agent has finished in the recorded run and *before* it has under an unordered
+/// reconstruction, so its pinned board block is the place the two reconstructions disagree.
+fn slow_issue_script() -> Vec<ModelResponse> {
+    vec![
+        call(
+            "call_slow_write",
+            "write_file",
+            json!({ "path": "slow.txt", "contents": "the slow half\n" }),
+        ),
+        finish("The slow half is written."),
+    ]
+}
+
+/// The fast issue agent's script: three files, then a stop.
+///
+/// Longer than the slow agent's, which is what makes the unordered reconstruction's disagreement
+/// robust rather than a coin flip: under [`Free`](Ordering::Free) the slow agent reaches its second
+/// turn after a single write, and this agent demonstrably cannot have finished by then.
+fn fast_issue_script() -> Vec<ModelResponse> {
+    vec![
+        call(
+            "call_fast_one",
+            "write_file",
+            json!({ "path": "fast-1.txt", "contents": "one\n" }),
+        ),
+        call(
+            "call_fast_two",
+            "write_file",
+            json!({ "path": "fast-2.txt", "contents": "two\n" }),
+        ),
+        call(
+            "call_fast_three",
+            "write_file",
+            json!({ "path": "fast-3.txt", "contents": "three\n" }),
+        ),
+        finish("The fast half is written."),
+    ]
+}
+
+/// The capability set the race runs under: a root with the board, and one implementer profile both
+/// issues dispatch onto.
+fn board_race_set() -> GgCapabilitySet {
+    use test_cabinet_core::gg::{
+        CAPABILITY_PROJECT_MANAGEMENT, GgAgentConfig, GgCapabilityConfig, GgSubagentRef,
+        GgSubagentScope, ROOT_AGENT,
+    };
+    let mut root = GgAgentConfig {
+        model_id: MODEL.to_string(),
+        ..GgAgentConfig::root()
+    };
+    root.capabilities.push(GgCapabilityConfig {
+        params: json!({ "mergeAgent": ROOT_AGENT }),
+        ..GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT)
+    });
+    root.subagents = vec![GgSubagentRef::new(
+        ROOT_AGENT,
+        &[GgSubagentScope::Implementer],
+    )];
+    GgCapabilitySet {
+        agents: vec![root],
+        ..GgCapabilitySet::default()
+    }
+}
+
+/// Drive the two-issue race once, and hand back the record and the telemetry it emitted.
+///
+/// Asserts the record's **skew** before handing it over, because every claim either barrier test
+/// makes is vacuous without it: what has to be true is that the fast agent's inputs were all
+/// recorded *before* the slow agent's second turn, even though the slow agent was dispatched first.
+/// That is the interleaving a reconstruction cannot reach on its own, and it is the only reason
+/// there is anything for the barrier to restore.
+async fn drive_board_race(dir: &Path, session_id: &str) -> (GgReplayRecord, Vec<GgTelemetryEvent>) {
+    let capture = CapturingSink::new();
+    let emitter = Emitter::with_sink(Some(session_id.to_string()), Box::new(capture.clone()));
+    let outcome = crate::agent::run_with_seams(
+        &invocation_with(dir, session_id, board_race_set()),
+        &emitter,
+        SessionSeams::substituted(Arc::new(BoardRaceFactory), real_shell()),
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran, "the driven session launched");
+    let record = assembled_record(dir);
+
+    // The two agents the race is between, found by provenance — their ids come off the global
+    // counter and are not the thing under test.
+    let agent_for = |issue: &str| -> String {
+        record
+            .agents
+            .iter()
+            .find(|agent| {
+                matches!(&agent.origin, GgReplayAgentOrigin::IssueAttempt { issue: id, .. }
+                    if id == issue)
+            })
+            .unwrap_or_else(|| panic!("an agent was dispatched for {issue}: {:?}", record.agents))
+            .agent_id
+            .clone()
+    };
+    let slow = agent_for(SLOW_ISSUE);
+    let fast = agent_for(FAST_ISSUE);
+    let seqs = |agent: &str| -> Vec<u64> {
+        record
+            .entries
+            .iter()
+            .filter(|entry| entry.agent_id == agent)
+            .map(|entry| entry.seq)
+            .collect()
+    };
+    let (slow_seqs, fast_seqs) = (seqs(&slow), seqs(&fast));
+    assert!(
+        slow_seqs.len() >= 2 && !fast_seqs.is_empty(),
+        "both agents ran turns to interleave: slow {slow_seqs:?}, fast {fast_seqs:?}",
+    );
+    // The skew itself: the fast agent's whole recorded queue sits between the slow agent's first
+    // and second inputs. `seq` is a *completion* order, so this says exactly what it looks like —
+    // the slow agent was still waiting on its first answer for the whole of the other's run.
+    assert!(
+        fast_seqs.iter().all(|seq| *seq > slow_seqs[0]),
+        "the slow agent was dispatched first: slow {slow_seqs:?}, fast {fast_seqs:?}",
+    );
+    assert!(
+        fast_seqs.iter().all(|seq| *seq < slow_seqs[1]),
+        "and latency put the whole of the fast agent's run before its second turn: slow \
+         {slow_seqs:?}, fast {fast_seqs:?}",
+    );
+
+    (record, capture.events())
+}
+
+/// **The barrier, measured.** A record whose agents were genuinely in flight at once — and whose
+/// interleaving was produced by model latency a reconstruction removes entirely — reconstructs into
+/// the same session under [`Seq`](Ordering::Seq).
+///
+/// This is the strongest claim in the milestone, and it is only worth anything beside its
+/// [twin](without_the_barrier_a_concurrent_reconstruction_diverges_on_the_conversation) below,
+/// which reconstructs the *same* record with the ordering turned off and watches it diverge. Read
+/// together they are a measurement rather than an argument: the barrier is the difference between
+/// the two, and a claim about it that could not be turned off would be neither.
+#[tokio::test]
+async fn a_concurrent_board_record_reconstructs_faithfully_under_the_barrier() {
+    let original = TempDir::new().unwrap();
+    let (record, recorded_events) = drive_board_race(original.path(), "run-race-seq").await;
+
+    let replayed = TempDir::new().unwrap();
+    let report = Playback::new(record, replayed.path().join("tree"))
+        .run()
+        .await
+        .expect("the record is reconstructible");
+
+    assert!(
+        report.divergences.is_empty(),
+        "the barrier restored the recorded interleaving: {:#?}",
+        report.divergences,
+    );
+    assert!(report.faithful);
+    assert_eq!(
+        report.context_projection,
+        ContextProjection::project(&recorded_events),
+        "including every agent's pinned board block, which is what moves when the order does",
+    );
+}
+
+/// **The same record, with the ordering turned off** — and it is no longer the same session.
+///
+/// The mechanism is exactly the one the design predicts. A gg run renders run-global mutable state
+/// — here the board — into every agent's pinned prompt every turn. The slow agent's second turn was
+/// built, in the run, *after* the other issue finished; under [`Free`](Ordering::Free) it is built
+/// before, because a reconstruction answers both agents instantly. The recorded response is then an
+/// answer to a question this build no longer asked, and under
+/// [`Exact`](Strictness::Exact) that is fatal.
+#[tokio::test]
+async fn without_the_barrier_a_concurrent_reconstruction_diverges_on_the_conversation() {
+    let original = TempDir::new().unwrap();
+    let (record, _) = drive_board_race(original.path(), "run-race-free").await;
+
+    let replayed = TempDir::new().unwrap();
+    let report = Playback::new(record, replayed.path().join("tree"))
+        .ordering(Ordering::Free)
+        .run()
+        .await
+        .expect("the record is reconstructible either way");
+
+    assert!(
+        !report.faithful,
+        "an unordered reconstruction of a concurrent run is a session that did not happen",
+    );
+    assert!(
+        report.divergences.iter().any(|drift| drift.kind
+            == DriftKind::Fingerprint(GgFingerprintComponent::Conversation)),
+        "and it diverges on the conversation, which is where run-global prompt state lives: {:#?}",
+        report.divergences,
+    );
 }

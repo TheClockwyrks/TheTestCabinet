@@ -70,6 +70,26 @@ const GG_IDENTITY: &[&str] = &[
     "user.email=gg@test-cabinet.local",
 ];
 
+/// The author and committer **date** gg stamps its own commits with, fixed rather than taken from
+/// the clock.
+///
+/// A commit id is a hash of the tree, the parent, the identity **and the timestamps**, so a
+/// wall-clock date makes every commit gg writes a different object on every run — and gg puts a
+/// commit sha into a *prompt*: an [issue](https://docs.testcabinet.ai/gg/project-management/)
+/// review brief tells the reviewer which commit the work is measured against, so the reviewer can
+/// diff it for itself. With a clock-derived date that one line makes an issue-worktree run
+/// impossible to [reconstruct](crate::playback) faithfully, for a reason that has nothing to do
+/// with the run: the reconstruction's baseline commit differs from the recorded one whenever the
+/// two land in different seconds.
+///
+/// Fixing it costs nothing real. These are gg's own bookkeeping commits in an ephemeral container —
+/// a baseline, a worktree's work commit, a merge — and nobody reads their dates; `git log` is
+/// topological by default. What it buys is that gg's git history becomes a pure function of its
+/// content, which is what makes the v0.7.0 multi-agent paths reconstructable at all. The epoch is
+/// chosen precisely because it is obviously synthetic: a reader who notices it is meant to conclude
+/// that the date means nothing, rather than that the run happened in 1970.
+const GG_COMMIT_DATE: &str = "1970-01-01T00:00:00Z";
+
 /// Where a `git` invocation is reported for [replay capture](crate::replay), and under whose name.
 ///
 /// Threaded into every function in this module as an explicit parameter rather than reached for
@@ -88,10 +108,25 @@ const GG_IDENTITY: &[&str] = &[
 /// against: a merge that conflicted changes the run, and a speculation judge scores whatever
 /// `git diff` printed. In format v1 these bypassed tool dispatch entirely and were captured
 /// nowhere, so a run that ended in a conflict left no trace of the conflict.
+///
+/// # And why a reconstruction watches it
+///
+/// A playback re-runs every one of these for real, so it needs none of their *results* — but it
+/// does need to know **when** they happened. An [issue](https://docs.testcabinet.ai/gg/project-management/)'s accept-and-merge is a `git`
+/// sequence that moves the board, and the board is rendered into every agent's pinned prompt, so a
+/// reconstruction that let the next agent take its turn before the merge landed would build a
+/// window the run never had. That is what the
+/// [observer](crate::observer::SessionObserver::git_invoked) is for, and it is why it rides this
+/// struct rather than living beside the recorder: the two want exactly the same choke point, under
+/// exactly the same agent.
 #[derive(Clone, Default)]
 pub struct GitCapture {
     /// The run's recorder, or `None` for a capture that records nothing.
     recorder: Option<Arc<GgRecorder>>,
+    /// Who is told that an invocation finished, for the
+    /// [ordering barrier](crate::replay_inputs::ReplayInputs::await_turn)'s sake. `None` for every
+    /// run that is not a reconstruction, which is all of them but one.
+    observer: Option<Arc<dyn crate::observer::SessionObserver>>,
     /// The agent every invocation made through this capture is stamped with.
     agent_id: String,
     /// The workspace root recorded working directories are expressed relative to.
@@ -108,6 +143,18 @@ impl GitCapture {
     ) -> Self {
         Self {
             recorder: Some(recorder),
+            observer: None,
+            agent_id: agent_id.into(),
+            workspace_dir: workspace_dir.into(),
+        }
+    }
+
+    /// A capture that records nothing but still names `agent_id` — the shape a run with no recorder
+    /// takes once something other than the recorder wants to know who ran a command.
+    pub fn unrecorded(agent_id: impl Into<String>, workspace_dir: impl Into<PathBuf>) -> Self {
+        Self {
+            recorder: None,
+            observer: None,
             agent_id: agent_id.into(),
             workspace_dir: workspace_dir.into(),
         }
@@ -118,13 +165,29 @@ impl GitCapture {
         Self::default()
     }
 
+    /// The same capture, additionally telling `observer` about every invocation it sees.
+    #[must_use]
+    pub fn observed_by(mut self, observer: Arc<dyn crate::observer::SessionObserver>) -> Self {
+        self.observer = Some(observer);
+        self
+    }
+
     /// Record one finished invocation: `git <args>` run in `dir`.
     ///
     /// Called from [`git_output`], the single seam every invocation in this module goes through,
     /// so *every* command is recorded rather than the handful the callers thought to name — a
     /// `git status --porcelain` that unexpectedly reported a clean tree is exactly the kind of
     /// thing a record is opened to find.
+    ///
+    /// The [observer](crate::observer::SessionObserver::git_invoked) is told first and
+    /// unconditionally — before the recorder, and whether or not there is one — because it is the
+    /// half that has to work in a run where capture is answering a *reconstruction* rather than
+    /// writing a journal.
     fn record(&self, dir: &Path, args: &[String], output: &Output) {
+        let command = format!("git {}", args.join(" "));
+        if let Some(observer) = &self.observer {
+            observer.git_invoked(&self.agent_id, &command);
+        }
         let Some(recorder) = &self.recorder else {
             return;
         };
@@ -133,7 +196,7 @@ impl GitCapture {
         recorder.record_git(
             &self.agent_id,
             RecordedCommand {
-                command: &format!("git {}", args.join(" ")),
+                command: &command,
                 cwd: shell_cwd(&self.workspace_dir, dir),
                 // A process killed by a signal has no code; `-1` is the one value an exit status
                 // cannot otherwise take, and every consumer branches on "zero or not".
@@ -256,7 +319,17 @@ async fn git_output(
     let spawned = {
         let dir = owned_dir.clone();
         let args = args.clone();
-        task::spawn_blocking(move || Command::new("git").current_dir(dir).args(args).output())
+        task::spawn_blocking(move || {
+            Command::new("git")
+                .current_dir(dir)
+                // Set on **every** invocation rather than only on the ones that write a commit:
+                // git ignores them elsewhere, and one choke point that cannot be forgotten is worth
+                // more than a narrower application that a later commit-writing call site could miss.
+                .env("GIT_AUTHOR_DATE", GG_COMMIT_DATE)
+                .env("GIT_COMMITTER_DATE", GG_COMMIT_DATE)
+                .args(args)
+                .output()
+        })
     };
     match spawned.await {
         Ok(Ok(output)) => {

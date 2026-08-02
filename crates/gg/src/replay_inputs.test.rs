@@ -784,6 +784,45 @@ async fn a_retired_agent_deadlocks_everyone_behind_it() {
     assert!(err.to_string().contains("no agent can advance"), "{err}");
 }
 
+/// A retired agent's outstanding **`git`** is the one thing it can still owe, so a waiter behind one
+/// is *not* told the reconstruction is stuck.
+///
+/// This is not a nicety, it is what makes a concurrent board record reconstructable at all. gg's own
+/// bookkeeping outlives the loop that dispatched it by a long way: an issue is dispatched, worked,
+/// committed and **merged** under the root's name, and every one of those invocations is recorded
+/// after the root's own `finish`. Treating the root's retirement as covering them would deadlock the
+/// first issue agent that waited for the previous issue's merge — which is precisely the wait that
+/// keeps the board block in every agent's pinned prompt the run's.
+#[tokio::test]
+async fn a_retired_agents_outstanding_git_is_waited_for_rather_than_deadlocked() {
+    let inputs = ReplayInputs::new(
+        Builder::default()
+            .git("root", 0, "git merge --no-ff --no-edit gg/issue-A-1")
+            .model("agent-0", 1, "the next issue's first turn")
+            .build(),
+    )
+    .expect("indexes")
+    // Long enough that a release could only come from the merge landing, never from the ceiling.
+    .with_stall_timeout(Duration::from_secs(600));
+    // The root's *loop* is over; the merge it dispatched has not run yet.
+    inputs.retire("root");
+
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), inputs.await_turn("agent-0"))
+            .await
+            .is_err(),
+        "the merge can still happen, so the wait is real rather than provably stuck",
+    );
+
+    // The reconstruction's own (real) `git` catches up with the record's.
+    inputs.next_git("root").expect("the recorded merge");
+    inputs
+        .await_turn("agent-0")
+        .await
+        .expect("released by the merge landing");
+    assert!(inputs.stalls().is_empty(), "and not by the ceiling");
+}
+
 /// A live agent that simply never demands its recorded input is a **stall**, not a deadlock: the
 /// lowest waiter is released after the ceiling, the inputs it stepped over are abandoned, and the
 /// whole thing is reported.
@@ -863,4 +902,169 @@ async fn a_prompt_frame_does_not_gate_the_barrier() {
 
     inputs.await_turn("agent-0").await.expect("not gated");
     assert!(inputs.stalls().is_empty(), "and not by stalling either");
+}
+
+/// A category a consumer does not serve does not gate anybody.
+///
+/// The failure this guards against is the one that would have been most confusing to debug: a
+/// waiter blocks on **every** lower unserved seq, so a single entry in a category nobody consumes —
+/// a playback reproduces neither the clock nor the cancel probe — would stall every agent behind it
+/// for the whole reconstruction, half a minute at a time.
+#[tokio::test]
+async fn a_disregarded_category_stops_gating_the_barrier() {
+    let inputs = ReplayInputs::new(
+        Builder::default()
+            .git("root", 0, "git rev-parse HEAD")
+            .clock("root", 1, 5_000)
+            .probe("root", 2, false)
+            .model("agent-0", 3, "behind all three")
+            .build(),
+    )
+    .expect("indexes")
+    // Long enough that a release could only come from the gate, never from the ceiling.
+    .with_stall_timeout(Duration::from_secs(600));
+
+    inputs.disregard(&[
+        RecordedInputKind::Git,
+        RecordedInputKind::Clock,
+        RecordedInputKind::CancelProbe,
+    ]);
+
+    inputs.await_turn("agent-0").await.expect("not gated");
+    assert!(inputs.stalls().is_empty(), "and not by stalling either");
+    assert_eq!(
+        inputs.unserved(),
+        1,
+        "and the disregarded entries stop counting as inputs the reconstruction failed to demand",
+    );
+}
+
+/// The barrier can be turned **off**, which is what makes its value measurable rather than merely
+/// argued for: the same record served both ways is the only honest comparison.
+#[tokio::test]
+async fn without_the_barrier_an_input_is_served_the_moment_it_is_asked_for() {
+    let inputs = ReplayInputs::new(
+        Builder::default()
+            .model("root", 0, "never demanded")
+            .model("agent-0", 1, "would wait for it")
+            .build(),
+    )
+    .expect("indexes")
+    // Long enough that a release could only come from the barrier being off.
+    .with_stall_timeout(Duration::from_secs(600))
+    .without_barrier();
+
+    inputs.await_turn("agent-0").await.expect("not gated");
+    assert_eq!(inputs.next_model("agent-0").expect("its call").seq, 1);
+    assert!(
+        inputs.stalls().is_empty(),
+        "released by the gate, not a ceiling"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The recorded-command lookup ladder
+// ---------------------------------------------------------------------------
+
+/// Rung 1: the head of the agent's own queue, matched on the pair (command, directory).
+#[test]
+fn the_ladder_takes_the_head_when_it_matches() {
+    let inputs = impatient(
+        Builder::default()
+            .shell("root", 0, "npm run build")
+            .shell("root", 1, "npm test")
+            .build(),
+    );
+
+    let found = inputs.take_shell("root", "npm run build", &GgShellCwd::Workspace);
+    assert!(
+        matches!(&found, ShellLookup::Head(run) if run.seq == 0),
+        "{found:?}",
+    );
+    assert_eq!(inputs.unserved(), 1, "and only the head was consumed");
+}
+
+/// Rung 2: a match later in the same agent's queue answers, and everything stepped over is
+/// **consumed** — so it can neither answer an unrelated later command nor keep gating the barrier.
+#[test]
+fn the_ladder_steps_over_a_command_the_build_no_longer_runs() {
+    let inputs = impatient(
+        Builder::default()
+            .shell("root", 0, "git status")
+            .shell("root", 1, "npm run build")
+            .build(),
+    );
+
+    let found = inputs.take_shell("root", "npm run build", &GgShellCwd::Workspace);
+    match found {
+        ShellLookup::OutOfOrder { found, skipped } => {
+            assert_eq!(found.seq, 1);
+            assert_eq!(skipped.len(), 1);
+            assert_eq!(skipped[0].command, "git status");
+        }
+        other => panic!("expected an out-of-order hit, got {other:?}"),
+    }
+    assert_eq!(
+        inputs.unserved(),
+        0,
+        "both were consumed, not just the match"
+    );
+    assert!(
+        matches!(
+            inputs.take_shell("root", "git status", &GgShellCwd::Workspace),
+            ShellLookup::Miss { .. },
+        ),
+        "a stepped-over command must not still be there to answer something else",
+    );
+}
+
+/// Rung 3: another agent's queue is the safety net for an imperfect binding — and only the matched
+/// entry is taken, because the other agent has not finished and its earlier commands are still its
+/// own to ask for.
+#[test]
+fn the_ladder_crosses_to_another_agent_and_takes_only_the_match() {
+    let inputs = impatient(
+        Builder::default()
+            .shell("agent-0", 0, "npm ci")
+            .shell("agent-0", 1, "npm run build")
+            .build(),
+    );
+
+    let found = inputs.take_shell("root", "npm run build", &GgShellCwd::Workspace);
+    match found {
+        ShellLookup::CrossAgent { found, agent_id } => {
+            assert_eq!(found.seq, 1);
+            assert_eq!(agent_id, "agent-0");
+        }
+        other => panic!("expected a cross-agent hit, got {other:?}"),
+    }
+    assert!(
+        matches!(
+            inputs.take_shell("agent-0", "npm ci", &GgShellCwd::Workspace),
+            ShellLookup::Head(_),
+        ),
+        "the owning agent's earlier command is untouched",
+    );
+}
+
+/// The same command in a different directory is a **different command**: it is not matched at any
+/// rung, and the miss carries the head so a report can say what gg ran there instead.
+#[test]
+fn the_ladder_does_not_match_the_same_command_in_another_directory() {
+    let inputs = impatient(Builder::default().shell("root", 0, "npm run build").build());
+
+    let found = inputs.take_shell(
+        "root",
+        "npm run build",
+        &GgShellCwd::Relative {
+            path: "web".to_string(),
+        },
+    );
+    match found {
+        ShellLookup::Miss { head } => {
+            assert_eq!(head.expect("the head comes back").command, "npm run build");
+        }
+        other => panic!("expected a miss, got {other:?}"),
+    }
+    assert_eq!(inputs.unserved(), 1, "and a miss consumes nothing");
 }

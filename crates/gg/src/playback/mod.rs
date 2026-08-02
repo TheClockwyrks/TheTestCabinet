@@ -64,15 +64,31 @@
 //! responses carry their recorded usage, so a ceiling trips at the same turn. Reproducing a
 //! limit-hit is a feature.
 //!
-//! # What this milestone covers
+//! # Multi-agent, and the two mechanisms that make it work
 //!
-//! Single-agent playback: the recorded [client factory](client::RecordedClientFactory), the
-//! [drift matrix](drift), the workspace guard, and the report. The multi-agent milestone adds the
-//! recorded shell's full lookup ladder with per-agent queues, tool re-execution *compared* against
-//! the record, the binding table across all five creation paths, the `seq` ordering barrier, and the
-//! `tcab gg-playback` front end. Where a seam here is narrower than the design, it says so at the
-//! seam rather than here.
+//! A concurrent gg run is the case a playback is *for* and the case it is hardest at, because two
+//! things about a reconstruction are legitimately different from the run: which live id each agent
+//! gets, and when each agent reaches its turn.
+//!
+//! - **Ids move**, so agents are bound through their [provenance](binding) — a spawner and an
+//!   ordinal, a predecessor and an ordinal, or board state. Three of the six creation paths
+//!   (an issue attempt, a reviewer, a merge agent) are dispatched by gg itself with no parent at
+//!   all, which is why board state had to be part of the vocabulary.
+//! - **Timing moves**, so recorded inputs are served under the [ordering barrier](Ordering::Seq).
+//!   A gg run renders run-global mutable state — the board, inter-agent messages, collected
+//!   subagent results — into every agent's pinned prompt every turn, so an agent that reaches its
+//!   turn "early" would build a window the run never had, and the recorded answer would no longer
+//!   answer it.
+//!
+//! Everything else is either substituted ([the model](client), [the shell](shell)) or performed for
+//! real and *compared*: every non-shell tool is re-executed — which is what builds the workspace the
+//! next call reads — and then the [recorded outcome is preferred](binding), which is what keeps the
+//! reconstructed context window equal to the recorded one.
+//!
+//! What is **not** here is the `tcab gg-playback` front end and the committed real-session fixture
+//! suite. Where a seam is narrower than the design, it says so at the seam rather than here.
 
+pub mod binding;
 pub mod client;
 pub mod drift;
 pub mod projection;
@@ -88,15 +104,17 @@ use test_cabinet_core::MODALITY_IMAGE;
 use test_cabinet_core::gg::{
     GgAgentStatus, GgInvocation, GgSessionSummary, GgTelemetryEvent, GgTelemetryKind,
 };
-use test_cabinet_core::gg_replay::{GgReplayEntryKind, GgReplayRecord};
+use test_cabinet_core::gg_replay::GgReplayRecord;
 
 use crate::agent::{ROOT_AGENT_ID, SessionOutcome, SessionSeams, is_failure_status};
+use crate::playback::binding::AgentBindings;
 use crate::playback::client::RecordedClientFactory;
 use crate::playback::drift::{Drift, DriftKind, DriftLedger, Strictness};
 use crate::playback::projection::ContextProjection;
-use crate::playback::shell::RecordedShellRunner;
-use crate::replay_inputs::{ReplayError, ReplayInputs};
+use crate::playback::shell::{MissPolicy, RecordedShellRunner};
+use crate::replay_inputs::{RecordedInputKind, ReplayError, ReplayInputs};
 use crate::telemetry::{CapturingSink, Emitter, EventSink};
+use crate::tools::real_shell;
 
 /// The modality token every model accepts, recorded alongside [`MODALITY_IMAGE`] so a
 /// reconstruction's declared list is a list rather than a hole.
@@ -156,6 +174,35 @@ pub enum PlaybackError {
     Io(String),
 }
 
+/// Whether a reconstruction serves recorded inputs in the order the run consumed them.
+///
+/// A gg run holds **run-global mutable state that is rendered into every agent's pinned prompt every
+/// turn** — the board, inter-agent messages, collected subagent results. So when
+/// agent A's issue took eleven minutes of installing in the real run and finishes instantly under a
+/// reconstruction, which is the entire point of a playback, the *root's* turn-N conversation
+/// contains a different board block than the recorded one. Under
+/// [`Exact`](Strictness::Exact) strictness that is fatal, which would make `Exact` unreachable for
+/// any concurrent multi-agent run.
+///
+/// [`Seq`](Self::Seq) is the answer, and it uses something the record already has: a **globally
+/// monotonic `seq` across all agents**, minted precisely so the interleaving is reconstructable.
+/// The real scheduler still runs and every agent is still driven concurrently — what is constrained
+/// is only the order in which recorded inputs are handed back.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Ordering {
+    /// Serve a recorded input only once every recorded input below it has been served. The default,
+    /// and the only setting a [faithful](PlaybackReport::faithful) reconstruction is possible under
+    /// for a concurrent run.
+    #[default]
+    Seq,
+    /// Serve every recorded input the moment it is asked for.
+    ///
+    /// Deliberately available, because a claim about the barrier that could not be turned off would
+    /// be an argument rather than a measurement: run a two-issue board record both ways and the
+    /// unordered reconstruction reports the conversation drift the ordered one does not.
+    Free,
+}
+
 /// A playback, configured and not yet run.
 ///
 /// A builder rather than a function with six parameters, because the two that matter — the record
@@ -167,6 +214,10 @@ pub struct Playback {
     workspace: PathBuf,
     /// How much of a recorded request a live one must still match.
     strictness: Strictness,
+    /// What a command line the record has no answer for gets.
+    miss: MissPolicy,
+    /// Whether recorded inputs are served in the order the run consumed them.
+    ordering: Ordering,
     /// Where the reconstruction's telemetry goes in *addition* to the report's own capture — a
     /// CLI's stdout. `None` keeps the stream in the report alone.
     sink: Option<Box<dyn EventSink>>,
@@ -180,6 +231,8 @@ impl Playback {
             record: record.into(),
             workspace: workspace.into(),
             strictness: Strictness::Exact,
+            miss: MissPolicy::default(),
+            ordering: Ordering::default(),
             sink: None,
         }
     }
@@ -188,6 +241,28 @@ impl Playback {
     #[must_use]
     pub fn strictness(mut self, strictness: Strictness) -> Self {
         self.strictness = strictness;
+        self
+    }
+
+    /// Answer a command line the record has no answer for under `miss` instead of
+    /// [synthesizing](MissPolicy::Synthesize) a failure for it.
+    ///
+    /// [`Execute`](MissPolicy::Execute) is the one setting that gives a reconstruction a way to
+    /// start a process at all, which is why it is a call rather than an inference: the whole value
+    /// of a playback is that it costs nothing and touches nothing.
+    #[must_use]
+    pub fn miss_policy(mut self, miss: MissPolicy) -> Self {
+        self.miss = miss;
+        self
+    }
+
+    /// Serve recorded inputs under `ordering` instead of in the order the run consumed them.
+    ///
+    /// [`Free`](Ordering::Free) is a measurement instrument, not a convenience: it is what makes
+    /// the barrier's value observable rather than merely argued for. See [`Ordering`].
+    #[must_use]
+    pub fn ordering(mut self, ordering: Ordering) -> Self {
+        self.ordering = ordering;
         self
     }
 
@@ -219,10 +294,27 @@ impl Playback {
         // The index parses every pinned entry up front, so a malformed or dangling record is
         // refused here rather than halfway through a reconstruction that has already emitted
         // telemetry for a session it cannot finish.
-        let inputs = Arc::new(ReplayInputs::new(Arc::clone(&self.record))?);
+        let inputs = ReplayInputs::new(Arc::clone(&self.record))?;
+        let inputs = Arc::new(match self.ordering {
+            Ordering::Seq => inputs,
+            Ordering::Free => inputs.without_barrier(),
+        });
+        // The two categories a playback neither serves nor performs, dropped from the
+        // [barrier](ReplayInputs::await_turn) before anything waits on one: a playback takes
+        // seconds, gg has no clock seam, and a recorded cancellation surfaces instead as the
+        // record's turns running out. Left in, a waiter — which blocks on *every* lower unserved
+        // seq — would sit behind entries nobody will ever demand.
+        //
+        // `git` is deliberately **not** among them, though a playback does not serve it either. It
+        // is re-run for real, and each real invocation retires the recorded one it corresponds to
+        // through the [observer](binding::AgentBindings::git_invoked) — which is what puts an
+        // issue's accept-and-merge, and therefore the board block every agent's pinned prompt is
+        // rendered from, back in the recorded order.
+        inputs.disregard(&[RecordedInputKind::Clock, RecordedInputKind::CancelProbe]);
         prepare_workspace(&self.workspace)?;
 
         let ledger = Arc::new(DriftLedger::new());
+        let bindings = Arc::new(AgentBindings::new(Arc::clone(&inputs), Arc::clone(&ledger)));
         let provided_files = seed_workspace(&self.record, &self.workspace, &ledger)?;
         let invocation = self.invocation(provided_files, &ledger);
 
@@ -261,21 +353,31 @@ impl Playback {
             SessionSeams::substituted(
                 Arc::new(RecordedClientFactory::new(
                     Arc::clone(&inputs),
+                    Arc::clone(&bindings),
                     Arc::clone(&ledger),
                     self.strictness,
                 )),
-                Arc::new(RecordedShellRunner::new(
-                    Arc::clone(&inputs),
-                    Arc::clone(&ledger),
-                    self.workspace.clone(),
-                )),
-            ),
+                Arc::new(
+                    RecordedShellRunner::new(
+                        Arc::clone(&inputs),
+                        Arc::clone(&bindings),
+                        Arc::clone(&ledger),
+                        self.workspace.clone(),
+                    )
+                    .miss_policy(self.miss, real_shell()),
+                ),
+            )
+            // The binding table is also the session's observer: it is told about each agent as it
+            // is created (the one moment a live id and a provenance are both in hand), about each
+            // agent's ending (which is what makes a stalled barrier a provable deadlock), and about
+            // each tool call's final outcome (which it compares against the record).
+            .observed_by(Arc::clone(&bindings) as Arc<dyn crate::observer::SessionObserver>),
         )
         .await;
 
         let events = capture.events();
-        let agents = compare_terminals(&self.record, &events, &ledger);
-        report_undemanded(&self.record, &inputs, &ledger);
+        let agents = compare_terminals(&self.record, &events, &bindings, &ledger);
+        report_undemanded(&inputs, &ledger);
 
         Ok(PlaybackReport::new(
             self.record.session_id.clone(),
@@ -381,11 +483,12 @@ impl PlaybackReport {
     /// > A reconstruction is faithful **iff** it ran under [`Exact`](Strictness::Exact) strictness,
     /// > was not stopped early, and recorded **no** divergence of any kind.
     ///
-    /// The definition in the design also names the ordering barrier and record-preferring tool
-    /// comparison, which are the multi-agent milestone's and are not yet observations this build
-    /// makes. They join the same ledger when they land, and this computation does not change: a
-    /// `true` here means "no divergence *this build can observe*", which is why every seam that
-    /// cannot yet observe something says so at the seam.
+    /// The design's definition also names the [ordering barrier](Ordering) and the
+    /// record-preferring [tool comparison](binding), and both are now observations this build
+    /// makes: a reconstruction run under [`Free`](Ordering::Free) ordering cannot be faithful
+    /// because the drift it causes lands in this same ledger, and a re-executed tool that answered
+    /// differently lands there too. The computation did not have to change to absorb either, which
+    /// is the point of there being exactly one place a divergence is written down.
     #[allow(clippy::too_many_arguments)]
     fn new(
         session_id: String,
@@ -629,13 +732,16 @@ fn catalog_window(
 /// terminal row, because the status a reconstruction is compared against is as meaningful for one
 /// agent as for a fleet.
 ///
-/// Agents are matched by **id**, which is exact for the root and for every agent whose id a
-/// reconstruction reproduces. A subagent's id comes off a global counter, so a record whose
-/// reconstruction assigns them differently reports its subagents as not reconstructed until the
-/// multi-agent milestone's binding table maps live ids back to recorded ones.
+/// Agents are matched through the [binding table](AgentBindings), never by id. A subagent's id comes
+/// off a global counter in the order agents reach their spawn and a playback removes model latency
+/// entirely, so the reconstruction's ids are legitimately different ones — matching on them would
+/// report every subagent of every multi-agent record as never reconstructed. The root is the one
+/// agent whose id a reconstruction does reproduce, and it falls out of the same lookup: its
+/// [origin](test_cabinet_core::gg_replay::GgReplayAgentOrigin::Root) binds it like any other.
 fn compare_terminals(
     record: &GgReplayRecord,
     events: &[GgTelemetryEvent],
+    bindings: &AgentBindings,
     ledger: &DriftLedger,
 ) -> Vec<AgentOutcome> {
     let mut reconstructed: BTreeMap<String, GgAgentStatus> = BTreeMap::new();
@@ -664,11 +770,18 @@ fn compare_terminals(
 
     let mut outcomes = Vec::new();
     for agent in &record.agents {
+        // The live agent this recorded row was bound to, and therefore the id its telemetry was
+        // emitted under. `None` means the reconstruction never created an agent with this row's
+        // provenance at all.
+        let live = bindings.live_for_recorded(&agent.agent_id);
         let outcome = AgentOutcome {
             agent_id: agent.agent_id.clone(),
             profile: agent.profile.clone(),
             recorded: agent.terminal_status,
-            reconstructed: reconstructed.get(&agent.agent_id).copied(),
+            reconstructed: live
+                .as_deref()
+                .and_then(|live| reconstructed.get(live))
+                .copied(),
         };
         match (outcome.recorded, outcome.reconstructed) {
             // An agent that never ended in the recorded run has nothing to be compared against: a
@@ -695,37 +808,19 @@ fn compare_terminals(
     outcomes
 }
 
-/// Report the recorded inputs **this playback's seams serve** that were never demanded.
+/// Report the recorded inputs the reconstruction never demanded.
 ///
-/// Scoped to the model and shell categories deliberately, and the scope is the honest statement of
-/// what this milestone reconstructs. The other four are not undemanded so much as unclaimed:
+/// One subtraction-free count, because the three categories a playback does not serve — `git`,
+/// which runs for real, and the clock and cancel probe, which are explicitly not reproduced — were
+/// [disregarded](ReplayInputs::disregard) before the first turn. What is left in
+/// [`unserved`](ReplayInputs::unserved) is therefore exactly what it claims to be: model calls,
+/// commands and tool outcomes the record pinned and this build's run did not ask for.
 ///
-/// - **tool results** are re-executed for real here and only *compared* against the record by the
-///   multi-agent milestone, which is the milestone whose seam consumes that queue;
-/// - **git** invocations run for real, by design — they are gg's own bookkeeping and the hardest
-///   paths to test any other way;
-/// - **the clock and the cancel probe** are explicitly not reproduced: a playback takes seconds and
-///   has no clock seam, which is why a recorded deadline surfaces as the turns running out instead.
-///
-/// Counting any of those would put a divergence on every reconstruction and make the finding
-/// meaningless. They are reached by subtraction rather than by a per-category cursor because the
-/// [shared index](ReplayInputs) counts unserved inputs once, for every consumer, and a second
-/// counter that could disagree with it would be worse than arithmetic.
-fn report_undemanded(record: &GgReplayRecord, inputs: &ReplayInputs, ledger: &DriftLedger) {
-    let never_served = record
-        .entries
-        .iter()
-        .filter(|entry| {
-            matches!(
-                entry.kind,
-                GgReplayEntryKind::ToolResult { .. }
-                    | GgReplayEntryKind::Git { .. }
-                    | GgReplayEntryKind::Clock { .. }
-                    | GgReplayEntryKind::CancelProbe { .. }
-            )
-        })
-        .count();
-    let undemanded = inputs.unserved().saturating_sub(never_served);
+/// Keeping the arithmetic in one place matters more than it looks. The predecessor of this
+/// function subtracted a per-category count computed from the record, which meant two counters that
+/// could disagree — and the one that was wrong would be the one nobody looked at.
+fn report_undemanded(inputs: &ReplayInputs, ledger: &DriftLedger) {
+    let undemanded = inputs.unserved();
     if undemanded == 0 {
         return;
     }
@@ -733,8 +828,8 @@ fn report_undemanded(record: &GgReplayRecord, inputs: &ReplayInputs, ledger: &Dr
         DriftKind::UnservedInputs,
         "",
         format!(
-            "{undemanded} recorded model/shell input(s) were never demanded — the record pinned \
-             inputs this build's run did not ask for"
+            "{undemanded} recorded model/shell/tool input(s) were never demanded — the record \
+             pinned inputs this build's run did not ask for"
         ),
     ));
 }

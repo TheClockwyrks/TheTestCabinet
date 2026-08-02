@@ -192,7 +192,7 @@ async fn run_validation_passes_when_all_commands_succeed() {
         ValidationCommand::from_value(&json!({ "command": "exit 0" })).unwrap(),
     ];
     assert!(
-        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter(), None)
+        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter())
             .await
             .is_none()
     );
@@ -210,7 +210,7 @@ async fn run_validation_reports_first_failure() {
         // Never reached — the batch is fail-fast.
         ValidationCommand::from_value(&json!("echo unreached")).unwrap(),
     ];
-    let feedback = run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter(), None)
+    let feedback = run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter())
         .await
         .expect("a failing command rejects the completion");
     assert!(
@@ -239,7 +239,7 @@ async fn run_validation_defaults_cwd_to_workspace() {
     let ctx = ToolContext::new(dir.path());
     let commands = vec![ValidationCommand::from_value(&json!("test -f marker.txt")).unwrap()];
     assert!(
-        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter(), None)
+        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter())
             .await
             .is_none()
     );
@@ -257,7 +257,7 @@ async fn run_validation_runs_in_declared_cwd() {
     // In the workspace root the marker is absent (fails); in `sub` it is present (passes).
     let at_root = vec![ValidationCommand::from_value(&json!("test -f inner.txt")).unwrap()];
     assert!(
-        run_validation(&at_root, &ctx, &OffloadPolicy::Inline, &emitter(), None)
+        run_validation(&at_root, &ctx, &OffloadPolicy::Inline, &emitter())
             .await
             .is_some()
     );
@@ -267,7 +267,7 @@ async fn run_validation_runs_in_declared_cwd() {
             .unwrap(),
     ];
     assert!(
-        run_validation(&in_sub, &ctx, &OffloadPolicy::Inline, &emitter(), None)
+        run_validation(&in_sub, &ctx, &OffloadPolicy::Inline, &emitter())
             .await
             .is_none()
     );
@@ -287,16 +287,29 @@ async fn a_validation_command_is_recorded_with_its_origin_cwd_and_streams() {
     let dir = TempDir::new().unwrap();
     let sub = dir.path().join("web");
     std::fs::create_dir(&sub).unwrap();
-    let ctx = ToolContext::new(dir.path());
     let journal = TempDir::new().unwrap();
-    let recorder = crate::replay::GgRecorder::start(
-        &journal.path().join("replay.ndjson"),
-        "run_1",
-        &serde_json::from_value(json!({})).unwrap(),
-        test_cabinet_core::gg_replay::GgReplayFidelity::Standard,
-        None,
-    )
-    .expect("the journal opens");
+    let recorder = std::sync::Arc::new(
+        crate::replay::GgRecorder::start(
+            &journal.path().join("replay.ndjson"),
+            "run_1",
+            &serde_json::from_value(json!({})).unwrap(),
+            test_cabinet_core::gg_replay::GgReplayFidelity::Standard,
+            None,
+        )
+        .expect("the journal opens"),
+    );
+    // Capture happens at the seam now, not at this call site: the context carries a recording
+    // runner rooted at the agent's own workspace, which is what makes a validation command's
+    // declared `cwd` read back relative to the agent rather than to wherever it ran.
+    let ctx = ToolContext::new(dir.path())
+        .with_agent("root")
+        .with_shell(std::sync::Arc::new(
+            crate::replay::RecordingShellRunner::new(
+                crate::tools::real_shell(),
+                std::sync::Arc::clone(&recorder),
+                dir.path(),
+            ),
+        ));
 
     let commands = vec![
         ValidationCommand::from_value(
@@ -305,14 +318,7 @@ async fn a_validation_command_is_recorded_with_its_origin_cwd_and_streams() {
         .unwrap(),
         ValidationCommand::from_value(&json!("echo boom && exit 3")).unwrap(),
     ];
-    let feedback = run_validation(
-        &commands,
-        &ctx,
-        &OffloadPolicy::Inline,
-        &emitter(),
-        Some((&recorder, "root")),
-    )
-    .await;
+    let feedback = run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter()).await;
     assert!(feedback.is_some(), "the second command fails the gate");
     recorder.finish();
 
@@ -374,7 +380,7 @@ async fn validation_commands_run_through_the_calling_agent_s_shell() {
             .unwrap(),
     ];
     assert!(
-        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter(), None)
+        run_validation(&commands, &ctx, &OffloadPolicy::Inline, &emitter())
             .await
             .is_none(),
         "the stub answers both commands successfully"

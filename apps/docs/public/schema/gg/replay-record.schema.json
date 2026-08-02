@@ -141,7 +141,7 @@
           "description": "Dispatched to implement a board [issue](crate::gg::GgBoardIssue).",
           "properties": {
             "attempt": {
-              "description": "Which attempt at that issue this is — a function of board state, not of the\nagent counter.",
+              "description": "**Which dispatch of that issue this agent is** — 0 for the first, 1 for the\nnext, and so on — a function of board state, not of the agent counter.\n\nEvery dispatch, not only every *retry*. The distinction is load-bearing and was\nlearned the hard way: a review that requests changes re-dispatches the issue to a\nfresh agent while deliberately **not** charging the retry budget (rework asked\nfor by a reviewer is not a failed attempt), so keying on the retry count gave two\ndifferent agents one identical origin — and a reconstruction binding on\nprovenance would then serve both of them the first one's turns.",
               "format": "uint32",
               "minimum": 0,
               "type": "integer"
@@ -209,7 +209,7 @@
       ]
     },
     "GgReplayBlob": {
-      "description": "One image in the [blob pool](GgReplayRecord::blobs).\n\nThe catastrophic case v1 had no answer for: a view's base64 payload was re-serialized\non every turn it survived, so one 500 KB PNG cost ~67 MB across 100 turns. Pooled, it\ncosts 500 KB once, flat.",
+      "description": "One binary payload in the [blob pool](GgReplayRecord::blobs).\n\nImages are what the pool was built for and are most of what it holds — the catastrophic\ncase v1 had no answer for was a view's base64 payload being re-serialized on every turn\nit survived, so one 500 KB PNG cost ~67 MB across 100 turns; pooled, it costs 500 KB\nonce, flat. But it is a pool of *bytes*, not of images: the\n[seed](GgReplaySeed::provided_files) stores every provided file here too, whatever its\ntype, which is what makes an empty directory plus a record a runnable session. A seeded\nfile that is an image and was also sent to the model dedupes against it exactly, because\nthe pool is keyed by content.",
       "properties": {
         "bytes": {
           "default": 0,

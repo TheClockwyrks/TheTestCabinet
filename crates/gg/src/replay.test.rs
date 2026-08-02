@@ -1808,3 +1808,149 @@ fn the_deadline_clock_is_recorded_at_standard_fidelity_too() {
             .any(|entry| matches!(entry.kind, GgReplayEntryKind::Clock { .. })),
     );
 }
+
+// ---------------------------------------------------------------------------
+// The shell decorator
+// ---------------------------------------------------------------------------
+
+/// Every one of gg's three command paths reaches the record, under the origin the caller stamped.
+///
+/// Closing this gap is what made the recorded shell possible at all: for the whole of format v2's
+/// first milestones only the completion gate's commands were captured, because it was the only call
+/// site that happened to hold a recorder — so a record of a session that used the `shell` tool had
+/// no answer for a single one of its commands, and every one of them replayed as a miss.
+#[tokio::test]
+async fn the_shell_decorator_records_every_command_path_under_its_own_origin() {
+    let (dir, recorder) = recorder_in(None);
+    let recorder = Arc::new(recorder);
+    let runner = RecordingShellRunner::new(
+        crate::tools::real_shell(),
+        Arc::clone(&recorder),
+        dir.path(),
+    );
+
+    for (origin, command) in [
+        (GgShellOrigin::Tool, "printf tool"),
+        (GgShellOrigin::Program, "printf program"),
+        (GgShellOrigin::CompletionValidation, "printf gate"),
+    ] {
+        runner
+            .run(ShellRequest {
+                command: command.to_string(),
+                cwd: dir.path().to_path_buf(),
+                timeout: std::time::Duration::from_secs(30),
+                agent_id: "root".to_string(),
+                origin,
+            })
+            .await;
+    }
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let recorded: Vec<(&GgShellOrigin, &str)> = entries(&lines)
+        .iter()
+        .filter_map(|entry| match &entry.kind {
+            GgReplayEntryKind::Shell { origin, command } => {
+                Some((origin, command.command.as_str()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        recorded,
+        vec![
+            (&GgShellOrigin::Tool, "printf tool"),
+            (&GgShellOrigin::Program, "printf program"),
+            (&GgShellOrigin::CompletionValidation, "printf gate"),
+        ],
+    );
+}
+
+/// The decorator measures a command's directory against the **agent's** root, and pins what the
+/// process actually did.
+///
+/// The root it measures against is the whole reason there is one of these per agent rather than one
+/// per run: an agent working in an [issue worktree](crate::board) has its own, and a command it ran
+/// in `web/` has to read back as `web/` rather than as `worktrees/AUTH-1/web/` — otherwise the same
+/// command issued by two agents records as two different commands and a reconstruction matches
+/// neither.
+#[tokio::test]
+async fn the_shell_decorator_relativizes_against_the_agents_own_root() {
+    let (dir, recorder) = recorder_in(None);
+    let agent_root = dir.path().join("worktrees").join("AUTH-1");
+    std::fs::create_dir_all(agent_root.join("web")).expect("the agent's tree");
+    let recorder = Arc::new(recorder);
+    let runner = RecordingShellRunner::new(
+        crate::tools::real_shell(),
+        Arc::clone(&recorder),
+        &agent_root,
+    );
+
+    let execution = runner
+        .run(ShellRequest {
+            command: "printf built; printf oops >&2; exit 4".to_string(),
+            cwd: agent_root.join("web"),
+            timeout: std::time::Duration::from_secs(30),
+            agent_id: "agent-1".to_string(),
+            origin: GgShellOrigin::Tool,
+        })
+        .await;
+    assert_eq!(
+        execution.stdout, "built",
+        "and it passes the result through"
+    );
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let entries = entries(&lines);
+    let Some(GgReplayEntryKind::Shell { command, .. }) =
+        entries.iter().map(|entry| &entry.kind).next()
+    else {
+        panic!("the command was recorded: {entries:?}");
+    };
+    assert_eq!(
+        command.cwd,
+        GgShellCwd::Relative {
+            path: "web".to_string()
+        },
+        "relative to the agent's root, not to the run's",
+    );
+    assert_eq!(command.exit_code, 4);
+    assert_eq!(entries[0].agent_id, "agent-1");
+}
+
+/// A command that never started is still recorded, as exit `-1` with empty streams: the record's
+/// field is a plain `i32` and every consumer of it branches on "zero or not", so what a
+/// reconstruction needs from it is that the command did not succeed.
+#[tokio::test]
+async fn a_command_that_never_started_is_still_recorded() {
+    let (dir, recorder) = recorder_in(None);
+    let recorder = Arc::new(recorder);
+    let runner = RecordingShellRunner::new(
+        crate::tools::real_shell(),
+        Arc::clone(&recorder),
+        dir.path(),
+    );
+
+    let execution = runner
+        .run(ShellRequest {
+            command: "printf nope".to_string(),
+            // A directory that does not exist: `sh` cannot be spawned there.
+            cwd: dir.path().join("no-such-directory"),
+            timeout: std::time::Duration::from_secs(30),
+            agent_id: "root".to_string(),
+            origin: GgShellOrigin::Tool,
+        })
+        .await;
+    assert!(matches!(execution.status, ShellStatus::LaunchFailed { .. }));
+    recorder.finish();
+
+    let lines = journal(&dir);
+    let entries = entries(&lines);
+    let Some(GgReplayEntryKind::Shell { command, .. }) =
+        entries.iter().map(|entry| &entry.kind).next()
+    else {
+        panic!("a command that never ran is still an input the run consumed: {entries:?}");
+    };
+    assert_eq!(command.exit_code, -1);
+}

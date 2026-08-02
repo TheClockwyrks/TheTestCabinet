@@ -39,6 +39,7 @@ use std::time::Duration;
 use tokio::runtime::Handle;
 
 use test_cabinet_core::gg::GgSubagentRef;
+use test_cabinet_core::gg_replay::GgShellOrigin;
 
 use crate::ending::Ending;
 use crate::sandbox::{ToolApi, WorkflowStageInput};
@@ -713,6 +714,11 @@ pub(super) struct CodeTurn<'a> {
     pub(super) emitter: &'a Emitter,
     /// The replay recorder, when the capability is on.
     pub(super) replay: Option<&'a Arc<GgRecorder>>,
+    /// The session's [observer](crate::observer::SessionObserver), when one is watching — a
+    /// [playback](crate::playback)'s, and nothing else. A program's composed calls reach it at the
+    /// same servicing tail the recorder does, so a reconstruction compares a program's tool
+    /// outcomes exactly as it compares a tool-calling turn's.
+    pub(super) observer: Option<&'a Arc<dyn SessionObserver>>,
     /// Whether `speculate` is routed through the best-of-K routine this run.
     pub(super) speculative_active: bool,
     /// The [compaction](crate::compaction) the loop is waiting for this agent to perform, when one
@@ -861,6 +867,7 @@ async fn run_code_program(
         amc: turn.amc.clone(),
         emitter: turn.emitter.clone(),
         replay: turn.replay.cloned(),
+        observer: turn.observer.cloned(),
         handle: Handle::current(),
         speculative_active: turn.speculative_active,
         pending_compaction: turn.pending_compaction,
@@ -1052,6 +1059,9 @@ pub(super) struct LoopToolApi {
     amc: AmcSetup,
     emitter: Emitter,
     replay: Option<Arc<GgRecorder>>,
+    /// The session's observer, when one is watching. Cloned in from the turn so a program's
+    /// composed calls are compared against the record exactly as a native call's are.
+    observer: Option<Arc<dyn SessionObserver>>,
     handle: Handle,
     speculative_active: bool,
     pending_compaction: Option<PendingCompaction>,
@@ -1161,6 +1171,18 @@ impl LoopToolApi {
         }
         if let Some(recorder) = &self.replay {
             recorder.record_tool_result(&self.spawner.id, &call, &outcome);
+        }
+        // The same comparison the native path makes, at the same point in the tail. `block_on` is
+        // how a program reaches anything async at all — it runs on a `spawn_blocking` thread, so
+        // parking it waits on the runtime rather than wedging it — which is exactly how its
+        // `system.shell(…)` already reaches the shell seam.
+        let mut outcome = outcome;
+        if let Some(observer) = &self.observer {
+            self.handle.clone().block_on(observer.tool_completed(
+                &self.spawner.id,
+                &call,
+                &mut outcome,
+            ));
         }
         // Every call made while a compaction is in flight is counted, and every one that did not
         // succeed — a refusal included, since a refusal is a call that did not run — is counted as a
@@ -1367,6 +1389,9 @@ impl ToolApi for LoopToolApi {
                     timeout,
                     &api.shell_offload,
                     &api.tool_ctx,
+                    // The one place a program's command line is distinguishable from a `shell`
+                    // tool call by the time it reaches the seam, so the path is stamped here.
+                    GgShellOrigin::Program,
                 ))
             },
         )

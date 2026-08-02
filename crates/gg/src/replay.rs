@@ -63,10 +63,16 @@
 //!   [`GgRecorder::record_prompt_frame`]. The recorder deliberately does **not** thread through
 //!   the [telemetry emitter](crate::telemetry) to get there: telemetry is a summary stream and
 //!   stays unaware of replay.
-//! - **gg's own subprocesses** are captured at their own choke points: every
-//!   [`git`](crate::git) invocation at `git_output`, through a [`GitCapture`](crate::git::GitCapture),
-//!   and a [completion gate's](crate::completion) validation commands, which run `sh -c` but never
-//!   reach tool dispatch and so were captured nowhere at all before.
+//! - **Command lines** are captured by wrapping the [`ShellRunner`] in a
+//!   [`RecordingShellRunner`]: all three paths that reach `sh -c` — the
+//!   [`shell`](crate::tools::SHELL_TOOL) tool, a [responses-as-code](crate::sandbox) program's
+//!   `system.shell(…)` and the [completion gate's](crate::completion) validation commands — go
+//!   through that one seam, and the [origin](ShellRequest::origin) the caller stamped says which.
+//!   Only the third of them was captured before, so a record of a session that used the shell tool
+//!   had no answer for a single one of its commands.
+//! - **gg's own `git` subprocesses** are captured at their own choke point, every
+//!   [`git`](crate::git) invocation at `git_output`, through a
+//!   [`GitCapture`](crate::git::GitCapture).
 //! - **The turn-boundary probes** — the cancel file and the wall-clock deadline — are recorded
 //!   where the loop reads them, because both can end the session and neither is derivable from
 //!   anything else the record holds.
@@ -109,7 +115,10 @@ use test_cabinet_core::gg_replay_journal::{GgJournalInterner, GgJournalLine};
 
 use crate::context::{PromptItem, PromptSlot, Retention};
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
-use crate::tools::{READ_FILE_CAP, ToolData, ToolOutcome, sniff_image};
+use crate::tools::{
+    READ_FILE_CAP, ShellExecution, ShellRequest, ShellRunner, ShellStatus, ToolData, ToolOutcome,
+    sniff_image,
+};
 
 /// A standard capture must keep whole whatever the model was shown whole, and the largest such
 /// payload gg produces is a whole-file `read_file`. So the record's tool ceiling has to cover the
@@ -1340,6 +1349,108 @@ impl ModelClient for RecordingClient {
 
     fn model_id(&self) -> &str {
         self.inner.model_id()
+    }
+}
+
+/// A [`ShellRunner`] decorator that streams every command line an agent reaches into a
+/// [`GgRecorder`] — the **shell** half of capture, the exact counterpart of
+/// [`RecordingClient`].
+///
+/// # Why this exists at the seam rather than at the three call sites
+///
+/// Three paths reach a command line — the [`shell`](crate::tools::SHELL_TOOL) tool, a
+/// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and the
+/// [completion](crate::completion) gate's validation commands — and for the whole of format v2's
+/// first milestones only the third of them was recorded, because it was the only one with a call
+/// site that happened to hold the recorder. A record of a session that used the shell tool
+/// therefore had no answer for a single one of its commands, and a
+/// [playback](crate::playback) of it reported every command as a miss.
+///
+/// The seam is where all three meet, so the capture belongs here: one decorator, and the
+/// [origin](ShellRequest::origin) the caller stamped says which path it came from. Recording at the
+/// seam also means what is pinned is what the *process* did, before the
+/// [output policy](crate::tools::OffloadPolicy) merged the streams and added gg's notes — which is
+/// the right side of that line, because a reconstruction re-applies this build's presentation to
+/// the recorded bytes.
+///
+/// # The workspace it measures against is the **agent's**
+///
+/// Not the run's. An agent working in an [issue worktree](crate::board) has its own root, and a
+/// command it ran in `web/` has to read back as `web/` rather than as
+/// `worktrees/AUTH-1/web/` — otherwise the same command issued by the root and by an issue agent
+/// records as two different commands, and a reconstruction matches neither. So gg builds one of
+/// these per agent, rooted where that agent is, and a command a
+/// [validation](crate::completion) gate ran somewhere else is relativized against the agent's root
+/// exactly as its own [`ToolContext`](crate::tools::ToolContext) was derived from it.
+pub struct RecordingShellRunner {
+    /// The runner that actually answers — [`RealShellRunner`](crate::tools::real_shell) in a live
+    /// run, and a [playback](crate::playback)'s recorded runner when a reconstruction is
+    /// re-recording itself.
+    inner: std::sync::Arc<dyn ShellRunner>,
+    /// The shared recorder every command is streamed into.
+    recorder: std::sync::Arc<GgRecorder>,
+    /// The **agent's** workspace root, which a recorded working directory is expressed relative to.
+    workspace: std::path::PathBuf,
+}
+
+/// Printed as its name alone: a [`ToolContext`](crate::tools::ToolContext) carrying a runner has to
+/// stay printable (several tool errors rely on it), and neither the wrapped runner nor the recorder
+/// has anything a reader of one of those errors wants.
+impl std::fmt::Debug for RecordingShellRunner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RecordingShellRunner")
+            .field("workspace", &self.workspace)
+            .finish_non_exhaustive()
+    }
+}
+
+impl RecordingShellRunner {
+    /// Wrap `inner` so every command it runs is recorded into `recorder`, with working directories
+    /// measured against `workspace` — the calling agent's own root.
+    pub fn new(
+        inner: std::sync::Arc<dyn ShellRunner>,
+        recorder: std::sync::Arc<GgRecorder>,
+        workspace: impl Into<std::path::PathBuf>,
+    ) -> Self {
+        Self {
+            inner,
+            recorder,
+            workspace: workspace.into(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl ShellRunner for RecordingShellRunner {
+    /// Run the command, then record what it did.
+    ///
+    /// Every ending is recorded, including the two that are not an ordinary exit. A
+    /// [timeout kill](ShellStatus::TimedOut) and a process that
+    /// [never started](ShellStatus::LaunchFailed) both pin as exit `-1`, which is the same value
+    /// the record already uses for a signalled process: the record's field is a plain `i32`, every
+    /// consumer of it branches on "zero or not", and what a reconstruction needs from those cases
+    /// is that the command did not succeed and printed whatever it printed.
+    async fn run(&self, request: ShellRequest) -> ShellExecution {
+        let agent_id = request.agent_id.clone();
+        let command = request.command.clone();
+        let cwd = shell_cwd(&self.workspace, &request.cwd);
+        let origin = request.origin;
+        let execution = self.inner.run(request).await;
+        self.recorder.record_shell(
+            &agent_id,
+            origin,
+            RecordedCommand {
+                command: &command,
+                cwd,
+                exit_code: match &execution.status {
+                    ShellStatus::Exited { code } => code.unwrap_or(-1),
+                    _ => -1,
+                },
+                stdout: &execution.stdout,
+                stderr: &execution.stderr,
+            },
+        );
+        execution
     }
 }
 

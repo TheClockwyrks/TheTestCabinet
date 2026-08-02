@@ -46,6 +46,7 @@ use test_cabinet_core::gg_replay::{
     GgReplayRequestShape,
 };
 
+use super::binding::AgentBindings;
 use super::drift::{Drift, DriftKind, DriftLedger, DriftVerdict, Strictness, prompt_diff_region};
 use crate::client::{AgentIdentity, ClientFactory};
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolDefinition};
@@ -56,6 +57,10 @@ use crate::replay_inputs::{RecordedModelOutcome, ReplayInputs};
 pub struct RecordedClientFactory {
     /// The record, transposed per agent — where the answers come from.
     inputs: Arc<ReplayInputs>,
+    /// The [binding table](AgentBindings) every resolution is bound through, shared with the
+    /// recorded shell and the end-of-run sweeps so there is one answer to "which recorded agent is
+    /// this?" rather than two that could disagree.
+    bindings: Arc<AgentBindings>,
     /// Where every divergence this factory's clients find is written down.
     ledger: Arc<DriftLedger>,
     /// How much of a recorded request a live one must still match.
@@ -63,33 +68,20 @@ pub struct RecordedClientFactory {
 }
 
 impl RecordedClientFactory {
-    /// A factory answering from `inputs`, reporting into `ledger` under `strictness`.
+    /// A factory answering from `inputs`, binding through `bindings` and reporting into `ledger`
+    /// under `strictness`.
     pub fn new(
         inputs: Arc<ReplayInputs>,
+        bindings: Arc<AgentBindings>,
         ledger: Arc<DriftLedger>,
         strictness: Strictness,
     ) -> Self {
         Self {
             inputs,
+            bindings,
             ledger,
             strictness,
         }
-    }
-
-    /// The recorded agent whose queue answers an agent created by `origin`, or `None` when the
-    /// record's table has no such row.
-    ///
-    /// A linear scan over the table rather than a map: an origin is a small enum with no `Hash`,
-    /// the table is one row per agent (tens, at the very most), and the scan is made once per
-    /// client resolution rather than once per turn. Building an index would trade a real
-    /// derive-or-encode decision for nothing measurable.
-    fn bind(&self, origin: &GgReplayAgentOrigin) -> Option<&str> {
-        self.inputs
-            .record()
-            .agents
-            .iter()
-            .find(|agent| &agent.origin == origin)
-            .map(|agent| agent.agent_id.as_str())
     }
 }
 
@@ -118,17 +110,12 @@ impl ClientFactory for RecordedClientFactory {
         binding: &GgSlotBinding,
         identity: &AgentIdentity,
     ) -> Result<Box<dyn ModelClient>, ModelError> {
-        let Some(agent_id) = self.bind(&identity.origin) else {
-            self.ledger.record(Drift::reported(
-                DriftKind::UnboundAgent,
-                "",
-                format!(
-                    "a live agent on slot `{}` was created by {} and the record's agent table has \
-                     no row for it, so nothing can answer its turns",
-                    binding.slot,
-                    describe_origin(&identity.origin),
-                ),
-            ));
+        let Some(agent_id) = self.bindings.recorded_for_origin(&identity.origin) else {
+            // Reported by the [binding table](AgentBindings) at the agent's creation, which is the
+            // one place that also knows the live id — so it is *not* reported a second time here.
+            // A resolution and a creation are the same event twice, and two ledger entries for one
+            // agent would make a `divergences.len()` assertion depend on how many clients an agent
+            // happened to resolve.
             return Ok(Box::new(UnboundClient::new(
                 binding.model_id.clone(),
                 format!(
@@ -186,6 +173,31 @@ impl RecordedClient {
         // cheap: a pooled id is a content address computed *before* blob substitution, so it does
         // not depend on what else is in the pool.
         let live = live_request(self.role, shape, messages, tools);
+
+        // **The ordering barrier.** `seq` is a completion order, so serving this turn before every
+        // recorded input below it has been served would hand the loop a window built from
+        // run-global state — the board, inter-agent messages, collected subagent results — as it
+        // stood at a moment the run never saw. The wait yields: gg runs every agent on one
+        // `current_thread` runtime, so a blocking spin here would wedge the very agent being
+        // waited for.
+        if let Err(err) = self.inputs.await_turn(&self.agent_id).await {
+            self.ledger.record(
+                Drift::reported(
+                    DriftKind::Deadlock,
+                    &self.agent_id,
+                    format!(
+                        "the agent's next recorded turn cannot be served in the order the run \
+                         consumed it ({err}); serving it anyway would build its window from \
+                         run-global state as it never stood."
+                    ),
+                )
+                .with_verdict(DriftVerdict::Fatal),
+            );
+            return Err(ModelError::Playback(format!(
+                "the ordering barrier cannot advance for agent `{}`: {err}",
+                self.agent_id
+            )));
+        }
 
         let call = match self.inputs.next_model(&self.agent_id) {
             Ok(call) => call,
@@ -443,7 +455,7 @@ fn recorded_model_error(error: &GgReplayModelError, binding_model: &str) -> Mode
 /// Written out rather than `{:?}`-formatted because this is the sentence that tells a developer
 /// *which* agent could not be bound, and "IssueAttempt { issue: \"AUTH-1\", attempt: 2 }" is a
 /// debug dump rather than an explanation.
-fn describe_origin(origin: &GgReplayAgentOrigin) -> String {
+pub(super) fn describe_origin(origin: &GgReplayAgentOrigin) -> String {
     match origin {
         GgReplayAgentOrigin::Root => "the run's root".to_string(),
         GgReplayAgentOrigin::Spawn { parent, ordinal } => {

@@ -191,10 +191,22 @@ fn factory(
     record: GgReplayRecord,
     strictness: Strictness,
 ) -> (RecordedClientFactory, Arc<DriftLedger>) {
-    let inputs = Arc::new(ReplayInputs::new(record).expect("the record indexes"));
+    // A short stall ceiling, because these tests drive **one** agent's client by hand while the
+    // record holds entries for others: the [barrier](ReplayInputs::await_turn) correctly waits for
+    // agents nobody is running here, and the default half-minute would be spent on every one of
+    // them. Nothing about what is asserted depends on the number.
+    let inputs = Arc::new(
+        ReplayInputs::new(record)
+            .expect("the record indexes")
+            .with_stall_timeout(std::time::Duration::from_millis(20)),
+    );
     let ledger = Arc::new(DriftLedger::new());
+    let bindings = Arc::new(crate::playback::binding::AgentBindings::new(
+        Arc::clone(&inputs),
+        Arc::clone(&ledger),
+    ));
     (
-        RecordedClientFactory::new(inputs, Arc::clone(&ledger), strictness),
+        RecordedClientFactory::new(inputs, bindings, Arc::clone(&ledger), strictness),
         ledger,
     )
 }
@@ -316,11 +328,16 @@ async fn a_board_dispatched_agent_is_bound_by_board_state() {
     );
 }
 
-/// An origin the record's table has no row for yields an **unbound** client and a reported
-/// divergence — never an `Err`, which the loop would report as a dispatch failure the recorded run
-/// never had.
+/// An origin the record's table has no row for yields an **unbound** client — never an `Err`,
+/// which the loop would report as a dispatch failure the recorded run never had.
+///
+/// The *divergence* is reported by the [binding table](super::binding), at the agent's creation,
+/// which is the one place that also knows the live id. Deliberately not here as well: a resolution
+/// and a creation are the same event twice, and two ledger entries for one agent would make a
+/// divergence count depend on how many clients that agent happened to resolve (a handoff compaction
+/// resolves a second).
 #[tokio::test]
-async fn an_origin_the_table_does_not_know_is_unbound_and_reported() {
+async fn an_origin_the_table_does_not_know_is_unbound_rather_than_an_error() {
     let record = Builder::default()
         .agent("root", "Root", GgReplayAgentOrigin::Root)
         .turn("root", 0, &[user("hello")], "the root's answer")
@@ -337,18 +354,11 @@ async fn an_origin_the_table_does_not_know_is_unbound_and_reported() {
         )
         .expect("an unbindable agent is not a resolution failure");
     assert_eq!(client.model_id(), "mock/echo");
-
-    let drifts = ledger.drifts();
-    assert_eq!(drifts.len(), 1, "{drifts:?}");
-    assert_eq!(drifts[0].kind, DriftKind::UnboundAgent);
     assert!(
-        drifts[0].detail.contains("merge #0 of issue `AUTH-1`"),
-        "the origin reads as a sentence, not a debug dump: {}",
-        drifts[0].detail,
-    );
-    assert!(
-        !drifts[0].fatal,
-        "that one agent ends; the reconstruction does not",
+        ledger.drifts().is_empty(),
+        "the binding table reports it once, at the agent's creation — not once per resolution: \
+         {:?}",
+        ledger.drifts(),
     );
 
     // And the client it got can still name a model, and still cannot call one.

@@ -480,3 +480,48 @@ async fn a_captured_run_records_every_git_invocation_it_makes() {
         "and the two streams are interned separately"
     );
 }
+
+/// gg's own commits are a **pure function of their content**: two separate workspaces seeded with
+/// the same bytes produce the same baseline commit sha, however far apart in time they are made.
+///
+/// This is not a tidiness property, it is what makes an issue-worktree run reconstructable. A commit
+/// id hashes the timestamps as well as the tree, and gg puts a commit sha into a *prompt* — an
+/// issue review brief names the commit the work is measured against — so a clock-derived date makes
+/// the reviewer's very first request differ between a run and its
+/// [playback](crate::playback) for a reason that has nothing to do with the run. It showed up
+/// exactly as one would expect if nobody had thought about it: the multi-agent round trip passed
+/// whenever the two baselines happened to land in the same second.
+#[tokio::test]
+async fn gg_commits_are_a_function_of_their_content_and_not_of_the_clock() {
+    let first = TempDir::new().unwrap();
+    write(first.path(), "index.html", "<!doctype html>\n");
+    let one = ensure_baseline(&GitCapture::disabled(), first.path())
+        .await
+        .expect("a baseline");
+
+    // Far enough apart that a clock-derived commit date could not coincide.
+    tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+
+    let second = TempDir::new().unwrap();
+    write(second.path(), "index.html", "<!doctype html>\n");
+    let two = ensure_baseline(&GitCapture::disabled(), second.path())
+        .await
+        .expect("a baseline");
+
+    assert_eq!(
+        one, two,
+        "the same seeded content commits to the same sha, whenever it is committed",
+    );
+
+    // And it really is the content that decides: a different tree is a different commit.
+    let third = TempDir::new().unwrap();
+    write(
+        third.path(),
+        "index.html",
+        "<!doctype html><title>x</title>\n",
+    );
+    let other = ensure_baseline(&GitCapture::disabled(), third.path())
+        .await
+        .expect("a baseline");
+    assert_ne!(one, other, "different content, different commit");
+}

@@ -33,9 +33,16 @@
 //! nothing.
 //!
 //! Every other kind of divergence — an unbindable agent, a command the record has no answer for, a
-//! terminal status that moved — is [reported](DriftVerdict::Reported) rather than fatal. They are
-//! not staleness: they do not make the *next* recorded answer wrong, so stopping on them would
-//! throw away the rest of a reconstruction that is still telling the truth.
+//! re-executed tool that answered differently, a terminal status that moved — is
+//! [reported](DriftVerdict::Reported) rather than fatal. They are not staleness: they do not make
+//! the *next* recorded answer wrong, so stopping on them would throw away the rest of a
+//! reconstruction that is still telling the truth.
+//!
+//! The **one** exception is [`Deadlock`](DriftKind::Deadlock), which is fatal for the opposite
+//! reason: it is not a difference the reconstruction can carry on past, it is the reconstruction
+//! being unable to proceed for the waiting agent at all. Carrying on would mean serving that agent
+//! its recorded inputs out of the order the run consumed them in, which is precisely what the
+//! [ordering barrier](crate::replay_inputs::ReplayInputs::await_turn) exists to prevent.
 
 use std::sync::Mutex;
 
@@ -133,9 +140,56 @@ pub enum DriftKind {
     TerminalStatus,
     /// A command line reached the shell seam and the record holds no answer for it.
     CommandNotRecorded,
-    /// The command at the head of the agent's recorded queue is a *different* command, or the same
-    /// command in a different directory — which is a different command.
-    CommandMismatch,
+    /// A recorded command was found somewhere other than the head of the agent's queue — later in
+    /// its own queue, or on another agent's — so the [lookup ladder](super::shell) had to step
+    /// over, or across, entries to reach it.
+    ///
+    /// Reported rather than fatal because the ladder *worked*: the command was answered from the
+    /// record and the reconstruction is still the run's. What it says is that the order moved, and
+    /// on a cross-agent hit it is also the audit trail for the [binding table](super::binding) —
+    /// which is exactly why the safety net reports rather than merely succeeding.
+    CommandOutOfOrder,
+    /// A tool this build re-executed answered differently from the record, or the record has no
+    /// outcome left to compare it against.
+    ///
+    /// Every non-shell tool is re-run for real and *then* compared, with the recorded outcome fed
+    /// forward when they differ — so this is the divergence, not the correction. One benign case is
+    /// worth naming so nobody chases it: reading a file a **shell command** created in the real run
+    /// diverges here, because the stubbed shell created nothing.
+    ToolResult,
+    /// One of gg's own `git` invocations is not the one the record holds at that position for that
+    /// agent, or the record has none left for it.
+    ///
+    /// `git` is the one input a playback **re-runs for real** rather than serving, so this is purely
+    /// a comparison — nothing is fed forward and nothing is corrected. It is watched at all because
+    /// an [issue](https://docs.testcabinet.ai/gg/project-management/)'s accept-and-merge is a `git` sequence that moves the board, and the
+    /// board is rendered into every agent's pinned prompt: the invocations are what tell the
+    /// [barrier](crate::replay_inputs::ReplayInputs::await_turn) that a merge has landed.
+    ///
+    /// Reported rather than fatal. gg's bookkeeping legitimately differs in the small — a
+    /// reconstruction of a run whose shell commands did not run has less to commit — and the drift
+    /// that *matters* surfaces a turn later, on the conversation, where it is far more legible.
+    GitInvocation,
+    /// An input served from the record was [clipped](test_cabinet_core::gg_replay::GgReplayTextClip)
+    /// by a standard-fidelity capture, so what the reconstruction fed forward is a *tail* of what
+    /// the run fed forward.
+    ///
+    /// Its own kind rather than folded into the neighbouring ones because it is a hole in the
+    /// **record**, not a change in this build — and it explains an otherwise baffling
+    /// [conversation](GgFingerprintComponent::Conversation) drift a turn or two later. The message
+    /// pool stores what the model was shown whole; only the tool-payload and stream pools clip. Its
+    /// answer is to re-record at [full](test_cabinet_core::gg_replay::GgReplayFidelity::Full)
+    /// fidelity.
+    ClippedRecord,
+    /// The [ordering barrier](crate::replay_inputs::ReplayInputs::await_turn) could not advance: the
+    /// agent that owes the next recorded input has already finished, so waiting longer cannot help.
+    ///
+    /// **Fatal**, and the one non-fingerprint divergence that is. Everything else reported is a
+    /// difference the reconstruction can carry on past; this one is the reconstruction being unable
+    /// to proceed at all for the waiting agent, and continuing would mean serving that agent inputs
+    /// out of the order the run consumed them in — which is the one thing the barrier exists to
+    /// prevent.
+    Deadlock,
     /// The record pinned inputs the reconstruction never demanded. Reported once, at the end, with
     /// the count.
     UnservedInputs,
@@ -166,7 +220,11 @@ impl DriftKind {
             Self::AgentNotReconstructed => "agent-not-reconstructed",
             Self::TerminalStatus => "terminal-status",
             Self::CommandNotRecorded => "command-not-recorded",
-            Self::CommandMismatch => "command-mismatch",
+            Self::CommandOutOfOrder => "command-out-of-order",
+            Self::ToolResult => "tool-result",
+            Self::GitInvocation => "git-invocation",
+            Self::ClippedRecord => "clipped-record",
+            Self::Deadlock => "deadlock",
             Self::UnservedInputs => "unserved-inputs",
             Self::Seed => "seed",
         }

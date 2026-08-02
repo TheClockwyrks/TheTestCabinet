@@ -117,7 +117,6 @@ pub(crate) use shell::StubShellRunner;
 pub use shell::{OffloadPolicy, SHELL_TOOL};
 pub(crate) use shell::{
     ShellExecution, ShellRequest, ShellRunner, ShellStatus, real_shell, run_command,
-    run_command_capturing,
 };
 pub use skills::{READ_SKILL_TOOL, ReadSkillTool};
 pub(crate) use subagents::handled_by_loop;

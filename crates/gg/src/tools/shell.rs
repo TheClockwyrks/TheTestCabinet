@@ -41,6 +41,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
+use test_cabinet_core::gg_replay::GgShellOrigin;
 
 use super::{
     ArgumentError, ShellData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, required_str,
@@ -316,7 +317,7 @@ impl Tool for ShellTool {
             Err(error) => return error.into(),
         };
 
-        run_command(&command, timeout, &self.offload, ctx).await
+        run_command(&command, timeout, &self.offload, ctx, GgShellOrigin::Tool).await
     }
 }
 
@@ -355,53 +356,19 @@ fn parse_timeout(args: &Value) -> Result<Duration, ArgumentError> {
 /// [`ctx.shell`](ToolContext::shell) rather than here, a
 /// [playback](https://docs.testcabinet.ai/gg/analysis/playback/) answers all three call paths from
 /// one substitution.
+///
+/// `origin` says **which** of the three this is. The seam is where they meet and the caller is gone
+/// by the time a command reaches a runner, so the path has to travel on the request: a
+/// [recording](crate::replay::RecordingShellRunner) runner files a validation command on a queue of
+/// its own rather than on the agent's ordinary one, and a reconstruction that mixed them would
+/// answer a `shell` tool call with a completion gate's build.
 pub(crate) async fn run_command(
     command: &str,
     timeout: Duration,
     offload: &OffloadPolicy,
     ctx: &ToolContext,
+    origin: GgShellOrigin,
 ) -> ToolOutcome {
-    run_command_capturing(command, timeout, offload, ctx)
-        .await
-        .0
-}
-
-/// What one subprocess printed and exited with, **before** any output policy touched it.
-///
-/// The [output policy](OffloadPolicy) merges the two streams, keeps a tail of the result and adds
-/// gg's own notes to it, all of which is right for the text a model reads and wrong for a
-/// [replay record](crate::replay), which pins what the *process* did. So the raw form is handed
-/// back beside the outcome for the one caller that records: everything else takes
-/// [`run_command`] and never sees it.
-pub(crate) struct CommandCapture {
-    /// The exit status, or `None` for a process a signal (or gg's own timeout kill) ended.
-    pub(crate) exit_code: Option<i32>,
-    /// Everything it wrote to standard output.
-    pub(crate) stdout: String,
-    /// Everything it wrote to standard error.
-    pub(crate) stderr: String,
-}
-
-impl CommandCapture {
-    /// The capture for a command that never ran at all — a
-    /// [launch failure](ShellStatus::LaunchFailed). Distinct from a command that ran and printed
-    /// nothing, which is why the exit code is absent rather than zero.
-    fn never_ran() -> Self {
-        Self {
-            exit_code: None,
-            stdout: String::new(),
-            stderr: String::new(),
-        }
-    }
-}
-
-/// [`run_command`], additionally handing back the process's [raw streams](CommandCapture).
-pub(crate) async fn run_command_capturing(
-    command: &str,
-    timeout: Duration,
-    offload: &OffloadPolicy,
-    ctx: &ToolContext,
-) -> (ToolOutcome, CommandCapture) {
     // The one place a command line becomes a process — behind the context's
     // [seam](ShellRunner), so a reconstruction answers it from a record while everything below
     // (the output policy, gg's notes, the outcome's shape) stays this build of gg's.
@@ -416,6 +383,7 @@ pub(crate) async fn run_command_capturing(
             cwd: ctx.workspace_dir.clone(),
             timeout,
             agent_id: ctx.agent_id.clone(),
+            origin,
         })
         .await;
 
@@ -423,10 +391,7 @@ pub(crate) async fn run_command_capturing(
     // apply a policy to: this is the one shell failure that is a failure *of the call* rather than
     // a result of it.
     if let ShellStatus::LaunchFailed { failure, message } = status {
-        return (
-            ToolOutcome::failed(failure, message),
-            CommandCapture::never_ran(),
-        );
+        return ToolOutcome::failed(failure, message);
     }
 
     // Whether the command worked, which the [adaptive](OffloadPolicy::Adaptive) policy decides on.
@@ -458,24 +423,10 @@ pub(crate) async fn run_command_capturing(
             // different thing from the command failing — so it is classified as the limit it is,
             // and carries no `ShellData`: there is no exit code, and whatever the process had
             // printed is already in the message.
-            return (
-                ToolOutcome::failed(ToolFailure::LimitExceeded, output),
-                CommandCapture {
-                    exit_code: None,
-                    stdout,
-                    stderr,
-                },
-            );
+            return ToolOutcome::failed(ToolFailure::LimitExceeded, output);
         }
         ShellStatus::WaitFailed { failure, message } => {
-            return (
-                ToolOutcome::failed(failure, message),
-                CommandCapture {
-                    exit_code: None,
-                    stdout,
-                    stderr,
-                },
-            );
+            return ToolOutcome::failed(failure, message);
         }
         ShellStatus::LaunchFailed { .. } => unreachable!("the launch-failure branch is above"),
     };
@@ -503,29 +454,22 @@ pub(crate) async fn run_command_capturing(
         Some(code) => format!("exited {code}"),
         None => "terminated by signal".to_string(),
     };
-    (
-        ToolOutcome {
-            ok,
-            output,
-            summary: Some(summary),
-            images: Vec::new(),
-            // The process ran, so its facts are reported whatever it exited with. A non-zero exit
-            // leaves `ok` false (the model is told plainly that the command failed) but `failure`
-            // empty: nothing about the *call* went wrong, and a caller that wants to branch on the
-            // code reads it from here rather than from the first line of `output`.
-            data: Some(ToolData::Shell(ShellData {
-                exit_code: code,
-                body,
-                truncated,
-            })),
-            failure: None,
-        },
-        CommandCapture {
+    ToolOutcome {
+        ok,
+        output,
+        summary: Some(summary),
+        images: Vec::new(),
+        // The process ran, so its facts are reported whatever it exited with. A non-zero exit
+        // leaves `ok` false (the model is told plainly that the command failed) but `failure`
+        // empty: nothing about the *call* went wrong, and a caller that wants to branch on the
+        // code reads it from here rather than from the first line of `output`.
+        data: Some(ToolData::Shell(ShellData {
             exit_code: code,
-            stdout,
-            stderr,
-        },
-    )
+            body,
+            truncated,
+        })),
+        failure: None,
+    }
 }
 
 /// Merge stdout and stderr into one block: stdout first, then stderr, each labeled

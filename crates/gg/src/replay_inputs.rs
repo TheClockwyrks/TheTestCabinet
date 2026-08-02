@@ -440,6 +440,43 @@ recorded_input!(
     RecordedProbe,
 );
 
+/// Where a [recorded command lookup](ReplayInputs::take_shell) found its answer — the rungs of the
+/// ladder, in the order they are tried.
+///
+/// The variants are distinct rather than one `Option` because *where* the answer was found is the
+/// finding: a head match is a reconstruction running exactly as recorded, an out-of-order match is
+/// gg's own machinery having stopped issuing a command, and a cross-agent match is the
+/// [binding table](crate::playback::binding) being wrong in a way that the safety net caught. A
+/// lookup that collapsed the three would answer the command correctly and say nothing about any of
+/// that.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShellLookup {
+    /// The head of the agent's own queue was the command. The overwhelmingly common case, and under
+    /// the [barrier](ReplayInputs::await_turn) essentially the only one.
+    Head(RecordedSubprocess),
+    /// The command occurs later in the agent's own queue. Everything before it was consumed, and
+    /// comes back so the report can name what gg stopped running.
+    OutOfOrder {
+        /// The recorded command that answered.
+        found: RecordedSubprocess,
+        /// What was stepped over to reach it, in recorded order.
+        skipped: Vec<RecordedSubprocess>,
+    },
+    /// The command was found in **another** agent's remaining commands.
+    CrossAgent {
+        /// The recorded command that answered.
+        found: RecordedSubprocess,
+        /// The recorded agent whose queue it came off.
+        agent_id: String,
+    },
+    /// No recorded command matches, anywhere.
+    Miss {
+        /// What the agent's own queue would have answered next, when it has anything left — the
+        /// most useful thing to tell somebody whose command was not recorded.
+        head: Option<RecordedSubprocess>,
+    },
+}
+
 /// A [barrier](ReplayInputs::await_turn) wait that expired: the lowest waiter was released, and the
 /// recorded inputs it stepped over were abandoned.
 ///
@@ -534,12 +571,29 @@ pub struct ReplayInputs {
     frames: BTreeMap<String, Vec<RecordedPromptFrame>>,
     /// Which agent owes each consumable seq — how a blocked waiter names what is blocking it.
     owners: BTreeMap<u64, String>,
+    /// The seqs an agent can still owe **after its own turn loop has ended** — every `git`
+    /// invocation, and nothing else.
+    ///
+    /// gg's own bookkeeping outlives the loop it belongs to, and by a long way: an issue is
+    /// dispatched, worked, committed and *merged* under the root's name, and every one of those
+    /// `git` invocations is recorded after the root's own `finish`. So
+    /// [`retire`](Self::retire) — which exists to turn a wait behind a finished agent into a
+    /// provable [deadlock](ReplayError::Deadlock) — must not claim one behind a merge that has not
+    /// run yet. Those waits fall back to the [stall](ReplayStall) ceiling, which is the right
+    /// answer for a wait that *might* still be satisfied.
+    after_loop: BTreeSet<u64>,
     /// The consumed/waiting/retired state.
     state: Mutex<InputState>,
     /// Woken on every serve and every retirement, so a barrier wait parks instead of spinning.
     wake: Notify,
     /// How long a barrier wait blocks before it is reported as a [stall](ReplayStall).
     stall_timeout: Duration,
+    /// Whether [`await_turn`](Self::await_turn) enforces the recorded order at all.
+    ///
+    /// On by default and off only when a consumer asks — see
+    /// [`without_barrier`](Self::without_barrier). The default falls the safe way: a consumer that
+    /// never heard of the barrier gets the recorded interleaving rather than an arbitrary one.
+    barrier: bool,
 }
 
 impl ReplayInputs {
@@ -562,6 +616,7 @@ impl ReplayInputs {
         let mut frames: BTreeMap<String, Vec<RecordedPromptFrame>> = BTreeMap::new();
         let mut owners: BTreeMap<u64, String> = BTreeMap::new();
         let mut unserved: BTreeSet<u64> = BTreeSet::new();
+        let mut after_loop: BTreeSet<u64> = BTreeSet::new();
 
         // The [provenance table](GgReplayRecord::agents) first, in the order the run created its
         // agents. It is the better source precisely where the entries are silent: an agent that was
@@ -653,9 +708,12 @@ impl ReplayInputs {
                         .shell
                         .push_back(subprocess(&record, entry, Some(*origin), command)?)
                 }
-                GgReplayEntryKind::Git { command } => queue
-                    .git
-                    .push_back(subprocess(&record, entry, None, command)?),
+                GgReplayEntryKind::Git { command } => {
+                    after_loop.insert(seq);
+                    queue
+                        .git
+                        .push_back(subprocess(&record, entry, None, command)?)
+                }
                 GgReplayEntryKind::Clock {
                     elapsed_ms,
                     remaining_ms,
@@ -692,6 +750,7 @@ impl ReplayInputs {
             agent_ids,
             frames,
             owners,
+            after_loop,
             state: Mutex::new(InputState {
                 queues,
                 unserved,
@@ -701,6 +760,7 @@ impl ReplayInputs {
             }),
             wake: Notify::new(),
             stall_timeout: DEFAULT_STALL_TIMEOUT,
+            barrier: true,
         })
     }
 
@@ -709,6 +769,22 @@ impl ReplayInputs {
     #[must_use]
     pub fn with_stall_timeout(mut self, timeout: Duration) -> Self {
         self.stall_timeout = timeout;
+        self
+    }
+
+    /// The same index with the [ordering barrier](Self::await_turn) **off**: every
+    /// [`await_turn`](Self::await_turn) returns immediately and recorded inputs are served in
+    /// whatever order the reconstruction demands them.
+    ///
+    /// This is not a performance knob and it is not a convenience. It exists so the barrier's own
+    /// value is measurable: run the same multi-agent record both ways, and the unordered
+    /// reconstruction reports the [conversation](test_cabinet_core::gg_replay::GgFingerprintComponent::Conversation)
+    /// drift that run-global prompt state — the board, inter-agent messages, collected subagent
+    /// results — produces when an eleven-minute install finishes instantly. A claim about the
+    /// barrier that could not be turned off would be an argument rather than a measurement.
+    #[must_use]
+    pub fn without_barrier(mut self) -> Self {
+        self.barrier = false;
         self
     }
 
@@ -793,12 +869,137 @@ impl ReplayInputs {
     ///
     /// This is the **head match** — the first and overwhelmingly common step of a recorded-command
     /// lookup, and under the [barrier](Self::await_turn) essentially the only one. The
-    /// out-of-order, cross-agent and miss steps belong to the driving playback's shell runner,
-    /// which wraps this rather than replacing it.
+    /// out-of-order, cross-agent and miss steps are [`take_shell`](Self::take_shell), which is this
+    /// with the rest of the ladder around it.
     pub fn next_shell(&self, agent_id: &str) -> Result<RecordedSubprocess, ReplayError> {
         self.serve(agent_id, RecordedInputKind::Shell, |queues| {
             queues.shell.pop_front()
         })
+    }
+
+    /// Find the recorded answer for the command `command` run in `cwd` by `agent_id`, walking the
+    /// [lookup ladder](ShellLookup) and consuming whatever it stepped over.
+    ///
+    /// **Position is the key; content is the check.** A run runs `npm run build` five times and gets
+    /// five different answers, so the command text is not an identity — the order is. Hence the head
+    /// of the agent's queue is tried first, and the pair (command, directory) is what decides
+    /// whether it is the right answer. A directory mismatch on an otherwise-identical command falls
+    /// through to a later rung and is reported, never silently accepted: the same command in a
+    /// different tree is a different command.
+    ///
+    /// Each rung past the first consumes what it skipped, because a recorded command the
+    /// reconstruction demonstrably did not ask for must not stay in the queue to answer a *later*
+    /// command by accident — and because leaving it in would block the
+    /// [barrier](Self::await_turn) behind an entry nobody will ever take.
+    pub fn take_shell(&self, agent_id: &str, command: &str, cwd: &GgShellCwd) -> ShellLookup {
+        let mut state = self.state.lock().expect("replay input state lock");
+        let matches = |run: &RecordedSubprocess| run.command == command && &run.cwd == cwd;
+
+        // Rung 1 and 2 — this agent's own queue, head first. One search covers both because the
+        // head is simply position zero, and splitting them would let the two definitions of "is
+        // this the same command?" drift apart.
+        if let Some(queue) = state.queues.get_mut(agent_id)
+            && let Some(position) = queue.shell.iter().position(matches)
+        {
+            let skipped: Vec<RecordedSubprocess> = queue.shell.drain(..position).collect();
+            let found = queue.shell.pop_front().expect("the matched command");
+            for run in &skipped {
+                state.unserved.remove(&run.seq);
+            }
+            state.unserved.remove(&found.seq);
+            drop(state);
+            self.wake.notify_waiters();
+            return match skipped.is_empty() {
+                true => ShellLookup::Head(found),
+                false => ShellLookup::OutOfOrder { found, skipped },
+            };
+        }
+
+        // Rung 3 — another agent's remaining commands. The safety net for an imperfect
+        // [binding](crate::playback::binding), and reporting it is what makes the binding auditable:
+        // a reconstruction that quietly served agent A from agent B's queue would be exactly the
+        // silent mis-attribution the whole per-agent keying exists to prevent.
+        //
+        // Nothing is consumed from *in front of* the hit here, unlike rung 2: the other agent has
+        // not finished, and its earlier commands are still its own to ask for.
+        let owner = state
+            .queues
+            .iter()
+            .find(|(other, queue)| other.as_str() != agent_id && queue.shell.iter().any(matches))
+            .map(|(other, _)| other.clone());
+        if let Some(owner) = owner {
+            let queue = state
+                .queues
+                .get_mut(&owner)
+                .expect("the owning agent's queue");
+            let position = queue.shell.iter().position(matches).expect("the match");
+            let found = queue.shell.remove(position).expect("the matched command");
+            state.unserved.remove(&found.seq);
+            drop(state);
+            self.wake.notify_waiters();
+            return ShellLookup::CrossAgent {
+                found,
+                agent_id: owner,
+            };
+        }
+
+        // Rung 4 — a miss. The head of the agent's own queue comes back with it, because the most
+        // useful thing to tell somebody whose command was not recorded is what gg *did* run at this
+        // point instead.
+        let head = state
+            .queues
+            .get(agent_id)
+            .and_then(|queue| queue.shell.front().cloned());
+        ShellLookup::Miss { head }
+    }
+
+    /// Stop the [barrier](Self::await_turn) waiting on categories this consumer does not serve.
+    ///
+    /// A record pins six categories of input; a driving reconstruction serves only some of them.
+    /// `git` invocations are re-run for real (they are gg's own bookkeeping, and the hardest paths
+    /// to test any other way), and the [clock](RecordedInputKind::Clock) and the
+    /// [cancel probe](RecordedInputKind::CancelProbe) are explicitly not reproduced — a playback
+    /// takes seconds and gg has no clock seam. Their entries would otherwise sit in the barrier's
+    /// set forever, and since a waiter blocks on **every** lower unserved seq, one un-consumed git
+    /// invocation early in a run would stall every agent behind it for the whole reconstruction.
+    ///
+    /// So a consumer declares what it does not serve, once, before the first turn. The entries are
+    /// dropped from the queues as well as from the barrier, which keeps
+    /// [`unserved`](Self::unserved) an honest count of *pinned inputs this consumer could have
+    /// demanded and did not* — the figure a reconstruction reports at the end.
+    pub fn disregard(&self, kinds: &[RecordedInputKind]) {
+        let mut state = self.state.lock().expect("replay input state lock");
+        let mut dropped: Vec<u64> = Vec::new();
+        for queue in state.queues.values_mut() {
+            for kind in kinds {
+                match kind {
+                    RecordedInputKind::Model => {
+                        dropped.extend(queue.model.drain(..).map(|call| call.seq))
+                    }
+                    RecordedInputKind::Tool => {
+                        dropped.extend(queue.tool.drain(..).map(|call| call.seq))
+                    }
+                    RecordedInputKind::Shell => {
+                        dropped.extend(queue.shell.drain(..).map(|run| run.seq))
+                    }
+                    RecordedInputKind::Git => {
+                        dropped.extend(queue.git.drain(..).map(|run| run.seq))
+                    }
+                    RecordedInputKind::Clock => {
+                        dropped.extend(queue.clock.drain(..).map(|clock| clock.seq))
+                    }
+                    RecordedInputKind::CancelProbe => {
+                        dropped.extend(queue.probe.drain(..).map(|probe| probe.seq))
+                    }
+                }
+            }
+        }
+        for seq in dropped {
+            state.unserved.remove(&seq);
+        }
+        drop(state);
+        // Whatever was blocked behind them can go now.
+        self.wake.notify_waiters();
     }
 
     /// The next `git` invocation recorded for `agent_id` — what gg's own orchestration got back,
@@ -836,6 +1037,9 @@ impl ReplayInputs {
     /// [retired](Self::retire) — waiting longer cannot help, so the waiter is told what stopped it
     /// instead of hanging the process.
     pub async fn await_turn(&self, agent_id: &str) -> Result<(), ReplayError> {
+        if !self.barrier {
+            return Ok(());
+        }
         let waiting_for = match self.gate(agent_id)? {
             Gate::Ready => return Ok(()),
             Gate::Blocked { seq } => seq,
@@ -950,10 +1154,17 @@ impl ReplayInputs {
             .get(&blocking)
             .map(String::as_str)
             .unwrap_or_default();
+        // A retired agent owes nothing further **from its loop** — but gg's own `git` outlives the
+        // loop that dispatched it (an issue's commit and merge are recorded under the root, long
+        // after the root's `finish`), so a wait behind one of those is not provably stuck and falls
+        // through to the [stall](ReplayStall) ceiling instead.
+        //
         // `owner == agent_id` is unreachable by construction — a queue is consumed in order, so an
         // agent's own lower entry would *be* its next one — but it is reported rather than waited
         // on, because the alternative to reporting an impossible state is hanging in it.
-        if state.retired.contains(owner) || owner == agent_id {
+        if (state.retired.contains(owner) && !self.after_loop.contains(&blocking))
+            || owner == agent_id
+        {
             return Err(ReplayError::Deadlock {
                 agent_id: agent_id.to_string(),
                 seq: mine,

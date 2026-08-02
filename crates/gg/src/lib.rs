@@ -53,6 +53,7 @@ mod memories;
 mod message_log;
 mod model;
 mod modules;
+mod observer;
 mod persistence;
 pub mod playback;
 mod prompts;

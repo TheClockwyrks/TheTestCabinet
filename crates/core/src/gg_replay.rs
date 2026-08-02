@@ -482,11 +482,16 @@ pub fn clip_text(text: &str, max_bytes: usize) -> Option<(&str, u64)> {
     Some((&text[start..], text.len() as u64))
 }
 
-/// One image in the [blob pool](GgReplayRecord::blobs).
+/// One binary payload in the [blob pool](GgReplayRecord::blobs).
 ///
-/// The catastrophic case v1 had no answer for: a view's base64 payload was re-serialized
-/// on every turn it survived, so one 500 KB PNG cost ~67 MB across 100 turns. Pooled, it
-/// costs 500 KB once, flat.
+/// Images are what the pool was built for and are most of what it holds — the catastrophic
+/// case v1 had no answer for was a view's base64 payload being re-serialized on every turn
+/// it survived, so one 500 KB PNG cost ~67 MB across 100 turns; pooled, it costs 500 KB
+/// once, flat. But it is a pool of *bytes*, not of images: the
+/// [seed](GgReplaySeed::provided_files) stores every provided file here too, whatever its
+/// type, which is what makes an empty directory plus a record a runnable session. A seeded
+/// file that is an image and was also sent to the model dedupes against it exactly, because
+/// the pool is keyed by content.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -583,8 +588,15 @@ pub enum GgReplayAgentOrigin {
     IssueAttempt {
         /// The issue's id.
         issue: String,
-        /// Which attempt at that issue this is — a function of board state, not of the
-        /// agent counter.
+        /// **Which dispatch of that issue this agent is** — 0 for the first, 1 for the
+        /// next, and so on — a function of board state, not of the agent counter.
+        ///
+        /// Every dispatch, not only every *retry*. The distinction is load-bearing and was
+        /// learned the hard way: a review that requests changes re-dispatches the issue to a
+        /// fresh agent while deliberately **not** charging the retry budget (rework asked
+        /// for by a reviewer is not a failed attempt), so keying on the retry count gave two
+        /// different agents one identical origin — and a reconstruction binding on
+        /// provenance would then serve both of them the first one's turns.
         attempt: u32,
     },
     /// Dispatched to review a board issue's attempt.
