@@ -44,35 +44,33 @@ pub struct SandboxOutcome {
     /// the throws and keeps calling after the run's budget is spent.
     pub refusals_suppressed: u64,
     /// Everything the program wrote with `console.*`, in order, subject to the capture caps.
+    ///
+    /// These go to the **operator** — the run's stream, telemetry, the replay record and the console
+    /// — and to the spawner's one-line report. They are deliberately *not* shown to the model, whose
+    /// channel into its own window is a [view](crate::context::ViewKind); all the turn's feedback
+    /// says about them is how many there were. See [`CodeResultContext`](crate::prompts::CodeResultContext).
     pub logs: Vec<String>,
-    /// How many log lines the caps discarded, so the feedback can say so rather than lie.
+    /// How many log lines the caps discarded. Added to `logs.len()` for the line count the feedback
+    /// reports, so the model is told what its program did rather than what gg's buffer kept.
     pub logs_suppressed: u64,
     /// Pictures a bridged `read_file` produced, for the loop to attach to the turn's feedback.
     pub images: Vec<ImageContent>,
     /// Pictures dropped because the per-program budget was already spent.
     pub images_dropped: u32,
-    // The four view fields below are populated here and rendered by the turn's feedback template,
-    // which lands in the next change. The `expect` is deliberate rather than an `allow`: it makes
-    // the compiler say so the moment the renderer starts reading them, instead of leaving a
-    // permanent suppression behind.
     /// The [views](crate::context::ViewKind) the program opened, in call order — what the turn's
     /// feedback reports back so the model can read its own accounting: which selector it showed,
     /// what that costs, and whether it *replaced* something rather than adding to it.
-    #[expect(dead_code, reason = "rendered by the turn feedback in the next change")]
     pub views_opened: Vec<SandboxViewOpened>,
     /// The selectors the program closed, in call order. Only closes that actually closed something
     /// are here: `view.close` of a selector that is not open is a successful no-op by design.
-    #[expect(dead_code, reason = "rendered by the turn feedback in the next change")]
     pub views_closed: Vec<String>,
     /// Every view call that was refused — a cap, an unusable selector, or a read that failed.
     ///
     /// A refused view is the one thing this feature must never let happen quietly: the material
     /// never reached the window, and a model that was not told would read the silence as evidence
     /// its program never ran.
-    #[expect(dead_code, reason = "rendered by the turn feedback in the next change")]
     pub view_refusals: Vec<String>,
     /// How many view records the recording cap discarded, across all three lists.
-    #[expect(dead_code, reason = "rendered by the turn feedback in the next change")]
     pub views_suppressed: u64,
     /// The shim's note that the program deferred work into a microtask which ran after it ended.
     /// `None` when it did not.
@@ -80,8 +78,9 @@ pub struct SandboxOutcome {
     /// Whether the program ended with a `return` that carried a value — which gg **discarded**.
     ///
     /// The value is not here because it is nowhere: a program's return value is not a channel, and
-    /// the only way to show gg a value is to log it. What the loop does with this is tell the model
-    /// so, once, on the turn it happened, rather than leaving it to infer a rule from an absence.
+    /// the way to put a value in front of the model is to open a [text view](crate::context::ViewKind)
+    /// of it. What the loop does with this is tell the model so, once, on the turn it happened,
+    /// rather than leaving it to infer a rule from an absence.
     pub returned_value: bool,
     /// The ending the program declared, or `None` if it never did — or lost it. `Some` ends the
     /// session.

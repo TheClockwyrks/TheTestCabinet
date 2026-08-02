@@ -733,8 +733,17 @@ pub fn default_system_prompt_template_code() -> &'static str {
 /// [program](crate::sandbox::run_program) produced, as the model is shown it.
 ///
 /// It is one context for both endings — ran out, or threw — because a program that threw still
-/// *did* everything up to the throw, and the model needs the same roster, the same logs and the same
-/// nudges either way. The template's `{{#if error}}` is the only thing that differs.
+/// *did* everything up to the throw, and the model needs the same roster, the same views and the
+/// same nudges either way. The template's `{{#if error}}` is the only thing that differs.
+///
+/// **What a program logged is not here.** `console.*` still crosses the membrane, still streams to
+/// the operator, and still reaches telemetry, the replay record and the console — it simply no
+/// longer reaches the model, because a program's channel into its own window is a
+/// [view](crate::context::ViewKind) and one anonymous blob of interleaved log lines is exactly what
+/// views replaced. All that survives here is [`logged_lines`](Self::logged_lines), which drives the
+/// one-line nudge that tells a model that logged where its output went. Telling it once, in the turn
+/// it happened, is the whole of the disclosure discipline: a model whose output vanished silently
+/// reads the silence as evidence its program never ran.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeResultContext {
@@ -742,10 +751,11 @@ pub struct CodeResultContext {
     pub error: Option<CodeErrorView>,
     /// Whether the program ended with a `return` that carried a value — which gg discarded.
     ///
-    /// The value is not here because it is nowhere: `console.log` is a program's only channel, and
+    /// The value is not here because it is nowhere: a program's return value is not a channel, and
     /// this flag is how a model that used the wrong one is told so in the turn it did it. Saying it
     /// once, in the moment, is what keeps the rule one sentence long in the system prompt instead of
-    /// a section about what may be returned.
+    /// a section about what may be returned. The template's note points at `view.openText`, which is
+    /// the channel that does carry.
     pub returned_value: bool,
     /// Whether the program declared its session over and then **lost** that ending by throwing.
     ///
@@ -763,8 +773,8 @@ pub struct CodeResultContext {
     /// is listed.
     pub call_count: usize,
     /// How many of those calls the roster cap did not describe. Named for the same reason
-    /// [`logs_suppressed`](Self::logs_suppressed) and
-    /// [`refusals_suppressed`](Self::refusals_suppressed) are: a model told its program made 738
+    /// [`refusals_suppressed`](Self::refusals_suppressed) and
+    /// [`views_suppressed`](Self::views_suppressed) are: a model told its program made 738
     /// calls and then shown 500 would read the gap as calls that vanished, rather than as a listing
     /// that stopped.
     pub calls_suppressed: u64,
@@ -772,17 +782,42 @@ pub struct CodeResultContext {
     /// transition, a spent wall-clock budget), pre-rendered one per line.
     pub refusals: Vec<String>,
     /// How many refusals the capture caps discarded. Reported for the same reason
-    /// [`logs_suppressed`](Self::logs_suppressed) is: the shape that hits the cap is a program that
-    /// swallows the throws and keeps calling after the run's budget is spent, and a model shown
+    /// [`calls_suppressed`](Self::calls_suppressed) is: the shape that hits the cap is a program
+    /// that swallows the throws and keeps calling after the run's budget is spent, and a model shown
     /// only the first hundred would read the list as the whole story.
     pub refusals_suppressed: u64,
-    /// The `console.*` lines the capture kept, in order.
-    pub logs: Vec<String>,
-    /// How many log lines the capture caps discarded, so the feedback says so rather than lying by
-    /// omission.
-    pub logs_suppressed: u64,
-    /// Whether the program logged nothing, returned nothing and threw nothing — the one outcome
-    /// that tells the model absolutely nothing, and therefore the one worth naming.
+    /// How many lines the program wrote with `console.*` — **not** the lines themselves.
+    ///
+    /// Logs no longer reach the model (see the [type's docs](Self)), so the only thing the feedback
+    /// says about them is that they happened and where they went. Zero renders nothing at all: a
+    /// program that never logged has no misconception to correct, and a standing paragraph about a
+    /// channel it did not use would be exactly the per-turn boilerplate this template was stripped
+    /// of. It counts what the program *logged*, including lines the capture caps dropped, because
+    /// the model is being told about its own behaviour rather than about gg's buffer.
+    pub logged_lines: u64,
+    /// The [views](crate::context::ViewKind) the program opened, in call order — the counterpart of
+    /// [`calls`](Self::calls) for the window rather than the workspace.
+    ///
+    /// Reported back rather than left implicit because the material itself arrives as separate
+    /// messages, and this is the only place the model reads what those messages *cost* and which of
+    /// its calls **replaced** a view instead of adding one. A model that re-opened a selector
+    /// believing it had opened a second view would mis-read its own accounting.
+    pub views_opened: Vec<CodeViewView>,
+    /// The selectors the program closed, in call order. Only closes that actually closed something
+    /// are here — closing a selector that is not open is a successful no-op by design.
+    pub views_closed: Vec<String>,
+    /// Every view call that was refused — a cap, an unusable selector, or a read that failed —
+    /// pre-rendered one per line.
+    ///
+    /// This is the one list that must never be silently empty. A refused view is material that never
+    /// reached the window at all, and the model is the only party that can do something about it:
+    /// split it, trim it, or write it to a file and open a file view of that.
+    pub view_refusals: Vec<String>,
+    /// How many view records the sandbox's recording cap discarded, across all three lists.
+    pub views_suppressed: u64,
+    /// Whether the program said nothing at all: it opened, closed and was refused no views, logged
+    /// nothing, returned nothing and threw nothing — the one outcome that tells the model absolutely
+    /// nothing, and therefore the one worth naming.
     pub silent: bool,
     /// How many pictures the per-program budget dropped.
     pub images_dropped: u32,
@@ -828,6 +863,25 @@ pub struct CodeCallView {
     /// caught failure is otherwise invisible to the model — the program carried on as if nothing had
     /// happened, and the roster would say only that one call went wrong.
     pub error: Option<String>,
+}
+
+/// One [view](crate::context::ViewKind) a program opened, as the feedback reports it back.
+///
+/// It is the window's answer to [`CodeCallView`]: a tool call says what the program *did*, a view
+/// says what the program will be *shown* on the turn it is reading this, and what carrying it costs.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CodeViewView {
+    /// `file` or `text` — the word the model wrote the call with, so the line it reads names the
+    /// same thing its program named.
+    pub kind: String,
+    /// The view's selector: a file view's workspace path, or a text view's label. This is the string
+    /// `view.close` takes, which is why it is quoted verbatim rather than prettified.
+    pub selector: String,
+    /// Roughly what the view costs the window, in tokens.
+    pub tokens: u64,
+    /// Whether it **replaced** a view already open under this selector rather than adding one.
+    pub superseded: bool,
 }
 
 /// The variables `code-transpile-error.hbs` may reference.

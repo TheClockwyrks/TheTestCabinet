@@ -147,10 +147,10 @@ use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
     self, ApiView, AssignedIssueView, AttemptBriefContext, AutoloadView, BoardView, CodeCallView,
     CodeErrorView, CodeHeadingView, CodeNotAProgramContext, CodeResultContext,
-    CodeSandboxErrorContext, CodeTimeoutContext, CodeTranspileErrorContext, EndingView,
-    FixBriefContext, JudgeAttemptView, JudgeBriefContext, MemoriesView, MergeBriefContext,
-    NumberedItem, ReadFileView, ReviewBriefContext, ReviewChangesView, ReviewRecordView, ShellView,
-    SpawnableAgentView, SystemContext, TasksView,
+    CodeSandboxErrorContext, CodeTimeoutContext, CodeTranspileErrorContext, CodeViewView,
+    EndingView, FixBriefContext, JudgeAttemptView, JudgeBriefContext, MemoriesView,
+    MergeBriefContext, NumberedItem, ReadFileView, ReviewBriefContext, ReviewChangesView,
+    ReviewRecordView, ShellView, SpawnableAgentView, SystemContext, TasksView,
 };
 use crate::replay::{GgRecorder, RecordedSeed, RecordingClient};
 use crate::sandbox::{
@@ -8557,9 +8557,11 @@ struct PromptInputs<'a> {
 /// [signature catalogue](crate::sandbox::catalogue_functions), the same grouping the guest builds a
 /// program's scope from — so a withheld capability drops its whole object rather than leaving a
 /// named-but-empty one, and a reviewer is shown a `review` object where an implementer is not.
-/// `harness` always appears, because it carries the documentation lookup, which nothing gates. The
-/// descriptions are stable product surface authored here; the *functions* on each object are not
-/// listed at all, because a model discovers those on demand with `object.list()` and `fn.docs()`.
+/// `harness` and `view` always appear, because they carry the two things nothing gates: the
+/// documentation lookup, and the channel a program puts material into its own window with — a run
+/// that offers no tools at all must still be able to show its model something. The descriptions are
+/// stable product surface authored here; the *functions* on each object are not listed at all,
+/// because a model discovers those on demand with `object.list()` and `fn.docs()`.
 fn api_views(registry: &ToolRegistry, role: EndingRole) -> Vec<ApiView> {
     const OBJECTS: &[(&str, &str)] = &[
         ("fs", "read, write, and edit workspace files"),
@@ -8570,6 +8572,10 @@ fn api_views(registry: &ToolRegistry, role: EndingRole) -> Vec<ApiView> {
         ),
         ("tasks", "your task list"),
         ("memory", "durable memories that survive context compaction"),
+        (
+            "view",
+            "show yourself a file or a value — the only way material enters your context",
+        ),
         ("context", "manage your own context window"),
         ("agents", "delegate work to child agents"),
         ("skills", "read authored skills"),
@@ -8606,8 +8612,9 @@ fn api_views(registry: &ToolRegistry, role: EndingRole) -> Vec<ApiView> {
 }
 
 /// The [message headings](code_heading) a responses-as-code run documents in its system prompt, in
-/// the order a model meets them: the four base headings every code run can show, then one per enabled
-/// capability that synthesizes a message kind of its own.
+/// the order a model meets them: the base headings every code run can show — including the `View`
+/// one a program writes itself, which nothing gates — then one per enabled capability that
+/// synthesizes a message kind of its own.
 ///
 /// Each heading string is read from [`code_heading`] rather than spelled out again, so the prompt and
 /// the prefix a message actually carries cannot drift; this function owns only the *descriptions* and
@@ -8629,8 +8636,8 @@ fn code_heading_views(
         ),
         (
             GgContextSource::ToolOutput,
-            "the result of your last program — what it printed, and whether it ran, failed, or was \
-             stopped",
+            "the report on your last program — what it called, what it opened, and whether it ran, \
+             failed, or was stopped",
             true,
         ),
         (
@@ -8667,6 +8674,14 @@ fn code_heading_views(
             GgContextSource::FileView,
             "the contents of a file seeded into your context",
             files,
+        ),
+        (
+            GgContextSource::TextView,
+            "a value you showed yourself with `view.openText`; the view's label follows the \
+             heading, as `View: changed-files`",
+            // Ungated, unlike every other row: the `view` object is bound whatever the capability
+            // set says, so any code run can produce this message kind.
+            true,
         ),
     ];
     rows.iter()

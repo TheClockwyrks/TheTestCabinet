@@ -9043,6 +9043,39 @@ impl ModelClient for SharedClient {
     }
 }
 
+/// **The `View` heading is documented, and it is documented unconditionally.**
+///
+/// The prompt's heading vocabulary is built from [`code_heading`], but the *rows* — and their gates
+/// — are hand-maintained, so a band added to the contract does not appear here on its own. This
+/// pins the two facts that would otherwise go wrong silently: that the word the model is taught is
+/// the word [`code_heading`] actually prefixes a text view with, and that it is taught to **every**
+/// code run. The `view` object is bound whatever the capability set says, so a run with no tools at
+/// all can still produce a `View` message — and a model that met one it had never been told about
+/// would be reading an unexplained block in its own window.
+#[test]
+fn the_view_heading_is_documented_for_every_code_run() {
+    let ablated = code_heading_views(false, false, false, false);
+    let heading = code_heading(GgContextSource::TextView).expect("a text view carries a heading");
+    let row = ablated
+        .iter()
+        .find(|view| view.heading == heading)
+        .unwrap_or_else(|| panic!("no `{heading}` row in {ablated:#?}"));
+    // The heading a text view actually carries is `View: {label}`, so the description has to say
+    // where the label goes or the model cannot match a block to its own `view.openText` call.
+    assert!(row.description.contains("label"), "{row:#?}");
+    assert!(row.description.contains("view.openText"), "{row:#?}");
+
+    // The `File` heading, by contrast, is gated: a run that neither reads, autoloads nor persists
+    // can never show one, and naming it would describe a message kind that cannot arrive.
+    let file = code_heading(GgContextSource::FileView).expect("a file view carries a heading");
+    assert!(!ablated.iter().any(|view| view.heading == file));
+    assert!(
+        code_heading_views(false, false, false, true)
+            .iter()
+            .any(|view| view.heading == file)
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Responses as code
 // ---------------------------------------------------------------------------

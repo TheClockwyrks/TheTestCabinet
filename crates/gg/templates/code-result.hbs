@@ -29,19 +29,28 @@ No tool calls were made.
 {{#if refusalsSuppressed}}
 ({{refusalsSuppressed}} further refusal(s) were not listed)
 {{/if}}
-{{#if logs}}
-
-Output:
-{{#each logs}}
-{{this}}
+{{#each viewsOpened}}
+- {{#if superseded}}replaced{{else}}opened{{/if}} {{kind}} view `{{selector}}` (~{{tokens}} tokens)
 {{/each}}
-{{#if logsSuppressed}}
-({{logsSuppressed}} earlier line(s) were dropped)
+{{#each viewsClosed}}
+- closed view `{{this}}`
+{{/each}}
+{{#each viewRefusals}}
+- view refused: {{this}}
+{{/each}}
+{{#if viewsSuppressed}}
+({{viewsSuppressed}} further view call(s) were not listed)
 {{/if}}
+{{#if loggedLines}}
+
+Your program logged {{loggedLines}} line(s). Logs are not shown to you — they go
+to the run's operator. To put something in front of yourself, open a view:
+`view.openText(label, body)` for a value you computed, `view.openFile(path)` for
+a file.
 {{/if}}
 {{#if returnedValue}}
-Warning: Return value detected. Returning values does nothing. Use `console.log()`
-if you want to read a value.
+Warning: Return value detected. Returning values does nothing. Use
+`view.openText(label, body)` if you want to read a value.
 {{/if}}
 {{#if silent}}
 No output recorded.

@@ -419,9 +419,13 @@ fn not_a_program(
 /// The one line a **spawner** is given for a turn whose program ran — what it said, or failed to, in
 /// gg's own words rather than in the model's source.
 ///
-/// The last thing the program logged is what it said: `console.log` is a program's only channel, so
-/// the tail of it is the nearest thing to a conclusion the program wrote. A throw outranks it,
-/// because a program that threw did not finish what it declared however much it printed on the way.
+/// The last thing the program logged is what it said: `console.log` is a program's channel to
+/// whoever is *watching* the run — the spawner reading this line, the operator's stream, the replay
+/// record — so the tail of it is the nearest thing to a conclusion the program wrote. (What the
+/// program showed its own **model** is a [view](crate::context::ViewKind), and views are reported in
+/// the turn's feedback rather than here: this line is for a reader outside the agent.) A throw
+/// outranks it, because a program that threw did not finish what it declared however much it printed
+/// on the way.
 fn program_report(outcome: &SandboxOutcome, result: &ProgramResult) -> String {
     if let Some(error) = &result.error {
         return format!(
@@ -555,10 +559,11 @@ fn wire_reason(reason: NotAProgramReason) -> GgNotAProgram {
 /// value or threw.
 ///
 /// Everything here is what the model needs in order to write its *next* program: what each composed
-/// call did, what it printed, and the seven things that are otherwise invisible — a failure it
-/// caught, output the capture caps dropped, work it deferred past its own end, a value it returned
-/// into the void, an ending it declared and lost, pictures the budget dropped, and
-/// [what gg repaired in its reply](crate::healing) before any of it ran.
+/// call did, what each [view](crate::context::ViewKind) it opened costs the window it is about to
+/// read, and the eight things that are otherwise invisible — a failure it caught, a view that was
+/// refused, records the capture caps dropped, output that went to the operator rather than to it,
+/// work it deferred past its own end, a value it returned into the void, an ending it declared and
+/// lost, and [what gg repaired in its reply](crate::healing) before any of it ran.
 fn code_result_context(outcome: &SandboxOutcome, result: &ProgramResult) -> CodeResultContext {
     CodeResultContext {
         error: result.error.as_ref().map(|error| CodeErrorView {
@@ -585,13 +590,38 @@ fn code_result_context(outcome: &SandboxOutcome, result: &ProgramResult) -> Code
             .map(|refusal| format!("`{}` — {}", refusal.name, refusal.message))
             .collect(),
         refusals_suppressed: outcome.refusals_suppressed,
-        logs: outcome.logs.clone(),
-        logs_suppressed: outcome.logs_suppressed,
+        // The lines themselves are deliberately not here — see `CodeResultContext`. What the model
+        // gets is the count, which drives the one-line nudge naming where its output went. The
+        // suppressed lines are counted in too: the number describes what the *program* did, not what
+        // gg's capture buffer kept.
+        logged_lines: outcome.logs.len() as u64 + outcome.logs_suppressed,
+        views_opened: outcome
+            .views_opened
+            .iter()
+            .map(|view| CodeViewView {
+                kind: view_kind_word(view.kind).to_string(),
+                selector: view.selector.clone(),
+                tokens: view.tokens,
+                superseded: view.superseded,
+            })
+            .collect(),
+        views_closed: outcome.views_closed.clone(),
+        view_refusals: outcome.view_refusals.clone(),
+        views_suppressed: outcome.views_suppressed,
         // Named only when the program genuinely said nothing at all: a throw is itself a report, and
-        // telling a model that threw to log something would be noise on top of the fault. A program
+        // telling a model that threw to open a view would be noise on top of the fault. A program
         // that returned a value is not silent either — it said something, into the one channel that
-        // does not carry — and is answered by its own note instead.
-        silent: result.error.is_none() && !outcome.returned_value && outcome.logs.is_empty(),
+        // does not carry — and is answered by its own note instead. A program that *logged* is not
+        // silent either: its output went to the operator, and it is answered by the nudge that says
+        // so. Every list the feedback can render counts, not just the opens: a program whose only
+        // act was a `view.close` is told that it closed something, and adding "No output recorded."
+        // underneath would contradict the line above it.
+        silent: result.error.is_none()
+            && !outcome.returned_value
+            && outcome.logs.is_empty()
+            && outcome.views_opened.is_empty()
+            && outcome.views_closed.is_empty()
+            && outcome.view_refusals.is_empty(),
         images_dropped: outcome.images_dropped,
         // The budget is derived from what the turn actually attached rather than restated from the
         // sandbox's constant, and the two cannot disagree: a picture is dropped only once the budget
@@ -600,6 +630,16 @@ fn code_result_context(outcome: &SandboxOutcome, result: &ProgramResult) -> Code
         image_budget: saturating_u32(outcome.images.len()),
         deferred: outcome.deferred_note.clone(),
         unreachable: outcome.unreachable.as_ref().map(unreachable_note),
+    }
+}
+
+/// The word the feedback names a [view kind](ViewKind) with — the same word the model wrote its own
+/// call with (`view.openText` opens a `text` view), so the line it reads back describes its program
+/// in its program's vocabulary rather than in gg's.
+fn view_kind_word(kind: ViewKind) -> &'static str {
+    match kind {
+        ViewKind::File => "file",
+        ViewKind::Text => "text",
     }
 }
 
@@ -2261,3 +2301,7 @@ impl ToolApi for LoopToolApi {
 #[cfg(test)]
 #[path = "agent.code.views.test.rs"]
 mod view_tests;
+
+#[cfg(test)]
+#[path = "agent.code.feedback.test.rs"]
+mod feedback_tests;

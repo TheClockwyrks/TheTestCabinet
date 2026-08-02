@@ -214,6 +214,94 @@ fn code_mode_names_objects_and_teaches_discovery() {
     assert!(!prompt.contains("ToolError"), "{prompt}");
 }
 
+/// **The code prompt teaches views, not `console.log`.**
+///
+/// This is the one section of the system prompt the whole context-view feature rests on. A model
+/// that is still told to print values will print them, and its output will vanish into the
+/// operator's stream — so the prompt has to name the channel that carries, show it being used, and
+/// say plainly where logging goes instead.
+///
+/// The worked example is drawn from what the run actually binds: `view.openText` is ungated (a run
+/// with no tools at all must still be able to show its model something), while the `view.openFile`
+/// line and the `fs.readFile` split it teaches appear only when this run offers `read_file`.
+#[test]
+fn code_mode_teaches_views_rather_than_logging() {
+    let with_reads = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            apis: vec![ApiView {
+                object: "view".to_string(),
+                description: "show yourself a file or a value — the only way material enters your \
+                              context"
+                    .to_string(),
+            }],
+            read_file: ReadFileView {
+                offered: true,
+                ..ReadFileView::default()
+            },
+            ..SystemContext::default()
+        },
+        None,
+    );
+    let flat_reads = flat(&with_reads);
+    assert!(
+        with_reads.contains("### Showing yourself things"),
+        "{with_reads}"
+    );
+    assert!(
+        with_reads.contains("view.openText(\"changed-files\""),
+        "{with_reads}"
+    );
+    assert!(
+        with_reads.contains("view.openFile(\"specs/rules.md\")"),
+        "{with_reads}"
+    );
+    // The §2.2 split, in one line, exactly where the model meets both calls.
+    assert!(
+        flat_reads.contains(
+            "`fs.readFile` gets bytes for your program; `view.openFile` shows a file to you."
+        ),
+        "{with_reads}"
+    );
+    // Logging is named once, as the thing that does NOT reach the model — never as an instruction.
+    assert!(
+        flat_reads.contains("`console.log()` goes to the run's operator rather than to you"),
+        "{with_reads}"
+    );
+    assert!(
+        !flat_reads.contains("Use `console.log()`"),
+        "the prompt still instructs the model to log:\n{with_reads}"
+    );
+    assert!(
+        !with_reads.contains("\n\n\n"),
+        "blank-line run:\n{with_reads}"
+    );
+
+    // A run that withholds `read_file` is taught neither the file view nor the split — the same
+    // ablation discipline every other section follows — but keeps the text view, which nothing gates.
+    let no_reads = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            apis: vec![ApiView {
+                object: "view".to_string(),
+                description: "show yourself a file or a value".to_string(),
+            }],
+            ..SystemContext::default()
+        },
+        None,
+    );
+    assert!(
+        no_reads.contains("view.openText(\"changed-files\""),
+        "{no_reads}"
+    );
+    assert!(!no_reads.contains("view.openFile"), "{no_reads}");
+    assert!(
+        !flat(&no_reads).contains("gets bytes for your program"),
+        "{no_reads}"
+    );
+    assert!(!no_reads.contains("\n\n\n"), "blank-line run:\n{no_reads}");
+}
+
 /// A tool-calling run's non-code sections still render: the read-cap and image facts (when
 /// `read_file` is offered and capped), and the task instructions. The remaining capability sections
 /// were trimmed from the prompt and are re-added as they are validated.
@@ -672,8 +760,11 @@ fn quiet_result() -> CodeResultContext {
         calls_suppressed: 0,
         refusals: Vec::new(),
         refusals_suppressed: 0,
-        logs: Vec::new(),
-        logs_suppressed: 0,
+        logged_lines: 0,
+        views_opened: Vec::new(),
+        views_closed: Vec::new(),
+        view_refusals: Vec::new(),
+        views_suppressed: 0,
         unreachable: None,
         silent: true,
         images_dropped: 0,
@@ -682,14 +773,33 @@ fn quiet_result() -> CodeResultContext {
     }
 }
 
-/// The clean-run branch: the roster of what the program called is shown, and what it logged is
-/// shown back to it verbatim. The feedback carries no standing instructions — how a session ends is
-/// the system prompt's job, and repeating it on every turn is the noise this template was stripped
-/// of — so a clean turn is exactly a report of what happened.
+/// The clean-run branch: the roster of what the program called, and the roster of what it opened
+/// into its own window. The feedback carries no standing instructions — how a session ends is the
+/// system prompt's job, and repeating it on every turn is the noise this template was stripped of —
+/// so a clean turn is exactly a report of what happened.
+///
+/// The view lines are the counterpart of the call lines: a call says what the program did to the
+/// workspace, a view says what the model is about to be *shown* and what carrying it costs. The
+/// material itself is not here — it arrives as its own message, one per view, which is the entire
+/// point of the mechanism.
 #[test]
-fn the_result_feedback_shows_the_output_and_the_roster() {
+fn the_result_feedback_shows_the_views_and_the_roster() {
     let rendered = render_code_result(&CodeResultContext {
-        logs: vec!["a.ts, b.ts".to_string()],
+        views_opened: vec![
+            CodeViewView {
+                kind: "text".to_string(),
+                selector: "changed-files".to_string(),
+                tokens: 42,
+                superseded: false,
+            },
+            CodeViewView {
+                kind: "file".to_string(),
+                selector: "specs/rules.md".to_string(),
+                tokens: 1200,
+                superseded: true,
+            },
+        ],
+        views_closed: vec!["stale-notes".to_string()],
         calls: vec![
             CodeCallView {
                 name: "list_dir".to_string(),
@@ -707,12 +817,72 @@ fn the_result_feedback_shows_the_output_and_the_roster() {
         ..quiet_result()
     });
     assert!(rendered.starts_with("Your program ran to completion."));
-    assert!(rendered.contains("Output:\na.ts, b.ts"));
+    assert!(rendered.contains("- opened text view `changed-files` (~42 tokens)"));
+    // A re-opened selector REPLACED what was under it; a model told "opened" twice would read its
+    // own window as holding two copies.
+    assert!(rendered.contains("- replaced file view `specs/rules.md` (~1200 tokens)"));
+    assert!(rendered.contains("- closed view `stale-notes`"));
     assert!(rendered.contains("2 tool call(s) were made:"));
     assert!(rendered.contains("- list_dir: ok"));
     // A failure the program CAUGHT is still reported, or it would be invisible.
     assert!(rendered.contains("- edit_file: failed: `foo` appears 3 times"));
     assert!(!rendered.contains("Your program stopped"));
+    assert_no_blank_run(&rendered);
+}
+
+/// **A program's logs are not in its feedback, and the fact that it logged is.**
+///
+/// `console.*` still crosses the membrane and still reaches the operator, telemetry, replay and the
+/// console — it simply stops being a channel into the prompt, because one anonymous blob of
+/// interleaved lines is exactly what views replaced. What the model gets instead is a counted nudge
+/// naming both halves: where the output went, and the call that would have put it in front of the
+/// model instead. Disclosed rather than silent, in the turn it happened, or a model whose output
+/// vanished reads the silence as evidence its program never ran.
+#[test]
+fn the_result_feedback_replaces_logs_with_a_counted_nudge() {
+    let rendered = render_code_result(&CodeResultContext {
+        logged_lines: 12,
+        silent: false,
+        ..quiet_result()
+    });
+    assert!(
+        flat(&rendered).contains(
+            "Your program logged 12 line(s). Logs are not shown to you — they go to the run's \
+             operator. To put something in front of yourself, open a view: \
+             `view.openText(label, body)` for a value you computed, `view.openFile(path)` for a \
+             file."
+        ),
+        "{rendered}"
+    );
+    // The old channel is not described as one anywhere in the feedback.
+    assert!(!rendered.contains("Output:"));
+    assert!(!rendered.contains("console.log"));
+    // A program that logged nothing is told nothing about logging: a standing paragraph about a
+    // channel it did not use is exactly the per-turn boilerplate this template was stripped of.
+    let quiet = render_code_result(&quiet_result());
+    assert!(!quiet.contains("logged"));
+    assert_no_blank_run(&rendered);
+    assert_no_blank_run(&quiet);
+}
+
+/// **A refused view is never quiet.** The material never reached the window, and the model is the
+/// only party that can do something about it — split it, trim it, or write it to a file and open a
+/// file view of that — so the refusal is reported with the cap's own words.
+#[test]
+fn the_result_feedback_reports_a_refused_view() {
+    let rendered = render_code_result(&CodeResultContext {
+        view_refusals: vec![
+            "`view.openText` was refused: the body is 91234 bytes, over the 65536-byte \
+             MAX_TEXT_VIEW_BYTES cap. Nothing was truncated and nothing was shown."
+                .to_string(),
+        ],
+        views_suppressed: 7,
+        silent: false,
+        ..quiet_result()
+    });
+    assert!(flat(&rendered).contains("- view refused: `view.openText` was refused"));
+    assert!(flat(&rendered).contains("MAX_TEXT_VIEW_BYTES"));
+    assert!(rendered.contains("(7 further view call(s) were not listed)"));
     assert_no_blank_run(&rendered);
 }
 
@@ -758,13 +928,12 @@ fn the_result_feedback_locates_a_throw_and_says_the_work_stands() {
     assert_no_blank_run(&bare);
 }
 
-/// The four things that would otherwise be invisible: dropped log lines, refusals, deferred work,
-/// and dropped pictures.
+/// The four things that would otherwise be invisible: refusals, view records the recording cap
+/// dropped, deferred work, and dropped pictures.
 #[test]
 fn the_result_feedback_reports_what_was_dropped_refused_and_deferred() {
     let rendered = render_code_result(&CodeResultContext {
-        logs: vec!["checked 12 files".to_string(), "wrote 3".to_string()],
-        logs_suppressed: 41,
+        views_suppressed: 41,
         refusals: vec!["`speculate` — the run has no worktree isolation".to_string()],
         refusals_suppressed: 3,
         deferred: Some("your program deferred work with `.then()`; it ran after the program had already ended.".to_string()),
@@ -773,8 +942,7 @@ fn the_result_feedback_reports_what_was_dropped_refused_and_deferred() {
         silent: false,
         ..quiet_result()
     });
-    assert!(rendered.contains("Output:\nchecked 12 files\nwrote 3"));
-    assert!(flat(&rendered).contains("(41 earlier line(s) were dropped"));
+    assert!(flat(&rendered).contains("(41 further view call(s) were not listed"));
     assert!(rendered.contains("- refused: `speculate` — the run has no worktree isolation"));
     assert!(rendered.contains("(3 further refusal(s) were not listed"));
     assert!(rendered.contains("it ran after the program had already ended."));
@@ -792,7 +960,7 @@ fn the_result_feedback_reports_what_was_dropped_refused_and_deferred() {
 fn the_result_feedback_explains_a_truncated_roster_and_a_discarded_return_value() {
     let rendered = render_code_result(&CodeResultContext {
         returned_value: true,
-        logs: vec!["checked 12 files".to_string()],
+        logged_lines: 1,
         calls: vec![CodeCallView {
             name: "read_file".to_string(),
             ok: true,
@@ -813,7 +981,7 @@ fn the_result_feedback_explains_a_truncated_roster_and_a_discarded_return_value(
         "a discarded return value is named, and the model is pointed at the channel that works:\n\
          {rendered}"
     );
-    assert!(rendered.contains("`console.log()`"));
+    assert!(rendered.contains("`view.openText(label, body)`"));
     assert_no_blank_run(&rendered);
 }
 
@@ -824,9 +992,14 @@ fn the_result_feedback_nudges_a_silent_program() {
     let rendered = render_code_result(&quiet_result());
     assert!(rendered.contains("No output recorded."));
     assert!(rendered.contains("No tool calls were made."));
-    // ...and a program that said something is not nagged.
+    // ...and a program that said something — into either channel — is not nagged.
     let spoke = render_code_result(&CodeResultContext {
-        logs: vec!["12 files".to_string()],
+        views_opened: vec![CodeViewView {
+            kind: "text".to_string(),
+            selector: "12 files".to_string(),
+            tokens: 8,
+            superseded: false,
+        }],
         silent: false,
         ..quiet_result()
     });
@@ -887,7 +1060,7 @@ fn the_feedback_says_when_a_finish_was_revoked() {
 
     // And a turn that declared no ending is told nothing about one.
     let ordinary = render_code_result(&CodeResultContext {
-        logs: vec!["ok".to_string()],
+        logged_lines: 1,
         silent: false,
         ..quiet_result()
     });
@@ -970,7 +1143,7 @@ fn the_sandbox_feedback_separates_a_limit_a_timeout_and_a_mistake() {
 fn healing_is_never_disclosed_to_the_model() {
     let rendered = [
         render_code_result(&CodeResultContext {
-            logs: vec!["1".to_string()],
+            logged_lines: 1,
             silent: false,
             ..quiet_result()
         }),
@@ -1018,7 +1191,7 @@ fn healing_is_never_disclosed_to_the_model() {
 #[test]
 fn no_code_feedback_restates_the_termination_rule() {
     let ran = render_code_result(&CodeResultContext {
-        logs: vec!["1".to_string()],
+        logged_lines: 1,
         silent: false,
         ..quiet_result()
     });

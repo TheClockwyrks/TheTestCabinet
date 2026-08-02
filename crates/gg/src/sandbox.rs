@@ -47,13 +47,16 @@
 //!
 //! ## What a program can say, and what it cannot
 //!
-//! A program has exactly one channel for showing gg a value: `console.log`. A top-level `return`
-//! ends the program the way it ends any function body, and a value handed to it is **discarded** —
-//! the model is told so, once, rather than left to infer the rule from an absence. That is a
-//! deliberate subtraction. A returned value bought nothing a log line does not, and it cost a whole
-//! family of rules the model had to learn and gg had to enforce: what happens to a cycle, to a
-//! function, to a structure nested past what the host's parser accepts, to a `Promise`. One rule —
-//! log what you want to see — replaces all of them.
+//! A program has exactly one channel for putting something in front of its **model**: a
+//! [view](crate::context::ViewKind) — `view.openText` for a value it computed, `view.openFile` for a
+//! file. `console.log` still works and is still captured, but it writes to the **operator**: the
+//! run's stream, its telemetry, its replay record and the console. A top-level `return` ends the
+//! program the way it ends any function body, and a value handed to it is **discarded** — the model
+//! is told so, once, rather than left to infer the rule from an absence. That is a deliberate
+//! subtraction. A returned value bought nothing an opened view does not, and it cost a whole family
+//! of rules the model had to learn and gg had to enforce: what happens to a cycle, to a function, to
+//! a structure nested past what the host's parser accepts, to a `Promise`. One rule — open a view of
+//! what you want to see — replaces all of them.
 //!
 //! ## What a run yields
 //!
