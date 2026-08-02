@@ -214,6 +214,89 @@ pub struct OpenFileView {
     pub region: Option<FileRegion>,
 }
 
+/// Which of the two [view](ContextModel::open_views) kinds a view is — the whole taxonomy, and
+/// closed on purpose.
+///
+/// Everything on disk is a file and everything a program can compute is a string, so a directory
+/// listing, a shell result, a subagent's answer, a computed diff and an assembled table are all
+/// [`Text`](Self::Text) views. A third kind for any of them would hand the model a taxonomy question
+/// to answer before it could show gg anything, in exchange for a distinction nothing downstream
+/// reads. An **image** is not a kind either: it is a [`File`](Self::File) view of an image file,
+/// whose item carries the picture.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewKind {
+    /// A [file view](GgContextSource::FileView), keyed by `(path, region)`.
+    File,
+    /// A [text view](GgContextSource::TextView), keyed by the label the agent gave it.
+    Text,
+}
+
+/// One [text view](GgContextSource::TextView) open in the window: the label it is keyed by and the
+/// body the agent composed for it.
+///
+/// The counterpart of [`OpenFileView`] for [agent persistence](ContextModel::open_text_views) — and,
+/// unlike it, it carries **the material itself**. That module's "record the reference, never the
+/// bytes" principle exists because a file's on-disk truth can move under a stored snapshot, leaving
+/// a restored profile showing a file that no longer says that. A text view has no on-disk truth to
+/// go stale against: the window *is* the only copy, so a reference to it would restore nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenTextView {
+    /// The label the view is keyed by — its selector for supersession and for `view.close`.
+    pub label: String,
+    /// The body the agent supplied, without the [heading](code_heading) the window prefixes it with.
+    pub body: String,
+}
+
+/// One view of either kind open in the window, as [`open_views`](ContextModel::open_views) reports
+/// it — what backs the model-facing `view.current()`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenViewInfo {
+    /// Whether this is a file or a text view.
+    pub kind: ViewKind,
+    /// The view's selector: a file view's workspace path, or a text view's label.
+    pub selector: String,
+    /// The estimated tokens the view occupies. Views that share a selector *and* a region are
+    /// reported as one entry carrying their combined cost, because that is what closing the
+    /// selector reclaims.
+    pub tokens: u64,
+    /// The `offset`/`limit` window a **paged** file view covers; `None` for a whole-file view and
+    /// for every text view.
+    pub region: Option<FileRegion>,
+}
+
+/// What opening a view did to the window: whether it replaced a view that was already open, whether
+/// that replacement happened inside the current turn (so nothing was ever sent), and what the new
+/// item costs.
+///
+/// The turn report reads this to tell the model what its own call did — "opened" and "replaced" are
+/// different facts, and a model that re-opened a view believing it had opened a second one would
+/// mis-read its own accounting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ViewOpened {
+    /// Whether a view with this selector was already open and has been superseded.
+    pub superseded: bool,
+    /// Whether the superseded copy was itself pushed on the **current** turn and so was replaced in
+    /// place rather than left behind as history. See
+    /// [`supersede_view`](ContextModel::supersede_view).
+    pub replaced_in_turn: bool,
+    /// The estimated tokens the newly opened view occupies.
+    pub tokens: usize,
+}
+
+/// What [`supersede_view`](ContextModel::supersede_view) did to the copy of a selector that was
+/// already open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ViewSupersede {
+    /// Nothing carried this selector; the new view is simply appended.
+    None,
+    /// The previous copy had already been sent, so it was retagged as history in place and the new
+    /// copy is appended at the tail.
+    Retagged,
+    /// The previous copy was pushed on this same turn and was removed outright; the new copy takes
+    /// its index.
+    ReplacedAt(usize),
+}
+
 /// Which position of the window a [`PromptItem`] was rendered from — the structure the
 /// [rendered order](ContextModel::messages) imposes, made legible to a consumer that only ever
 /// sees the flattened list.
@@ -392,17 +475,20 @@ impl TokenEstimator for HeuristicTokenEstimator {
     }
 }
 
-/// What an [`evict_file_views`](ContextModel::evict_file_views) call reclaimed: how many
-/// file-view items were removed, the tokens they occupied, and the distinct workspace paths
-/// they showed (for the tool result and telemetry `detail`).
+/// What an [`evict_file_views`](ContextModel::evict_file_views) or
+/// [`close_text_views`](ContextModel::close_text_views) call reclaimed: how many view items were
+/// removed, the tokens they occupied, and the distinct selectors they showed (for the tool result
+/// and telemetry `detail`).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EvictionResult {
-    /// The number of [`FileView`](GgContextSource::FileView) items removed.
+    /// The number of view items removed.
     pub items: usize,
     /// The estimated tokens the removed items occupied.
     pub tokens: u64,
-    /// The distinct paths of the evicted file views, in first-seen order (a view whose path
-    /// was unknown contributes nothing here).
+    /// The distinct selectors of the removed views, in first-seen order — a
+    /// [file view](GgContextSource::FileView)'s workspace path or a
+    /// [text view](GgContextSource::TextView)'s label. A view whose selector was unknown (a
+    /// malformed read, tagged `None`) contributes nothing here.
     pub paths: Vec<String>,
 }
 
@@ -603,7 +689,7 @@ impl ContextModel {
         label: Option<String>,
         region: Option<FileRegion>,
     ) {
-        let message = self.headed(source, message);
+        let message = self.headed(source, label.as_deref(), message);
         let tokens = self.estimator.estimate_message(&message);
         self.items.push(ContextItem {
             source,
@@ -674,8 +760,11 @@ impl ContextModel {
     /// fingerprint](crate::message_log::fingerprint) is stable across the turns it is pooled over, and
     /// the append-only equality check ([`source_block_is`](Self::source_block_is)) — which heads the
     /// *incoming* candidate the same way — compares like against like.
-    fn headed(&self, source: GgContextSource, message: Message) -> Message {
-        apply_code_heading(self.code_mode, source, message)
+    ///
+    /// `label` is the item's selector tag, which qualifies the heading of the one source whose
+    /// heading alone would not say *which* piece of material this is — see [`item_heading`].
+    fn headed(&self, source: GgContextSource, label: Option<&str>, message: Message) -> Message {
+        apply_code_heading(self.code_mode, source, label, message)
     }
 
     /// Bring the **mutable, single-block** `source` up to date with `message` (or with
@@ -768,7 +857,9 @@ impl ContextModel {
             // The stored block was headed at push, so the candidate is headed the same way before
             // the comparison — otherwise a code-mode block would never match its own rebuild and
             // would supersede every turn, thrashing the prompt cache the append-only rule protects.
-            (Some(item), Some(message)) => item.message == self.headed(source, message.clone()),
+            (Some(item), Some(message)) => {
+                item.message == self.headed(source, None, message.clone())
+            }
             _ => false,
         }
     }
@@ -1174,6 +1265,7 @@ impl ContextModel {
                 let message = apply_code_heading(
                     code_mode,
                     item.source,
+                    item.label.as_deref(),
                     Message::user(content).with_images(images),
                 );
                 item.tokens = estimator.estimate_message(&message);
@@ -1371,9 +1463,23 @@ impl ContextModel {
     /// eviction is exactly the removal locking exists to prevent. Ordinary file reads are
     /// ephemeral and evict as before.
     pub fn evict_file_views(&mut self, path: Option<&str>) -> EvictionResult {
+        self.remove_views(GgContextSource::FileView, path)
+    }
+
+    /// Remove the items of one **view band** from the live window, reclaiming their tokens: the
+    /// shared body of [`evict_file_views`](Self::evict_file_views) and
+    /// [`close_text_views`](Self::close_text_views).
+    ///
+    /// One implementation rather than two copies, because the two must agree on every rule they
+    /// share — the pinned carve-out, the targeted/blanket split, the first-seen selector list — and
+    /// a divergence between them would show up as a band that quietly refuses to shrink.
+    ///
+    /// A [`Pinned`](Retention::Pinned) item is spared even by a blanket `None` removal: pinning is
+    /// exactly what says an item is kept in the window, and removal is what pinning prevents.
+    fn remove_views(&mut self, source: GgContextSource, selector: Option<&str>) -> EvictionResult {
         let mut result = EvictionResult::default();
         self.items.retain(|item| {
-            if item.source != GgContextSource::FileView {
+            if item.source != source {
                 return true;
             }
             // A locked (pinned) autoloaded spec is kept in the window by definition — eviction
@@ -1381,8 +1487,8 @@ impl ContextModel {
             if item.retention.is_pinned() {
                 return true;
             }
-            // A targeted eviction spares views of other paths.
-            if let Some(wanted) = path
+            // A targeted removal spares views with a different selector.
+            if let Some(wanted) = selector
                 && item.label.as_deref() != Some(wanted)
             {
                 return true;
@@ -1446,6 +1552,305 @@ impl ContextModel {
     }
 }
 
+// The view surface the responses-as-code sandbox membrane drives: `LoopToolApi` services a
+// program's `view.*` calls against the window it holds by value for the turn. The membrane lands in
+// a later phase, so the binary build currently sees these as unconstructed; the tests below drive
+// them directly.
+#[allow(dead_code)]
+impl ContextModel {
+    /// Close [`TextView`](GgContextSource::TextView) items from the live window, reclaiming their
+    /// tokens. With `label` `Some`, only the view keyed by that label is closed; with `None`,
+    /// **every** text view is. Returns what was reclaimed, for the tool result and the
+    /// [`ContextManaged`](test_cabinet_core::gg::GgTelemetryKind::ContextManaged) telemetry, which
+    /// reports it as [`CloseTextViews`](test_cabinet_core::gg::GgContextAction::CloseTextViews).
+    ///
+    /// The mirror of [`evict_file_views`](Self::evict_file_views) — the same removal, the same
+    /// sparing of [`Pinned`](Retention::Pinned) items, over the other band — but **not** the same
+    /// trade for the agent making it. An evicted file view is recoverable: the file is unchanged on
+    /// disk and a re-read re-opens it. A closed text view held the agent's only copy of something it
+    /// composed, so closing one discards it unless the agent wrote it down somewhere. That
+    /// difference is why the two are separate calls and separate telemetry actions rather than one
+    /// `close_view` over both bands.
+    pub fn close_text_views(&mut self, label: Option<&str>) -> EvictionResult {
+        self.remove_views(GgContextSource::TextView, label)
+    }
+
+    /// Open (or re-open) the [text view](GgContextSource::TextView) keyed by `label`: agent-composed
+    /// material — a computed summary, a diff, a table, a subagent's answer — pushed into the window
+    /// as its own attributable item.
+    ///
+    /// This is the counterpart of one tool result per tool call for a
+    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program, which has no
+    /// tool calls to attach material to. Re-opening the same `label`
+    /// [supersedes](Self::supersede_view) the copy that was there: `openText` names an **intent** —
+    /// *this should be visible* — and re-stating an intent replaces it, so a program that recomputes
+    /// a summary in a loop leaves one view behind rather than one per iteration.
+    ///
+    /// # Envelope
+    ///
+    /// Pushed as a `user` message, never as a `tool` result. A code turn's assistant message carries
+    /// **no** `tool_calls` at all, so a `tool`-role message would quote a call id that dangles from
+    /// the moment it is pushed and an OpenAI-shaped provider rejects the whole request — the same
+    /// constraint that makes `pin_read_skill` and compaction's file re-seed use a `user` envelope.
+    /// Under code mode the body is headed `View: {label}` so the model can tell its views apart.
+    ///
+    /// The view is [`Ephemeral`](Retention::Ephemeral): it is the agent's own working material, it
+    /// can be [closed](Self::close_text_views), and a
+    /// [compaction](https://docs.testcabinet.ai/gg/compaction/) drops it like any other ephemeral
+    /// item.
+    pub fn open_text_view(&mut self, label: String, body: String) -> ViewOpened {
+        let superseded = self.supersede_view(GgContextSource::TextView, &label, None);
+        let item = self.view_item(GgContextSource::TextView, Message::user(body), label, None);
+        self.place_view(item, superseded)
+    }
+
+    /// Open (or re-open) the [file view](GgContextSource::FileView) keyed by `(path, region)` —
+    /// what a program's `view.openFile` pushes, and the one place the code path deliberately *does*
+    /// put a file in the window.
+    ///
+    /// # The key is `(path, region)`, and why
+    ///
+    /// Two pages of one file are two views and must coexist: opening `a.ts` at `offset 1` and again
+    /// at `offset 201` is a program paging through a file, not a program changing its mind.
+    /// Re-opening the **same** page [supersedes](Self::supersede_view) it. `region` is `None` for a
+    /// whole-file read ([`FileRegion::covered`]), so a whole-file view and a paged view of the same
+    /// file are distinct keys and the whole-file one supersedes itself on re-read.
+    ///
+    /// Closing, by contrast, is by **path**: [`evict_file_views`](Self::evict_file_views) drops
+    /// every page of it. That asymmetry is deliberate and is the established eviction semantics —
+    /// an agent that wants a file gone wants the whole file gone.
+    ///
+    /// # It supersedes; a native `read_file` does not
+    ///
+    /// [`push_file_view`](Self::push_file_view) appends a fresh view per read, because a
+    /// `read_file` result is a snapshot of the file *as it was read* and naming an **action** is
+    /// what that tool does. `view.openFile` names an intent, so it supersedes. Only this path
+    /// changed; the native one is untouched.
+    ///
+    /// `images` is what a read of a reference mockup carries — a picture is not a third view kind,
+    /// it is a file view of an image file — and rides in the same item as the text, so closing the
+    /// path reclaims both.
+    pub fn open_file_view_deduped(
+        &mut self,
+        path: String,
+        region: Option<FileRegion>,
+        content: String,
+        images: Vec<ImageContent>,
+    ) -> ViewOpened {
+        let superseded = self.supersede_view(GgContextSource::FileView, &path, region);
+        let item = self.view_item(
+            GgContextSource::FileView,
+            Message::user(content).with_images(images),
+            path,
+            region,
+        );
+        self.place_view(item, superseded)
+    }
+
+    /// Build the [`ContextItem`] a view is pushed as: [headed](Self::headed) for its selector,
+    /// measured, tagged with the current [turn](Self::begin_turn), and always
+    /// [`Ephemeral`](Retention::Ephemeral).
+    ///
+    /// Both kinds are ephemeral without exception. A view is material the agent chose to hold in
+    /// front of itself *now*; the pinned classes are the ones gg keeps on the agent's behalf (the
+    /// prompts, read skills, memories, the task list, a locked autoloaded specification), and a view
+    /// the agent could not reclaim would be a hole in the accounting this feature exists to give it.
+    fn view_item(
+        &self,
+        source: GgContextSource,
+        message: Message,
+        selector: String,
+        region: Option<FileRegion>,
+    ) -> ContextItem {
+        let message = self.headed(source, Some(&selector), message);
+        let tokens = self.estimator.estimate_message(&message);
+        ContextItem {
+            source,
+            retention: Retention::Ephemeral,
+            message,
+            tokens,
+            label: Some(selector),
+            region,
+            turn: self.turn,
+        }
+    }
+
+    /// Put a freshly built view `item` into the window, honouring what
+    /// [`supersede_view`](Self::supersede_view) did to the copy it replaces, and report the result.
+    fn place_view(&mut self, item: ContextItem, superseded: ViewSupersede) -> ViewOpened {
+        let tokens = item.tokens;
+        match superseded {
+            // The copy this replaces was removed from `index`, so the new one takes the position it
+            // held: a program looping over a set of views re-opens them in a stable order rather
+            // than rotating the tail of its own window every iteration.
+            ViewSupersede::ReplacedAt(index) => self.items.insert(index, item),
+            _ => self.items.push(item),
+        }
+        ViewOpened {
+            superseded: !matches!(superseded, ViewSupersede::None),
+            replaced_in_turn: matches!(superseded, ViewSupersede::ReplacedAt(_)),
+            tokens,
+        }
+    }
+
+    /// Retire whatever is already open under `(source, selector, region)` so the caller can push a
+    /// fresh copy, and report which of the two ways it did that.
+    ///
+    /// # Why re-opening supersedes at all
+    ///
+    /// The window renders as an append-only prompt, and superseding — rather than editing in place
+    /// — is how a mutable block is retired without invalidating everything after it (see
+    /// [`replace_source`](Self::replace_source)). A view re-opened under the same selector is
+    /// exactly that shape: one live copy, an honest record of what the model was told before it.
+    ///
+    /// # The two cases
+    ///
+    /// - **The existing copy was pushed on an earlier turn.** It has been sent, and a provider has
+    ///   cached the prefix containing it, so removing it would cost the run every cached token
+    ///   after its position. It stays where it is, retagged to
+    ///   [`History`](GgContextSource::History) + [`Ephemeral`](Retention::Ephemeral) with its
+    ///   selector cleared — precisely what [`supersede_source`](Self::supersede_source) does to a
+    ///   mutable block — and the new copy is appended at the tail.
+    /// - **The existing copy was pushed on the current turn** (`turn == self.turn`): the same
+    ///   program opened it moments ago and *nothing has been sent*. There is no cached prefix to
+    ///   protect and no history worth recording, so it is removed outright. A program that refines
+    ///   a view in a loop must not leave a corpse per iteration — that would make the precise
+    ///   accounting this feature exists to deliver worse than the anonymous blob it replaced. A view
+    ///   opened and then closed inside one program therefore reaches the window not at all.
+    ///
+    /// The region is part of the key, so a paged view supersedes only the same page. Older copies
+    /// beyond the newest — which only a native `read_file` can leave, since every view open
+    /// supersedes — are retagged too: they show the same material and leaving them in the band would
+    /// double-count it.
+    ///
+    /// A [`Pinned`](Retention::Pinned) copy is not a candidate at all. The only pinned views are
+    /// **locked** [autoloaded specifications](https://docs.testcabinet.ai/gg/autoload-specifications/),
+    /// and retagging one out of its band is the removal locking exists to prevent; re-opening such a
+    /// path appends an ordinary evictable view beside it instead.
+    fn supersede_view(
+        &mut self,
+        source: GgContextSource,
+        selector: &str,
+        region: Option<FileRegion>,
+    ) -> ViewSupersede {
+        let matches: Vec<usize> = self
+            .items
+            .iter()
+            .enumerate()
+            .filter(|(_, item)| {
+                item.source == source
+                    && !item.retention.is_pinned()
+                    && item.label.as_deref() == Some(selector)
+                    && item.region == region
+            })
+            .map(|(index, _)| index)
+            .collect();
+        let Some((&newest, older)) = matches.split_last() else {
+            return ViewSupersede::None;
+        };
+        for &index in older {
+            self.retire_view(index);
+        }
+        if self.items[newest].turn == self.turn {
+            self.items.remove(newest);
+            return ViewSupersede::ReplacedAt(newest);
+        }
+        self.retire_view(newest);
+        ViewSupersede::Retagged
+    }
+
+    /// Retag the item at `index` as ordinary ephemeral [`History`](GgContextSource::History) in
+    /// place, dropping its selector — the per-item form of
+    /// [`supersede_source`](Self::supersede_source).
+    ///
+    /// The [region](FileRegion) goes with the label: it only ever qualifies a selector, and a
+    /// region on an item nothing can select is a fragment of a key that no longer exists.
+    fn retire_view(&mut self, index: usize) {
+        let item = &mut self.items[index];
+        item.source = GgContextSource::History;
+        item.retention = Retention::Ephemeral;
+        item.label = None;
+        item.region = None;
+    }
+
+    /// Every view **open** in the window, in the order it was opened — what backs the model-facing
+    /// `view.current()`.
+    ///
+    /// Views sharing a selector *and* a region are reported as one entry carrying their combined
+    /// cost, because that is what closing the selector reclaims. (Only a native `read_file` can
+    /// produce such a pair; the view API supersedes instead.)
+    ///
+    /// A [`Pinned`](Retention::Pinned) view is left out, for the same reason
+    /// [`open_file_views`](Self::open_file_views) and [`top_file_views`](Self::top_file_views) leave
+    /// it out: this is the list `view.close` acts on, and a locked autoloaded specification cannot
+    /// be closed. Offering the model an entry whose close silently reclaims nothing is worse than
+    /// not listing it.
+    pub fn open_views(&self) -> Vec<OpenViewInfo> {
+        let mut open: Vec<OpenViewInfo> = Vec::new();
+        for item in &self.items {
+            if item.retention.is_pinned() {
+                continue;
+            }
+            let kind = match item.source {
+                GgContextSource::FileView => ViewKind::File,
+                GgContextSource::TextView => ViewKind::Text,
+                _ => continue,
+            };
+            // A view whose selector is unknown (a malformed native read) is unnameable, so there is
+            // nothing useful to report about it.
+            let Some(selector) = item.label.clone() else {
+                continue;
+            };
+            match open.iter_mut().find(|view| {
+                view.kind == kind && view.selector == selector && view.region == item.region
+            }) {
+                Some(existing) => existing.tokens += item.tokens as u64,
+                None => open.push(OpenViewInfo {
+                    kind,
+                    selector,
+                    tokens: item.tokens as u64,
+                    region: item.region,
+                }),
+            }
+        }
+        open
+    }
+
+    /// The [text views](GgContextSource::TextView) currently open, **with their bodies**, newest
+    /// copy per label — what [agent persistence](crate::persistence) records against a profile so
+    /// the next instance can be handed back what this one had composed.
+    ///
+    /// The bodies are here on purpose, and the contrast with
+    /// [`open_file_views`](Self::open_file_views) is the whole reason: that one records a
+    /// *reference* because a file's on-disk truth can move under a stored snapshot, so replaying
+    /// the bytes would show the next instance a file that no longer says that. A text view has no
+    /// on-disk truth to go stale against — the window is the only copy — so a reference would
+    /// restore nothing at all.
+    ///
+    /// The body is reported as the agent supplied it, without the `View: {label}` heading the window
+    /// prefixes it with, so re-opening it through [`open_text_view`](Self::open_text_view)
+    /// reproduces the same item rather than heading it twice.
+    pub fn open_text_views(&self) -> Vec<OpenTextView> {
+        let mut open: Vec<OpenTextView> = Vec::new();
+        for item in &self.items {
+            if item.source != GgContextSource::TextView {
+                continue;
+            }
+            let Some(label) = item.label.clone() else {
+                continue;
+            };
+            let body = text_view_body(item);
+            match open.iter_mut().find(|view| view.label == label) {
+                // Superseding retags the older copy out of this band, so a duplicate label here is
+                // not reachable today; the newest copy wins if one ever is.
+                Some(existing) => existing.body = body,
+                None => open.push(OpenTextView { label, body }),
+            }
+        }
+        open
+    }
+}
+
 /// The model-facing **heading** a synthesized `user` message of `source` carries under
 /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE), or `None` for a source
 /// whose messages are never headed.
@@ -1469,6 +1874,7 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
         GgContextSource::UserPrompt => Some("Task"),
         GgContextSource::ToolOutput => Some("Output"),
         GgContextSource::FileView => Some("File"),
+        GgContextSource::TextView => Some("View"),
         GgContextSource::Skill => Some("Documentation"),
         GgContextSource::Memory => Some("Memories"),
         GgContextSource::TaskList => Some("Tasks"),
@@ -1479,17 +1885,43 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
     }
 }
 
-/// Prefix a `user` `message` with its [heading](code_heading) when `code_mode` is on — the pure core
+/// The full heading an item of `source` carrying the selector tag `label` is prefixed with — the
+/// [word](code_heading) for its band, qualified by the selector for the one band where the word
+/// alone is not enough to say *which* piece of material the body is.
+///
+/// A [`TextView`](GgContextSource::TextView) is that band. Its selector is the only thing telling
+/// two of them apart: the bodies are whatever the agent composed, and a window holding four of them
+/// under four identical `View` headings would be four anonymous blocks the model could neither
+/// match to its own `view.openText` calls nor name in a `view.close`. So a text view reads
+/// `View: {label}`.
+///
+/// Every other band keeps the bare word, including [`FileView`](GgContextSource::FileView) —
+/// deliberately, because a file view's body opens with the read's own path header, so `File` plus
+/// the path would say the path twice.
+fn item_heading(source: GgContextSource, label: Option<&str>) -> Option<String> {
+    let heading = code_heading(source)?;
+    match (source, label) {
+        (GgContextSource::TextView, Some(label)) => Some(format!("{heading}: {label}")),
+        _ => Some(heading.to_string()),
+    }
+}
+
+/// Prefix a `user` `message` with its [heading](item_heading) when `code_mode` is on — the pure core
 /// of [`ContextModel::headed`], factored out so [`clear_ephemeral`](ContextModel::clear_ephemeral)
 /// can head a re-framed item without a `&self` borrow it cannot take mid-iteration.
 ///
 /// A no-op off the code path, on a non-`user` message, and on a source [`code_heading`] does not
 /// name — so calling it on any message is safe, and only the ones that should be headed are.
-fn apply_code_heading(code_mode: bool, source: GgContextSource, message: Message) -> Message {
+fn apply_code_heading(
+    code_mode: bool,
+    source: GgContextSource,
+    label: Option<&str>,
+    message: Message,
+) -> Message {
     if !code_mode || message.role != Role::User {
         return message;
     }
-    let Some(heading) = code_heading(source) else {
+    let Some(heading) = item_heading(source, label) else {
         return message;
     };
     let body = message.content.unwrap_or_default();
@@ -1505,6 +1937,12 @@ fn apply_code_heading(code_mode: bool, source: GgContextSource, message: Message
 /// Title-case and spelled for a reader rather than for the wire, because these are the words the
 /// model reads: the block is a short table it acts on, not a dump of enum variants. The file-view
 /// label doubles as the heading of its nested per-file list (`Top File Views`), so it is plural.
+///
+/// [`TextView`](GgContextSource::TextView) is `Text Views` rather than the console's operator-facing
+/// "Agent views": the model is the agent, so naming the band after it reads as somebody else's, and
+/// `text` is already the word the model meets in `view.openText` and in a `view.current()` entry's
+/// `kind`. The two audiences are allowed to differ here — this table already says `Your Messages`
+/// where the console says `Assistant`.
 fn source_label(source: GgContextSource) -> &'static str {
     match source {
         GgContextSource::System => "System Prompt",
@@ -1512,12 +1950,32 @@ fn source_label(source: GgContextSource) -> &'static str {
         GgContextSource::Assistant => "Your Messages",
         GgContextSource::ToolOutput => "Tool Output",
         GgContextSource::FileView => "File Views",
+        GgContextSource::TextView => "Text Views",
         GgContextSource::Skill => "Documentation",
         GgContextSource::Memory => "Memories",
         GgContextSource::TaskList => "Tasks",
         GgContextSource::Board => "Board",
         GgContextSource::History => "History",
     }
+}
+
+/// The body a [text view](GgContextSource::TextView) item was opened with, with the
+/// [heading](item_heading) the window prefixed it with removed.
+///
+/// The heading is derived from the item's own `(source, label)`, so the prefix stripped here is
+/// byte-for-byte the one [`apply_code_heading`] added rather than a guess at its shape. An item
+/// pushed outside code mode carries no heading, and one whose body happens not to start with its
+/// heading (a window that crossed from a code-mode agent to a tool-calling one and back) is
+/// returned untouched.
+fn text_view_body(item: &ContextItem) -> String {
+    let content = item.message.content.clone().unwrap_or_default();
+    let Some(heading) = item_heading(item.source, item.label.as_deref()) else {
+        return content;
+    };
+    let stripped = content
+        .strip_prefix(&format!("{heading}\n----\n"))
+        .map(str::to_string);
+    stripped.unwrap_or(content)
 }
 
 /// `value` written with `,` thousands separators — how a
@@ -1590,3 +2048,7 @@ pub fn tool_output_source(tool_name: &str) -> GgContextSource {
 #[cfg(test)]
 #[path = "context.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "context.views.test.rs"]
+mod view_tests;
