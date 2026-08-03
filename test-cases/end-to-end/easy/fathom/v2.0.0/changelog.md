@@ -50,6 +50,15 @@ depth. The sonar range still shrinks one tile per depth.
   and no predator leaves the den while it runs. Previously only the order and the `5 s`
   spacing were fixed, which left two readings of where the clock starts — one of them
   spending the reorientation moment the respawn schedule exists to give you.
+- The debug API gains `setCreatureAI(enabled)`: with it off, every predator and drifter
+  holds the tile, facing, and state it was posed with — it senses nothing, decides
+  nothing, and does not move — while the forager, the light, cooldowns, waves, ink,
+  eating, scoring, and contact all run normally. `reset` restores it. Without it, a
+  scenario that poses a creature and then swims at it is betting on where that creature's
+  own wander happens to take it through a maze the build invented.
+- The mute key is stated in the controls: `M` toggles the game's sound. Audio already
+  required a mute toggle and the debug API already listed `KeyM` among the keys it can
+  inject, but no spec said which key muted, so the binding was only ever implied.
 - The wrap tunnel's two mouths are stated to be **adjacent tiles**, with the handover
   at the border: crossing covers one tile, position is carried across rather than
   snapped to the far mouth's center, and a character is never carried out past the
