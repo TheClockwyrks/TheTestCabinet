@@ -816,7 +816,7 @@ validation = { script = "validation/audio/thrust.mjs", outputs = [
 [[review.categories.items]]
 id = "saucer"
 title = "Saucer cue"
-description = "A distinct synthesized cue marks the saucer's presence."
+description = "A distinct synthesized cue marks the saucer's arrival on the field. A sustained hum held while it is present is welcome but not required."
 # Automated validation: run the game to a natural saucer arrival and confirm a Web
 # Audio cue fires. See validation/audio/saucer.mjs.
 validation = { script = "validation/audio/saucer.mjs", outputs = [

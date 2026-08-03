@@ -1,3 +1,154 @@
+## Validation: four items now fail for their own reasons
+
+Each of these was reporting a fault that belonged to a different item, so a single build
+defect took down a check about something else and the real fault went unnamed.
+
+- `bullets/max-four` flew its volley up-left from (200, 200), which sent it diagonally
+  into the top-left corner about half a second in — inside the volley. A build that
+  dropped bullets on that corner reported a peak of two, and the item called it a cap
+  fault. The volley now runs a clear lane low on the left, 260 px below the star's row
+  and only halfway across the field when it ends, so nothing can take a bullet off the
+  field and a count below four can only mean the cap.
+- `wrap/bullet` drives a second crossing, leftward, along the star's own ROW. A wrap
+  moves a body the width of the field in one step, so a build's swept-path test for the
+  star core reads a line straight across the middle unless it is written to understand
+  the seam — and on the row that line runs through the core, so the bullet is deleted as
+  absorbed on the tick it wraps. Every wrap this item used to drive was 200 px clear of
+  the row, where the same false line misses. The row is used rather than a corner
+  because a corner only produces the field's diagonal if both axes cross on the same
+  tick, and gravity pulls a diagonal shot unequally in x and y.
+- `gravity/saucer-free` measures the saucer's own cruise instead of imposing one: it
+  asks for a heading, steps a tick to let the build's steering answer, reads back what
+  the saucer actually flies, and asserts that is UNCHANGED after crossing the star's
+  row. It used to pose `vx` and assert that exact number came back, which failed a build
+  flying a dead-straight line at a constant speed — the very thing the item exists to
+  confirm — because it had overwritten the posed value.
+- `wrap/saucer` keeps the `setSaucer` question, which is genuinely its own: it asks the
+  saucer to fly the opposite way from the one it entered on, and a heading given to
+  `setSaucer` has to survive the next step. That reading also picks the seam this item
+  watches, so the saucer is stood off whichever edge its ACTUAL velocity carries it
+  toward and the crossing is short and certain on every build. Previously a build that
+  discarded the heading spent the whole budget sailing away from the edge the sweep was
+  waiting at, reported as "the saucer never wrapped".
+
+`actWrapAcross` gained a `dir` for a caller that cannot choose its body's heading, and
+now reports `lost` for a body that stopped existing at the seam — a build deleting
+something it should have moved, which is worth saying plainly and is not the same as a
+body that simply never got there.
+
+## The banner runs on a clear field, and `waves/banner` now says so
+
+`specs/gameplay.md` already put the two in order — "show a brief `WAVE N` banner
+(about 1.5 s ...) ... then spawn the next wave" — but every model build read it as a
+description of the transition rather than a timing constraint and spawned all five
+Large rocks under the banner. The spec now says the order matters and why: the banner
+is a breather, the field stays clear for the whole of it, the ship keeps flying so the
+player gets that beat to reposition, and a banner captioning five rocks already
+bearing down is not what is being asked for.
+
+`waves/banner` grades it, reading the field at the instant the banner is raised (it
+must still be empty) and waiting for the spawn separately. The latitude that item
+already gives the wave NUMBER — a build may turn it over with the banner or with the
+spawn, because the spec never says which — is deliberately not extended to the spawn,
+which the spec does fix.
+
+## Validation: three items no longer race the next wave onto the field
+
+`rocks/split-small`, `scoring/monotonic` and `audio/shatter` each isolated their
+subject by emptying the field and posing one rock on it — which arranges for the game
+to refill the field at the exact moment they read their result, because destroying the
+last rock clears the wave and the next one spawns five Large rocks. `split-small` and
+`audio/shatter` measured "the rock is destroyed" as an empty field and read five;
+`monotonic` had wave rocks drift across the lanes its later shots flew down and scored
+490 and 590 where it expected 200 and 300, which its three "the score rises"
+assertions could not see and only its total caught.
+
+The specs do fix the order — banner for about 1.5 s, then spawn — so a build that
+spawns during the banner is wrong, and `waves/banner` is where that belongs. But an
+item that relies on the grace period is timing a race it does not own, and two builds
+with the same fault landed on opposite sides of it. All three items now keep a
+BYSTANDER rock parked out of the way and never shoot it, so the field is never empty,
+no wave can clear, and there is nothing to arrive mid-measurement on any build. Each
+asserts the bystander is still there at the end, which is what says the measurement
+ran on the field it posed.
+
+`monotonic` also poses its three rocks up front on separate lanes and shoots each with
+`actFireOneShotAt`, aiming at a known position rather than at whichever rock is
+nearest — with three on the field, a shot has to say which one it means.
+`split-small` and `audio/shatter` fire exactly one bullet each, because a helper that
+keeps shooting while a rock of the target's size remains would, on a build where a
+Small wrongly splits, shoot the fragments down too and leave the same clean field a
+correct build leaves.
+
+## Firing is an action of the key press, not of the held key
+
+`specs/instrumentation.md` said in one breath that `press(code)` is "the usual way
+to trigger a one-shot action ... firing a single shot", and in the next listed the
+one-shot actions a `keyDown` applies immediately as only the menu, confirm, pause and
+mute ones. A build that read the second list as exhaustive decided whether to fire by
+asking "is the fire key down?" at the top of each fixed step — which is unanswerable
+for a `press`, because a press holds the key for no time at all. Such a build shoots
+perfectly well for a player, who holds the key across several steps, and answers
+every scripted tap with silence.
+
+The `keyDown` bullet now lists a single shot (and, in Warhead, a torpedo launch)
+among the actions applied on the press itself, and the section says outright that the
+shot belongs to the press: take it on the way down, either immediately or latched for
+the next step, but never conditional on the key still being held when that step
+arrives. Holding the key still auto-fires at the 0.18-second rate `specs/ship.md`
+sets; that is the held path, on top of the press's own shot rather than instead of
+it.
+
+## `lives` counts the ship in play; the HUD row does not
+
+The case fixed neither convention, so a build could report 2 (the reserve behind the
+ship being flown) or 3 (every ship left) out of a fresh game and satisfy every
+sentence written about it — `specs/gameplay.md` counted "3 ships",
+`specs/instrumentation.md` called the snapshot field "ships in reserve", and
+`specs/ui.md` drew "one [glyph] per life still in reserve". Two builds could disagree
+by a whole ship and both pass.
+
+The snapshot's `lives` and `setLives(n)` are now the total still left **including the
+ship in play**, so a new game reports `3`, and the HUD keeps drawing one glyph per
+ship in *reserve*, which is `lives - 1` and shows two at that same moment. The two
+counts differing by one is the intent, and all three specs now say so.
+
+## The saucer's audio cue is about its arrival
+
+`specs/ui.md` asked for a short sound for "the saucer's presence", which left it
+unclear whether a cue on arrival was enough or a hum had to be held for as long as
+the saucer was on the field. The audio requirements are now written out one event at
+a time: a distinct cue when a saucer enters is what is required, a sustained hum is
+welcome but optional, and thrust — the one that genuinely is continuous — is called
+out as a held sound that a single blip does not satisfy.
+
+## Validation: clips that show their event, and audio read after a frame
+
+No assertion changed and the reference stays green; these are repairs to what the
+checks film and when they look.
+
+- The audio items read the Web Audio probe only after a real frame has been painted.
+  The simulation is required to be render-free, so a build that records "a rock
+  shattered" during the step and hands it to its audio layer on the next animation
+  frame is doing exactly what the case asks — but the validate pass advances the
+  clock instantly and never produces that frame, so the probe was read while the cue
+  was still queued and four of the five audio items failed a build whose audio was
+  entirely correct. The baseline count is taken at the end of `arrange`, while the
+  build is still on the manual clock, so the pause cannot let a scenario posed on a
+  hair trigger resolve before the sweep that films it has started.
+- `flight/thrust-accelerates` still decides its verdict on the quarter-second window
+  where the 480 px/s² is sharp, then keeps thrusting to a full 1.5 seconds so the
+  clip shows a ship winding up to ~608 px/s rather than twitching and stopping.
+- `gravity/bullet-curves` runs a second instead of 0.35 s, which used to end the
+  flight at the star's own x — the moment the bend begins. `gravity/rock-curves` now
+  poses its rock to round the well rather than fall into it (the old pass reached the
+  core three quarters of a second in, so the clip could not simply be lengthened
+  without turning a curve item into a recycle one) and runs 1.5 s, long enough for
+  the whole bend.
+- `bullets/inherits-motion` reports a tap that fires nothing as the failed assertion
+  it is, instead of throwing a bare `Cannot read properties of undefined` that the
+  driver recorded as the check never having run.
+
 ## The `window.__shatter` debug API and overlay are required
 
 A new common spec, `specs/instrumentation.md`, requires the build to expose a

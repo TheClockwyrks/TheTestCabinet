@@ -5,7 +5,15 @@
 // velocity toward the star (downward), bending its path.
 //
 // Placing the bullet is the precondition (`arrange`); the flight past the well is the behavior
-// (`act`), so the clip is the curve itself. 0.35 s x 120 Hz = 42 ticks.
+// (`act`), so the clip is the curve itself. 1.0 s x 120 Hz = 120 ticks.
+//
+// A second, rather than the 0.35 s this used to run, because 0.35 s ended the flight at the
+// star's own x — the moment the bend BEGINS. The shot had turned barely 7 degrees off level by
+// then, which the assertion could measure but no reviewer could see. Gravity keeps working on
+// it well past the well: a full second carries the round to the right of the field having
+// fallen a hundred px below the line it was launched on, which reads as a curve at a glance.
+// It also stops short of the two things that would muddy the picture — the bullet's 1.5 s
+// lifetime, and the wrap it would make at the right edge a few ticks later.
 
 import { newGame } from "../_helpers.mjs";
 
@@ -24,7 +32,7 @@ export default function item() {
     },
 
     async act(api) {
-      await api.advance(42); // fly it across the top of the well
+      await api.advance(120); // fly it across the top of the well and out the far side
       after = (await api.snapshot()).bullets[0];
     },
 

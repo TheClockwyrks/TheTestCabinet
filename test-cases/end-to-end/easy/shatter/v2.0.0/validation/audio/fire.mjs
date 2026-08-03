@@ -10,8 +10,21 @@
 // the tap and launch it on the next fixed step exactly as a real key tap does — both
 // conformant. Reading with no time elapsed sees no bullet on the second kind, so this item
 // would report a silent gun on a build that never got to fire at all.
+//
+// Both ends of the audio comparison are read through `audioCount`, which settles a real frame
+// first: a build may schedule its cues from the render loop, and the validate pass advances
+// the clock instantly, so an unsettled read reports a silent build that is in fact playing.
+// The baseline is taken at the end of `arrange`, not the top of `act`, because in the record
+// pass the build is driving its own clock by then and the pause would be game time the
+// scenario has not been watched through. See `_helpers.mjs`.
 
-import { newGame, poseShip, armAudio, actTapFire } from "../_helpers.mjs";
+import {
+  newGame,
+  poseShip,
+  armAudio,
+  actTapFire,
+  audioCount,
+} from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -25,12 +38,12 @@ export default function item() {
       await newGame(api); // clears rocks and the saucer, so only the shot can make a sound
       await poseShip(api, { x: 300, y: 360, vx: 0, vy: 0, angle: 0 });
       await armAudio(api);
+      before = await audioCount(api);
     },
 
     async act(api) {
-      before = (await api.audio()).length;
       shot = await actTapFire(api); // fire a single bullet
-      after = (await api.audio()).length;
+      after = await audioCount(api);
       await api.advance(60); // a tail so the clip shows the shot leave
     },
 
