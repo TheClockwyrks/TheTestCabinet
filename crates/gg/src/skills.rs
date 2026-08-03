@@ -657,8 +657,10 @@ fn unquote(value: &str) -> &str {
     value
 }
 
+// Crate-visible rather than private: the [reference](crate::reference) reads the family table this
+// module owns, which is gg's one grouping of its own model-facing surface.
 #[path = "skills.builtin.rs"]
-mod builtin;
+pub(crate) mod builtin;
 
 pub use builtin::builtin_skills;
 

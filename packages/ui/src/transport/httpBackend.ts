@@ -69,6 +69,7 @@ import type {
   GgConfigInput,
   GgReplayRecordV1,
 } from "@test-cabinet/run-record/gg";
+import type { GgReference } from "@test-cabinet/run-record/gg-reference";
 import type { GgReplayRecord } from "@test-cabinet/run-record/gg-replay";
 import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import type {
@@ -764,6 +765,15 @@ export function createHttpBackend(baseUrl: string): BackendClient {
 
     async deleteGgDashboard(id: string, token: string): Promise<void> {
       await delVoid(baseUrl, `/gg/dashboards/${encodeURIComponent(id)}`, token);
+    },
+
+    // gg's tool + responses-as-code reference. No token: the document is static and
+    // caller-independent, so the backend serves it to anyone who can reach it. Also
+    // the reason it is fetched rather than bundled — it is generated from gg's own
+    // definitions and committed into the backend, so the deployment's copy is the
+    // authority on what its gg actually tells models.
+    async ggReference(): Promise<GgReference> {
+      return getJson<GgReference>(baseUrl, "/gg/reference");
     },
 
     async listComparisons(token: string): Promise<Comparison[]> {

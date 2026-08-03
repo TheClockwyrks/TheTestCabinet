@@ -28,6 +28,7 @@ pub mod execution;
 pub mod gg;
 pub mod gg_exec;
 pub mod gg_query;
+pub mod gg_reference;
 pub mod gg_replay;
 pub mod gg_replay_assembly;
 pub mod gg_replay_journal;

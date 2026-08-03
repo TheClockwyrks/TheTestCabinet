@@ -1,14 +1,17 @@
 // Generate the Test Cabinet data contract — the TypeScript bindings and the JSON
 // Schemas — from the Rust types that are its single source of truth.
 //
-// The work happens in two steps. First the `contract-codegen` crate (see
-// `crates/contract-codegen`) emits the TypeScript (`packages/run-record/src/`)
-// and the JSON Schemas (`apps/docs/public/schema/`) from the Rust contract types,
-// which derive `ts_rs::TS` + `schemars::JsonSchema` behind their `contract`
-// feature. The Rust generator is correct but not pretty (ts_rs emits ragged
-// whitespace), so the second step runs Prettier to make the committed output
-// deterministic and conventional. CI regenerates and fails on any diff, so the
-// committed artifacts always match the Rust source — hand-edits never survive.
+// The work happens in three steps. First gg projects its own model-facing surface
+// into `crates/backend/src/gg_reference.json`, because the backend serves that
+// artifact and cannot reach the crate that produces it. Then the `contract-codegen`
+// crate (see `crates/contract-codegen`) emits the TypeScript
+// (`packages/run-record/src/`) and the JSON Schemas (`apps/docs/public/schema/`)
+// from the Rust contract types, which derive `ts_rs::TS` + `schemars::JsonSchema`
+// behind their `contract` feature. The Rust generator is correct but not pretty
+// (ts_rs emits ragged whitespace), so the last step runs Prettier to make the
+// committed output deterministic and conventional. CI regenerates and fails on any
+// diff, so the committed artifacts always match the Rust source — hand-edits never
+// survive.
 //
 // Usage: `npm run gen:contract` (from the repository root).
 
@@ -19,10 +22,57 @@ function run(cmd, args) {
   execFileSync(cmd, args, { stdio: "inherit" });
 }
 
-// 1. Emit raw TS + JSON from the Rust source of truth.
+// 1. Project gg's reference — every tool's real description and parameter schema,
+//    and every responses-as-code function's signature, doc and referenced types —
+//    out of gg's own definitions, so the console's gg Reference section shows what
+//    models are actually shown rather than a paraphrase that drifts.
+//
+//    It crosses the crate boundary as a committed artifact because the backend that
+//    serves it (`GET /gg/reference`) must not depend on `test-cabinet-gg`: that crate
+//    pulls wasmtime, oxc and tiktoken-rs, and the backend is built portable and static
+//    under musl. Same shape as gg's sandbox signature catalogue — generate, commit,
+//    embed, and let CI's regenerate-and-diff check stand in for the dependency.
+//
+//    This runs *first*, before the codegen below, and that order is load-bearing:
+//    the backend `include_str!`s the file, and `contract-codegen` links the backend,
+//    so the artifact has to be on disk before step 2 can build at all. Generating it
+//    last would mean a deleted file could never be regenerated.
+{
+  const reference = execFileSync(
+    "cargo",
+    [
+      "run",
+      "--quiet",
+      "-p",
+      "test-cabinet-gg",
+      "--bin",
+      "gg",
+      "--",
+      "reference",
+    ],
+    {
+      encoding: "utf8",
+      // Cargo's build progress goes to stderr and should stay visible; only the
+      // JSON on stdout is captured.
+      stdio: ["ignore", "pipe", "inherit"],
+      // The reference is ~100 KB today and grows with every tool gg gains, which
+      // would silently blow Node's 1 MiB default and fail the build for a reason
+      // that reads like a cargo error.
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  );
+  // Exactly one trailing newline; Prettier below re-indents the body, so this only
+  // has to be valid JSON.
+  writeFileSync(
+    "crates/backend/src/gg_reference.json",
+    `${reference.trimEnd()}\n`,
+  );
+}
+
+// 2. Emit raw TS + JSON from the Rust source of truth.
 run("cargo", ["run", "--quiet", "-p", "contract-codegen"]);
 
-// 1b. Mirror gg's built-in system-prompt templates into the TS contract, so the
+// 2b. Mirror gg's built-in system-prompt templates into the TS contract, so the
 //     console can seed its per-agent "System Prompt" editor with the exact default
 //     an agent's `systemPromptTemplate` override starts from. There are two, chosen
 //     by the agent's execution mode: the tool-calling arm names each capability's
@@ -54,9 +104,12 @@ run("cargo", ["run", "--quiet", "-p", "contract-codegen"]);
   );
 }
 
-// 2. Normalize formatting so the committed artifacts are deterministic. Prettier
+// 3. Normalize formatting so the committed artifacts are deterministic. Prettier
 //    is pinned (see the root `package.json`) so the same input always formats the
-//    same way, which is what makes the drift check trustworthy.
+//    same way, which is what makes the drift check trustworthy. gg's reference is
+//    formatted here too rather than trusted to `serde_json`'s pretty printer: the
+//    drift check diffs the committed bytes, so every artifact it guards has to come
+//    out of the same formatter.
 run("npx", [
   "prettier",
   "--write",
@@ -64,4 +117,5 @@ run("npx", [
   "warn",
   "packages/run-record/src/**/*.ts",
   "apps/docs/public/schema/**/*.json",
+  "crates/backend/src/gg_reference.json",
 ]);

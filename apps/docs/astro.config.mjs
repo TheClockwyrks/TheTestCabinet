@@ -527,6 +527,11 @@ export default defineConfig({
             // how the system prompt is assembled from the capability set. Not a
             // capability: it cuts across all of them.
             "gg/prompts",
+            // The other half of the model-facing surface, and beside Prompts for the
+            // same reason: it cuts across every capability. Unlike everything below
+            // it, none of it is authored — the page is projected from gg's own tool
+            // definitions and signature catalogue.
+            "gg/reference",
             // One page per capability. Grouped by concern for reading order; the
             // grouping is editorial, matching the index on the overview page.
             {

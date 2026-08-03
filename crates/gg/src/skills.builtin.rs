@@ -50,42 +50,59 @@ pub const PARAM_BUILT_INS: &str = "builtIns";
 
 /// One family gg ships a skill for: what the skill is called, what it is for, and how to tell
 /// whether this agent has any of it.
-struct Family {
+///
+/// Crate-visible rather than private because the families are also gg's own **grouping of its
+/// model-facing surface** — the order the system prompt's API table uses, the objects a program
+/// reaches each family through — and the [reference](crate::reference) projects that grouping as
+/// the categories the console's Reference section is organized by. There is one list of families,
+/// and it is this one.
+pub(crate) struct Family {
     /// The skill's name — the handle `read_skill` takes, and the id the `builtIns` param uses.
-    id: &'static str,
+    pub(crate) id: &'static str,
+    /// The display title for the family, for a **human** reading a catalogue of gg's surface.
+    ///
+    /// Deliberately not part of anything a model is shown: a skill's front matter carries the
+    /// [`id`](Self::id) and the [`description`](Self::description) and nothing else, and adding a
+    /// third string to it would be prose gg wrote for itself sitting in the model's window.
+    pub(crate) title: &'static str,
     /// The one-line description the skills index carries.
-    description: &'static str,
+    pub(crate) description: &'static str,
     /// The [API objects](crate::sandbox::CatalogueFunction) its functions are grouped under in a
     /// program's scope, which is also what the responses-as-code arm asks the catalogue for.
     ///
     /// A list rather than one name because of the ending family: `harness`, `review` and `judge` are
     /// one family grouped by **role**, and exactly one of them is bound. Asking for all three and
     /// keeping what comes back is how the skill describes the ending this agent really has.
-    objects: &'static [&'static str],
+    pub(crate) objects: &'static [&'static str],
     /// The gg tool names in it. Empty for the three families that are responses-as-code carve-outs
     /// and have no native tools at all — they are offered only in code mode.
-    tools: &'static [&'static str],
+    pub(crate) tools: &'static [&'static str],
 }
 
 /// Every family gg ships a skill for, in the order the index lists them.
 ///
 /// The order is the one the system prompt's API table uses, which is roughly "the workspace, then
-/// the work, then yourself": a reader of the index meets the families in the order they matter.
-const FAMILIES: &[Family] = &[
+/// the work, then yourself": a reader of the index meets the families in the order they matter. The
+/// [reference](crate::reference) keeps it, so the console's categories arrive in the order gg means
+/// them to be read in.
+pub(crate) const FAMILIES: &[Family] = &[
     Family {
         id: "gg-filesystem",
+        title: "Filesystem",
         description: "Reading, writing and editing files in the workspace.",
         objects: &["fs"],
         tools: &["read_file", "write_file", "edit_file", "list_dir"],
     },
     Family {
         id: "gg-shell",
+        title: "Shell",
         description: "Running shell commands in the workspace.",
         objects: &["system"],
         tools: &["shell"],
     },
     Family {
         id: "gg-project",
+        title: "Project management",
         description: "The epic/issue board — decomposing work into issues other agents implement.",
         objects: &["project"],
         tools: &[
@@ -100,6 +117,7 @@ const FAMILIES: &[Family] = &[
     },
     Family {
         id: "gg-tasks",
+        title: "Tasks",
         description: "Your task list: a blocked-by DAG of the work you are steering by.",
         objects: &["tasks"],
         tools: &[
@@ -112,6 +130,7 @@ const FAMILIES: &[Family] = &[
     },
     Family {
         id: "gg-memory",
+        title: "Memories",
         description: "Durable memories that outlive the conversation you wrote them in.",
         objects: &["memory"],
         tools: &[
@@ -126,12 +145,14 @@ const FAMILIES: &[Family] = &[
     },
     Family {
         id: "gg-skills",
+        title: "Skills",
         description: "Reading skills — including this one.",
         objects: &["skills"],
         tools: &["read_skill"],
     },
     Family {
         id: "gg-context",
+        title: "Context",
         description: "Managing your own context window: evicting, archiving, searching, compacting.",
         objects: &["context"],
         tools: &[
@@ -143,6 +164,7 @@ const FAMILIES: &[Family] = &[
     },
     Family {
         id: "gg-delegation",
+        title: "Delegation",
         description: "Delegating work to child agents, and handing your session on.",
         objects: &["agents"],
         tools: &[
@@ -158,18 +180,21 @@ const FAMILIES: &[Family] = &[
     },
     Family {
         id: "gg-views",
+        title: "Views",
         description: "Showing yourself a file, a value, or a function's documentation.",
         objects: &["view"],
         tools: &[],
     },
     Family {
         id: "gg-programs",
+        title: "Program library",
         description: "Fetching a program you already ran, and handing a patched copy back.",
         objects: &["programs"],
         tools: &[],
     },
     Family {
         id: "gg-session",
+        title: "Ending the session",
         description: "Ending your session — the one call that does.",
         objects: &["harness", "review", "judge"],
         tools: &[],

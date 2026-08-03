@@ -23,8 +23,8 @@ use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_c
 use test_cabinet_backend::{api as bapi, error as berr, relay, snapshot as snap};
 use test_cabinet_core::{
     accounts as acct, code_analysis as code, comparison as cmp, comparison_stats as cstats,
-    event as ev, gg, gg_query as ggq, gg_replay as ggr, match_play as mp, metrics as m,
-    review as rv, run_record as rr, test_case as tc, validation as val,
+    event as ev, gg, gg_query as ggq, gg_reference as ggref, gg_replay as ggr, match_play as mp,
+    metrics as m, review as rv, run_record as rr, test_case as tc, validation as val,
 };
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
@@ -334,6 +334,24 @@ fn main() -> Result<()> {
                 bapi::GgQueryBatch, bapi::GgQueryBatchResponse,
                 bapi::GgSavedQuery, bapi::GgSavedQueryInput,
                 bapi::GgDashboardPanel, bapi::GgDashboard, bapi::GgDashboardInput,
+            ],
+        },
+        // The gg **reference**: gg's whole model-facing surface — every tool as it is
+        // sent on the wire (description and parameter schema, verbatim) and every
+        // responses-as-code function as the guest SDK declares it — grouped into the
+        // families gg itself groups them by.
+        //
+        // Its own module because it is a self-contained document fetched on one console
+        // section (`GET /gg/reference`), and because it describes what gg *offers* rather
+        // than what a run *did*: nothing that renders a run record, a replay or a query
+        // result touches these types. The payload behind them is a generated-and-committed
+        // artifact (`crates/backend/src/gg_reference.json`) for the reason the module's
+        // rustdoc gives — the backend cannot depend on the crate that projects it.
+        TsModule {
+            file: "gg-reference.ts",
+            decls: ts_decls![&cfg;
+                ggref::GgReferenceCategory, ggref::GgToolVariant, ggref::GgToolReference,
+                ggref::GgApiType, ggref::GgApiFunction, ggref::GgReference,
             ],
         },
         // The code-analysis contract: the deterministic, execute-nothing static read of
@@ -737,6 +755,22 @@ fn main() -> Result<()> {
             root: Some("GgDashboard"),
             owns: &["GgDashboardPanel"],
             schema: root_schema::<bapi::GgDashboard>(),
+        },
+        // gg's model-facing reference (`GET /gg/reference`): the families, the tools and
+        // the responses-as-code functions. Wholly self-contained — it shares no type with
+        // any other document, because it describes gg's *surface* rather than any run —
+        // so every one of its subtypes is owned here and nothing is cross-referenced.
+        SchemaDoc {
+            rel_path: "gg/reference.schema.json",
+            root: Some("GgReference"),
+            owns: &[
+                "GgReferenceCategory",
+                "GgToolReference",
+                "GgToolVariant",
+                "GgApiFunction",
+                "GgApiType",
+            ],
+            schema: root_schema::<ggref::GgReference>(),
         },
         // The backend's run-queue (`/jobs`) control plane. These reference the core
         // run-record document by URL (the launch request, the claimed job, and the

@@ -128,6 +128,11 @@ for it", not a bespoke plugin interface per capability. The agent loop is the on
 coarse-grained plug point. Treating the toolset itself as an experimental variable
 is [toolset ablation](/gg/toolset-ablation/).
 
+What every one of those tools — and every responses-as-code function — actually says
+to a model is the [Reference](/gg/reference/): projected from gg's own definitions
+rather than written down a second time, and served to the console so it cannot drift
+from what a run really sends.
+
 ## Prompt caching
 
 An agent loop re-sends its whole conversation every turn, so most of what a run

@@ -157,7 +157,11 @@ const PARAM_MAX_RETRIES: &str = "maxRetries";
 /// The project-management capability param switching the **reviewers** feature on: when true,
 /// this agent cannot file an issue without naming at least one
 /// [reviewer](IssuePolicy::require_reviewers). Off by default.
-const PARAM_REVIEWERS: &str = "reviewers";
+///
+/// Crate-visible, unlike its neighbours: the [reference](crate::reference) builds `create_issue`
+/// both ways so the console can show what each one really says, and it names the param rather than
+/// spelling the string a second time.
+pub(crate) const PARAM_REVIEWERS: &str = "reviewers";
 
 /// The ceilings the [`BoardStore`] enforces, resolved from the capability's params.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

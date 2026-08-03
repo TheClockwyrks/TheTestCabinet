@@ -29,6 +29,14 @@
 //! **real** turn loop, answering only the model call and the shell from the record and performing
 //! everything else for real, and reports where this build diverged from what was recorded.
 //!
+//! The binary carries one further subcommand that runs nothing at all: `gg reference` projects
+//! gg's own tool definitions and its responses-as-code signature catalogue into the
+//! [contract](test_cabinet_core::gg_reference::GgReference) the console's Reference section
+//! renders, so the documentation of what a model is offered is generated from what a model is
+//! really offered. It reaches the crate only through the binary — the projection itself stays
+//! internal — because the artifact is generated and **committed**, and the backend that serves it
+//! cannot depend on this crate at all.
+//!
 //! Everything else — the model client, the agent turn loop, tool dispatch, and the telemetry
 //! emitter — is internal to this crate; the binary, the replay driver and its command-line front
 //! end, and playback are the only public surfaces.
@@ -59,6 +67,7 @@ mod persistence;
 pub mod playback;
 mod programs;
 mod prompts;
+mod reference;
 mod replay;
 pub mod replay_cli;
 pub mod replay_driver;
@@ -91,9 +100,10 @@ use crate::telemetry::Emitter;
 ///   run the moment a driver and a binary disagreed on which generation they were, for no gain — so
 ///   the bare form stays, permanently, as an implied [`Command::Run`].
 /// - **`gg <SUBCOMMAND>`** for everything else. Today that is [`Command::Replay`], the passive
-///   reconstruction that makes the old-binary path possible: a record whose inputs a newer gg no
+///   reconstruction that makes the old-binary path possible — a record whose inputs a newer gg no
 ///   longer understands can be handed back to the gg that wrote it, which only works if a published
-///   gg can be *asked* to replay.
+///   gg can be *asked* to replay — and [`Command::Reference`], which prints what gg offers a model
+///   so the console can serve it without the backend depending on this crate.
 ///
 /// The two are held apart by clap's `args_conflicts_with_subcommands` (a subcommand and a bare
 /// `--config` are mutually exclusive rather than silently both-applied) and `subcommand_negates_reqs`
@@ -137,6 +147,20 @@ enum Command {
     /// Reconstruct a recorded session from its replay record — a debug-only tool that re-runs the
     /// session from its pinned model I/O and tool results, with no live model and no real tools.
     Replay(ReplayArgs),
+
+    /// Print the tool and responses-as-code API reference gg offers models, as JSON.
+    ///
+    /// The artifact behind the console's **Reference** section: every tool's real description and
+    /// parameter schema, and every API function's real signature and documentation, projected from
+    /// gg's own definitions rather than written a second time.
+    ///
+    /// It is a subcommand rather than a build script because the backend that serves it cannot
+    /// depend on this crate (`wasmtime`, `oxc` and `tiktoken-rs` do not go where a static musl
+    /// backend goes). `scripts/gen-contract.mjs` runs this and commits the output as
+    /// `crates/backend/src/gg_reference.json`, and CI's contract-drift gate regenerates and diffs
+    /// it — the same generate-and-commit shape `crates/gg/src/sandbox/signatures.json` already
+    /// uses.
+    Reference,
 }
 
 /// Arguments for driving a session: the one JSON invocation file gg reads everything from.
@@ -184,6 +208,7 @@ pub async fn run_from_args() -> ExitCode {
         (None, Some(config)) => run_session(&config).await,
         (Some(Command::Run(args)), _) => run_session(&args.config).await,
         (Some(Command::Replay(args)), _) => replay_record(&args),
+        (Some(Command::Reference), _) => print_reference(),
         // Unreachable: clap requires `--config` when no subcommand was named, and rejects it
         // alongside one. Reported rather than unwrapped so a future change to those two settings
         // surfaces as a message instead of a panic in the run container.
@@ -237,6 +262,31 @@ fn replay_record(args: &ReplayArgs) -> ExitCode {
         Ok(_) => ExitCode::SUCCESS,
         Err(err) => {
             eprintln!("gg replay: {err:#}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Print the [reference](reference::reference) to stdout as pretty JSON.
+///
+/// It needs no invocation file, no runtime and no network — everything it prints is either
+/// compiled into the binary or a committed artifact beside it — which is what lets the contract
+/// generator run a freshly built `gg` in a clean checkout and get the same bytes every time.
+///
+/// Pretty-printed rather than compact because the output is **committed**: a one-line JSON blob
+/// would make every regeneration a single unreadable diff line, and the file is later normalized by
+/// the same Prettier pass the rest of the generated contract goes through.
+fn print_reference() -> ExitCode {
+    match serde_json::to_string_pretty(&reference::reference()) {
+        Ok(json) => {
+            println!("{json}");
+            ExitCode::SUCCESS
+        }
+        // Unreachable: the reference is plain data with no map keys but strings and no non-finite
+        // numbers. Reported rather than unwrapped so a future field that cannot serialize surfaces
+        // as a message instead of a panic.
+        Err(err) => {
+            eprintln!("gg reference: {err}");
             ExitCode::FAILURE
         }
     }

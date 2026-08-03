@@ -31,6 +31,10 @@
       "types": "./dist/gg.d.ts",
       "default": "./dist/gg.js"
     },
+    "./gg-reference": {
+      "types": "./dist/gg-reference.d.ts",
+      "default": "./dist/gg-reference.js"
+    },
     "./gg-replay": {
       "types": "./dist/gg-replay.d.ts",
       "default": "./dist/gg-replay.js"

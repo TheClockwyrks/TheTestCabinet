@@ -47,6 +47,7 @@ import type {
   GgConfigInput,
   GgReplayRecordV1,
 } from "@test-cabinet/run-record/gg";
+import type { GgReference } from "@test-cabinet/run-record/gg-reference";
 import type { GgReplayRecord } from "@test-cabinet/run-record/gg-replay";
 import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import type {
@@ -479,6 +480,20 @@ export interface BackendClient {
   ): Promise<GgDashboard>;
   /** Delete a dashboard (`DELETE /gg/dashboards/{id}`). */
   deleteGgDashboard?(id: string, token: string): Promise<void>;
+
+  /**
+   * gg's model-facing **reference** (`GET /gg/reference`): every tool's description
+   * and parameter schema exactly as they go on the wire, and every
+   * responses-as-code function's signature, documentation and referenced types,
+   * grouped into gg's own families.
+   *
+   * The one `/gg` read that takes **no token** — the document is static, identical
+   * for every caller and carries no account or run data, so it is documentation of
+   * the harness rather than anything of the operator's. Optional like the calls
+   * above only because the static site's read-only transport has no backend behind
+   * it at all; where a backend exists this always resolves.
+   */
+  ggReference?(): Promise<GgReference>;
 
   // The operator's saved harness/gg-config/model comparisons (console-only,
   // Bearer) — the A/B-testing capability that fixes every controlled variable and

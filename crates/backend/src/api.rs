@@ -27,6 +27,7 @@ mod game_jams;
 mod gg;
 mod gg_config;
 mod gg_query;
+mod gg_reference;
 mod gg_view;
 mod harness_config;
 mod ingest_api;
@@ -363,6 +364,19 @@ pub fn router(state: AppState) -> Router {
                 .put(gg_view::update_dashboard)
                 .delete(gg_view::delete_dashboard),
         )
+        // gg's model-facing reference: every tool's real description and parameter
+        // schema and every responses-as-code function's signature, which the console's
+        // gg Reference section renders. The **one open read under `/gg`**, and
+        // deliberately so — the document is static, identical for every caller, and
+        // carries no account, run or deployment data, so it is documentation of the
+        // harness in the same class as `/test-cases` and `/config`; a token would buy
+        // nothing and would stop a signed-out console or the docs site from linking to
+        // it. Served from a committed artifact rather than by asking a live gg
+        // registry, because the backend must not depend on `test-cabinet-gg` (wasmtime
+        // + oxc + tiktoken-rs against a static musl build) — see the module docs for
+        // the regenerate-commit-gate that keeps the two honest. `/gg/reference` is
+        // static, so it collides with nothing else mounted under `/gg`.
+        .route("/gg/reference", get(gg_reference::gg_reference))
         // The operator's saved harness comparisons (auth-gated; keyed to the token's
         // account): named A/B experiments whose per-arm distributions are computed on
         // read from the arms' runs. `/comparisons` is static and `/comparisons/{id}`

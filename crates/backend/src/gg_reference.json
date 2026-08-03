@@ -1,0 +1,1985 @@
+{
+  "ggVersion": "0.7.0",
+  "categories": [
+    {
+      "id": "gg-filesystem",
+      "title": "Filesystem",
+      "description": "Reading, writing and editing files in the workspace.",
+      "objects": ["fs"]
+    },
+    {
+      "id": "gg-shell",
+      "title": "Shell",
+      "description": "Running shell commands in the workspace.",
+      "objects": ["system"]
+    },
+    {
+      "id": "gg-project",
+      "title": "Project management",
+      "description": "The epic/issue board — decomposing work into issues other agents implement.",
+      "objects": ["project"]
+    },
+    {
+      "id": "gg-tasks",
+      "title": "Tasks",
+      "description": "Your task list: a blocked-by DAG of the work you are steering by.",
+      "objects": ["tasks"]
+    },
+    {
+      "id": "gg-memory",
+      "title": "Memories",
+      "description": "Durable memories that outlive the conversation you wrote them in.",
+      "objects": ["memory"]
+    },
+    {
+      "id": "gg-skills",
+      "title": "Skills",
+      "description": "Reading skills — including this one.",
+      "objects": ["skills"]
+    },
+    {
+      "id": "gg-context",
+      "title": "Context",
+      "description": "Managing your own context window: evicting, archiving, searching, compacting.",
+      "objects": ["context"]
+    },
+    {
+      "id": "gg-delegation",
+      "title": "Delegation",
+      "description": "Delegating work to child agents, and handing your session on.",
+      "objects": ["agents"]
+    },
+    {
+      "id": "gg-views",
+      "title": "Views",
+      "description": "Showing yourself a file, a value, or a function's documentation.",
+      "objects": ["view"]
+    },
+    {
+      "id": "gg-programs",
+      "title": "Program library",
+      "description": "Fetching a program you already ran, and handing a patched copy back.",
+      "objects": ["programs"]
+    },
+    {
+      "id": "gg-session",
+      "title": "Ending the session",
+      "description": "Ending your session — the one call that does.",
+      "objects": ["harness", "review", "judge"]
+    }
+  ],
+  "tools": [
+    {
+      "name": "shell",
+      "category": "gg-shell",
+      "description": "Run a shell command with `sh -c` in the workspace directory. Returns the merged stdout+stderr (truncated if very long) and the exit code. Use it to build, run, and inspect the project. A command that succeeds returns only its exit code — none of its output. A command that fails returns the last 250 lines and 4096 characters of its output. Either way the full stdout and stderr of every command are written to a file pair under `/tmp/gg-shell`, named in the result, which you can `grep` when you need more than what came back.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "description": "The command line to run via `sh -c`.",
+            "type": "string"
+          },
+          "timeout_secs": {
+            "description": "Optional per-command timeout in seconds (default 120). The command is killed if it exceeds this.",
+            "type": "number"
+          }
+        },
+        "required": ["command"],
+        "type": "object"
+      },
+      "capability": "shell",
+      "variants": [
+        {
+          "label": "shell output: inline",
+          "description": "Run a shell command with `sh -c` in the workspace directory. Returns the merged stdout+stderr (truncated if very long) and the exit code. Use it to build, run, and inspect the project.",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "description": "The command line to run via `sh -c`.",
+                "type": "string"
+              },
+              "timeout_secs": {
+                "description": "Optional per-command timeout in seconds (default 120). The command is killed if it exceeds this.",
+                "type": "number"
+              }
+            },
+            "required": ["command"],
+            "type": "object"
+          }
+        },
+        {
+          "label": "shell output: offload",
+          "description": "Run a shell command with `sh -c` in the workspace directory. Returns the merged stdout+stderr (truncated if very long) and the exit code. Use it to build, run, and inspect the project. Only the last 250 lines and 4096 characters of the output is returned; the full stdout and stderr of every command are written to a file pair under `/tmp/gg-shell`, named in the result, which you can `grep` when you need more than the tail.",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "description": "The command line to run via `sh -c`.",
+                "type": "string"
+              },
+              "timeout_secs": {
+                "description": "Optional per-command timeout in seconds (default 120). The command is killed if it exceeds this.",
+                "type": "number"
+              }
+            },
+            "required": ["command"],
+            "type": "object"
+          }
+        }
+      ]
+    },
+    {
+      "name": "read_file",
+      "category": "gg-filesystem",
+      "description": "Read a file and return its contents (truncated if very large). Text files are returned as text; a PNG, JPEG, GIF, or WebP image is returned as the image itself when the session's model can see one, and otherwise described.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Path to the file to read — relative to the workspace root, or absolute.",
+            "type": "string"
+          }
+        },
+        "required": ["path"],
+        "type": "object"
+      },
+      "capability": "read-file",
+      "variants": [
+        {
+          "label": "read mode: default-cap",
+          "description": "Read a file. A text file returns 250 lines by default, starting at `offset`; pass a larger `limit` when you need more of the file at once. The result tells you how many lines the file has and where to continue from. A PNG, JPEG, GIF, or WebP image is returned whole, as the image itself, when the session's model can see one — `offset`/`limit` do not apply to it.",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "limit": {
+                "description": "How many lines to return (default 250; larger is allowed).",
+                "minimum": 1,
+                "type": "integer"
+              },
+              "offset": {
+                "description": "1-based line number to start reading from (default 1).",
+                "minimum": 1,
+                "type": "integer"
+              },
+              "path": {
+                "description": "Path to the file to read — relative to the workspace root, or absolute.",
+                "type": "string"
+              }
+            },
+            "required": ["path"],
+            "type": "object"
+          }
+        }
+      ]
+    },
+    {
+      "name": "write_file",
+      "category": "gg-filesystem",
+      "description": "Write UTF-8 text to a file, creating parent directories and overwriting any existing file.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "contents": {
+            "description": "The file's full contents.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Path to write — relative to the workspace root, or absolute.",
+            "type": "string"
+          }
+        },
+        "required": ["path", "contents"],
+        "type": "object"
+      },
+      "capability": "write-file"
+    },
+    {
+      "name": "edit_file",
+      "category": "gg-filesystem",
+      "description": "Replace an exact occurrence of `old_string` with `new_string` in a file. `old_string` must appear exactly once; the edit fails if it is missing or ambiguous.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "new_string": {
+            "description": "The replacement text.",
+            "type": "string"
+          },
+          "old_string": {
+            "description": "The exact text to replace (must be unique in the file).",
+            "type": "string"
+          },
+          "path": {
+            "description": "Path to edit — relative to the workspace root, or absolute.",
+            "type": "string"
+          }
+        },
+        "required": ["path", "old_string", "new_string"],
+        "type": "object"
+      },
+      "capability": "edit-file"
+    },
+    {
+      "name": "list_dir",
+      "category": "gg-filesystem",
+      "description": "List a directory's entries. Directories are suffixed with `/`. Defaults to the workspace root.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Directory to list — relative to the workspace root, or absolute (defaults to `.`).",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "capability": "list-dir"
+    },
+    {
+      "name": "read_skill",
+      "category": "gg-skills",
+      "description": "Read an authored skill by name and load its full contents into your context (they remain available for the rest of the session). Skills are short guides for parts of this task; their names and descriptions are listed in your system prompt. Available skills: <skill>.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The name of the skill to read (as listed in the system prompt).",
+            "enum": ["<skill>"],
+            "type": "string"
+          }
+        },
+        "required": ["name"],
+        "type": "object"
+      },
+      "capability": "skills",
+      "note": "Only when the agent's skill library holds at least one skill — there would otherwise be nothing to read. Both the description and the `name` enum list that library, so they are per run."
+    },
+    {
+      "name": "write_memory",
+      "category": "gg-memory",
+      "description": "Record a new durable memory — a short note you curate that persists for the session and survives context compaction. Provide a unique `name`, a one-line `description`, and the `body`. Every memory you hold stays in your context window, so they are bounded (at most 64 memories, 4096 characters of body each, 256 characters of description each); if a limit is hit, revise an existing memory with `update_memory` or remove one with `delete_memory` rather than accruing more.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "description": "The memory's contents — the fact or decision to remember.",
+            "type": "string"
+          },
+          "description": {
+            "description": "A one-line summary of what the memory is for, shown up front.",
+            "type": "string"
+          },
+          "name": {
+            "description": "A short, unique handle for the memory (used to update or delete it).",
+            "type": "string"
+          }
+        },
+        "required": ["name", "description", "body"],
+        "type": "object"
+      },
+      "capability": "memories",
+      "note": "Only under the `scratchpad` memory strategy, and only for an agent whose memory handle is writable."
+    },
+    {
+      "name": "update_memory",
+      "category": "gg-memory",
+      "description": "Revise an existing memory in place: supply its `name` and the new `description` and `body` (both are replaced). Fails if no memory of that name exists (use `write_memory` to create one) or if the new body would exceed a length limit.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "description": "The new body (replaces the old one).",
+            "type": "string"
+          },
+          "description": {
+            "description": "The new one-line description (replaces the old one).",
+            "type": "string"
+          },
+          "name": {
+            "description": "The name of the memory to revise.",
+            "type": "string"
+          }
+        },
+        "required": ["name", "description", "body"],
+        "type": "object"
+      },
+      "capability": "memories",
+      "note": "Only under the `scratchpad` memory strategy, and only for an agent whose memory handle is writable."
+    },
+    {
+      "name": "create_memory",
+      "category": "gg-memory",
+      "description": "Record a new memory. It is added to your memory index — the list of slugs and descriptions you can see above, which stays in your context — and keeps the contents themselves outside your context until you `read_memory` them. Write the `description` for a future you scanning that index and deciding whether this is the memory it needs. Memories persist for the session and survive context compaction (at most 8192 characters of contents each, 16384 characters of index, 256 characters of description each).",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "contents": {
+            "description": "The memory's initial contents, as markdown.",
+            "type": "string"
+          },
+          "description": {
+            "description": "A one-line summary of what the memory holds, shown in your memory index.",
+            "type": "string"
+          },
+          "name": {
+            "description": "A short slug naming the memory (letters, digits, `-`, `_`, `.`), the handle every other memory call takes.",
+            "type": "string"
+          }
+        },
+        "required": ["name", "description", "contents"],
+        "type": "object"
+      },
+      "capability": "memories",
+      "note": "Only under the file-shaped `markdown` and `keyword-search` strategies, and only for an agent whose memory handle is writable. The two ask for different arguments: the entry below is `markdown`'s, which requires the `description` its pinned index is made of, and `keyword-search`'s — where the `description` is optional — is carried as a variant.",
+      "variants": [
+        {
+          "label": "memory strategy: keyword-search",
+          "description": "Record a new memory. Its contents are kept outside your context window; you find it again with `search_memories` and pull it back with `read_memory`, so write the words you would search for into it. A `description` is optional and is shown alongside search results. Memories persist for the session and survive context compaction (at most 8192 characters of contents each, 256 characters of description each).",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "contents": {
+                "description": "The memory's initial contents, as markdown.",
+                "type": "string"
+              },
+              "description": {
+                "description": "An optional one-line summary of what the memory holds, shown with search results.",
+                "type": "string"
+              },
+              "name": {
+                "description": "A short slug naming the memory (letters, digits, `-`, `_`, `.`), the handle every other memory call takes.",
+                "type": "string"
+              }
+            },
+            "required": ["name", "contents"],
+            "type": "object"
+          }
+        }
+      ]
+    },
+    {
+      "name": "read_memory",
+      "category": "gg-memory",
+      "description": "Read one memory's full contents, by the slug your memory index lists it under. The index is always in front of you; the contents are not, so read a memory when the work you are doing is the work it is about.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The slug of the memory to read.",
+            "type": "string"
+          }
+        },
+        "required": ["name"],
+        "type": "object"
+      },
+      "capability": "memories",
+      "note": "Only under the file-shaped `markdown` and `keyword-search` strategies — the scratchpad has no read call, its memories being the pinned block itself. Offered to a read-only holder too. The entry below is `markdown`'s, which points at the index in front of the model; `keyword-search` has no index and is carried as a variant.",
+      "variants": [
+        {
+          "label": "memory strategy: keyword-search",
+          "description": "Read one memory's full contents, by the slug `search_memories` returned. Nothing about your memories is in your context until you read one.",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "description": "The slug of the memory to read.",
+                "type": "string"
+              }
+            },
+            "required": ["name"],
+            "type": "object"
+          }
+        }
+      ]
+    },
+    {
+      "name": "edit_memory",
+      "category": "gg-memory",
+      "description": "Revise a memory in place by replacing the one exact occurrence of `old_string` with `new_string` — the same edit `edit_file` makes, on a memory instead of a file. Append to a memory by quoting its last line and replacing it with itself plus what you are adding. Fails if the text is missing or appears more than once, or if the result would exceed 8192 characters, or if the edit would leave the memory empty — delete it instead when you no longer need it.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The slug of the memory to revise.",
+            "type": "string"
+          },
+          "new_string": {
+            "description": "The text to put in its place. May be empty to cut the old text out.",
+            "type": "string"
+          },
+          "old_string": {
+            "description": "The exact text to replace, which must appear exactly once in the memory.",
+            "type": "string"
+          }
+        },
+        "required": ["name", "old_string", "new_string"],
+        "type": "object"
+      },
+      "capability": "memories",
+      "note": "Only under the file-shaped `markdown` and `keyword-search` strategies, and only for an agent whose memory handle is writable."
+    },
+    {
+      "name": "search_memories",
+      "category": "gg-memory",
+      "description": "Find the memories that mention any of `keywords`, best first. Matching is plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often — so pass several specific words rather than one sentence. Each result carries a short excerpt; `read_memory` the ones worth having in full. At most 25 results come back.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "keywords": {
+            "description": "The words to look for. At least one must be non-empty.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": ["keywords"],
+        "type": "object"
+      },
+      "capability": "memories",
+      "note": "Only under the `keyword-search` strategy, the one strategy that indexes for it."
+    },
+    {
+      "name": "delete_memory",
+      "category": "gg-memory",
+      "description": "Remove (evict) a memory you no longer need by `name`, freeing room for new ones. Fails if no memory of that name exists.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The name of the memory to remove.",
+            "type": "string"
+          }
+        },
+        "required": ["name"],
+        "type": "object"
+      },
+      "capability": "memories",
+      "note": "Offered by every memory strategy, but only to an agent whose memory handle is writable."
+    },
+    {
+      "name": "add_task",
+      "category": "gg-tasks",
+      "description": "Add a task to your plan. Provide a unique `id` (a short slug you will use to reference it), a `title`, an optional `description`, and an optional `blockedBy` list of the ids of tasks that must finish first. The list is a DAG — a blocker that would create a cycle is refused.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "blockedBy": {
+            "description": "Optional ids of tasks that must be done before this one.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "description": "An optional longer description of the task.",
+            "type": "string"
+          },
+          "id": {
+            "description": "A short, unique id for the task (used to reference it).",
+            "type": "string"
+          },
+          "title": {
+            "description": "A short title for the task.",
+            "type": "string"
+          }
+        },
+        "required": ["id", "title"],
+        "type": "object"
+      },
+      "capability": "tasks",
+      "note": "Only when the agent holds a task-list module. The list's `mode` param decides the call's shape: the entry below is `simple`'s, and the `issues` variant beside it additionally *requires* a task's in-scope, out-of-scope and completion criteria.",
+      "variants": [
+        {
+          "label": "task mode: issues",
+          "description": "Add a task to your plan. Provide a unique `id` (a short slug you will use to reference it), a `title`, an optional `description`, the structured sections `inScope` / `outOfScope` / `completionCriteria` (this list is in issues mode, so these are required), and an optional `blockedBy` list of the ids of tasks that must finish first. The list is a DAG — a blocker that would create a cycle is refused.",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "blockedBy": {
+                "description": "Optional ids of tasks that must be done before this one.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "completionCriteria": {
+                "description": "How the task will be judged done.",
+                "type": "string"
+              },
+              "description": {
+                "description": "An optional longer description of the task.",
+                "type": "string"
+              },
+              "id": {
+                "description": "A short, unique id for the task (used to reference it).",
+                "type": "string"
+              },
+              "inScope": {
+                "description": "What the task is responsible for.",
+                "type": "string"
+              },
+              "outOfScope": {
+                "description": "What the task is deliberately not responsible for.",
+                "type": "string"
+              },
+              "title": {
+                "description": "A short title for the task.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "inScope",
+              "outOfScope",
+              "completionCriteria"
+            ],
+            "type": "object"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_task",
+      "category": "gg-tasks",
+      "description": "Revise a task by `id`: change its `title`, `description`, and/or `status` (`pending`, `in_progress`, or `done`). Supply at least one field to change. To change what a task is blocked by, use `set_blocked_by` instead.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "A new description (empty clears it).",
+            "type": "string"
+          },
+          "id": {
+            "description": "The id of the task to revise.",
+            "type": "string"
+          },
+          "status": {
+            "description": "A new status.",
+            "enum": ["pending", "in_progress", "done"],
+            "type": "string"
+          },
+          "title": {
+            "description": "A new title (replaces the old one).",
+            "type": "string"
+          }
+        },
+        "required": ["id"],
+        "type": "object"
+      },
+      "capability": "tasks",
+      "note": "Only when the agent holds a task-list module. The list's `mode` param decides the call's shape: the entry below is `simple`'s, and the `issues` variant beside it can also revise a task's structured scope and completion sections.",
+      "variants": [
+        {
+          "label": "task mode: issues",
+          "description": "Revise a task by `id`: change its `title`, `description`, `status` (`pending`, `in_progress`, or `done`), and/or its structured sections `inScope` / `outOfScope` / `completionCriteria` (a supplied section cannot be cleared — issues-mode tasks always carry it). Supply at least one field to change. To change what a task is blocked by, use `set_blocked_by` instead.",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "completionCriteria": {
+                "description": "How the task will be judged done.",
+                "type": "string"
+              },
+              "description": {
+                "description": "A new description (empty clears it).",
+                "type": "string"
+              },
+              "id": {
+                "description": "The id of the task to revise.",
+                "type": "string"
+              },
+              "inScope": {
+                "description": "What the task is responsible for.",
+                "type": "string"
+              },
+              "outOfScope": {
+                "description": "What the task is deliberately not responsible for.",
+                "type": "string"
+              },
+              "status": {
+                "description": "A new status.",
+                "enum": ["pending", "in_progress", "done"],
+                "type": "string"
+              },
+              "title": {
+                "description": "A new title (replaces the old one).",
+                "type": "string"
+              }
+            },
+            "required": ["id"],
+            "type": "object"
+          }
+        }
+      ]
+    },
+    {
+      "name": "set_blocked_by",
+      "category": "gg-tasks",
+      "description": "Set which tasks a task is blocked by. Provide the task `id` and the full `blockedBy` list of task ids that must finish first (pass `[]` to clear all blockers). This replaces the task's current blockers. Any edge that would create a cycle is refused and nothing changes — tasks form a DAG.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "blockedBy": {
+            "description": "The full set of task ids this task is blocked by (`[]` clears).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "description": "The id of the task whose blockers to set.",
+            "type": "string"
+          }
+        },
+        "required": ["id", "blockedBy"],
+        "type": "object"
+      },
+      "capability": "tasks",
+      "note": "Only when the agent holds a task-list module."
+    },
+    {
+      "name": "complete_task",
+      "category": "gg-tasks",
+      "description": "Mark a task done by `id`. Tasks blocked by it become actionable once all of their blockers are done. Fails if no task of that id exists.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The id of the task to mark done.",
+            "type": "string"
+          }
+        },
+        "required": ["id"],
+        "type": "object"
+      },
+      "capability": "tasks",
+      "note": "Only when the agent holds a task-list module."
+    },
+    {
+      "name": "remove_task",
+      "category": "gg-tasks",
+      "description": "Remove a task by `id`. It is also dropped from any other task's blockers, so no dangling dependency is left. Fails if no task of that id exists.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The id of the task to remove.",
+            "type": "string"
+          }
+        },
+        "required": ["id"],
+        "type": "object"
+      },
+      "capability": "tasks",
+      "note": "Only when the agent holds a task-list module."
+    },
+    {
+      "name": "create_epic",
+      "category": "gg-project",
+      "description": "Create an epic to group related issues. Provide a `prefix` of 3-6 letters naming the epic (upper-cased for you — a prefix of `auth` becomes `AUTH`), a `title`, and a `description` of what the epic covers. The prefix is the epic's id, and the issues you file under it are numbered from it: `AUTH-1`, `AUTH-2`, and so on.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "What this epic covers.",
+            "type": "string"
+          },
+          "prefix": {
+            "description": "A 3-6 letter prefix naming the epic (upper-cased); its issues are numbered from it, e.g. `AUTH-1`.",
+            "type": "string"
+          },
+          "title": {
+            "description": "A short title for the epic.",
+            "type": "string"
+          }
+        },
+        "required": ["prefix", "title", "description"],
+        "type": "object"
+      },
+      "capability": "project-management",
+      "note": "Only when the agent holds the run's board. An agent dispatched to *implement* an issue needs no board tool of its own, so an implementer profile is normally configured without this capability."
+    },
+    {
+      "name": "create_issue",
+      "category": "gg-project",
+      "description": "Create an issue — a heavyweight, self-contained unit of work. Provide a `title` and the structured sections that make it safe to hand off: `inScope` (what this issue is responsible for), `outOfScope` (what it is not), and `completionCriteria` (how it will be judged done). Optionally add a `description` overview, a `blockedBy` list of issue ids that must finish first (a cycle is refused — issues form a DAG), and an `epicId` to group it under an epic. You do not choose the issue's id: it is assigned from its epic's prefix (`AUTH-1`, `AUTH-2`, …) and reported back to you. Name in `agent` the agent this issue is dispatched to; you may assign to: `<agent>`. You may name one or more `reviewers`, drawn from: `<agent>`. Each of them reviews the finished work, and all of them must approve it before the issue is accepted.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "description": "The agent to dispatch this issue to.",
+            "enum": ["<agent>"],
+            "type": "string"
+          },
+          "blockedBy": {
+            "description": "Optional ids of issues that must be done before this one.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "completionCriteria": {
+            "description": "How the issue will be judged done (its acceptance criteria).",
+            "type": "string"
+          },
+          "description": {
+            "description": "An optional longer overview of the issue.",
+            "type": "string"
+          },
+          "epicId": {
+            "description": "Optional id of the epic to group this issue under.",
+            "type": "string"
+          },
+          "inScope": {
+            "description": "What this issue is responsible for.",
+            "type": "string"
+          },
+          "outOfScope": {
+            "description": "What this issue is explicitly not responsible for.",
+            "type": "string"
+          },
+          "reviewers": {
+            "description": "The agents that must each approve this issue's work before it is accepted.",
+            "items": {
+              "enum": ["<agent>"],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "description": "A short title for the issue.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "inScope",
+          "outOfScope",
+          "completionCriteria",
+          "agent"
+        ],
+        "type": "object"
+      },
+      "capability": "project-management",
+      "note": "Only when the agent holds the run's board. The profiles it may assign the work to, and name as reviewers, are its own roster's implementer and reviewer entries — so those lists are per run.",
+      "variants": [
+        {
+          "label": "reviewers: required",
+          "description": "Create an issue — a heavyweight, self-contained unit of work. Provide a `title` and the structured sections that make it safe to hand off: `inScope` (what this issue is responsible for), `outOfScope` (what it is not), and `completionCriteria` (how it will be judged done). Optionally add a `description` overview, a `blockedBy` list of issue ids that must finish first (a cycle is refused — issues form a DAG), and an `epicId` to group it under an epic. You do not choose the issue's id: it is assigned from its epic's prefix (`AUTH-1`, `AUTH-2`, …) and reported back to you. Name in `agent` the agent this issue is dispatched to; you may assign to: `<agent>`. You must also name one or more `reviewers`, drawn from: `<agent>`. Each of them reviews the finished work, and all of them must approve it before the issue is accepted.",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "agent": {
+                "description": "The agent to dispatch this issue to.",
+                "enum": ["<agent>"],
+                "type": "string"
+              },
+              "blockedBy": {
+                "description": "Optional ids of issues that must be done before this one.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "completionCriteria": {
+                "description": "How the issue will be judged done (its acceptance criteria).",
+                "type": "string"
+              },
+              "description": {
+                "description": "An optional longer overview of the issue.",
+                "type": "string"
+              },
+              "epicId": {
+                "description": "Optional id of the epic to group this issue under.",
+                "type": "string"
+              },
+              "inScope": {
+                "description": "What this issue is responsible for.",
+                "type": "string"
+              },
+              "outOfScope": {
+                "description": "What this issue is explicitly not responsible for.",
+                "type": "string"
+              },
+              "reviewers": {
+                "description": "The agents that must each approve this issue's work before it is accepted.",
+                "items": {
+                  "enum": ["<agent>"],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "title": {
+                "description": "A short title for the issue.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "inScope",
+              "outOfScope",
+              "completionCriteria",
+              "agent",
+              "reviewers"
+            ],
+            "type": "object"
+          }
+        }
+      ]
+    },
+    {
+      "name": "update_issue",
+      "category": "gg-project",
+      "description": "Revise an issue by `id`: change its `title`, `description`, `inScope`, `outOfScope`, `completionCriteria`, `status` (`open`, `in_progress`, or `done`), and/or `epicId` (pass an empty string to ungroup it). Supply at least one field to change. To change what an issue is blocked by, use `set_issue_blocked_by` instead.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "completionCriteria": {
+            "description": "New completion criteria.",
+            "type": "string"
+          },
+          "description": {
+            "description": "A new overview (empty clears it).",
+            "type": "string"
+          },
+          "epicId": {
+            "description": "Re-group under this epic (empty string ungroups).",
+            "type": "string"
+          },
+          "id": {
+            "description": "The id of the issue to revise.",
+            "type": "string"
+          },
+          "inScope": {
+            "description": "A new in-scope statement.",
+            "type": "string"
+          },
+          "outOfScope": {
+            "description": "A new out-of-scope statement.",
+            "type": "string"
+          },
+          "status": {
+            "description": "A new status.",
+            "enum": ["open", "in_progress", "done"],
+            "type": "string"
+          },
+          "title": {
+            "description": "A new title.",
+            "type": "string"
+          }
+        },
+        "required": ["id"],
+        "type": "object"
+      },
+      "capability": "project-management",
+      "note": "Only when the agent holds the run's board."
+    },
+    {
+      "name": "set_issue_blocked_by",
+      "category": "gg-project",
+      "description": "Set which issues an issue is blocked by. Provide the issue `id` and the full `blockedBy` list of issue ids that must finish first (pass `[]` to clear all blockers). This replaces the issue's current blockers. Any edge that would create a cycle is refused and nothing changes — issues form a DAG.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "blockedBy": {
+            "description": "The full set of issue ids this issue is blocked by (`[]` clears).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "description": "The id of the issue whose blockers to set.",
+            "type": "string"
+          }
+        },
+        "required": ["id", "blockedBy"],
+        "type": "object"
+      },
+      "capability": "project-management",
+      "note": "Only when the agent holds the run's board."
+    },
+    {
+      "name": "remove_epic",
+      "category": "gg-project",
+      "description": "Remove an epic by `id`. Any issue grouped under it is ungrouped (its issues are kept). Fails if no epic of that id exists.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The id of the epic to remove.",
+            "type": "string"
+          }
+        },
+        "required": ["id"],
+        "type": "object"
+      },
+      "capability": "project-management",
+      "note": "Only when the agent holds the run's board."
+    },
+    {
+      "name": "remove_issue",
+      "category": "gg-project",
+      "description": "Remove an issue by `id`. It is also dropped from any other issue's blockers, so no dangling dependency is left. Fails if no issue of that id exists.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The id of the issue to remove.",
+            "type": "string"
+          }
+        },
+        "required": ["id"],
+        "type": "object"
+      },
+      "capability": "project-management",
+      "note": "Only when the agent holds the run's board."
+    },
+    {
+      "name": "wait_for_issue",
+      "category": "gg-project",
+      "description": "Wait until a board issue is finished before continuing. Provide the `issueId`. Your turn is suspended (freeing capacity for other agents) until that issue reaches a terminal state — done, or failed if its assigned agent could not complete it — then resumes and tells you which. Use this to sequence your own work behind an issue you depend on. You cannot wait on the issue you were assigned to implement (do the work and finish — your issue is completed when you are).",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "issueId": {
+            "description": "The id of the board issue to wait for.",
+            "type": "string"
+          }
+        },
+        "required": ["issueId"],
+        "type": "object"
+      },
+      "capability": "project-management",
+      "note": "Only when the agent holds the run's board. Declared like the delegation calls and intercepted by the loop, which suspends the agent on the orchestrator's issue-wait registry."
+    },
+    {
+      "name": "evict_file_view",
+      "category": "gg-context",
+      "description": "Drop file contents you have read but no longer need from your context window, reclaiming space. Give a `path` to evict just that file's views, or omit it to evict every file view. This is safe: the files are unchanged on disk and you can `read_file` them again if you need them later.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Path whose file views to evict, written as you read it. Omit to evict all file views.",
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "capability": "agent-managed-context",
+      "note": "Only when the agent holds a thread archive."
+    },
+    {
+      "name": "archive_thread",
+      "category": "gg-context",
+      "description": "Move whole turns of this thread out of your context window to reclaim space. Every result you have been given carries a header with its turn number and what it costs, so name the turns worth dropping: `ranges` is a list of inclusive [from, to] pairs, e.g. [[4, 19]] archives turns 4 through 19. The archived history is NOT lost — it stays searchable with `search_archive`, so you can recover any detail later.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "ranges": {
+            "description": "Inclusive [from, to] turn-number pairs to archive, e.g. [[4, 19], [22, 25]].",
+            "items": {
+              "items": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "maxItems": 2,
+              "minItems": 2,
+              "type": "array"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": ["ranges"],
+        "type": "object"
+      },
+      "capability": "agent-managed-context",
+      "note": "Only when the agent holds a thread archive."
+    },
+    {
+      "name": "search_archive",
+      "category": "gg-context",
+      "description": "Search history you previously archived with `archive_thread` (which is out of your context window but recoverable). Returns the matching archived messages so you can recover detail without keeping the whole thread in context.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "description": "Text to find in the archived thread (case-insensitive substring).",
+            "type": "string"
+          }
+        },
+        "required": ["query"],
+        "type": "object"
+      },
+      "capability": "agent-managed-context",
+      "note": "Only when the agent holds a thread archive — the store this one reads."
+    },
+    {
+      "name": "compact",
+      "category": "gg-context",
+      "description": "Compact your own context window: the detailed thread is dropped and restarted from the `summary` you write, plus a fresh read of each path in `files`. Your skills, memories and task list are kept as they are. You are asked to call this when your window is full, and every other tool is refused until you do — but everything not in your summary and not in `files` is gone, so write the summary for your future self and name the files you will actually need in hand.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "files": {
+            "description": "Paths to re-read into your context after the drop, at most 12. Omit to carry none across; you can always read a file again later.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "summary": {
+            "description": "The working state you need to continue: what you are building, the decisions and discoveries that matter, the files you have changed, what is in progress, and the immediate next step.",
+            "type": "string"
+          }
+        },
+        "required": ["summary"],
+        "type": "object"
+      },
+      "capability": "compaction",
+      "note": "Only under the `self-compaction` strategy, which hands the compaction to the working model itself — or under `self-summarization` in code mode, where an agent has no prose to answer in. Offered on every turn of such a run, not only when the window fills, so the cached prompt prefix never changes."
+    },
+    {
+      "name": "spawn_subagent",
+      "category": "gg-delegation",
+      "description": "Delegate a scoped piece of work to a child agent that runs in parallel with you. Provide an `agent` — the name of the agent to run it as, which configures the subagent's model, tools, and instructions — and a `prompt`, a self-contained brief telling the subagent exactly what to do and what 'done' means. The agents you may spawn: `<agent>`. (Board issues are not dispatched this way: submitting an issue automatically spawns an agent for it once its blockers are done.) Returns the new subagent's id immediately — it is scheduled and runs on its own; call `wait_for_subagents` to collect its result, or `send_message` to guide it while it runs. A subagent shares your workspace, so give concurrent subagents non-overlapping briefs. Spawning is refused if you are already at the maximum delegation depth.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "description": "The name of the agent to run the subagent as (one of the agents you may spawn). This selects its model, tools, and instructions.",
+            "type": "string"
+          },
+          "prompt": {
+            "description": "A self-contained brief for the subagent (what to do and how it will be judged done).",
+            "type": "string"
+          }
+        },
+        "required": ["agent", "prompt"],
+        "type": "object"
+      },
+      "capability": "subagents",
+      "note": "Only when the agent's roster lists at least one agent it may spawn. The description enumerates that roster with each entry's caller-scoped guidance, so it is per run."
+    },
+    {
+      "name": "wait_for_subagents",
+      "category": "gg-delegation",
+      "description": "Wait for one or more of your subagents to finish and collect their return values. Pass `ids` (a list of subagent ids) to wait for specific children, or omit it to wait for all of your outstanding subagents. While you wait you free your run slot so your subagents (and other agents) can run; you resume once the awaited subagents have all returned. The result contains each subagent's final message.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "description": "Optional ids of the subagents to wait for (omit to wait for all outstanding ones).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "capability": "subagents",
+      "note": "Offered to an agent that can have children at all — either a non-empty roster or the `fork` its agent-transitions capability buys it."
+    },
+    {
+      "name": "send_message",
+      "category": "gg-delegation",
+      "description": "Send a message to one of your running subagents. Provide the subagent's `agentId` and the `message` text. The subagent receives your message at its next turn (as a message from you), so you can course-correct or add context while it works. Fails if the agent is not one of your subagents or has already returned.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "agentId": {
+            "description": "The id of the subagent to message (one you spawned).",
+            "type": "string"
+          },
+          "message": {
+            "description": "The message to deliver to the subagent.",
+            "type": "string"
+          }
+        },
+        "required": ["agentId", "message"],
+        "type": "object"
+      },
+      "capability": "subagents",
+      "note": "Offered to an agent that can have children at all — either a non-empty roster or the `fork` its agent-transitions capability buys it."
+    },
+    {
+      "name": "run_workflow",
+      "category": "gg-delegation",
+      "description": "Run a declared, multi-stage workflow of subagents as a single unit — fan-out plus sequencing — instead of spawning and waiting on subagents by hand. You provide an ordered list of `stages`; gg runs them in order, and this call returns only when the whole workflow is done, with the final stage's results. Each stage FANS OUT one subagent per item and runs them in parallel (under the same global concurrency and depth limits as ad-hoc subagents — a workflow gets no extra budget), waits for all of them, then feeds their results into the next stage (SEQUENCING). Each stage names the `agent` to run its subagents as (which configures their model, tools, and instructions); the agents you may use: `<agent>`. A stage's `prompt` is a template applied once per item to form that subagent's brief: write `{item}` where the item text should go, and `{prior}` where the previous stage's collected results should go. The FIRST stage must list its `items` explicitly; a later stage that omits `items` fans out over the previous stage's results (one subagent per result, each seeing its result as `{item}`) — or give it a single item and reference `{prior}` to have one subagent consolidate all of the previous stage's results. Use a workflow when the work has a clear map-then-reduce or pipeline shape; use `spawn_subagent` for ad-hoc delegation.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "stages": {
+            "description": "The workflow's stages, run in order; each fans out over its items and feeds the next stage.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "agent": {
+                  "description": "The name of the agent to run this stage's subagents as (one of the agents you may spawn).",
+                  "type": "string"
+                },
+                "items": {
+                  "description": "The items to fan out over (one subagent each). Required on the first stage; on a later stage, omit it to fan out over the previous stage's results.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "name": {
+                  "description": "A short name for the stage (used in the timeline; defaults to `stage-N`).",
+                  "type": "string"
+                },
+                "prompt": {
+                  "description": "The per-item brief template. `{{item}}` is replaced with the item; `{{prior}}` with the previous stage's collected results.",
+                  "type": "string"
+                }
+              },
+              "required": ["prompt", "agent"],
+              "type": "object"
+            },
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": ["stages"],
+        "type": "object"
+      },
+      "capability": "workflows",
+      "note": "Only when the agent's roster is non-empty. Offered independently of `subagents` — a run may declare workflows without ad-hoc spawning. The description enumerates the roster, so it is per run."
+    },
+    {
+      "name": "speculate",
+      "category": "gg-delegation",
+      "description": "Attempt the same piece of work several times in parallel and keep only the BEST result (best-of-K). Provide an `agent` — the agent to run every attempt as (which configures their model, tools, and instructions; you may use: `<agent>`) — and a `prompt` (a self-contained brief for the task) OR an `issueId` to speculate on one of your board issues (its scope and completion criteria become the task), and `attempts` (K, the number of parallel tries, 2–6). gg fans out K subagents at the SAME task, EACH IN ITS OWN ISOLATED WORKTREE so they cannot collide, runs them in parallel under the same concurrency and depth limits as ordinary subagents (no extra budget), then a JUDGE scores their work against the task's completion criteria and picks a winner. gg MERGES the winner's worktree back into your workspace and DISCARDS the losing attempts — so when this call returns, your workspace holds exactly the winning attempt's changes. Optionally pass `approaches` (an array of hints, one per attempt, to steer the tries in different directions). Requires git in the run environment (for the isolation); refused without it. Use this for a hard or open-ended piece of work where one careful attempt may not be enough and you can afford K× the tokens for a better result; use `spawn_subagent` for ordinary single-attempt delegation. This call returns only when the winner has been merged.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "description": "The name of the agent to run every attempt as (one of the agents you may spawn).",
+            "type": "string"
+          },
+          "approaches": {
+            "description": "Optional per-attempt approach hints, one per attempt, to steer the tries in different directions (extra attempts beyond the list get no hint).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "attempts": {
+            "description": "K — how many parallel attempts to make (2–6). Defaults to 2.",
+            "maximum": 6,
+            "minimum": 2,
+            "type": "integer"
+          },
+          "issueId": {
+            "description": "The id of a board issue to speculate on; its scope and completion criteria become the task.",
+            "type": "string"
+          },
+          "prompt": {
+            "description": "A self-contained brief for the task to attempt K times (what to do and how it will be judged done). Provide this or `issueId`.",
+            "type": "string"
+          }
+        },
+        "required": ["agent"],
+        "type": "object"
+      },
+      "capability": "speculative-execution",
+      "note": "Only when the agent's roster is non-empty, and it engages only when the delegation runtime is built and worktree isolation is available; the loop refuses it otherwise. The description enumerates the roster, so it is per run."
+    },
+    {
+      "name": "transition_state",
+      "category": "gg-delegation",
+      "description": "Move this process on to its next state. You are in the `<state>` state of the `<process>` process; naming a state hands the work to the agent that state runs, which has its own model, tools and instructions. The states you may move to: `<next-state>`. What you take with you is fixed by the process, not by you — the transition you name decides which of your conversation, memories, task list, board, skills and thread archive the next agent receives, and your opening message there says what arrived and what did not. The transition happens once this turn's tool results are recorded, so finish the turn normally; you do not end your session, the next state continues it.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "description": "Optional. What the next state's agent should know or do first. It is shown to that agent as its opening message; anything you hand over in your conversation or task list does not need repeating here.",
+            "type": "string"
+          },
+          "state": {
+            "description": "The name of the state to move to (one of the states you may move to).",
+            "type": "string"
+          }
+        },
+        "required": ["state"],
+        "type": "object"
+      },
+      "capability": "fsm",
+      "note": "Offered from where the agent *stands* rather than from its own profile: the machine is declared by a separate FSM shell agent, and the call appears only in a state that has somewhere to go. Its description names that state and its own outgoing edges, so it is per machine."
+    },
+    {
+      "name": "exec",
+      "category": "gg-delegation",
+      "description": "Continue this session as a different agent. You are replaced: the named agent's model, tools and instructions take over from your next turn, and it keeps everything the two of you both have — your whole conversation above all, so it does not need to be caught up. Anything it does not have (a capability its profile turns off) is dropped, and anything only it has starts empty; its opening message says which. The agents you may become: `<agent>`. Use it when the work has changed shape rather than merely grown — a different toolset, a different model, a different set of instructions — and use `spawn_subagent` instead when you want the other agent to work *for* you and report back. The change happens once this turn's tool results are recorded, so finish the turn normally; your session does not end, the other agent continues it, and whatever put you to work sees one agent throughout.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "description": "The name of the agent to continue as (one of the agents you may become). This selects its model, tools, and instructions.",
+            "type": "string"
+          },
+          "prompt": {
+            "description": "Optional. What the agent taking over should do first. It is shown to it as its opening message; anything already in the conversation it inherits does not need repeating here.",
+            "type": "string"
+          }
+        },
+        "required": ["agent"],
+        "type": "object"
+      },
+      "capability": "agent-transitions",
+      "note": "Only when the agent's roster is non-empty, and never for an agent standing in a machine state — there, where the run goes next is the machine's decision and `transition_state` is how it is made. The description enumerates the roster, so it is per run."
+    },
+    {
+      "name": "fork",
+      "category": "gg-delegation",
+      "description": "Run a copy of yourself, in parallel, on something you will not do yourself. The copy is you: your model, your tools, your instructions, and a private copy of your whole conversation, so it already knows everything you know and needs no briefing — pass only what it should do *differently*. It is an ordinary subagent from there: it gets its own id, works in your workspace, and you collect it with `wait_for_subagents` or guide it with `send_message`. Prefer it over `spawn_subagent` exactly when the context is the expensive part — when briefing a fresh agent would mean re-explaining what you have already worked out. Its own copies of your task list, notes and thread archive diverge from yours the moment either of you writes; shared memories stay shared. The copy starts once this turn's tool results are recorded, so wait for it on a later turn rather than this one. Refused at the maximum delegation depth.",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "prompt": {
+            "description": "What the copy of you should do that you will not. It is shown to it as its opening message, on top of the conversation it inherits from you.",
+            "type": "string"
+          }
+        },
+        "required": ["prompt"],
+        "type": "object"
+      },
+      "capability": "agent-transitions",
+      "note": "Also requires the `subagents` capability, which is what buys the `wait_for_subagents` and `send_message` calls that collect the copy; a fork nobody can collect is a leak rather than a second worker."
+    }
+  ],
+  "functions": [
+    {
+      "object": "harness",
+      "name": "finish",
+      "category": "gg-session",
+      "summary": "End your session, reporting what you did in a sentence or two.",
+      "signature": "finish(summary: string): void",
+      "doc": "End your session, reporting what you did in a sentence or two. This is the only thing that ends it. It does not stop your program — whatever follows it still runs — so call it last, once the tools have confirmed the work is really done. If your program then fails, the ending is cancelled and you get another turn.",
+      "ending": "standard",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "review",
+      "name": "approve",
+      "category": "gg-session",
+      "summary": "Accept the work you are reviewing: it meets every completion criterion and stays in scope.",
+      "signature": "approve(): void",
+      "doc": "Accept the work you are reviewing: it meets every completion criterion and stays in scope. This ends your session. It does not stop your program — whatever follows it still runs — so call it last, once you have actually read the change.",
+      "ending": "review",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "review",
+      "name": "requestChanges",
+      "category": "gg-session",
+      "summary": "Reject the work you are reviewing, listing every change that must be made before it can be accepted.",
+      "signature": "requestChanges(items: string[]): void",
+      "doc": "Reject the work you are reviewing, listing every change that must be made before it can be accepted. Each item says what is wrong and what to change; the list may not be empty. This ends your session, and does not stop your program.",
+      "ending": "review",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "judge",
+      "name": "selectWinner",
+      "category": "gg-session",
+      "summary": "Name the attempt that wins, by the number it was presented under, and say why in a sentence.",
+      "signature": "selectWinner(attempt: number, rationale: string): void",
+      "doc": "Name the attempt that wins, by the number it was presented under, and say why in a sentence. This ends your session, and does not stop your program.",
+      "ending": "judge",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "view",
+      "name": "openFile",
+      "category": "gg-views",
+      "summary": "Read a file AND show it to yourself: you get back exactly what `fs.readFile` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it.",
+      "signature": "openFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
+      "doc": "Read a file AND show it to yourself: you get back exactly what `fs.readFile` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it. The split from `fs.readFile` is the point — `fs.readFile` gets bytes for your PROGRAM, `view.openFile` shows a file to YOU — so a program that reads forty files to grep them still puts nothing in your window. `offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the SAME page replaces what it showed rather than piling up a duplicate. An image file is shown to you as a picture, and is the ONLY way to look at one — `fs.readFile` of an image describes it without showing it. Pictures are the one thing this call can refuse. Only so many image-carrying views may be open at once (your agent's `imageViewCap`); opening one past that throws `limit-exceeded` naming the cap, and nothing is opened and nothing is shown, so close one with `view.close(path)` and try again. Re-opening a picture you already have open replaces it rather than adding one, and is never refused. Text views are never refused by this cap.",
+      "gate": "read_file",
+      "library": false,
+      "types": [
+        {
+          "name": "FileRead",
+          "declaration": "type FileRead = { kind: \"text\"; contents: string; firstLine: number; lastLine: number; totalLines: number; byteTruncated: boolean; } | { kind: \"image\"; mediaType: string; label: string; bytes: number; shown: boolean; notShownReason: string | undefined; }"
+        }
+      ]
+    },
+    {
+      "object": "view",
+      "name": "openText",
+      "category": "gg-views",
+      "summary": "Show yourself a value your program computed, under `label` — a directory listing, a command's output, a child agent's answer, a table you assembled.",
+      "signature": "openText(label: string, body: string): void",
+      "doc": "Show yourself a value your program computed, under `label` — a directory listing, a command's output, a child agent's answer, a table you assembled. This is what replaced `console.log` as the channel into your context: logs go to the run's operator, views come back to you on your next turn. Opening the same `label` again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration. An empty label is `invalid-argument` — a view with no selector could never be closed or attributed — while an empty BODY is allowed, since it is how you say that something you were showing is now empty. A body or label over gg's caps throws `limit-exceeded` naming the cap; nothing is ever silently truncated.",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "view",
+      "name": "openDocsView",
+      "category": "gg-views",
+      "summary": "Show yourself the full documentation for one function: its signature, its description, and the declarations of any types it refers to that you have not already been shown this session.",
+      "signature": "openDocsView(target: Function | string): void",
+      "doc": "Show yourself the full documentation for one function: its signature, its description, and the declarations of any types it refers to that you have not already been shown this session. Pass the function itself (`view.openDocsView(fs.readFile)`) or its name (`view.openDocsView(\"readFile\")`). This is how you read what a function does. It is a **view**, not a return value — the documentation arrives in your next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives — so it is not available in the turn you ask for it. Plan for that: ask in one turn, use it in the next. Opening the same function's docs again replaces the view rather than adding a second copy, and `view.close(name)` closes it when you are done with it. An unknown or unbound name throws `not-found`; `<object>.list()` is how you find out which names exist.",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "view",
+      "name": "close",
+      "category": "gg-views",
+      "summary": "Close every view carrying `selector` — for a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name — and return how many were closed, freeing the tokens they occupied.",
+      "signature": "close(selector: string): number",
+      "doc": "Close every view carrying `selector` — for a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name — and return how many were closed, freeing the tokens they occupied. Closing a selector that is not open returns `0` rather than failing, so a program that tidies up unconditionally does not have to guard every call. Closing a file view forgets what you read, not what exists; closing a text view discards the only copy of what it held, so write anything you will need later to a file or a memory first.",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "view",
+      "name": "current",
+      "category": "gg-views",
+      "summary": "List what is open in your context window right now: each view's `kind`, the `selector` that closes it, roughly what it costs you in `tokens`, and — for a paged file view — the `region` it covers.",
+      "signature": "current(): OpenView[]",
+      "doc": "List what is open in your context window right now: each view's `kind`, the `selector` that closes it, roughly what it costs you in `tokens`, and — for a paged file view — the `region` it covers. It is called `current` rather than `list` because every API object already carries a `list()` that lists that object's own functions. Read it before deciding what to close when your window is filling up.",
+      "library": false,
+      "types": [
+        {
+          "name": "ViewKind",
+          "declaration": "type ViewKind = \"file\" | \"text\" | \"docs\""
+        },
+        {
+          "name": "ViewRegion",
+          "declaration": "interface ViewRegion { offset: number; limit: number; }"
+        },
+        {
+          "name": "OpenView",
+          "declaration": "interface OpenView { kind: ViewKind; selector: string; tokens: number; region?: ViewRegion; }"
+        }
+      ]
+    },
+    {
+      "object": "programs",
+      "name": "history",
+      "category": "gg-programs",
+      "summary": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end.",
+      "signature": "history(): ProgramSummary[]",
+      "doc": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end. It lists shapes, not sources: fetch the one you want with `programs.get(turn)`. The list survives a compaction, so it is also how you find a program whose text has left your context window.",
+      "library": true,
+      "types": [
+        {
+          "name": "ProgramSummary",
+          "declaration": "interface ProgramSummary { turn: number; lines: number; chars: number; ok: boolean; error?: string; }"
+        }
+      ]
+    },
+    {
+      "object": "programs",
+      "name": "get",
+      "category": "gg-programs",
+      "summary": "The exact source of one program you ran, as a string.",
+      "signature": "get(turn?: number): string",
+      "doc": "The exact source of one program you ran, as a string. With no argument, your most recent one. This is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work (`replace`, `replaceAll`, a template literal), and hand the result to `programs.rerun`. What comes back is the program that **executed** — so when a turn's program was itself handed over by `programs.rerun`, you get the program that ran, not the few lines that asked for it, and fetch-patch-run composes turn after turn. A turn that ran no program, or one old enough that the library has dropped it, throws `not-found` naming the turns that are held; `programs.history()` lists them.",
+      "library": true,
+      "types": []
+    },
+    {
+      "object": "programs",
+      "name": "rerun",
+      "category": "gg-programs",
+      "summary": "Hand gg a program to run in place of this one.",
+      "signature": "rerun(source: string): void",
+      "doc": "Hand gg a program to run in place of this one. Your program finishes, then gg compiles and runs `source` as this turn's program. Use it with `programs.get` to fix a program without re-emitting it. Nothing is undone: every call your program already made stands, and the program that runs next sees the world your program left behind — so hand over BEFORE doing work you do not want done twice. The first call stands; a second throws `refused`, because a silently replaced program is a change you cannot see. A blank source is `invalid-argument`. If your program then throws, the hand-over is cancelled along with everything else the failed program decided, and you get an ordinary error turn instead. Chains are bounded: hand over once per turn, and write the fixed program to do the work.",
+      "library": true,
+      "types": []
+    },
+    {
+      "object": "system",
+      "name": "shell",
+      "category": "gg-shell",
+      "summary": "Run a command with `sh -c` in the workspace directory and return its merged stdout and stderr.",
+      "signature": "shell(command: string, options?: { timeoutSecs?: number; }): ShellOutput",
+      "doc": "Run a command with `sh -c` in the workspace directory and return its merged stdout and stderr. A non-zero exit is NOT a failure — check `exitCode` on the result; only a process that could not be launched, or one the timeout killed, throws. `timeoutSecs` defaults to 120 and is clamped to whatever is left of the run's wall-clock budget. This run may **offload** shell output — the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive` (the default), a command that **succeeded** returns no output at all, only that note; one that **failed** returns the tail. Grep the named files instead of re-running the command.",
+      "gate": "shell",
+      "library": false,
+      "types": [
+        {
+          "name": "ShellOutput",
+          "declaration": "interface ShellOutput { exitCode: number | undefined; output: string; truncated: boolean; }"
+        }
+      ]
+    },
+    {
+      "object": "fs",
+      "name": "readFile",
+      "category": "gg-filesystem",
+      "summary": "Read a file, returning either `{ kind: \"text\", ...",
+      "signature": "readFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
+      "doc": "Read a file, returning either `{ kind: \"text\", ... }` or `{ kind: \"image\", ... }` — the format is detected from the file's bytes, never its extension. `offset` and `limit` select a window of lines and are honoured only under a capped read policy. This gets bytes for your program and puts NOTHING in your context window; `view.openFile` is the call that shows the file to you. A relative path resolves against your workspace; an absolute one is read as given, so anything in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. Throws `not-found` for a missing path. Reading an IMAGE describes it to your program — label, media type, byte size — and does not show it to YOU: the pixels reach neither your program nor your context window, so a file you only `readFile` is a file you have not looked at. `view.openFile` is the one way to actually see a picture.",
+      "gate": "read_file",
+      "library": false,
+      "types": [
+        {
+          "name": "FileRead",
+          "declaration": "type FileRead = { kind: \"text\"; contents: string; firstLine: number; lastLine: number; totalLines: number; byteTruncated: boolean; } | { kind: \"image\"; mediaType: string; label: string; bytes: number; shown: boolean; notShownReason: string | undefined; }"
+        }
+      ]
+    },
+    {
+      "object": "fs",
+      "name": "writeFile",
+      "category": "gg-filesystem",
+      "summary": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and return the number of bytes written.",
+      "signature": "writeFile(path: string, contents: string): number",
+      "doc": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and return the number of bytes written. Writing is the expensive direction of the sandbox — rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a large rewrite across several turns.",
+      "gate": "write_file",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "fs",
+      "name": "editFile",
+      "category": "gg-filesystem",
+      "summary": "Replace the one exact occurrence of `oldString` in a file with `newString`.",
+      "signature": "editFile(path: string, oldString: string, newString: string): void",
+      "doc": "Replace the one exact occurrence of `oldString` in a file with `newString`. Throws `not-found` when the text does not appear and `conflict` — with the number of matches — when it appears more than once; widen the surrounding context until the match is unique.",
+      "gate": "edit_file",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "fs",
+      "name": "listDir",
+      "category": "gg-filesystem",
+      "summary": "List a directory, sorted by name; defaults to your workspace.",
+      "signature": "listDir(path?: string): DirEntry[]",
+      "doc": "List a directory, sorted by name; defaults to your workspace. Each entry carries a bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an empty array, not a failure.",
+      "gate": "list_dir",
+      "library": false,
+      "types": [
+        {
+          "name": "DirEntry",
+          "declaration": "interface DirEntry { name: string; kind: \"file\" | \"directory\" | \"other\"; }"
+        }
+      ]
+    },
+    {
+      "object": "skills",
+      "name": "readSkill",
+      "category": "gg-skills",
+      "summary": "Read a skill by name and return its body with the front matter stripped; reading it also pins that body permanently into your context, so a skill you have read stays read.",
+      "signature": "readSkill(name: string): string",
+      "doc": "Read a skill by name and return its body with the front matter stripped; reading it also pins that body permanently into your context, so a skill you have read stays read. A skill may be **code** rather than prose, or as well as it. If it carries code, reading it binds that code at `lib.<key>` for the rest of your session and the reply names the key and what it exports. If it carries an on-use script, gg runs it once your program has ended, and whatever it shows you arrives on your next turn. Throws `not-found` — listing the skills that do exist — when the name is unknown.",
+      "gate": "read_skill",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "memory",
+      "name": "writeMemory",
+      "category": "gg-memory",
+      "summary": "Record a durable memory that survives context compaction, and return how much of the memory budget is now used.",
+      "signature": "writeMemory(memory: MemoryWrite): MemoryUsage",
+      "doc": "Record a durable memory that survives context compaction, and return how much of the memory budget is now used. Throws `conflict` on a duplicate name and `limit-exceeded` when the body would breach the run's caps — revise or delete a memory rather than accruing more. A memory may also carry **code**. `code` is a TypeScript module whose exports are bound at `lib.<name>` in every later program you write, so a helper you get right once you never write again; `onUse` is a script gg runs the first time the memory comes into use, whose views reach you on your next turn. Neither is context — they cost you no window, are never shown back to you, and count against no body limit — and both are bounded on their own.",
+      "gate": "write_memory",
+      "library": false,
+      "types": [
+        {
+          "name": "MemoryWrite",
+          "declaration": "interface MemoryWrite { name: string; description: string; body: string; code?: string; onUse?: string; }"
+        },
+        {
+          "name": "MemoryUsage",
+          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }"
+        }
+      ]
+    },
+    {
+      "object": "memory",
+      "name": "updateMemory",
+      "category": "gg-memory",
+      "summary": "Replace an existing memory's description and body, keyed on its `name`, and return the memory budget.",
+      "signature": "updateMemory(memory: MemoryWrite): MemoryUsage",
+      "doc": "Replace an existing memory's description and body, keyed on its `name`, and return the memory budget. Its `code` and `onUse` are replaced too — omitting them clears them. Throws `not-found` when no memory has that name.",
+      "gate": "update_memory",
+      "library": false,
+      "types": [
+        {
+          "name": "MemoryWrite",
+          "declaration": "interface MemoryWrite { name: string; description: string; body: string; code?: string; onUse?: string; }"
+        },
+        {
+          "name": "MemoryUsage",
+          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }"
+        }
+      ]
+    },
+    {
+      "object": "memory",
+      "name": "createMemory",
+      "category": "gg-memory",
+      "summary": "Record a new memory whose contents are kept OUT of your context window until you read them, and return the memory budget.",
+      "signature": "createMemory(memory: MemoryWrite): MemoryUsage",
+      "doc": "Record a new memory whose contents are kept OUT of your context window until you read them, and return the memory budget. Give it a slug (letters, digits, `-`, `_`, `.`), a one-line description — required where the run keeps an index, since that is the memory's line in it — and the initial contents. It may also carry `code` (a module bound at `lib.<name>` once you read the memory) and `onUse` (a script run on that first read). Throws `conflict` on a duplicate slug and `limit-exceeded` when the contents, or the index entry, would breach a limit.",
+      "gate": "create_memory",
+      "library": false,
+      "types": [
+        {
+          "name": "MemoryWrite",
+          "declaration": "interface MemoryWrite { name: string; description: string; body: string; code?: string; onUse?: string; }"
+        },
+        {
+          "name": "MemoryUsage",
+          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }"
+        }
+      ]
+    },
+    {
+      "object": "memory",
+      "name": "readMemory",
+      "category": "gg-memory",
+      "summary": "Read one memory's full contents, by slug — the only thing that brings them into your context.",
+      "signature": "readMemory(name: string): string",
+      "doc": "Read one memory's full contents, by slug — the only thing that brings them into your context. If the memory carries code, reading it also loads that code: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of your session. Throws `not-found` when no memory has that slug.",
+      "gate": "read_memory",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "memory",
+      "name": "editMemory",
+      "category": "gg-memory",
+      "summary": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and return the memory budget.",
+      "signature": "editMemory(edit: { name: string; search: string; replace: string; }): MemoryUsage",
+      "doc": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and return the memory budget. Append by quoting the last line and replacing it with itself plus what you are adding. Throws `not-found` when the text does not appear, `conflict` when it appears more than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when the edit would leave the memory empty — delete it instead.",
+      "gate": "edit_memory",
+      "library": false,
+      "types": [
+        {
+          "name": "MemoryUsage",
+          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }"
+        }
+      ]
+    },
+    {
+      "object": "memory",
+      "name": "searchMemories",
+      "category": "gg-memory",
+      "summary": "Find the memories mentioning any of `keywords`, best first: plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often.",
+      "signature": "searchMemories(keywords: string[]): MemoryHit[]",
+      "doc": "Find the memories mentioning any of `keywords`, best first: plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often. Pass several specific words rather than one sentence, then `readMemory` the hits worth having in full. Throws `invalid-argument` when every keyword is empty; a search that matches nothing is an empty array.",
+      "gate": "search_memories",
+      "library": false,
+      "types": [
+        {
+          "name": "MemoryHit",
+          "declaration": "interface MemoryHit { name: string; description: string; matched: number; occurrences: number; excerpt: string; }"
+        }
+      ]
+    },
+    {
+      "object": "memory",
+      "name": "deleteMemory",
+      "category": "gg-memory",
+      "summary": "Evict a memory by name, freeing room in the budget, and return what is left in use.",
+      "signature": "deleteMemory(name: string): MemoryUsage",
+      "doc": "Evict a memory by name, freeing room in the budget, and return what is left in use. Throws `not-found` when no memory has that name.",
+      "gate": "delete_memory",
+      "library": false,
+      "types": [
+        {
+          "name": "MemoryUsage",
+          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }"
+        }
+      ]
+    },
+    {
+      "object": "tasks",
+      "name": "addTask",
+      "category": "gg-tasks",
+      "summary": "Add a task to the task DAG and return the task budget.",
+      "signature": "addTask(task: { id: string; title: string; description?: string; blockedBy?: string[]; }): TaskUsage",
+      "doc": "Add a task to the task DAG and return the task budget. `blockedBy` names the tasks that must finish before this one and defaults to none. Throws `conflict` on a duplicate id or on an edge that would close a cycle.",
+      "gate": "add_task",
+      "library": false,
+      "types": [
+        {
+          "name": "TaskUsage",
+          "declaration": "interface TaskUsage { count: number; maxTasks: number; }"
+        }
+      ]
+    },
+    {
+      "object": "tasks",
+      "name": "updateTask",
+      "category": "gg-tasks",
+      "summary": "Revise a task's title, description and/or status; supply at least one.",
+      "signature": "updateTask(id: string, patch: { title?: string; description?: string | null; status?: TaskStatus; }): void",
+      "doc": "Revise a task's title, description and/or status; supply at least one. An omitted `description` leaves it alone, `null` clears it, and a string replaces it. Throws `not-found` for an unknown id.",
+      "gate": "update_task",
+      "library": false,
+      "types": [
+        {
+          "name": "TaskStatus",
+          "declaration": "type TaskStatus = \"pending\" | \"in_progress\" | \"done\""
+        }
+      ]
+    },
+    {
+      "object": "tasks",
+      "name": "setBlockedBy",
+      "category": "gg-tasks",
+      "summary": "Replace a task's whole blocker set; an empty array clears every blocker.",
+      "signature": "setBlockedBy(id: string, blockedBy: string[]): void",
+      "doc": "Replace a task's whole blocker set; an empty array clears every blocker. Throws `not-found` for an unknown id and `conflict` when an edge would close a cycle.",
+      "gate": "set_blocked_by",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "tasks",
+      "name": "completeTask",
+      "category": "gg-tasks",
+      "summary": "Mark a task done.",
+      "signature": "completeTask(id: string): void",
+      "doc": "Mark a task done. Tasks it was blocking become actionable once every one of their blockers is done. Throws `not-found` for an unknown id.",
+      "gate": "complete_task",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "tasks",
+      "name": "removeTask",
+      "category": "gg-tasks",
+      "summary": "Remove a task and every blocker edge pointing at it, and return the task budget.",
+      "signature": "removeTask(id: string): TaskUsage",
+      "doc": "Remove a task and every blocker edge pointing at it, and return the task budget. Throws `not-found` for an unknown id.",
+      "gate": "remove_task",
+      "library": false,
+      "types": [
+        {
+          "name": "TaskUsage",
+          "declaration": "interface TaskUsage { count: number; maxTasks: number; }"
+        }
+      ]
+    },
+    {
+      "object": "project",
+      "name": "createEpic",
+      "category": "gg-project",
+      "summary": "Create an epic to group related issues.",
+      "signature": "createEpic(epic: { prefix: string; title: string; description: string; }): EpicCreated",
+      "doc": "Create an epic to group related issues. `prefix` is 3-6 letters naming the epic; it is upper-cased and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on. Returns that id and the board budget. Throws `invalid-argument` when the prefix is not 3-6 letters, and `conflict` when another epic already holds it.",
+      "gate": "create_epic",
+      "library": false,
+      "types": [
+        {
+          "name": "BoardUsage",
+          "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }"
+        },
+        {
+          "name": "EpicCreated",
+          "declaration": "interface EpicCreated { id: string; board: BoardUsage; }"
+        }
+      ]
+    },
+    {
+      "object": "project",
+      "name": "createIssue",
+      "category": "gg-project",
+      "summary": "Create a self-contained, dispatchable issue.",
+      "signature": "createIssue(issue: { title: string; description?: string; inScope: string; outOfScope: string; completionCriteria: string; blockedBy?: string[]; epicId?: string; agent: string; reviewers?: string[]; }): IssueCreated",
+      "doc": "Create a self-contained, dispatchable issue. Returns the id the board **assigned** it — numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic — together with the board budget; you do not choose the id, so keep the returned one to block a later issue on this one or to wait for it. `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so write them for a reader with no other context. `agent` names the agent the issue is dispatched to and must be one you may spawn; `reviewers` names the agents that must approve the work, from that same set, and is required when this run's reviewers feature is on. `blockedBy` defaults to none; `epicId` groups the issue under an existing epic. Throws `invalid-argument` when `agent` or a reviewer is not yours to assign, and `conflict` on a blocker edge that would close a cycle.",
+      "gate": "create_issue",
+      "library": false,
+      "types": [
+        {
+          "name": "BoardUsage",
+          "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }"
+        },
+        {
+          "name": "IssueCreated",
+          "declaration": "interface IssueCreated { id: string; board: BoardUsage; }"
+        }
+      ]
+    },
+    {
+      "object": "project",
+      "name": "updateIssue",
+      "category": "gg-project",
+      "summary": "Revise an issue; supply at least one field.",
+      "signature": "updateIssue(id: string, patch: { title?: string; description?: string | null; inScope?: string; outOfScope?: string; completionCriteria?: string; status?: IssueStatus; epicId?: string | null; }): void",
+      "doc": "Revise an issue; supply at least one field. An omitted field is left alone, `description: null` clears the description, and `epicId: null` detaches the issue from its epic. Throws `not-found` for an unknown id.",
+      "gate": "update_issue",
+      "library": false,
+      "types": [
+        {
+          "name": "IssueStatus",
+          "declaration": "type IssueStatus = \"open\" | \"in_progress\" | \"done\""
+        }
+      ]
+    },
+    {
+      "object": "project",
+      "name": "setIssueBlockedBy",
+      "category": "gg-project",
+      "summary": "Replace an issue's whole blocker set; an empty array clears every blocker.",
+      "signature": "setIssueBlockedBy(id: string, blockedBy: string[]): void",
+      "doc": "Replace an issue's whole blocker set; an empty array clears every blocker. Throws `not-found` for an unknown id and `conflict` when an edge would close a cycle.",
+      "gate": "set_issue_blocked_by",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "project",
+      "name": "removeEpic",
+      "category": "gg-project",
+      "summary": "Remove an epic, keeping its issues and ungrouping them, and return the board budget.",
+      "signature": "removeEpic(id: string): BoardUsage",
+      "doc": "Remove an epic, keeping its issues and ungrouping them, and return the board budget. Throws `not-found` for an unknown id.",
+      "gate": "remove_epic",
+      "library": false,
+      "types": [
+        {
+          "name": "BoardUsage",
+          "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }"
+        }
+      ]
+    },
+    {
+      "object": "project",
+      "name": "removeIssue",
+      "category": "gg-project",
+      "summary": "Remove an issue and every blocker edge pointing at it, and return the board budget.",
+      "signature": "removeIssue(id: string): BoardUsage",
+      "doc": "Remove an issue and every blocker edge pointing at it, and return the board budget. Throws `not-found` for an unknown id.",
+      "gate": "remove_issue",
+      "library": false,
+      "types": [
+        {
+          "name": "BoardUsage",
+          "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }"
+        }
+      ]
+    },
+    {
+      "object": "project",
+      "name": "waitForIssue",
+      "category": "gg-project",
+      "summary": "Register a wait on an issue and return an acknowledgement.",
+      "signature": "waitForIssue(id: string): string",
+      "doc": "Register a wait on an issue and return an acknowledgement. It does not block inside your program — it records the wait and returns at once, so the rest of your program still runs; the suspension happens after the program ends, between turns. Once the program finishes the run suspends, freeing this agent's slot for others, until the issue is terminal (done, or failed if its assigned agent could not complete it), then resumes on the next turn. Use it to sequence your next turn's work behind an issue you depend on. You cannot wait on the issue you were assigned to implement. Throws `not-found` for an unknown id.",
+      "gate": "wait_for_issue",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "context",
+      "name": "evictFileView",
+      "category": "gg-context",
+      "summary": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed; omit `path` to drop every file view.",
+      "signature": "evictFileView(path?: string): ReclaimReport",
+      "doc": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed; omit `path` to drop every file view. The files on disk are untouched — this forgets what you read, not what exists.",
+      "gate": "evict_file_view",
+      "library": false,
+      "types": [
+        {
+          "name": "ReclaimReport",
+          "declaration": "interface ReclaimReport { items: number; reclaimedTokens: number; paths: string[]; detail: string; }"
+        }
+      ]
+    },
+    {
+      "object": "context",
+      "name": "archiveThread",
+      "category": "gg-context",
+      "summary": "Move whole turns out of your context window and report what that reclaimed.",
+      "signature": "archiveThread(ranges: TurnRange[]): ReclaimReport",
+      "doc": "Move whole turns out of your context window and report what that reclaimed. Every result you are given carries a header with its turn number and roughly what holding it costs, so name the turns worth dropping: `ranges` is a list of inclusive spans, and `archiveThread([{ from: 4, to: 19 }])` archives turns 4 through 19. Your own messages in an archived turn are dropped; the results are kept and stay searchable with `searchArchive`.",
+      "gate": "archive_thread",
+      "library": false,
+      "types": [
+        {
+          "name": "ReclaimReport",
+          "declaration": "interface ReclaimReport { items: number; reclaimedTokens: number; paths: string[]; detail: string; }"
+        },
+        {
+          "name": "TurnRange",
+          "declaration": "interface TurnRange { from: number; to: number; }"
+        }
+      ]
+    },
+    {
+      "object": "context",
+      "name": "searchArchive",
+      "category": "gg-context",
+      "summary": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits.",
+      "signature": "searchArchive(query: string): ArchiveSearch",
+      "doc": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits. Check `archiveEmpty` before reading `hits`: it distinguishes \"nothing has been archived yet\" from \"the search ran and matched nothing\", so you do not archive again believing the first archive failed.",
+      "gate": "search_archive",
+      "library": false,
+      "types": [
+        {
+          "name": "ArchiveHit",
+          "declaration": "interface ArchiveHit { seq: number; role: \"system\" | \"user\" | \"assistant\" | \"tool\"; text: string; }"
+        },
+        {
+          "name": "ArchiveSearch",
+          "declaration": "interface ArchiveSearch { archiveEmpty: boolean; hits: ArchiveHit[]; }"
+        }
+      ]
+    },
+    {
+      "object": "context",
+      "name": "compact",
+      "category": "gg-context",
+      "summary": "Compact your context window: the detailed thread is dropped and restarted from `summary`, plus a fresh read of each path in `files`.",
+      "signature": "compact(summary: string, files?: string[]): void",
+      "doc": "Compact your context window: the detailed thread is dropped and restarted from `summary`, plus a fresh read of each path in `files`. Your skills, memories and task list are kept as they are. You are asked to call this when your window is full, and every other call is refused until you do. It does NOT stop your program: it registers the request and returns, and the rewrite happens once your program has ended. Everything not in your summary and not in `files` is gone, so write the summary for your future self and name the files you will actually need in hand.",
+      "gate": "compact",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "agents",
+      "name": "spawnSubagent",
+      "category": "gg-delegation",
+      "summary": "Delegate scoped work to a child agent and return its handle immediately — the child runs in parallel while your program continues.",
+      "signature": "spawnSubagent(request: { agent: string; } & ({ prompt: string; } | { issueId: string; })): SubagentHandle",
+      "doc": "Delegate scoped work to a child agent and return its handle immediately — the child runs in parallel while your program continues. Name the `agent` to run it as (one of the agents you may spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and brief it with exactly one of `prompt` (self-contained instructions) or `issueId` (a board issue). The child shares your workspace. Throws `refused` at the delegation depth cap, and `invalid-argument` if `agent` is not one you may spawn.",
+      "gate": "spawn_subagent",
+      "library": false,
+      "types": [
+        {
+          "name": "SubagentHandle",
+          "declaration": "interface SubagentHandle { id: string; slot: string; modelId: string; }"
+        }
+      ]
+    },
+    {
+      "object": "agents",
+      "name": "waitForSubagents",
+      "category": "gg-delegation",
+      "summary": "Block until the named children have finished — or, with no argument, until every outstanding child has — and collect their results in dispatch order.",
+      "signature": "waitForSubagents(ids?: string[]): SubagentResult[]",
+      "doc": "Block until the named children have finished — or, with no argument, until every outstanding child has — and collect their results in dispatch order. The run's wall-clock budget keeps running while you wait, so wait once for many children rather than once per child. Throws `not-found` for an unknown id.",
+      "gate": "wait_for_subagents",
+      "library": false,
+      "types": [
+        {
+          "name": "AgentEnding",
+          "declaration": "type AgentEnding = \"completed\" | \"exhausted\" | \"timed_out\" | \"model_error\" | \"auth_error\" | \"limit_exceeded\""
+        },
+        {
+          "name": "SubagentResult",
+          "declaration": "interface SubagentResult { id: string; status: AgentEnding | undefined; summary: string; }"
+        }
+      ]
+    },
+    {
+      "object": "agents",
+      "name": "sendMessage",
+      "category": "gg-delegation",
+      "summary": "Deliver a message to a running child agent's inbox; it reads the message at its next turn.",
+      "signature": "sendMessage(agentId: string, message: string): void",
+      "doc": "Deliver a message to a running child agent's inbox; it reads the message at its next turn. Throws `not-found` for an unknown agent id and `conflict` when that child has already returned.",
+      "gate": "send_message",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "agents",
+      "name": "runWorkflow",
+      "category": "gg-delegation",
+      "summary": "Run a declared multi-stage fan-out as one unit and return the final stage's results.",
+      "signature": "runWorkflow(stages: { name?: string; prompt: string; items?: string[]; agent: string; }[]): WorkflowReport",
+      "doc": "Run a declared multi-stage fan-out as one unit and return the final stage's results. Each stage names the `agent` to run its children as (one of the agents you may spawn), and its `prompt` is a template in which `{{item}}` is the item being worked and `{{prior}}` is the previous stage's collected results; the first stage must supply `items`, and a later stage that omits them fans out over the previous stage's results instead. Blocks until every stage is done.",
+      "gate": "run_workflow",
+      "library": false,
+      "types": [
+        {
+          "name": "WorkflowReport",
+          "declaration": "interface WorkflowReport { workflowId: string; stages: number; results: string[]; }"
+        }
+      ]
+    },
+    {
+      "object": "agents",
+      "name": "speculate",
+      "category": "gg-delegation",
+      "summary": "Attempt the same task K times in parallel isolated worktrees, judge the attempts, then merge the winner and discard the losers.",
+      "signature": "speculate(request: { agent: string; } & ({ prompt: string; } | { issueId: string; }) & { attempts?: number; approaches?: string[]; }): SpeculationReport",
+      "doc": "Attempt the same task K times in parallel isolated worktrees, judge the attempts, then merge the winner and discard the losers. Name the `agent` to run every attempt as (one of the agents you may spawn). `attempts` is clamped to 2–6 and defaults to 2; `approaches` are positional per-attempt hints, and attempts past the end of the list get none. Blocks until the winner is merged.",
+      "gate": "speculate",
+      "library": false,
+      "types": [
+        {
+          "name": "SpeculationReport",
+          "declaration": "interface SpeculationReport { winnerId: string; attempts: number; rationale: string | undefined; summary: string; }"
+        }
+      ]
+    },
+    {
+      "object": "agents",
+      "name": "transitionState",
+      "category": "gg-delegation",
+      "summary": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn; `note` is the opening message the next state's agent sees.",
+      "signature": "transitionState(state: string, note?: string): void",
+      "doc": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn; `note` is the opening message the next state's agent sees. Bound only when a state machine is driving you and the state you are in has somewhere to go. Like `compact` it is registered rather than performed: the call validates the target, returns, and your program runs on to its end — the transition happens after that, because replacing your agent (and your window) mid-program would pull every remaining call out from under it. The FIRST declaration stands, and a second throws `refused`. Throws `invalid-argument` for a state you may not move to.",
+      "gate": "transition_state",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "agents",
+      "name": "exec",
+      "category": "gg-delegation",
+      "summary": "Continue this session as a different agent: the named agent takes over from your next turn with its own model, tools and instructions, keeping every capability the two of you both have — your whole conversation above all, so it needs no catching up.",
+      "signature": "exec(agent: string, prompt?: string): void",
+      "doc": "Continue this session as a different agent: the named agent takes over from your next turn with its own model, tools and instructions, keeping every capability the two of you both have — your whole conversation above all, so it needs no catching up. `prompt` is its opening message. Registered rather than performed, exactly as `transitionState` is and for the same reason: your window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn, so an `exec` after a `transitionState` — or a second `exec` — throws `refused`. Bound only when your agent may make agent transitions and has agents it may become, and never while a state machine is driving you. Throws `invalid-argument` for an agent you may not become.",
+      "gate": "exec",
+      "library": false,
+      "types": []
+    },
+    {
+      "object": "agents",
+      "name": "fork",
+      "category": "gg-delegation",
+      "summary": "Run a copy of yourself, in parallel, on something you will not do yourself.",
+      "signature": "fork(prompt: string): SubagentHandle",
+      "doc": "Run a copy of yourself, in parallel, on something you will not do yourself. The copy has your model, your tools and a private copy of your whole conversation, so `prompt` is the *difference* rather than a briefing — everything you have worked out is already there. Its handle comes back immediately, but the copy itself starts once this turn's tool results are recorded (the conversation it inherits has to be a complete one), so `waitForSubagents` can only collect it on a later turn — do not wait on it in the program that made it. Throws `limit-exceeded` at the delegation depth cap.",
+      "gate": "fork",
+      "library": false,
+      "types": [
+        {
+          "name": "SubagentHandle",
+          "declaration": "interface SubagentHandle { id: string; slot: string; modelId: string; }"
+        }
+      ]
+    },
+    {
+      "object": "fs",
+      "name": "readTextFile",
+      "category": "gg-filesystem",
+      "summary": "Read a text file and return its contents directly — `readFile` without the variant narrowing, for the common case.",
+      "signature": "readTextFile(path: string, options?: { offset?: number; limit?: number; }): string",
+      "doc": "Read a text file and return its contents directly — `readFile` without the variant narrowing, for the common case. Takes the same `offset`/`limit` window options. Throws `invalid-argument` when the path names a picture; use `readFile` to inspect those.",
+      "gate": "read_file",
+      "library": false,
+      "types": []
+    }
+  ]
+}

@@ -99,7 +99,8 @@ pub use data::{
     ToolFailure, UsagePair, WorkflowData, saturating_u32, saturating_u64,
 };
 pub use filesystem::{
-    EditFileTool, ListDirTool, READ_FILE_TOOL, ReadFileTool, ReadPolicy, WriteFileTool,
+    EditFileTool, ListDirTool, READ_FILE_TOOL, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED,
+    ReadFileTool, ReadPolicy, WriteFileTool,
 };
 /// Crate-visible, unlike the rest of this module's surface: the only consumer of either is
 /// [replay capture](crate::replay). It sizes its tool-payload ceiling at [`READ_FILE_CAP`] and

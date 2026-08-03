@@ -1,0 +1,192 @@
+{
+  "$defs": {
+    "GgApiFunction": {
+      "description": "One [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) API function, as\nthe sandbox SDK declares it.\n\nEverything here is reflected out of the guest SDK's emitted `.d.ts` and its JSDoc, which is\nthe same material a model gets back from `view.openDocsView(...)` — so this page and the\ndocumentation lookup a program can perform mid-run cannot disagree.",
+      "properties": {
+        "category": {
+          "description": "The [category](GgReferenceCategory::id) the function's object belongs to.",
+          "type": "string"
+        },
+        "doc": {
+          "description": "The SDK's own paragraph of documentation, verbatim. Rendered with its whitespace\npreserved, for the same reason a tool's description is.",
+          "type": "string"
+        },
+        "ending": {
+          "description": "For an ending call, the ending role whose programs bind it (`standard`, `review`,\n`judge`); `None` for everything else, which every role reaches the same way.",
+          "type": ["string", "null"]
+        },
+        "gate": {
+          "description": "The gg tool whose being enabled binds this function, or `None` for one nothing gates —\nan ending call (decided by the agent's [role](Self::ending)), a view function bound to\nevery program whatever a run enables, or a program-library call (see\n[`library`](Self::library)).",
+          "type": ["string", "null"]
+        },
+        "library": {
+          "description": "Whether this function belongs to the\n[program library](https://docs.testcabinet.ai/gg/program-library/) — the one family a\n*capability* binds as a whole rather than a tool or a role, and therefore the one\nneither [`gate`](Self::gate) nor [`ending`](Self::ending) can express.",
+          "type": "boolean"
+        },
+        "name": {
+          "description": "The name a program calls it by (`readFile`).",
+          "type": "string"
+        },
+        "object": {
+          "description": "The API object the function hangs off in a program's scope (`fs`).",
+          "type": "string"
+        },
+        "signature": {
+          "description": "The full TypeScript signature, as the SDK declares it.",
+          "type": "string"
+        },
+        "summary": {
+          "description": "The one-line summary `object.list()` shows — the first sentence of\n[`doc`](Self::doc).",
+          "type": "string"
+        },
+        "types": {
+          "description": "The declarations of every type this function's signature refers to, transitively closed\n— exactly what a `view.openDocsView` lookup appends for the types the session has not\nalready been shown.",
+          "items": {
+            "$ref": "#/$defs/GgApiType"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "object",
+        "name",
+        "category",
+        "summary",
+        "signature",
+        "doc",
+        "library",
+        "types"
+      ],
+      "type": "object"
+    },
+    "GgApiType": {
+      "description": "One type declaration an [API function](GgApiFunction)'s signature refers to.",
+      "properties": {
+        "declaration": {
+          "description": "The declaration, as the SDK wrote it.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The type's name, as it appears in the signature.",
+          "type": "string"
+        }
+      },
+      "required": ["name", "declaration"],
+      "type": "object"
+    },
+    "GgReferenceCategory": {
+      "description": "One family of gg's surface: a group of tools and the API object(s) their\nresponses-as-code counterparts hang off.\n\nA category is not a capability. Several capabilities land in one family (the four\nfilesystem tools are four capabilities and one family), and the three code-only families\n(`view`, `programs`, and the ending call) have no tools at all — they exist only under\nresponses as code, which is exactly why the grouping is by *family* rather than by the\ncapability that switches something on.",
+      "properties": {
+        "description": {
+          "description": "The family's one-line description, **verbatim as a model sees it** — the line the\nbuilt-in skills index carries. Not editorialized here: a second, friendlier wording\nwould be a copy that drifts, and the point of the page is to show what is really said.",
+          "type": "string"
+        },
+        "id": {
+          "description": "The family id — also the name of the built-in skill gg ships for it, so\n`gg-filesystem` here is the skill a model reads by that name.",
+          "type": "string"
+        },
+        "objects": {
+          "description": "The responses-as-code API objects this family's functions hang off (`[\"fs\"]`).\n\nA list rather than one name because of the ending family: `harness`, `review` and\n`judge` are one family grouped by role, and a given agent binds exactly one of them.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "description": "The display title for the family (`Filesystem`). Written for a human reading the\nconsole; it is *not* shown to a model, which is why it is separate from\n[`description`](Self::description).",
+          "type": "string"
+        }
+      },
+      "required": ["id", "title", "description", "objects"],
+      "type": "object"
+    },
+    "GgToolReference": {
+      "description": "One tool, exactly as it is sent to the provider.\n\nThe [`description`](Self::description) and [`parameters`](Self::parameters) are the live\n[tool definition](https://docs.testcabinet.ai/gg/toolset-ablation/) a maximal registry\nproduced — not a re-description of it — so a renamed argument or a reworded sentence shows\nup here the moment the tool changes, with no second copy to update.",
+      "properties": {
+        "capability": {
+          "description": "The capability id that contributes this tool, or `None` for one no capability decides.\n\nEvery tool has one today; the field is optional because the gate is a *fact about the\nimplementation*, and a tool offered from somewhere else entirely (the way\n`transition_state` is offered from a machine position rather than from a capability on\nthe agent's own profile) must be able to say so rather than name a capability that does\nnot really decide it.",
+          "type": ["string", "null"]
+        },
+        "category": {
+          "description": "The [category](GgReferenceCategory::id) this tool belongs to.",
+          "type": "string"
+        },
+        "description": {
+          "description": "The tool's description, verbatim — the prose the model is given. Rendered with its\nwhitespace preserved and never as markdown: what matters is what the model sees.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The tool name the model calls (`read_file`).",
+          "type": "string"
+        },
+        "note": {
+          "description": "A sentence naming any condition **beyond** the capability that decides whether this tool\nis offered — a bound store, a memory strategy, a non-empty roster, a position in a\nmachine. `None` when the capability alone decides, which is the common case.\n\nAlso where a description built from *run data* says so: `spawn_subagent` enumerates the\nagents this run's roster lists, so the text below it is one run's, not the tool's.",
+          "type": ["string", "null"]
+        },
+        "parameters": {
+          "description": "The tool's JSON-Schema parameters, verbatim."
+        },
+        "variants": {
+          "description": "Alternate renderings of the **same tool** under a different configuration — a policy\nthat rewrites the description or the parameter schema.\n\nEmpty for most tools. A handful genuinely change shape with their capability's\nimplementation (`read_file` offers no paging arguments at all under the unlimited read\nmode), and showing only one of those would misrepresent every run configured the other\nway. The top-level description and parameters are the **default** configuration's.",
+          "items": {
+            "$ref": "#/$defs/GgToolVariant"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["name", "category", "description", "parameters"],
+      "type": "object"
+    },
+    "GgToolVariant": {
+      "description": "One alternate rendering of a [tool](GgToolReference) under a non-default policy.",
+      "properties": {
+        "description": {
+          "description": "The description this configuration sends, verbatim.",
+          "type": "string"
+        },
+        "label": {
+          "description": "What configuration produced this rendering, as a label a reader can match against the\ncapability editor (`read mode: default-cap`).",
+          "type": "string"
+        },
+        "parameters": {
+          "description": "The JSON-Schema parameters this configuration sends, verbatim."
+        }
+      },
+      "required": ["label", "description", "parameters"],
+      "type": "object"
+    }
+  },
+  "$id": "https://docs.testcabinet.ai/schema/gg/reference.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The whole reference: the families the surface is grouped by, every tool, and every\nresponses-as-code function.\n\nOne document rather than three endpoints because it is small, wholly static, and read as a\nunit — a reader who opens the Tools tab is one click from the API tab, and a category is\nmeaningless without the entries that hang off it.",
+  "properties": {
+    "categories": {
+      "description": "The families the surface is grouped by, in gg's own order — the order the system\nprompt's API table and the built-in skills index list them in, which is roughly \"the\nworkspace, then the work, then yourself\".",
+      "items": {
+        "$ref": "#/$defs/GgReferenceCategory"
+      },
+      "type": "array"
+    },
+    "functions": {
+      "description": "Every function a [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)\nprogram can call, in catalogue order.",
+      "items": {
+        "$ref": "#/$defs/GgApiFunction"
+      },
+      "type": "array"
+    },
+    "ggVersion": {
+      "description": "The version of the `test-cabinet-gg` crate this reference was projected from — its\n`CARGO_PKG_VERSION`, which is `core`'s own, since the two crates are versioned in\nlockstep.\n\nStamped on the page so a reader can tell *which* gg the prose in front of them belongs\nto. It is the committed artifact's version, not the running deployment's: they are the\nsame whenever the artifact was regenerated, and CI's drift gate is what keeps that true.",
+      "type": "string"
+    },
+    "tools": {
+      "description": "Every tool gg can offer, in the canonical tool-vocabulary order.",
+      "items": {
+        "$ref": "#/$defs/GgToolReference"
+      },
+      "type": "array"
+    }
+  },
+  "required": ["ggVersion", "categories", "tools", "functions"],
+  "title": "GgReference",
+  "type": "object"
+}

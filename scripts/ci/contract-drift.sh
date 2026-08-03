@@ -2,7 +2,7 @@
 # Regenerates every generated-and-committed contract artifact from its source of
 # truth and fails if a committed copy is stale.
 #
-# Two contracts are checked here, because both are generated from source that a
+# Three artifacts are checked here, because each is generated from source that a
 # change can edit without remembering to regenerate:
 #
 #  1. The data contract. The TS bindings (packages/run-record/src/) and the JSON
@@ -13,7 +13,16 @@
 #     regenerated and committed turns this check red, so the three representations
 #     can never silently drift apart.
 #
-#  2. gg's sandbox signature catalogue. crates/gg/src/sandbox/signatures.json is
+#  2. gg's model-facing reference. crates/backend/src/gg_reference.json is projected
+#     from gg's own tool definitions and sandbox signature catalogue by `gg reference`
+#     (the same `npm run gen:contract` run emits it) and embedded in the backend, which
+#     serves it at GET /gg/reference for the console's gg Reference section. The backend
+#     cannot depend on test-cabinet-gg — wasmtime, oxc and tiktoken-rs against a static
+#     musl build — so this committed artifact stands in for that dependency, and this
+#     check is what makes it as trustworthy as one: reword a tool's description without
+#     regenerating and the console would keep showing prose no model was ever sent.
+#
+#  3. gg's sandbox signature catalogue. crates/gg/src/sandbox/signatures.json is
 #     emitted from the TypeScript declarations of @test-cabinet/gg-sandbox (the
 #     guest SDK) and embedded in the gg binary, which renders the responses-as-code
 #     system prompt from it. If an SDK signature or its JSDoc is edited without
@@ -34,11 +43,16 @@ log "regenerate the contract (cargo run -p contract-codegen + prettier)"
 npm run gen:contract
 
 log "check for drift"
-if ! git diff --exit-code -- packages/run-record/src apps/docs/public/schema; then
+if ! git diff --exit-code -- packages/run-record/src apps/docs/public/schema \
+	crates/backend/src/gg_reference.json; then
 	cat >&2 <<'EOF'
 
 error: the generated contract artifacts are out of date.
-The TypeScript bindings and/or JSON Schemas no longer match the Rust source.
+The TypeScript bindings and/or JSON Schemas no longer match the Rust source, or
+gg's committed reference (crates/backend/src/gg_reference.json) no longer matches
+the tools and responses-as-code functions gg actually offers models — in which
+case the backend would serve, and the console would render, a description no
+model was ever sent.
 Run `npm run gen:contract` and commit the result.
 EOF
 	exit 1

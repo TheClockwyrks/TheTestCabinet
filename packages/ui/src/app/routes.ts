@@ -214,6 +214,22 @@ export const routes = {
     if (opts.create.range) params.set("range", opts.create.range);
     return `/gg/saved?${params.toString()}`;
   },
+  // **Reference** — gg's own tool and responses-as-code surface, as models are
+  // shown it. The bare path is what the section nav links to and what a reader
+  // types; it redirects to the Tools tab rather than rendering it, so the tab a
+  // page is on is always readable in the address bar (the same shape the
+  // test-case catalog's bare `/test-cases` takes).
+  ggReference: (): string => "/gg/reference",
+  // One entry of either tab is linkable through a search parameter rather than a
+  // path segment: a tool name is the model's own identifier and a function's is
+  // `object.name`, neither of which is ours to put in a path, and the selection is
+  // a *view* of a page that is otherwise the same document either way.
+  ggReferenceTools: (tool?: string): string =>
+    tool
+      ? `/gg/reference/tools?tool=${encodeURIComponent(tool)}`
+      : "/gg/reference/tools",
+  ggReferenceApi: (fn?: string): string =>
+    fn ? `/gg/reference/api?fn=${encodeURIComponent(fn)}` : "/gg/reference/api",
   // The run's default (Verdict) tab. `edit` opens the review editor in revise
   // mode — used by the single-review page's Edit control to return here with the
   // owner's review form reopened.
@@ -364,6 +380,13 @@ export const routePatterns = {
   ggAnalysisDashboards: "/gg/dashboards",
   ggAnalysisDashboard: "/gg/dashboards/:dashboardId",
   ggAnalysisSaved: "/gg/saved",
+  // Reference. `/gg/reference` is static — it redirects to the Tools tab — and its
+  // two tabs are static children of it, so nothing here collides with `/gg/query`,
+  // `/gg/dashboards` or the legacy `/gg/aggregate*`. The selected tool/function
+  // rides in the query string, so no dynamic segment is needed under either tab.
+  ggReference: "/gg/reference",
+  ggReferenceTools: "/gg/reference/tools",
+  ggReferenceApi: "/gg/reference/api",
   // The **legacy** aggregate-surface routes. The widget builder and its results
   // page are gone, but the best property of that implementation was that the URL
   // *was* the query — so an old link is transcoded into equivalent TCQ text and
