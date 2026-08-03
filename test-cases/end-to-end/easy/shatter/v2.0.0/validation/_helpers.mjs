@@ -108,6 +108,11 @@ export const FIRE_INTERVAL = 0.18; // minimum seconds between shots (21.6 ticks 
 
 export const SAUCER_R = 18;
 export const SAUCER_SCORE = 200;
+// "crosses the field horizontally at about 140 px/s" (`specs/hazards.md`). Ask for a
+// saucer heading with this magnitude rather than a brisker one: the speed is the
+// spec's, so a build that normalizes its saucer's cruise has nothing to disagree with
+// and only the DIRECTION is being asked for.
+export const SAUCER_CRUISE = 140;
 export const EXTRA_LIFE_STEP = 10_000;
 
 export const ROCK_RADIUS = { large: 46, medium: 26, small: 14 };
@@ -221,12 +226,20 @@ export async function keyUp(api, code) {
  *
  * Replaces the old `holdStep(api, code, seconds)`; the seconds callers passed
  * convert as 0.25s -> 30, 0.3s -> 36, 0.5s -> 60.
+ *
+ * `dwell` keeps the key held for that many ticks MORE after `after` is read, purely
+ * for the recording. A measurement window and a watchable one are different lengths:
+ * the tightest window that pins a constant is usually a fraction of a second, which
+ * on screen is a ship that twitches and stops. The snapshots the assertions read are
+ * both captured first, so no dwell can move a verdict — it only decides how much of
+ * the same continuous hold the clip contains.
  */
-export async function actHoldKey(api, code, tickCount) {
+export async function actHoldKey(api, code, tickCount, { dwell = 0 } = {}) {
   const before = (await api.snapshot()).ship;
   await api.call("keyDown", code);
   await api.advance(tickCount);
   const after = (await api.snapshot()).ship;
+  if (dwell > 0) await api.advance(dwell); // film the rest of the hold
   await api.call("keyUp", code);
   return { before, after };
 }
@@ -237,17 +250,21 @@ export async function actHoldKey(api, code, tickCount) {
  * round that was launched (the newest one on the field, or `undefined` if none
  * was).
  *
- * The single tick is the point of this helper. Firing is a SIMULATION event, and
- * `specs/instrumentation.md` is explicit that a tap is "a `keyDown` immediately
- * followed by a `keyUp`" routed through "the same handling the real keyboard
- * feeds" — it lists the one-shot actions applied immediately as the menu, pause
- * and mute ones, all of which are screen state rather than world state. So a build
- * may legitimately launch the round inside `press` OR latch the tap and launch it
- * on the next fixed step, exactly as a real key tap does; both drive the same
- * bindings and both are what a player sees. Reading the bullet count with NO time
- * elapsed only ever sees the first kind, and fails a conformant build of the
- * second kind for a shot it does fire. Advancing one tick — the smallest amount
- * the contract can express — sees both.
+ * The single tick is the point of this helper, and it is the ONLY latitude the tap
+ * gets. `specs/instrumentation.md` puts firing among the one-shot actions a key
+ * applies on the press itself, so a build may launch the round inside `keyDown` or
+ * latch the request there and launch it on the next fixed step — both drive the same
+ * bindings, and reading the bullet count with no time elapsed would fail the second
+ * kind for a shot it does fire. One tick, the smallest amount the contract can
+ * express, sees both.
+ *
+ * What it deliberately does NOT do is hold the key across that tick. A build that
+ * decides to fire by asking whether the fire key is still down at the top of a step
+ * is not conformant: `press` holds the key for no time at all, so such a build
+ * answers a tap with silence, and the spec is explicit that the shot belongs to the
+ * press. Holding the key here would paper over exactly that fault — and it is a real
+ * one, because it is the debug API's contract, not merely the game's, that these
+ * items grade. Its symptom is unmistakable in a verdict: every bullet count reads 0.
  */
 export async function actTapFire(api) {
   const before = (await api.snapshot()).bullets.length;
@@ -278,6 +295,101 @@ export async function arrangePosedRock(api, size, opts = {}) {
   const state = { x, y, vx, vy };
   if (health !== undefined) state.health = health;
   await api.call("addRock", size, state);
+}
+
+// ---- Keeping a wave from clearing under a measurement ----------------------
+
+/**
+ * Where the bystander rock is parked: bottom-right, 560 px from the star (so the
+ * well barely reaches it over a shot's worth of time), clear of the ship's spawn
+ * point, and clear of the left-to-right lanes the posed shots below fly down.
+ */
+export const BYSTANDER = { x: 1120, y: 640, vx: 0, vy: 0 };
+
+/**
+ * ARRANGE: park one Large rock out of the way, whose only job is to still be there
+ * at the end.
+ *
+ * DESTROYING THE LAST ROCK ON THE FIELD ENDS THE WAVE. `specs/gameplay.md`: "A wave
+ * is cleared when no rocks remain on the field", and on clearing the game raises its
+ * banner and spawns the next wave — five Large rocks, at random positions, drifting.
+ * So a scenario that isolates its subject by emptying the field and posing one rock
+ * has arranged for the game to refill the field the instant that rock dies, which is
+ * the exact moment such an item reads its result. "The field is empty, so nothing
+ * split" then reads five; "the score after three kills" reads whatever a wave rock
+ * that wandered across a shot added to it.
+ *
+ * It is worth being precise about why this is not the build's fault to fix. The spec
+ * does fix the ORDER — banner for about 1.5 s, THEN spawn — so a build that spawns
+ * during the banner is wrong, and the reference holds the field empty for the whole
+ * banner. But an item that relies on that grace period is timing a race it does not
+ * own: the window is "about" 1.5 s, the item reads its result somewhere inside it,
+ * and whether the read lands before the spawn depends on a build's banner length and
+ * on how fast the driver's round trips happen to be. Two builds with the same fault
+ * can land on opposite sides of it — which is what happened here, one build passing
+ * these three items and another failing them for the same wrong behavior.
+ *
+ * A bystander removes the race instead of trying to win it: the field is never empty,
+ * so no wave ever clears, so there is nothing to arrive mid-measurement on any build.
+ * The rock is a Large, so a check driving Small rocks can still say "the small one"
+ * and mean exactly one thing, and it is never shot — an item asserts it is STILL
+ * THERE at the end, which is what proves the measurement ran on the field it posed.
+ *
+ * The wave-spawn ORDER is not left untested by any of this; that belongs to
+ * `waves/banner`, whose subject it is.
+ *
+ * `pose` overrides where it is parked, for an item whose own bodies fly through the
+ * default spot. Wherever it goes it must stay out of every lane the item drives, or
+ * it stops being a bystander and becomes something the scenario collides with.
+ */
+export async function arrangeBystanderRock(api, pose = BYSTANDER) {
+  await api.call("addRock", "large", { vx: 0, vy: 0, ...pose });
+}
+
+/**
+ * ACT: fire exactly ONE real bullet at the rock nearest `at` and wait for it to be
+ * spent (a hit consumes it; a miss expires it). Returns `{ snap, spent }` — the
+ * field the instant the bullet was gone, before `dwell`.
+ *
+ * One shot, not "however many it takes", because the items that use this are the ones
+ * asking what a single hit PRODUCES. A loop that keeps firing while a rock of the
+ * target's size is around cannot answer that: on a build where a Small wrongly
+ * splits, the loop shoots the fragments too, and the empty field it eventually leaves
+ * looks exactly like the correct outcome. A Small is a one-hit kill in both variants,
+ * so one bullet is the whole event. Use `actFireUntilGone` for an armored target.
+ *
+ * `standoff` gives the round a visible run at the rock for the recording, and `dwell`
+ * keeps the sim going afterwards so the clip shows what the hit produced rather than
+ * cutting on the frame of impact; `snap` is taken before it either way.
+ */
+export async function actFireOneShotAt(
+  api,
+  at,
+  { speed = 860, standoff = 140, dwell = 60 } = {},
+) {
+  const before = await api.snapshot();
+  const target = before.rocks.reduce(
+    (best, rk) =>
+      best === null ||
+      hyp(rk.x - at.x, rk.y - at.y) < hyp(best.x - at.x, best.y - at.y)
+        ? rk
+        : best,
+    null,
+  );
+  const aim = target ?? at;
+  await api.call("addBullet", {
+    x: aim.x - ((target ? target.radius : 0) + standoff),
+    y: aim.y,
+    vx: speed,
+    vy: 0,
+  });
+  const spent = await api.until((s) => s.bullets.length === 0, {
+    max: 84,
+    poll: TICK,
+  });
+  const snap = await api.snapshot();
+  await api.advance(dwell); // film what the hit produced
+  return { snap, spent };
 }
 
 /**
@@ -384,10 +496,10 @@ export async function actUntilRecycled(
 // ---- Wrapping --------------------------------------------------------------
 
 /**
- * ACT: advance one tick at a time until the body `readBody(snapshot)` crosses the
- * right edge and re-enters at the left (its x drops sharply). Returns
- * `{ before, after, wrapped }` — the body just before and just after the wrap — so
- * a caller can confirm it reappeared on the far side carrying its velocity.
+ * ACT: advance one tick at a time until the body `readBody(snapshot)` crosses a
+ * side edge and re-enters at the opposite one (its x jumps). Returns
+ * `{ before, after, wrapped, lost }` — the body just before and just after the wrap
+ * — so a caller can confirm it reappeared on the far side carrying its velocity.
  *
  * Ticks one at a time, and keeps the previous sample, because the wrap is detected
  * as a discontinuity BETWEEN two consecutive states; polling coarsely would step
@@ -395,6 +507,20 @@ export async function actUntilRecycled(
  *
  * Replaces the old `wrapAcross(api, readBody, { maxSteps })` — `maxSteps` was
  * already a fixed-step count, so it is the same number of ticks.
+ *
+ * `dir` is which way along x the body is travelling: `1` (the default, and what
+ * every caller used when this only understood one direction) watches for a crossing
+ * of the RIGHT edge, `-1` for the left. A caller that cannot choose the body's
+ * heading — the saucer's is the build's to pick — reads it and passes it here rather
+ * than assuming, so the sweep watches the seam the body is actually approaching
+ * instead of running its whole budget out waiting at the other one.
+ *
+ * `lost` says the body stopped existing before it ever wrapped, and the sweep
+ * returns the moment that happens. It is worth distinguishing from a plain
+ * `wrapped: false`, which means the body was still going when the budget ran out: a
+ * body that VANISHES at the seam is a build deleting something it should have moved,
+ * and an item can say so precisely instead of reporting a timeout. Returning early
+ * also stops the record pass filming several seconds of an empty field.
  *
  * `dwell` runs on for a beat AFTER the seam is crossed, so the recording shows the
  * body carry on across the far side rather than cutting on the single frame it
@@ -406,7 +532,7 @@ export async function actUntilRecycled(
 export async function actWrapAcross(
   api,
   readBody,
-  { maxTicks = 400, dwell = 60 } = {},
+  { maxTicks = 400, dwell = 60, dir = 1 } = {},
 ) {
   // Each sample becomes the next comparison's "before", so consecutive pairs are
   // CONTIGUOUS. Re-reading the body at the top of every iteration instead would
@@ -422,9 +548,14 @@ export async function actWrapAcross(
   for (let i = 0; i < maxTicks; i += 1) {
     await api.advance(TICK);
     const cur = readBody(await api.snapshot());
-    if (cur && prev && cur.x < prev.x - 100) {
+    if (!cur && prev) {
+      // Gone between two consecutive ticks, without ever having wrapped.
+      return { before: prev, after: undefined, wrapped: false, lost: true };
+    }
+    const jumped = dir > 0 ? cur.x < prev.x - 100 : cur.x > prev.x + 100;
+    if (cur && prev && jumped) {
       await api.advance(dwell); // film the far side
-      return { before: prev, after: cur, wrapped: true };
+      return { before: prev, after: cur, wrapped: true, lost: false };
     }
     prev = cur;
   }
@@ -432,27 +563,28 @@ export async function actWrapAcross(
     before: prev,
     after: readBody(await api.snapshot()),
     wrapped: false,
+    lost: false,
   };
 }
 
 // ---- Losing a ship ---------------------------------------------------------
 //
-// WHAT `lives` COUNTS IS NOT FIXED BY THE SPEC, so nothing here compares it to an
-// absolute number. `specs/gameplay.md` says "A game starts with 3 ships", while
-// `specs/instrumentation.md` defines the snapshot field as "ships in RESERVE" and
-// `setLives(n)` as setting "the number of ships in reserve" — and `specs/ui.md`
-// draws "one [glyph] per life still in reserve". A build that starts three ships
-// and reports `lives: 2` (the two in reserve behind the one being flown) satisfies
-// every one of those sentences; so does one that reports `lives: 3`. Both are
-// conformant, so a check that reads 3 out of a fresh game is testing a convention
-// the case never picked.
+// NOTHING HERE COMPARES `lives` TO AN ABSOLUTE NUMBER, even though the case now
+// fixes what it counts (the ships left including the one in play, so 3 on a fresh
+// game — see `specs/instrumentation.md`). That one absolute reading belongs to
+// `lives/starts-three`, the item whose subject it is. Everywhere else these helpers
+// drive a DEATH, and what a death means is relative: it costs exactly one life, a
+// loss with ships left respawns rather than ending the run, and the run ends on the
+// loss of the last one.
 //
-// The mechanical facts the spec DOES fix are relative, and these helpers express
-// them that way: losing a ship costs exactly one life, a loss with ships left
-// respawns rather than ending the run, and the run ends on the loss of the last of
-// the three. So a life count is only ever compared against one this same run read
-// earlier, and "the game ended" is read from `screen`, never from `lives` reaching
-// a particular value.
+// Expressing them relatively keeps a death-driving helper honest about what it
+// proved. A sweep that waits for `lives < 3` is really waiting for "the count is not
+// its starting value", which is already true before the drive begins if the caller
+// spent a life getting here — it returns on its first sample, having advanced no
+// time and destroyed nothing, and the item then reports on an event that never
+// happened. So a life count is only ever compared against one this same drive read
+// earlier, and "the game ended" is read from `screen`, never from `lives` reaching a
+// particular value.
 
 /** ARRANGE: pose the ship at `at` with a rock sitting on it, so the next steps kill it. */
 export async function arrangeDoomedShip(api, at = { x: 300, y: 300 }) {
@@ -809,4 +941,56 @@ export async function actSampleTorpedoScene(
 /** Arm the build's audio with a single neutral, browser-trusted first key press. */
 export async function armAudio(api) {
   await api.userKey("KeyZ");
+}
+
+/**
+ * How long to let the build paint before reading the audio probe. Two frames at
+ * 60 Hz, rounded up — enough for a build that schedules its cues from the render
+ * loop to have had a loop to schedule them in.
+ */
+const AUDIO_SETTLE_MS = 200;
+
+/**
+ * Read `api.audio()`, but only after giving the build a real frame to schedule in.
+ * Returns the number of Web Audio sources started since the page loaded.
+ *
+ * Unpaired, and callable from EITHER phase — which matters, because the two ends of
+ * an audio comparison belong in different ones. The `after` count is part of the
+ * behavior and belongs in `act`; the `before` count is a precondition and belongs in
+ * `arrange`, and putting it there is not tidiness but correctness in the record pass.
+ * That pass hands the build its own clock for `act`, so a pause taken at the top of
+ * `act` is 200 ms of the game RUNNING — enough for a scenario posed on a hair
+ * trigger (a ship sitting on a rock with its grace window cleared) to resolve before
+ * the sweep that exists to watch it has taken its first sample. The sweep then waits
+ * out its whole budget for a second event nobody arranged, and the clip is ten
+ * seconds of empty field instead of two of the death it was filming. In `arrange`
+ * the build is still on the manual clock, so the same pause paints a frame and moves
+ * nothing.
+ *
+ * The settle itself is `api.settle` (real time in BOTH passes), never `api.advance`.
+ *
+ * The settle is the whole point, and it is `api.settle` (real time in BOTH passes),
+ * never `api.advance`. Playing a cue is not a simulation step: the sim is required to
+ * be render-free (`specs/instrumentation.md`) and to make progress without a canvas
+ * or `requestAnimationFrame`, so a build that records "a rock shattered" during the
+ * step and hands the list to its audio layer on the next animation frame is doing
+ * exactly what the case asks for. The validate pass advances the clock INSTANTLY,
+ * which produces no frame at all — so reading the probe the moment `advance` returns
+ * sees the cue still queued, and reports a silent build that is in fact playing every
+ * sound the spec asks for. (This is not hypothetical: it is what the render-loop
+ * shape actually does, and it failed four of this case's five audio items on a build
+ * whose audio was entirely correct.)
+ *
+ * Settling cannot make a silent build pass. The probe counts sources the build
+ * actually `start()`ed through the Web Audio API, and a build that plays nothing
+ * still starts nothing however long it is given; all the pause changes is whether a
+ * build that DID play gets to.
+ *
+ * Use it for BOTH ends of the comparison, so the baseline is measured on the same
+ * footing: anything the arrange left queued is flushed into `before` rather than
+ * landing in `after` and being counted as the event's cue.
+ */
+export async function audioCount(api, { settleMs = AUDIO_SETTLE_MS } = {}) {
+  await api.settle(settleMs); // let a frame schedule whatever the step queued
+  return (await api.audio()).length;
 }

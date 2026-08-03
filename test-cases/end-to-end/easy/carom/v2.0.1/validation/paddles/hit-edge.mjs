@@ -13,6 +13,7 @@ import {
   actLeftPaddleHit,
   startPlaying,
   PADDLE_HALF,
+  LEAD_TICKS,
 } from "../_helpers.mjs";
 
 function angleDeg(ball) {
@@ -29,11 +30,17 @@ export default function item() {
     // is stationary (vy 0) so the steep angle is the contact point's doing alone, not
     // spin imparted by a moving paddle.
     async arrange(api) {
+      // The run-up puts half a second of level approach in front of the contact, so
+      // the clip shows the ball arrive at the paddle's bottom edge and turn there.
+      // Without it the deflection is already under way when filming starts, and the
+      // steep line reads as an aim rather than as the edge's doing. The paddle is
+      // still, so it simply waits at the contact height.
       await startPlaying(api);
       await arrangeLeftPaddleHit(api, {
         cy: 360,
         vy: 0,
         ballY: 360 + PADDLE_HALF,
+        leadTicks: LEAD_TICKS,
       });
     },
 
@@ -41,7 +48,7 @@ export default function item() {
     // decay or curve the flight. This IS the clip: the reviewer watches the approach
     // and then the sharp deflection, which the tail holds on long enough to read.
     async act(api) {
-      edge = await actLeftPaddleHit(api);
+      edge = await actLeftPaddleHit(api, { leadTicks: LEAD_TICKS });
       await api.advance(120); // 120 ticks (1s) of flight, so the clip shows the angle
     },
 

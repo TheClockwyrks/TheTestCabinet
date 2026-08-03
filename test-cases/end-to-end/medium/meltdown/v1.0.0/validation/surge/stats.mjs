@@ -39,10 +39,20 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // The labels name the snapshot field each figure is read from, because an ABSENT
+      // field and a wrong value fail identically here otherwise. A build that omits
+      // `baseSpeed` (specs/instrumentation.md lists it on every surge entry) reports no
+      // value at all, and "mote base speed: expected 60, actual —" reads as a speed
+      // defect when what happened is that nothing was reported to compare.
       for (const [type, want] of Object.entries(EXPECTED)) {
-        check.expectClose(`${type} base HP`, got[type].hp, want.hp, 0.5);
         check.expectClose(
-          `${type} base speed`,
+          `${type} base HP (snapshot maxHp)`,
+          got[type].hp,
+          want.hp,
+          0.5,
+        );
+        check.expectClose(
+          `${type} base speed (snapshot baseSpeed)`,
           got[type].speed,
           want.speed,
           0.5,

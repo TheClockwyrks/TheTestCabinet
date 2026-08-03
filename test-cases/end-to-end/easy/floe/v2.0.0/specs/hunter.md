@@ -69,6 +69,14 @@ does, and it can be taken out by the hazards:
   row. It then re-emerges from the near shore after a short delay, exactly as when a
   crossing begins. So driving the bear in front of a hazard is a real tool: it buys
   you the whole time it takes the bear to re-emerge and cross back up to you.
+- The vehicle has to be the one that closed the distance. A vehicle resets the bear
+  only when the vehicle's own motion brings it onto a tile the bear occupies; a bear
+  that travels onto a vehicle is not reset by it. That is the rule the critter plays
+  by — traffic kills by running into you, never by your stepping into it
+  (`specs/hazards.md`) — and the bear respects the same board. It takes nothing away
+  from the hazards: every vehicle in a lane is always moving, so a bear caught in one
+  is caught by a vehicle that came to it, and a bear lured into a sweeping lane is
+  still knocked out when that vehicle arrives.
 
 The critter is killed by the hazards, but the bear is only reset by them; the hunt
 returns rather than being permanently removed.

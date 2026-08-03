@@ -27,7 +27,15 @@ export default function item() {
       await teleportInto(api, col, row);
       await openColumn(api, col, row + 1, row + 12); // a long open plunge
       await solid(api, col, row + 13);
-      await api.call("grantGear", { hull: 5 }); // survive the slam; hull 450, refilled
+      await api.call("grantGear", { hull: 5 }); // survive the slam: the tier-5 450 hull
+      // Fill the hull explicitly rather than relying on the grant to have filled it. The tier does
+      // carry its capacity across (`specs/upgrades.md`, and `economy.grant-applies-tiers` checks
+      // exactly that), but if a build raises the ceiling without granting the capacity the miner
+      // arrives here on `100/450` — and a long plunge into a floor at that hull can simply kill it,
+      // at which point this item reports "the landing did not deal impact damage". That reads as a
+      // fall-damage bug and is not one. `setHull` clamps to the maximum
+      // (`specs/instrumentation.md`), so an over-large value is exactly "fill it".
+      await api.call("setHull", 100000);
       hull0 = (await api.snapshot()).miner.hull;
     },
 

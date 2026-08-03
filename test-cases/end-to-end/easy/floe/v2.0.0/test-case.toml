@@ -450,6 +450,11 @@ title = "A vehicle resets it, then it returns"
 description = "A vehicle sliding into the bear resets it (removed from the strait), and it re-emerges from the near shore after a delay — not permanently gone, not merely staggered."
 validation = { script = "validation/hunter/reset-on-hit.mjs", outputs = [{ id = "reset", name = "The bear reset by traffic", kind = "video" }] }
 [[review.categories.items]]
+id = "moves-into-vehicle"
+title = "Moving into a vehicle does not reset it"
+description = "The vehicle has to be the one that closed the distance: a bear that travels onto a vehicle is not reset by it, the same way traffic kills the critter by running into it rather than by the critter stepping in. The same car, once moving, still resets the bear."
+validation = { script = "validation/hunter/moves-into-vehicle.mjs", outputs = [{ id = "boundary", name = "The bear on a parked car, then reset by the moving one", kind = "video" }] }
+[[review.categories.items]]
 id = "swims"
 title = "Swims the open water, slower"
 description = "Over open water the bear swims, and it moves slower swimming than it does on ice."

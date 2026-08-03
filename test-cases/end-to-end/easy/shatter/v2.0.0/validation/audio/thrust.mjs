@@ -11,8 +11,21 @@
 // holds see one that puffs a source per exhaust tick. Widening what can be observed cannot
 // make a silent build pass — the log still has to grow — it only stops the item failing a
 // build whose sound is real but shaped differently.
+//
+// Both ends of the audio comparison are read through `audioCount`, which settles a real frame
+// first: a build may schedule its cues from the render loop, and the validate pass advances
+// the clock instantly, so an unsettled read reports a silent build that is in fact playing.
+// The baseline is taken at the end of `arrange`, not the top of `act`, because in the record
+// pass the build is driving its own clock by then and the pause would be game time the
+// scenario has not been watched through. See `_helpers.mjs`.
 
-import { newGame, poseShip, armAudio, actHoldKey } from "../_helpers.mjs";
+import {
+  newGame,
+  poseShip,
+  armAudio,
+  actHoldKey,
+  audioCount,
+} from "../_helpers.mjs";
 
 export default function item() {
   let before;
@@ -27,14 +40,14 @@ export default function item() {
       await newGame(api); // clears rocks and the saucer, so only the thrust can make a sound
       await poseShip(api, { x: 300, y: 500, vx: 0, vy: 0, angle: 0 });
       await armAudio(api);
+      before = await audioCount(api);
     },
 
     async act(api) {
-      before = (await api.audio()).length;
       ship = await actHoldKey(api, "KeyW", 60); // hold thrust 0.5 s and run the real sim
       await api.advance(24); // 0.2 s coasting, key released
       again = await actHoldKey(api, "KeyW", 60); // and a second burst
-      after = (await api.audio()).length;
+      after = await audioCount(api);
     },
 
     async assert(api, check) {

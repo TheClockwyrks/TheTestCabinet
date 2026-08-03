@@ -50,5 +50,6 @@ Keyboard only.
 - Ink: `Shift` (either) releases an ink cloud when it is off cooldown (see
   `specs/gameplay.md`).
 - Pause: `Esc` or `P`.
+- Mute: `M` toggles the game's sound off and back on (see `specs/progression.md`).
 - Menus, pause, and game-over: `Up`/`Down` (or `W`/`S`) move the selection, `Enter`
   or `Space` confirms, `Esc` goes back.

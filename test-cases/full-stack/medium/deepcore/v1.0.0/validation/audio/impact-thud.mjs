@@ -42,7 +42,12 @@ export default function item() {
       await teleportInto(api, col, row);
       await openColumn(api, col, row + 1, row + 12); // a long open plunge
       await solid(api, col, row + 13);
-      await api.call("grantGear", { hull: 5 }); // survive the slam
+      await api.call("grantGear", { hull: 5 }); // survive the slam: the tier-5 450 hull
+      // Fill the hull explicitly — a build that raises the ceiling without granting the capacity
+      // leaves the miner on `100/450`, and a slam at that hull kills it, which shows up here as
+      // "the landing was not hard enough to be an impact" rather than as anything about the cue.
+      // The grant contract itself is checked by `economy.grant-applies-tiers`.
+      await api.call("setHull", 100000);
       hull0 = (await api.snapshot()).miner.hull;
       await armAudio(api);
     },

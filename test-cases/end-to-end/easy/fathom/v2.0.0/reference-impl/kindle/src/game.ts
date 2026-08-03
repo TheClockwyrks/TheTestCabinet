@@ -118,6 +118,13 @@ export class Game {
   // driving the clock itself, and back on (setAutoStep(true)) to record live clips.
   autoStep = true;
 
+  // The creatures' own minds (specs/instrumentation.md). On by default, as normal
+  // play requires; a scenario turns them off so a posed predator or drifter holds
+  // where it was put and an interaction with it is reproducible rather than a bet on
+  // where its wander happened to take it. Only their initiative is suspended — the
+  // forager, the light, cooldowns, waves, ink, eating, scoring, and contact all run.
+  creatureAI = true;
+
   // The read-only debug overlay, toggled with the backtick key. Off by default;
   // never affects gameplay (specs/instrumentation.md).
   debugOverlay = false;
@@ -545,7 +552,9 @@ export class Game {
       inkBetween: this.inkBetween,
       spawnWave: this.spawnWave,
     };
-    for (const p of this.predators) updatePredator(p, dt, world);
+    if (this.creatureAI) {
+      for (const p of this.predators) updatePredator(p, dt, world);
+    }
 
     // Bonus drifters.
     this.updateDrifters(dt);
@@ -575,16 +584,20 @@ export class Game {
 
   private updateDrifters(dt: number): void {
     // Existing drifters wander until eaten — a drifter is permanent, no fade-out
-    // (specs/playfield.md), so an amber glimmer you spot stays out there.
-    for (const d of this.drifters) {
-      advance(
-        d,
-        dt,
-        this.maze,
-        () => wanderDir(d, this.maze, this.rng),
-        (c, r) => this.maze.foragerOpen(c, r) && !this.maze.isWrapEdge(c, r),
-        () => true,
-      );
+    // (specs/playfield.md), so an amber glimmer you spot stays out there. A drifter is
+    // a creature, so its wander is one of the minds `setCreatureAI(false)` suspends;
+    // being eaten and scoring below are not, and keep working either way.
+    if (this.creatureAI) {
+      for (const d of this.drifters) {
+        advance(
+          d,
+          dt,
+          this.maze,
+          () => wanderDir(d, this.maze, this.rng),
+          (c, r) => this.maze.foragerOpen(c, r) && !this.maze.isWrapEdge(c, r),
+          () => true,
+        );
+      }
     }
     // Eat any drifter the forager is on (score each).
     const before = this.drifters.length;
@@ -644,12 +657,19 @@ export class Game {
     this.depth = 1;
     this.buildTrench(true);
     this.autoStep = false;
+    this.creatureAI = true;
   }
 
   // Turn automatic (wall-clock) stepping on or off. Input and the other control
   // ops do not change it.
   debugSetAutoStep(enabled: boolean): void {
     this.autoStep = enabled;
+  }
+
+  // Turn the creatures' own minds on or off. With them off every predator and drifter
+  // holds its tile, facing, and state; nothing else about the simulation changes.
+  debugSetCreatureAI(enabled: boolean): void {
+    this.creatureAI = enabled;
   }
 
   // Begin a dive, exactly as choosing DIVE from the title menu (opens on the

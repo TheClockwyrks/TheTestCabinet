@@ -79,6 +79,17 @@ export const BAY_LEFT = BAYS.map((b) => b[0]);
 export const HOP_COOLDOWN_TICKS = 15; // 0.125 s — the first whole tick past 0.12 s
 export const HOP_TICKS = 18; // 0.15 s — a comfortable margin past the cooldown
 
+// A beat either side of a single hop, so the clip of it is watchable.
+//
+// `act` IS the recording, so an item that opens on the press and closes 0.15 s later
+// films 0.15 s: about nine frames, in which the critter is already where it ended up.
+// The hop is correct and the reviewer cannot see it. These two spans put the posed
+// tile on camera before the press and hold on the landing after it, which costs the
+// verdict nothing — the reading either side of the press is unchanged, and the pocket
+// is solid, hazard-free ice that nothing moves across.
+export const HOP_LEAD_TICKS = 72; // 0.6 s of the posed tile before the press
+export const HOP_TAIL_TICKS = 108; // 0.9 s holding on the landing
+
 // ---- Preconditions (arrange; route through the real systems) ----------------
 //
 // These pose the world with control ops and consume no time, so they are callable
@@ -131,10 +142,22 @@ export async function poseClimb(api, col) {
  * ice — every direction is a safe, solid tile, so a controls check reads only the
  * hop the key produced.
  *
+ * The bear is taken off the board as part of the pose, which delays the hunt but does
+ * NOT hold it off for the whole clip: the critter is posed well up the board, so it
+ * counts as having advanced and the bear re-emerges from the near shore partway through
+ * (measured at 0.6 s on the reference implementation, and almost at once on one of the
+ * builds this was audited against). What actually keeps a controls item from being
+ * decided by a hunter is the DISTANCE: the pocket sits eight rows above the near shore
+ * and the bear closes at about 3 tiles/second (specs/hunter.md), so it cannot reach the
+ * critter inside the ~1.65 s this item films. Lengthen `HOP_LEAD_TICKS` /
+ * `HOP_TAIL_TICKS` much beyond that and this stops being true — that margin, not the
+ * removal, is the thing to check against.
+ *
  * ARRANGE half of a single-direction controls check; pair with `actHopOnce`.
  */
 export async function hopPocket(api) {
   await startCrossing(api);
+  await api.call("setBear", 0, null);
   await api.call("setLane", ICE_TOP, { cols: [] });
   await api.call("setLane", ICE_TOP + 1, { cols: [] });
   await api.call("placeCritter", 20, ICE_TOP);
@@ -155,15 +178,30 @@ export const arrangeHop = hopPocket;
  * pocket and hopped again; `act` IS the clip now, so this single timed run is both
  * what is checked and what is filmed.
  *
+ * WHICH IS WHY IT LINGERS. The reading is over in `ticks` — one press and the cooldown
+ * — but a recording that is only `ticks` long shows the critter already landed. So the
+ * run opens on the posed tile for `lead` and holds on the landing for `tail`, with the
+ * measured press in between. The two spans are pure camera time: `before` is still read
+ * on the tick of the press and `after` still on the tick the hop completed, so the four
+ * assertions see exactly what they saw when the clip was 0.15 s long. The pocket is
+ * cleared, solid ice with the bear off the board (`hopPocket`), so nothing can reach the
+ * critter while the camera waits.
+ *
  * Pair with `arrangeHop` / `hopPocket`. Returns `{ before, after }` — `before` is the
  * critter before the press, `after` is the WHOLE snapshot afterwards (the assertions
  * read `screen` and `phase` off it as well as the critter's tile).
  */
-export async function actHopOnce(api, code, { ticks = HOP_TICKS } = {}) {
+export async function actHopOnce(
+  api,
+  code,
+  { ticks = HOP_TICKS, lead = HOP_LEAD_TICKS, tail = HOP_TAIL_TICKS } = {},
+) {
+  await api.advance(lead); // camera only: the posed tile, before anything is pressed
   const before = (await api.snapshot()).critter;
   await api.call("press", code);
   await api.advance(ticks); // 18 ticks = the old 0.15 s, just past the hop cooldown
   const after = await api.snapshot();
+  await api.advance(tail); // camera only: hold on where the hop landed
   return { before, after };
 }
 

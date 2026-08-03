@@ -237,6 +237,40 @@ export function findOpenWithNeighbor(snap, dir) {
   throw unmetPrecondition(`no open tile with an open ${dir} neighbor`);
 }
 
+/**
+ * The most WALLED-IN open tile on the board — the one with the fewest open neighbours,
+ * so a bystander parked there has the least corridor to slip away down.
+ *
+ * WHY A BYSTANDER NEEDS THIS AND `findOpenWithNeighbor` IS THE WRONG TOOL FOR IT. The
+ * finders above pick a tile by ONE side: `findOpenWithNeighbor(snap, "right")` promises
+ * an open corridor to the right and says nothing about the other three. That is exactly
+ * right for a check that drives the forager that way, and exactly wrong for one that
+ * needs it to stand still — it guarantees the one thing a resting forager can swim off
+ * down. A build whose forager keeps going when no key is held (a reading
+ * `specs/movement.md` allows; see `parkForager`) then grazes its way along that corridor
+ * for the whole measurement, re-arming the brightness hold at every pellet.
+ *
+ * `parkForager` answers that by facing the forager at a wall, which pins it under either
+ * reading — but only if the tile HAS a wall to face, and it is the caller who chose the
+ * tile. So choose one that does, and while at it the one with the most walls available.
+ * A conforming maze has no dead ends (`specs/maze.md`), so the best on offer is two open
+ * sides and two walls; this returns whichever tile comes closest.
+ */
+export function findEnclosedTile(snap) {
+  let best = null;
+  let bestOpen = 5;
+  for (const [c, r] of openTiles(snap)) {
+    const n = openNeighborDirs(snap, c, r).length;
+    if (n < bestOpen) {
+      bestOpen = n;
+      best = { tx: c, ty: r };
+      if (n <= 2) break; // nothing tighter exists in a maze with no dead ends
+    }
+  }
+  if (!best) throw unmetPrecondition("no open tile to park a bystander on");
+  return best;
+}
+
 /** An open tile whose neighbor in `dir` is a wall (a mover cannot go that way). */
 export function findOpenWithWall(snap, dir) {
   const { tiles, grid } = snap;
@@ -346,22 +380,70 @@ export function losClear(snap, fc, fr, tc, tr) {
 }
 
 /**
- * The CLOSEST pair of open tiles whose straight line of sight is BLOCKED by rock — a
- * forager tile and a predator tile with a wall between them — within a euclidean
- * distance band (tile-center to tile-center, in logical pixels). This is the general
- * OCCLUSION the sensing checks need: light and line-of-sight are stopped by walls, so
- * a predator behind rock is neither lit nor sensed. It requires no particular corner
- * shape (an L bend, two parallel corridors one wall apart, a bend around the den — any
- * wall on the sight line does), which is why it works on any real one-wide maze rather
- * than only one that happens to have a tight blind corner. Returns { forager, pred,
- * tiles } (tiles = manhattan distance), matching the old findBlindPair shape.
+ * How much of the straight line between two tile centers runs through rock, in px.
+ *
+ * `losClear` answers a yes/no question — does the supercover walk hit a wall — and two
+ * conforming builds can honestly disagree about it, because the spec fixes only that
+ * "a wall breaks it" and not how a sight line is traced. The case that splits them is
+ * the CORNER CLIP: two tiles diagonally offset around a bend, where the segment between
+ * their centers passes through the very tip of one wall tile. A supercover walk calls
+ * that blocked; a build that samples its ray every few pixels can step straight over
+ * the corner and call it clear. Neither is wrong.
+ *
+ * This measures the same geometry as a quantity instead, so a scenario can ask for a
+ * pair that is occluded by a margin no reasonable tracer can disagree about, rather
+ * than one that merely satisfies this file's own tie-break. See `findOccludedPair`.
+ */
+export function wallSpan(snap, fc, fr, tc, tr) {
+  const { grid } = snap;
+  const a = tileCenter(grid, fc, fr);
+  const b = tileCenter(grid, tc, tr);
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  // 2 px steps: fine enough that a sliver of rock is not stepped over, coarse enough
+  // that the longest line in the band is a few hundred samples.
+  const n = Math.max(1, Math.round(len / 2));
+  let inside = 0;
+  for (let i = 1; i < n; i++) {
+    const x = a.x + ((b.x - a.x) * i) / n;
+    const y = a.y + ((b.y - a.y) * i) / n;
+    const c = Math.floor((x - grid.originX) / grid.tile);
+    const r = Math.floor((y - grid.originY) / grid.tile);
+    if (isWall(snap.tiles, c, r)) inside++;
+  }
+  return (inside / n) * len;
+}
+
+/**
+ * The CLOSEST pair of open tiles whose straight line of sight is SOLIDLY BLOCKED by
+ * rock — a forager tile and a predator tile with a wall between them — within a
+ * euclidean distance band (tile-center to tile-center, in logical pixels). This is the
+ * general OCCLUSION the sensing checks need: light and line-of-sight are stopped by
+ * walls, so a predator behind rock is neither lit nor sensed. It requires no particular
+ * corner shape (an L bend, two parallel corridors one wall apart, a bend around the den
+ * — any wall on the sight line does), which is why it works on any real one-wide maze
+ * rather than only one that happens to have a tight blind corner. Returns { forager,
+ * pred, tiles } (tiles = manhattan distance), matching the old findBlindPair shape.
  *
  * `minDist` defaults low (a pair comfortably inside any sensing radius); raise it past
  * the Gloamfin's 64 px hearing when a check must isolate SIGHT from hearing. `maxDist`
  * keeps the pair inside the relevant sensing range, so the wall — not distance — is the
  * only thing between them.
  *
- * When no occluded pair exists in the band, the maze is locally open where this check
+ * WHY A WALL-SPAN FLOOR AND NOT JUST `losClear`. Taking the closest blocked pair used
+ * to hand these checks a CORNER CLIP: tiles two steps apart around a bend, whose sight
+ * line grazes the tip of one wall tile for a few pixels (see `wallSpan`). Two things go
+ * wrong there, and both were real. A build whose own sight tracer steps over that
+ * corner is scored as lighting a predator through rock when it did nothing of the sort.
+ * And the predator is posed a single step out of view, so the moment the scenario runs
+ * its own wander carries it around the corner and into the light within a tenth of a
+ * second — which turns the verdict into a race against the pose and leaves the captured
+ * still showing a predator standing in plain sight, the opposite of what the item says.
+ * Requiring a full tile of rock on the line fixes both at once: the occlusion is one no
+ * tracer disagrees about, and the predator starts far enough back that nothing it does
+ * in the measurement window can expose it. A conforming maze has thousands of such
+ * pairs; this is not a scarce shape.
+ *
+ * When no such pair exists in the band, the maze is locally open where this check
  * needed rock. That is legitimate only on a conforming maze, so this distinguishes the
  * two causes: if the build ALSO breaks a required corridor proportion (openness /
  * mazing / density — the properties that force occlusion to exist; see
@@ -369,8 +451,13 @@ export function losClear(snap, fc, fr, tc, tr) {
  * HARD failure; otherwise the scenario was simply unconstructible and it throws an
  * unmet precondition (exempt).
  */
-export function findOccludedPair(snap, { minDist = 40, maxDist = 150 } = {}) {
+export function findOccludedPair(
+  snap,
+  { minDist = 40, maxDist = 150, minWallSpan } = {},
+) {
   const { tiles, grid } = snap;
+  // One whole tile of rock on the sight line, in the build's own tile size.
+  const wallFloor = minWallSpan ?? grid.tile;
   const opens = [];
   for (let r = 1; r < grid.rows - 1; r++) {
     for (let c = 1; c < grid.cols - 1; c++) {
@@ -387,6 +474,7 @@ export function findOccludedPair(snap, { minDist = 40, maxDist = 150 } = {}) {
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       if (d < minDist || d > maxDist || d >= bestD) continue;
       if (losClear(snap, fc, fr, pc, pr)) continue; // want sight BLOCKED
+      if (wallSpan(snap, fc, fr, pc, pr) < wallFloor) continue; // and solidly so
       best = {
         forager: { tx: fc, ty: fr },
         pred: { tx: pc, ty: pr },
@@ -398,7 +486,7 @@ export function findOccludedPair(snap, { minDist = 40, maxDist = 150 } = {}) {
   if (best) return best;
   throw unconstructibleOr(
     snap,
-    `no wall-occluded pair in the ${minDist}-${maxDist} px band`,
+    `no pair in the ${minDist}-${maxDist} px band with ${wallFloor} px of rock on the sight line`,
   );
 }
 
@@ -415,6 +503,75 @@ export function findSightLine(snap, gapTiles) {
     dir: run.dir,
     tiles: gapTiles,
   };
+}
+
+/**
+ * A straight-corridor standoff for the ink items: the tile the forager drops its cloud
+ * on, the tile the predator waits on `gap` tiles further along that same corridor, and
+ * the direction the forager then swims to get CLEAR of its own cloud — which leaves the
+ * cloud squarely between the two.
+ *
+ * WHY THE RETREAT IS PART OF THE GEOMETRY. Ink is released "centered on the forager"
+ * (`specs/gameplay.md`) and nothing else can place it, so a scenario that poses the two
+ * a couple of tiles apart and inks has BOTH of them standing inside the same `80 px`
+ * cloud. The check still decides correctly, but the evidence it captures shows a
+ * predator and a forager swallowed by one blot, which is not what "ink between them"
+ * looks like and is not what a reviewer needs to see. Swimming the forager `clearTiles`
+ * back afterwards is what separates them: `80 px` is 2.5 tiles, so three tiles of
+ * retreat is the least that puts the forager outside its own cloud, and the corridor
+ * must be long enough to hold that retreat, the ink tile, and the gap.
+ *
+ * The line is kept STRAIGHT so the cloud is the only thing between them — a bent route
+ * would put rock on the sight line too, and a sight-based predator losing its fix would
+ * no longer be attributable to the ink. The wrap-tunnel row is skipped so a retreat
+ * cannot slip through the seam and re-emerge on the far side of the maze.
+ *
+ * Returns `{ ink, pred, dir, flee, clearTiles }` — `dir` points from the ink tile at the
+ * predator, `flee` is the way the forager swims out of the cloud.
+ */
+export function findInkStandoff(snap, { gap, clearTiles = 3 }) {
+  const { tiles, grid } = snap;
+  const need = clearTiles + 1 + gap;
+  const wrap = wrapRow(snap);
+  const run = (cells, dir) => {
+    let len = 0;
+    for (let i = 0; i < cells.length; i++) {
+      len = isOpen(tiles, cells[i][0], cells[i][1]) ? len + 1 : 0;
+      if (len >= need) {
+        const start = cells[i - need + 1];
+        const [dc, dr] = DIRS[dir];
+        const ink = {
+          tx: start[0] + dc * clearTiles,
+          ty: start[1] + dr * clearTiles,
+        };
+        return {
+          ink,
+          pred: { tx: ink.tx + dc * gap, ty: ink.ty + dr * gap },
+          dir,
+          flee: OPP[dir],
+          clearTiles,
+        };
+      }
+    }
+    return null;
+  };
+  for (let r = 1; r < grid.rows - 1; r++) {
+    if (r === wrap) continue;
+    const cells = [];
+    for (let c = 1; c < grid.cols - 1; c++) cells.push([c, r]);
+    const found = run(cells, "right");
+    if (found) return found;
+  }
+  for (let c = 1; c < grid.cols - 1; c++) {
+    const cells = [];
+    for (let r = 1; r < grid.rows - 1; r++) cells.push([c, r]);
+    const found = run(cells, "down");
+    if (found) return found;
+  }
+  throw unmetPrecondition(
+    `no straight corridor run of ${need} tiles to stand an ink cloud between a forager ` +
+      `and a predator ${gap} tiles away`,
+  );
 }
 
 /**
@@ -497,13 +654,35 @@ export function findSonarSenseTiles(snap, from, count = 1) {
   return cand.slice(0, count);
 }
 
-/** An open tile at least `minMan` tiles (manhattan) from `from` ({tx, ty}). */
-export function findFarTile(snap, from, minMan) {
+/**
+ * An open tile at least `minMan` tiles (manhattan) from `from` ({tx, ty}) — and, when
+ * `minPx` is given, at least that far in a straight line as well.
+ *
+ * WHY THERE IS A PIXEL FLOOR AS WELL AS A TILE ONE. A manhattan count and a sensing
+ * RADIUS are different shapes, so a caller that means "outside the Flarefish's `192 px`
+ * flare" cannot say so in tiles: a tile 8 apart on the manhattan grid sits as close as
+ * `8 / sqrt(2)` ≈ 5.66 tiles ≈ `181 px` when the offset is diagonal, which is INSIDE the
+ * bloom. A check that poses a predator "far, so it flares harmlessly" and picks the tile
+ * by manhattan alone is therefore betting on where the maze happened to leave its open
+ * tiles — it holds on one layout and quietly stops holding on the next, which is the
+ * worst way for a precondition to fail. Every radius the spec fixes (the flare, the
+ * light detection ranges, the Kindle vision circle) is euclidean, so a caller that means
+ * one of them passes it here in px and gets a tile that is actually outside it.
+ */
+export function findFarTile(snap, from, minMan, { minPx = 0 } = {}) {
+  const a = tileCenter(snap.grid, from.tx, from.ty);
   for (const [c, r] of openTiles(snap)) {
-    if (Math.abs(c - from.tx) + Math.abs(r - from.ty) >= minMan)
-      return { tx: c, ty: r };
+    if (Math.abs(c - from.tx) + Math.abs(r - from.ty) < minMan) continue;
+    if (minPx > 0) {
+      const p = tileCenter(snap.grid, c, r);
+      if (Math.hypot(p.x - a.x, p.y - a.y) < minPx) continue;
+    }
+    return { tx: c, ty: r };
   }
-  throw unmetPrecondition(`no open tile at least ${minMan} tiles away`);
+  throw unmetPrecondition(
+    `no open tile at least ${minMan} tiles away` +
+      (minPx > 0 ? ` and ${minPx} px clear in a straight line` : ""),
+  );
 }
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
@@ -925,14 +1104,102 @@ export async function quietBoard(api, tile) {
 }
 
 /**
+ * Frame a still on the DEN: hold every predator inside it, stand the forager on the
+ * corridor tile just outside the gate facing in, and open the light right up.
+ *
+ * The two den-structure items (`maze/den-enclosed`, `maze/den-one-exit`) decide their
+ * verdicts by reading `snapshot.tiles`, so nothing here can change what they conclude.
+ * What it changes is the evidence: Fathom's maze is drawn only where the forager's light
+ * falls (`specs/gameplay.md`), so a still captured from the spawn tile is a picture of
+ * some other corner of the board, and a reviewer checking "is the den walled in, with one
+ * way out" has nothing to look at. Walking the forager to the gate and setting `G = 1`
+ * puts the chamber, its wall, and its single entrance in the frame.
+ *
+ * The forager is faced INTO the gate, which it cannot pass (`specs/movement.md`), so it
+ * stays put whether or not this build lets a forager with no key held swim on (see
+ * `parkForager`). The predators are held in the den by `setPredator(…, "den")` — they
+ * are the den's occupants, so this both keeps them off the forager standing at their
+ * doorway and shows what the chamber is for.
+ *
+ * Best effort: a maze with no gate simply keeps the default framing rather than turning a
+ * structural verdict into a precondition failure.
+ */
+export async function arrangeDenView(api, snap) {
+  await denAllExcept(api, []);
+  let approach;
+  try {
+    approach = findGateApproach(snap);
+  } catch {
+    return; // no gate to stand outside; the structural read still stands on its own
+  }
+  await api.call("setForager", {
+    tx: approach.tx,
+    ty: approach.ty,
+    dir: approach.dir,
+  });
+  await api.call("setBrightness", 1);
+}
+
+/**
  * Park every predator in the den (a clean baseline), except the ones named in
  * `except`. Used so a scenario reads one predator's behavior undisturbed.
+ *
+ * `setPredator(kind, { mode: "den" })` HOLDS a predator there for as long as the
+ * scenario runs (specs/instrumentation.md), so this is what makes the rest of the board
+ * quiet. Returns a token to hand to `boardDisturbance` — the kinds it denned, and the
+ * lives and screen it left behind — so a scenario that later finds its subject in an
+ * unexpected state can say WHICH predator broke the quiet rather than blaming the one
+ * it was watching.
  */
 export async function denAllExcept(api, except = []) {
+  const denned = [];
   for (const kind of ["lanternjaw", "gloamfin", "flarefish"]) {
-    if (!except.includes(kind))
+    if (!except.includes(kind)) {
       await api.call("setPredator", kind, { mode: "den" });
+      denned.push(kind);
+    }
   }
+  const snap = await api.snapshot();
+  return { denned, lives: snap.lives, screen: snap.screen };
+}
+
+/**
+ * What broke the quiet board `denAllExcept` posed, as a sentence, or null if nothing
+ * did. `quiet` is that helper's return value and `snap` the state to judge.
+ *
+ * WHY A SCENARIO NEEDS THIS. When a long-running item finds its subject somewhere
+ * unexpected, the honest question is whether the SUBJECT did something or whether the
+ * scenario stopped holding. A predator that was posed into the den and is now loose has
+ * broken the precondition; a life lost re-dens every predator at once
+ * (specs/predators.md), which drops the subject into `den` through no fault of its own.
+ * Reported as "the subject left its wander", both of those read as a finding about the
+ * subject, which is exactly the wrong diagnosis — so an item that is about to give up
+ * asks this first and names the real cause.
+ */
+export function boardDisturbance(snap, quiet) {
+  if (!quiet) return null;
+  if (snap.lives < quiet.lives) {
+    const held = quiet.denned.filter((k) => pred(snap, k));
+    return (
+      `the forager was caught and lost a life mid-measurement, which returned every ` +
+      `predator to the den` +
+      (held.length
+        ? ` — and the ${held.join(" and ")} had been posed into the den, so nothing ` +
+          `should have been loose to catch it`
+        : "")
+    );
+  }
+  const out = quiet.denned.filter((k) => {
+    const p = pred(snap, k);
+    return p && p.state !== "den";
+  });
+  if (out.length) {
+    return `the ${out.join(" and ")} left the den it was posed into and disturbed the scenario`;
+  }
+  if (snap.screen !== quiet.screen) {
+    return `the dive left ${quiet.screen} for ${snap.screen} mid-measurement`;
+  }
+  return null;
 }
 
 /**
@@ -1189,6 +1456,70 @@ export async function actMoveKey(
 }
 
 /**
+ * ARRANGE half of the three "one plankton" items (the score it pays, the brightness it
+ * adds, the light that widens with it): stand the forager at the head of a straight
+ * corridor with pellets ahead of it, in the dark, ready to swim.
+ *
+ * WHY IT DOES NOT SIMPLY STAND ON A PELLET. A corridor tile carries a plankton, so a
+ * forager posed onto one eats it where it stands, on the first tick, before anything is
+ * filmed — the item's whole subject resolves in the instant the scenario is set up, and
+ * the clip that is supposed to show a forager grazing shows a forager that has already
+ * grazed. So the pellet under the start tile is eaten HERE, instantly and off camera
+ * (`skip` runs the real eat but films nothing), and the eat the item measures is the
+ * next one: the one the forager swims into while the reviewer watches.
+ *
+ * Brightness is then returned to `0` — a documented precondition op
+ * (`specs/instrumentation.md`), not a fabricated result. That matters for more than the
+ * picture: `G` saturates at `1`, so an item that measures "one eat" from wherever the
+ * approach happened to leave the forager can land on an eat that raises `G` by almost
+ * nothing and widens the light not at all, and fail a build that did exactly what the
+ * spec asks. Starting dark means the measured eat always has its full headroom.
+ *
+ * Returns `{ snap, run }` — the snapshot the corridor was found in, and that corridor
+ * (`run.dir` is the way the forager will swim). Pair with `actGrazeOne`.
+ */
+export async function arrangeGraze(api) {
+  const snap = await startPlaying(api);
+  // Four tiles: the start pellet, the one the item measures, and room to keep swimming
+  // through two more while the clip runs.
+  const run = findStraightRun(snap, 4);
+  await api.call("setForager", { tx: run.tx, ty: run.ty, dir: run.dir });
+  // 12 ticks = 0.1 s: long enough for the real eat on the start tile, far short of the
+  // 30 ticks the forager needs to reach the next one.
+  await api.skip(12);
+  await api.call("setBrightness", 0);
+  return { snap, run };
+}
+
+/**
+ * ACT half of the "one plankton" items: hold the direction key and let the forager swim
+ * into the next pellet, returning `{ before, after, hit }` — the snapshots either side
+ * of that single eat.
+ *
+ * The read is taken on the tick the pellet went, found by sweeping at `poll: TICK`. A
+ * coarser sweep could step over two pellets at once (they sit one tile — 30 ticks —
+ * apart at `128 px/s`) and report one eat paying twice, so the resolution is what makes
+ * "one plankton" mean one.
+ *
+ * The key stays held through the tail, which is what the clip is for: the forager keeps
+ * grazing and keeps brightening, so the light visibly opens up around it rather than the
+ * whole subject being a single frame's step change.
+ */
+export async function actGrazeOne(api, dir, { tailTicks = 120 } = {}) {
+  const before = await api.snapshot();
+  await api.call("keyDown", DIR_KEY[dir]);
+  // 90 ticks = 0.75 s, three times the 30 ticks one tile takes.
+  const r = await api.until(
+    (s) => s.planktonRemaining < before.planktonRemaining,
+    { max: 90, poll: TICK },
+  );
+  const after = r.snap;
+  await api.advance(tailTicks);
+  await api.call("keyUp", DIR_KEY[dir]);
+  return { before, after, hit: r.hit };
+}
+
+/**
  * True if the forager's move went the expected way: its POSITION advanced at least half
  * a tile along `dir`.
  *
@@ -1220,13 +1551,179 @@ export function movedAlong(before, after, dir, grid) {
   return (after.y - before.y) * dr >= min;
 }
 
+// The staggered den release (specs/predators.md): the order the predators leave in, and
+// the gap between one leaving and the next.
+export const DEN_ORDER = ["lanternjaw", "gloamfin", "flarefish"];
+export const DEN_RELEASE_GAP = 5;
+
+/**
+ * How far a measured release gap may sit from `DEN_RELEASE_GAP`.
+ *
+ * The spec states the `5 s` flatly, so the band is not there to admit a different
+ * schedule — it is sampling slack (a sweep resolves an event to its poll chunk) plus room
+ * for a build that arms its timers a beat off. It still fails the two ways a build
+ * actually breaks this: releasing everything at once (gap ~0, which is what an absolute
+ * release time compared against a clock that is never reset produces after a life is
+ * lost), or spacing them out on some other schedule entirely.
+ */
+export const DEN_RELEASE_SLACK = 1;
+
+/**
+ * How soon after live play is running the FIRST predator must be out to count as leaving
+ * "immediately" (specs/predators.md: release time `0`).
+ *
+ * This is what stops a build passing on the gaps alone. Gaps fix the SPACING but leave
+ * the origin free, and a den that holds everyone for half a minute and then lets them out
+ * `5 s` apart has the spacing exactly right and the schedule entirely wrong. Anchoring the
+ * first release closes that: with the head pinned and each gap pinned, the whole schedule
+ * is pinned.
+ *
+ * HALF A SLOT, not a second. Leaving the den is a journey rather than a flag, and builds
+ * differ on when they stop calling a predator denned — mid-walk, or once it is clear of
+ * the gate. The reference takes about `0.7 s` over that walk and another build could
+ * reasonably take longer without being late in any sense the spec cares about, so a
+ * one-second bound would fail a conforming build for the pace of its gate animation. Half
+ * a slot is the widest bound that still cannot be confused with the NEXT predator's slot
+ * at `5 s`, which is the only thing this needs to tell apart.
+ */
+export const DEN_IMMEDIATE = DEN_RELEASE_GAP / 2;
+
+/** The sweep resolution the den watch runs at, in ticks. */
+export const DEN_POLL = 6;
+
+/**
+ * How far BEFORE live play resuming the first release may land: ONE SAMPLE, and nothing
+ * more.
+ *
+ * No predator leaves the den while the countdown runs (`specs/predators.md`), so there is
+ * no behaviour to be lenient about here — a predator loose before play resumes has spent
+ * the player's reorientation moment hunting, and that is the whole point of the check.
+ * This is purely the measurement's own resolution: the resume and each release are dated
+ * to the first sweep that caught them, so two events one tick apart can be read in either
+ * order across a sweep boundary. A build that flips its screen the tick after it starts
+ * play would otherwise read as jumping the gun by a hundredth of a second.
+ *
+ * Deriving it from the poll rather than picking a round number keeps it honest: it can
+ * only ever be as large as the uncertainty it exists to absorb.
+ */
+export const DEN_RESUME_TOLERANCE = DEN_POLL / TICK_HZ;
+
+/**
+ * ACT half of the den-release checks: watch the den and return
+ * `{ releases, resumedAt }` — the moment each predator left, as `[{ kind, t }]` in the
+ * order they came out (`t` is the snapshot's simTime), and the simTime at which live play
+ * was first seen running. Stops once all three are out, or once a release is overdue.
+ *
+ * WHY THE RESUME IS MEASURED ALONGSIDE. The callers assert the GAPS between releases
+ * rather than their absolute instants, because the spec fixes the spacing (`5 s` apart, in
+ * a fixed order) while leaving one thing open: whether the countdown that precedes live
+ * play counts against the first timer. Both readings are conforming and they differ by the
+ * whole countdown, so an assertion anchored to the death would fail half of them for a
+ * choice the spec never made.
+ *
+ * But gaps alone under-check the schedule, and it is worth being precise about how: they
+ * pin the spacing and leave the ORIGIN free, so a den that holds every predator for half a
+ * minute and then releases them `5 s` apart satisfies every gap while breaking the
+ * schedule outright. What closes that without re-importing the countdown question is this
+ * resume time: whichever way a build reads the countdown, once live play is actually
+ * running the first predator is due (release time `0`), so the head of the schedule is
+ * anchored to `resumedAt` and every following release to the one before it. A build that
+ * releases during its countdown reads as a NEGATIVE offset from the resume, which is
+ * early, not late, and passes — as it should.
+ *
+ * HOW LONG IT WAITS, AND WHY THAT IS NOT A WINDOW. Each release is waited for against its
+ * OWN deadline, taken from the schedule: the first until `DEN_RELEASE_GAP` past the resume
+ * (if a whole slot goes by with the den still shut, nothing is coming), and each one after
+ * it until two slots past the release before it. Miss a deadline and the watch stops
+ * there, so `releases` ends where the schedule broke down.
+ *
+ * The deadlines are deliberately LOOSER than the assertions the callers make — a slot
+ * where the check allows a second, two slots where it allows one gap plus slack. That gap
+ * between the two is the point. A deadline exists only to stop the watch when nothing is
+ * ever coming; if it were tight enough to judge, then a build that releases a little late
+ * would trip the deadline instead of the assertion, and the item would report "the
+ * Gloamfin never left the den" about a Gloamfin that left a second after the check would
+ * have liked. The deadline says whether there is anything to measure; the assertion says
+ * whether it was right.
+ */
+export async function actDenReleases(api, { poll = DEN_POLL, resumeMax } = {}) {
+  const releases = [];
+  const seen = new Set();
+  let resumedAt = null;
+  const note = (s) => {
+    if (resumedAt === null && s.screen === "playing") resumedAt = s.simTime;
+    for (const kind of DEN_ORDER) {
+      const p = pred(s, kind);
+      if (p && p.state !== "den" && !seen.has(kind)) {
+        seen.add(kind);
+        releases.push({ kind, t: s.simTime });
+      }
+    }
+  };
+
+  // To live play, so the first slot has something to be due from. A predator that leaves
+  // during a build's countdown is caught here too, and reads as early rather than late.
+  let last = await api.snapshot();
+  note(last);
+  let waited = 0;
+  const resumeBudget = resumeMax ?? ticksFor(2 * DEN_RELEASE_GAP);
+  while (resumedAt === null && waited < resumeBudget) {
+    await api.advance(poll);
+    waited += poll;
+    last = await api.snapshot();
+    note(last);
+  }
+  if (resumedAt === null) return { releases, resumedAt };
+
+  while (releases.length < DEN_ORDER.length) {
+    const due =
+      releases.length === 0
+        ? resumedAt + DEN_RELEASE_GAP
+        : releases[releases.length - 1].t + 2 * DEN_RELEASE_GAP;
+    const had = releases.length;
+    while (releases.length === had) {
+      if (last.simTime > due) return { releases, resumedAt };
+      await api.advance(poll);
+      last = await api.snapshot();
+      note(last);
+    }
+  }
+  return { releases, resumedAt };
+}
+
+/**
+ * ACT half of the den-release checks: park the forager clear of the den, so it is a
+ * bystander to a measurement that is about the den's own clock.
+ *
+ * The forager is not what is being timed here, but it is what a released predator hunts,
+ * and a forager caught mid-measurement re-dens every predator and restarts the very
+ * schedule being read (specs/predators.md). Standing it well away from the gate — and
+ * facing a wall, so it does not drift or graze (see `parkForager`) — leaves the release
+ * timers untouched and simply keeps the scenario alive long enough to read them.
+ */
+export async function parkClearOfDen(api) {
+  const snap = await api.snapshot();
+  const gate = gateTiles(snap)[0];
+  const away = gate
+    ? findFarTile(snap, { tx: gate[0], ty: gate[1] }, 10)
+    : undefined;
+  return parkForager(api, away);
+}
+
 /**
  * ACT half of the Gloamfin ping checks: watch for `ticks` and return the distinct
- * pings it emitted, each `{ t, tint }` (`t` is the snapshot's simTime). Sweeps in
+ * pings it emitted, each `{ t, tint, lit }` (`t` is the snapshot's simTime, `lit`
+ * whether the Gloamfin's own body was being drawn as the ping left it). Sweeps in
  * `poll`-tick chunks and counts only a FRESH wavefront (one whose front has barely
  * left the source), so a single expanding pulse seen across several samples is one
  * event rather than many; pings within 1 s of each other coalesce, and a violet ping
  * upgraded to orange ("lost you") in that window updates the tint in place.
+ *
+ * `lit` is carried because "the ping does not draw the Gloamfin itself"
+ * (`specs/predators/gloamfin.md`) is a property of the ping, not of one tint: it is
+ * stated once, of the wavefront the periodic ping and the guaranteed "lost you" ping
+ * both use. Recording it per event lets an item that drove a particular ping assert it
+ * without a second scenario.
  *
  * This has no arrange half of its own — the caller poses the Gloamfin and the forager
  * however the scenario needs, then calls this. Returns the event array (what the old
@@ -1247,9 +1744,14 @@ export async function actGloamPings(api, ticks, { poll = 6 } = {}) {
       if (p.front > freshFront) continue;
       const last = events[events.length - 1];
       if (!last || s.simTime - last.t > 1.0) {
-        events.push({ t: s.simTime, tint: p.tint });
+        events.push({
+          t: s.simTime,
+          tint: p.tint,
+          lit: pred(s, "gloamfin").lit,
+        });
       } else if (p.tint === "orange") {
         last.tint = "orange";
+        last.lit = pred(s, "gloamfin").lit;
       }
     }
   }
