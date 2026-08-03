@@ -1,12 +1,18 @@
-//! The filesystem tools: read, write, edit, and list files in the workspace.
+//! The filesystem tools: read, write, edit, and list files.
 //!
 //! gg runs inside the run container, so these tools operate on the **local**
-//! filesystem. Every path a tool accepts is workspace-*relative* and is resolved,
-//! and confined, to the invocation's workspace root by [`resolve_within`]: an
-//! absolute path or a `..` sequence that would climb above the root is rejected
-//! before any I/O happens. This confinement is a real safety property (a run must not
-//! read or clobber files outside its seeded workspace), enforced purely lexically so
-//! it is deterministic and unit-testable.
+//! filesystem, exactly as `sh -c` does. A path a tool accepts is resolved by
+//! [`resolve_path`] the way any process resolves one: a relative path against gg's
+//! working directory (the invocation's workspace root, or the agent's worktree when it
+//! has one), an absolute path as itself.
+//!
+//! There is deliberately **no** confinement to the workspace root. The container *is* the
+//! boundary — the only things in it are what the run was seeded with — so a lexical guard
+//! bought no safety and cost real function: gg's own [shell](super::shell) offloads command
+//! output to `/tmp/gg-shell` and tells the agent to go read it, and a run that then answers
+//! `read_file` with "must be workspace-relative" is refusing to honour an instruction gg
+//! itself gave. Anything reachable through these tools is reachable through one `cat`
+//! anyway.
 //!
 //! The four tools mirror the editor primitives a coding agent needs, including
 //! `edit_file`'s **exact unique replacement** semantics (matching this repo's own
@@ -44,7 +50,7 @@
 //! provider has already refused an image for) gets a description of the file instead, and
 //! the run carries on. See [`crate::vision`] for the two-stage rule.
 
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use base64::Engine as _;
@@ -183,55 +189,27 @@ impl ReadPolicy {
 }
 
 // ---------------------------------------------------------------------------
-// Path confinement
+// Path resolution
 // ---------------------------------------------------------------------------
 
-/// Resolve a workspace-relative `rel` path against the workspace `root`, refusing any
-/// path that would escape the root.
+/// Resolve `path` the way any process in the container would: relative to gg's working
+/// directory `cwd` (the invocation's workspace root — the agent's own worktree when it has
+/// one), or as itself when it is absolute.
 ///
-/// The check is **lexical**: `rel` must be relative (an absolute path or one with a
-/// drive/root prefix is rejected), and its normalized form must never pop above the
-/// root (a leading or interior `..` that climbs past the root is rejected). `.` and
-/// interior `..` that stay within the tree are normalized away. The returned path is
-/// `root` joined with the normalized remainder.
+/// `..` is ordinary here — it is left in the path for the kernel to resolve, which is both
+/// simpler and more correct than normalizing it away, since a lexical `a/../b` is not `b`
+/// when `a` is a symlink.
 ///
-/// Confinement is lexical by design: it makes no filesystem call, so it is
-/// deterministic and testable and cannot be defeated by a race. (It does not resolve
-/// symlinks; the seeded workspace is trusted not to contain adversarial links out of
-/// the tree in Phase 0.)
-pub fn resolve_within(root: &Path, rel: &str) -> Result<PathBuf, String> {
-    if rel.trim().is_empty() {
+/// The one refusal left is an empty path, which is a mistake in the call rather than a
+/// destination: joined onto `cwd` it would silently name the working directory itself, so a
+/// `write_file` of `""` would try to overwrite a directory.
+pub fn resolve_path(cwd: &Path, path: &str) -> Result<PathBuf, String> {
+    if path.trim().is_empty() {
         return Err("path must not be empty".to_string());
     }
-
-    let mut normalized = PathBuf::new();
-    for component in Path::new(rel).components() {
-        match component {
-            Component::Prefix(_) | Component::RootDir => {
-                return Err(format!(
-                    "path `{rel}` must be workspace-relative, not absolute"
-                ));
-            }
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if !normalized.pop() {
-                    return Err(format!("path `{rel}` escapes the workspace root via `..`"));
-                }
-            }
-            Component::Normal(part) => normalized.push(part),
-        }
-    }
-
-    Ok(root.join(normalized))
+    Ok(cwd.join(path))
 }
 
-/// Resolve `field` from `args` as a required workspace-relative path, mapping both a
-/// missing/ill-typed argument and an escape attempt to a failed [`ToolOutcome`].
-///
-/// A confinement refusal is an [invalid argument](ToolFailure::InvalidArgument), not a refusal or a
-/// missing file: the path the caller supplied is not one this tool accepts, and the fix is to
-/// supply a different one. (Nothing is revealed about whether the target exists, which is the point
-/// of checking lexically before touching the filesystem.)
 /// Read `field` from `args` as an **optional** positive integer (the `offset`/`limit`
 /// paging arguments). Absent or `null` is `None` — the caller's default applies — while a
 /// present value that is not a positive integer is an error rather than a silent default,
@@ -356,7 +334,7 @@ pub(crate) fn human_bytes(bytes: u64) -> String {
 // read_file
 // ---------------------------------------------------------------------------
 
-/// Reads a file's contents, workspace-relative, within the run's [`ReadPolicy`].
+/// Reads a file's contents within the run's [`ReadPolicy`].
 pub struct ReadFileTool {
     /// How much of a file one call may return.
     policy: ReadPolicy,
@@ -382,12 +360,7 @@ impl ReadFileTool {
     ///
     /// The bytes are **never** decoded as text. Lossy-UTF-8 image data is thousands of
     /// tokens of noise that tells the model nothing and crowds out everything that would.
-    fn read_image(
-        rel_path: &str,
-        format: ImageFormat,
-        bytes: &[u8],
-        ctx: &ToolContext,
-    ) -> ToolOutcome {
+    fn read_image(path: &str, format: ImageFormat, bytes: &[u8], ctx: &ToolContext) -> ToolOutcome {
         let size = bytes.len() as u64;
         let label = format.label;
         let human = human_bytes(size);
@@ -416,7 +389,7 @@ impl ReadFileTool {
             };
             return ToolOutcome::ok(
                 format!(
-                    "`{rel_path}` is a {label} image ({human}). It cannot be shown to you: \
+                    "`{path}` is a {label} image ({human}). It cannot be shown to you: \
                      {why}. Reading it again will not help — work from the written \
                      specification, and treat any file named as a reference image the same way."
                 ),
@@ -432,7 +405,7 @@ impl ReadFileTool {
             );
             return ToolOutcome::ok(
                 format!(
-                    "`{rel_path}` is a {label} image ({human}). It is too large to display \
+                    "`{path}` is a {label} image ({human}). It is too large to display \
                      (the limit is {}); work from the written specification instead.",
                     human_bytes(IMAGE_ATTACH_CAP)
                 ),
@@ -442,7 +415,7 @@ impl ReadFileTool {
         }
 
         ToolOutcome::ok(
-            format!("`{rel_path}` — {label} image, {human}. The image follows."),
+            format!("`{path}` — {label} image, {human}. The image follows."),
             format!("{label} image, {human}"),
         )
         .with_images(vec![ImageContent::new(
@@ -569,7 +542,7 @@ impl Tool for ReadFileTool {
     fn definition(&self) -> ToolDefinition {
         let path = json!({
             "type": "string",
-            "description": "Workspace-relative path to the file to read."
+            "description": "Path to the file to read — relative to the workspace root, or absolute."
         });
         // The unlimited mode offers no paging arguments at all: with the whole file in
         // every result there is nothing for the agent to page through, and offering knobs
@@ -577,7 +550,7 @@ impl Tool for ReadFileTool {
         let Some(cap) = self.policy.line_cap() else {
             return ToolDefinition::new(
                 "read_file",
-                "Read a file from the workspace and return its contents (truncated if very \
+                "Read a file and return its contents (truncated if very \
                  large). Text files are returned as text; a PNG, JPEG, GIF, or WebP image \
                  is returned as the image itself when the session's model can see one, and \
                  otherwise described.",
@@ -592,7 +565,7 @@ impl Tool for ReadFileTool {
 
         let (description, limit_description) = (
             format!(
-                "Read a file from the workspace. A text file returns {cap} lines by \
+                "Read a file. A text file returns {cap} lines by \
                  default, starting at `offset`; pass a larger `limit` when you need \
                  more of the file at once. The result tells you how many lines the file \
                  has and where to continue from. A PNG, JPEG, GIF, or WebP image is \
@@ -627,8 +600,8 @@ impl Tool for ReadFileTool {
     }
 
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
-        let rel_path = match required_str(&args, "path", "read_file") {
-            Ok(rel) => rel,
+        let path = match required_str(&args, "path", "read_file") {
+            Ok(path) => path,
             Err(error) => return error.into(),
         };
         let offset = match positive_arg(&args, "offset", "read_file") {
@@ -639,12 +612,12 @@ impl Tool for ReadFileTool {
             Ok(limit) => limit,
             Err(error) => return error.into(),
         };
-        self.read(ctx, rel_path, offset, limit)
+        self.read(ctx, path, offset, limit)
     }
 }
 
 impl ReadFileTool {
-    /// Read a workspace file — the **standard, typed** `read_file` API function both call paths
+    /// Read a file — the **standard, typed** `read_file` API function both call paths
     /// reach: the JSON tool-calling [adapter](Tool::invoke) after it parses its arguments, and the
     /// [responses-as-code membrane](crate::sandbox) directly with the typed values a program passed.
     ///
@@ -654,17 +627,17 @@ impl ReadFileTool {
     pub(crate) fn read(
         &self,
         ctx: &ToolContext,
-        rel_path: String,
+        path: String,
         offset: Option<usize>,
         limit: Option<usize>,
     ) -> ToolOutcome {
-        let path = match resolve_within(&ctx.workspace_dir, &rel_path) {
-            Ok(path) => path,
+        let resolved = match resolve_path(&ctx.workspace_dir, &path) {
+            Ok(resolved) => resolved,
             Err(why) => return invalid_argument(format!("`read_file`: {why}")),
         };
         let offset = offset.map(|offset| offset.max(1)).unwrap_or(1);
 
-        let bytes = match std::fs::read(&path) {
+        let bytes = match std::fs::read(&resolved) {
             Ok(bytes) => bytes,
             Err(err) => {
                 return ToolOutcome::failed(
@@ -678,7 +651,7 @@ impl ReadFileTool {
         // describe lines of text and mean nothing for a picture, and decoding the bytes
         // as lossy UTF-8 would return noise.
         if let Some(format) = sniff_image(&bytes) {
-            return Self::read_image(&rel_path, format, &bytes, ctx);
+            return Self::read_image(&path, format, &bytes, ctx);
         }
 
         match self.policy.window(limit) {
@@ -692,7 +665,7 @@ impl ReadFileTool {
 // write_file
 // ---------------------------------------------------------------------------
 
-/// Writes (creating or overwriting) a file, workspace-relative.
+/// Writes (creating or overwriting) a file.
 pub struct WriteFileTool;
 
 #[async_trait]
@@ -704,14 +677,14 @@ impl Tool for WriteFileTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "write_file",
-            "Write UTF-8 text to a file in the workspace, creating parent directories \
+            "Write UTF-8 text to a file, creating parent directories \
              and overwriting any existing file.",
             json!({
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Workspace-relative path to write."
+                        "description": "Path to write — relative to the workspace root, or absolute."
                     },
                     "contents": {
                         "type": "string",
@@ -725,33 +698,28 @@ impl Tool for WriteFileTool {
     }
 
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
-        let rel_path = match required_str(&args, "path", "write_file") {
-            Ok(rel) => rel,
+        let path = match required_str(&args, "path", "write_file") {
+            Ok(path) => path,
             Err(error) => return error.into(),
         };
         let contents = match required_str(&args, "contents", "write_file") {
             Ok(contents) => contents,
             Err(error) => return error.into(),
         };
-        self.write(ctx, rel_path, contents)
+        self.write(ctx, path, contents)
     }
 }
 
 impl WriteFileTool {
-    /// Write a workspace file — the **standard, typed** `write_file` API function both the JSON
+    /// Write a file — the **standard, typed** `write_file` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
-    pub(crate) fn write(
-        &self,
-        ctx: &ToolContext,
-        rel_path: String,
-        contents: String,
-    ) -> ToolOutcome {
-        let path = match resolve_within(&ctx.workspace_dir, &rel_path) {
-            Ok(path) => path,
+    pub(crate) fn write(&self, ctx: &ToolContext, path: String, contents: String) -> ToolOutcome {
+        let resolved = match resolve_path(&ctx.workspace_dir, &path) {
+            Ok(resolved) => resolved,
             Err(why) => return invalid_argument(format!("`write_file`: {why}")),
         };
 
-        if let Some(parent) = path.parent()
+        if let Some(parent) = resolved.parent()
             && let Err(err) = std::fs::create_dir_all(parent)
         {
             return ToolOutcome::failed(
@@ -759,7 +727,7 @@ impl WriteFileTool {
                 format!("write_file: creating parent dirs: {err}"),
             );
         }
-        if let Err(err) = std::fs::write(&path, contents.as_bytes()) {
+        if let Err(err) = std::fs::write(&resolved, contents.as_bytes()) {
             return ToolOutcome::failed(ToolFailure::from_io(&err), format!("write_file: {err}"));
         }
 
@@ -790,14 +758,14 @@ impl Tool for EditFileTool {
         ToolDefinition::new(
             "edit_file",
             "Replace an exact occurrence of `old_string` with `new_string` in a \
-             workspace file. `old_string` must appear exactly once; the edit fails if \
+             file. `old_string` must appear exactly once; the edit fails if \
              it is missing or ambiguous.",
             json!({
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Workspace-relative path to edit."
+                        "description": "Path to edit — relative to the workspace root, or absolute."
                     },
                     "old_string": {
                         "type": "string",
@@ -815,8 +783,8 @@ impl Tool for EditFileTool {
     }
 
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
-        let rel_path = match required_str(&args, "path", "edit_file") {
-            Ok(rel) => rel,
+        let path = match required_str(&args, "path", "edit_file") {
+            Ok(path) => path,
             Err(error) => return error.into(),
         };
         let old_string = match required_str(&args, "old_string", "edit_file") {
@@ -827,23 +795,23 @@ impl Tool for EditFileTool {
             Ok(value) => value,
             Err(error) => return error.into(),
         };
-        self.edit(ctx, rel_path, old_string, new_string)
+        self.edit(ctx, path, old_string, new_string)
     }
 }
 
 impl EditFileTool {
-    /// Replace an exact, unique occurrence in a workspace file — the **standard, typed** `edit_file`
+    /// Replace an exact, unique occurrence in a file — the **standard, typed** `edit_file`
     /// API function both the JSON [adapter](Tool::invoke) and the
     /// [responses-as-code membrane](crate::sandbox) reach.
     pub(crate) fn edit(
         &self,
         ctx: &ToolContext,
-        rel_path: String,
+        path: String,
         old_string: String,
         new_string: String,
     ) -> ToolOutcome {
-        let path = match resolve_within(&ctx.workspace_dir, &rel_path) {
-            Ok(path) => path,
+        let resolved = match resolve_path(&ctx.workspace_dir, &path) {
+            Ok(resolved) => resolved,
             Err(why) => return invalid_argument(format!("`edit_file`: {why}")),
         };
 
@@ -856,7 +824,7 @@ impl EditFileTool {
             );
         }
 
-        let contents = match std::fs::read_to_string(&path) {
+        let contents = match std::fs::read_to_string(&resolved) {
             Ok(contents) => contents,
             Err(err) => {
                 return ToolOutcome::failed(
@@ -890,7 +858,7 @@ impl EditFileTool {
         }
 
         let updated = contents.replacen(&old_string, &new_string, 1);
-        if let Err(err) = std::fs::write(&path, updated.as_bytes()) {
+        if let Err(err) = std::fs::write(&resolved, updated.as_bytes()) {
             return ToolOutcome::failed(
                 ToolFailure::from_io(&err),
                 format!("edit_file: writing back: {err}"),
@@ -905,7 +873,7 @@ impl EditFileTool {
 // list_dir
 // ---------------------------------------------------------------------------
 
-/// Lists a directory's entries, workspace-relative.
+/// Lists a directory's entries.
 pub struct ListDirTool;
 
 #[async_trait]
@@ -917,14 +885,14 @@ impl Tool for ListDirTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "list_dir",
-            "List the entries of a directory in the workspace. Directories are \
+            "List a directory's entries. Directories are \
              suffixed with `/`. Defaults to the workspace root.",
             json!({
                 "type": "object",
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Workspace-relative directory (defaults to `.`)."
+                        "description": "Directory to list — relative to the workspace root, or absolute (defaults to `.`)."
                     }
                 },
                 "required": [],
@@ -935,24 +903,24 @@ impl Tool for ListDirTool {
 
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
         // `path` is optional here and defaults to the workspace root.
-        let rel = match args.get("path") {
+        let path = match args.get("path") {
             None | Some(Value::Null) => None,
             Some(Value::String(value)) => Some(value.clone()),
             Some(_) => {
                 return invalid_argument("`list_dir`: argument `path` must be a string");
             }
         };
-        self.list(ctx, rel)
+        self.list(ctx, path)
     }
 }
 
 impl ListDirTool {
-    /// List a workspace directory — the **standard, typed** `list_dir` API function both the JSON
+    /// List a directory — the **standard, typed** `list_dir` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach. A `None`
     /// path lists the workspace root.
-    pub(crate) fn list(&self, ctx: &ToolContext, rel_path: Option<String>) -> ToolOutcome {
-        let rel = rel_path.unwrap_or_else(|| ".".to_string());
-        let dir = match resolve_within(&ctx.workspace_dir, &rel) {
+    pub(crate) fn list(&self, ctx: &ToolContext, path: Option<String>) -> ToolOutcome {
+        let path = path.unwrap_or_else(|| ".".to_string());
+        let dir = match resolve_path(&ctx.workspace_dir, &path) {
             Ok(dir) => dir,
             Err(why) => return invalid_argument(format!("`list_dir`: {why}")),
         };

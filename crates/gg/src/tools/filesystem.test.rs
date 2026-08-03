@@ -308,9 +308,9 @@ async fn a_missing_path_is_classified_not_found() {
 }
 
 /// Everything a caller got wrong about its arguments — a missing one, an ill-typed one, an
-/// out-of-range one, and a path that leaves the workspace — is one class.
+/// out-of-range one, and an empty path — is one class.
 #[tokio::test]
-async fn argument_and_confinement_diagnostics_are_classified_as_invalid_arguments() {
+async fn argument_diagnostics_are_classified_as_invalid_arguments() {
     let (dir, ctx) = workspace();
     std::fs::write(dir.path().join("f.txt"), "one\ntwo\n").unwrap();
 
@@ -336,15 +336,9 @@ async fn argument_and_confinement_diagnostics_are_classified_as_invalid_argument
                 .await,
         ),
         (
-            "an escaping path",
-            reader()
-                .invoke(json!({ "path": "../../etc/passwd" }), &ctx)
-                .await,
-        ),
-        (
-            "an absolute path",
+            "an empty path",
             WriteFileTool
-                .invoke(json!({ "path": "/tmp/x", "contents": "x" }), &ctx)
+                .invoke(json!({ "path": "  ", "contents": "x" }), &ctx)
                 .await,
         ),
         (
@@ -369,57 +363,82 @@ async fn argument_and_confinement_diagnostics_are_classified_as_invalid_argument
 }
 
 // ---------------------------------------------------------------------------
-// Path confinement (the safety property)
+// Path resolution
 // ---------------------------------------------------------------------------
 
 #[test]
-fn resolve_within_normalizes_interior_dot_and_dotdot() {
-    let root = std::path::Path::new("/ws");
+fn resolve_path_joins_a_relative_path_onto_the_working_directory() {
+    let cwd = std::path::Path::new("/ws");
     assert_eq!(
-        resolve_within(root, "src/../game.js").unwrap(),
-        std::path::Path::new("/ws/game.js")
+        resolve_path(cwd, "src/game.js").unwrap(),
+        std::path::Path::new("/ws/src/game.js")
     );
     assert_eq!(
-        resolve_within(root, "./a/b").unwrap(),
-        std::path::Path::new("/ws/a/b")
+        resolve_path(cwd, "./a/b").unwrap(),
+        std::path::Path::new("/ws/./a/b")
     );
 }
 
+/// `..` is an ordinary component now, left in the path for the kernel to resolve rather than
+/// normalized away — which is also the only reading that stays correct through a symlink.
 #[test]
-fn resolve_within_rejects_parent_escape() {
-    let root = std::path::Path::new("/ws");
-    assert!(resolve_within(root, "../secret").is_err());
-    assert!(resolve_within(root, "../../etc/passwd").is_err());
-    // Climbs back out after descending: still an escape.
-    assert!(resolve_within(root, "a/../../secret").is_err());
+fn resolve_path_carries_parent_components_through() {
+    let cwd = std::path::Path::new("/ws");
+    assert_eq!(
+        resolve_path(cwd, "../secret").unwrap(),
+        std::path::Path::new("/ws/../secret")
+    );
 }
 
+/// An absolute path is the destination, not an error: gg's own shell offloads output to
+/// `/tmp/gg-shell` and tells the agent to read it there.
 #[test]
-fn resolve_within_rejects_absolute_paths() {
-    let root = std::path::Path::new("/ws");
-    assert!(resolve_within(root, "/etc/passwd").is_err());
-    assert!(resolve_within(root, "/").is_err());
+fn resolve_path_passes_an_absolute_path_through() {
+    let cwd = std::path::Path::new("/ws");
+    assert_eq!(
+        resolve_path(cwd, "/tmp/gg-shell/cmd-1-0001.stdout").unwrap(),
+        std::path::Path::new("/tmp/gg-shell/cmd-1-0001.stdout")
+    );
 }
 
-/// End-to-end: a tool call with an escaping path fails without touching the target.
+/// The one path that is still refused, because joined onto the working directory it would name
+/// that directory rather than a file in it.
+#[test]
+fn resolve_path_rejects_an_empty_path() {
+    assert!(resolve_path(std::path::Path::new("/ws"), "").is_err());
+    assert!(resolve_path(std::path::Path::new("/ws"), "   ").is_err());
+}
+
+/// End-to-end: the tools read and write outside the workspace root, by an absolute path and by
+/// one that climbs out of it.
 #[tokio::test]
-async fn tools_reject_escaping_paths() {
+async fn tools_reach_outside_the_workspace() {
     let (_dir, ctx) = workspace();
+    let elsewhere = TempDir::new().unwrap();
 
-    let read = reader()
-        .invoke(json!({ "path": "../../etc/passwd" }), &ctx)
-        .await;
-    assert!(!read.ok);
-    assert!(read.output.contains("escapes"));
-
+    let target = elsewhere.path().join("logs/out.txt");
     let write = WriteFileTool
         .invoke(
-            json!({ "path": "/tmp/gg-escape-test", "contents": "x" }),
+            json!({ "path": target.to_str().unwrap(), "contents": "outside\n" }),
             &ctx,
         )
         .await;
-    assert!(!write.ok);
-    assert!(write.output.contains("absolute"));
-    // Nothing was written outside the workspace.
-    assert!(!std::path::Path::new("/tmp/gg-escape-test").exists());
+    assert!(write.ok, "{}", write.output);
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "outside\n");
+
+    let read = reader()
+        .invoke(json!({ "path": target.to_str().unwrap() }), &ctx)
+        .await;
+    assert!(read.ok, "{}", read.output);
+    assert!(read.output.contains("outside"));
+
+    // The same file, reached by climbing out of the workspace: the temp workspace and the temp
+    // directory above are siblings under the system temp root.
+    let climbed = format!(
+        "../{}/logs/out.txt",
+        elsewhere.path().file_name().unwrap().to_str().unwrap()
+    );
+    let read = reader().invoke(json!({ "path": climbed }), &ctx).await;
+    assert!(read.ok, "{}", read.output);
+    assert!(read.output.contains("outside"));
 }

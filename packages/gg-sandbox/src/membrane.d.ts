@@ -98,7 +98,7 @@ declare module "test-cabinet:gg/shell" {
   export function shell(command: string, timeoutSecs: number | undefined): ShellOutput;
 }
 
-/** Reading and writing workspace files. Every path is workspace-relative. */
+/** Reading and writing files. A relative path resolves against the workspace root. */
 declare module "test-cabinet:gg/files" {
   /** A text file, or the window of one this run's read policy returned. */
   export interface TextRead {

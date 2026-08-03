@@ -40,7 +40,7 @@
       "object": "view",
       "requires": "read_file",
       "signature": "openFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
-      "doc": "Read a workspace file AND show it to yourself: you get back exactly what `fs.readFile` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it. The split from `fs.readFile` is the point — `fs.readFile` gets bytes for your PROGRAM, `view.openFile` shows a file to YOU — so a program that reads forty files to grep them still puts nothing in your window. `offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the SAME page replaces what it showed rather than piling up a duplicate. An image file is shown to you as a picture, and is the ONLY way to look at one — `fs.readFile` of an image describes it without showing it. Pictures are the one thing this call can refuse. Only so many image-carrying views may be open at once (your agent's `imageViewCap`); opening one past that throws `limit-exceeded` naming the cap, and nothing is opened and nothing is shown, so close one with `view.close(path)` and try again. Re-opening a picture you already have open replaces it rather than adding one, and is never refused. Text views are never refused by this cap.",
+      "doc": "Read a file AND show it to yourself: you get back exactly what `fs.readFile` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it. The split from `fs.readFile` is the point — `fs.readFile` gets bytes for your PROGRAM, `view.openFile` shows a file to YOU — so a program that reads forty files to grep them still puts nothing in your window. `offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the SAME page replaces what it showed rather than piling up a duplicate. An image file is shown to you as a picture, and is the ONLY way to look at one — `fs.readFile` of an image describes it without showing it. Pictures are the one thing this call can refuse. Only so many image-carrying views may be open at once (your agent's `imageViewCap`); opening one past that throws `limit-exceeded` naming the cap, and nothing is opened and nothing is shown, so close one with `view.close(path)` and try again. Re-opening a picture you already have open replaces it rather than adding one, and is never refused. Text views are never refused by this cap.",
       "types": [
         "FileRead"
       ]
@@ -98,7 +98,7 @@
       "js": "readFile",
       "object": "fs",
       "signature": "readFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
-      "doc": "Read a workspace file, returning either `{ kind: \"text\", ... }` or `{ kind: \"image\", ... }` — the format is detected from the file's bytes, never its extension. `offset` and `limit` select a window of lines and are honoured only under a capped read policy. This gets bytes for your program and puts NOTHING in your context window; `view.openFile` is the call that shows the file to you. Throws `not-found` for a missing path and `invalid-argument` for one that escapes the workspace. Reading an IMAGE describes it to your program — label, media type, byte size — and does not show it to YOU: the pixels reach neither your program nor your context window, so a file you only `readFile` is a file you have not looked at. `view.openFile` is the one way to actually see a picture.",
+      "doc": "Read a file, returning either `{ kind: \"text\", ... }` or `{ kind: \"image\", ... }` — the format is detected from the file's bytes, never its extension. `offset` and `limit` select a window of lines and are honoured only under a capped read policy. This gets bytes for your program and puts NOTHING in your context window; `view.openFile` is the call that shows the file to you. A relative path resolves against your workspace; an absolute one is read as given, so anything in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. Throws `not-found` for a missing path. Reading an IMAGE describes it to your program — label, media type, byte size — and does not show it to YOU: the pixels reach neither your program nor your context window, so a file you only `readFile` is a file you have not looked at. `view.openFile` is the one way to actually see a picture.",
       "types": [
         "FileRead"
       ]
@@ -108,7 +108,7 @@
       "js": "writeFile",
       "object": "fs",
       "signature": "writeFile(path: string, contents: string): number",
-      "doc": "Write UTF-8 text to a workspace file, creating parent directories and replacing any existing file, and return the number of bytes written. Writing is the expensive direction of the sandbox — rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a large rewrite across several turns.",
+      "doc": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and return the number of bytes written. Writing is the expensive direction of the sandbox — rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a large rewrite across several turns.",
       "types": []
     },
     {
@@ -116,7 +116,7 @@
       "js": "editFile",
       "object": "fs",
       "signature": "editFile(path: string, oldString: string, newString: string): void",
-      "doc": "Replace the one exact occurrence of `oldString` in a workspace file with `newString`. Throws `not-found` when the text does not appear and `conflict` — with the number of matches — when it appears more than once; widen the surrounding context until the match is unique.",
+      "doc": "Replace the one exact occurrence of `oldString` in a file with `newString`. Throws `not-found` when the text does not appear and `conflict` — with the number of matches — when it appears more than once; widen the surrounding context until the match is unique.",
       "types": []
     },
     {
@@ -124,7 +124,7 @@
       "js": "listDir",
       "object": "fs",
       "signature": "listDir(path?: string): DirEntry[]",
-      "doc": "List a workspace directory, sorted by name; defaults to the workspace root. Each entry carries a bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an empty array, not a failure.",
+      "doc": "List a directory, sorted by name; defaults to your workspace. Each entry carries a bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an empty array, not a failure.",
       "types": [
         "DirEntry"
       ]
@@ -441,7 +441,7 @@
       "js": "readTextFile",
       "object": "fs",
       "signature": "readTextFile(path: string, options?: { offset?: number; limit?: number; }): string",
-      "doc": "Read a workspace text file and return its contents directly — `readFile` without the variant narrowing, for the common case. Takes the same `offset`/`limit` window options. Throws `invalid-argument` when the path names a picture; use `readFile` to inspect those.",
+      "doc": "Read a text file and return its contents directly — `readFile` without the variant narrowing, for the common case. Takes the same `offset`/`limit` window options. Throws `invalid-argument` when the path names a picture; use `readFile` to inspect those.",
       "types": []
     }
   ],

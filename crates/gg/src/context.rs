@@ -220,7 +220,7 @@ impl FileRegion {
 /// the file as it stands then instead of replaying a stale copy of it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenFileView {
-    /// The workspace-relative path read.
+    /// The path read, as the model wrote it.
     pub path: String,
     /// The `offset`/`limit` window the read covered, or `None` for a whole-file read.
     pub region: Option<FileRegion>,

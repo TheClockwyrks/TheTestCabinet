@@ -107,8 +107,10 @@ interface shell {
     shell: func(command: string, timeout-secs: option<f64>) -> result<shell-output, tool-error>;
 }
 
-/// Reading and writing workspace files. Every path is workspace-relative; the host confines it
-/// lexically and refuses an absolute path or one that climbs out with `..`.
+/// Reading and writing files. A relative path is resolved against gg's working directory (the
+/// agent's workspace root, or its worktree); an absolute one is used as given. There is no
+/// confinement to the workspace: the container is the boundary, and gg's own shell writes offloaded
+/// output outside it.
 interface files {
     use types.{tool-error};
 
@@ -154,7 +156,7 @@ interface files {
         image(image-read),
     }
 
-    /// Read a workspace file.
+    /// Read a file.
     ///
     /// `offset`/`limit` are honoured only under a capped read policy; under the unlimited policy the
     /// whole file comes back and both are ignored. The system prompt states which policy this run
@@ -162,7 +164,7 @@ interface files {
     read-file: func(path: string, offset: option<u32>, limit: option<u32>)
         -> result<file-read, tool-error>;
 
-    /// Write UTF-8 text to a workspace file, creating parent directories and overwriting any
+    /// Write UTF-8 text to a file, creating parent directories and overwriting any
     /// existing file. Returns the number of bytes written.
     ///
     /// Writing is the EXPENSIVE direction of this membrane: lowering a string out of the guest
@@ -191,7 +193,7 @@ interface files {
         kind: entry-kind,
     }
 
-    /// List a workspace directory, sorted by name. `none` lists the workspace root. An empty
+    /// List a directory, sorted by name. `none` lists the workspace root. An empty
     /// directory is an empty list, not an error.
     list-dir: func(path: option<string>) -> result<list<dir-entry>, tool-error>;
 }
@@ -696,7 +698,7 @@ interface views {
         region: option<view-region>,
     }
 
-    /// Read a workspace file AND show it to yourself: the read's result comes back exactly as
+    /// Read a file AND show it to yourself: the read's result comes back exactly as
     /// `read-file` returns it, and the file is added to your context window as its own attributable
     /// item.
     ///

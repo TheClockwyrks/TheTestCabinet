@@ -30,7 +30,7 @@ import type { FileRead, OpenView } from "../types.js";
 import { asFileRead } from "./files.js";
 
 /**
- * Read a workspace file AND show it to yourself: you get back exactly what `fs.readFile` returns,
+ * Read a file AND show it to yourself: you get back exactly what `fs.readFile` returns,
  * and the file also becomes its own item in your context window, attributed to its path and closable
  * by it.
  *

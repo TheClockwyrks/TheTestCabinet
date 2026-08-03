@@ -15,7 +15,7 @@ import { ToolError } from "./errors.js";
 import { readFile } from "./tools/files.js";
 
 /**
- * Read a workspace text file and return its contents directly — `readFile` without the variant
+ * Read a text file and return its contents directly — `readFile` without the variant
  * narrowing, for the common case. Takes the same `offset`/`limit` window options. Throws
  * `invalid-argument` when the path names a picture; use `readFile` to inspect those.
  */

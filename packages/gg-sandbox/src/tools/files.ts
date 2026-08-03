@@ -1,5 +1,5 @@
 /**
- * The `files` family: reading, writing, editing and listing workspace files.
+ * The `files` family: reading, writing, editing and listing files.
  *
  * Two lowering decisions live here. {@link asFileRead} flattens the membrane's `{ tag, val }` variant
  * into a `kind`-discriminated object a model can destructure directly — shared with `view.openFile`,
@@ -28,11 +28,13 @@ export function asFileRead(read: FileReadRaw): FileRead {
 }
 
 /**
- * Read a workspace file, returning either `{ kind: "text", ... }` or `{ kind: "image", ... }` — the
+ * Read a file, returning either `{ kind: "text", ... }` or `{ kind: "image", ... }` — the
  * format is detected from the file's bytes, never its extension. `offset` and `limit` select a
  * window of lines and are honoured only under a capped read policy. This gets bytes for your program
  * and puts NOTHING in your context window; `view.openFile` is the call that shows the file to you.
- * Throws `not-found` for a missing path and `invalid-argument` for one that escapes the workspace.
+ * A relative path resolves against your workspace; an absolute one is read as given, so anything in
+ * this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. Throws
+ * `not-found` for a missing path.
  *
  * Reading an IMAGE describes it to your program — label, media type, byte size — and does not show
  * it to YOU: the pixels reach neither your program nor your context window, so a file you only
@@ -50,7 +52,7 @@ export function readFile(
 }
 
 /**
- * Write UTF-8 text to a workspace file, creating parent directories and replacing any existing
+ * Write UTF-8 text to a file, creating parent directories and replacing any existing
  * file, and return the number of bytes written. Writing is the expensive direction of the sandbox —
  * rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a
  * large rewrite across several turns.
@@ -60,7 +62,7 @@ export function writeFile(path: string, contents: string): number {
 }
 
 /**
- * Replace the one exact occurrence of `oldString` in a workspace file with `newString`. Throws
+ * Replace the one exact occurrence of `oldString` in a file with `newString`. Throws
  * `not-found` when the text does not appear and `conflict` — with the number of matches — when it
  * appears more than once; widen the surrounding context until the match is unique.
  */
@@ -69,7 +71,7 @@ export function editFile(path: string, oldString: string, newString: string): vo
 }
 
 /**
- * List a workspace directory, sorted by name; defaults to the workspace root. Each entry carries a
+ * List a directory, sorted by name; defaults to your workspace. Each entry carries a
  * bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an
  * empty array, not a failure.
  */

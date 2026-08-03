@@ -277,15 +277,23 @@ async fn a_picture_that_is_not_shown_reports_why() {
 }
 
 // ---------------------------------------------------------------------------
-// Confinement still applies
+// Outside the workspace
 // ---------------------------------------------------------------------------
 
+/// A picture elsewhere in the container — a frame some tool rendered under `/tmp`, say — is read
+/// on exactly the terms one in the workspace is. Nothing about the path being outside the root is
+/// an error.
 #[tokio::test]
-async fn an_image_read_is_still_confined_to_the_workspace() {
+async fn an_image_outside_the_workspace_reads_as_an_image() {
     let (_dir, ctx) = workspace_with_image(Some(&["text", "image"]));
+    let elsewhere = TempDir::new().unwrap();
+    let outside = elsewhere.path().join("outside.png");
+    std::fs::write(&outside, PNG_BYTES).unwrap();
+
     let outcome = ReadFileTool::new(ReadPolicy::Unlimited)
-        .invoke(json!({ "path": "../outside.png" }), &ctx)
+        .invoke(json!({ "path": outside.to_str().unwrap() }), &ctx)
         .await;
-    assert!(!outcome.ok);
-    assert!(outcome.output.contains("escapes the workspace root"));
+
+    assert!(outcome.ok, "{}", outcome.output);
+    assert!(image_data(&outcome).shown);
 }

@@ -157,7 +157,7 @@ impl Tool for EvictFileViewTool {
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Workspace-relative path whose file views to evict. Omit to evict all file views."
+                        "description": "Path whose file views to evict, written as you read it. Omit to evict all file views."
                     }
                 },
                 "required": [],
@@ -364,7 +364,7 @@ impl Tool for CompactTool {
                     "files": {
                         "type": "array",
                         "items": { "type": "string" },
-                        "description": format!("Workspace-relative paths to re-read into your context after the drop, at most {MAX_COMPACT_FILES}. Omit to carry none across; you can always read a file again later.")
+                        "description": format!("Paths to re-read into your context after the drop, at most {MAX_COMPACT_FILES}. Omit to carry none across; you can always read a file again later.")
                     }
                 },
                 "required": ["summary"],

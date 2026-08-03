@@ -913,7 +913,7 @@ pub fn should_compact(context: &ContextModel, setup: &CompactionSetup) -> bool {
 /// the material the model chose to have in hand while continuing it.
 #[derive(Debug, Clone, Default)]
 pub struct RestoredFile {
-    /// The workspace-relative path, which also tags the restored
+    /// The path the model named, which also tags the restored
     /// [file view](GgContextSource::FileView) so agent-managed context can evict it by name.
     pub path: String,
     /// The rendered read — the same body a `read_file` would have returned, or the error explaining

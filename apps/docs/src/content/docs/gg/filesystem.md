@@ -30,10 +30,20 @@ listing `edit_file` in `disabledTools` withhold the same tool; the capability is
 level at which a tool is *configured*.
 :::
 
-Every path these tools accept is workspace-relative and confined to the run's workspace
-root: an absolute path, or a `..` that would climb above the root, is refused before any
-I/O happens. A run cannot read or clobber files outside the workspace it was seeded
-with.
+## Paths
+
+A path these tools accept is resolved the way any process in the container resolves one:
+a relative path against gg's working directory — the run's workspace root, or the agent's
+own [worktree](/gg/project-management/#every-issue-works-in-its-own-worktree) when it has
+one — and an absolute path as itself. `..` is ordinary, and the only path refused is an
+empty one.
+
+There is deliberately **no** confinement to the workspace root. The container is the
+boundary: the only things in it are what the run was seeded with, and anything these tools
+can reach is one `shell` `cat` away regardless. A lexical guard bought no safety and cost
+real function — gg's own shell [offloads](/gg/shell/#output-offloading) command output to
+`/tmp/gg-shell` and tells the agent to go read it there, which a workspace-confined
+`read_file` then refused.
 
 ## Read modes
 
