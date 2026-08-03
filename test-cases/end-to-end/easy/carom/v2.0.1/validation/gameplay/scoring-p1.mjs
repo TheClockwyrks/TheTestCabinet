@@ -27,6 +27,12 @@ export default function item() {
     // watches the very ball whose crossing the assertions score.
     async act(api) {
       r = await actGoal(api);
+      // `actGoal` returns the instant play leaves the field, which is the same
+      // instant the point lands — so a clip that stopped there cut away before the
+      // scoreboard could be read. Hold on the post-point countdown instead, where
+      // the incremented score is on screen beside the re-held ball. The score was
+      // captured above, so this cannot affect what is asserted.
+      await api.advance(108); // 108 ticks (0.9s), inside the 1.0s post-point hold
     },
 
     // Right goal (x > 1280): player one (left) scores, and player two does not.

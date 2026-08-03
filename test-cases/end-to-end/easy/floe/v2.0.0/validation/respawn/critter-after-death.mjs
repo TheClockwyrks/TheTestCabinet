@@ -24,6 +24,14 @@
 // is live, which is the moment specs/gameplay.md is about. Where a held key takes the
 // critter next belongs to `controls.one-tile`, not here.
 //
+// WHICH IS WHAT THE CLIP SHOWS, AND IT IS NOT A BUG. Because this item holds ArrowUp
+// through the second death on purpose, the recording of it can show the fresh critter
+// hop forward the moment it appears — on a build that hands a still-held key straight to
+// it. That is this script's hand on the key, not the build stepping on its own, and both
+// the death pause and the hop cooldown can be intact while it happens. `respawn.
+// death-pause` is the item that decides whether the pause is there at all; do not read
+// this clip as evidence about it.
+//
 // THE SWEEP MUST NOT LOOK FOR THE ANSWER. An earlier version waited for
 // `phase === "crossing" && critter.row === ROW_NEAR` and then asserted that the
 // critter's row was ROW_NEAR — the very fact it had just searched for. That assertion
@@ -61,10 +69,20 @@ const CRITTER_COL = 20;
 const PLOW_COL = 26;
 const PLOW_SPEED = 6;
 
-// A moment on the median before the player's hop, so the clip shows the solid tile the
-// critter left, and a tail after the second respawn so the fresh critter is on camera.
-const LEAD_TICKS = 36; // 0.3 s
-const TAIL_TICKS = 60; // 0.5 s
+// The camera time between the two deaths, and after the second.
+//
+// THE TWO DEATHS HAVE TO READ AS TWO EVENTS. `act` is the recording, and the second
+// scenario used to be posed 0.3 s after the first respawn — so the fresh critter
+// appeared on the near shore and was teleported to the median almost in the same breath.
+// A reviewer saw a flicker, not a respawn, and certainly not two different causes of
+// death. `REST_TICKS` holds on the first respawn where it lands, before anything is
+// re-posed, which is the moment this item is about; `LEAD_TICKS` then shows the critter
+// sitting on the median before the player's hop takes it into the water. Neither is
+// read: `driveDeath` captures the respawn instant as it happens, so these spans are
+// camera time and change nothing about the verdict.
+const REST_TICKS = 120; // 1 s holding on the first respawn, before the re-pose
+const LEAD_TICKS = 72; // 0.6 s on the median before the player's hop
+const TAIL_TICKS = 90; // 0.75 s after the second respawn
 
 export default function item() {
   // One entry per scenario, and the level's full timer length, for `assert` to read.
@@ -121,6 +139,10 @@ export default function item() {
       // Inflicted: the plow arrives and the crossing ends without the player touching
       // anything.
       await driveDeath(api, "crushed", LIVES);
+
+      // Stay on that respawn for a beat before touching anything, so the fresh critter
+      // is seen where the rule says it lands.
+      await api.advance(REST_TICKS);
 
       // Self-inflicted: pose the second scenario on the fresh crossing the first one
       // produced — open water above the median, the critter on the median, the clock

@@ -6,6 +6,29 @@ fixed-step, render-free core the simulation already runs on — `reset`/`step`/
 `snapshot`, control operations to pose the run, and injected keyboard input. A new
 mandatory deliverable, hence the major bump.
 
+## The debug API can hold a scene still
+
+`specs/instrumentation.md` gains three control operations, all of them about being able
+to set a situation up exactly rather than approximately:
+
+- `setBearAI(enabled)` suspends the hunter's pursuit brain, so a bear holds the tile it
+  is put on however far the simulation is stepped. It suspends the pursuit and nothing
+  else — a sliding hazard still resets the bear, the water still carries or submerges
+  it, it still catches a critter that reaches it, and a reset bear still re-emerges — so
+  a scenario can be built around a bear that stays where it is put without making it
+  immune to the world.
+- `setLaneMotion(row, spec)` changes a lane's speed and direction while leaving its
+  contents exactly where they are, so traffic can be laid out precisely, left parked
+  while the rest of the scene is arranged, and then released. `setLane` repopulates the
+  lane, which loses any positions built up over many steps; this does not.
+- `moveBear(index, direction)` sends a bear one tile in a grid direction under the
+  caller's control instead of the pursuit's, using the real glide rather than a
+  teleport, and without consulting the route the pursuit would have taken — so a bear
+  can be driven somewhere it would normally route around.
+- `setBear` now accepts `{ x, y }` as well as `{ col, row }`, placing a bear at an exact
+  strait-local pixel position. The bear glides continuously and is normally part-way
+  between two tiles, and only the pixel form can put it there.
+
 ## The checklist is validated automatically
 
 The reviewer checklist moves to the categories grammar with per-item validation

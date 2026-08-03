@@ -82,3 +82,11 @@ row, and vice versa, so the two ends are the same corridor. The interior path
 between the two edges follows the rest of the maze and need not be a single straight
 open row. Movement and speed are continuous through the wrap; nothing stops at the
 edge. The wrap is symmetric, so it preserves the left-right mirror.
+
+The two mouths are adjacent tiles — the same neighbor relation the rules above
+already count — so the handover happens at the border. Travelling from one mouth
+tile's center to the other's covers one tile, `32 px`, like any other step between
+neighbors, and a character is never positioned outside the maze frame. Position is
+carried across rather than snapped: the crossing step advances a character by the
+same distance as any other step of that move, leaving it as far past the far border
+as it had gone past the near one, not rounded to the far mouth's tile center.

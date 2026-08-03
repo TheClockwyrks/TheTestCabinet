@@ -27,6 +27,26 @@
 // scenario had, in a new shape. A 4x4 pocket puts four tiles between the Mote and the
 // tile being placed, so occupancy cannot explain the refusal and the only rule left
 // that can is the one this item is about.
+//
+// WHY THE FRAME IS BUILT FROM SINKS AND NOT ARCS.
+//
+// It used to be Arcs, and an Arc is an emitter: a ring of twelve of them around a Mote
+// is a firing squad. The Mote spent the clip being shot at from every side and, on a
+// build whose Arcs run warm enough, died inside the pocket partway through — which
+// takes the premise out from under the whole item, since the refusal is only correct
+// while there is a unit in there to strand. Even when it survived, the clip showed a
+// unit under fire in a box, and the one thing it was supposed to show — a side that
+// stays open because closing it would trap that unit — read as incidental.
+//
+// Sinks frame the pocket identically: same 2x2 footprint, same walls (movers "are still
+// walls like any tower", specs/heat.md), and the placement rules are about footprints
+// rather than tower types, so nothing about what is being tested changes. What goes away
+// is the shooting. The Mote stands in an open-sided box, the closing placement is
+// refused, and the Mote then walks out through the side that was left open — which is
+// the rule's own premise, on screen.
+//
+// A Sink cools a TOUCHING emitter (specs/heat.md) and there is no emitter here at all,
+// so the frame does nothing thermal either.
 
 import {
   newGame,
@@ -37,6 +57,8 @@ import {
   actTail,
   COLS,
   ROWS,
+  PARK_COL,
+  PARK_ROW,
 } from "../_helpers.mjs";
 
 // The 2x2 footprints that frame a 4x4 pocket whose top-left tile is (c, r), and the
@@ -60,11 +82,14 @@ function frameOf(c, r) {
   return { walls, gap: [c + 4, r] };
 }
 
+// The frame, and the placement that would close it, are Sinks — see the note above.
+const WALL_TYPE = "sink";
+
 async function buildFrame(api, c, r) {
   const { walls, gap } = frameOf(c, r);
   let built = 0;
   for (const [col, row] of walls) {
-    if ((await build(api, "arc", col, row)) !== null) built += 1;
+    if ((await build(api, WALL_TYPE, col, row)) !== null) built += 1;
   }
   return { built, walls: walls.length, gap };
 }
@@ -147,7 +172,7 @@ export default function item() {
         // instantaneous; the clip gets its beat below, once the verdict is in.
         canTrap = await api.call(
           "canPlace",
-          "arc",
+          WALL_TYPE,
           around.gap[0],
           around.gap[1],
           0,
@@ -158,7 +183,19 @@ export default function item() {
         // placement shows the refusal happening (the side stays open), and it also
         // widens the check: a build whose `canPlace` answers correctly while its
         // placement path traps the Mote anyway is caught here rather than passing.
-        trapBuilt = await build(api, "arc", around.gap[0], around.gap[1]);
+        trapBuilt = await build(api, WALL_TYPE, around.gap[0], around.gap[1]);
+        // Hold the refused footprint on the gap and capture it. A refusal is the
+        // ABSENCE of a tower, so on its own it looks like nothing was ever tried there;
+        // what the build draws for it is the invalid-footprint highlight (`#ff4d4d`,
+        // for a placement that "would ... trap the surge in", specs/controls.md), and
+        // holding the preview is what puts that in frame. Both calls are control ops
+        // and consume no simulation time, so the Mote is still where the placement was
+        // refused over it.
+        await api.call("armTower", WALL_TYPE);
+        await api.call("movePreview", around.gap[0], around.gap[1]);
+        await api.settle(80);
+        await api.screenshot("refused");
+        await api.call("movePreview", PARK_COL, PARK_ROW);
         // Now the beat. It shows the gap still open after the refusal — and then the
         // Mote walking out through it, which is the premise the rule rests on made
         // visible: that side really was this unit's only way out.
@@ -174,12 +211,12 @@ export default function item() {
 
         canEmpty = await api.call(
           "canPlace",
-          "arc",
+          WALL_TYPE,
           empty.gap[0],
           empty.gap[1],
           0,
         );
-        await build(api, "arc", empty.gap[0], empty.gap[1]);
+        await build(api, WALL_TYPE, empty.gap[0], empty.gap[1]);
         await actTail(api); // hold on the same side closing, with nobody inside
       }
     },

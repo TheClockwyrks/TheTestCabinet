@@ -1,3 +1,49 @@
+## Scoring, contact and spin clips open before the event, not on it
+
+The clip a reviewer watches is an item's `act` phase, so where `act` starts is
+where the footage starts. Several items began theirs on — or just after — the very
+moment they exist to demonstrate, leaving the event itself to be inferred from its
+aftermath. The checks were right; only what they filmed was too tight.
+
+The two goal checks (`gameplay/scoring-p1`, `scoring-p2`) ran until play left the
+field, which is the same instant the point lands, so the clip cut away before the
+scoreboard could be read. Both now hold for a further 0.9 s on the post-point
+countdown, where the incremented score sits beside the re-held ball.
+
+The paddle-contact drives (`paddles/hit-center`, `hit-edge`, and the spin checks
+`stationary`, `at-bound`, `moving-solo-player`, `moving-versus-p1`,
+`moving-versus-p2`) posed the ball about ten pixels off the paddle face, so the
+bounce landed within a couple of ticks and the clip opened on a return already in
+flight — showing where the ball went, never that it went there because it struck a
+paddle. `arrangePaddleHit` now takes a `leadTicks` run-up: the ball starts half a
+second of flight further out and, because a posed `vy` persists across steps, a
+swinging paddle starts the matching distance upstream so it arrives at the same
+contact. The rebound the assertions read is the same one the real physics produces;
+only the footage in front of it is new.
+
+The swinging contacts needed room for that. A paddle sweeping at 720 px/s covers
+360 px over the run-up and its center y is clamped to `[55, 665]`, so a contact
+aimed at mid-field would have to begin off the field, where the clamp pins the
+paddle still and it imparts no spin at all. The three moving-paddle contacts — and
+the free-paddle control inside `at-bound` — now meet the ball at `y=500` for a
+downward swing and `y=220` for an upward one, lanes clear of both obstacles over
+the stretch the ball crosses (`at-bound`'s two assertion labels say "clear of the
+bound" rather than "mid-field" to match). The bound-pinned contact leads the ball
+alone: leading its paddle would unpin it and hand back the very velocity that check
+exists to deny.
+
+## The no-tunnel clip plays its three probes as three shots
+
+`ball/no-tunnel` fires the ball at the 980 px/s ceiling at an obstacle, a paddle
+and a wall, and read the three rebounds back to back with barely any run-up and no
+follow-through — about a second of footage for all three. The ball appeared to jump
+around the field between contacts, which reads as exactly the tunnelling the item
+disproves. Each probe now gets roughly half a second of approach, its contact, and
+a tail travelling away from what it struck, with the ball posed still for 0.2 s in
+between so each shot reads as its own. Every tail is sized to keep the ball on the
+field, so nothing scores mid-clip. The three rebounds the assertions read, and the
+assertions themselves, are unchanged.
+
 ## Common gyre checks pin the obstacles upright
 
 In the gyre variant the obstacles sway and rotate, so no mid-field lane stays

@@ -37,18 +37,31 @@ defines.
 ## Audio
 
 Audio is required: synthesize it with the Web Audio API (no audio files). Provide
-distinct short sounds for firing, a rock shattering, the ship's thrust, the saucer's
-presence, and the ship being destroyed. The game stays fully playable with sound
-muted and never fails to run or load if audio cannot start. Provide a mute toggle
-(`M`), and do not start audio until the player first interacts, since browsers block
-autoplay.
+distinct sounds for these five events, each clearly its own:
+
+- **Firing** — a short cue on each shot the ship takes.
+- **A rock shattering** — a short cue each time a rock breaks or is destroyed.
+- **The ship's thrust** — a *held* sound, running for as long as the thrust key is
+  down and stopping when it is released. This one is continuous by nature; a single
+  blip when thrust begins is not enough.
+- **The saucer arriving** — a short cue when a saucer enters the field, so the player
+  hears it coming without having to spot it. A sustained hum held for as long as the
+  saucer is on the field is welcome, but it is not required: one distinct cue on
+  arrival satisfies this.
+- **The ship being destroyed** — a short cue on each death.
+
+The game stays fully playable with sound muted and never fails to run or load if
+audio cannot start. Provide a mute toggle (`M`), and do not start audio until the
+player first interacts, since browsers block autoplay.
 
 ## The HUD
 
 - The score sits at the top-left in large monospace digits (about 44 px tall), its
   left edge near `x = 40` and its top near `y = 28`.
 - Remaining lives are shown just below the score as a row of small ship glyphs, one
-  per life still in reserve, starting near `(44, 92)`.
+  per life still in **reserve** — the ship currently being flown is on the field, not
+  in the row — starting near `(44, 92)`. That is one fewer than `snapshot().lives`
+  (`specs/instrumentation.md`), so a game that has just started shows two glyphs.
 {{#if (eq variant.slug "warhead")}}
 - A torpedo-charge indicator sits just below the lives row, near `(44, 140)`: a small
   torpedo glyph in `#b8ff5c` with a slim charge bar beneath it. When a torpedo is

@@ -27,21 +27,30 @@ export default function item() {
 
     // The refusals and the installs that follow once the material is supplied are the behavior, so
     // the whole gate sequence runs here and the clip shows it.
+    // Every step here is an instant control op, so run end to end they collapse into one frame
+    // change and the clip shows a finished rocket rather than a gate. The refusals are the point:
+    // each one needs a beat on screen — the component still unbuilt, the satchel still empty —
+    // before the material is supplied and the same call is allowed through.
     async act(api) {
+      await api.advance(45); // 45 ticks = 0.75 s: Guidance next, satchel empty
       await api.call("fabricate"); // no Resonite → must be refused
       blockedG = (await api.snapshot()).rocket.nextComponent;
+      await api.advance(60); // 60 ticks = 1 s on the refusal: nothing built, nothing spent
 
       await api.call("giveMaterial", "resonite");
+      await api.advance(30); // 30 ticks = 0.5 s with the Resonite banked in the satchel
       await api.call("fabricate");
       afterG = await api.snapshot();
+      await api.advance(60); // 60 ticks = 1 s on Guidance installed
 
       await api.call("fabricate"); // no Cryenite → refused
       blockedT = (await api.snapshot()).rocket.nextComponent;
+      await api.advance(60); // 60 ticks = 1 s on the second refusal
       await api.call("giveMaterial", "cryenite");
+      await api.advance(30);
       await api.call("fabricate");
       afterT = await api.snapshot();
-
-      await api.advance(30); // 30 ticks = 0.5 s, the old 500 ms clip tail
+      await api.advance(90); // 90 ticks = 1.5 s on the Thruster installed
     },
 
     async assert(api, check) {

@@ -22,14 +22,21 @@ export default function item() {
 
     // The two fabrications ARE the behavior under test, so they happen here and the clip shows both
     // parts install.
+    //
+    // A fabrication is one instant control op, so back-to-back calls move the Credits readout and
+    // the rocket pips twice between three consecutive frames: the clip lands on a final balance and
+    // two lit pips, with no deduction ever visible. What this item asserts is the two DEDUCTIONS
+    // (`4000`, then `7500`), so each one needs a beat before it to establish the balance it comes
+    // out of and a beat after to show what it left.
     async act(api) {
+      await api.advance(45); // 45 ticks = 0.75 s on the funded balance and the empty rocket
       await api.call("fabricate");
       a = await api.snapshot();
+      await api.advance(60); // 60 ticks = 1 s: the Hull Frame's pip lit, its price gone
 
       await api.call("fabricate");
       b = await api.snapshot();
-
-      await api.advance(30); // 30 ticks = 0.5 s, the old 500 ms clip tail
+      await api.advance(90); // 90 ticks = 1.5 s: the Fuel Cells' pip lit, the balance down again
     },
 
     async assert(api, check) {

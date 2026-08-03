@@ -55,11 +55,12 @@ flight, and slow-immunity.
   Flak (`specs/towers.md`) is the dedicated answer because it targets only flyers, so
   Drifts still force the player to budget for reliable anti-air rather than leaning
   entirely on the maze.
-- Core: the boss. A massive HP pool that is immune to slowing entirely (a Rime does
-  nothing to it, regardless of the Rime's heat), leaking 5 lives if it escapes through
-  an exhaust. A Core appears on the milestone waves of `specs/gameplay.md` and is the
-  trial of whether your hot core can actually output the damage to break it before it
-  crosses the floor.
+- Core: the boss. A massive HP pool that is immune to slowing entirely: a Rime's slow is
+  never applied to it, regardless of the Rime's heat. Immunity is to the slow effect
+  only and changes nothing about targeting — a Rime treats it as an ordinary target under
+  the rules in `specs/towers.md`. It leaks 5 lives if it escapes through an exhaust. A
+  Core appears on the milestone waves of `specs/gameplay.md` and is the trial of whether
+  your hot core can actually output the damage to break it before it crosses the floor.
 
 ## Wave composition
 

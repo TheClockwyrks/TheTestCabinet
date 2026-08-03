@@ -15,6 +15,25 @@
 // the new wave from the banner or from the spawn that follows it. Either satisfies the
 // item.
 //
+// The SPAWN's place in that sequence is not open, and this item is where it is graded.
+// `specs/gameplay.md` puts the two in order — "show a brief WAVE N banner (about 1.5 s,
+// with N the wave about to start) ... then spawn the next wave" — so the banner runs on a
+// field the next wave has not been put on yet, which is what makes it a moment of respite
+// rather than a caption over five Large rocks already bearing down. So the field is read
+// at the instant the banner is raised (it must still be empty) and the spawn is then
+// waited for separately (it must not have happened yet when the banner went up).
+//
+// The turnover latitude above is deliberately not extended to this. A build may count the
+// new wave from either end of the banner because the spec never says which; it may not
+// spawn during the banner, because the spec says "then".
+//
+// It is graded here rather than left to the items that merely trip over it. Several checks
+// isolate a subject on a cleared field, and a wave arriving early lands in the middle of
+// their measurements — but they now park a bystander rock so the field never empties at
+// all (see `arrangeBystanderRock` in `_helpers.mjs`), which is the right way for an item
+// to handle a rule that is not its subject. That leaves this one item asking the question
+// directly, on a transition it drives on purpose.
+//
 // Everything here consumes time, so it all belongs to `act` — `clearRocks` is a control op,
 // which is legal there — and the clip shows the transition itself.
 //
@@ -32,6 +51,7 @@ export default function item() {
   let settled;
   let raised;
   let ended;
+  let spawned;
 
   return {
     id: "waves.banner",
@@ -71,6 +91,13 @@ export default function item() {
         max: ticks(WINDOW),
         poll: TICK,
       });
+      // The next wave arrives — after the banner, which is what `spent` records: a
+      // spawn that had already happened when the banner went up would have been
+      // caught by the empty-field assertion at that instant instead.
+      spawned = await api.until((s) => s.rocks.length > 0, {
+        max: ticks(WINDOW),
+        poll: TICK,
+      });
       raised = { ...raised, turned };
     },
 
@@ -80,6 +107,11 @@ export default function item() {
         settled.hit,
       );
       check.expectOk("clearing the field raises a WAVE banner", raised.hit);
+      check.expectEq(
+        "the banner goes up on a field the next wave has not been spawned into yet",
+        raised.snap.rocks.length,
+        0,
+      );
       check.expectOk("the wave advances to the next wave", raised.turned.hit);
       check.expectEq(
         "the banner is for the new wave",
@@ -87,6 +119,10 @@ export default function item() {
         before + 1,
       );
       check.expectOk("the banner is brief — it clears again", ended.hit);
+      check.expectOk(
+        "the next wave is spawned once the banner has run, not during it",
+        spawned.hit,
+      );
     },
   };
 }
