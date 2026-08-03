@@ -3177,19 +3177,24 @@ details[open] > summary .reqCaret {
   white-space: nowrap;
 }
 
+// A bare glyph, not a button-shaped control: the head already has a rule under it
+// and a label opposite, so an outline here only adds a box to look at. Its hit area
+// comes from the padding rather than from anything drawn.
 .overlayClose {
   flex-shrink: 0;
-  padding: t.$space-2xs t.$space-sm;
-  border-radius: t.$radius-sm;
-  border: t.$border-hairline solid t.$color-border;
-  background: transparent;
-  color: t.$color-text;
-  font-size: t.$font-sm;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-2xs t.$space-xs;
+  border: none;
+  background: none;
+  color: t.$color-text-muted;
+  font-size: t.$font-md;
+  line-height: 1;
   cursor: pointer;
 
   &:hover {
-    border-color: t.$color-accent;
-    color: t.$color-accent;
+    color: t.$color-text;
   }
 }
 

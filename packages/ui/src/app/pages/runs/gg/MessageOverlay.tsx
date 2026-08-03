@@ -95,8 +95,9 @@ function MessageOverlay({
             className={panels.overlayClose}
             onClick={onClose}
             aria-label="Close fullscreen"
+            title="Close"
           >
-            Close ✕
+            ✕
           </button>
         </div>
         <pre className={panels.overlayContent}>{content}</pre>
