@@ -43,10 +43,12 @@ use test_cabinet_core::gg_replay::GgShellOrigin;
 
 use crate::context::{EvictionResult, OpenViewInfo, ViewKind};
 use crate::ending::Ending;
+use crate::knowledge::{KnowledgeModules, KnowledgeOrigin, PendingOnUse};
+use crate::memories::MemoryCode;
 use crate::programs::{ProgramLibrary, ProgramRefusal, ProgramSummary};
 use crate::sandbox::{
-    ProgramError, SandboxViewOpened, ToolApi, UnreachableTail, ViewOpenOutcome, ViewRefusal,
-    WorkflowStageInput,
+    ProgramError, ProgramScope, RunEnding, SandboxViewOpened, ToolApi, UnreachableTail,
+    ViewOpenOutcome, ViewRefusal, WorkflowStageInput,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -236,6 +238,7 @@ pub(super) async fn run_code_turn(
     skills: SkillsRuntime,
     docs: DocsRuntime,
     programs: ProgramLibrary,
+    knowledge: KnowledgeModules,
     subagents: Option<SubagentContext>,
 ) -> (CodeTurnOutcome, Option<CodeTurnState>) {
     let emitter = turn.emitter;
@@ -283,6 +286,7 @@ pub(super) async fn run_code_turn(
                 // and a reply that was not a program executed nothing. A model that fetches after
                 // one of these turns gets the last program it really ran, which is what it wants.
                 programs,
+                knowledge,
                 subagents,
                 // Nothing ran, so no program could have requested a wait, declared a compaction, or
                 // made a call against a pending one.
@@ -304,6 +308,7 @@ pub(super) async fn run_code_turn(
         skills,
         docs,
         programs,
+        knowledge,
         subagents,
     )
     .await;
@@ -1025,6 +1030,11 @@ pub(super) struct CodeTurnState {
     /// recorded in it** — the turn appends before it hands the state back, so the next turn's
     /// `programs.get()` returns the program this one ran.
     pub(super) programs: ProgramLibrary,
+    /// The code this agent has loaded by reading a code [skill](crate::skills) or
+    /// [memory](crate::memories) — the modules bound at `lib.<key>` in every later program. It costs
+    /// no context and a compaction does not touch it; it travels with the turn only because it is
+    /// per-agent state the api owned while the program ran.
+    pub(super) knowledge: KnowledgeModules,
     /// This agent's delegation context, when the capability is on.
     pub(super) subagents: Option<SubagentContext>,
     /// The board issues this turn's program asked to wait on, in first-requested order (empty when
@@ -1100,6 +1110,7 @@ async fn run_code_program(
     skills: SkillsRuntime,
     docs: DocsRuntime,
     programs: ProgramLibrary,
+    knowledge: KnowledgeModules,
     subagents: Option<SubagentContext>,
 ) -> (SandboxOutcome, ProgramChain, Option<CodeTurnState>) {
     let program = source.to_string();
@@ -1123,6 +1134,7 @@ async fn run_code_program(
         skills,
         docs,
         programs,
+        knowledge,
         subagents,
         issue_waits_requested: Vec::new(),
         compact_requested: None,
@@ -1163,9 +1175,20 @@ async fn run_code_program(
         let mut api = api;
         let mut accumulated: Option<SandboxOutcome> = None;
         let mut chain = ProgramChain::first(&source);
-        loop {
-            let (mut outcome, returned) =
-                run_program(&source, &enabled, role, library, limits, deadline, api);
+        let (mut merged, chain, mut api) = loop {
+            let modules = api.knowledge.code_modules();
+            let (mut outcome, returned) = run_program(
+                &source,
+                ProgramScope {
+                    enabled: &enabled,
+                    modules: &modules,
+                    ending: RunEnding::Role(role),
+                    library,
+                },
+                limits,
+                deadline,
+                api,
+            );
             api = returned;
             let handover = outcome.rerun.take();
             let ended = outcome.completion.is_some();
@@ -1191,7 +1214,13 @@ async fn run_code_program(
             chain.advance(&next);
             source = next;
             accumulated = Some(merged);
-        }
+        };
+        // The on-use scripts of everything this turn brought into use, run now that the turn's own
+        // program has ended. Deferring is not a convenience: a read reaches gg from inside a
+        // membrane call that already holds the api, so there is no api to run a second program
+        // against until this point — and the views these open belong in the *next* prompt anyway.
+        api = run_on_use_scripts(&mut merged, &enabled, limits, deadline, api);
+        (merged, chain, api)
     });
 
     match sandbox.await {
@@ -1203,6 +1232,7 @@ async fn run_code_program(
                 skills: api.skills,
                 docs: api.docs,
                 programs: api.programs,
+                knowledge: api.knowledge,
                 subagents: api.subagents,
                 issue_waits: api.issue_waits_requested,
                 compact_requested: api.compact_requested,
@@ -1236,6 +1266,8 @@ async fn run_code_program(
                 view_refusals: Vec::new(),
                 views_suppressed: 0,
                 deferred_note: None,
+                // Whatever a module said on its way down died with the store, like everything else.
+                module_errors: Vec::new(),
                 returned_value: false,
                 completion: None,
                 revoked_completion: None,
@@ -1338,6 +1370,7 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
         mut view_refusals,
         views_suppressed,
         deferred_note: earlier_deferred,
+        mut module_errors,
         returned_value: earlier_returned,
         // An earlier link never carries either: the chain stops at a program that declared an
         // ending, and a program that failed had its hand-over revoked, so nothing that got here
@@ -1361,6 +1394,11 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
     views_opened.extend(later.views_opened);
     views_closed.extend(later.views_closed);
     view_refusals.extend(later.view_refusals);
+    // Accumulated, not replaced: every link of a chain is handed the same modules, so a module that
+    // failed to load failed for each of them — but a link that loaded a *new* one has a failure the
+    // earlier links could not have reported.
+    module_errors.extend(later.module_errors);
+    module_errors.dedup();
 
     SandboxOutcome {
         tool_calls: calls,
@@ -1374,6 +1412,7 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
         view_refusals,
         views_suppressed: views_suppressed.saturating_add(later.views_suppressed),
         deferred_note: later.deferred_note.or(earlier_deferred),
+        module_errors,
         returned_value: later.returned_value || earlier_returned,
         completion: later.completion,
         revoked_completion: later.revoked_completion.or(earlier_revoked),
@@ -1439,6 +1478,94 @@ fn pin_read_skill(
     }
 }
 
+/// Run every on-use script this turn queued, one sandbox run each, and record what they did.
+///
+/// Called once, after the turn's last program has ended and before its outcome is assembled. Each
+/// script is an ordinary [`run_program`] against the **same api** — so its views land in this
+/// agent's window and its tool calls appear in this turn's roster, which is right: they happened on
+/// this turn, and an operator reading the run must be able to see them. Two things differ from a
+/// turn's own program, and both are the same rule stated twice:
+///
+/// * [`RunEnding::None`] — an on-use script is not the agent's turn, so it has no `finish` to call.
+/// * `library: false` — nor any business handing gg a replacement program.
+///
+/// A script that fails is **not** the model's failure. Its source was never shown to the model, so
+/// reporting the throw as a program error would be an accusation about code the model cannot see;
+/// it goes into `module_errors`, which the turn's feedback renders as one sentence naming the skill
+/// or memory. `outcome.result` is untouched: the turn succeeded or failed on the model's own
+/// program, whatever a skill's script then did.
+fn run_on_use_scripts(
+    outcome: &mut SandboxOutcome,
+    enabled: &[String],
+    limits: SandboxLimits,
+    deadline: Option<Instant>,
+    mut api: LoopToolApi,
+) -> LoopToolApi {
+    // Drained rather than iterated: a script that itself reads a skill would otherwise queue work
+    // this loop is still walking. What it queues waits for the next turn, which is the same promise
+    // every on-use script is given.
+    let pending = api.knowledge.take_pending();
+    for PendingOnUse {
+        origin,
+        name,
+        js,
+        module,
+    } in pending
+    {
+        let modules: Vec<_> = module.into_iter().collect();
+        let (script, returned) = run_program(
+            &js,
+            ProgramScope {
+                enabled,
+                modules: &modules,
+                ending: RunEnding::None,
+                // An on-use script has no business handing gg a replacement for the model's turn.
+                library: false,
+            },
+            limits,
+            deadline,
+            api,
+        );
+        api = returned;
+        outcome.tool_calls.extend(script.tool_calls);
+        outcome.refusals.extend(script.refusals);
+        outcome.logs.extend(script.logs);
+        outcome.views_opened.extend(script.views_opened);
+        outcome.views_closed.extend(script.views_closed);
+        outcome.view_refusals.extend(script.view_refusals);
+        outcome.module_errors.extend(script.module_errors);
+        outcome.elapsed = outcome.elapsed.saturating_add(script.elapsed);
+        let failure = match &script.result {
+            Ok(result) => result.error.as_ref().map(|error| error.message.clone()),
+            Err(error) => Some(error.to_string()),
+        };
+        if let Some(failure) = failure {
+            outcome.module_errors.push((
+                format!("{} `{name}`", origin.noun()),
+                format!("its on-use script failed: {failure}"),
+            ));
+        }
+    }
+    api
+}
+
+/// The JSON a memory write is **recorded** as, for the roster, the replay record and the observer.
+///
+/// The two code halves are recorded as their lengths rather than their text. They can be tens of
+/// kilobytes each, they are not what a reader of a run wants beside a memory write, and the source
+/// is already recoverable from the program that wrote it — which the [library](crate::programs)
+/// keeps.
+fn memory_args(name: &str, description: &str, body: &str, code: &MemoryCode) -> Value {
+    let chars = |half: &Option<String>| half.as_ref().map(|source| source.chars().count());
+    json!({
+        "name": name,
+        "description": description,
+        "body": body,
+        "codeChars": chars(&code.code),
+        "onUseChars": chars(&code.on_use),
+    })
+}
+
 // ---------------------------------------------------------------------------
 // The caps a program's views are held to
 // ---------------------------------------------------------------------------
@@ -1501,6 +1628,9 @@ pub(super) struct LoopToolApi {
     /// program fared. Disabled — and therefore empty and unreadable — for an agent whose profile
     /// does not enable the capability.
     pub(super) programs: ProgramLibrary,
+    /// The code this agent has loaded — the modules bound at `lib.<key>` in every program it writes
+    /// from here on, and the on-use scripts a read this turn queued for the end of it.
+    pub(super) knowledge: KnowledgeModules,
     pub(super) subagents: Option<SubagentContext>,
     /// The board issues this program asked to wait on, in first-requested order. A `wait_for_issue`
     /// call records its id here rather than blocking, and the loop performs the actual suspension
@@ -1570,6 +1700,91 @@ pub(super) struct LoopToolApi {
 
 #[allow(dead_code)]
 impl LoopToolApi {
+    /// Bring a code skill or memory into use: transpile and bind its module, queue its on-use
+    /// script, and tell the model where its code went.
+    ///
+    /// The note is **appended to the read's own output**, because a read's result *is* the body —
+    /// one string crosses the membrane — and a binding path a model has to infer is one it will
+    /// infer wrong. A prose skill or memory carries neither half, so nothing is appended and the
+    /// read is exactly what it always was.
+    ///
+    /// A failure to compile does **not** fail the read. The body is what was asked for, the code is
+    /// somebody else's (an authored skill's, or a memory written twenty turns ago), and refusing to
+    /// hand over a mostly-prose skill because its helper has a syntax error would be the wrong
+    /// trade. The diagnostic is appended instead, located in the author's own coordinates.
+    fn bring_into_use(
+        &mut self,
+        origin: KnowledgeOrigin,
+        name: &str,
+        code: Option<&str>,
+        on_use: Option<&str>,
+        mut outcome: ToolOutcome,
+    ) -> ToolOutcome {
+        if code.is_none() && on_use.is_none() {
+            return outcome;
+        }
+        match self.knowledge.load(origin, name, code, on_use) {
+            Ok(loaded) => {
+                if let Some(note) = loaded.note(origin) {
+                    outcome.output.push_str(&note);
+                }
+            }
+            Err(error) => {
+                outcome.output.push_str(&format!("\n\n---\nNOTE: {error}"));
+            }
+        }
+        outcome
+    }
+
+    /// Load a memory's code at the moment it is **written**, under the strategy where a memory is in
+    /// context from the moment it exists.
+    ///
+    /// The [scratchpad](crate::memories::MemoryStrategy::Scratchpad) has no `read_memory`: every
+    /// body is already pinned in the window, so there is no later moment at which the memory "comes
+    /// into use". Its code therefore loads here. Under the two file-shaped strategies the write does
+    /// **not** load — the memory is not in context until it is read, and its code follows the same
+    /// rule the strategy already sets for its body.
+    ///
+    /// Unlike a read, a write whose code does not compile is **refused**. The model wrote that code
+    /// on this call, so this is the one moment at which a located diagnostic is exactly what it
+    /// needs — and storing a module that can never be bound would be storing something that only
+    /// fails later.
+    fn loaded_on_write(
+        &mut self,
+        name: &str,
+        code: &MemoryCode,
+        mut outcome: ToolOutcome,
+    ) -> ToolOutcome {
+        if !outcome.ok || code.is_empty() {
+            return outcome;
+        }
+        let strategy = self.memories_rt.strategy();
+        if strategy.has_index() || strategy.has_search() {
+            // The code is stored and will load when the memory is read — but the model wrote it on
+            // *this* call and would otherwise be left to wonder whether it took. One sentence, on
+            // the call that earned it.
+            outcome.output.push_str(
+                "\n\n---\nThe code this memory carries is stored. It loads — and its `lib` key is \
+                 named — when you read the memory back.",
+            );
+            return outcome;
+        }
+        match self.knowledge.load(
+            KnowledgeOrigin::Memory,
+            name,
+            code.code.as_deref(),
+            code.on_use.as_deref(),
+        ) {
+            Ok(loaded) => {
+                if let Some(note) = loaded.note(KnowledgeOrigin::Memory) {
+                    outcome.output.push_str(&note);
+                }
+                outcome
+            }
+            Err(error) => ToolOutcome::failed(ToolFailure::InvalidArgument, error.to_string()),
+        }
+    }
+
     /// Gate the call and, if it is allowed, run `exec` (an ordinary typed tool call), then service
     /// the outcome (telemetry, AMC reclaim, replay, board pump, state events, skill pin). Returns
     /// the serviced outcome the membrane maps to a WIT result.
@@ -2170,32 +2385,64 @@ impl ToolApi for LoopToolApi {
     }
     fn read_skill(&mut self, name: String) -> ToolOutcome {
         self.serviced("read_skill", json!({ "name": name }), |api| {
-            ReadSkillTool::new(api.skills.library()).read(name.clone())
+            let library = api.skills.library();
+            let outcome = ReadSkillTool::new(library.clone()).read(name.clone());
+            if !outcome.ok {
+                return outcome;
+            }
+            // Reading a code skill is what loads it. The library is authored, not written by this
+            // model, so a skill whose code does not compile still reads: the body is what the model
+            // asked for, and the failure is appended as a sentence rather than turned into a refusal
+            // of a skill that may be mostly prose.
+            let skill = library.get(&name);
+            api.bring_into_use(
+                KnowledgeOrigin::Skill,
+                &name,
+                skill.and_then(crate::skills::Skill::code),
+                skill.and_then(crate::skills::Skill::on_use),
+                outcome,
+            )
         })
     }
-    fn write_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome {
+    fn write_memory(
+        &mut self,
+        name: String,
+        description: String,
+        body: String,
+        code: MemoryCode,
+    ) -> ToolOutcome {
         self.serviced(
             "write_memory",
-            json!({ "name": name, "description": description, "body": body }),
+            memory_args(&name, &description, &body, &code),
             |api| {
-                WriteMemoryTool::new(api.memories_rt.binding()).write(
+                let outcome = WriteMemoryTool::new(api.memories_rt.binding()).write(
                     name.clone(),
                     description.clone(),
                     body.clone(),
-                )
+                    code.clone(),
+                );
+                api.loaded_on_write(&name, &code, outcome)
             },
         )
     }
-    fn update_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome {
+    fn update_memory(
+        &mut self,
+        name: String,
+        description: String,
+        body: String,
+        code: MemoryCode,
+    ) -> ToolOutcome {
         self.serviced(
             "update_memory",
-            json!({ "name": name, "description": description, "body": body }),
+            memory_args(&name, &description, &body, &code),
             |api| {
-                UpdateMemoryTool::new(api.memories_rt.binding()).update(
+                let outcome = UpdateMemoryTool::new(api.memories_rt.binding()).update(
                     name.clone(),
                     description.clone(),
                     body.clone(),
-                )
+                    Some(code.clone()),
+                );
+                api.loaded_on_write(&name, &code, outcome)
             },
         )
     }
@@ -2204,22 +2451,50 @@ impl ToolApi for LoopToolApi {
         name: String,
         description: String,
         contents: String,
+        code: MemoryCode,
     ) -> ToolOutcome {
         self.serviced(
             "create_memory",
-            json!({ "name": name, "description": description, "contents": contents }),
+            memory_args(&name, &description, &contents, &code),
             |api| {
-                CreateMemoryTool::new(api.memories_rt.binding()).create(
+                let outcome = CreateMemoryTool::new(api.memories_rt.binding()).create(
                     name.clone(),
                     description.clone(),
                     contents.clone(),
-                )
+                    code.clone(),
+                );
+                api.loaded_on_write(&name, &code, outcome)
             },
         )
     }
     fn read_memory(&mut self, name: String) -> ToolOutcome {
         self.serviced("read_memory", json!({ "name": name }), |api| {
-            ReadMemoryTool::new(api.memories_rt.binding()).read(name.clone())
+            let binding = api.memories_rt.binding();
+            let outcome = ReadMemoryTool::new(binding.clone()).read(name.clone());
+            if !outcome.ok {
+                return outcome;
+            }
+            // Under the two file-shaped strategies a memory is not in context until it is read, so
+            // the read is also what loads its code. (Under the scratchpad there is no `read_memory`
+            // at all: every memory is already in the window, and its code was loaded when it was
+            // written.)
+            let (code, on_use) = {
+                let store = binding.lock();
+                match store.read(&name) {
+                    Ok(memory) => (
+                        memory.code().map(str::to_string),
+                        memory.on_use().map(str::to_string),
+                    ),
+                    Err(_) => (None, None),
+                }
+            };
+            api.bring_into_use(
+                KnowledgeOrigin::Memory,
+                &name,
+                code.as_deref(),
+                on_use.as_deref(),
+                outcome,
+            )
         })
     }
     fn edit_memory(&mut self, name: String, search: String, replace: String) -> ToolOutcome {

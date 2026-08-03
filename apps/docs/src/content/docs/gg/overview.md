@@ -240,10 +240,12 @@ saved, launched, and analyzed in the console is
 
 **Knowledge**
 
-- [Skills](/gg/skills/) — pre-authored markdown, description shown up front, body
-  retained across compaction once read.
+- [Skills](/gg/skills/) — pre-authored knowledge, catalogued in the prompt and read by
+  name: prose retained across compaction once read, code bound into the agent's
+  programs, or both. gg ships eleven of its own, one per family of the functions it
+  offers.
 - [Memories](/gg/memories/) — the same, but curated by the model itself, and
-  bounded.
+  bounded — code included.
 
 **Work tracking**
 

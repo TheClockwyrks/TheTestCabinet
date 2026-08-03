@@ -16,11 +16,12 @@ use std::time::Instant;
 use serde_json::{Value, json};
 
 use super::invoker::{SandboxViewOpened, ViewOpenOutcome, ViewRefusal};
-use super::membrane::MembraneState;
+use super::membrane::{MembraneState, RunEnding};
 use super::{FunctionSummary, SandboxLimits, ToolApi, WorkflowStageInput};
 use crate::board::IssueStatus;
 use crate::context::{FileRegion, OpenViewInfo, ViewKind};
 use crate::ending::EndingRole;
+use crate::memories::MemoryCode;
 use crate::model::ImageContent;
 use crate::programs::{ProgramLibrary, ProgramRefusal, ProgramSummary};
 use crate::tasks::TaskStatus;
@@ -228,16 +229,40 @@ impl ToolApi for FakeToolApi {
     fn read_skill(&mut self, name: String) -> ToolOutcome {
         self.call("read_skill", json!({ "name": name }))
     }
-    fn write_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome {
+    fn write_memory(
+        &mut self,
+        name: String,
+        description: String,
+        body: String,
+        code: MemoryCode,
+    ) -> ToolOutcome {
         self.call(
             "write_memory",
-            json!({ "name": name, "description": description, "body": body }),
+            json!({
+                "name": name,
+                "description": description,
+                "body": body,
+                "code": code.code,
+                "onUse": code.on_use,
+            }),
         )
     }
-    fn update_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome {
+    fn update_memory(
+        &mut self,
+        name: String,
+        description: String,
+        body: String,
+        code: MemoryCode,
+    ) -> ToolOutcome {
         self.call(
             "update_memory",
-            json!({ "name": name, "description": description, "body": body }),
+            json!({
+                "name": name,
+                "description": description,
+                "body": body,
+                "code": code.code,
+                "onUse": code.on_use,
+            }),
         )
     }
     fn create_memory(
@@ -245,10 +270,17 @@ impl ToolApi for FakeToolApi {
         name: String,
         description: String,
         contents: String,
+        code: MemoryCode,
     ) -> ToolOutcome {
         self.call(
             "create_memory",
-            json!({ "name": name, "description": description, "contents": contents }),
+            json!({
+                "name": name,
+                "description": description,
+                "contents": contents,
+                "code": code.code,
+                "onUse": code.on_use,
+            }),
         )
     }
     fn read_memory(&mut self, name: String) -> ToolOutcome {
@@ -780,7 +812,7 @@ pub(crate) fn membrane_as(log: &CallLog, role: EndingRole) -> MembraneState<Fake
     MembraneState::new(
         FakeToolApi::new(log),
         &all_tools(),
-        role,
+        RunEnding::Role(role),
         SandboxLimits::default(),
         None,
     )
@@ -796,7 +828,7 @@ pub(crate) fn membrane_with(
     MembraneState::new(
         FakeToolApi::with(log, responder),
         enabled,
-        EndingRole::Standard,
+        RunEnding::Role(EndingRole::Standard),
         SandboxLimits::default(),
         deadline,
     )
@@ -808,7 +840,7 @@ pub(crate) fn membrane_from(api: FakeToolApi) -> MembraneState<FakeToolApi> {
     MembraneState::new(
         api,
         &all_tools(),
-        EndingRole::Standard,
+        RunEnding::Role(EndingRole::Standard),
         SandboxLimits::default(),
         None,
     )

@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use crate::board::IssueStatus;
 use crate::context::{OpenViewInfo, TurnRange, ViewKind};
+use crate::memories::MemoryCode;
 use crate::programs::{ProgramRefusal, ProgramSummary};
 use crate::tasks::TaskStatus;
 use crate::tools::{ToolFailure, ToolOutcome};
@@ -163,10 +164,27 @@ pub trait ToolApi: Send + 'static {
     fn edit_file(&mut self, path: String, old_string: String, new_string: String) -> ToolOutcome;
     fn list_dir(&mut self, path: Option<String>) -> ToolOutcome;
     fn read_skill(&mut self, name: String) -> ToolOutcome;
-    fn write_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome;
-    fn update_memory(&mut self, name: String, description: String, body: String) -> ToolOutcome;
-    fn create_memory(&mut self, name: String, description: String, contents: String)
-    -> ToolOutcome;
+    fn write_memory(
+        &mut self,
+        name: String,
+        description: String,
+        body: String,
+        code: MemoryCode,
+    ) -> ToolOutcome;
+    fn update_memory(
+        &mut self,
+        name: String,
+        description: String,
+        body: String,
+        code: MemoryCode,
+    ) -> ToolOutcome;
+    fn create_memory(
+        &mut self,
+        name: String,
+        description: String,
+        contents: String,
+        code: MemoryCode,
+    ) -> ToolOutcome;
     fn read_memory(&mut self, name: String) -> ToolOutcome;
     fn edit_memory(&mut self, name: String, search: String, replace: String) -> ToolOutcome;
     fn search_memories(&mut self, keywords: Vec<String>) -> ToolOutcome;

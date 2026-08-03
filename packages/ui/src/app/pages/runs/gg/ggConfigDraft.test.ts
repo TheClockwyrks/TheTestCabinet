@@ -24,11 +24,15 @@ import {
   type GgConfigDraft,
 } from "./ggConfigDraft";
 import {
+  BUILT_IN_SKILL_OPTIONS,
   CAPABILITIES,
   DEFAULT_ERROR_RATE_WINDOW,
   DEFAULT_MAX_CONSECUTIVE_ERRORS,
   DEFAULT_MAX_ERROR_RATE,
   DEFAULT_MAX_PARALLEL,
+  DEFAULT_MEMORY_MAX_COUNT,
+  DEFAULT_MEMORY_MAX_LEN_DESCRIPTION,
+  DEFAULT_MEMORY_MAX_LEN_PER,
   DEFAULT_SHELL_MAX_CHARS,
   DEFAULT_SHELL_MAX_LINES,
   RUN_LIMIT_SPECS,
@@ -497,6 +501,86 @@ describe("gg response-healing toggles", () => {
   });
 });
 
+// The `skills` capability's `builtIns` param: the second `toggles` control in the form,
+// over the eleven skills gg ships for its own tool families. It reads exactly like
+// `healing` — an absent key is every built-in offered, and only the withheld ones are
+// written — which is the property worth pinning, because a control that recorded the ON
+// members would make each saved configuration an explicit opt-in to a list gg is free to
+// grow.
+function builtInsOf(s: GgCapabilitySet): unknown {
+  return setCaps(s).find((cap) => cap.id === "skills")?.params?.builtIns;
+}
+
+describe("gg built-in skill toggles", () => {
+  it("covers one family per built-in skill gg ships", () => {
+    // The ids are `read_skill` handles and the `builtIns` keys at once, so a typo here is
+    // a checkbox that withholds nothing. Kept in gg's own order (`FAMILIES` in
+    // `crates/gg/src/skills.builtin.rs`).
+    expect(BUILT_IN_SKILL_OPTIONS.map((option) => option.value)).toEqual([
+      "gg-filesystem",
+      "gg-shell",
+      "gg-project",
+      "gg-tasks",
+      "gg-memory",
+      "gg-skills",
+      "gg-context",
+      "gg-delegation",
+      "gg-views",
+      "gg-programs",
+      "gg-session",
+    ]);
+    const param = CAPABILITIES.find((cap) => cap.id === "skills")?.params?.find(
+      (p) => p.key === "builtIns",
+    );
+    expect(param?.kind).toBe("toggles");
+    expect(param?.options).toBe(BUILT_IN_SKILL_OPTIONS);
+    // No seeded value: the default arm is the empty draft, as for every toggle set.
+    expect(param?.defaultValue).toBeUndefined();
+  });
+
+  it("writes nothing when every built-in is left on", () => {
+    const draft = emptyDraft();
+    draft.agents[0]!.capabilities.skills = {
+      ...draft.agents[0]!.capabilities.skills!,
+      enabled: true,
+    };
+    expect(builtInsOf(capabilitySetFromDraft(draft, null))).toBeUndefined();
+  });
+
+  it("round-trips the built-ins a configuration switches off", () => {
+    const configured = capSet([
+      {
+        id: "skills",
+        enabled: true,
+        params: { builtIns: { "gg-shell": false, "gg-session": false } },
+      },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    // Decoded in catalog order rather than the order the stored object happened to be
+    // written in, so two equivalent configurations produce one draft value.
+    expect(draftCaps(draft).skills?.params?.builtIns).toBe(
+      "gg-shell,gg-session",
+    );
+    expect(draftCaps(draft).skills?.extraParams).toEqual({});
+    expect(builtInsOf(capabilitySetFromDraft(draft, null))).toEqual({
+      "gg-shell": false,
+      "gg-session": false,
+    });
+  });
+
+  it("reads the `false` master switch as every built-in withheld", () => {
+    const configured = capSet([
+      { id: "skills", enabled: true, params: { builtIns: false } },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(builtInsOf(capabilitySetFromDraft(draft, null))).toEqual(
+      Object.fromEntries(
+        BUILT_IN_SKILL_OPTIONS.map((option) => [option.value, false]),
+      ),
+    );
+  });
+});
+
 // The `responses-as-code` capability's `imageViewCap` param: how many image-carrying
 // views the agent may hold open at once. An ordinary number, but one whose per-agent
 // scoping is the point — a reviewer profile that may look at one mockup and a root that
@@ -522,11 +606,15 @@ describe("gg open-image-view cap", () => {
       agents: [
         agent({
           name: "Root",
-          capabilities: [{ id: CODE, enabled: true, params: { imageViewCap: 3 } }],
+          capabilities: [
+            { id: CODE, enabled: true, params: { imageViewCap: 3 } },
+          ],
         }),
         agent({
           name: "Reviewer",
-          capabilities: [{ id: CODE, enabled: true, params: { imageViewCap: 1 } }],
+          capabilities: [
+            { id: CODE, enabled: true, params: { imageViewCap: 1 } },
+          ],
         }),
       ],
     };
@@ -665,19 +753,26 @@ describe("gg capability params", () => {
     ).not.toHaveProperty("reviewers");
   });
 
-  // The task list is always carried in its holder's prompt, so tasks is the one
-  // module-backed capability with no `ownership` control — while the other four keep one.
-  it("offers no ownership control on tasks", () => {
+  // Only two of the five module-backed capabilities still offer an `ownership` control,
+  // and which two is the point of the test: the board and the thread archive can honestly
+  // be held out of the prompt and reached through their tools, while the task list (always
+  // owned), skills and memories cannot — for the last two the knob was a way of switching
+  // the capability off while claiming it was on, and it is gone from gg entirely
+  // (`MODULE_CAPABILITIES` in `crates/gg/src/modules.rs`). A control that outlived the
+  // param would write a key nothing reads.
+  it("offers the ownership control on the board and the archive alone", () => {
     const ownership = (id: string) =>
       CAPABILITIES.find((cap) => cap.id === id)?.params?.some(
         (p) => p.key === "ownership",
       ) ?? false;
-    expect(ownership("tasks")).toBe(false);
     expect(
-      ["memories", "project-management", "skills", "agent-managed-context"].map(
-        ownership,
-      ),
-    ).toEqual([true, true, true, true]);
+      ["project-management", "agent-managed-context"].map(ownership),
+    ).toEqual([true, true]);
+    expect(["tasks", "skills", "memories"].map(ownership)).toEqual([
+      false,
+      false,
+      false,
+    ]);
   });
 
   it("round-trips a string param through its text control", () => {
@@ -983,18 +1078,49 @@ describe("params gated on the selected implementation", () => {
     // each of these is a box that would change nothing where it is hidden.
     const applies = (key: string, strategy: string) =>
       paramApplies(paramOf("memories", key), strategy);
-    expect([applies("maxCount", ""), applies("maxCount", "keyword-search"), applies("maxCount", "markdown")])
-      .toEqual([true, true, false]);
-    expect([applies("maxTotalLen", ""), applies("maxTotalLen", "markdown")])
-      .toEqual([true, false]);
-    expect([applies("maxLenIndex", "markdown"), applies("maxLenIndex", "")])
-      .toEqual([true, false]);
-    expect([applies("maxResults", "keyword-search"), applies("maxResults", "")])
-      .toEqual([true, false]);
+    expect([
+      applies("maxCount", ""),
+      applies("maxCount", "keyword-search"),
+      applies("maxCount", "markdown"),
+    ]).toEqual([true, true, false]);
+    expect([
+      applies("maxTotalLen", ""),
+      applies("maxTotalLen", "markdown"),
+    ]).toEqual([true, false]);
+    expect([
+      applies("maxLenIndex", "markdown"),
+      applies("maxLenIndex", ""),
+    ]).toEqual([true, false]);
+    expect([
+      applies("maxResults", "keyword-search"),
+      applies("maxResults", ""),
+    ]).toEqual([true, false]);
     // Two apply everywhere, and say so by naming no implementations at all.
     for (const key of ["maxLenPerMemory", "maxLenDescription"]) {
       expect(paramOf("memories", key).showWhenImplementation).toBeUndefined();
     }
+  });
+
+  it("seeds the memory limits gg really defaults to, and nothing else", () => {
+    // A seeded field is a promise that leaving it alone changes nothing, so each of these
+    // has to be the figure `MemoryCaps::resolve` would have applied anyway.
+    expect(paramOf("memories", "maxCount").defaultValue).toBe(
+      String(DEFAULT_MEMORY_MAX_COUNT),
+    );
+    expect(paramOf("memories", "maxLenPerMemory").defaultValue).toBe(
+      String(DEFAULT_MEMORY_MAX_LEN_PER),
+    );
+    // The description ceiling is a real default now (it used to be unlimited), so the
+    // field shows it rather than an empty box that implied there was none.
+    expect(paramOf("memories", "maxLenDescription").defaultValue).toBe(
+      String(DEFAULT_MEMORY_MAX_LEN_DESCRIPTION),
+    );
+    // And the scratchpad's aggregate budget went the other way: gg imposes none, so
+    // seeding a figure would arm a ceiling nobody asked for on every configuration
+    // opened in the editor.
+    const total = paramOf("memories", "maxTotalLen");
+    expect(total.defaultValue).toBeUndefined();
+    expect(total.placeholder).toBe("unlimited");
   });
 
   it("keeps a hidden param's stored value through a round-trip", () => {
@@ -1019,7 +1145,9 @@ describe("params gated on the selected implementation", () => {
       draftFromCapabilitySet(configured),
       null,
     );
-    const shell = saved.agents?.[0]?.capabilities?.find((c) => c.id === "shell");
+    const shell = saved.agents?.[0]?.capabilities?.find(
+      (c) => c.id === "shell",
+    );
     expect(shell?.params).toEqual({ maxLines: 40 });
   });
 });
@@ -1106,7 +1234,9 @@ describe("a state machine", () => {
       {
         name: "b",
         agentId: "agent-y",
-        transitions: [{ to: "a", transfer: [] as GgModuleKind[], description: "" }],
+        transitions: [
+          { to: "a", transfer: [] as GgModuleKind[], description: "" },
+        ],
       },
     ];
     const renamed = renameStateDraft(states, 0, "explore");
@@ -1197,7 +1327,11 @@ describe("a state machine", () => {
           enabled: true,
           params: {
             states: statesDraftValue([
-              { name: "explore", agentId: draft.agents[1]!.id, transitions: [] },
+              {
+                name: "explore",
+                agentId: draft.agents[1]!.id,
+                transitions: [],
+              },
               { name: "verify", agentId: draft.agents[2]!.id, transitions: [] },
             ]),
           },

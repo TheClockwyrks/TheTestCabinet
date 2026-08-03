@@ -119,6 +119,28 @@ are the result. You hear from the harness only when something failed or when
 there is a process fact you could not otherwise know.
 {{/if}}
 
+{{#if skills}}
+## Skills
+
+You have skills available — short guides, and in some cases reusable **code**,
+for parts of this task. Read one with `skills.readSkill(name)`. These are the
+skills you have:
+
+{{#each skills}}
+- `{{name}}` — {{description}}
+{{/each}}
+
+Reading a skill does up to three things, and the reply tells you which:
+
+- its prose is pinned into your context for the rest of the session, including
+  across a compaction;
+- if it carries code, that code is bound at `lib.<key>` in every program you
+  write from then on — the reply names the key and what it exports;
+- if it carries an on-use script, gg runs it once your program has ended, so
+  whatever it shows you arrives on your next turn.
+
+{{/if}}
+
 {{#if memories}}
 ## Memory
 

@@ -35,6 +35,7 @@ fn quiet_outcome() -> SandboxOutcome {
         view_refusals: Vec::new(),
         views_suppressed: 0,
         deferred_note: None,
+        module_errors: Vec::new(),
         returned_value: false,
         completion: None,
         revoked_completion: None,

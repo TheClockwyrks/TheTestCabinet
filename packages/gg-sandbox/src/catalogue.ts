@@ -139,8 +139,15 @@ export const HELPER_CATALOGUE: readonly HelperEntry[] = [
   { js: "readTextFile", requires: "read_file" },
 ];
 
-/** Which group of ending functions a program is given, mirroring the WIT's `ending-kind`. */
-export type EndingKind = "standard" | "review" | "judge";
+/**
+ * Which group of ending functions a program is given, mirroring the WIT's `ending-kind`.
+ *
+ * `"none"` is the arm an **on-use script** runs under — the code a skill or a memory runs when the
+ * agent first reads it. That script is not the agent's turn, so it must not be able to declare the
+ * session over, and the way that is made true is the way every withheld call is: the name is not in
+ * its scope. No {@link SESSION_ENTRIES} entry carries it, so the loop that binds them binds nothing.
+ */
+export type EndingKind = "standard" | "review" | "judge" | "none";
 
 /** One model-facing ending function: what it is called, where it is grouped, and which role has it. */
 export interface SessionEntry {
@@ -239,6 +246,17 @@ export const PROGRAM_ENTRIES: readonly string[] = ["history", "get", "rerun"];
 
 /** The module every {@link PROGRAM_ENTRIES} function is exported by. */
 export const PROGRAM_MODULE = "programs";
+
+/**
+ * The scope object a program reaches its loaded **code modules** through: the code of a skill or a
+ * memory it has read, bound at `lib.<name>`.
+ *
+ * It is not an API object and carries no `list()`: nothing here is a gg function, the members are
+ * whatever the skill or memory exported, and the host already told the model which key each one got
+ * and what it exports when it answered the read. It is bound only when at least one module was
+ * handed over, so a run with none has no `lib` identifier at all.
+ */
+export const LIB_OBJECT = "lib";
 
 /**
  * The non-enumerable key every bound function carries the name gg knows it by under, so

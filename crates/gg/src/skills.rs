@@ -57,16 +57,30 @@ const SKILL_EXTENSION: &str = "md";
 const MISSING_DESCRIPTION: &str = "(no description provided)";
 
 /// One parsed skill: the front-matter [`name`](Self::name)/[`description`](Self::description)
-/// shown to the model up front, and the [`body`](Self::body) (front matter stripped) that
-/// `read_skill` returns and pins into context.
+/// shown to the model up front, the [`body`](Self::body) (front matter stripped) that
+/// `read_skill` returns and pins into context, and — under
+/// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) — the
+/// [code](Self::code) and [on-use script](Self::on_use) it carries.
+///
+/// All three of body, code and on-use are optional in the sense that matters: a skill may be pure
+/// prose (what every skill was), pure code, an on-use script and nothing else, or any combination.
+/// The one thing it must have is a name and a description, because those are what the
+/// [index](SkillsRuntime::context_block) is made of.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skill {
     /// The skill's stable name — the handle `read_skill` takes and the catalog lists.
     name: String,
     /// The one-line description shown to the model up front.
     description: String,
-    /// The skill's body (front matter removed), loaded into context when the skill is read.
+    /// The skill's body (front matter removed), loaded into context when the skill is read. Empty
+    /// for a skill that is only code, or only an on-use script.
     body: String,
+    /// The importable module (`skill.ts`), bound at `lib.<key>` once the skill is read. Ignored
+    /// under native tool calling, which has no programs to bind it into.
+    code: Option<String>,
+    /// The on-use script (`on-use.ts`), run once when the skill is first read. Its source is never
+    /// shown to the model. Ignored under native tool calling for the same reason.
+    on_use: Option<String>,
 }
 
 impl Skill {
@@ -80,9 +94,28 @@ impl Skill {
         &self.description
     }
 
-    /// The skill's body (front matter already stripped).
+    /// The skill's body (front matter already stripped). Empty for a code-only skill, whose read
+    /// answers with the note saying where its code went and nothing else.
     pub fn body(&self) -> &str {
         &self.body
+    }
+
+    /// The skill's importable module, if it has one.
+    pub fn code(&self) -> Option<&str> {
+        self.code.as_deref()
+    }
+
+    /// The skill's on-use script, if it has one.
+    pub fn on_use(&self) -> Option<&str> {
+        self.on_use.as_deref()
+    }
+
+    /// This skill with `code` and `on_use` attached — the builder the
+    /// [directory loader](SkillLibrary::load) and the [built-ins](builtin) both go through.
+    fn with_code(mut self, code: Option<String>, on_use: Option<String>) -> Self {
+        self.code = code.filter(|source| !source.trim().is_empty());
+        self.on_use = on_use.filter(|source| !source.trim().is_empty());
+        self
     }
 }
 
@@ -104,41 +137,42 @@ impl SkillLibrary {
         Self { skills: Vec::new() }
     }
 
-    /// Load every `*.md` skill file directly under `dir`, parsing each file's front matter
-    /// and stripping it from the body. A missing or unreadable directory yields an
-    /// [`empty`](Self::empty) library (skills are optional); an individual file that
-    /// cannot be read is skipped. The result is ordered by skill name, and a duplicate
-    /// name keeps the first file seen in that order.
+    /// Load every skill under `dir`, in either of the two shapes a skill takes.
+    ///
+    /// * `<name>.md` — a **prose** skill. Front matter, then the body. Exactly what a skill has
+    ///   always been.
+    /// * `<name>/` — a **skill directory**, which is how a skill carries code:
+    ///   * `skill.md` — required. The front matter (and, optionally, a body).
+    ///   * `skill.ts` — optional. The importable module, bound at `lib.<key>` once the skill is
+    ///     read.
+    ///   * `on-use.ts` — optional. The script gg runs once, when the skill is first read.
+    ///
+    /// A directory without a `skill.md` is not a skill and is ignored: the name and the description
+    /// are what the index is made of, and inventing them from a file name would put a line in front
+    /// of the model that says nothing.
+    ///
+    /// A missing or unreadable directory yields an [`empty`](Self::empty) library (skills are
+    /// optional); an individual file that cannot be read is skipped. The result is ordered by skill
+    /// name, and a duplicate name keeps the first entry seen in path order.
     pub fn load(dir: &Path) -> Self {
         let Ok(entries) = std::fs::read_dir(dir) else {
             return Self::empty();
         };
 
-        // Collect the skill files first, then load in a stable (path-sorted) order so a
-        // duplicate front-matter name resolves deterministically to the first file.
+        // Collect the entries first, then load in a stable (path-sorted) order so a duplicate
+        // front-matter name resolves deterministically to the first one.
         let mut paths: Vec<std::path::PathBuf> = entries
             .filter_map(Result::ok)
             .map(|entry| entry.path())
-            .filter(|path| {
-                path.is_file()
-                    && path
-                        .extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case(SKILL_EXTENSION))
-            })
             .collect();
         paths.sort();
 
         let mut skills: Vec<Skill> = Vec::new();
         for path in &paths {
-            let Ok(raw) = std::fs::read_to_string(path) else {
+            let Some(skill) = load_one(path) else {
                 continue;
             };
-            let fallback = path
-                .file_stem()
-                .map(|stem| stem.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            let skill = parse_skill(&raw, &fallback);
-            // Keep the first file to claim a given name; ignore later duplicates.
+            // Keep the first entry to claim a given name; ignore later duplicates.
             if !skills.iter().any(|existing| existing.name == skill.name) {
                 skills.push(skill);
             }
@@ -146,6 +180,25 @@ impl SkillLibrary {
 
         skills.sort_by(|a, b| a.name.cmp(&b.name));
         Self { skills }
+    }
+
+    /// This library with `builtins` added — gg's own skills, one per family of functions the agent
+    /// has, offered under whatever names the authored library did **not** already claim.
+    ///
+    /// Authored wins, deliberately: a workspace that writes its own `gg-filesystem` means to replace
+    /// gg's, and a run in which both existed would put two lines with one name in the index.
+    pub fn with_builtins(mut self, builtins: Vec<Skill>) -> Self {
+        for skill in builtins {
+            if !self
+                .skills
+                .iter()
+                .any(|existing| existing.name == skill.name)
+            {
+                self.skills.push(skill);
+            }
+        }
+        self.skills.sort_by(|a, b| a.name.cmp(&b.name));
+        self
     }
 
     /// Whether the library offers no skills.
@@ -192,10 +245,6 @@ pub struct SkillsRuntime {
     /// Whether the skills capability is enabled for this run. When `false` the runtime is
     /// inert regardless of the (empty) library.
     enabled: bool,
-    /// Whether this holder's prompt carries the catalog — the "here are the skills you have"
-    /// listing in the system prompt. An [unowned](crate::modules::Ownership::Unowned) holder still
-    /// has `read_skill` and can still read any skill by name; it is simply not handed the menu.
-    ownership: Ownership,
     /// The shared, immutable catalog.
     library: Arc<SkillLibrary>,
     /// The names of skills the model has read this session — behind a lock so linked holders of one
@@ -238,7 +287,6 @@ impl SkillsRuntime {
     pub fn new_in(library: Arc<SkillLibrary>, ids: &ModuleIds) -> Self {
         Self {
             enabled: true,
-            ownership: Ownership::Owned,
             library,
             read: Arc::new(Mutex::new(BTreeSet::new())),
             id: ids.next(ModuleKind::Skills),
@@ -256,19 +304,12 @@ impl SkillsRuntime {
         }
     }
 
-    /// This runtime with its [ownership](Ownership) set.
-    pub fn with_ownership(mut self, ownership: Ownership) -> Self {
-        self.ownership = ownership;
-        self
-    }
-
     /// An **independent** runtime over the same catalog with a copy of the read set — what an
     /// agent built over the orchestrator's shared runtime takes, and what a fork of a window takes
     /// along with the window the read set describes.
     pub fn forked(&self) -> Self {
         Self {
             enabled: self.enabled,
-            ownership: self.ownership,
             library: Arc::clone(&self.library),
             read: Arc::new(Mutex::new(
                 self.read.lock().expect("skills read set lock").clone(),
@@ -284,7 +325,6 @@ impl SkillsRuntime {
     pub fn shared(&self) -> Self {
         Self {
             enabled: self.enabled,
-            ownership: self.ownership,
             library: Arc::clone(&self.library),
             read: Arc::clone(&self.read),
             id: Arc::clone(&self.id),
@@ -305,6 +345,25 @@ impl SkillsRuntime {
         Arc::clone(&self.library)
     }
 
+    /// Join gg's own [built-in](builtin) skills to this holder's catalogue.
+    ///
+    /// It re-points the `Arc` rather than mutating in place, because the authored library really is
+    /// shared — one copy, loaded once for the run — while the built-ins are **this agent's**: they
+    /// describe the functions its own profile gave it, and another agent with a different toolset
+    /// gets a different set. Two agents therefore end up holding two catalogues that agree about
+    /// every authored skill and differ exactly where their capabilities do.
+    pub fn offer_builtins(&mut self, builtins: Vec<Skill>) {
+        if builtins.is_empty() {
+            return;
+        }
+        self.library = Arc::new(
+            SkillLibrary {
+                skills: self.library.skills().to_vec(),
+            }
+            .with_builtins(builtins),
+        );
+    }
+
     /// The number of skills the model has read this session — the read skill bodies pinned
     /// in the window, reported as the skills figure of a
     /// [compaction](https://docs.testcabinet.ai/gg/compaction/) boundary's retention proof.
@@ -318,10 +377,7 @@ impl SkillsRuntime {
     /// front" affordance: the model sees what skills exist and reads one by name when it is
     /// relevant.
     pub fn prompt_entries(&self) -> Vec<SkillView> {
-        // An unowned skills module contributes nothing to the automatically assembled prompt, so
-        // there is no menu — `read_skill` still reads any skill by name, which is the whole of what
-        // "reachable through its tools and nothing else" means here.
-        if !self.offers_skills() || self.ownership != Ownership::Owned {
+        if !self.offers_skills() {
             return Vec::new();
         }
         self.library
@@ -403,8 +459,11 @@ impl Module for SkillsRuntime {
         self.enabled
     }
 
+    /// Always [owned](Ownership::Owned). The catalogue *is* the state a skills module holds, and a
+    /// holder that was not told what skills exist could only ever reach one by being handed its name
+    /// — which is not an arm of anything, it is the capability switched off with extra steps.
     fn ownership(&self) -> Ownership {
-        self.ownership
+        Ownership::Owned
     }
 
     /// None: skills do not occupy a single block. A read skill's body is pinned as its own
@@ -444,8 +503,8 @@ impl Module for SkillsRuntime {
         ModuleHandle::Skills(self.shared())
     }
 
-    /// Re-resolve the ownership from the receiving profile. The catalog itself is run-global and
-    /// immutable, so there is nothing else to re-point.
+    /// Re-point the id mint and record how the read set arrived. The catalog itself is run-global
+    /// and immutable, so there is nothing to re-resolve.
     ///
     /// A read set is a promise about a **window**: it says which skill bodies are already pinned in
     /// it, so the loop answers a repeat read with a note instead of a second copy. That promise is
@@ -461,11 +520,47 @@ impl Module for SkillsRuntime {
             return Err(AdoptError::Disabled);
         }
         self.enabled = true;
-        self.ownership = crate::modules::resolve_ownership(profile, CAPABILITY_SKILLS).0;
         self.ids = Arc::clone(ctx.ids);
         self.origin = GgModuleOrigin::Transferred;
         Ok(())
     }
+}
+
+/// The file a skill directory's front matter and body live in.
+const SKILL_MANIFEST: &str = "skill.md";
+
+/// The file a skill directory's importable module lives in.
+const SKILL_MODULE: &str = "skill.ts";
+
+/// The file a skill directory's on-use script lives in.
+const SKILL_ON_USE: &str = "on-use.ts";
+
+/// One entry of a skills directory, as a [`Skill`] — or `None` for an entry that is not one.
+fn load_one(path: &Path) -> Option<Skill> {
+    if path.is_dir() {
+        let raw = std::fs::read_to_string(path.join(SKILL_MANIFEST)).ok()?;
+        let fallback = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        return Some(parse_skill(&raw, &fallback).with_code(
+            std::fs::read_to_string(path.join(SKILL_MODULE)).ok(),
+            std::fs::read_to_string(path.join(SKILL_ON_USE)).ok(),
+        ));
+    }
+    if !path.is_file()
+        || !path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case(SKILL_EXTENSION))
+    {
+        return None;
+    }
+    let raw = std::fs::read_to_string(path).ok()?;
+    let fallback = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Some(parse_skill(&raw, &fallback))
 }
 
 /// The `name` and `description` fields parsed from a skill's YAML front matter. Any other
@@ -497,6 +592,8 @@ pub(crate) fn parse_skill(raw: &str, fallback_name: &str) -> Skill {
         name,
         description,
         body: body.trim().to_string(),
+        code: None,
+        on_use: None,
     }
 }
 
@@ -559,6 +656,11 @@ fn unquote(value: &str) -> &str {
     }
     value
 }
+
+#[path = "skills.builtin.rs"]
+mod builtin;
+
+pub use builtin::builtin_skills;
 
 #[cfg(test)]
 #[path = "skills.test.rs"]

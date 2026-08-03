@@ -231,6 +231,21 @@ interface memories {
         description: string,
         /// The memory body.
         body: string,
+        /// Reusable code, as a TypeScript module: whatever it exports is bound at `lib.<name>` in
+        /// every later program of yours, so a helper you write once you never write again.
+        ///
+        /// It is NOT context — it costs you no window and is never shown back to you — so it is
+        /// bounded on its own and counts against no body limit. `export` what you want to reach;
+        /// a module with no `export` at all exports everything it declares. It may call the same gg
+        /// functions your programs can.
+        code: option<string>,
+        /// A script to run ONCE, when this memory first comes into use — on the read that loads it,
+        /// or, under the scratchpad strategy, the moment you write it.
+        ///
+        /// It runs after the program that loaded the memory has ended, so whatever **views** it
+        /// opens reach you on your NEXT turn. It can see the memory's own `code` at `lib.<name>`. It
+        /// cannot end your session.
+        on-use: option<string>,
     }
 
     /// How much of the memory budget is used, so a program can check a limit instead of parsing a
@@ -568,6 +583,14 @@ interface session {
         review,
         /// `judge.select-winner(attempt, rationale)` — an agent choosing among attempts.
         judge,
+        /// NO ending group at all — the arm an on-use script runs under.
+        ///
+        /// An on-use script is the code a skill or a memory runs when the agent first reads it. It
+        /// is not the agent's turn: the model did not write it, does not see it, and is not
+        /// answering for it. So it must not be able to say the session is over, and the way to make
+        /// that true is the way every other withheld call is made true — the name is simply not in
+        /// its scope.
+        none,
     }
 
     /// Declare the work complete. `summary` becomes the session's final text — for the root agent the
@@ -1022,12 +1045,35 @@ interface feedback {
     /// program that ended the run and then failed did not check what its summary claims, so the host
     /// drops the flag and the run carries on.
     report-error: func(error: program-error);
+    /// One of the code modules handed to `run` threw while it was being evaluated, so its exports
+    /// are missing and `lib.<name>` is an empty object.
+    ///
+    /// Reported rather than raised, because a broken module belongs to whoever authored the skill or
+    /// wrote the memory — not to the program that merely has it in scope. Taking the turn down over
+    /// it would blame the model for someone else's code. The host puts one sentence in the model's
+    /// feedback and the whole message in the operator's stream.
+    report-module-error: func(name: string, message: string);
 }
 
 /// The sandbox: one baked component that evaluates a program against exactly the tools a run
 /// enables.
 world sandbox {
     use session.{ending-kind};
+
+    /// One code module bound into a program's scope, from a code skill or a code memory the agent
+    /// has read.
+    ///
+    /// The host has already transpiled it and appended the `return { … }` that makes its exports the
+    /// value of evaluating it, so the guest does nothing to the source but evaluate it as a function
+    /// body against the same scope the program gets — which is what lets a module call gg tools.
+    record code-module {
+        /// The binding key: the module is reached as `lib.<name>`. Already a valid identifier and
+        /// already unique across this list; the host deduplicated it and told the model which key it
+        /// really got.
+        name: string,
+        /// The module's JavaScript.
+        source: string,
+    }
 
     import types;
     import shell;
@@ -1056,6 +1102,13 @@ world sandbox {
     /// folding it into `tools` would put a name in the enabled set that no gg tool answers to and
     /// break the `bound-tools` bijection.
     ///
+    /// `modules` is the code the agent has loaded by reading a code skill or a code memory. Each is
+    /// evaluated BEFORE the program, against the same scope, and its exports are bound at
+    /// `lib.<name>`. An empty list binds no `lib` at all, on the rule every other family obeys: what
+    /// a run does not offer is not a name. A module that throws while loading is reported over
+    /// `feedback.report-module-error` and leaves `lib.<name>` empty — it never takes the program
+    /// down with it.
+    ///
     /// It returns **nothing**, because a program's return value is not a channel: everything one
     /// program has to say it says over `feedback` — what it logged, what it threw, and (through
     /// `session`) whether the session is over. A value handed to a top-level `return` is
@@ -1063,7 +1116,13 @@ world sandbox {
     ///
     /// A throw is caught and reported over `feedback.report-error`, never allowed to escape as an
     /// opaque wasm trap.
-    export run: func(program: string, tools: list<string>, ending: ending-kind, library: bool);
+    export run: func(
+        program: string,
+        modules: list<code-module>,
+        tools: list<string>,
+        ending: ending-kind,
+        library: bool,
+    );
 
     /// The gg tool names this component can bind. gg's tests call it to assert the COMMITTED
     /// component and `ALL_TOOL_NAMES` have not drifted apart — the one check that catches a stale

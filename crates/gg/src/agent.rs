@@ -2954,13 +2954,35 @@ async fn run_agent(
         // This agent's toolset, model, and prompt all come from **its own profile**, so a run can
         // give different agents different capabilities. The stores it binds are its modules', and
         // the transition call — if it has one — comes from where it stands in its machine.
-        let registry = ToolRegistry::from_run(
-            &profile,
-            modules.caps(),
-            &AgentFacts {
-                fsm: agent.fsm.as_ref(),
-            },
+        let facts = AgentFacts {
+            fsm: agent.fsm.as_ref(),
+        };
+        let registry = ToolRegistry::from_run(&profile, modules.caps(), &facts);
+        // gg's own skills — one per family of the functions **this agent** has — joined to whatever
+        // the workspace authored. They are resolved against the toolset just built, because a
+        // catalogue that described a tool the agent lacks is the one thing a catalogue must never
+        // do; and the library they join is what decides whether `read_skill` exists at all, so the
+        // registry is rebuilt over the completed library. Two constructions of a pure value, once
+        // per agent instance, is what that costs.
+        let builtins = crate::skills::builtin_skills(
+            &registry.tool_names(),
+            &registry.definitions(),
+            ending_role,
+            crate::programs::resolve_program_library(&profile)
+                .library
+                .is_enabled(),
+            code.enabled,
+            profile
+                .capability(CAPABILITY_SKILLS)
+                .map(|capability| &capability.params)
+                .unwrap_or(&Value::Null),
         );
+        let registry = if builtins.is_empty() {
+            registry
+        } else {
+            modules.caps_mut().skills_mut().offer_builtins(builtins);
+            ToolRegistry::from_run(&profile, modules.caps(), &facts)
+        };
         // The agent's file/shell tools are rooted at the [directory it was announced
         // with](workspace_dir) — its isolated worktree when it has one, so every mutation (and every
         // command it runs without an explicit path) lands in the private copy rather than the shared
@@ -6088,6 +6110,11 @@ impl Agent {
             ending_role,
             programs.is_enabled(),
         );
+        // The code this agent has loaded by reading a code skill or memory, and the on-use scripts a
+        // read owes. Per agent instance and per session, beside the docs runtime and the program
+        // library for the same reason: only a code turn touches it, it costs no context, and a
+        // compaction has nothing to do with it.
+        let mut knowledge = crate::knowledge::KnowledgeModules::new();
         // This agent's own rules on filing a board issue — who it may assign one to, and whether
         // reviewers are demanded. The native `create_issue` tool carries these already (the registry
         // built it from the same profile); a code turn rebuilds the tool per call, so it needs them
@@ -6796,6 +6823,7 @@ impl Agent {
                     turn_skills,
                     docs,
                     turn_programs,
+                    std::mem::take(&mut knowledge),
                     subagents.take(),
                 )
                 .await;
@@ -6917,6 +6945,7 @@ impl Agent {
                             skills: turn_skills,
                             docs: turn_docs,
                             programs: turn_programs,
+                            knowledge: turn_knowledge,
                             subagents: turn_subagents,
                             issue_waits: turn_issue_waits,
                             compact_requested: turn_compaction,
@@ -6928,6 +6957,7 @@ impl Agent {
                         *caps.skills_mut() = turn_skills;
                         docs = turn_docs;
                         programs = turn_programs;
+                        knowledge = turn_knowledge;
                         *subagents = turn_subagents;
                         last_report = Some(report);
                         // The turn's feedback is pushed **before** the breach return, so a stopped

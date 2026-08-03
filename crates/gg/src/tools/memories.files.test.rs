@@ -8,7 +8,7 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::*;
-use crate::memories::{MemoryBinding, MemoryCaps, MemoryStore, MemoryStrategy};
+use crate::memories::{MemoryBinding, MemoryCaps, MemoryCode, MemoryStore, MemoryStrategy};
 use crate::tools::ToolFailure;
 
 /// A [binding](MemoryBinding) onto a store on `strategy` with its documented limits, plus a
@@ -186,7 +186,7 @@ async fn read_memory_returns_the_contents_verbatim() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::KeywordSearch);
     store
         .lock()
-        .create("", "m", "d", "line one\nline two")
+        .create("", "m", "d", "line one\nline two", MemoryCode::default())
         .unwrap();
 
     let outcome = ReadMemoryTool::new(store.clone())
@@ -216,7 +216,13 @@ async fn edit_memory_replaces_the_unique_occurrence() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
     store
         .lock()
-        .create("", "m", "d", "the old line\nand another")
+        .create(
+            "",
+            "m",
+            "d",
+            "the old line\nand another",
+            MemoryCode::default(),
+        )
         .unwrap();
 
     let outcome = EditMemoryTool::new(store.clone())
@@ -238,7 +244,10 @@ async fn edit_memory_replaces_the_unique_occurrence() {
 #[tokio::test]
 async fn edit_memory_accepts_an_empty_replacement() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
-    store.lock().create("", "m", "d", "keep DROP").unwrap();
+    store
+        .lock()
+        .create("", "m", "d", "keep DROP", MemoryCode::default())
+        .unwrap();
 
     let outcome = EditMemoryTool::new(store.clone())
         .invoke(
@@ -253,7 +262,10 @@ async fn edit_memory_accepts_an_empty_replacement() {
 #[tokio::test]
 async fn edit_memory_classifies_each_refusal() {
     let (store, ctx, _dir) = fixture(MemoryStrategy::Markdown);
-    store.lock().create("", "m", "d", "same same").unwrap();
+    store
+        .lock()
+        .create("", "m", "d", "same same", MemoryCode::default())
+        .unwrap();
     let tool = EditMemoryTool::new(store.clone());
 
     let ambiguous = tool
@@ -300,10 +312,17 @@ async fn search_memories_ranks_and_reports_hits() {
                 "gates",
                 "How to run the gates",
                 "cargo nextest run --workspace",
+                MemoryCode::default(),
             )
             .unwrap();
         store
-            .create("", "style", "House style", "comments explain why")
+            .create(
+                "",
+                "style",
+                "House style",
+                "comments explain why",
+                MemoryCode::default(),
+            )
             .unwrap();
     }
 
@@ -333,7 +352,10 @@ async fn search_memories_distinguishes_empty_from_unmatched() {
     assert!(empty.output.contains("no memories yet"));
     assert!(hits(&empty).is_empty());
 
-    store.lock().create("", "m", "d", "something").unwrap();
+    store
+        .lock()
+        .create("", "m", "d", "something", MemoryCode::default())
+        .unwrap();
     let unmatched = tool.invoke(json!({ "keywords": ["absent"] }), &ctx).await;
     assert!(unmatched.ok);
     assert!(unmatched.output.contains("No memory matches"));
@@ -388,7 +410,10 @@ async fn a_tool_description_states_only_the_limits_in_force() {
         },
     );
     let description = CreateMemoryTool::new(unbounded).definition().description;
-    assert!(!description.contains("at most"), "{description}");
+    // The description cap is the one limit every strategy defaults, so it is still stated; what must
+    // be gone are the three this arm switched off.
+    assert!(!description.contains("12 memories"), "{description}");
+    assert!(!description.contains("500 characters"), "{description}");
 }
 
 /// `read_memory` tells the model where slugs come from, which differs by strategy: an index it can

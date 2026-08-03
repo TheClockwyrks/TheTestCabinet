@@ -37,7 +37,7 @@ use super::{
     ArgumentError, MemoryUsageData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome,
     required_str, saturating_u32,
 };
-use crate::memories::{MemoryBinding, MemoryChange, MemoryError, MemoryStore};
+use crate::memories::{MemoryBinding, MemoryChange, MemoryCode, MemoryError, MemoryStore};
 use crate::model::ToolDefinition;
 
 #[path = "memories.files.rs"]
@@ -187,6 +187,7 @@ fn failure_for(err: &MemoryError) -> ToolFailure {
         // knows to evict rather than to rephrase.
         MemoryError::DescriptionCap { .. }
         | MemoryError::PerMemoryCap { .. }
+        | MemoryError::CodeCap { .. }
         | MemoryError::CountCap { .. }
         | MemoryError::TotalCap { .. }
         | MemoryError::IndexCap { .. } => ToolFailure::LimitExceeded,
@@ -260,16 +261,23 @@ impl Tool for WriteMemoryTool {
             Ok(fields) => fields,
             Err(error) => return error.into(),
         };
-        self.write(name, description, body)
+        // The native schema declares no code fields, so a tool-calling run can never write one.
+        self.write(name, description, body, MemoryCode::default())
     }
 }
 
 impl WriteMemoryTool {
     /// Record a memory — the **standard, typed** `write_memory` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
-    pub(crate) fn write(&self, name: String, description: String, body: String) -> ToolOutcome {
+    pub(crate) fn write(
+        &self,
+        name: String,
+        description: String,
+        body: String,
+        code: MemoryCode,
+    ) -> ToolOutcome {
         let mut store = self.store.lock();
-        match store.write(self.store.author(), &name, &description, &body) {
+        match store.write(self.store.author(), &name, &description, &body, code) {
             Ok(MemoryChange::Written) => ToolOutcome::ok(
                 format!("Saved memory `{name}`. {}", usage_note(&store)),
                 format!("wrote memory `{name}`"),
@@ -337,16 +345,24 @@ impl Tool for UpdateMemoryTool {
             Ok(fields) => fields,
             Err(error) => return error.into(),
         };
-        self.update(name, description, body)
+        // The native schema declares no code fields; an update from this path leaves a memory's
+        // code exactly as a program last wrote it.
+        self.update(name, description, body, None)
     }
 }
 
 impl UpdateMemoryTool {
     /// Revise a memory in place — the **standard, typed** `update_memory` API function both the JSON
     /// [adapter](Tool::invoke) and the [responses-as-code membrane](crate::sandbox) reach.
-    pub(crate) fn update(&self, name: String, description: String, body: String) -> ToolOutcome {
+    pub(crate) fn update(
+        &self,
+        name: String,
+        description: String,
+        body: String,
+        code: Option<MemoryCode>,
+    ) -> ToolOutcome {
         let mut store = self.store.lock();
-        match store.update(self.store.author(), &name, &description, &body) {
+        match store.update(self.store.author(), &name, &description, &body, code) {
             Ok(MemoryChange::Updated) => ToolOutcome::ok(
                 format!("Updated memory `{name}`. {}", usage_note(&store)),
                 format!("updated memory `{name}`"),

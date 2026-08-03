@@ -90,19 +90,33 @@ pub use search::MemoryHit;
 use scope::{links, notice_entries};
 
 /// Default [maximum number of memories](MemoryCaps::max_count) under the
-/// [scratchpad](MemoryStrategy::Scratchpad) strategy. A small ceiling — the point is a curated
-/// handful of durable facts, not a second transcript.
-pub const DEFAULT_MAX_COUNT: usize = 8;
+/// [scratchpad](MemoryStrategy::Scratchpad) strategy. Room for a working set rather than a
+/// handful — a run that wants the old, severe ceiling sets `maxCount` and gets it.
+pub const DEFAULT_MAX_COUNT: usize = 64;
 
 /// Default [per-memory body length](MemoryCaps::max_len_per_memory) under the
-/// [scratchpad](MemoryStrategy::Scratchpad) strategy, in characters — roughly a few short
-/// paragraphs, enough for a decision or a fact with its rationale.
-pub const DEFAULT_MAX_LEN_PER_MEMORY: usize = 2_000;
+/// [scratchpad](MemoryStrategy::Scratchpad) strategy, in characters — a page or so, enough for a
+/// decision with its rationale, or a procedure with its steps.
+pub const DEFAULT_MAX_LEN_PER_MEMORY: usize = 4_096;
 
-/// Default [aggregate body length](MemoryCaps::max_total_len) under the
-/// [scratchpad](MemoryStrategy::Scratchpad) strategy, in characters, across every memory — a firm
-/// ceiling on how much of the window self-curated notes may occupy.
-pub const DEFAULT_MAX_TOTAL_LEN: usize = 8_000;
+/// Default [description length](MemoryCaps::max_len_description), in characters, under **every**
+/// strategy.
+///
+/// The description is what an [index](MemoryStore::index_text) line and a [search hit](MemoryHit)
+/// are mostly made of, so it is the one field whose length is paid for by every turn rather than by
+/// the turn that reads the memory. A sentence fits comfortably; a pasted paragraph does not, which
+/// is the whole point.
+pub const DEFAULT_MAX_LEN_DESCRIPTION: usize = 256;
+
+/// The most characters of [code](Memory::code) or of an [on-use script](Memory::on_use) one memory
+/// may carry.
+///
+/// Deliberately generous against every body limit, and deliberately separate from them: neither is
+/// context. A module is transpiled once and bound at `lib.<key>`; an on-use script runs once and is
+/// never shown to the model at all. Neither ever occupies a token of the window, so bounding them
+/// against a *window* budget would be bounding the wrong thing. What this bounds is the transpiler,
+/// which parses untrusted source on a recursive-descent stack.
+pub const MAX_MEMORY_CODE_CHARS: usize = 32_768;
 
 /// Default [per-file length](MemoryCaps::max_len_per_memory) under the two file-shaped strategies,
 /// in characters. Far larger than the scratchpad's, because these bodies are **not** in the window
@@ -277,10 +291,10 @@ pub struct MemoryCaps {
     /// [index](MemoryStore::index_text) (`maxLenIndex`), and `None` everywhere else.
     pub max_len_index: Option<usize>,
     /// The maximum length of a memory's one-line description (`maxLenDescription`), under
-    /// every strategy. **Off unless a run asks for it** — the description is what an
-    /// [index](MemoryStore::index_text) line and a [search hit](MemoryHit) are mostly made of,
-    /// so a run that wants those uniformly terse bounds them here instead of hoping the model
-    /// keeps its one-liners to one line.
+    /// every strategy, defaulting to [`DEFAULT_MAX_LEN_DESCRIPTION`]. The description is what an
+    /// [index](MemoryStore::index_text) line and a [search hit](MemoryHit) are mostly made of, so
+    /// it is the one field every turn pays for — which is why it is bounded everywhere rather than
+    /// left to hope the model keeps its one-liners to one line.
     pub max_len_description: Option<usize>,
     /// The most memories one [search](MemoryStore::search) reports (`maxResults`), and `None`
     /// everywhere the strategy offers no search.
@@ -300,10 +314,12 @@ impl MemoryCaps {
             MemoryStrategy::Scratchpad => Self {
                 max_count: Some(DEFAULT_MAX_COUNT),
                 max_len_per_memory: Some(DEFAULT_MAX_LEN_PER_MEMORY),
-                max_total_len: Some(DEFAULT_MAX_TOTAL_LEN),
+                // Unlimited: the count and the per-memory ceiling already bound what the window
+                // carries, and a third limit measured across every memory at once is the one an
+                // agent hits without being able to say which write was too much.
+                max_total_len: None,
                 max_len_index: None,
-                // Off unless the run asks: see `max_len_description`.
-                max_len_description: None,
+                max_len_description: Some(DEFAULT_MAX_LEN_DESCRIPTION),
                 max_results: None,
             },
             MemoryStrategy::Markdown => Self {
@@ -312,7 +328,7 @@ impl MemoryCaps {
                 max_len_per_memory: Some(DEFAULT_MAX_LEN_PER_FILE),
                 max_total_len: None,
                 max_len_index: Some(DEFAULT_MAX_LEN_INDEX),
-                max_len_description: None,
+                max_len_description: Some(DEFAULT_MAX_LEN_DESCRIPTION),
                 max_results: None,
             },
             MemoryStrategy::KeywordSearch => Self {
@@ -321,7 +337,7 @@ impl MemoryCaps {
                 max_len_per_memory: Some(DEFAULT_MAX_LEN_PER_FILE),
                 max_total_len: None,
                 max_len_index: None,
-                max_len_description: None,
+                max_len_description: Some(DEFAULT_MAX_LEN_DESCRIPTION),
                 max_results: Some(DEFAULT_MAX_RESULTS),
             },
         }
@@ -406,8 +422,49 @@ impl ResolveLimit for Option<usize> {
     }
 }
 
+/// The two **code** halves a memory may carry beside its body, and the shape a write hands them in.
+///
+/// Both are [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) only: the native
+/// memory tools' schemas do not offer them, so a native-mode run can neither write one nor be
+/// handed one, and [`Default`] — both absent — is what that path always passes.
+///
+/// Neither is context. [`code`](Self::code) is transpiled once and bound at `lib.<key>` in every
+/// later program; [`on_use`](Self::on_use) runs once and is never shown to the model at all. So
+/// neither counts against a body limit, and both are bounded on their own by
+/// [`MAX_MEMORY_CODE_CHARS`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MemoryCode {
+    /// A TypeScript module whose exports the agent's later programs reach at `lib.<key>`.
+    pub code: Option<String>,
+    /// A script gg runs once, when the memory first comes into use.
+    pub on_use: Option<String>,
+}
+
+impl MemoryCode {
+    /// Whether this memory carries no code at all — the ordinary case, and what every native-mode
+    /// write produces.
+    pub fn is_empty(&self) -> bool {
+        self.code.is_none() && self.on_use.is_none()
+    }
+
+    /// The two halves trimmed, with a blank one normalised to absent: a model that clears its code
+    /// by writing `""` means *no code*, and storing an empty module would bind an empty `lib` entry
+    /// that says nothing and runs nothing.
+    fn normalized(self) -> Self {
+        let some = |value: Option<String>| {
+            value
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        };
+        Self {
+            code: some(self.code),
+            on_use: some(self.on_use),
+        }
+    }
+}
+
 /// One model-curated memory: the `name` (its slug) and `description` a strategy may show up front,
-/// and the `body` the model wrote.
+/// the `body` the model wrote, and — under responses-as-code — the [code](MemoryCode) it carries.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Memory {
     /// The memory's stable slug — the handle every memory tool takes.
@@ -416,6 +473,8 @@ pub struct Memory {
     description: String,
     /// The memory's body — the substance, and what the length limits measure.
     body: String,
+    /// The code halves, both absent for an ordinary prose memory.
+    code: MemoryCode,
 }
 
 impl Memory {
@@ -453,6 +512,23 @@ impl Memory {
     pub fn body(&self) -> &str {
         &self.body
     }
+
+    /// The reusable module this memory carries, if any — bound at `lib.<key>` once the memory is in
+    /// use.
+    pub fn code(&self) -> Option<&str> {
+        self.code.code.as_deref()
+    }
+
+    /// The on-use script this memory carries, if any — run once, when it first comes into use.
+    pub fn on_use(&self) -> Option<&str> {
+        self.code.on_use.as_deref()
+    }
+
+    /// Whether this memory carries either code half. What decides whether coming into use has to do
+    /// anything at all.
+    pub fn has_code(&self) -> bool {
+        !self.code.is_empty()
+    }
 }
 
 /// Why a [`MemoryStore`] mutation was refused. Its [`Display`](fmt::Display) is the
@@ -488,6 +564,15 @@ pub enum MemoryError {
         len: usize,
         /// The description limit.
         cap: usize,
+    },
+    /// The memory's code, or its on-use script, exceeds [`MAX_MEMORY_CODE_CHARS`].
+    CodeCap {
+        /// The offending memory's slug.
+        name: String,
+        /// Which half was too long, as the model wrote it (`code` / `onUse`).
+        half: &'static str,
+        /// The length that was attempted.
+        len: usize,
     },
     /// The memory's body exceeds the per-memory length limit.
     PerMemoryCap {
@@ -573,6 +658,12 @@ impl fmt::Display for MemoryError {
                 f,
                 "memory `{name}` is {len} characters, over the per-memory limit of {cap}; \
                  make it more concise, or split it across two memories."
+            ),
+            MemoryError::CodeCap { name, half, len } => write!(
+                f,
+                "the `{half}` of memory `{name}` is {len} characters, over the \
+                 {MAX_MEMORY_CODE_CHARS}-character limit; keep a module to the helpers you \
+                 actually reuse, and split what is really two modules into two memories."
             ),
             MemoryError::CountCap {
                 cap,
@@ -926,13 +1017,16 @@ impl MemoryStore {
         name: &str,
         description: &str,
         body: &str,
+        code: MemoryCode,
     ) -> Result<MemoryChange, MemoryError> {
         let (name, description, body) = validate_fields(name, description, body)?;
         if self.position(&name).is_some() {
             return Err(self.duplicate(name));
         }
+        let code = code.normalized();
         let len = body.chars().count();
         self.check_description(&name, &description)?;
+        Self::check_code(&name, &code)?;
         self.check_per_memory(&name, len)?;
         self.check_count()?;
         self.check_total(self.total_len() + len)?;
@@ -940,6 +1034,7 @@ impl MemoryStore {
             name: name.clone(),
             description,
             body,
+            code,
         });
         self.record(author, &name, MemoryChange::Written);
         Ok(MemoryChange::Written)
@@ -955,13 +1050,24 @@ impl MemoryStore {
         name: &str,
         description: &str,
         body: &str,
+        code: Option<MemoryCode>,
     ) -> Result<MemoryChange, MemoryError> {
         let (name, description, body) = validate_fields(name, description, body)?;
         let Some(index) = self.position(&name) else {
             return Err(self.not_found(&name));
         };
+        // `Some` replaces the memory's code whole — omitting a half clears it, on the same rule the
+        // body follows, so a model that means to keep its module passes it again. `None` is the
+        // *native* tool path, whose schema has no code fields at all: it must leave alone what it
+        // cannot express, or a tool-calling agent sharing a store would silently delete the module a
+        // program-writing one put there.
+        let code = match code {
+            Some(code) => code.normalized(),
+            None => self.memories[index].code.clone(),
+        };
         let len = body.chars().count();
         self.check_description(&name, &description)?;
+        Self::check_code(&name, &code)?;
         self.check_per_memory(&name, len)?;
         // Swap the old body out of the total before checking the new one in.
         let total_without_old = self.total_len() - self.memories[index].len();
@@ -970,6 +1076,7 @@ impl MemoryStore {
             name: name.clone(),
             description,
             body,
+            code,
         };
         self.record(author, &name, MemoryChange::Updated);
         Ok(MemoryChange::Updated)
@@ -995,6 +1102,7 @@ impl MemoryStore {
         name: &str,
         description: &str,
         contents: &str,
+        code: MemoryCode,
     ) -> Result<MemoryChange, MemoryError> {
         let name = validate_slug(name)?;
         let description = description.trim().to_string();
@@ -1008,7 +1116,9 @@ impl MemoryStore {
         if self.position(&name).is_some() {
             return Err(self.duplicate(name));
         }
+        let code = code.normalized();
         self.check_description(&name, &description)?;
+        Self::check_code(&name, &code)?;
         self.check_per_memory(&name, contents.chars().count())?;
         self.check_count()?;
         self.check_index(&name, &description)?;
@@ -1016,6 +1126,7 @@ impl MemoryStore {
             name: name.clone(),
             description,
             body: contents,
+            code,
         });
         self.record(author, &name, MemoryChange::Written);
         Ok(MemoryChange::Written)
@@ -1215,6 +1326,26 @@ impl MemoryStore {
         Ok(())
     }
 
+    /// Refuse code, or an on-use script, longer than [`MAX_MEMORY_CODE_CHARS`].
+    ///
+    /// A fixed ceiling rather than a configurable one: what it protects is the transpiler's
+    /// recursive-descent parse of untrusted source, which is a property of gg rather than of the
+    /// study a run is part of.
+    fn check_code(name: &str, code: &MemoryCode) -> Result<(), MemoryError> {
+        for (half, source) in [("code", &code.code), ("onUse", &code.on_use)] {
+            let Some(source) = source else { continue };
+            let len = source.chars().count();
+            if len > MAX_MEMORY_CODE_CHARS {
+                return Err(MemoryError::CodeCap {
+                    name: name.to_string(),
+                    half,
+                    len,
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// Refuse a body whose length exceeds the per-memory limit.
     fn check_per_memory(&self, name: &str, len: usize) -> Result<(), MemoryError> {
         match self.caps.max_len_per_memory {
@@ -1284,6 +1415,7 @@ impl MemoryStore {
             name: name.to_string(),
             description: description.to_string(),
             body: String::new(),
+            code: MemoryCode::default(),
         });
         let current = self.index_len();
         // Every entry after the first costs its own line plus the newline joining it.
@@ -1538,11 +1670,6 @@ struct HolderCursors {
 pub struct MemoriesRuntime {
     /// Whether the memories capability is enabled for this run.
     enabled: bool,
-    /// Whether this holder's prompt carries the memories — the index (or the bodies) pinned in the
-    /// window and the memory section of the system prompt. An
-    /// [unowned](crate::modules::Ownership::Unowned) holder keeps the same store and the same
-    /// tools, and is told nothing about it up front.
-    ownership: Ownership,
     /// The shared, mutable store — the same handle the tools mutate, and, under a linking
     /// [scope](MemoryScope), the same one other agents hold.
     store: Arc<Mutex<MemoryStore>>,
@@ -1625,7 +1752,6 @@ impl MemoriesRuntime {
         }
         Self {
             enabled: true,
-            ownership: Ownership::Owned,
             store,
             id,
             ids: Arc::clone(ids),
@@ -1721,16 +1847,7 @@ impl MemoriesRuntime {
         bound.code_mode = ctx.history.code_mode;
         bound.origin = origin;
         bound.linked = links(profile, scope, ctx);
-        bound
-            .with_ownership(crate::modules::resolve_ownership(profile, CAPABILITY_MEMORIES).0)
-            .with_binding(scope, access)
-            .with_agent(ctx.agent_id)
-    }
-
-    /// This runtime with its [ownership](Ownership) set.
-    pub fn with_ownership(mut self, ownership: Ownership) -> Self {
-        self.ownership = ownership;
-        self
+        bound.with_binding(scope, access).with_agent(ctx.agent_id)
     }
 
     /// This runtime held by the agent named `agent_id` — whose writes are recorded against it, and
@@ -1811,7 +1928,6 @@ impl MemoriesRuntime {
         copy.holders.clear();
         Self {
             enabled: self.enabled,
-            ownership: self.ownership,
             linked: self.linked,
             // A new store, so a new id: from here the two notebooks are two, however alike they
             // look on the turn the copy was taken.
@@ -1835,7 +1951,6 @@ impl MemoriesRuntime {
     pub fn shared(&self) -> Self {
         Self {
             enabled: self.enabled,
-            ownership: self.ownership,
             linked: self.linked,
             // The same store, so the same id: that identity is the whole of what makes two holders
             // legible as two holders rather than as a coincidence.
@@ -1860,7 +1975,6 @@ impl MemoriesRuntime {
     pub fn alias(&self) -> Self {
         Self {
             enabled: self.enabled,
-            ownership: self.ownership,
             store: Arc::clone(&self.store),
             id: Arc::clone(&self.id),
             ids: Arc::clone(&self.ids),
@@ -2006,9 +2120,8 @@ impl MemoriesRuntime {
     /// have done since it was last told, as one ephemeral message appended at the tail of its
     /// window.
     ///
-    /// `None` — the overwhelmingly common answer — when the capability is off, when this holder is
-    /// [unowned](Ownership::Unowned) (an unowned module tells its holder nothing, by definition),
-    /// or when nothing but this holder's own writes have landed since it last looked.
+    /// `None` — the overwhelmingly common answer — when the capability is off, or when nothing but
+    /// this holder's own writes have landed since it last looked.
     ///
     /// # Why a tail append
     ///
@@ -2043,12 +2156,6 @@ impl MemoriesRuntime {
         }
         let fresh = store.log_from(cursors.notice);
         cursors.notice = head;
-        // An unowned module contributes nothing to the assembled prompt — but its watermark still
-        // advances, because news this holder was never going to be told is not news held back for
-        // later.
-        if self.ownership != Ownership::Owned {
-            return None;
-        }
         let strategy = store.strategy();
         let entries = notice_entries(fresh, &self.agent_id, strategy);
         if entries.is_empty() {
@@ -2097,8 +2204,12 @@ impl Module for MemoriesRuntime {
         self.enabled
     }
 
+    /// Always [owned](Ownership::Owned). What a strategy puts in the window — every body, the
+    /// index, or nothing — *is* what having memories means under it, so there is no coherent arm in
+    /// which an agent holds memories and is told nothing about them; the strategy is the knob, and
+    /// [keyword-search](MemoryStrategy::KeywordSearch) is the arm that pins nothing.
     fn ownership(&self) -> Ownership {
-        self.ownership
+        Ownership::Owned
     }
 
     fn context_source(&self) -> Option<GgContextSource> {
@@ -2110,9 +2221,6 @@ impl Module for MemoriesRuntime {
     }
 
     fn context_block(&self) -> Option<Message> {
-        if self.ownership != Ownership::Owned {
-            return None;
-        }
         MemoriesRuntime::context_block(self)
     }
 
@@ -2159,7 +2267,7 @@ impl Module for MemoriesRuntime {
     }
 
     /// Re-resolve the holder-owned configuration from the receiving profile — its limits, its
-    /// ownership, its [scope](MemoryScope) and the write access that follows from it, the agent
+    /// [scope](MemoryScope) and the write access that follows from it, the agent
     /// holding it, and the execution mode its notices are named in — refusing a profile that does
     /// not enable memories at all, or that organizes them by a **different**
     /// [strategy](MemoryStrategy).
@@ -2238,7 +2346,6 @@ impl Module for MemoriesRuntime {
             store.register_holder(&self.cursors);
         }
         self.enabled = true;
-        self.ownership = crate::modules::resolve_ownership(profile, CAPABILITY_MEMORIES).0;
         self.scope = scope;
         self.access = match scope {
             // A successor that asks for read-only memories and receives a live store is exactly

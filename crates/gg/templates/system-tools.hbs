@@ -22,6 +22,19 @@ A reply with no tool call is an error.
 {{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}
 {{/if}}
 
+{{#if skills}}
+## Skills
+
+You have skills available — short guides, and in some cases reusable code, for
+parts of this task. Read one with `read_skill`; its contents stay in your context
+for the rest of the session, including across a compaction. These are the skills
+you have:
+
+{{#each skills}}
+- `{{name}}` — {{description}}
+{{/each}}
+{{/if}}
+
 {{#if memories}}
 ## Memory
 

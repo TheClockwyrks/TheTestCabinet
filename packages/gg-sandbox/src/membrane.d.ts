@@ -174,6 +174,10 @@ declare module "test-cabinet:gg/memories" {
     description: string;
     /** The memory body. */
     body: string;
+    /** Reusable code, as a TypeScript module, bound at `lib.<name>` in every later program. */
+    code: string | undefined;
+    /** A script to run once, when the memory first comes into use. */
+    onUse: string | undefined;
   }
 
   /** How much of the memory budget is used. Every maximum is absent when nothing bounds it. */
@@ -700,4 +704,10 @@ declare module "test-cabinet:gg/feedback" {
    * completion the same program declared.
    */
   export function reportError(error: ProgramError): void;
+  /**
+   * One of the code modules handed to `run` threw while it was being evaluated, so `lib.<name>` is
+   * an empty object. Reported rather than raised: a broken module belongs to whoever authored the
+   * skill or wrote the memory, not to the program that merely has it in scope.
+   */
+  export function reportModuleError(name: string, message: string): void;
 }

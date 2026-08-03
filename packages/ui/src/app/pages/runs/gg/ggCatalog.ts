@@ -219,8 +219,13 @@ export function paramApplies(
 // default arm of the ablation and writing `{ "strip-fences": true }` for a member
 // nobody touched would turn every saved configuration into an explicit opt-in that
 // a later default change could no longer reach.
+//
+// Every toggle set in the form ends its hint with this sentence — response healing's
+// repairs and the skills capability's built-ins today — so the subtractive rule is
+// stated once, in one wording, wherever it applies. That is why it names no particular
+// kind of member: what the toggles ARE is the surrounding hint's job.
 const TOGGLES_HINT =
-  "Every repair is on unless you switch it off; only the ones you switch off are recorded.";
+  "Every one is on unless you switch it off; only the ones you switch off are recorded.";
 
 export interface CapSpec {
   id: string;
@@ -409,10 +414,10 @@ export const ASSISTANT_MESSAGE_HINT =
 // Every unit of per-agent state gg keeps behind a capability is a **module** (see
 // gg/modules): memories, the task list, the board, the skills read-set and the thread
 // archive, plus the conversation window itself. Two things about a module are authored
-// here — whether its holder's *prompt* carries it (`ownership`, a param on every
-// module-backed capability except tasks, whose list is always owned), and which modules
-// an FSM transition hands to the next state (the transfer list on each edge). Both name
-// the same closed taxonomy, so it is spelled once.
+// here — whether its holder's *prompt* carries it (`ownership`, a param on the two
+// capabilities that still offer it; see [ownershipParam]), and which modules an FSM
+// transition hands to the next state (the transfer list on each edge). Both name the
+// same closed taxonomy, so it is spelled once.
 
 // The module kinds a transition may carry, in the contract's own declaration order
 // (`GgModuleKind` in `crates/core/src/gg.rs`), each with what carrying it actually
@@ -458,13 +463,18 @@ export const MODULE_KINDS: ReadonlyArray<{
   },
 ];
 
-// Which capability backs each module kind (`MODULE_CAPABILITIES` in
-// `crates/gg/src/modules.rs`). It is what a surface asks when it has to decide whether an
-// agent holds a module at all and the record predates module rosters — and, read the other
-// way, what lets a module's row link back to the capability an operator would tune.
+// Which capability backs each module kind. It is what a surface asks when it has to decide
+// whether an agent holds a module at all and the record predates module rosters — and, read
+// the other way, what lets a module's row link back to the capability an operator would
+// tune.
 //
-// `history` is absent deliberately, and that absence is load-bearing: the window is not a
-// capability, it is the agent. Every agent has one, always.
+// Deliberately *not* the same list as `MODULE_CAPABILITIES` in `crates/gg/src/modules.rs`,
+// which is the narrower question of which capabilities carry an [ownership](ownershipParam)
+// param — two of these five. This map answers "what would I go and configure to change
+// this module?", which every kind but one has an answer to.
+//
+// `history` is that one, and its absence is load-bearing: the window is not a capability,
+// it is the agent. Every agent has one, always.
 export const MODULE_CAPABILITY_IDS: ReadonlyMap<GgModuleKind, string> = new Map(
   [
     ["memories", "memories"],
@@ -514,9 +524,27 @@ export const MODULE_OWNERSHIP_OPTIONS = [
 ] as const;
 
 // One module-backed capability's `ownership` control. The label is shared across the
-// four that offer it so the knob reads as one idea rather than four; `what` names the
-// state at stake so the hint says what an unowned arm actually costs that capability.
-// The task list is not among them: it is always owned.
+// two that offer it — project management and agent-managed context — so the knob reads
+// as one idea rather than two; `what` names the state at stake so the hint says what an
+// unowned arm actually costs that capability.
+//
+// The other three module-backed capabilities have no unowned arm at all, and which one
+// is missing for which reason is worth knowing before wondering where the picker went.
+// The task list is what an agent steers its work by from turn to turn, so it has always
+// been owned. Skills and memories offered the knob and no longer do (`MODULE_CAPABILITIES`
+// in `crates/gg/src/modules.rs` is two entries now), because on both of them it was a way
+// of switching the capability off while pretending it was on: what a memory strategy puts
+// in the window IS what having memories means under it, and the strategy is already that
+// knob — `keyword-search` is the arm that pins nothing — while a skills catalogue the
+// agent is never shown leaves it able to read a skill only by being handed its name,
+// which is the capability disabled with extra steps rather than an arm of a study.
+//
+// Two behaviours follow from the removal and are worth stating, because they used to be
+// configurable and are now unconditional: the pinned memory index can no longer be
+// withheld, and a linked holder is always told when another holder adds, revises or
+// removes a memory. An `ownership` a stored configuration still carries on either is
+// preserved through a round-trip like any other param no control covers, and read by
+// nothing.
 function ownershipParam(what: string): ParamSpec {
   return {
     key: "ownership",
@@ -531,6 +559,77 @@ function ownershipParam(what: string): ParamSpec {
 // configuration names none (`crates/gg/src/skills.rs`).
 export const DEFAULT_SKILLS_DIR = ".gg/skills";
 
+// The skills gg ships itself — one per family of the functions it offers
+// (`FAMILIES` in `crates/gg/src/skills.builtin.rs`), in the order gg lists them, which
+// is roughly "the workspace, then the work, then yourself".
+//
+// They exist because the overwhelming majority of runs author no skills at all: the
+// capability was a mechanism with an empty library, and did nothing whatever unless
+// somebody had thought to fill it. Not a word of one is prose kept anywhere — a
+// built-in is generated from the same live tool definitions and documentation runtime
+// the agent's own calls come from, so it cannot drift from the tools it describes.
+//
+// The ids are the skill *names*, which is what `read_skill` takes and what this param
+// records, so they are the same strings gg matches on both sides.
+export const BUILT_IN_SKILL_OPTIONS: ReadonlyArray<{
+  value: string;
+  label: string;
+}> = [
+  {
+    value: "gg-filesystem",
+    label: "gg-filesystem — reading, writing and editing workspace files",
+  },
+  { value: "gg-shell", label: "gg-shell — running shell commands" },
+  {
+    value: "gg-project",
+    label: "gg-project — the epic/issue board other agents implement from",
+  },
+  {
+    value: "gg-tasks",
+    label: "gg-tasks — the agent's own blocked-by task list",
+  },
+  {
+    value: "gg-memory",
+    label: "gg-memory — memories that outlive the conversation",
+  },
+  {
+    value: "gg-skills",
+    label: "gg-skills — reading skills, including this one",
+  },
+  {
+    value: "gg-context",
+    label:
+      "gg-context — evicting, archiving, searching and compacting its window",
+  },
+  {
+    value: "gg-delegation",
+    label: "gg-delegation — spawning child agents and handing its session on",
+  },
+  {
+    value: "gg-views",
+    label:
+      "gg-views — showing itself a file, a value or a signature (code mode)",
+  },
+  {
+    value: "gg-programs",
+    label: "gg-programs — fetching a program it already ran (code mode)",
+  },
+  {
+    value: "gg-session",
+    label: "gg-session — the one call that ends its session",
+  },
+];
+
+// What a built-in skill IS, said once here rather than eleven times on the checkboxes:
+// where its content comes from, why an agent may be offered fewer than eleven, and what
+// switching one off actually does.
+//
+// The "only when the agent has it" rule is the load-bearing half. A family is offered
+// only when this agent really holds at least one of its functions, so the list is a
+// ceiling rather than a roster: switching nothing off on an agent with no board still
+// yields no `gg-project`.
+export const BUILT_IN_SKILLS_HINT = `Skills gg writes itself, one per family of the functions this agent has — generated from its live tools rather than authored, so they cannot describe a tool it was not given. Under tool calling a built-in's body is the family's real tool definitions and parameters; under responses-as-code it opens a documentation view per function on the turn after it is read. A family is offered only when the agent holds at least one of its functions, and a skill of the same name in the skills directory replaces it. Switching one off withholds it from this agent entirely — the family's functions still work, the manual for them is simply not there. ${TOGGLES_HINT}`;
+
 // The bounds gg falls back to when a configuration sets no cap, mirroring the
 // per-capability defaults in `crates/gg/src/{tasks,board,memories}.rs`. Surfaced as
 // placeholders so an operator sees what leaving a field empty means.
@@ -541,9 +640,16 @@ export const DEFAULT_MAX_ISSUES = 2000;
 // (`crates/gg/src/board.rs`). Surfaced as the project-management capability's
 // `maxRetries` default so an operator sees what leaving the field empty means.
 export const DEFAULT_MAX_RETRIES = 1;
-export const DEFAULT_MEMORY_MAX_COUNT = 8;
-export const DEFAULT_MEMORY_MAX_LEN_PER = 2000;
-export const DEFAULT_MEMORY_MAX_TOTAL_LEN = 8000;
+// The memory bounds gg falls back to (`crates/gg/src/memories.rs`). They were written
+// for a scratchpad of a handful of short notes and are now sized for a store an agent
+// really curates: 64 notes of 4 096 characters, with no aggregate ceiling on the
+// scratchpad at all — which is why there is no `DEFAULT_MEMORY_MAX_TOTAL_LEN` here to
+// seed that field with. The description ceiling is the one that went the other way: it
+// used to be unlimited and is now 256 characters under every strategy, because a
+// description is an index line the window pays for on every turn.
+export const DEFAULT_MEMORY_MAX_COUNT = 64;
+export const DEFAULT_MEMORY_MAX_LEN_PER = 4096;
+export const DEFAULT_MEMORY_MAX_LEN_DESCRIPTION = 256;
 export const DEFAULT_MEMORY_MAX_LEN_INDEX = 16384;
 export const DEFAULT_MEMORY_MAX_RESULTS = 25;
 
@@ -579,7 +685,9 @@ export const MEMORY_SCOPE_HINT =
 export const COUNTED_MEMORY_STRATEGIES = ["", "keyword-search"] as const;
 
 // The scratchpad strategy alone — the only one whose notes are carried in the window, and
-// so the only one with a total-length budget.
+// so the only one an aggregate length budget could bound (it has none by default; the
+// field is offered here because this is the only strategy where setting one means
+// anything).
 export const SCRATCHPAD_MEMORY_STRATEGY = [""] as const;
 
 // The strategy that keeps a pinned markdown index — the only one with an index to bound.
@@ -591,7 +699,7 @@ export const SEARCHING_MEMORY_STRATEGY = ["keyword-search"] as const;
 // What each memory strategy does — the detail lifted off the picker's option labels
 // into the field's help tooltip.
 export const MEMORY_STRATEGY_HINT =
-  "Scratchpad keeps every memory's body in the context window, bounded by a count and an aggregate character budget. Markdown pins only an index of slugs and descriptions, and the model reads a memory's contents on demand; the index length is what bounds the population. Keyword search pins nothing at all — the model finds a memory with `search_memories` and reads it back. Under every strategy the memories live inside gg, never on disk.";
+  "Scratchpad keeps every memory's body in the context window, bounded by a count and a per-note character ceiling (and by an aggregate budget, if you set one — there is no default). Markdown pins only an index of slugs and descriptions, and the model reads a memory's contents on demand; the index length is what bounds the population. Keyword search pins nothing at all — the model finds a memory with `search_memories` and reads it back. Under every strategy the memories live inside gg, never on disk.";
 
 // The two shapes the tasks list can take (`crates/gg/src/tasks.rs`): the default
 // **simple** mode is a bare title/description to-do list, while **issues** mode
@@ -891,8 +999,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     id: "skills",
     name: "Skills",
     group: "Knowledge",
+    // Not "authored markdown" any more, and the change is bigger than the wording: a
+    // skill may be prose, an importable TypeScript module bound into every later
+    // program's scope, a script that runs once when the skill is first read, or any
+    // combination — and gg ships eleven of its own, so the capability is worth enabling
+    // in a workspace that authored none.
     purpose:
-      "Authored markdown skills, catalogued up front and pinned once read.",
+      "Skills — prose, code, or both — catalogued in the prompt and pinned once read.",
     defaultOn: true,
     params: [
       {
@@ -900,9 +1013,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Skills directory",
         kind: "text",
         defaultValue: DEFAULT_SKILLS_DIR,
-        hint: "Where in the workspace gg reads authored skills from. Relative paths are joined onto the workspace; an absolute path is used as-is.",
+        hint: "Where in the workspace gg reads authored skills from. Relative paths are joined onto the workspace; an absolute path is used as-is. A `<name>.md` file there is a prose skill; a `<name>/` directory is one too, with its front matter and body in a required `skill.md` beside an optional `skill.ts` (a module the agent's programs can call) and `on-use.ts` (a script that runs once, when the skill is first read).",
       },
-      ownershipParam("the skills it has read"),
+      {
+        key: "builtIns",
+        label: "Built-in skills",
+        kind: "toggles",
+        options: BUILT_IN_SKILL_OPTIONS,
+        hint: BUILT_IN_SKILLS_HINT,
+      },
     ],
     tools: ["read_skill"],
   },
@@ -929,29 +1048,31 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         options: MEMORY_SCOPE_OPTIONS,
         hint: MEMORY_SCOPE_HINT,
       },
-      ownershipParam("its memories"),
       {
         key: "maxCount",
         label: "Max memories",
         kind: "number",
         defaultValue: String(DEFAULT_MEMORY_MAX_COUNT),
         showWhenImplementation: COUNTED_MEMORY_STRATEGIES,
-        hint: "How many notes the model may keep at once. 0 for unlimited.",
+        hint: `How many notes the model may keep at once; gg's default is ${DEFAULT_MEMORY_MAX_COUNT}. 0 for unlimited.`,
       },
       {
         key: "maxLenPerMemory",
         label: "Max length each (chars)",
         kind: "number",
         defaultValue: String(DEFAULT_MEMORY_MAX_LEN_PER),
-        hint: "Character ceiling on any one note's body. Defaults to 8192 under the two file-shaped strategies, whose bodies are not in the window. 0 for unlimited.",
+        hint: `Character ceiling on any one note's body — ${DEFAULT_MEMORY_MAX_LEN_PER} by default, and 8192 under the two file-shaped strategies, whose bodies are not in the window. A code memory's module and its on-use script are not bodies and are charged to neither this nor the total: they are a capability the agent gains, not context it carries. 0 for unlimited.`,
       },
       {
         key: "maxTotalLen",
         label: "Max length total (chars)",
         kind: "number",
-        defaultValue: String(DEFAULT_MEMORY_MAX_TOTAL_LEN),
+        // No `defaultValue`: the scratchpad has no aggregate ceiling of its own any
+        // more, so seeding one here would invent a budget gg does not impose and quietly
+        // save it into every configuration opened in the editor.
+        placeholder: "unlimited",
         showWhenImplementation: SCRATCHPAD_MEMORY_STRATEGY,
-        hint: "Character ceiling across all note bodies together — the budget for what the window carries. 0 for unlimited.",
+        hint: "Character ceiling across all note bodies together — the budget for what the window carries. Empty is no ceiling, which is gg's default: the per-note ceiling and the count are what bound a scratchpad now. 0 is unlimited too.",
       },
       {
         key: "maxLenIndex",
@@ -965,8 +1086,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "maxLenDescription",
         label: "Max description length (chars)",
         kind: "number",
-        placeholder: "unlimited",
-        hint: "Character ceiling on a memory's one-line description, under every strategy. Empty is no ceiling. Under the markdown strategy every description is a line of the pinned index, so it is charged to the window on every turn.",
+        defaultValue: String(DEFAULT_MEMORY_MAX_LEN_DESCRIPTION),
+        hint: `Character ceiling on a memory's one-line description; gg's default is ${DEFAULT_MEMORY_MAX_LEN_DESCRIPTION}, under every strategy. A description is an index line, not a body — under the markdown strategy the window pays for every one of them on every turn, and under the others it is what a search result or a linked-holder notice shows. 0 for unlimited.`,
       },
       {
         key: "maxResults",
@@ -1253,6 +1374,24 @@ export const DEFAULT_CAP_IDS = CAPABILITIES.filter((c) => c.defaultOn).map(
 export const PRESET_CAP_IDS = CAPABILITIES.filter(
   (c) => !c.requiresAuthoring,
 ).map((c) => c.id);
+
+// The module kinds whose capability still offers an [ownership](ownershipParam) control,
+// derived from the catalog rather than listed a second time — so a capability that gains
+// or loses the param carries this along with it instead of leaving a reader of a module
+// surface to be told about a declaration nobody could have made.
+//
+// That is what it is for: the observed side of the module surfaces compares what a profile
+// asked for against what its instances got, and a kind that cannot be asked has to be read
+// as "nothing declared" rather than as the param's old default. See `declaredModuleConfig`.
+export const OWNERSHIP_MODULE_KINDS: ReadonlySet<GgModuleKind> = new Set(
+  [...MODULE_CAPABILITY_IDS]
+    .filter(([, capability]) =>
+      CAPABILITIES.find((cap) => cap.id === capability)?.params?.some(
+        (param) => param.key === "ownership",
+      ),
+    )
+    .map(([kind]) => kind),
+);
 
 // Every tool name any capability offers, in catalog order, de-duplicated — the
 // universe of `toolOffered` facet targets and toolset-ablation levers.

@@ -29,7 +29,7 @@ use super::{
     CREATE_MEMORY_TOOL, EDIT_MEMORY_TOOL, READ_MEMORY_TOOL, SEARCH_MEMORIES_TOOL, bounds_note,
     failure_for, usage_data, usage_note,
 };
-use crate::memories::{MemoryBinding, MemoryChange, MemoryHit};
+use crate::memories::{MemoryBinding, MemoryChange, MemoryCode, MemoryHit};
 use crate::model::ToolDefinition;
 
 // ---------------------------------------------------------------------------
@@ -122,7 +122,8 @@ impl Tool for CreateMemoryTool {
             Ok(contents) => contents,
             Err(error) => return error.into(),
         };
-        self.create(name, description, contents)
+        // The native schema declares no code fields, so a tool-calling run can never create one.
+        self.create(name, description, contents, MemoryCode::default())
     }
 }
 
@@ -134,9 +135,10 @@ impl CreateMemoryTool {
         name: String,
         description: String,
         contents: String,
+        code: MemoryCode,
     ) -> ToolOutcome {
         let mut store = self.store.lock();
-        match store.create(self.store.author(), &name, &description, &contents) {
+        match store.create(self.store.author(), &name, &description, &contents, code) {
             Ok(MemoryChange::Written) => ToolOutcome::ok(
                 format!("Created memory `{name}`. {}", usage_note(&store)),
                 format!("created memory `{name}`"),

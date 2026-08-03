@@ -109,9 +109,18 @@ pub use outcome::{
 pub use {
     invoker::FunctionSummary, invoker::PROGRAM_CALL_ID_PREFIX, invoker::SandboxViewOpened,
     invoker::ViewOpenOutcome, invoker::ViewRefusal, limits::resolve_sandbox_limits,
-    signatures::CatalogueFunction, signatures::catalogue_functions, signatures::type_declaration,
-    transpile::UnreachableTail,
+    membrane::RunEnding, signatures::CatalogueFunction, signatures::catalogue_functions,
+    signatures::type_declaration, transpile::TranspileError, transpile::UnreachableTail,
+    transpile::transpile_module, transpile::transpile_ts as transpile_program,
 };
+
+/// One code module as the guest binds it: the key it is reached at under `lib`, and the JavaScript
+/// whose evaluation produces its exports.
+///
+/// It is the world's own `code-module` record, re-exported so the [knowledge
+/// registry](crate::knowledge) that produces these builds the type the membrane takes rather than
+/// converting at the boundary.
+pub use membrane::CodeModule;
 
 /// One membrane-refused call, and one serviced one, as a test builds an outcome carrying them.
 /// Production code reads both only off a [`SandboxOutcome`], which owns them by value, so nothing
@@ -119,29 +128,52 @@ pub use {
 #[cfg(test)]
 pub use invoker::{SandboxRefusal, SandboxToolCall};
 
-use crate::ending::EndingRole;
 use crate::tools::ToolRegistry;
 use membrane::{MembraneParts, MembraneState, Sandbox};
 
 /// Run one program end to end: type-strip it, instantiate the interpreter component, evaluate it
 /// against exactly `enabled`'s tools, and report everything that happened.
 ///
-/// `program` is the **TypeScript** the model emitted. `enabled` is the run's scope-bound gg tool
-/// names ([`scope_tools`]), `role` the agent's [ending role](EndingRole) and `library` whether this
-/// agent keeps a [program library](crate::programs) — together, exactly what the program's scope is
-/// built from. `deadline` is the run's wall-clock budget, consulted before
-/// every bridged call so a program cannot outlive the run it belongs to. Synchronous and CPU-bound, so
-/// the [loop](crate::agent) runs it on `spawn_blocking`; it performs no I/O of its own — every
-/// effect goes through `invoker`.
+/// Everything a program's scope is built from, as one value.
+///
+/// The four travel together because they *are* one thing — the set of names the evaluated function
+/// receives as parameters — and because that is the whole capability model: a withheld tool is an
+/// undefined identifier rather than a call that reaches the host and is refused.
+#[derive(Clone, Copy)]
+pub struct ProgramScope<'a> {
+    /// The run's scope-bound gg tool names ([`scope_tools`]). Only these are bound.
+    pub enabled: &'a [String],
+    /// The already-transpiled code the agent has loaded by reading a code [skill](crate::skills) or
+    /// [memory](crate::memories). The guest evaluates each one before the program and binds its
+    /// exports at `lib.<name>`; an empty list binds no `lib` at all.
+    pub modules: &'a [CodeModule],
+    /// Which group of ending calls is bound: an agent's own [role](EndingRole), or
+    /// [none at all](RunEnding::None) for an on-use script.
+    pub ending: RunEnding,
+    /// Whether this agent keeps a [program library](crate::programs), which binds the `programs`
+    /// object. A flag rather than a tool name because the library is the one model-facing family a
+    /// *capability* gates rather than the toolset.
+    pub library: bool,
+}
+
+/// `program` is the **TypeScript** the model emitted, `scope` is everything the evaluated function's
+/// parameters are built from, and `deadline` is the run's wall-clock budget, consulted before every
+/// bridged call so a program cannot outlive the run it belongs to. Synchronous and CPU-bound, so the
+/// [loop](crate::agent) runs it on `spawn_blocking`; it performs no I/O of its own — every effect
+/// goes through `invoker`.
 pub fn run_program<A: ToolApi>(
     program: &str,
-    enabled: &[String],
-    role: EndingRole,
-    library: bool,
+    scope: ProgramScope<'_>,
     limits: SandboxLimits,
     deadline: Option<Instant>,
     api: A,
 ) -> (SandboxOutcome, A) {
+    let ProgramScope {
+        enabled,
+        modules,
+        ending,
+        library,
+    } = scope;
     // A test may have armed one of the failures gg's own machinery would have to be broken to
     // produce; see `force_next_program_fault`. The `api` is handed straight back — this fault is a
     // stand-in for a before-start failure, which never runs the program and never touches state.
@@ -171,7 +203,7 @@ pub fn run_program<A: ToolApi>(
         Err(error) => return (SandboxOutcome::before_start(error), api),
     };
     let mut store = bounded_store(
-        MembraneState::new(api, enabled, role, limits, deadline),
+        MembraneState::new(api, enabled, ending, limits, deadline),
         limits,
     );
 
@@ -187,7 +219,14 @@ pub fn run_program<A: ToolApi>(
     };
 
     let returned = bound
-        .call_run(&mut store, &transpiled.js, enabled, role.into(), library)
+        .call_run(
+            &mut store,
+            &transpiled.js,
+            modules,
+            enabled,
+            ending.into(),
+            library,
+        )
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     // A program the sandbox stopped did not run to its end, so an ending it declared on the way is
     // revoked here for the same reason a throw revokes one in the guest's `catch`: `finish` is a
@@ -327,7 +366,7 @@ pub(crate) fn component_bound_tools() -> Result<Vec<String>, SandboxError> {
     let state = MembraneState::new(
         fake::FakeToolApi::new(&log),
         &[],
-        EndingRole::Standard,
+        RunEnding::Role(crate::ending::EndingRole::Standard),
         limits,
         None,
     );
@@ -372,6 +411,7 @@ fn reclaim<A: ToolApi>(
             view_refusals,
             views_suppressed,
             deferred_note,
+            module_errors,
             returned_value,
             completion,
             revoked_completion,
@@ -393,6 +433,7 @@ fn reclaim<A: ToolApi>(
         view_refusals,
         views_suppressed,
         deferred_note,
+        module_errors,
         returned_value,
         // Carried out of the group that survives every exit path, because the flag lives in the
         // agent's context rather than in the program: a trap destroys the guest, not the fact that

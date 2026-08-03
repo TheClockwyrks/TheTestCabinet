@@ -49,8 +49,11 @@ honest answer to "what can I do with memory here?".
 
 A small, curated set whose **bodies are all pinned** in the window and cross a
 compaction boundary verbatim. Memory you never have to look up, and context you
-pay for continuously — which is why it is bounded on all three axes (count, each
-body, and their total).
+pay for continuously — which is why it is bounded by a count and a per-body
+length. (An aggregate ceiling across every memory at once is available as
+`maxTotalLen` and is **off** by default: the other two already bound what the
+window carries, and a total is the one limit an agent hits without being able to
+say which write was too much.)
 
 ### `markdown`
 
@@ -92,21 +95,28 @@ every arm the same params block.
 
 | Param | Applies to | Default |
 | --- | --- | --- |
-| `maxCount` | `scratchpad`, `keyword-search` | 8 / unlimited |
-| `maxLenPerMemory` | all three | 2 000 / 8 192 / 8 192 |
-| `maxTotalLen` | `scratchpad` | 8 000 |
+| `maxCount` | `scratchpad`, `keyword-search` | 64 / unlimited |
+| `maxLenPerMemory` | all three | 4 096 / 8 192 / 8 192 |
+| `maxTotalLen` | `scratchpad` | unlimited |
 | `maxLenIndex` | `markdown` | 16 384 |
-| `maxLenDescription` | all three | unlimited |
+| `maxLenDescription` | all three | 256 |
 | `maxResults` | `keyword-search` | 25 |
+
+The scratchpad's defaults describe a store an agent really curates — sixty-four
+notes of a page each — rather than the handful of short lines they once did. What
+bounds it is the count and the per-note length; the aggregate ceiling is off
+unless a run asks for one.
 
 Lengths are in characters of a memory's **body**; a description is a short
 one-liner and is not counted against them (it is counted in the index, which is
-what `maxLenIndex` measures).
+what `maxLenIndex` measures). Neither is a memory's [code](#code-memories), which
+is not context at all and is bounded separately.
 
-`maxLenDescription` is the one exception, and the only limit that is **off by
-default**. It bounds the description itself, under every strategy — worth setting
-on a `markdown` run, where every description is a line of the pinned index and one
-verbose one-liner is a cost the window pays on every turn. An over-long
+`maxLenDescription` bounds the description itself, under every strategy. It is the
+one field whose length is paid for by *every* turn rather than by the turn that
+reads the memory: on a `markdown` run every description is a line of the pinned
+index, and a search hit is mostly description too. A sentence fits comfortably in
+256 characters; a pasted paragraph does not, which is the point. An over-long
 description is refused, never truncated, and is checked before the body limits so
 a call that breaches both is told about the cheaper fix first.
 
@@ -120,6 +130,85 @@ For example, a markdown run with a small index and no per-memory limit:
   "params": { "maxLenIndex": 4096, "maxLenPerMemory": 0 }
 }
 ```
+
+## Code memories
+
+A memory can carry **code**, exactly as a [skill](/gg/skills/#code-skills) can — the
+difference being that a skill's code was authored ahead of the run and a memory's was
+written by the model, which is the whole point: a helper it got right on turn nine is a
+helper it never has to write again.
+
+Like a skill's, it is **[responses-as-code](/gg/responses-as-code/) only**. The native
+tool schemas carry no code fields at all, so a tool-calling run can neither write a code
+memory nor execute one; what it sees of a memory is its description and its body, as it
+always did.
+
+Every write accepts the two halves beside the body:
+
+```ts
+memory.writeMemory({
+  name: "csv-tools",
+  description: "Parsing the vendor CSV exports, which quote inconsistently.",
+  body: "The third column is sometimes quoted and sometimes not; parseCsv handles both.",
+  code: "export function parseCsv(text: string) { /* … */ }",
+  onUse: 'view.openText("csv-notes", "Row 1 is a header on exports after March.");',
+});
+```
+
+`createMemory` and `updateMemory` take the same shape. An update **replaces** both halves,
+so omitting them clears them — the same rule the description and the body already follow,
+and one a native-mode run cannot trip over, because its schema has no way to say anything
+about them.
+
+- **`code`** is a module whose exports are bound at `lib.<key>` in every program the agent
+  writes from then on, `key` being the slug in camel case (`csv-tools` → `lib.csvTools`),
+  deduplicated if something else has it. The reply names the key and lists the exports. What
+  a module may contain and what it is refused for is documented under
+  [responses-as-code](/gg/responses-as-code/#lib-code-the-agent-loaded).
+- **`onUse`** is a script gg runs **once**, when the memory first comes into use, after the
+  turn's program has ended — so the views it opens arrive on the next turn. It cannot end
+  the session, has no program library, and its source is never shown back to the model. The
+  rules are the same ones an
+  [on-use skill script](/gg/skills/#an-on-use-script-that-runs-once) obeys, for the same
+  reasons.
+
+### When the code loads
+
+By exactly the rule the strategy already sets for what is in context:
+
+| Strategy | The code loads on |
+| --- | --- |
+| `scratchpad` | the **write** — every memory is in the window from the moment it exists, so there is no later moment at which it comes into use |
+| `markdown`, `keyword-search` | the **read** — nothing is in context until `read_memory` brings it there, and its code follows its body |
+
+Registration **survives a compaction**: a loaded module is not context — it costs no tokens
+and is never summarized — so a boundary does not sweep it, and nothing makes an agent
+re-read a memory to get back a helper it already has. What it does not survive is a
+[`fork`](/gg/fork-and-exec/) or a succession, which start with nothing bound.
+
+### Neither half is context, and neither counts against a body limit
+
+`code` and `onUse` cost no window at all: one is transpiled and held by the host, the other
+runs and is never shown. Bounding them against a *window* budget would be bounding the wrong
+thing, so they are bounded on their own — **32 768 characters each**, refused in the same
+`limit-exceeded` voice every other cap uses. What that limit protects is the transpiler,
+which parses untrusted source, not the context window.
+
+### Code that does not compile
+
+Both halves are compiled at the moment they load, which is the moment the table above names
+— and what happens next depends on which moment that is:
+
+- A **write** that loads (the scratchpad's) is **refused** outright, with a located
+  diagnostic. The model wrote that code on this call, so this is the one moment at which the
+  error is exactly what it needs, and storing a module that can never be bound would be
+  storing something that only fails later.
+- A **read** that loads (the two file-shaped strategies') still **returns the memory**, with
+  the diagnostic appended to the body. The body is what the model asked for, and withholding
+  it because a separate half of the memory is broken would lose the thing that was fine.
+
+The same is true of a [skill](/gg/skills/#code-skills), which only ever loads on a read:
+broken code costs the model a diagnostic, never the prose it went looking for.
 
 ## Scoping: whose memories are these?
 
@@ -284,10 +373,7 @@ around:
   already have read.
 
 A run in which nothing is linked never produces a notice at all, and pays nothing
-for the machinery. Neither does an **[unowned](/gg/modules/#ownership)** holder: it has no
-pinned index and gets no notices, because both are the module putting itself in the window,
-and it was configured not to. Its watermark advances all the same, so no backlog builds up
-behind it — news it was never going to be told is not news held back for later.
+for the machinery.
 
 ## Compaction
 

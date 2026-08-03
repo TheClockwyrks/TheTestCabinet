@@ -179,8 +179,15 @@ verbatim, forming the fixed prefix of the post-compaction context window:
 The [Project management](/gg/project-management/) board is likewise retained across a
 compaction boundary. That list is not hand-maintained: what crosses is whatever the
 agent's [modules](/gg/modules/) pin, so a module the agent does not hold contributes
-nothing and an **unowned** one contributes nothing either — it was never in the window
-to carry over.
+nothing — and neither does an [unowned](/gg/modules/#ownership) board, which was never in
+the window to carry over.
+
+One thing crosses a boundary without being in that list at all: the
+[code an agent has loaded](/gg/skills/#code-skills) from a code skill or memory. It is not
+context — it costs no tokens and there is nothing of it in the window to summarize — so a
+compaction simply does not touch it, and `lib` is bound after the boundary exactly as it was
+before. Making an agent re-read its skills to get its helpers back would be friction with
+nothing on the other side of it.
 
 [Agent-managed context](/gg/agent-managed-context/) is the model-facing complement to
 compaction: compaction is the automatic backstop when the window fills; agent-managed

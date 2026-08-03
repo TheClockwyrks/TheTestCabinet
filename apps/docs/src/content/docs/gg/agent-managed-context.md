@@ -265,12 +265,11 @@ either: an entry's **ordinal**. Two copies that both numbered from zero would ea
 entry as `#0`, and a search result quoting one would be ambiguous about which thread it came
 out of.
 
-This capability also reads the `ownership` param every module-backed one does, and it is the
-one place the answer barely shows: the archive is by definition *out* of the window, so
+This capability is one of the two that read an [`ownership`](/gg/modules/#ownership) param
+(the other is [project management](/gg/project-management/)), and it is the one place the
+answer barely shows: the archive is by definition *out* of the window, so
 `"ownership": "unowned"` has no pinned block to withhold and takes away only the prose about
-it. It is recorded, carried across a transfer, and otherwise changes nothing — the param
-exists so every module answers the same question, not because every module has an
-interesting answer.
+it. It is recorded, carried across a transfer, and otherwise changes nothing.
 
 ## Parameters
 

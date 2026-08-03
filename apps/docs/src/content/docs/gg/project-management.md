@@ -60,7 +60,9 @@ in the run holds the one board, and an agent with no project-management capabili
 that *has* the capability can be put in the same position deliberately, by setting
 `"ownership": "unowned"` on it: it keeps every board tool and loses both the per-turn cost of
 carrying the whole decomposition and the prompt section describing it — worth having on a
-board large enough that the block is the biggest thing in the window.
+board large enough that the block is the biggest thing in the window. The board is one of
+only two capabilities that read the param at all, and it is the one the param was designed
+around: a board is a document about *the run*, not about the agent holding it.
 
 Forking or transferring the board never copies it. Two boards would each keep their own
 per-prefix issue counter and would both hand out `AUTH-4`, for two different pieces of

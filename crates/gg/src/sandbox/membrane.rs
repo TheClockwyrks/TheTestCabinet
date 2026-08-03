@@ -78,17 +78,45 @@ wasmtime::component::bindgen!({ world: "sandbox", path: "wit" });
 use test_cabinet::gg::feedback;
 use test_cabinet::gg::types::{self, ErrorCode, ToolError};
 
-/// The guest is handed the same [role](EndingRole) the host holds, so the ending calls bound into a
-/// program's scope and the ones this membrane will accept are decided once, from one value.
+/// Which ending calls one sandbox run binds.
 ///
-/// The judge's attempt count does not cross: the guest has no use for it (its own check is only that
-/// the number is a positive integer) and the range is the host's to enforce, at the call.
-impl From<EndingRole> for EndingKind {
-    fn from(role: EndingRole) -> Self {
-        match role {
-            EndingRole::Standard => Self::Standard,
-            EndingRole::Review => Self::Review,
-            EndingRole::Judge { .. } => Self::Judge,
+/// Almost always an agent's own [role](EndingRole): the guest is handed the same value the host
+/// holds, so the ending calls bound into a program's scope and the ones this membrane will accept
+/// are decided once, from one value.
+///
+/// [`None`](Self::None) is the exception, and it exists for exactly one caller: an **on-use script**,
+/// the code a [skill](crate::skills) or a [memory](crate::memories) runs when the agent first reads
+/// it. That script is not the agent's turn — the model did not write it and is not answering for it
+/// — so it must not be able to declare the session over. It is withheld the way every withheld call
+/// is: the name is simply not in its scope.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunEnding {
+    /// The agent's own role. A turn.
+    Role(EndingRole),
+    /// No ending group at all. An on-use script.
+    None,
+}
+
+impl RunEnding {
+    /// How many attempts a [judge](EndingRole::Judge)'s `select_winner` may pick between — zero for
+    /// every other role, and for a run that binds no ending at all.
+    fn attempts(self) -> u32 {
+        match self {
+            Self::Role(role) => role.attempts(),
+            Self::None => 0,
+        }
+    }
+}
+
+/// The judge's attempt count does not cross into the guest: it has no use for it (its own check is
+/// only that the number is a positive integer) and the range is the host's to enforce, at the call.
+impl From<RunEnding> for EndingKind {
+    fn from(ending: RunEnding) -> Self {
+        match ending {
+            RunEnding::Role(EndingRole::Standard) => Self::Standard,
+            RunEnding::Role(EndingRole::Review) => Self::Review,
+            RunEnding::Role(EndingRole::Judge { .. }) => Self::Judge,
+            RunEnding::None => Self::None,
         }
     }
 }
@@ -159,6 +187,12 @@ pub(crate) struct MembraneState<A: ToolApi> {
     views_suppressed: u64,
     /// The shim's note that the program deferred work which ran after it ended.
     deferred_note: Option<String>,
+    /// Every code module that threw while it was being loaded, as `(binding key, message)`.
+    ///
+    /// A module is somebody else's code — an authored skill's, or a memory the model wrote turns ago
+    /// — so its failure is reported rather than raised, and it belongs in the turn's feedback beside
+    /// the refusals rather than as the program's own error.
+    module_errors: Vec<(String, String)>,
     /// Whether the program ended with a `return` that carried a value — a value gg discarded. The
     /// value itself never crosses the membrane; only the fact does, so the turn's feedback can point
     /// the model at `console.log`.
@@ -189,10 +223,10 @@ pub(crate) struct MembraneState<A: ToolApi> {
     /// [`revoked_completion`](Self::revoked_completion) is: a model whose replacement program simply
     /// never ran, with nothing said about it, would sit waiting for a turn that already happened.
     revoked_rerun: bool,
-    /// The agent's [ending role](EndingRole) — which ending calls the guest was given, and (for a
-    /// judge) how many attempts its pick is bounded by. The guest is handed the same role, so the
+    /// Which ending calls the guest was given, and (for a
+    /// judge) how many attempts its pick is bounded by. The guest is handed the same value, so the
     /// only ending calls that can reach this host are the ones it bound.
-    role: EndingRole,
+    role: RunEnding,
 }
 
 /// Everything one program accumulated, reclaimed from the store on the way out.
@@ -223,6 +257,8 @@ pub(crate) struct MembraneParts {
     pub views_suppressed: u64,
     /// The deferred-work note, when the shim reported one.
     pub deferred_note: Option<String>,
+    /// Every code module that failed to load, as `(binding key, message)`.
+    pub module_errors: Vec<(String, String)>,
     /// Whether the program ended by returning a value, which gg discarded.
     pub returned_value: bool,
     /// The ending the program declared, when it declared one and did not lose it.
@@ -245,7 +281,7 @@ impl<A: ToolApi> MembraneState<A> {
     pub(crate) fn new(
         api: A,
         enabled: &[String],
-        role: EndingRole,
+        role: RunEnding,
         limits: SandboxLimits,
         deadline: Option<Instant>,
     ) -> Self {
@@ -270,6 +306,7 @@ impl<A: ToolApi> MembraneState<A> {
             view_refusals: Vec::new(),
             views_suppressed: 0,
             deferred_note: None,
+            module_errors: Vec::new(),
             returned_value: false,
             completion: None,
             revoked_completion: None,
@@ -337,6 +374,7 @@ impl<A: ToolApi> MembraneState<A> {
             view_refusals: self.view_refusals,
             views_suppressed: self.views_suppressed,
             deferred_note: self.deferred_note,
+            module_errors: self.module_errors,
             returned_value: self.returned_value,
             completion: self.completion,
             revoked_completion: self.revoked_completion,

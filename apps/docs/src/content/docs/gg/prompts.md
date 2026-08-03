@@ -83,11 +83,12 @@ to the prompt: **a capability that is off contributes no prompt text at all**. T
 what makes an [ablation](/gg/overview/#the-capability-set) clean — the off arm's model
 is never told about a feature it does not have.
 
-What a capability that is *on* contributes is decided by
-[module ownership](/gg/modules/#ownership). An **owned** module contributes both halves: the
-**instructions** — how to use the calls, what the limits are — and the **state**, the pinned
-blocks below and the skills catalog. An **unowned** one contributes neither: it is reachable
-through its tools and nothing else, and what documents those tools is their own schemas.
+A capability that is on contributes two halves: the **instructions** — how to use the calls,
+what the limits are — and, where it has one, the **state**: the pinned blocks below, and the
+[skills](/gg/skills/) catalog. For the two capabilities that carry an
+[`ownership`](/gg/modules/#ownership) param — the board and the thread archive — an
+**unowned** module contributes neither half: it is reachable through its tools and nothing
+else, and what documents those tools is their own schemas.
 
 So each system template is one `{{#if}}` section per capability, over a rendering context
 that carries both _whether_ each capability is on and _how it is configured_. A run's actual
@@ -97,7 +98,9 @@ limits are interpolated inline rather than restated in prose:
 - the [memories](/gg/memories/) budget (count, per-memory length, total length);
 - the [task](/gg/tasks/) count ceiling;
 - the [Project management](/gg/project-management/) epic and issue ceilings;
-- the catalog of available [skills](/gg/skills/), each with its description.
+- the catalog of available [skills](/gg/skills/), each with its description — the
+  workspace's authored ones and the [built-ins](/gg/skills/#the-skills-gg-ships) gg
+  generates for this agent's own function families, in one `## Skills` section.
 
 The rendering context is a typed Rust struct (`prompts::SystemContext`), and rendering
 runs in **strict mode**: a template that references a variable the context does not
@@ -260,11 +263,12 @@ incomplete items — are computed in Rust by the store that owns the DAG. The te
 lays the result out.
 
 Which of the three an agent actually gets is decided by its [modules](/gg/modules/): a
-block belongs to a module, and an [unowned](/gg/modules/#ownership) one contributes neither a
-block nor the section that would have described it.
-The same rule is what keeps the board out of an agent that has no board tools — it holds
-the run's board unowned, so it can be [dispatched an issue](/gg/project-management/) from
-a board it is never shown.
+block belongs to a module, and a module the agent does not hold contributes neither a block
+nor the section that would have described it. The board adds one more way to withhold it —
+an [unowned](/gg/modules/#ownership) board contributes neither half — which is what keeps
+it out of an agent that has no board tools: it holds the run's board unowned, so it can be
+[dispatched an issue](/gg/project-management/) from a board it is never shown. The task list
+and the memory block have no such switch; a holder of either is shown it.
 
 ### The one message that is appended rather than pinned
 

@@ -270,6 +270,18 @@ impl<A: ToolApi> feedback::Host for MembraneState<A> {
         self.deferred_note.get_or_insert(note);
     }
 
+    /// A code module that threw while it was being loaded, so its `lib` entry is empty.
+    ///
+    /// Every one is kept rather than only the first: the modules are independent, they came from
+    /// different skills and memories, and a model told about one broken module out of three would
+    /// fix that one and meet the next next turn. The list is bounded by how many modules the host
+    /// handed over in the first place, which is how many the agent has read — so there is no cap to
+    /// apply here that the read path has not already applied.
+    fn report_module_error(&mut self, name: String, message: String) {
+        self.module_errors
+            .push((name, truncate(message, MAX_LOG_LINE_BYTES)));
+    }
+
     /// The throw the shim caught. First one wins, for the same reason — the shim has exactly one
     /// `catch`, and a program cannot fail twice.
     ///

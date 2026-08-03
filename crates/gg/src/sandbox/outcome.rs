@@ -75,6 +75,12 @@ pub struct SandboxOutcome {
     /// The shim's note that the program deferred work into a microtask which ran after it ended.
     /// `None` when it did not.
     pub deferred_note: Option<String>,
+    /// Every code module that threw while it was being loaded, as `(binding key, message)`.
+    ///
+    /// Empty on the overwhelming majority of turns. When it is not, the turn's feedback says which
+    /// skill or memory's code failed and why — never its source, which the model is not shown — so a
+    /// program that found `lib.x` empty is told why rather than left to guess.
+    pub module_errors: Vec<(String, String)>,
     /// Whether the program ended with a `return` that carried a value — which gg **discarded**.
     ///
     /// The value is not here because it is nowhere: a program's return value is not a channel, and
@@ -155,6 +161,7 @@ impl SandboxOutcome {
             view_refusals: Vec::new(),
             views_suppressed: 0,
             deferred_note: None,
+            module_errors: Vec::new(),
             returned_value: false,
             completion: None,
             revoked_completion: None,

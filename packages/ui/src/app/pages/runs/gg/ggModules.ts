@@ -50,6 +50,7 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import {
   MODULE_CAPABILITY_IDS,
+  OWNERSHIP_MODULE_KINDS,
   agentCapabilityOn,
   agentProfile,
   capabilityParam,
@@ -243,6 +244,26 @@ export interface GgModuleDivergence {
   note: string;
 }
 
+/**
+ * What a profile's configuration ASKED for about one module kind, with the params' own
+ * defaults filled in — the declared half of every module question.
+ *
+ * Both fields are strings rather than unions because that is what a param is: an
+ * unrecognized value falls back at launch and is reported as a warning, so a surface that
+ * renders the declared value has to be able to render one gg did not recognize.
+ */
+export interface GgDeclaredModuleConfig {
+  /**
+   * Whether the holder's prompt carries the module (`owned`/`unowned`), or **null** for a
+   * kind whose capability offers no such param — the task list, skills and memories, which
+   * are always carried. Null is not "owned": it means the configuration was never asked, so
+   * nothing about this module's ownership can diverge from it.
+   */
+  ownership: string | null;
+  /** Which instance the module binds, for the one kind that has a scope (memories). */
+  scope: string | null;
+}
+
 /** How one agent PROFILE's instances are distributed over one kind's module instances. */
 export interface GgAgentModuleSummary {
   kind: GgModuleKind;
@@ -270,7 +291,7 @@ export interface GgAgentModuleSummary {
    * Null for a kind with no capability behind it (the window) and for a profile the
    * captured configuration does not declare, where there is nothing to have asked.
    */
-  declared: { ownership: string; scope: string | null } | null;
+  declared: GgDeclaredModuleConfig | null;
   /** Where the declaration and the run disagree — see {@link GgModuleDivergence}. */
   divergences: GgModuleDivergence[];
   /** Summed across the profile's instances' windows, per turn. */
@@ -977,7 +998,7 @@ function declaredFor(
   set: GgCapabilitySet | null,
   profile: string,
   kind: GgModuleKind,
-): { ownership: string; scope: string | null } | null {
+): GgDeclaredModuleConfig | null {
   const capability = MODULE_CAPABILITY_IDS.get(kind);
   if (!capability) return null;
   const config = agentProfile(set, profile);
@@ -995,7 +1016,7 @@ function declaredFor(
 // surfaces had to be built. For the user's stated purpose (is this capability being used the
 // way it was configured to be?) these lines are the highest-value thing on the tab.
 function moduleDivergences(
-  declared: { ownership: string; scope: string | null } | null,
+  declared: GgDeclaredModuleConfig | null,
   holds: GgAgentModuleHold[],
   holders: GgModuleHolder[],
   /** What the holders AGREE they hold it as, or null where they do not (see the summary). */
@@ -1048,22 +1069,27 @@ function moduleDivergences(
       break;
   }
 
-  if (holders.length > 0) {
+  // Only for a kind whose capability has an ownership param to declare. Where it has none
+  // there is no declaration to disagree with — every holder reports the one ownership the
+  // kind has — so comparing the observed value against an invented default would put a
+  // finding on the tab about a configuration nobody wrote.
+  const declaredOwnership = declared.ownership;
+  if (declaredOwnership !== null && holders.length > 0) {
     const owned = holders.filter(
       (holder) => holder.ownership === "owned",
     ).length;
     if (observedOwnership == null) {
       out.push({
-        declared: declared.ownership,
+        declared: declaredOwnership,
         observed: `${owned} of ${holders.length} instances own it`,
         note:
           "Holders only disagree about ownership when a store is carried across profiles " +
           "that configure it differently — whether it is in the prompt is the holder's " +
           "configuration, not the store's.",
       });
-    } else if (holders[0] && holders[0].ownership !== declared.ownership) {
+    } else if (holders[0] && holders[0].ownership !== declaredOwnership) {
       out.push({
-        declared: declared.ownership,
+        declared: declaredOwnership,
         observed: holders[0].ownership,
         note:
           "Every instance holds it on terms its own profile did not ask for, which is what " +
@@ -1100,15 +1126,17 @@ export function useGgModules(
  * The declared half of a profile's module configuration: what its capability params ASKED
  * for, as against what {@link deriveGgModules} observes it got.
  *
- * Returned as strings because that is what a param is — an unrecognized value falls back at
- * launch and is reported as a warning, so a surface that renders the declared value has to be
- * able to render one gg did not recognize.
+ * Each field is read only where the kind's capability actually offers it, and is null
+ * otherwise — see {@link GgDeclaredModuleConfig}. Filling in a default for a param an
+ * operator cannot set would be worse than saying nothing: it would put a declaration in the
+ * record that nobody made, and then let {@link moduleDivergences} report the run departing
+ * from it.
  */
 export function declaredModuleConfig(
   set: GgCapabilitySet | null,
   profile: string,
   kind: GgModuleKind,
-): { ownership: string; scope: string | null } {
+): GgDeclaredModuleConfig {
   const capability = MODULE_CAPABILITY_IDS.get(kind);
   // Read through `capabilityParam` rather than walking the profile again: where a param
   // lives is the catalog's business, and two readers of one fact are exactly the drift the
@@ -1122,9 +1150,13 @@ export function declaredModuleConfig(
       : null;
   };
   return {
-    // Both params default when absent, and the defaults are what every configuration
-    // written before they existed has.
-    ownership: read("ownership") ?? "owned",
+    // Where the param exists, absent means its default, and the default is what every
+    // configuration written before it existed has. Where it does not — skills, memories and
+    // tasks, whose modules are always carried — the answer is that nothing was declared,
+    // not that `owned` was.
+    ownership: OWNERSHIP_MODULE_KINDS.has(kind)
+      ? (read("ownership") ?? "owned")
+      : null,
     scope: kind === "memories" ? (read("scope") ?? "isolated") : null,
   };
 }

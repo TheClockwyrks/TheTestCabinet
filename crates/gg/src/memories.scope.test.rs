@@ -128,7 +128,13 @@ fn write_as(holder: &MemoriesRuntime, name: &str, body: &str) {
     let binding = holder.binding();
     binding
         .lock()
-        .write(binding.author(), name, &format!("about {name}"), body)
+        .write(
+            binding.author(),
+            name,
+            &format!("about {name}"),
+            body,
+            MemoryCode::default(),
+        )
         .expect("the write is within the caps");
 }
 
@@ -582,7 +588,13 @@ fn the_notice_collapses_a_memorys_writes_into_one_line() {
     let binding = author.binding();
     binding
         .lock()
-        .create(binding.author(), "api", "first pass", "one")
+        .create(
+            binding.author(),
+            "api",
+            "first pass",
+            "one",
+            MemoryCode::default(),
+        )
         .unwrap();
     binding
         .lock()
@@ -590,7 +602,13 @@ fn the_notice_collapses_a_memorys_writes_into_one_line() {
         .unwrap();
     binding
         .lock()
-        .create(binding.author(), "layout", "the layout", "grid")
+        .create(
+            binding.author(),
+            "layout",
+            "the layout",
+            "grid",
+            MemoryCode::default(),
+        )
         .unwrap();
 
     let notice = reader
@@ -622,7 +640,13 @@ fn the_notice_reports_a_deletion_and_lets_it_win() {
     let binding = author.binding();
     binding
         .lock()
-        .create(binding.author(), "scratch", "notes", "throwaway")
+        .create(
+            binding.author(),
+            "scratch",
+            "notes",
+            "throwaway",
+            MemoryCode::default(),
+        )
         .unwrap();
     binding.lock().delete(binding.author(), "scratch").unwrap();
 
@@ -677,29 +701,6 @@ fn a_new_holder_is_not_told_about_history_it_never_missed() {
         latecomer.notice().is_none(),
         "but is told about none of them as news"
     );
-}
-
-/// An [unowned](crate::modules::Ownership::Unowned) holder is told nothing — an unowned module
-/// contributes nothing to the assembled prompt — and its watermark still advances, so becoming
-/// current later does not dump a backlog.
-#[test]
-fn an_unowned_holder_is_told_nothing_and_still_keeps_up() {
-    let world = World::new();
-    let mut config = scratchpad("Curator", MemoryScope::Shared);
-    config.capabilities[0].params = json!({ "scope": "shared", "ownership": "unowned" });
-    let author = resolve_alone(
-        &world,
-        &scratchpad("Curator", MemoryScope::Shared),
-        "agent-0",
-    );
-    let mut quiet = resolve_alone(&world, &config, "agent-1");
-    assert!(same_store(&author, &quiet));
-
-    write_as(&author, "plan", "the plan");
-    assert!(quiet.notice().is_none(), "an unowned module says nothing");
-    // Its cursor moved anyway: nothing is being held back for a later turn.
-    write_as(&author, "layout", "the layout");
-    assert!(quiet.notice().is_none());
 }
 
 /// **The index must not move.** The notice is strictly additive: the pinned block a holder renders
@@ -844,7 +845,13 @@ fn a_store_with_no_holders_forgets_nothing() {
     let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, MemoryCaps::default());
     for n in 0..4 {
         store
-            .write("nobody", &format!("note-{n}"), "a description", "a body")
+            .write(
+                "nobody",
+                &format!("note-{n}"),
+                "a description",
+                "a body",
+                MemoryCode::default(),
+            )
             .expect("the write is within the caps");
     }
 

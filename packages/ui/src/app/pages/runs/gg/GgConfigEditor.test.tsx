@@ -15,6 +15,7 @@ import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { GgConfigEditor } from "./GgConfigEditor";
+import { BUILT_IN_SKILL_OPTIONS } from "./ggCatalog";
 import {
   blankAgentDraft,
   blankModelSlot,
@@ -192,7 +193,9 @@ describe("a capability param that names a model", () => {
     const slot = within(row).getByLabelText(/Model slot/) as HTMLSelectElement;
     // Deferring picks the configuration's first slot rather than landing on "(none)":
     // an operator who chose to defer meant to defer to something.
-    expect(within(slot).getByRole("option", { name: "summarizer" })).toBeDefined();
+    expect(
+      within(slot).getByRole("option", { name: "summarizer" }),
+    ).toBeDefined();
     expect(within(row).queryByLabelText(/^Model$/)).toBeNull();
   });
 
@@ -210,7 +213,10 @@ describe("a capability param that names a model", () => {
     const row = capabilityRow("compaction");
     expect(within(row).getByLabelText(/Model from/)).toBeDefined();
 
-    select(within(row).getByLabelText(/Summarization strategy/), "self-compaction");
+    select(
+      within(row).getByLabelText(/Summarization strategy/),
+      "self-compaction",
+    );
     expect(within(row).queryByLabelText(/Model from/)).toBeNull();
   });
 });
@@ -249,9 +255,7 @@ describe("authoring a state machine", () => {
         fsm: {
           enabled: true,
           params: {
-            states: statesDraftValue([
-              ...states([explorer.id, builder.id]),
-            ]),
+            states: statesDraftValue([...states([explorer.id, builder.id])]),
           },
           extraParams: {},
         },
@@ -370,7 +374,9 @@ describe("authoring a state machine", () => {
     ).toBe("build");
     // …and the state that is now second is unreachable from the new entry, which is
     // worth saying without refusing to save it.
-    expect(within(row).getByText(/unreachable from `build`/)).toBeInTheDocument();
+    expect(
+      within(row).getByText(/unreachable from `build`/),
+    ).toBeInTheDocument();
   });
 
   it("refuses a state that runs another machine", () => {
@@ -390,20 +396,22 @@ describe("authoring a state machine", () => {
         ).value,
       },
     });
-    expect(
-      within(row).getByText(/itself a state machine/),
-    ).toBeInTheDocument();
+    expect(within(row).getByText(/itself a state machine/)).toBeInTheDocument();
   });
 });
 
 // Whether a module's state is carried in its holder's prompt is a per-agent, per-module
-// decision now, so every module-backed capability offers the same picker — and the
-// default arm has to be the absent param, or every saved configuration would become an
-// explicit opt-in to what modules have always done.
+// decision, and the default arm has to be the absent param, or every saved configuration
+// would become an explicit opt-in to what modules have always done.
+//
+// Asked of project management rather than memories: the board and the thread archive are
+// the two capabilities that still offer the picker at all. Memories and skills dropped it
+// with gg, so a test that kept looking for it there would be asserting a control that
+// writes a key nothing reads.
 describe("module ownership", () => {
-  it("is offered on each module-backed capability and defaults to owned", () => {
-    render(<Harness initial={draftWith("memories", "")} />);
-    const row = capabilityRow("memories");
+  it("is offered on a module-backed capability and defaults to owned", () => {
+    render(<Harness initial={draftWith("project-management", "")} />);
+    const row = capabilityRow("project-management");
     const ownership = within(row).getByLabelText(
       /Ownership/,
     ) as HTMLSelectElement;
@@ -411,5 +419,42 @@ describe("module ownership", () => {
     expect(
       within(ownership).getByRole("option", { name: /Unowned/ }),
     ).toBeDefined();
+  });
+
+  it("is not offered on the two capabilities that no longer have one", () => {
+    for (const capId of ["memories", "skills"]) {
+      const { unmount } = render(<Harness initial={draftWith(capId, "")} />);
+      expect(
+        within(capabilityRow(capId)).queryByLabelText(/Ownership/),
+      ).toBeNull();
+      unmount();
+    }
+  });
+});
+
+// The `builtIns` toggles, rendered: eleven checkboxes that start on, because an absent
+// param means gg offers every built-in skill it has one for. Only what an operator
+// switches OFF is recorded, so the arm a study varies is a box being cleared — which is
+// only visible by rendering the control and clicking it.
+describe("the skills capability's built-in skills", () => {
+  it("starts every built-in on and clears exactly the one switched off", () => {
+    render(<Harness initial={draftWith("skills", "")} />);
+    const group = within(capabilityRow("skills")).getByRole("group", {
+      name: "Built-in skills",
+    });
+    const boxes = within(group).getAllByRole("checkbox") as HTMLInputElement[];
+    expect(boxes).toHaveLength(BUILT_IN_SKILL_OPTIONS.length);
+    expect(boxes.every((box) => box.checked)).toBe(true);
+
+    // Withhold the shell family's manual, and nothing else.
+    const shell =
+      boxes[
+        BUILT_IN_SKILL_OPTIONS.findIndex(
+          (option) => option.value === "gg-shell",
+        )
+      ]!;
+    fireEvent.click(shell);
+    expect(shell.checked).toBe(false);
+    expect(boxes.filter((box) => !box.checked)).toEqual([shell]);
   });
 });

@@ -747,7 +747,12 @@ describe("deriveGgModules", () => {
             {
               id: "memories",
               enabled: true,
-              params: { scope: "inherited", ownership: "unowned" },
+              params: { scope: "inherited" },
+            },
+            {
+              id: "agent-managed-context",
+              enabled: true,
+              params: { ownership: "unowned" },
             },
           ],
           disabledTools: [],
@@ -758,16 +763,79 @@ describe("deriveGgModules", () => {
       slots: [],
     } as unknown as GgCapabilitySet;
 
-    expect(declaredModuleConfig(declared, "Reviewer", "memories")).toEqual({
+    expect(declaredModuleConfig(declared, "Reviewer", "archive")).toEqual({
       ownership: "unowned",
-      scope: "inherited",
+      scope: null,
     });
     // Absent params read as their defaults, which is what every configuration written
     // before they existed has.
-    expect(declaredModuleConfig(declared, "Reviewer", "tasks")).toEqual({
+    expect(declaredModuleConfig(declared, "Reviewer", "board")).toEqual({
       ownership: "owned",
       scope: null,
     });
+    // Memories keeps its scope and has no ownership to declare at all.
+    expect(declaredModuleConfig(declared, "Reviewer", "memories")).toEqual({
+      ownership: null,
+      scope: "inherited",
+    });
+  });
+
+  // Skills, memories and the task list have no `ownership` param behind them any more (or,
+  // for tasks, ever), so there is nothing for a configuration to have asked. Reading the
+  // old default back would be worse than saying nothing: `moduleDivergences` compares the
+  // declared value against what the holders report, and a manufactured `owned` would put a
+  // finding on the Agents tab about a declaration nobody wrote.
+  it("invents no ownership for a kind whose capability has no such param", () => {
+    const declared = {
+      agents: [
+        {
+          name: "Root",
+          modelId: "acme/one",
+          capabilities: [
+            // Even where a stale configuration still carries the key — gg ignores it, and
+            // so must the surface that reports what was asked for.
+            {
+              id: "memories",
+              enabled: true,
+              params: { ownership: "unowned" },
+            },
+            { id: "skills", enabled: true, params: {} },
+            { id: "tasks", enabled: true, params: {} },
+          ],
+          disabledTools: [],
+          subagents: [],
+          promptCacheTtl: "default",
+        },
+      ],
+      slots: [],
+    } as unknown as GgCapabilitySet;
+
+    for (const kind of ["memories", "skills", "tasks"] as const) {
+      expect(declaredModuleConfig(declared, "Root", kind).ownership).toBeNull();
+    }
+  });
+
+  it("reports no ownership divergence for a kind that cannot declare one", () => {
+    // The phantom this gates: every holder reports an ownership, and comparing it against
+    // an invented `owned` produced a divergence on a row whose capability offers no such
+    // control. An unowned-looking store carried in from elsewhere is still a fact about
+    // the module — it is just not a departure from anything this profile asked for.
+    const modules = index(
+      [
+        spawn("root", "Root"),
+        roster("root", [
+          held("history", "history-0"),
+          held("memories", "memories-0", { ownership: "unowned" }),
+        ]),
+      ],
+      set([["Root", ["memories"]]]),
+    );
+
+    const memories = modules.byProfile
+      .get("Root")!
+      .find((row) => row.kind === "memories")!;
+    expect(memories.declared).toEqual({ ownership: null, scope: "isolated" });
+    expect(memories.divergences).toEqual([]);
   });
 
   it("synthesizes private instances for a record written before module identity", () => {
@@ -844,10 +912,7 @@ describe("deriveGgModules", () => {
     // the agent-scoped sharing the whole feature exists to find.
     const events = [
       spawn("root", "Root"),
-      roster("root", [
-        held("history", "history-0"),
-        held("tasks", "tasks-0"),
-      ]),
+      roster("root", [held("history", "history-0"), held("tasks", "tasks-0")]),
       transition("root", "agent-0", "exec", [
         {
           kind: "history",

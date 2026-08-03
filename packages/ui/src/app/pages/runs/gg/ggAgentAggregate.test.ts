@@ -489,7 +489,8 @@ describe("deriveGgAgentSummaries", () => {
     expect(memories.agentScoped?.id).toBe("memories-0");
     expect(memories.holdingInstances).toBe(2);
     expect(memories.instances).toHaveLength(1);
-    expect(memories.declared).toEqual({ ownership: "owned", scope: "shared" });
+    // A scope and no ownership: memories has no such param for a profile to have set.
+    expect(memories.declared).toEqual({ ownership: null, scope: "shared" });
     // The configuration asked for a shared store and got one, so there is nothing to say.
     expect(memories.divergences).toEqual([]);
     // A window is never shared, whatever the memories do — so the same profile's history
@@ -536,9 +537,9 @@ describe("deriveGgAgentSummaries", () => {
       "memories-1",
     ]);
     expect(memories.holdingInstances).toBe(2);
-    // An absent param is the default, and the default is what it got.
+    // An absent scope is the default, and the default is what it got.
     expect(memories.declared).toEqual({
-      ownership: "owned",
+      ownership: null,
       scope: "isolated",
     });
     expect(memories.divergences).toEqual([]);

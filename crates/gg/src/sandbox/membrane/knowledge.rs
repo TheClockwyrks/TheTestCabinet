@@ -27,6 +27,7 @@ use super::test_cabinet::gg::tasks::{
 };
 use super::test_cabinet::gg::types::{TextEdit, ToolError};
 use super::{MembraneState, ToolApi};
+use crate::memories::MemoryCode;
 use crate::tools::{BoardUsageData, READ_SKILL_TOOL, ToolData};
 
 /// The `write_memory` tool name.
@@ -84,9 +85,12 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
             name,
             description,
             body,
+            code,
+            on_use,
         } = memory;
+        let code = MemoryCode { code, on_use };
         let outcome = self.call(WRITE_MEMORY_TOOL, |api| {
-            api.write_memory(name, description, body)
+            api.write_memory(name, description, body, code)
         })?;
         memory_usage(self, WRITE_MEMORY_TOOL, outcome.data)
     }
@@ -96,9 +100,12 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
             name,
             description,
             body,
+            code,
+            on_use,
         } = memory;
+        let code = MemoryCode { code, on_use };
         let outcome = self.call(UPDATE_MEMORY_TOOL, |api| {
-            api.update_memory(name, description, body)
+            api.update_memory(name, description, body, code)
         })?;
         memory_usage(self, UPDATE_MEMORY_TOOL, outcome.data)
     }
@@ -108,9 +115,12 @@ impl<A: ToolApi> MemoriesHost for MembraneState<A> {
             name,
             description,
             body,
+            code,
+            on_use,
         } = memory;
+        let code = MemoryCode { code, on_use };
         let outcome = self.call(CREATE_MEMORY_TOOL, |api| {
-            api.create_memory(name, description, body)
+            api.create_memory(name, description, body, code)
         })?;
         memory_usage(self, CREATE_MEMORY_TOOL, outcome.data)
     }

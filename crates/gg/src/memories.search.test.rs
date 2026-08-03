@@ -1,7 +1,7 @@
 //! Tests for the [keyword-search](super::MemoryStrategy::KeywordSearch) ranking: what is searched,
 //! what order hits come back in, and what an excerpt shows.
 
-use super::super::{MemoryCaps, MemoryError, MemoryStore, MemoryStrategy};
+use super::super::{MemoryCaps, MemoryCode, MemoryError, MemoryStore, MemoryStrategy};
 use super::*;
 
 /// A keyword-search store holding `memories`, each `(slug, description, body)`.
@@ -9,7 +9,9 @@ fn store_of(memories: &[(&str, &str, &str)]) -> MemoryStore {
     let strategy = MemoryStrategy::KeywordSearch;
     let mut store = MemoryStore::new(strategy, MemoryCaps::for_strategy(strategy));
     for (name, description, body) in memories {
-        store.create("", name, description, body).unwrap();
+        store
+            .create("", name, description, body, MemoryCode::default())
+            .unwrap();
     }
     store
 }
@@ -98,7 +100,9 @@ fn results_are_capped_at_max_results() {
     };
     let mut store = MemoryStore::new(strategy, caps);
     for n in 0..5 {
-        store.create("", &format!("m{n}"), "d", "cargo").unwrap();
+        store
+            .create("", &format!("m{n}"), "d", "cargo", MemoryCode::default())
+            .unwrap();
     }
     assert_eq!(store.search(&keywords(&["cargo"])).unwrap().len(), 2);
 }
@@ -113,7 +117,9 @@ fn an_unlimited_page_size_returns_every_match() {
     };
     let mut store = MemoryStore::new(strategy, caps);
     for n in 0..30 {
-        store.create("", &format!("m{n}"), "d", "cargo").unwrap();
+        store
+            .create("", &format!("m{n}"), "d", "cargo", MemoryCode::default())
+            .unwrap();
     }
     assert_eq!(store.search(&keywords(&["cargo"])).unwrap().len(), 30);
 }

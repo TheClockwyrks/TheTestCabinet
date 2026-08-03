@@ -16,49 +16,77 @@ import * as raw from "test-cabinet:gg/memories";
 import { call } from "../errors.js";
 import type { MemoryHit, MemoryUsage } from "../types.js";
 
+/** One memory as a program writes it, with the two optional code halves every write accepts. */
+interface MemoryWrite {
+  name: string;
+  description: string;
+  body: string;
+  code?: string;
+  onUse?: string;
+}
+
+/**
+ * Normalise a written memory into the record the membrane declares.
+ *
+ * The two code fields are `option<string>` on the WIT, which crosses as a field that must be
+ * *present* and may be `undefined` — so they are spelled explicitly here rather than left off the
+ * object a program handed in. A blank string is normalised to absent: a model that clears its code
+ * by writing `""` means "no code", and storing an empty module would bind an empty `lib` entry
+ * saying nothing.
+ */
+function written(memory: MemoryWrite): raw.MemoryInput {
+  const some = (value: string | undefined): string | undefined =>
+    typeof value === "string" && value.trim() !== "" ? value : undefined;
+  return {
+    name: memory.name,
+    description: memory.description,
+    body: memory.body,
+    code: some(memory.code),
+    onUse: some(memory.onUse),
+  };
+}
+
 /**
  * Record a durable memory that survives context compaction, and return how much of the memory
  * budget is now used. Throws `conflict` on a duplicate name and `limit-exceeded` when the body would
  * breach the run's caps — revise or delete a memory rather than accruing more.
+ *
+ * A memory may also carry **code**. `code` is a TypeScript module whose exports are bound at
+ * `lib.<name>` in every later program you write, so a helper you get right once you never write
+ * again; `onUse` is a script gg runs the first time the memory comes into use, whose views reach you
+ * on your next turn. Neither is context — they cost you no window, are never shown back to you, and
+ * count against no body limit — and both are bounded on their own.
  */
-export function writeMemory(memory: {
-  name: string;
-  description: string;
-  body: string;
-}): MemoryUsage {
-  return call(() => raw.writeMemory(memory));
+export function writeMemory(memory: MemoryWrite): MemoryUsage {
+  return call(() => raw.writeMemory(written(memory)));
 }
 
 /**
  * Replace an existing memory's description and body, keyed on its `name`, and return the memory
- * budget. Throws `not-found` when no memory has that name.
+ * budget. Its `code` and `onUse` are replaced too — omitting them clears them. Throws `not-found`
+ * when no memory has that name.
  */
-export function updateMemory(memory: {
-  name: string;
-  description: string;
-  body: string;
-}): MemoryUsage {
-  return call(() => raw.updateMemory(memory));
+export function updateMemory(memory: MemoryWrite): MemoryUsage {
+  return call(() => raw.updateMemory(written(memory)));
 }
 
 /**
  * Record a new memory whose contents are kept OUT of your context window until you read them, and
  * return the memory budget. Give it a slug (letters, digits, `-`, `_`, `.`), a one-line description
  * — required where the run keeps an index, since that is the memory's line in it — and the initial
- * contents. Throws `conflict` on a duplicate slug and `limit-exceeded` when the contents, or the
- * index entry, would breach a limit.
+ * contents. It may also carry `code` (a module bound at `lib.<name>` once you read the memory) and
+ * `onUse` (a script run on that first read). Throws `conflict` on a duplicate slug and
+ * `limit-exceeded` when the contents, or the index entry, would breach a limit.
  */
-export function createMemory(memory: {
-  name: string;
-  description: string;
-  body: string;
-}): MemoryUsage {
-  return call(() => raw.createMemory(memory));
+export function createMemory(memory: MemoryWrite): MemoryUsage {
+  return call(() => raw.createMemory(written(memory)));
 }
 
 /**
- * Read one memory's full contents, by slug — the only thing that brings them into your context.
- * Throws `not-found` when no memory has that slug.
+ * Read one memory's full contents, by slug — the only thing that brings them into your context. If
+ * the memory carries code, reading it also loads that code: the reply names the `lib.<key>` it is
+ * bound at, and it stays bound for the rest of your session. Throws `not-found` when no memory has
+ * that slug.
  */
 export function readMemory(name: string): string {
   return call(() => raw.readMemory(name));

@@ -1653,13 +1653,18 @@ fn system_prompt_names_the_api_objects_in_code_mode() {
 /// operator who set the param to cut a large module out of every request still paying for its
 /// prose on every turn.
 ///
-/// The task list is the counter-example, asserted here beside it: it has no `ownership` param, so
-/// its section and its block are in the prompt whatever the rest of the profile does.
+/// Every module-backed capability an agent holds explains itself in its prompt.
+///
+/// This used to be the ownership test: memories could be held `unowned` and described nowhere. That
+/// knob is gone from both memories and skills — for memories because what a
+/// [strategy](crate::memories::MemoryStrategy) puts in the window *is* what having memories means
+/// under it, and `keyword-search` is already the arm that pins nothing. What remains is the
+/// property the knob was hiding: a capability an agent has is a capability it is told it has.
 #[test]
-fn an_unowned_module_contributes_no_prompt_section() {
+fn every_held_module_contributes_its_prompt_section() {
     let registry = ToolRegistry::from_capabilities(&GgAgentConfig::root());
 
-    let owned = DisabledRuntimes {
+    let held = DisabledRuntimes {
         tasks: Some(TasksRuntime::new(7)),
         memories: Some(MemoriesRuntime::new(
             crate::memories::MemoryStrategy::Scratchpad,
@@ -1667,35 +1672,14 @@ fn an_unowned_module_contributes_no_prompt_section() {
         )),
         ..DisabledRuntimes::new()
     };
-    let with_sections = system_prompt(owned.inputs(&registry));
+    let prompt = system_prompt(held.inputs(&registry));
     assert!(
-        with_sections.contains("add_task"),
-        "an owned task list is explained: {with_sections}"
+        prompt.contains("add_task"),
+        "the task list is explained: {prompt}"
     );
     assert!(
-        with_sections.contains("memor"),
-        "and so are its memories: {with_sections}"
-    );
-
-    let unowned = DisabledRuntimes {
-        tasks: Some(TasksRuntime::new(7)),
-        memories: Some(
-            MemoriesRuntime::new(
-                crate::memories::MemoryStrategy::Scratchpad,
-                crate::memories::MemoryCaps::default(),
-            )
-            .with_ownership(Ownership::Unowned),
-        ),
-        ..DisabledRuntimes::new()
-    };
-    let without = system_prompt(unowned.inputs(&registry));
-    assert!(
-        !without.contains("write_memory"),
-        "unowned memories are not described at all: {without}"
-    );
-    assert!(
-        without.contains("add_task"),
-        "the task list is described whatever the rest of the profile does: {without}"
+        prompt.contains("memor"),
+        "and so are its memories: {prompt}"
     );
 }
 

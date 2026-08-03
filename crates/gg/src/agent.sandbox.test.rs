@@ -1210,6 +1210,80 @@ async fn a_program_reclaim_really_acts_on_the_live_window() {
     assert_eq!(ended_with(&events), "completed");
 }
 
+/// **A code skill really does bind its module and run its on-use script**, end to end through a
+/// driven session — the one assertion that covers the whole path at once: a directory-shaped skill
+/// on disk, a read that loads it, a module bound at `lib.<key>` in the *next* turn's program, and an
+/// on-use script whose view reaches the model on the turn after the read.
+///
+/// The turn boundary is the point. A read reaches gg from inside a call the running program is still
+/// in the middle of, so the module cannot be bound and the script cannot run until that program has
+/// ended; a test that read and called in one program would pass against an implementation that had
+/// got the deferral wrong.
+#[tokio::test]
+async fn a_code_skill_binds_its_module_and_runs_its_on_use_script() {
+    let dir = TempDir::new().unwrap();
+    let skill = dir.path().join(".gg").join("skills").join("csv-tools");
+    std::fs::create_dir_all(&skill).unwrap();
+    std::fs::write(
+        skill.join("skill.md"),
+        "---\nname: csv-tools\ndescription: Parsing comma-separated text.\n---\n",
+    )
+    .unwrap();
+    std::fs::write(
+        skill.join("skill.ts"),
+        "export function parse(text: string): string[] { return text.split(\",\"); }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        skill.join("on-use.ts"),
+        "view.openText(\"csv-tools\", \"loaded \" + lib.csvTools.parse(\"a,b\").length);\n",
+    )
+    .unwrap();
+
+    let (outcome, _events, requests) = drive_recorded_code_run(
+        &dir,
+        code_set("mock/primary", json!({})),
+        program_script(&[
+            "skills.readSkill(\"csv-tools\");",
+            // The next turn: the module is bound, and the on-use script's view has arrived.
+            "view.openText(\"parsed\", JSON.stringify(lib.csvTools.parse(\"x,y,z\")));",
+        ]),
+    )
+    .await;
+
+    assert_eq!(outcome, SessionOutcome::Ran);
+    assert_valid_conversations(&requests);
+    let text = |messages: &[crate::model::Message]| {
+        messages
+            .iter()
+            .filter_map(|message| message.content.clone())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    // The reply to the read told the model where its code went — the binding path it must not guess.
+    let after_read = text(&requests[1]);
+    assert!(
+        after_read.contains("lib.csvTools"),
+        "the read names the binding key: {after_read}"
+    );
+    assert!(
+        after_read.contains("parse"),
+        "and what it exports: {after_read}"
+    );
+    // The on-use script ran after that turn's program, so its view is in the very next prompt.
+    assert!(
+        after_read.contains("loaded 2"),
+        "the on-use script's view reaches the model on the next turn: {after_read}"
+    );
+    // And the module was really bound: the next program called it and got an answer.
+    let last = text(requests.last().expect("a recorded request"));
+    assert!(
+        last.contains("[\"x\",\"y\",\"z\"]"),
+        "the module is callable from a later program: {last}"
+    );
+}
+
 /// A program's `readSkill` pins the skill into the context and emits the updated skills state,
 /// exactly as a native read does — the behaviour that makes a skill stay available for the rest of
 /// the session instead of being read once into a variable and lost.
@@ -1248,19 +1322,22 @@ async fn a_program_read_skill_pins_the_skill_and_emits_skills_state() {
         "the pinned skill body must reach the model: {last:?}"
     );
     // A `SkillsState` is emitted once at session start (nothing read yet) and once more by the
-    // FRESH read; the repeat read emits nothing, because nothing changed.
-    let read_flags: Vec<Vec<bool>> = events
+    // FRESH read; the repeat read emits nothing, because nothing changed. Only the authored skill's
+    // flag is read: the catalogue also carries the built-ins gg ships for this agent's own families,
+    // and none of those was read here.
+    let read_flags: Vec<bool> = events
         .iter()
         .filter_map(|e| match &e.kind {
-            GgTelemetryKind::SkillsState { skills, .. } => {
-                Some(skills.iter().map(|skill| skill.read).collect())
-            }
+            GgTelemetryKind::SkillsState { skills, .. } => skills
+                .iter()
+                .find(|skill| skill.name == DEFAULT_MOCK_SKILL)
+                .map(|skill| skill.read),
             _ => None,
         })
         .collect();
     assert_eq!(
         read_flags,
-        vec![vec![false], vec![true]],
+        vec![false, true],
         "the fresh read emits the state once; the repeat read pins nothing new"
     );
     // The pinned body is accounted to the Skill band, which is what proves it entered the window

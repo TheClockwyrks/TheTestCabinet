@@ -416,6 +416,102 @@ would be false. That change is what removed the more damaging half of this defec
 program that declared the run complete and then went on to write its artifact now writes
 it.
 
+## `lib`: code the agent loaded
+
+Beside the tool objects there is one more thing a program can find in its scope: **`lib`**,
+the code the agent has loaded. Its contents come from exactly two places, and both are
+things the agent read:
+
+- a [**code skill**](/gg/skills/#code-skills) — a skill directory's `skill.ts`, authored
+  ahead of the run; and
+- a [**code memory**](/gg/memories/#code-memories) — the `code` a program handed
+  `memory.writeMemory` (or `createMemory` / `updateMemory`), which the model wrote itself.
+
+Each is bound at `lib.<key>`, `key` being the skill's name or the memory's slug in camel
+case — `csv-tools` becomes `lib.csvTools` — deduplicated with a numeric suffix if two things
+camel-case alike. The reply to the read that loaded it **states the key it really got and
+lists what it exports**, so a binding path is never guessed:
+
+```ts
+const rows = lib.csvTools.parseCsv(fs.readTextFile("data/vendor.csv"));
+view.openText("rows", `${rows.length} rows, ${rows[0].length} columns`);
+```
+
+`lib` follows the same capability rule every other object does: it joins the scope only when
+the agent has actually loaded something, so a program written by an agent that has read no
+code has no `lib` identifier at all. It is not an **API object**, though — it holds no gg
+functions, and it has no `list()` to call. The hint an unknown name earns says so, naming
+the API objects a program may reach and then naming `lib` separately, because a sentence
+that lumped them together would be false about one of them.
+
+Loaded code is **not context**. It is transpiled once and held by the host, so it costs no
+tokens, is never summarized, and a [compaction](/gg/compaction/) does not sweep it — an
+agent never has to re-read a skill to get its helpers back. A
+[`fork`](/gg/fork-and-exec/) or a succession is the other way round: a new instance starts
+with nothing bound, and re-reading is the whole of the recovery.
+
+### What a module may be
+
+A module is an ordinary TypeScript file. gg parses it as a module (so `export` is legal),
+blanks the `export` keywords, type-strips it exactly as it type-strips a program, and
+appends the `return { … }` that makes its exports the value of evaluating it. The blanking
+is textual and byte-for-byte, so **every diagnostic still points at the line the author
+wrote**.
+
+**What it exports** is whatever it says it exports — and, if it says nothing, everything it
+declares:
+
+```ts
+// Exports parseCsv only.
+export function parseCsv(text: string) { /* … */ }
+function quoteAware(line: string) { /* … */ }
+```
+
+```ts
+// No `export` anywhere: exports both.
+function parseCsv(text: string) { /* … */ }
+function toRows(text: string) { /* … */ }
+```
+
+The forgiving arm exists because a file that declares three functions and exports none is a
+file whose author meant all three; refusing it, or binding an empty object, would be a rule
+that only ever catches someone out. Type-only declarations (`interface`, `type`,
+`export type { … }`) export nothing, because they do not exist at run time. A renaming
+export (`export { rows as toRows }`) is offered under the name it was exported as.
+
+**What is refused**, with a located diagnostic in the same voice a program's errors use:
+`import` in any form, `export … from`, `export *`, `export default`, a dynamic `import()`,
+and top-level `await`. There is no module loader to resolve a specifier against and no event
+loop to await on — a module is `lib.<key>`, not a package — and `export default` has no name
+for a namespace to offer it under. The size and nesting ceilings that
+[bound a program](#the-limits) bound a module identically: the source is untrusted whoever
+wrote it.
+
+### A module may call gg functions
+
+A module is evaluated as the body of a function whose parameters are the scope's object
+names — the **same scope the program gets** — so it may call `fs.readFile`, `system.shell`
+or anything else the run offers, and a helper can be a whole procedure rather than a pure
+function.
+
+What it may **not** see is another module. Modules are evaluated in order, each against the
+scope rather than against the `lib` being built, because a module that could reach its
+neighbours would make the load order part of the contract — and the load order is whatever
+order the agent happened to read things in.
+
+### A module that throws does not take the program down
+
+Its author is whoever wrote the skill or the memory, not the model whose program merely has
+it in scope, so a throw while loading is not a program error. gg leaves `lib.<key>` as an
+empty object, lets the program run, and reports the failure as a **module error** naming the
+binding key and the message — never the source, which the model is not shown. A program that
+then calls into it gets an ordinary, located `TypeError` naming the member it wanted, and an
+agent that found `lib.x` empty is told why rather than left to guess.
+
+The same channel carries an [on-use script](/gg/skills/#an-on-use-script-that-runs-once)
+that failed, for the same reason: one sentence naming the skill or memory, and the turn's
+own outcome untouched.
+
 ## How a turn runs
 
 ```text

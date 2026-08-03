@@ -21,38 +21,34 @@ There are six kinds, and the list is closed:
 
 ## Ownership
 
-Most module-backed capabilities read an **`ownership`** param:
+Two module-backed capabilities read an **`ownership`** param:
 
 ```jsonc
-{ "id": "memories", "enabled": true, "params": { "ownership": "unowned" } }
+{ "id": "project-management", "enabled": true, "params": { "ownership": "unowned" } }
 ```
 
-Four capabilities carry it: [`memories`](/gg/memories/),
-[`project-management`](/gg/project-management/) (the board), [`skills`](/gg/skills/), and
-[`agent-managed-context`](/gg/agent-managed-context/) (the thread archive). Two module kinds
-have none. `history` has no capability behind it at all: an agent's window *is* its prompt.
-And [`tasks`](/gg/tasks/) has a capability but no ownership to configure — the task list is
-what an agent steers its work by from turn to turn, so it is always carried in its holder's
-prompt as its own message.
+They are [`project-management`](/gg/project-management/) (the board) and
+[`agent-managed-context`](/gg/agent-managed-context/) (the thread archive). The other four
+kinds have none, for three different reasons. `history` has no capability behind it at all:
+an agent's window *is* its prompt. [`tasks`](/gg/tasks/) has a capability but nothing to
+configure — the task list is what an agent steers its work by from turn to turn, so it is
+always carried in its holder's prompt as its own message. And
+[`memories`](/gg/memories/) and [`skills`](/gg/skills/) **used to** carry the param and no
+longer do; see [below](#why-only-two).
 
 - **`owned`** (the default) — the holder's prompt carries the module's **state**: the
-  pinned block it keeps — the memory index, the board — is refreshed into the window on that
-  module's own schedule, and skills contribute their up-front catalog listing. A
-  configuration that says nothing gets this.
-- **`unowned`** — none of that reaches the prompt. No pinned block, no catalog listing, no
-  [linked-memory notice](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote)
-  — and no system-prompt section either: the capability's own paragraphs, its limits and its
-  vocabulary are all withheld. Everything else is untouched: the tools are still offered,
-  the store is still read and written through them, the telemetry still reaches the console,
-  and the module is still copied and transferred like any other.
+  pinned block it keeps — the board — is refreshed into the window on that module's own
+  schedule. A configuration that says nothing gets this.
+- **`unowned`** — none of that reaches the prompt. No pinned block — and no system-prompt
+  section either: the capability's own paragraphs, its limits and its vocabulary are all
+  withheld. Everything else is untouched: the tools are still offered, the store is still
+  read and written through them, the telemetry still reaches the console, and the module is
+  still copied and transferred like any other.
 
 An unowned module is therefore reachable through its **tools and nothing else**. What the
 model still gets is each tool's own schema and description, which is what every tool is
 documented by; what it stops getting is a section of every request explaining a store it
-may never need, plus the contents of that store on top. That is the whole of the knob, and
-it is the reason [skills](/gg/skills/) look no different from the rest here even though for
-skills the catalog *is* the state: an unowned skills module has no menu in the prompt, and
-`read_skill` reads a skill by name for an agent that was never shown the list.
+may never need, plus the contents of that store on top.
 
 An unrecognized value falls back to `owned` and is reported as a launch **warning**, never
 a launch failure — the same way every other unrecognized capability *value* is treated.
@@ -67,6 +63,30 @@ One case applies it for you: an agent whose profile has **no project-management
 capability** holds the run's board unowned. It is still on the same queue — an issue it was
 dispatched for is on that board — but it is not shown a whole decomposition it has no tool
 to act on.
+
+### Why only two
+
+The knob was designed around the board, and then given to every module that pinned
+anything — including memories and skills, where the founding argument does not actually
+hold. A board is a document about *the run*: an implementer can be dispatched an issue off
+it without being shown the whole decomposition, and withholding it costs that agent
+nothing it needs. A memory store and a skills catalogue are the opposite kind of thing.
+They are about **the agent holding them**, and they are the only route it has to knowing
+they exist.
+
+An unowned memories module withheld the pinned index — the one thing that tells an agent
+what it has written down — and suppressed the
+[linked-memory notices](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote)
+that tell it what a co-writer just changed. An unowned skills module withheld the
+catalogue, leaving `read_skill` reachable only by an agent that was told a name it had no
+way to learn. Neither is an arm of an experiment; both are the capability switched off with
+extra steps, and both cost a reader of a configuration a paragraph working out what
+"memories, unowned" was supposed to mean.
+
+So the param is gone from those two capabilities entirely — from the configuration, from
+the console, and from the modules themselves. Two behaviours follow, and they are what a
+configuration written against the old shape will notice: **the pinned memory index can no
+longer be withheld**, and **linked-memory notices can no longer be suppressed**.
 
 ## Copying: forking and sharing
 
@@ -96,13 +116,19 @@ The **skills** module is copied in halves: the catalog is immutable and always s
 the *read set* — the record of which skill bodies are already pinned in the window — follows
 the window it describes. A fork copies it; a share aliases it.
 
+The [code an agent has loaded](/gg/skills/#code-skills) by reading a code skill or memory is
+deliberately **not** a module: it holds no context, costs no tokens, is never summarized and
+is never transferred. It is per-agent state on the responses-as-code path, so a new instance
+— forked, exec'd or transitioned into — starts with nothing bound and re-reads what it wants.
+
 ## Transfer
 
 Handing a live module to an agent running under a **different profile** is a transfer. Per
 kind, one of four things happens:
 
 1. **Carried** — the module moves across live, with its contents, and is re-resolved against
-   the **receiving** profile: its caps, its mode, its ownership. A module still carrying
+   the **receiving** profile: its caps, its mode, and its
+   [ownership](#ownership) where it has one. A module still carrying
    limits resolved from the profile that produced it is the bug this rule exists to prevent.
 2. **Dropped** — the receiving profile does not enable the capability. Turning a capability
    off is what "this agent does not get one" means.

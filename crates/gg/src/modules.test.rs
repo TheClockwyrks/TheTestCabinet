@@ -17,7 +17,9 @@ use test_cabinet_core::gg::{
 use super::*;
 use crate::board::{BoardCaps, BoardRuntime};
 use crate::context::HeuristicTokenEstimator;
-use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryRegistry, MemoryScope, MemoryStrategy};
+use crate::memories::{
+    MemoriesRuntime, MemoryCaps, MemoryCode, MemoryRegistry, MemoryScope, MemoryStrategy,
+};
 use crate::skills::{SkillLibrary, SkillsRuntime};
 use crate::tasks::{StructuredFields, TaskMode, TasksRuntime};
 
@@ -95,7 +97,7 @@ fn write_memory(runtime: &MemoriesRuntime, name: &str) {
         .store()
         .lock()
         .expect("memory store lock")
-        .write("", name, "a description", "a body")
+        .write("", name, "a description", "a body", MemoryCode::default())
         .expect("the write is within the caps");
 }
 
@@ -171,37 +173,6 @@ fn an_unowned_module_contributes_no_pinned_block() {
     );
 }
 
-/// An unowned module is **not** a disabled one: its state is live, its telemetry is still emitted,
-/// and it still counts towards the retention proof a compaction boundary records. Only the prompt
-/// changes.
-#[test]
-fn an_unowned_module_is_still_live() {
-    let memories = MemoriesRuntime::new(MemoryStrategy::Scratchpad, MemoryCaps::default())
-        .with_ownership(Ownership::Unowned);
-    write_memory(&memories, "note");
-
-    assert!(
-        memories.offers_memories(),
-        "the memory tools are still offered"
-    );
-    assert_eq!(
-        memories.retained(),
-        1,
-        "the memory still crosses a boundary"
-    );
-    assert!(
-        matches!(
-            memories.state_events().as_slice(),
-            [GgTelemetryKind::MemoryState { .. }]
-        ),
-        "an unowned module still reports its state to the console"
-    );
-    assert!(
-        Module::context_block(&memories).is_none(),
-        "and it still says nothing in the prompt"
-    );
-}
-
 /// **The task list has no ownership to configure.** It is what an agent steers its work by from
 /// turn to turn, so it is always carried in its holder's prompt as its own message.
 ///
@@ -221,24 +192,6 @@ fn a_task_list_is_owned_whatever_the_profile_declares() {
     assert!(
         ownership_warnings(&profile).is_empty(),
         "an `ownership` key on tasks is not a value gg reads, so there is nothing to warn about"
-    );
-}
-
-/// The skills catalog is the skills module's prompt contribution, so an unowned one lists nothing —
-/// while `read_skill` is untouched, which is the "reachable through its tools and nothing else"
-/// half of the rule.
-#[test]
-fn an_unowned_skills_module_lists_no_catalog() {
-    let dir = tempfile::TempDir::new().unwrap();
-    let library = library(dir.path());
-    let owned = SkillsRuntime::new(Arc::clone(&library));
-    assert_eq!(owned.prompt_entries().len(), 1);
-
-    let unowned = SkillsRuntime::new(library).with_ownership(Ownership::Unowned);
-    assert!(unowned.prompt_entries().is_empty());
-    assert!(
-        unowned.offers_skills(),
-        "the catalog is withheld; `read_skill` is not"
     );
 }
 
@@ -279,8 +232,6 @@ fn the_ownership_param_resolves_and_warns() {
             CAPABILITY_PROJECT_MANAGEMENT,
             json!({ "ownership": "unowned" }),
         ),
-        (CAPABILITY_MEMORIES, json!({ "ownership": "owned" })),
-        (CAPABILITY_SKILLS, json!({ "ownership": "shared" })),
         (CAPABILITY_AGENT_MANAGED_CONTEXT, json!({ "ownership": 7 })),
     ]);
 
@@ -288,35 +239,36 @@ fn the_ownership_param_resolves_and_warns() {
         resolve_ownership(&profile, CAPABILITY_PROJECT_MANAGEMENT),
         (Ownership::Unowned, None)
     );
-    assert_eq!(
-        resolve_ownership(&profile, CAPABILITY_MEMORIES),
-        (Ownership::Owned, None)
-    );
     // An absent param is the default, silently.
     assert_eq!(
         resolve_ownership(
-            &profile_with(vec![(CAPABILITY_MEMORIES, json!({}))]),
-            CAPABILITY_MEMORIES
+            &profile_with(vec![(CAPABILITY_PROJECT_MANAGEMENT, json!({}))]),
+            CAPABILITY_PROJECT_MANAGEMENT
         ),
         (Ownership::Owned, None)
     );
 
-    let (ownership, warning) = resolve_ownership(&profile, CAPABILITY_SKILLS);
+    let (ownership, warning) = resolve_ownership(&profile, CAPABILITY_AGENT_MANAGED_CONTEXT);
     assert_eq!(ownership, Ownership::Owned);
     assert!(
         warning
-            .expect("an unknown value warns")
-            .contains("`shared`"),
-        "the warning names the value it could not read"
+            .expect("a non-string value warns")
+            .contains("string"),
+        "the warning says what it could not read"
     );
 
     let warnings = ownership_warnings(&profile);
-    assert_eq!(
-        warnings.len(),
-        2,
-        "one per unreadable value — the string and the number: {warnings:?}"
-    );
+    assert_eq!(warnings.len(), 1, "one per unreadable value: {warnings:?}");
     assert!(warnings.iter().all(|w| w.starts_with("agent `Root`:")));
+
+    // Memories and skills no longer read the param at all, so a value on either is read by nothing
+    // — neither resolved into behaviour nor warned about, exactly like any other key gg does not
+    // know.
+    let ignored = profile_with(vec![
+        (CAPABILITY_MEMORIES, json!({ "ownership": "nonsense" })),
+        (CAPABILITY_SKILLS, json!({ "ownership": "nonsense" })),
+    ]);
+    assert!(ownership_warnings(&ignored).is_empty());
 }
 
 // ---------------------------------------------------------------------------
@@ -374,7 +326,7 @@ fn a_fork_carries_the_revision_history() {
         .store()
         .lock()
         .expect("memory store lock")
-        .update("", "note", "a new description", "a new body")
+        .update("", "note", "a new description", "a new body", None)
         .expect("the update is within the caps");
 
     let revision = forked
@@ -551,7 +503,7 @@ fn a_tightened_cap_keeps_what_is_already_there() {
             .store()
             .lock()
             .expect("memory store lock")
-            .write("", "three", "d", "b")
+            .write("", "three", "d", "b", MemoryCode::default())
             .is_err(),
         "the next write is what the tightened cap refuses"
     );
@@ -609,7 +561,13 @@ fn an_adopted_module_is_not_handed_its_predecessors_unread_news() {
     memories
         .binding()
         .lock()
-        .write("agent-1", "plan", "the plan", "the body")
+        .write(
+            "agent-1",
+            "plan",
+            "the plan",
+            "the body",
+            MemoryCode::default(),
+        )
         .expect("the write is within the caps");
 
     let receiver = profile_with(vec![(CAPABILITY_MEMORIES, json!({}))]);
@@ -651,7 +609,13 @@ fn a_shared_successor_rebinds_the_instance_its_own_profile_keeps() {
     existing
         .binding()
         .lock()
-        .write("agent-0", "house-style", "how we write", "the body")
+        .write(
+            "agent-0",
+            "house-style",
+            "how we write",
+            "the body",
+            MemoryCode::default(),
+        )
         .expect("the write is within the caps");
 
     // The predecessor's own, entirely separate, notebook.
@@ -1263,8 +1227,11 @@ fn a_roster_reports_every_kind_with_ids_only_where_there_is_a_store() {
     let board = BoardRuntime::new(BoardCaps::default());
     let (registry, inherited, ids) = plain();
     let profile = profile_with(vec![
-        (CAPABILITY_MEMORIES, json!({ "ownership": "unowned" })),
-        (CAPABILITY_PROJECT_MANAGEMENT, json!({})),
+        (CAPABILITY_MEMORIES, json!({})),
+        (
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({ "ownership": "unowned" }),
+        ),
     ]);
 
     let set = ModuleSet::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
@@ -1278,7 +1245,8 @@ fn a_roster_reports_every_kind_with_ids_only_where_there_is_a_store() {
     let memories = &roster[1];
     assert_eq!(memories.kind, ModuleKind::Memories);
     assert!(memories.enabled);
-    assert_eq!(memories.ownership, Ownership::Unowned);
+    // Memories have no ownership knob any more, so the roster reports the only value there is.
+    assert_eq!(memories.ownership, Ownership::Owned);
     assert_eq!(memories.scope, Some(MemoryScope::Isolated));
     assert!(memories.writable);
     assert_eq!(memories.module_id, set.caps().memories().instance_id());

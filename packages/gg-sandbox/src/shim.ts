@@ -45,6 +45,7 @@ import type { EndingKind } from "./catalogue.js";
 import {
   DOCS_NAME,
   HELPER_CATALOGUE,
+  LIB_OBJECT,
   OBJECT_FOR_MODULE,
   PROGRAM_ENTRIES,
   PROGRAM_MODULE,
@@ -77,6 +78,17 @@ import * as viewsMod from "./tools/views.js";
 
 /** A bound tool or helper, as the shim handles it: names and arities are the SDK's business. */
 type ToolFn = (...args: unknown[]) => unknown;
+
+/**
+ * One code module the host handed over, mirroring the world's `code-module` record: the key it is
+ * bound at under `lib`, and the JavaScript whose evaluation produces its exports.
+ */
+interface CodeModule {
+  /** The binding key — already an identifier, already unique across the list. */
+  name: string;
+  /** The module's JavaScript, ending in the `return { … }` the host appended. */
+  source: string;
+}
 
 /**
  * The SDK modules, keyed by the `module` field of {@link TOOL_CATALOGUE} — plus
@@ -475,13 +487,60 @@ function buildScope(
 }
 
 /**
+ * Evaluate every code module and return the `lib` object a program reaches them through, or
+ * `undefined` when the agent has loaded none.
+ *
+ * A module is the code half of a skill or a memory the agent read. It is evaluated exactly the way a
+ * program is — as the body of a function whose parameters are the scope's object names — so a module
+ * may call `fs.readFile` or `system.shell` like anything else. The host appended the
+ * `return { … }` that makes the module's exports the value of evaluating it, so there is no export
+ * protocol here: whatever comes back is the namespace.
+ *
+ * **A module that throws does not take the turn down.** Its author is whoever wrote the skill or the
+ * memory, not the model whose program merely has it in scope, so the failure is reported over
+ * {@link feedback.reportModuleError} — one sentence to the model, the whole message to the operator
+ * — and `lib.<name>` is left as an empty object. A program that then calls into it gets an ordinary,
+ * located `TypeError` naming the member it wanted.
+ *
+ * Modules are evaluated **in order**, and each is given the same scope the program gets rather than
+ * the `lib` being built: a module that could see its neighbours would make the load order part of
+ * the contract, and the load order is the order the agent happened to read things in.
+ */
+function buildLib(
+  modules: readonly CodeModule[],
+  scope: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (modules.length === 0) return undefined;
+  const names = Object.keys(scope);
+  const values = names.map((name) => scope[name]);
+  const lib: Record<string, unknown> = {};
+  for (const module of modules) {
+    try {
+      const body = new Function(...names, module.source) as (...args: unknown[]) => unknown;
+      const exports = body(...values);
+      lib[module.name] = typeof exports === "object" && exports !== null ? exports : {};
+    } catch (thrown) {
+      lib[module.name] = {};
+      const err = asToolError(thrown);
+      feedback.reportModuleError(
+        module.name,
+        isErrorLike(err) ? `${errorName(err)}: ${errorMessage(err)}` : describeThrown(err),
+      );
+    }
+  }
+  return lib;
+}
+
+/**
  * Evaluate one program against exactly the tools this run enables.
  *
  * `program` is JavaScript: gg type-stripped the model's TypeScript before it got here. `enabled` is
  * the run's gg tool names, `ending` the agent's role and `library` whether the run keeps a program
- * library — together the whole scope. Nothing comes back: a throw is reported over
- * `feedback.report-error` rather than being allowed to escape as an opaque wasm trap, everything a
- * program wanted to show itself it opened a view of, and an ending is a flag the host already holds.
+ * library — together the whole scope. `modules` is the code the agent loaded by reading a code skill
+ * or a code memory, bound at `lib.<name>` ({@link buildLib}). Nothing comes back: a throw is
+ * reported over `feedback.report-error` rather than being allowed to escape as an opaque wasm trap,
+ * everything a program wanted to show itself it opened a view of, and an ending is a flag the host
+ * already holds.
  *
  * A **returned value is discarded**, and {@link feedback.noteReturn} is how the model learns that
  * rather than by noticing an absence. Discarding it is what makes the rule one sentence — open a
@@ -490,6 +549,7 @@ function buildScope(
  */
 export function run(
   program: string,
+  modules: CodeModule[],
   enabled: string[],
   ending: EndingKind,
   library: boolean,
@@ -500,10 +560,16 @@ export function run(
   deferredNoted = false;
 
   const scope: Record<string, unknown> = buildScope(enabled, ending, library);
-  // Captured BEFORE `ToolError` joins the scope: the unknown-name hint lists the OBJECTS a program
-  // may reach (`fs`, `project`, `harness`, …), and a model offered `ToolError` there would be
-  // pointed at a class as though it were an API object.
+  // Captured BEFORE `lib` and `ToolError` join the scope: the unknown-name hint lists the API
+  // OBJECTS a program may reach (`fs`, `project`, `harness`, …) and tells it to call `list()` on
+  // one. `lib` answers to neither — it holds no gg functions and has no directory — so it is named
+  // separately rather than folded into a sentence that would be false about it. A model offered
+  // `ToolError` there would likewise be pointed at a class as though it were an API object.
   const callable = Object.keys(scope);
+  // Built against the tool scope alone, then added to it: a module sees the same objects the program
+  // does, and nothing sees a half-built `lib`.
+  const lib = buildLib(modules, scope);
+  if (lib) scope[LIB_OBJECT] = lib;
   // Bound so `catch (e) { if (e instanceof ToolError) … }` — the shape the system prompt teaches —
   // works inside a program.
   scope["ToolError"] = ToolError;
@@ -530,7 +596,7 @@ export function run(
     if (value !== undefined) feedback.noteReturn();
   } catch (thrown) {
     ended = true;
-    feedback.reportError(describe(thrown, callable));
+    feedback.reportError(describe(thrown, callable, lib !== undefined));
   }
 }
 
@@ -541,7 +607,11 @@ export function run(
  * engine's stack does **not** begin with the name and message — reporting the stack alone would lose
  * the one line that says what went wrong.
  */
-function describe(thrown: unknown, names: readonly string[]): ProgramError {
+function describe(
+  thrown: unknown,
+  names: readonly string[],
+  lib: boolean,
+): ProgramError {
   const err = asToolError(thrown);
   // The frame is looked for in what was thrown *first*, and only then in the normalised form. A
   // membrane failure arrives as a bare record with no stack at all, while the `ToolError` built from
@@ -570,7 +640,11 @@ function describe(thrown: unknown, names: readonly string[]): ProgramError {
         kind: "unknown-name",
         message:
           `${message}. The API objects available to your program this run are: ` +
-          `${names.join(", ")}. Call \`<object>.list()\` to see an object's functions.`,
+          `${names.join(", ")}. Call \`<object>.list()\` to see an object's functions.` +
+          (lib
+            ? ` The code you have loaded from skills and memories is on \`${LIB_OBJECT}\`, which is ` +
+              "not an API object and has no `list()`."
+            : ""),
         location,
       };
     }

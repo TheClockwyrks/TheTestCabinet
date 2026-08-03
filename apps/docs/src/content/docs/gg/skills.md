@@ -2,22 +2,192 @@
 title: "Skills"
 ---
 
-Skills are **markdown files with front matter**. At the start of a session, the
-model is shown each skill's **description** (from its front matter), so it knows the
-skill exists and what it is for.
+A skill is a **named, described piece of knowledge the agent can reach for by name**. Every
+skill the agent has is listed in its [system prompt](/gg/prompts/) — name and one-line
+description — so it knows what exists and when to reach for one, and it reads the one it
+wants with `read_skill` (`skills.readSkill` under
+[responses-as-code](/gg/responses-as-code/)).
 
-The one behavioral difference between reading a skill and reading a plain file:
+What a skill *is* has two halves, and a skill may carry either or both:
 
-- Reading a skill **strips the front matter** and returns the body, and
-- the skill's contents are **automatically retained after compaction** — a skill,
-  once read, stays in context across a [compaction](/gg/compaction/) boundary,
-  unlike an ordinary file view (which the model may have to re-read, or which
-  [agent-managed context](/gg/agent-managed-context/) may evict).
+- **prose** — a markdown body which, once read, is **retained across a
+  [compaction](/gg/compaction/) boundary**, unlike an ordinary file view (which the model
+  may have to re-read, or which [agent-managed context](/gg/agent-managed-context/) may
+  evict); and
+- **code** — a TypeScript module bound into every program the agent writes from then on,
+  and/or a script gg runs once when the skill is first used. Both are
+  responses-as-code only; see [below](#code-skills).
 
 This mirrors the skills mechanism used elsewhere in this repository (the
 `.claude/skills/` skills that guide agents working in this repo), reframed as a
 capability gg offers the *model under test*. [Memories](/gg/memories/) are the same
 mechanism, curated by the model itself.
+
+## The two file shapes
+
+Skills are loaded once, at launch, from the run's skills directory — `.gg/skills` under the
+workspace by default, or wherever the capability's `dir` param points (a relative path is
+joined onto the workspace; an absolute one is used as-is). Each entry in that directory is
+one of two shapes:
+
+```text
+.gg/skills/
+  release-checklist.md      a prose skill
+  csv-tools/                a skill directory
+    skill.md                required — front matter, and optionally a body
+    skill.ts                optional — the module the agent's programs can call
+    on-use.ts               optional — the script gg runs when the skill is first read
+```
+
+- **`<name>.md`** — a prose skill. A small YAML front-matter block naming it
+  (`name`, `description`), then the body. Exactly what a skill has always been, and still
+  the right shape for a skill that is only guidance.
+- **`<name>/`** — a **skill directory**, which is how a skill carries code. `skill.md` is
+  **required**, because the name and the description are what the catalogue is made of; a
+  directory without one is not a skill and is ignored rather than named after its folder. A
+  body in it is optional, so a skill may be pure code.
+
+Reading a skill differs from reading a plain file in two ways: it **strips the front
+matter** and returns only the body, and that body is added to the window as a
+`Skill`-sourced, **pinned** item, so the [context accounting](/gg/context-visibility/)
+attributes it to skills and compaction carries it across the boundary verbatim. Reading the
+same skill twice does not pin a second copy.
+
+## Code skills
+
+A skill's `skill.ts` and `on-use.ts` are **[responses-as-code](/gg/responses-as-code/)
+only**. A run under native tool calling sees the prose half of a skill and nothing else:
+there are no programs for a module to be bound into, so gg does not pretend otherwise by
+showing the model source it cannot call.
+
+### Code the agent's programs can call
+
+Reading a code skill binds its exports at **`lib.<key>`** in every program the agent writes
+from then on. The key is the skill's name in camel case (`csv-tools` → `lib.csvTools`),
+deduplicated with a numeric suffix if something else already claimed it — and **the reply
+to the read states the key it really got, and what it exports**, because a binding path a
+model has to guess is a binding path it will guess wrong:
+
+```text
+---
+The code this skill carries is loaded: call it as `lib.csvTools.<name>`. It exports:
+parseCsv, toRows. It stays bound for the rest of your session, including across a
+compaction.
+```
+
+What a module may contain, what it exports, and what it is refused for are one shared rule
+across skills and memories, documented under
+[responses-as-code](/gg/responses-as-code/#lib-code-the-agent-loaded). The short version: a
+module exports what it `export`s, a file with no `export` at all exports everything it
+declares, and there is no `import` — a module is evaluated against the same scope a program
+gets, so it may call `fs.readFile` or `system.shell` like anything else.
+
+Loaded code is **not context**. It costs no tokens, is never summarized, and a compaction
+boundary does not touch it: re-reading a skill to get your helpers back after a compaction
+would be friction with nothing on the other side of it. What it does *not* survive is a
+change of agent — a [`fork`](/gg/fork-and-exec/) or a succession starts with nothing bound,
+because the registry is per agent instance, and reading the skill again is what reloads it.
+
+### An on-use script that runs once
+
+An on-use script is how a skill *shows* the agent something rather than telling it. It runs
+**once per agent**, on the read that first brings the skill into use, and it is deferred:
+gg runs it **after the turn's program has ended**, so whatever
+[views](/gg/responses-as-code/#showing-yourself-things) it opens arrive in the agent's
+**next** prompt. Deferring is not a compromise — a read reaches gg from inside a call the
+running program is still in the middle of, and arriving in the next prompt is what every
+view does anyway.
+
+Three rules bound it, and each is the same statement from a different side: an on-use script
+is **not the agent's turn**.
+
+- It **cannot end the session**. No `finish`, no `approve`, no `selectWinner` is bound.
+- It has **no [program library](/gg/program-library/)** — a skill handing gg a replacement
+  program would be a skill rewriting the model's turn.
+- It sees **its own module and no other**. It runs at a moment the agent did not choose, so
+  letting it reach whatever else happened to be loaded would make its behaviour depend on
+  the order the agent read things in.
+
+Its **source is never shown to the model**, on any path. If it fails, the model is told one
+sentence naming the skill and what went wrong — an accusation about code it cannot see would
+be worse than useless — and the turn's own outcome is untouched: the model's program
+succeeded or failed on its own merits, whatever a skill's script then did.
+
+Neither half can break a read. A skill whose `skill.ts` or `on-use.ts` does not compile is
+still **read**: the body is what the model asked for, and the diagnostic is appended to it
+rather than replacing it.
+
+## The skills gg ships
+
+gg writes **eleven skills of its own**, one per family of the functions it offers, so the
+capability is worth enabling in a workspace that authored none — which is almost all of
+them. Before them, a run that had not thought to fill a skills directory got a mechanism
+with nothing in it.
+
+| Skill | Family |
+| --- | --- |
+| `gg-filesystem` | Reading, writing and editing files in the workspace. |
+| `gg-shell` | Running shell commands in the workspace. |
+| `gg-project` | The [epic/issue board](/gg/project-management/). |
+| `gg-tasks` | The agent's own blocked-by [task list](/gg/tasks/). |
+| `gg-memory` | Durable [memories](/gg/memories/). |
+| `gg-skills` | Reading skills — including this one. |
+| `gg-context` | [Managing its own window](/gg/agent-managed-context/): evicting, archiving, searching, compacting. |
+| `gg-delegation` | [Delegating](/gg/subagents/) work to child agents, and [handing its session on](/gg/fork-and-exec/). |
+| `gg-views` | [Showing itself](/gg/responses-as-code/#showing-yourself-things) a file, a value, or a function's documentation. |
+| `gg-programs` | [Fetching a program it already ran](/gg/program-library/), and handing a patched copy back. |
+| `gg-session` | [Ending its session](/gg/completion/#ending-calls) — the one call that does. |
+
+Three properties are what make them safe to ship:
+
+- **Generated, never written.** Not one word of a built-in's content is prose kept
+  somewhere it could drift from the thing it describes. Under native tool calling the body
+  is built from the agent's **live tool definitions** — each tool's real name, description
+  and top-level parameters. Under responses-as-code the body is empty and the skill carries
+  an **on-use script** that opens one `view.openDocsView` per function in the family, which
+  routes through the same documentation lookup the model could have called itself. A
+  built-in carries **no importable code** either way: it is a manual, not a library.
+- **A family is offered only when the agent has at least one of its functions.** A skill
+  that described a tool this run withheld would be the one thing a catalogue must never do.
+  The last three families exist only under responses-as-code, because `view`, `programs`
+  and the ending calls are not gg tools at all.
+- **An authored skill of the same name wins.** A workspace that writes its own
+  `gg-filesystem` means to replace gg's, and a run in which both existed would put two lines
+  with one name in the catalogue.
+
+They are selected per agent with the skills capability's **`builtIns`** param, which — like
+every toggle set in gg — records only the ones switched **off**, so an unconfigured run gets
+all of them:
+
+```json
+{
+  "id": "skills",
+  "enabled": true,
+  "params": { "builtIns": { "gg-memory": false, "gg-context": false } }
+}
+```
+
+Switching one off withholds the manual, not the functions: the family still works, the agent
+is simply not handed a description of it. That is what makes "does an agent use this
+capability well when nobody explains it?" an arm a study can actually run.
+
+Because the built-ins are resolved against **this agent's** toolset, two agents in one run
+hold catalogues that agree about every authored skill and differ exactly where their
+capabilities do. They are also why the capability is worth enabling at all in a workspace
+with no skills directory: with no authored skills and no built-ins there is nothing to read,
+and gg offers no `read_skill` tool.
+
+## The catalogue is in the system prompt
+
+Every offered skill is listed in the system prompt — one line each, its name and its
+description, under a `## Skills` heading — in both execution modes. That is the "shown up
+front" affordance the whole capability rests on: a model cannot read a skill it was never
+told about, and a catalogue delivered as a tool result would be one more thing a compaction
+had to carry.
+
+The listing is the *menu*; a read skill's **body** is a separate, pinned item, and the two
+have different lifetimes. The menu is rendered fresh into every request as part of the system
+prompt; the body is pinned into the window once and survives every boundary after that.
 
 ## The band is shared with documentation views
 
@@ -39,18 +209,21 @@ reaches a docs view and spares the pinned skill sitting beside it in the same ba
 removal path skips pinned items, so there is no way for a program to close a skill it did not
 open.
 
+This is also how a built-in skill pays for itself under responses-as-code: what it puts in
+the window is a handful of ordinary, closable docs views, so an agent that has read the
+manual and finished with it can reclaim the space.
+
 ## The catalog is shared; what has been read is not
 
 Skills are a [module](/gg/modules/) in two halves, because the two halves mean different
 things. The **catalog** is authored ahead of the run and never changes, so every agent
-reads the one copy. The **read set** — which skill bodies are pinned in the window — is a
-statement about *that agent's window*, so it travels with the window it describes: a
-[`fork`](/gg/fork-and-exec/) copies it along with the conversation it refers to, and a
-[transfer](/gg/modules/#transfer) carries it to the successor that inherited that
-conversation. A read set that outlived its window would promise a retained body the window
-no longer holds.
+reads the one copy (with its own built-ins joined on). The **read set** — which skill bodies
+are pinned in the window — is a statement about *that agent's window*, so it travels with the
+window it describes: a [`fork`](/gg/fork-and-exec/) copies it along with the conversation it
+refers to, and a [transfer](/gg/modules/#transfer) carries it to the successor that inherited
+that conversation. A read set that outlived its window would promise a retained body the
+window no longer holds.
 
-[Ownership](/gg/modules/#ownership) is worth a note here because for skills the catalog *is*
-the state: an **unowned** skills module has no menu and no section describing one, and
-`read_skill` still reads any skill by name — which makes "the agent must be told a name" an
-arm a study can actually run.
+The **loaded code** is the one thing that follows neither rule: it is not a module in gg's
+sense at all, it holds no context and is not transferred, and a new agent instance starts
+with nothing bound. Reading the skill again is the whole of the recovery.

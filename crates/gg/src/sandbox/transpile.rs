@@ -195,11 +195,13 @@ pub fn transpile_ts(src: &str) -> Result<Transpiled, TranspileError> {
     strip_types_on_a_deep_stack(src)
 }
 
-/// Run [`strip_types`] on a thread with [`PARSER_STACK_BYTES`] of stack, and hand back exactly what
-/// it returned.
+/// Run `work` on a thread with [`PARSER_STACK_BYTES`] of stack, and hand back exactly what it
+/// returned.
 ///
 /// The whole pipeline runs there, not only the parse: the transformer and the code generator walk
-/// the same tree the parser built, so they recurse to the same depth.
+/// the same tree the parser built, so they recurse to the same depth. It is generic over the work
+/// because the [module](self::modules) pass runs a second parse over the same untrusted source and
+/// needs exactly the same stack.
 ///
 /// Two failures of the thread itself, and why each is handled the way it is. A thread that cannot be
 /// *started* is a machine out of threads or address space, which `std::thread::spawn` itself panics
@@ -207,17 +209,22 @@ pub fn transpile_ts(src: &str) -> Result<Transpiled, TranspileError> {
 /// turn, which is precisely the outcome a stack overflow does *not* give us. And a panic *inside*
 /// `oxc` is re-raised on this thread rather than translated into a model-facing error, so the extra
 /// thread changes nothing about how a defect in the transpiler surfaces.
-fn strip_types_on_a_deep_stack(src: &str) -> Result<Transpiled, TranspileError> {
+fn on_a_deep_stack<T: Send>(work: impl FnOnce() -> T + Send) -> T {
     std::thread::scope(|scope| {
         let parser = std::thread::Builder::new()
             .stack_size(PARSER_STACK_BYTES)
-            .spawn_scoped(scope, || strip_types(src))
+            .spawn_scoped(scope, work)
             .expect("the sandbox's parser thread can be started");
         match parser.join() {
-            Ok(stripped) => stripped,
+            Ok(produced) => produced,
             Err(panic) => std::panic::resume_unwind(panic),
         }
     })
+}
+
+/// [`strip_types`] on the deep stack — the program path's whole pipeline.
+fn strip_types_on_a_deep_stack(src: &str) -> Result<Transpiled, TranspileError> {
+    on_a_deep_stack(|| strip_types(src))
 }
 
 /// The `oxc` pipeline itself: parse, reject what the sandbox cannot run, strip the types, print.
@@ -633,6 +640,11 @@ fn excerpt(line: &str) -> String {
     let kept: String = line.chars().take(MAX_EXCERPT_CHARS).collect();
     format!("{kept}…")
 }
+
+#[path = "transpile.modules.rs"]
+mod modules;
+
+pub use modules::transpile_module;
 
 #[cfg(test)]
 #[path = "transpile.test.rs"]

@@ -59,9 +59,11 @@ fn revision(event: &GgTelemetryKind) -> (&str, u64, GgMemoryChange, &str, &str, 
 #[test]
 fn every_mutation_is_recorded_with_the_text_it_produced() {
     let mut store = store();
-    store.write("", "plan", "the plan", "maze runner").unwrap();
     store
-        .update("", "plan", "the plan", "arrow-key maze")
+        .write("", "plan", "the plan", "maze runner", MemoryCode::default())
+        .unwrap();
+    store
+        .update("", "plan", "the plan", "arrow-key maze", None)
         .unwrap();
     store.delete("", "plan").unwrap();
 
@@ -93,7 +95,13 @@ fn every_mutation_is_recorded_with_the_text_it_produced() {
 fn a_deleted_memory_is_still_in_the_record() {
     let mut store = store();
     store
-        .write("", "palette", "colours", "teal and sand")
+        .write(
+            "",
+            "palette",
+            "colours",
+            "teal and sand",
+            MemoryCode::default(),
+        )
         .unwrap();
     store.delete("", "palette").unwrap();
 
@@ -114,9 +122,13 @@ fn a_deleted_memory_is_still_in_the_record() {
 #[test]
 fn revisions_keep_counting_across_a_delete_and_recreate() {
     let mut store = store();
-    store.write("", "plan", "d", "first").unwrap();
+    store
+        .write("", "plan", "d", "first", MemoryCode::default())
+        .unwrap();
     store.delete("", "plan").unwrap();
-    store.write("", "plan", "d", "second").unwrap();
+    store
+        .write("", "plan", "d", "second", MemoryCode::default())
+        .unwrap();
 
     let numbers: Vec<u64> = recorded(&store).iter().map(|e| revision(e).1).collect();
     assert_eq!(numbers, vec![1, 2, 3]);
@@ -127,9 +139,13 @@ fn revisions_keep_counting_across_a_delete_and_recreate() {
 #[test]
 fn revision_numbers_are_per_memory() {
     let mut store = store();
-    store.write("", "a", "d", "one").unwrap();
-    store.write("", "b", "d", "two").unwrap();
-    store.update("", "a", "d", "three").unwrap();
+    store
+        .write("", "a", "d", "one", MemoryCode::default())
+        .unwrap();
+    store
+        .write("", "b", "d", "two", MemoryCode::default())
+        .unwrap();
+    store.update("", "a", "d", "three", None).unwrap();
 
     let seen: Vec<(String, u64)> = recorded(&store)
         .iter()
@@ -159,11 +175,13 @@ fn revision_numbers_are_per_memory() {
 #[test]
 fn the_log_accumulates_rather_than_draining() {
     let mut store = store();
-    store.write("", "plan", "d", "body").unwrap();
+    store
+        .write("", "plan", "d", "body", MemoryCode::default())
+        .unwrap();
     assert_eq!(recorded(&store).len(), 1);
     assert_eq!(recorded(&store).len(), 1, "reading it does not consume it");
 
-    store.update("", "plan", "d", "revised").unwrap();
+    store.update("", "plan", "d", "revised", None).unwrap();
     assert_eq!(recorded(&store).len(), 2, "a later mutation appends");
 }
 
@@ -176,8 +194,10 @@ fn a_refused_mutation_is_not_recorded() {
         ..MemoryCaps::default()
     };
     let mut store = MemoryStore::new(MemoryStrategy::Scratchpad, caps);
-    store.write("", "plan", "d", "over the limit").unwrap_err();
-    store.update("", "nope", "d", "ok").unwrap_err();
+    store
+        .write("", "plan", "d", "over the limit", MemoryCode::default())
+        .unwrap_err();
+    store.update("", "nope", "d", "ok", None).unwrap_err();
     store.delete("", "nope").unwrap_err();
     assert!(recorded(&store).is_empty());
 }
@@ -191,7 +211,9 @@ fn the_file_shaped_calls_are_recorded_too() {
         MemoryStrategy::Markdown,
         MemoryCaps::for_strategy(MemoryStrategy::Markdown),
     );
-    store.create("", "layout", "the layout", "a grid").unwrap();
+    store
+        .create("", "layout", "the layout", "a grid", MemoryCode::default())
+        .unwrap();
     store.edit("", "layout", "a grid", "a hex grid").unwrap();
 
     let events = recorded(&store);
@@ -209,9 +231,17 @@ fn the_file_shaped_calls_are_recorded_too() {
 #[test]
 fn bodies_report_their_line_count() {
     let mut store = store();
-    store.write("", "one", "d", "a single line").unwrap();
     store
-        .write("", "many", "d", "first\nsecond\nthird")
+        .write("", "one", "d", "a single line", MemoryCode::default())
+        .unwrap();
+    store
+        .write(
+            "",
+            "many",
+            "d",
+            "first\nsecond\nthird",
+            MemoryCode::default(),
+        )
         .unwrap();
 
     let GgTelemetryKind::MemoryState {
@@ -235,7 +265,9 @@ fn bodies_report_their_line_count() {
 #[test]
 fn a_one_line_body_counts_as_one_line() {
     let mut store = store();
-    store.write("", "plan", "d", "  just this  ").unwrap();
+    store
+        .write("", "plan", "d", "  just this  ", MemoryCode::default())
+        .unwrap();
     assert_eq!(store.total_lines(), 1);
     assert_eq!(store.memories()[0].body(), "just this");
 }
@@ -250,8 +282,12 @@ fn a_one_line_body_counts_as_one_line() {
 #[test]
 fn peaks_survive_the_pruning_that_clears_the_live_set() {
     let mut store = store();
-    store.write("", "a", "d", "aaaa\naaaa").unwrap();
-    store.write("", "b", "d", "bbbbbb").unwrap();
+    store
+        .write("", "a", "d", "aaaa\naaaa", MemoryCode::default())
+        .unwrap();
+    store
+        .write("", "b", "d", "bbbbbb", MemoryCode::default())
+        .unwrap();
     assert_eq!(store.peak().count, 2);
     assert_eq!(store.peak().total_len, 15);
     assert_eq!(store.peak().total_lines, 3);
@@ -272,9 +308,11 @@ fn peaks_survive_the_pruning_that_clears_the_live_set() {
 #[test]
 fn a_peak_never_falls() {
     let mut store = store();
-    store.write("", "plan", "d", &"x".repeat(100)).unwrap();
+    store
+        .write("", "plan", "d", &"x".repeat(100), MemoryCode::default())
+        .unwrap();
     assert_eq!(store.peak().total_len, 100);
-    store.update("", "plan", "d", "tiny").unwrap();
+    store.update("", "plan", "d", "tiny", None).unwrap();
     assert_eq!(store.total_len(), 4);
     assert_eq!(store.peak().total_len, 100);
 }
@@ -282,7 +320,9 @@ fn a_peak_never_falls() {
 #[test]
 fn the_state_event_reports_the_peaks() {
     let mut store = store();
-    store.write("", "plan", "d", "a\nb\nc").unwrap();
+    store
+        .write("", "plan", "d", "a\nb\nc", MemoryCode::default())
+        .unwrap();
     store.delete("", "plan").unwrap();
 
     let GgTelemetryKind::MemoryState { count, peak, .. } = state(&store) else {
@@ -307,15 +347,21 @@ fn the_runtime_drains_a_whole_batch() {
     {
         let mut store = runtime.store().lock().unwrap().clone();
         // Mutating a clone must not reach the runtime — the shared handle is the store.
-        store.write("", "stray", "d", "body").unwrap();
+        store
+            .write("", "stray", "d", "body", MemoryCode::default())
+            .unwrap();
     }
     assert!(runtime.revision_events().is_empty());
 
     {
         let store = runtime.store();
         let mut store = store.lock().unwrap();
-        store.write("", "a", "d", "one").unwrap();
-        store.write("", "b", "d", "two").unwrap();
+        store
+            .write("", "a", "d", "one", MemoryCode::default())
+            .unwrap();
+        store
+            .write("", "b", "d", "two", MemoryCode::default())
+            .unwrap();
         store.delete("", "a").unwrap();
     }
     let events = runtime.revision_events();

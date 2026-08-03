@@ -54,6 +54,8 @@ fn the_memory_tools_round_trip_with_both_budget_axes() {
         name: "layout".to_string(),
         description: "where things live".to_string(),
         body: "src/ holds the engine".to_string(),
+        code: None,
+        on_use: None,
     };
     let usage = state.write_memory(input.clone()).expect("wrote");
     assert_eq!(
@@ -80,6 +82,8 @@ fn the_memory_tools_round_trip_with_both_budget_axes() {
             "name": "layout",
             "description": "where things live",
             "body": "src/ holds the engine",
+            "code": null,
+            "onUse": null,
         }))
     );
     assert_eq!(log.args("delete_memory"), Some(json!({ "name": "layout" })));

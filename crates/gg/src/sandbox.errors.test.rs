@@ -19,9 +19,12 @@ fn a_transpile_error_never_touches_the_engine() {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
         "const x: = ;",
-        &[],
-        EndingRole::Standard,
-        false,
+        ProgramScope {
+            enabled: &[],
+            modules: &[],
+            ending: RunEnding::Role(EndingRole::Standard),
+            library: false,
+        },
         SandboxLimits::default(),
         None,
         FakeToolApi::new(&log),
@@ -58,9 +61,12 @@ fn an_unsupported_feature_is_a_transpile_error_with_guidance() {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
         "import fs from 'node:fs';\nreturn 1;",
-        &[],
-        EndingRole::Standard,
-        false,
+        ProgramScope {
+            enabled: &[],
+            modules: &[],
+            ending: RunEnding::Role(EndingRole::Standard),
+            library: false,
+        },
         SandboxLimits::default(),
         None,
         FakeToolApi::new(&log),

@@ -48,6 +48,7 @@ mod ending;
 mod fsm;
 mod git;
 mod healing;
+mod knowledge;
 mod limits;
 mod memories;
 mod message_log;

@@ -47,9 +47,12 @@ fn run_with(
     let log = CallLog::default();
     let (outcome, _api) = run_program(
         program,
-        enabled,
-        EndingRole::Standard,
-        false,
+        ProgramScope {
+            enabled,
+            modules: &[],
+            ending: RunEnding::Role(EndingRole::Standard),
+            library: false,
+        },
         limits,
         None,
         FakeToolApi::with(&log, responder),
@@ -67,9 +70,12 @@ fn run_with_library(program: &str, held: &[(u64, &str)]) -> SandboxOutcome {
     }
     let (outcome, _api) = run_program(
         program,
-        &all_tools(),
-        EndingRole::Standard,
-        true,
+        ProgramScope {
+            enabled: &all_tools(),
+            modules: &[],
+            ending: RunEnding::Role(EndingRole::Standard),
+            library: true,
+        },
         SandboxLimits::default(),
         None,
         api,
@@ -83,9 +89,12 @@ fn run_as(program: &str, role: EndingRole) -> SandboxOutcome {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
         program,
-        &[],
-        role,
-        false,
+        ProgramScope {
+            enabled: &[],
+            modules: &[],
+            ending: RunEnding::Role(role),
+            library: false,
+        },
         SandboxLimits::default(),
         None,
         FakeToolApi::new(&log),
@@ -997,4 +1006,156 @@ fn the_program_library_is_bound_only_when_the_run_keeps_one() {
         outcome.revoked_rerun,
         "the model is told the replacement was not run"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Code modules — the `lib` object
+// ---------------------------------------------------------------------------
+//
+// These are the only tests that prove the committed component really binds a module: everything
+// else about the feature is host-side, and a `lib` the guest failed to build would look exactly like
+// a program that forgot to call into it.
+
+/// Run `program` with `modules` bound, each already through the host's module transpile — the same
+/// path a read skill or memory takes.
+fn run_with_modules(program: &str, modules: &[(&str, &str)]) -> SandboxOutcome {
+    run_with_modules_logged(program, modules).0
+}
+
+/// The same, keeping the call log — for the one test that is about what a module *did* on its way to
+/// being loaded rather than about what it exported.
+fn run_with_modules_logged(program: &str, modules: &[(&str, &str)]) -> (SandboxOutcome, CallLog) {
+    let bound: Vec<CodeModule> = modules
+        .iter()
+        .map(|(name, source)| CodeModule {
+            name: (*name).to_string(),
+            source: crate::sandbox::transpile_module(source)
+                .expect("the test's module transpiles")
+                .js,
+        })
+        .collect();
+    let log = CallLog::default();
+    let (outcome, _api) = run_program(
+        program,
+        ProgramScope {
+            enabled: &all_tools(),
+            modules: &bound,
+            ending: RunEnding::Role(EndingRole::Standard),
+            library: false,
+        },
+        SandboxLimits::default(),
+        None,
+        FakeToolApi::new(&log),
+    );
+    (outcome, log)
+}
+
+/// **A loaded module's exports are callable from the program**, under `lib.<key>`.
+///
+/// The one end-to-end assertion behind code skills and code memories: the host transpiles a module,
+/// the guest evaluates it before the program, and the program calls what it exported.
+#[test]
+fn a_code_module_is_bound_at_lib_and_its_exports_are_callable() {
+    let outcome = run_with_modules(
+        "console.log(JSON.stringify(lib.csvTools.parse(\"a,b,c\")));",
+        &[(
+            "csvTools",
+            "export function parse(text: string): string[] { return text.split(\",\"); }\n\
+             function unexported() { return 0; }\n",
+        )],
+    );
+    assert_eq!(logged_json(&outcome), json!(["a", "b", "c"]));
+
+    // What the module did not export is not on the object: the namespace is what the file said.
+    let outcome = run_with_modules(
+        "console.log(String(typeof lib.csvTools.unexported));",
+        &[(
+            "csvTools",
+            "export function parse() {}\nfunction unexported() {}\n",
+        )],
+    );
+    assert_eq!(logs(&outcome), ["undefined"]);
+}
+
+/// A module may call the same gg functions the program can — it is evaluated against the same scope,
+/// which is what makes a helper worth keeping rather than a pure-function library.
+#[test]
+fn a_module_may_call_gg_functions_while_it_loads() {
+    let (outcome, log) = run_with_modules_logged(
+        "console.log(\"ran\");",
+        &[("eager", "export const first = fs.readFile(\"a.txt\");\n")],
+    );
+    assert_eq!(logs(&outcome), ["ran"], "the program still ran");
+    // The point: the read really crossed the membrane, so the module was evaluated against the
+    // program's own scope rather than an empty one.
+    assert_eq!(log.names(), ["read_file"]);
+}
+
+/// **A module that throws while loading does not take the turn down.** Its `lib` entry is empty, the
+/// failure is reported separately, and the program runs.
+#[test]
+fn a_module_that_throws_while_loading_is_reported_and_the_program_still_runs() {
+    let outcome = run_with_modules(
+        "console.log(JSON.stringify(Object.keys(lib.broken)));",
+        &[("broken", "export const n = (undefined as any).x;\n")],
+    );
+    assert_eq!(logged_json(&outcome), json!([]), "the entry is empty");
+    assert_eq!(
+        outcome.module_errors.len(),
+        1,
+        "the failure is reported: {:?}",
+        outcome.module_errors
+    );
+    assert_eq!(outcome.module_errors[0].0, "broken");
+    assert!(
+        outcome
+            .result
+            .as_ref()
+            .expect("the program itself ran")
+            .error
+            .is_none(),
+        "somebody else's broken module is not the program's failure"
+    );
+}
+
+/// A run with **no** modules has no `lib` identifier at all — the same capability model every
+/// withheld tool obeys.
+#[test]
+fn a_program_with_no_modules_has_no_lib_in_scope() {
+    let outcome = run_with_modules("console.log(String(lib));", &[]);
+    let error = outcome
+        .result
+        .expect("the program ran")
+        .error
+        .expect("reaching for `lib` is an unknown name");
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName);
+}
+
+/// An **on-use script** binds no ending group: it is not the agent's turn, so it cannot declare the
+/// session over.
+#[test]
+fn an_on_use_script_has_no_ending_calls_in_scope() {
+    let log = CallLog::default();
+    let (outcome, _api) = run_program(
+        "harness.finish(\"done\");",
+        ProgramScope {
+            enabled: &all_tools(),
+            modules: &[],
+            ending: RunEnding::None,
+            library: false,
+        },
+        SandboxLimits::default(),
+        None,
+        FakeToolApi::new(&log),
+    );
+    assert!(
+        outcome.completion.is_none(),
+        "an on-use script cannot end the session"
+    );
+    let error = outcome
+        .result
+        .expect("the script ran")
+        .error
+        .expect("`harness` is not a name it has");
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName);
 }

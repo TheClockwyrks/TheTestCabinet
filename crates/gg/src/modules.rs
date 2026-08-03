@@ -770,16 +770,25 @@ pub fn resolve_ownership(profile: &GgAgentConfig, capability: &str) -> (Ownershi
 /// the list [`ownership_warnings`] validates and the console's editor offers an `ownership` picker
 /// for.
 ///
-/// Two kinds are absent, and both absences are load-bearing. [`History`](ModuleKind::History) has
-/// no capability behind it at all: the window is not a capability, it is the agent.
-/// [`Tasks`](ModuleKind::Tasks) has one, but no ownership to configure — the task list is what an
-/// agent steers its work by from turn to turn, so it is always carried in its holder's prompt as
-/// its own message. An `ownership` param on [`tasks`](CAPABILITY_TASKS) is read by nothing:
-/// neither resolved nor warned about, exactly like any other key gg does not know.
-const MODULE_CAPABILITIES: [(&str, ModuleKind); 4] = [
-    (CAPABILITY_MEMORIES, ModuleKind::Memories),
+/// Four kinds are absent, and every absence is load-bearing.
+///
+/// [`History`](ModuleKind::History) has no capability behind it at all: the window is not a
+/// capability, it is the agent. [`Tasks`](ModuleKind::Tasks) has one, but no ownership to configure
+/// — the task list is what an agent steers its work by from turn to turn, so it is always carried in
+/// its holder's prompt as its own message.
+///
+/// [`Memories`](ModuleKind::Memories) and [`Skills`](ModuleKind::Skills) are absent because for both
+/// of them the knob was a way of switching the capability off while pretending it was on. What a
+/// [memory strategy](crate::memories::MemoryStrategy) puts in the window *is* what having memories
+/// means under it, and the strategy is already the knob — `keyword-search` is the arm that pins
+/// nothing. And a skills catalogue an agent is never shown leaves it able to read a skill only by
+/// being handed its name, which is not an arm of a study, it is the capability disabled with extra
+/// steps.
+///
+/// An `ownership` param on any of the four is read by nothing: neither resolved nor warned about,
+/// exactly like any other key gg does not know.
+const MODULE_CAPABILITIES: [(&str, ModuleKind); 2] = [
     (CAPABILITY_PROJECT_MANAGEMENT, ModuleKind::Board),
-    (CAPABILITY_SKILLS, ModuleKind::Skills),
     (CAPABILITY_AGENT_MANAGED_CONTEXT, ModuleKind::Archive),
 ];
 
@@ -850,10 +859,7 @@ impl CapabilityModules {
             // The board is the run's, however a holder came by it — see
             // [`Module::origin_when_forked`].
             board: ctx.board.shared().with_ownership(board_ownership),
-            skills: ctx
-                .skills
-                .forked()
-                .with_ownership(resolve_ownership(profile, CAPABILITY_SKILLS).0),
+            skills: ctx.skills.forked(),
             archive: if profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT) {
                 ArchiveRuntime::new_in(ctx.ids)
                     .with_ownership(resolve_ownership(profile, CAPABILITY_AGENT_MANAGED_CONTEXT).0)

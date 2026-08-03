@@ -59,17 +59,17 @@ fn crossings() -> Vec<Crossing> {
         Crossing {
             tool: "write_memory",
             program: "memory.writeMemory({ name: \"layout\", description: \"d\", body: \"b\" });",
-            expected: || json!({ "name": "layout", "description": "d", "body": "b" }),
+            expected: || json!({ "name": "layout", "description": "d", "body": "b", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "update_memory",
             program: "memory.updateMemory({ name: \"layout\", description: \"d2\", body: \"b2\" });",
-            expected: || json!({ "name": "layout", "description": "d2", "body": "b2" }),
+            expected: || json!({ "name": "layout", "description": "d2", "body": "b2", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "create_memory",
             program: "memory.createMemory({ name: \"layout\", description: \"d\", body: \"b\" });",
-            expected: || json!({ "name": "layout", "description": "d", "contents": "b" }),
+            expected: || json!({ "name": "layout", "description": "d", "contents": "b", "code": null, "onUse": null }),
         },
         Crossing {
             tool: "read_memory",
