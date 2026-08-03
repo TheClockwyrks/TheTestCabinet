@@ -372,9 +372,9 @@ validation = { script = "validation/controls/pause-p.mjs", outputs = [
 [[review.categories.items]]
 id = "mute"
 title = "M toggles mute"
-description = "Pressing M toggles the game's mute flag."
+description = "Pressing M during a dive toggles the game's mute, and a muted dive plays no cue."
 validation = { script = "validation/controls/mute.mjs", outputs = [
-  { id = "mute", name = "The title after toggling mute", kind = "image" },
+  { id = "mute", name = "A muted dive, mid sonar pulse", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "advances-in-real-time"
@@ -473,14 +473,14 @@ id = "den-enclosed"
 title = "Fully enclosed den"
 description = "The central predator den chamber is fully enclosed by walls, except for the gate — its interior borders open corridor only through the den gate."
 validation = { script = "validation/maze/den-enclosed.mjs", outputs = [
-  { id = "board", name = "The maze board", kind = "image" },
+  { id = "board", name = "The den chamber, lit from the corridor outside its gate", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "den-one-exit"
 title = "Exactly one exit"
 description = "There is only one exit from the den: a single den gate."
 validation = { script = "validation/maze/den-one-exit.mjs", outputs = [
-  { id = "board", name = "The maze board", kind = "image" },
+  { id = "board", name = "The den chamber, lit from the corridor outside its gate", kind = "image" },
 ] }
 [[review.categories.items]]
 id = "den-reachable"
@@ -518,7 +518,7 @@ validation = { script = "validation/fog/predators-not-remembered.mjs", outputs =
 [[review.categories.items]]
 id = "light-line-of-sight"
 title = "Light is line-of-sight"
-description = "Passive light does not bend around corners: a predator one step around a blind corner is not lit even though it is close."
+description = "Passive light does not bend around corners: a predator behind rock is not lit even though it is well within light range."
 validation = { script = "validation/fog/light-line-of-sight.mjs", outputs = [
   { id = "los", name = "A predator hidden around a blind corner", kind = "image" },
 ] }
@@ -922,7 +922,7 @@ validation = { script = "validation/scoring/descend-on-clear.mjs", outputs = [
 [[review.categories.items]]
 id = "depth-scaling"
 title = "Depth adds predators and shrinks sonar"
-description = "A deeper maze holds more predators (one more per depth, cycling through the kinds, capped at two of each) and a shorter sonar range; predator speeds do not change with depth."
+description = "A deeper maze holds more predators (one more per depth, cycling through the kinds, capped at two of each) and a shorter sonar range — the range a pulse fired at that depth actually carries; predator speeds do not change with depth."
 validation = { script = "validation/scoring/depth-scaling.mjs", outputs = [
   { id = "scale", name = "Depth scaling the dive", kind = "video" },
 ] }

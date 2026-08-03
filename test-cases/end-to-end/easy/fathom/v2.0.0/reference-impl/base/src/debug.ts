@@ -28,6 +28,7 @@ export interface FathomDebugApi {
   /** Advance the simulation by exactly this many whole fixed steps (ticks). */
   step(ticks: number): void;
   setAutoStep(enabled: boolean): void;
+  setCreatureAI(enabled: boolean): void;
   snapshot(): FathomSnapshot;
   startDive(): void;
   beginPlay(): void;
@@ -75,6 +76,10 @@ export function installDebugApi(game: Game): void {
 
     setAutoStep(enabled) {
       game.debugSetAutoStep(Boolean(enabled));
+    },
+
+    setCreatureAI(enabled) {
+      game.debugSetCreatureAI(Boolean(enabled));
     },
 
     snapshot() {
