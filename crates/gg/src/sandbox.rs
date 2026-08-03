@@ -113,11 +113,11 @@ pub use {
     transpile::UnreachableTail,
 };
 
-/// One membrane-refused call, as a test builds an outcome carrying one. Production code reads
-/// refusals only off a [`SandboxOutcome`], which owns them by value, so nothing outside the tests
-/// needs to name the type.
+/// One membrane-refused call, and one serviced one, as a test builds an outcome carrying them.
+/// Production code reads both only off a [`SandboxOutcome`], which owns them by value, so nothing
+/// outside the tests needs to name either type.
 #[cfg(test)]
-pub use invoker::SandboxRefusal;
+pub use invoker::{SandboxRefusal, SandboxToolCall};
 
 use crate::ending::EndingRole;
 use crate::tools::ToolRegistry;
@@ -127,8 +127,9 @@ use membrane::{MembraneParts, MembraneState, Sandbox};
 /// against exactly `enabled`'s tools, and report everything that happened.
 ///
 /// `program` is the **TypeScript** the model emitted. `enabled` is the run's scope-bound gg tool
-/// names ([`scope_tools`]) and `role` the agent's [ending role](EndingRole) — together, exactly what
-/// the program's scope is built from. `deadline` is the run's wall-clock budget, consulted before
+/// names ([`scope_tools`]), `role` the agent's [ending role](EndingRole) and `library` whether this
+/// agent keeps a [program library](crate::programs) — together, exactly what the program's scope is
+/// built from. `deadline` is the run's wall-clock budget, consulted before
 /// every bridged call so a program cannot outlive the run it belongs to. Synchronous and CPU-bound, so
 /// the [loop](crate::agent) runs it on `spawn_blocking`; it performs no I/O of its own — every
 /// effect goes through `invoker`.
@@ -136,6 +137,7 @@ pub fn run_program<A: ToolApi>(
     program: &str,
     enabled: &[String],
     role: EndingRole,
+    library: bool,
     limits: SandboxLimits,
     deadline: Option<Instant>,
     api: A,
@@ -185,7 +187,7 @@ pub fn run_program<A: ToolApi>(
     };
 
     let returned = bound
-        .call_run(&mut store, &transpiled.js, enabled, role.into())
+        .call_run(&mut store, &transpiled.js, enabled, role.into(), library)
         .map_err(|error| engine::classify(&store, limits, &error, SandboxError::Trap));
     // A program the sandbox stopped did not run to its end, so an ending it declared on the way is
     // revoked here for the same reason a throw revokes one in the guest's `catch`: `finish` is a
@@ -198,9 +200,10 @@ pub fn run_program<A: ToolApi>(
 }
 
 /// A linker carrying the whole membrane and nothing else: every one of the thirty-two typed gg tool
-/// functions, the three model-facing carve-outs that are not tools (the
-/// [`finish`](FINISH_FUNCTION) that ends the run, the documentation lookups, and the view calls a
-/// program puts material into its own window with), and the shim's feedback channel.
+/// functions, the four model-facing carve-outs that are not tools (the
+/// [`finish`](FINISH_FUNCTION) that ends the run, the documentation lookups, the view calls a
+/// program puts material into its own window with, and the [program library](crate::programs) it
+/// reaches back through for a program it already ran), and the shim's feedback channel.
 ///
 /// Building it per run rather than once per process is deliberate and free: a `Linker` is cheap,
 /// and the expensive artifact (the compiled [`Component`](wasmtime::component::Component)) is the
@@ -373,6 +376,8 @@ fn reclaim<A: ToolApi>(
             completion,
             revoked_completion,
             program_error,
+            rerun,
+            revoked_rerun,
         },
     ) = store.into_data().api_and_parts();
 
@@ -395,6 +400,8 @@ fn reclaim<A: ToolApi>(
         // settled before this, by `revoke_completion`.
         completion,
         revoked_completion,
+        rerun,
+        revoked_rerun,
         elapsed,
         unreachable,
         compile_wait,

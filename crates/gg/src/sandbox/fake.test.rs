@@ -22,6 +22,7 @@ use crate::board::IssueStatus;
 use crate::context::{FileRegion, OpenViewInfo, ViewKind};
 use crate::ending::EndingRole;
 use crate::model::ImageContent;
+use crate::programs::{ProgramLibrary, ProgramRefusal, ProgramSummary};
 use crate::tasks::TaskStatus;
 use crate::tools::{
     ArchiveHitData, ArchiveSearchData, BoardNodeData, BoardUsageData, DirEntryData, DirEntryKind,
@@ -116,6 +117,10 @@ pub(crate) struct FakeToolApi {
     /// removes what it names and reports how many — so the double models exactly that and no more.
     /// The caps are not modelled at all: they live in `LoopToolApi`, which is where the window is.
     views: Vec<OpenViewInfo>,
+    /// The [program library](crate::programs) this double answers `programs.history` / `programs.get`
+    /// from — a real one, because it is a small self-contained value with the retention already in
+    /// it, and a second model of it here would be the thing that drifts.
+    programs: ProgramLibrary,
 }
 
 #[allow(dead_code)]
@@ -135,7 +140,15 @@ impl FakeToolApi {
             log: log.clone(),
             responder: Box::new(responder),
             views: Vec::new(),
+            programs: ProgramLibrary::enabled(None),
         }
+    }
+
+    /// Seed the library with a program said to have run on `turn`, so a test can drive
+    /// `programs.get` against something.
+    pub(crate) fn with_program(mut self, turn: u64, source: &str) -> Self {
+        self.programs.record(turn, source, true, None);
+        self
     }
 
     /// Record `name`/`args` exactly as the membrane composed them, then answer.
@@ -524,6 +537,14 @@ impl ToolApi for FakeToolApi {
     fn current_views(&mut self) -> Vec<OpenViewInfo> {
         self.views.clone()
     }
+
+    fn program_history(&mut self) -> Vec<ProgramSummary> {
+        self.programs.summaries()
+    }
+
+    fn program_source(&mut self, turn: Option<u64>) -> Result<String, ProgramRefusal> {
+        self.programs.source(turn).map(str::to_string)
+    }
 }
 
 /// A `TaskStatus` in the spelling gg's schema declares, for the recorded telemetry `args` value.
@@ -778,6 +799,18 @@ pub(crate) fn membrane_with(
         EndingRole::Standard,
         SandboxLimits::default(),
         deadline,
+    )
+}
+
+/// A membrane state over an already-prepared `api` — the one the program-library tests need, since
+/// what they vary is the api's own state (which programs it holds) rather than how it answers a call.
+pub(crate) fn membrane_from(api: FakeToolApi) -> MembraneState<FakeToolApi> {
+    MembraneState::new(
+        api,
+        &all_tools(),
+        EndingRole::Standard,
+        SandboxLimits::default(),
+        None,
     )
 }
 

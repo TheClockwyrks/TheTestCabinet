@@ -352,6 +352,14 @@ pub struct SystemContext {
     /// per-capability gating [`apis`](Self::apis) and every other section follows.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub code_headings: Vec<CodeHeadingView>,
+    /// Whether this agent keeps a [program library](crate::programs) — the
+    /// [capability](test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY) that lets a program fetch a
+    /// program the agent already ran and hand a patched copy back to be run.
+    ///
+    /// It gates a section rather than filling one, because there is nothing per-run to state: the
+    /// retention bounds what `get` can reach and a miss says so at the call, so the prompt teaches
+    /// the *shape* of the thing (fetch, patch, hand back) and nothing a number would date.
+    pub program_library: bool,
     /// Operator-authored instructions for the agent whose prompt this is — the
     /// [`GgAgentConfig::custom_instructions`](test_cabinet_core::gg::GgAgentConfig::custom_instructions)
     /// of its profile. `None` (or empty) renders no additional-instructions section. The

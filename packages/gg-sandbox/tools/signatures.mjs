@@ -22,11 +22,12 @@
 //   * every catalogued export must carry a doc comment — an undocumented tool would reach a model as
 //     a bare signature with nothing after the dash.
 //
-// Beside its provenance line the catalogue has five parts — `session`, `views`, `tools`, `helpers`,
-// `types` — and the two carve-outs come first because they are the parts that are not a projection of
-// the run's enabled set: an ending call is bound from the agent's *role* and three of the four view
-// functions are bound unconditionally, so a run that offers no tools at all is still told how to end
-// and how to put something in front of itself.
+// Beside its provenance line the catalogue has six parts — `session`, `views`, `programs`, `tools`,
+// `helpers`, `types` — and the three carve-outs come first because they are the parts that are not a
+// projection of the run's enabled set: an ending call is bound from the agent's *role*, three of the
+// four view functions are bound unconditionally, and the program library is bound from a capability.
+// So a run that offers no tools at all is still told how to end and how to put something in front of
+// itself.
 //
 // Usage:
 //   node tools/signatures.mjs --out <path>            # write the catalogue
@@ -237,6 +238,8 @@ async function build() {
     SESSION_MODULE,
     VIEW_ENTRIES,
     VIEW_MODULE,
+    PROGRAM_ENTRIES,
+    PROGRAM_MODULE,
     OBJECT_FOR_MODULE,
   } = await loadCatalogue();
   const declarations = index(await loadHeaders());
@@ -292,6 +295,21 @@ async function build() {
     };
   });
 
+  // The program-library functions, on the same terms again — but with no gate field at all, because
+  // the whole object is bound or absent together and what decides that is a capability rather than a
+  // tool name. The host reads the array's presence as the family and gates it on its own flag.
+  const programs = PROGRAM_ENTRIES.map((js) => {
+    const { signature, doc, referenced } = reflect(js, `${PROGRAM_MODULE}.d.ts`, declarations);
+    for (const name of referenced) used.add(name);
+    return {
+      js,
+      object: objectForModule(PROGRAM_MODULE),
+      signature,
+      doc,
+      types: sorted(referenced),
+    };
+  });
+
   const tools = TOOL_CATALOGUE.map((entry) => {
     const { signature, doc, referenced } = reflect(
       entry.js,
@@ -330,7 +348,7 @@ async function build() {
   }));
 
   return `${JSON.stringify(
-    { generatedFrom: GENERATED_FROM, session, views, tools, helpers, types },
+    { generatedFrom: GENERATED_FROM, session, views, programs, tools, helpers, types },
     null,
     2,
   )}\n`;
@@ -370,10 +388,11 @@ async function main() {
   }
   await mkdir(path.dirname(out), { recursive: true });
   await writeFile(out, catalogue, "utf8");
-  const { views, tools, helpers, types } = JSON.parse(catalogue);
+  const { views, programs, tools, helpers, types } = JSON.parse(catalogue);
   process.stdout.write(
     `Wrote ${path.relative(process.cwd(), out)} (${tools.length} tools, ` +
-      `${helpers.length} helpers, ${views.length} view functions, ${types.length} types).\n`,
+      `${helpers.length} helpers, ${views.length} view functions, ` +
+      `${programs.length} program-library functions, ${types.length} types).\n`,
   );
 }
 

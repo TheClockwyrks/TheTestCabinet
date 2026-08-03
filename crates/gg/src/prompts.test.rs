@@ -32,6 +32,7 @@ fn full_system() -> SystemContext {
             },
         ],
         responses_as_code: false,
+        program_library: false,
         code_headings: Vec::new(),
         custom_instructions: None,
         subagents: false,

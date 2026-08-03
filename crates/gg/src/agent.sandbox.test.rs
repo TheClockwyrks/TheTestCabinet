@@ -2218,3 +2218,135 @@ async fn views_opened_before_a_throw_survive_into_the_next_prompt() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// The program library
+// ---------------------------------------------------------------------------
+
+/// A capability set with responses-as-code **and** the [program library](crate::programs) on.
+fn library_set(model_id: &str, params: serde_json::Value) -> GgCapabilitySet {
+    let mut set = code_set(model_id, json!({}));
+    let mut cap = GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY);
+    cap.params = params;
+    set.agents[0].capabilities.push(cap);
+    set
+}
+
+/// **The whole feature, through the loop: fetch the last program, patch it, hand it back, and gg
+/// runs the patched one — in the same turn.**
+///
+/// This is the seam nothing else can prove. `sandbox.test.rs` shows that `programs.rerun` survives
+/// out of a store; `programs.rs` shows what the library keeps. Only here does the *chain* run: the
+/// hand-over is honoured after the registering program ends, against the same live workspace, and
+/// what the turn reports is the last program's.
+#[tokio::test]
+async fn a_program_fetches_its_predecessor_patches_it_and_gg_runs_the_patched_one() {
+    let dir = TempDir::new().unwrap();
+    // Turn 1 writes the wrong contents. Turn 2 never re-emits the program: it fetches turn 1's
+    // source, replaces the one wrong word, and hands it back — which is the whole point of the
+    // capability, and the reason the second reply is two lines rather than one program.
+    let first = "fs.writeFile(\"level.txt\", \"cosnt LEVELS = 3;\");";
+    let second = "const source = programs.get(1);\n\
+         programs.rerun(source.replace(\"cosnt\", \"const\"));";
+    let (outcome, events) =
+        drive_code_run(&dir, library_set("mock/primary", json!({})), move |b| {
+            scripted_programs(&b.model_id, &[first, second])
+        })
+        .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("level.txt")).unwrap(),
+        "const LEVELS = 3;",
+        "the PATCHED program is what ran: gg compiled what the second reply handed over"
+    );
+
+    // One `CodeExecution` per turn, not one per program: a chained turn is still one turn to
+    // everything outside it, and the chain's records are folded into the turn's.
+    let executions = code_executions(&events);
+    assert_eq!(
+        executions.len(),
+        3,
+        "two working turns and the finishing one"
+    );
+    let (ok, tool_calls, _, error) = &executions[1];
+    assert!(ok, "the handed-over program ran cleanly: {error:?}");
+    assert_eq!(
+        *tool_calls, 1,
+        "the turn's roster carries the write the handed-over program made"
+    );
+}
+
+/// **The library survives what the window does not, and records the program that ran.**
+///
+/// Two properties in one run, because each costs a component compile. First, `history()` reports
+/// what gg holds and `get()` with no argument is the most recent. Second — and this is what makes
+/// fetch-patch-rerun *compose* — the source kept for a chained turn is the program that
+/// **executed**, not the two lines that handed it over.
+#[tokio::test]
+async fn the_library_keeps_the_program_that_ran_not_the_one_that_handed_it_over() {
+    let dir = TempDir::new().unwrap();
+    let first = "fs.writeFile(\"a.txt\", \"one\");";
+    // Turn 2 hands over a program that is itself worth fetching later.
+    let second = "programs.rerun('fs.writeFile(\"b.txt\", \"two\");');";
+    // Turn 3 reads back what turn 2 *ran*, and shows it to the operator so the test can read it.
+    let third = "console.log(programs.get(2));\n\
+         console.log(JSON.stringify(programs.history().map((p) => p.turn)));";
+    let (outcome, events) =
+        drive_code_run(&dir, library_set("mock/primary", json!({})), move |b| {
+            scripted_programs(&b.model_id, &[first, second, third])
+        })
+        .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let logs = code_logs(&events);
+    let (third_logs, _) = &logs[2];
+    assert_eq!(
+        third_logs[0], "fs.writeFile(\"b.txt\", \"two\");",
+        "the turn kept the program that did the work, not the `rerun` that asked for it"
+    );
+    assert_eq!(
+        third_logs[1], "[1,2]",
+        "one entry per turn that ran a program, keyed by the turn the model reads on its results"
+    );
+}
+
+/// **A hand-over from a program that then throws is not run, and the model is told.**
+///
+/// The rule an ending already obeys, applied to the same evidence: a program that did not run to
+/// its end did not decide what should run next either. Without the notice the model would be
+/// waiting for a program that never ran, with nothing in its window saying so.
+#[tokio::test]
+async fn a_hand_over_is_cancelled_when_the_program_then_throws() {
+    let dir = TempDir::new().unwrap();
+    let (outcome, _, requests) = drive_recorded_code_run(
+        &dir,
+        library_set("mock/primary", json!({})),
+        vec![
+            code_reply(
+                "programs.rerun('fs.writeFile(\"never.txt\", \"x\");');\n\
+                 missingFunction();",
+            ),
+            code_reply(FINISHING_PROGRAM),
+        ],
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    assert!(
+        !dir.path().join("never.txt").exists(),
+        "the replacement was not run"
+    );
+    let bodies: Vec<String> = requests
+        .get(1)
+        .expect("a turn after the program failed")
+        .iter()
+        .filter_map(|m| m.content.clone())
+        .collect();
+    assert!(
+        bodies
+            .iter()
+            .any(|body| body.contains("was NOT run") && body.contains("failed after handing it")),
+        "the model is told its hand-over was cancelled: {bodies:#?}"
+    );
+}

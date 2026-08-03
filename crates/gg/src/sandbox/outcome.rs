@@ -98,6 +98,19 @@ pub struct SandboxOutcome {
     /// The ending a program declared and then lost by failing, so the turn's feedback can say the
     /// ending was cancelled and why. `None` on every other path.
     pub revoked_completion: Option<Ending>,
+    /// The program this one handed gg to run in its place with
+    /// [`programs.rerun`](crate::programs), when the
+    /// [library](test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY) is bound and the program used
+    /// it.
+    ///
+    /// It rides in the group populated on every path for the reason
+    /// [`completion`](Self::completion) does — it is a flag in the agent's host-side state, not a
+    /// value the program returned — and it is subject to the same revocation: a program that then
+    /// failed loses it to [`revoked_rerun`](Self::revoked_rerun).
+    pub rerun: Option<String>,
+    /// Whether a hand-over was revoked because the program then failed. `false` on every path that
+    /// had nothing to revoke.
+    pub revoked_rerun: bool,
     /// The wall-clock time the program's **own execution** took — the guest's setup, the program,
     /// and every value marshalled across the membrane, but **not** time parked in a bridged tool
     /// call, so it is the same guest-only cost the [timeout](SandboxError::Timeout) is measured
@@ -145,6 +158,8 @@ impl SandboxOutcome {
             returned_value: false,
             completion: None,
             revoked_completion: None,
+            rerun: None,
+            revoked_rerun: false,
             elapsed: Duration::ZERO,
             unreachable: None,
             compile_wait: None,

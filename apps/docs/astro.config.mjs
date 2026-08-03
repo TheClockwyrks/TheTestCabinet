@@ -569,6 +569,10 @@ export default defineConfig({
                 // repairs gg makes to a reply before running it as a program — so it
                 // sits inside this group, unlike the run-level limits.
                 "gg/response-healing",
+                // Likewise a property of responses as code: what gg keeps of the
+                // programs it has already run, so a model can fix one instead of
+                // writing it again.
+                "gg/program-library",
                 "gg/telemetry",
                 "gg/result-aggregation",
                 "gg/replay",

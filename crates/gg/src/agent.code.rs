@@ -43,6 +43,7 @@ use test_cabinet_core::gg_replay::GgShellOrigin;
 
 use crate::context::{EvictionResult, OpenViewInfo, ViewKind};
 use crate::ending::Ending;
+use crate::programs::{ProgramLibrary, ProgramRefusal, ProgramSummary};
 use crate::sandbox::{
     ProgramError, SandboxViewOpened, ToolApi, UnreachableTail, ViewOpenOutcome, ViewRefusal,
     WorkflowStageInput,
@@ -234,6 +235,7 @@ pub(super) async fn run_code_turn(
     context: ContextModel,
     skills: SkillsRuntime,
     docs: DocsRuntime,
+    programs: ProgramLibrary,
     subagents: Option<SubagentContext>,
 ) -> (CodeTurnOutcome, Option<CodeTurnState>) {
     let emitter = turn.emitter;
@@ -277,6 +279,10 @@ pub(super) async fn run_code_turn(
                 context,
                 skills,
                 docs,
+                // Nothing ran, so there is no program to keep: the library records what *executed*,
+                // and a reply that was not a program executed nothing. A model that fetches after
+                // one of these turns gets the last program it really ran, which is what it wants.
+                programs,
                 subagents,
                 // Nothing ran, so no program could have requested a wait, declared a compaction, or
                 // made a call against a pending one.
@@ -289,7 +295,7 @@ pub(super) async fn run_code_turn(
         );
     }
 
-    let (outcome, state) = run_code_program(
+    let (outcome, chain, mut state) = run_code_program(
         &healed.program,
         code.limits,
         deadline,
@@ -297,6 +303,7 @@ pub(super) async fn run_code_turn(
         context,
         skills,
         docs,
+        programs,
         subagents,
     )
     .await;
@@ -317,7 +324,17 @@ pub(super) async fn run_code_turn(
         );
     }
 
+    // Keep what ran, so a later turn can fetch it back and patch it instead of writing it again.
+    // Recorded here — after the reclassification above, which is the one path where a "program" did
+    // not exist to be kept — and against the source the chain actually **executed**, so a fetch
+    // returns a program rather than the lines that handed one over. A library the agent's profile
+    // did not enable ignores this.
+    if let Some(state) = state.as_mut() {
+        let (ok, error) = program_verdict(&outcome);
+        state.programs.record(turn.turn, &chain.source, ok, error);
+    }
     report_to_operator(&outcome, emitter);
+    report_chain_to_operator(&chain, &outcome, emitter);
 
     // Statements the model wrote that could not run are said out loud on the operator's stream as
     // well as in the model's own feedback, for the same reason a repaired reply is: a program gg
@@ -423,6 +440,11 @@ pub(super) async fn run_code_turn(
         .as_ref()
         .map(|tail| CodeFeedback::notice(unreachable_notice(tail)))
         .into_iter()
+        // A program the model handed over that gg did not run. It is exactly the class of fact a
+        // notice exists for: nothing the program can observe reveals it — no call failed, nothing
+        // threw — and a model that believes its replacement ran would spend its next turn reasoning
+        // about work that never happened.
+        .chain(handover_notice(&chain, &outcome).map(CodeFeedback::notice))
         .collect();
 
     let decision = match &outcome.result {
@@ -803,6 +825,94 @@ fn unreachable_notice(tail: &UnreachableTail) -> String {
     )
 }
 
+/// Whether the turn's program ran to its end, and the error it ended with when it did not — what the
+/// [library](crate::programs) records beside the source.
+///
+/// It reads the same three arms the turn's own decision does, deliberately: a program a model would
+/// want to fetch and fix is exactly a program that failed, so the record has to say so in the words
+/// the model was already given. A reply that did not compile is kept too — it is the single most
+/// likely thing to fetch — and its "error" is the compiler's diagnostic.
+fn program_verdict(outcome: &SandboxOutcome) -> (bool, Option<String>) {
+    match &outcome.result {
+        Ok(ProgramResult { error: None }) => (true, None),
+        Ok(ProgramResult { error: Some(error) }) => (false, Some(error.message.clone())),
+        Err(error) => (false, Some(error.to_string())),
+    }
+}
+
+/// The [`Notice`](GgContextSource::System) for a hand-over gg did not run, or `None` when the turn
+/// made none or gg ran it.
+///
+/// Three ways a `programs.rerun` goes unhonoured, and each needs a different sentence because each
+/// has a different remedy: the program failed afterwards (fix the fault), the program also ended the
+/// session (nothing to do — the session is over), or the turn had already run as many programs as it
+/// may (do the work in the program rather than handing over again).
+fn handover_notice(chain: &ProgramChain, outcome: &SandboxOutcome) -> Option<String> {
+    if outcome.revoked_rerun {
+        return Some(
+            "the program you handed to `programs.rerun` was NOT run: your program failed after \
+             handing it over, and a program that did not run to its end did not decide what should \
+             run next either. Fix the fault and hand it over again."
+                .to_string(),
+        );
+    }
+    match chain.refused? {
+        // The session is ending, so there is no next turn to read a notice — but the turn is only
+        // `Finished` if the ending survived, and this arm is reached on the path where it did not.
+        ChainRefusal::Ended => Some(
+            "the program you handed to `programs.rerun` was NOT run: the same program ended your \
+             session, and an ending outranks a hand-over."
+                .to_string(),
+        ),
+        ChainRefusal::Exhausted => Some(format!(
+            "the program you handed to `programs.rerun` was NOT run: this turn had already run \
+             {MAX_PROGRAM_CHAIN} programs, which is the most one turn may. The last of them is the \
+             turn's program. Hand over once, to a program that does the work."
+        )),
+    }
+}
+
+/// What a chain of more than one program did, on the operator's stream.
+///
+/// Quiet for the ordinary turn, and deliberately loud for a chained one: a turn that ran three
+/// programs is one `CodeExecution` event with one duration and one roster, and without a line here
+/// an operator reading the stream has no way to know that the source the model sent is not the
+/// source that did the work.
+fn report_chain_to_operator(chain: &ProgramChain, outcome: &SandboxOutcome, emitter: &Emitter) {
+    if chain.programs > 1 {
+        emitter.emit(log(
+            "info",
+            format!(
+                "the turn ran {} — each handed over by the one before it with `programs.rerun`; \
+                 the last is the turn's program.",
+                plural(chain.programs as usize, "program")
+            ),
+        ));
+    }
+    if outcome.revoked_rerun {
+        emitter.emit(log(
+            "warn",
+            "the program handed one to `programs.rerun` and then failed, so the replacement was \
+             NOT run.",
+        ));
+    }
+    match chain.refused {
+        Some(ChainRefusal::Ended) => emitter.emit(log(
+            "warn",
+            "the program both ended the session and handed one to `programs.rerun`; the ending \
+             stands and the replacement was not run.",
+        )),
+        Some(ChainRefusal::Exhausted) => emitter.emit(log(
+            "warn",
+            format!(
+                "the turn reached its ceiling of {MAX_PROGRAM_CHAIN} programs; the last \
+                 `programs.rerun` was not run."
+            ),
+        )),
+        None => {}
+    }
+}
+
 fn program_error_feedback(error: &ProgramError) -> CodeFeedback {
     CodeFeedback::runtime(match &error.location {
         Some(location) => format!("{}\n    at {location}", error.message),
@@ -829,6 +939,10 @@ pub(super) struct CodeTurn<'a> {
     /// The agent running the program — the spawner a delegation call is attributed to, and the id
     /// a replay entry is tagged with.
     pub(super) spawner: &'a Agent,
+    /// This agent's **session turn** — the number the [library](crate::programs) keys this turn's
+    /// program under, and the same number the window's turn headers carry, so a model that reads
+    /// `Turn #12` and asks for `programs.get(12)` is naming the turn it saw.
+    pub(super) turn: u64,
     /// The run's toolset, which decides both what the program binds and what dispatch reaches.
     pub(super) registry: &'a ToolRegistry,
     /// The workspace root and vision context every tool call is executed against.
@@ -907,6 +1021,10 @@ pub(super) struct CodeTurnState {
     pub(super) skills: SkillsRuntime,
     /// The per-agent documentation runtime behind `object.list()` / `view.openDocsView()`.
     pub(super) docs: DocsRuntime,
+    /// The per-agent [program library](crate::programs), with **this turn's program already
+    /// recorded in it** — the turn appends before it hands the state back, so the next turn's
+    /// `programs.get()` returns the program this one ran.
+    pub(super) programs: ProgramLibrary,
     /// This agent's delegation context, when the capability is on.
     pub(super) subagents: Option<SubagentContext>,
     /// The board issues this turn's program asked to wait on, in first-requested order (empty when
@@ -981,8 +1099,9 @@ async fn run_code_program(
     context: ContextModel,
     skills: SkillsRuntime,
     docs: DocsRuntime,
+    programs: ProgramLibrary,
     subagents: Option<SubagentContext>,
-) -> (SandboxOutcome, Option<CodeTurnState>) {
+) -> (SandboxOutcome, ProgramChain, Option<CodeTurnState>) {
     let program = source.to_string();
     // The tools bound into the program's scope: the run's offered toolset minus the turn-level
     // transitions. Derived from the same registry the system prompt was rendered from, so the
@@ -991,6 +1110,10 @@ async fn run_code_program(
     // The ending group bound alongside them. It is the agent's role rather than a capability, which
     // is why it travels beside the tool names instead of among them.
     let role = turn.ending_role;
+    // Whether the `programs` object is bound into the program's scope, read off the library itself
+    // rather than from a second flag — so the object a program sees and the state gg would answer it
+    // from can never disagree.
+    let library = programs.is_enabled();
     // The production `ToolApi`: the loop's own per-turn state, servicing each typed call inline. The
     // mutable, reclaimed-after-the-turn state moves in; the rest is cloned from the turn (all
     // Arc-backed, so cheap) or captured fresh (`Handle::current()` bridges the delegation family
@@ -999,6 +1122,7 @@ async fn run_code_program(
         context,
         skills,
         docs,
+        programs,
         subagents,
         issue_waits_requested: Vec::new(),
         compact_requested: None,
@@ -1031,17 +1155,54 @@ async fn run_code_program(
     };
 
     let sandbox = tokio::task::spawn_blocking(move || {
-        run_program(&program, &enabled, role, limits, deadline, api)
+        // The whole chain runs on this one blocking thread, because every program in it acts on the
+        // same live window through the same api — which is moved from each `run_program` into the
+        // next. There is one turn here as far as everything outside is concerned: one model call,
+        // one `CodeExecution`, one entry in the library.
+        let mut source = program;
+        let mut api = api;
+        let mut accumulated: Option<SandboxOutcome> = None;
+        let mut chain = ProgramChain::first(&source);
+        loop {
+            let (mut outcome, returned) =
+                run_program(&source, &enabled, role, library, limits, deadline, api);
+            api = returned;
+            let handover = outcome.rerun.take();
+            let ended = outcome.completion.is_some();
+            let merged = match accumulated.take() {
+                Some(earlier) => merge_chain(earlier, outcome),
+                None => outcome,
+            };
+            let Some(next) = handover else {
+                break (merged, chain, api);
+            };
+            // An ending outranks a hand-over. A program that declared its session over and also
+            // asked for a replacement asked for two incompatible things, and the ending is the one
+            // that was earned by work already done — running the replacement would resume a session
+            // the model has already concluded.
+            if ended {
+                chain.refused = Some(ChainRefusal::Ended);
+                break (merged, chain, api);
+            }
+            if chain.programs as usize >= MAX_PROGRAM_CHAIN {
+                chain.refused = Some(ChainRefusal::Exhausted);
+                break (merged, chain, api);
+            }
+            chain.advance(&next);
+            source = next;
+            accumulated = Some(merged);
+        }
     });
 
     match sandbox.await {
         // The sandbox ran (to a result, a throw, or a ceiling): reclaim the state the api carried so
         // the loop gets its live window, skills/docs runtimes and delegation context back.
-        Ok((outcome, api)) => {
+        Ok((outcome, chain, api)) => {
             let state = CodeTurnState {
                 context: api.context,
                 skills: api.skills,
                 docs: api.docs,
+                programs: api.programs,
                 subagents: api.subagents,
                 issue_waits: api.issue_waits_requested,
                 compact_requested: api.compact_requested,
@@ -1049,7 +1210,7 @@ async fn run_code_program(
                 forks_requested: api.forks_requested,
                 compaction_calls: (api.compaction_calls, api.compaction_failures),
             };
-            (outcome, Some(state))
+            (outcome, chain, Some(state))
         }
         // A panic inside the sandbox is a failure of gg's own plumbing, classified as one rather than
         // as a guest trap: the store — and with it the roster, the logs, the pictures, the elapsed
@@ -1078,6 +1239,11 @@ async fn run_code_program(
                 returned_value: false,
                 completion: None,
                 revoked_completion: None,
+                // The hand-over — if the program made one — died with the task that would have
+                // acted on it. The turn is fatal regardless, so there is nothing to run and nothing
+                // to tell the model.
+                rerun: None,
+                revoked_rerun: false,
                 elapsed: Duration::ZERO,
                 // Both are observations the sandbox makes on its way through, and the task that would
                 // have made them died — so neither is known, and neither is invented.
@@ -1087,8 +1253,141 @@ async fn run_code_program(
                     "the code sandbox task did not complete: {join}"
                 ))),
             };
-            (outcome, None)
+            (outcome, ProgramChain::first(source), None)
         }
+    }
+}
+
+/// The most programs one turn may run: the model's own, plus three it handed over.
+///
+/// A chain longer than one is not the shape this capability is for — the point is to fix a program
+/// and run the fixed one — but a small allowance is worth having, because assembling a program in
+/// two steps (fetch, patch, patch again against what the first patch revealed) is a legitimate thing
+/// for a program to do. What the bound stops is the runaway: a program whose replacement hands over
+/// again, forever, inside one turn that never reports anything. The turn that reaches it is told, so
+/// a model does not sit waiting for a program gg declined to run.
+const MAX_PROGRAM_CHAIN: usize = 4;
+
+/// What one turn's chain of programs did — how many ran, which source was the turn's, and why a
+/// hand-over was not honoured when one was refused.
+///
+/// It is separate from [`SandboxOutcome`] because a chain is the *loop's* idea, not the sandbox's:
+/// every `run_program` in it is an ordinary, complete sandbox run that knows nothing about the ones
+/// around it. Carrying it out separately is what keeps the sandbox's own vocabulary free of a
+/// concept it does not implement.
+pub(super) struct ProgramChain {
+    /// How many programs the turn ran. `1` for the ordinary turn, which is every turn that made no
+    /// hand-over.
+    pub(super) programs: u32,
+    /// The source of the program that actually did the turn's work — the last one in the chain.
+    /// This is what the [library](crate::programs) records for the turn, so a later `programs.get`
+    /// returns a program that ran rather than the lines that asked for it.
+    pub(super) source: String,
+    /// Why the last hand-over was not honoured, or `None` when none was refused (which includes
+    /// every turn that never made one).
+    pub(super) refused: Option<ChainRefusal>,
+}
+
+impl ProgramChain {
+    /// The chain of one program: what every turn starts as, and what most turns stay.
+    fn first(source: &str) -> Self {
+        Self {
+            programs: 1,
+            source: source.to_string(),
+            refused: None,
+        }
+    }
+
+    /// Record that a hand-over was honoured and `source` is the program now running.
+    fn advance(&mut self, source: &str) {
+        self.programs = self.programs.saturating_add(1);
+        self.source = source.to_string();
+    }
+}
+
+/// Why gg did not run a program a turn handed over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ChainRefusal {
+    /// The program also ended the session, and an ending outranks a hand-over.
+    Ended,
+    /// The turn had already run [as many programs as it may](MAX_PROGRAM_CHAIN).
+    Exhausted,
+}
+
+/// Fold the record of an earlier program in the turn's chain into the one that followed it.
+///
+/// The **later** outcome is the turn's outcome — its result, its ending, its throw — because it is
+/// the program that did the work and the one the model must fix if it failed. What the earlier ones
+/// contribute is everything the turn *accumulated*: the calls it dispatched, the views it opened,
+/// the lines it logged, the time it burned. Those are facts about the turn, and dropping them would
+/// make a chained turn under-report exactly the work the chain existed to preserve.
+///
+/// Both sides are destructured field by field rather than read through dots, so a field added to
+/// [`SandboxOutcome`] fails to compile here — which is where someone has to decide whether a chained
+/// turn accumulates it or takes the later one's.
+fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome {
+    let SandboxOutcome {
+        tool_calls: mut calls,
+        tool_calls_suppressed: calls_suppressed,
+        mut refusals,
+        refusals_suppressed,
+        mut logs,
+        logs_suppressed,
+        mut views_opened,
+        mut views_closed,
+        mut view_refusals,
+        views_suppressed,
+        deferred_note: earlier_deferred,
+        returned_value: earlier_returned,
+        // An earlier link never carries either: the chain stops at a program that declared an
+        // ending, and a program that failed had its hand-over revoked, so nothing that got here
+        // ended or lost an ending.
+        completion: _,
+        revoked_completion: earlier_revoked,
+        // Taken before the merge, by the caller that decided whether to honour it.
+        rerun: _,
+        revoked_rerun: earlier_revoked_rerun,
+        elapsed: earlier_elapsed,
+        unreachable: earlier_unreachable,
+        compile_wait: earlier_compile_wait,
+        // The earlier program ran to its end — that is the only way the chain continued — so its
+        // result says nothing the later one's does not.
+        result: _,
+    } = earlier;
+
+    calls.extend(later.tool_calls);
+    refusals.extend(later.refusals);
+    logs.extend(later.logs);
+    views_opened.extend(later.views_opened);
+    views_closed.extend(later.views_closed);
+    view_refusals.extend(later.view_refusals);
+
+    SandboxOutcome {
+        tool_calls: calls,
+        tool_calls_suppressed: calls_suppressed.saturating_add(later.tool_calls_suppressed),
+        refusals,
+        refusals_suppressed: refusals_suppressed.saturating_add(later.refusals_suppressed),
+        logs,
+        logs_suppressed: logs_suppressed.saturating_add(later.logs_suppressed),
+        views_opened,
+        views_closed,
+        view_refusals,
+        views_suppressed: views_suppressed.saturating_add(later.views_suppressed),
+        deferred_note: later.deferred_note.or(earlier_deferred),
+        returned_value: later.returned_value || earlier_returned,
+        completion: later.completion,
+        revoked_completion: later.revoked_completion.or(earlier_revoked),
+        rerun: later.rerun,
+        revoked_rerun: later.revoked_rerun || earlier_revoked_rerun,
+        // Summed, because the turn's cost is what every one of its programs spent — and because the
+        // execution timeout is per program, so a chained turn that is slow must be visibly slow
+        // rather than reporting only its last link.
+        elapsed: earlier_elapsed.saturating_add(later.elapsed),
+        unreachable: later.unreachable.or(earlier_unreachable),
+        // The earlier link is the one that could have paid the one shared component compile; by the
+        // time the second ran it was warm.
+        compile_wait: earlier_compile_wait.or(later.compile_wait),
+        result: later.result,
     }
 }
 
@@ -1194,6 +1493,14 @@ pub(super) struct LoopToolApi {
     pub(super) context: ContextModel,
     pub(super) skills: SkillsRuntime,
     pub(super) docs: DocsRuntime,
+    /// This agent's [program library](crate::programs) — the source of every program it has run,
+    /// which its own programs read through `programs.get` / `programs.history`.
+    ///
+    /// It travels by value with the rest of the per-turn state because it is *this agent's*, and
+    /// because the turn appends to it: what a program ran is recorded once the turn knows how the
+    /// program fared. Disabled — and therefore empty and unreadable — for an agent whose profile
+    /// does not enable the capability.
+    pub(super) programs: ProgramLibrary,
     pub(super) subagents: Option<SubagentContext>,
     /// The board issues this program asked to wait on, in first-requested order. A `wait_for_issue`
     /// call records its id here rather than blocking, and the loop performs the actual suspension
@@ -2460,6 +2767,20 @@ impl ToolApi for LoopToolApi {
     }
     fn current_views(&mut self) -> Vec<OpenViewInfo> {
         self.context.open_views()
+    }
+
+    /// The shapes of the programs this agent's [library](crate::programs) still holds.
+    ///
+    /// Nothing is dispatched, nothing is charged and nothing is recorded: it reads gg's own state,
+    /// which is the whole reason the library survives a compaction that would have taken the same
+    /// programs out of the window.
+    fn program_history(&mut self) -> Vec<ProgramSummary> {
+        self.programs.summaries()
+    }
+
+    /// The source of one program this agent ran, or the refusal naming the turns that are held.
+    fn program_source(&mut self, turn: Option<u64>) -> Result<String, ProgramRefusal> {
+        self.programs.source(turn).map(str::to_string)
     }
 }
 

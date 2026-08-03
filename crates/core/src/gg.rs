@@ -1096,6 +1096,59 @@ pub const CAPABILITY_SPECULATIVE: &str = "speculative-execution";
 /// [responses-as-code]: https://docs.testcabinet.ai/gg/responses-as-code/
 pub const CAPABILITY_RESPONSES_AS_CODE: &str = "responses-as-code";
 
+/// The stable id of the **program library** capability: gg keeps the source of every program a
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) agent has run, and hands the agent a `programs`
+/// object to reach back for one, patch it, and hand it back to be run.
+///
+/// # The problem it exists for
+///
+/// Measured against traditional tool calling on the same case, responses-as-code collapses a task
+/// from roughly twenty-three turns to six: a model given a program instead of one call at a time
+/// does far more per turn. The cost of that is carried entirely by mistakes. A sixty-line program
+/// with one wrong identifier is sixty lines the model must emit again to change one of them — the
+/// error is small and the retry is total, and every one of those retries is paid in output tokens
+/// and latency for text the model has already written once.
+///
+/// The library makes the fix proportional to the mistake. gg records the source of every program it
+/// runs, keyed by the turn it ran on, and a program can fetch one back:
+///
+/// ```ts
+/// const source = programs.get();                            // the previous turn's program
+/// programs.rerun(source.replace("cosnt x", "const x"));      // gg runs the patched one
+/// ```
+///
+/// Three functions, on a `programs` object bound only when this capability is on: `history()` lists
+/// the programs held (turn, size, whether each ran to its end), `get(turn?)` returns one's exact
+/// source, and `rerun(source)` hands gg a program to run **in place of the one that called it**.
+///
+/// # What `rerun` does, and what it does not
+///
+/// It is **registered, not performed**, exactly as [`compact`](CAPABILITY_AGENT_MANAGED_CONTEXT) and
+/// a [transition](CAPABILITY_AGENT_TRANSITIONS) are: the call validates the source and returns, the
+/// calling program carries on to its end, and gg then compiles and runs what it was handed as the
+/// same turn's program. Nothing is undone — every call the registering program made stands — and the
+/// program that runs next sees exactly the world it left behind. The first registration stands and a
+/// second is refused; a program that then fails loses the registration along with everything else it
+/// decided, on the same rule that revokes an ending. The chain is bounded, and a turn that reaches
+/// the bound is told so.
+///
+/// The source gg keeps for a turn is the program that **executed**, so fetch-patch-rerun composes:
+/// the patched program is what the next turn's `get()` returns, not the two lines that asked for it.
+/// The library also outlives the context window — it is gg's own state, not a message — so a
+/// [compacted](CAPABILITY_COMPACTION) agent can still reach the program it wrote forty turns ago.
+///
+/// # What it is bounded by
+///
+/// Its `keep` param is how many of the most recent programs are retained (gg's default is 20; `0`
+/// retains every program of the session). It bounds memory, not the model: a `get` of a turn the
+/// retention has dropped is `not-found` naming the turns that are held.
+///
+/// gg includes it **so its effectiveness can be measured empirically** — toggled against the same
+/// runs without it, it answers "does making a retry proportional to the mistake pay for itself?"
+/// with data. Opt-in, and inert without [responses-as-code](CAPABILITY_RESPONSES_AS_CODE): there are
+/// no programs in a tool-calling session to keep.
+pub const CAPABILITY_PROGRAM_LIBRARY: &str = "program-library";
+
 /// The stable id of the [replay] capability: escalating a run's capture to
 /// [full fidelity](crate::gg_replay::GgReplayFidelity::Full).
 ///

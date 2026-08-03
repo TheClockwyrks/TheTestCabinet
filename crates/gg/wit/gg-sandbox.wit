@@ -11,13 +11,13 @@
 // exactly one name in `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs); a test asserts the two sets are
 // equal, so a tool cannot be added, renamed, or removed without a typed signature following it.
 //
-// Four interfaces stand outside that correspondence, and each is separate for exactly that reason:
+// Five interfaces stand outside that correspondence, and each is separate for exactly that reason:
 // `feedback` is the shim's private channel back to gg and is never model-facing at all; `session`
 // carries the model-facing calls that end the run; `docs` is the always-bound documentation lookup;
-// and `views` is how a program puts material into its own context window. None of the three
-// model-facing ones is a gg tool — no capability offers them and nothing dispatches them by name —
-// so keeping them out of the tool interfaces is what lets the bijection above be checked
-// mechanically rather than by reading.
+// `views` is how a program puts material into its own context window; and `programs` is the library
+// of programs this agent has already run. None of the four model-facing ones is a gg tool — no
+// capability offers them and nothing dispatches them by name — so keeping them out of the tool
+// interfaces is what lets the bijection above be checked mechanically rather than by reading.
 package test-cabinet:gg;
 
 /// The types shared across the tool interfaces. It declares no functions: it exists so that one
@@ -741,6 +741,77 @@ interface views {
     current-views: func() -> list<open-view>;
 }
 
+/// The programs this agent has already run — the fourth model-facing carve-out, and like `session`,
+/// `docs` and `views` NOT a set of gg tools.
+///
+/// Under responses-as-code a model answers with a whole program, so a trivial mistake in a long one
+/// costs the whole program again: the model has to re-emit sixty correct lines to change one of
+/// them. gg therefore keeps the source of every program it ran, and this interface is how a program
+/// reaches back for one — fetch the source, patch it with ordinary string work, hand it back.
+///
+/// `rerun` is the half that makes the other two worth having. It is **registered, not performed**,
+/// exactly as `context.compact` and `delegation.transition-state` are: the call validates the source
+/// and returns, the calling program carries on to its end, and gg then runs what it was handed as
+/// this turn's program. Running it inside the call would mean a program executing inside itself,
+/// with two sets of tool calls, two throw sites and one turn to report them in.
+///
+/// The whole interface is bound only when the run enables the program library — see the `programs`
+/// parameter of `run` in the world below. A run without it has no `programs` object at all, on the
+/// same rule a withheld tool is an undefined identifier rather than a call that is refused.
+interface programs {
+    use types.{tool-error};
+
+    /// One program this agent ran, as `history` lists it. It carries the SHAPE of the program and
+    /// not its source: a directory that inlined sixty lines per entry would put the whole session's
+    /// output back into the one place that exists to avoid re-reading it.
+    record program-summary {
+        /// The turn it ran on — what `get` takes.
+        turn: u32,
+        /// How many lines of source it was.
+        lines: u32,
+        /// How many characters of source it was.
+        chars: u32,
+        /// Whether it ran to its end: no uncaught throw, and no sandbox ceiling stopping it. A
+        /// program that failed is kept and can still be fetched — fixing the thing that failed is
+        /// the single most likely reason to reach for one.
+        ok: bool,
+        /// The error it ended with, when it did not run to its end.
+        error: option<string>,
+    }
+
+    /// The programs this agent has run, oldest first. Empty before its first program has been
+    /// recorded, and never an error.
+    history: func() -> list<program-summary>;
+
+    /// The exact source of one program, as it was RUN. `none` is the most recent one.
+    ///
+    /// "As it was run" is the contract that matters: when a turn's program was itself handed to
+    /// `rerun` by an earlier one, what is kept is the program that executed, not the few lines that
+    /// asked for it. So fetching, patching and re-running composes — the patched program is what the
+    /// next fetch returns.
+    ///
+    /// A turn that ran no program, or one the library's retention has already dropped, is
+    /// `not-found` naming the turns that are held.
+    get: func(turn: option<u32>) -> result<string, tool-error>;
+
+    /// Hand gg a program to run in place of this one: your program ends, and gg runs `source` as
+    /// this turn's program.
+    ///
+    /// It is **registered, not performed**. The call returns and the rest of your program still
+    /// runs; only when it has ended does gg compile and run what you handed over. Everything the
+    /// registering program did stands — its tool calls, its views — and the program that runs next
+    /// sees exactly the world it left behind.
+    ///
+    /// The FIRST call stands and a second is `refused`: a silently replaced program is a change you
+    /// cannot see. A blank source is `invalid-argument`. The request is **revoked** if your program
+    /// then fails, on the same rule an ending is: a program that did not run to its end did not
+    /// decide anything.
+    ///
+    /// The chain is bounded, so a program handed over cannot hand over indefinitely; when the bound
+    /// is reached gg says so in your turn's feedback and the last program it ran is the turn's.
+    rerun: func(source: string) -> result<_, tool-error>;
+}
+
 /// Delegating work to child agents.
 interface delegation {
     use types.{tool-error};
@@ -969,6 +1040,7 @@ world sandbox {
     import session;
     import docs;
     import views;
+    import programs;
     import delegation;
     import feedback;
 
@@ -979,6 +1051,10 @@ world sandbox {
     /// program's scope, so a withheld tool is an undefined identifier rather than a call that
     /// travels to the host to be refused. `ending` selects which group of `session` functions is
     /// bound, on the same principle: an agent that may not approve has no `review` object at all.
+    /// `library` binds the `programs` object, and is a `bool` rather than a tool name because the
+    /// program library is the one model-facing family a CAPABILITY gates rather than the toolset —
+    /// folding it into `tools` would put a name in the enabled set that no gg tool answers to and
+    /// break the `bound-tools` bijection.
     ///
     /// It returns **nothing**, because a program's return value is not a channel: everything one
     /// program has to say it says over `feedback` — what it logged, what it threw, and (through
@@ -987,7 +1063,7 @@ world sandbox {
     ///
     /// A throw is caught and reported over `feedback.report-error`, never allowed to escape as an
     /// opaque wasm trap.
-    export run: func(program: string, tools: list<string>, ending: ending-kind);
+    export run: func(program: string, tools: list<string>, ending: ending-kind, library: bool);
 
     /// The gg tool names this component can bind. gg's tests call it to assert the COMMITTED
     /// component and `ALL_TOOL_NAMES` have not drifted apart — the one check that catches a stale

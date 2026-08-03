@@ -314,3 +314,23 @@ export interface SpeculationReport {
   /** The merge report. */
   summary: string;
 }
+
+/**
+ * One program you have already run, as `programs.history()` lists it.
+ *
+ * It describes the program's **shape**, never its source: a directory that inlined every program
+ * would put the whole session back in front of you, which is the one thing the library exists to
+ * avoid. Fetch the source you actually want with `programs.get(turn)`.
+ */
+export interface ProgramSummary {
+  /** The turn it ran on — what `programs.get` takes. */
+  turn: number;
+  /** How many lines of source it was. */
+  lines: number;
+  /** How many characters of source it was. */
+  chars: number;
+  /** Whether it ran to its end, with no uncaught throw and no sandbox ceiling stopping it. */
+  ok: boolean;
+  /** The error it ended with, when it did not run to its end. */
+  error?: string;
+}

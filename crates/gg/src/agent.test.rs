@@ -2180,6 +2180,7 @@ impl DisabledRuntimes {
             vision: &self.vision,
             speculative: false,
             responses_as_code: false,
+            program_library: false,
             autoload_specs: None,
             persistence: false,
             profile: &self.profile,

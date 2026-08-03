@@ -92,14 +92,14 @@ use std::time::Instant;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{
     AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AUTOLOAD_SPECS,
-    CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
-    CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, GgAgentConfig, GgAgentStatus,
-    GgAgentTransitionKind, GgCandidateShape, GgCapabilitySet, GgContextAction, GgContextSource,
-    GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgNotAProgram,
-    GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgSubagentScope,
-    GgTelemetryKind, GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE,
-    SHELL_OUTPUT_MODES,
+    CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_PROGRAM_LIBRARY,
+    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL,
+    CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS,
+    GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCandidateShape, GgCapabilitySet,
+    GgContextAction, GgContextSource, GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach,
+    GgLimitKind, GgNotAProgram, GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding,
+    GgSpeculationPhase, GgSubagentScope, GgTelemetryKind, GgWorkflowPhase,
+    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
 };
 use test_cabinet_core::gg_replay::{
     GgReplayAgent, GgReplayAgentOrigin, GgReplayFidelity, GgReplayModalities,
@@ -901,6 +901,13 @@ pub(crate) async fn run_with_seams(
                 .map(code::wire_strategy)
                 .collect(),
         );
+        // ...and the program library's retention, when any agent keeps one. It is on the same
+        // footing as the two lines above — a resolved configuration an ablation toggles — and the
+        // arm without it is otherwise indistinguishable in an operator's log from the arm with it
+        // where no program ever reached back.
+        if let Some(summary) = crate::programs::launch_summary(&orch.caps.agents) {
+            root_emitter.emit(log("info", summary));
+        }
     }
 
     // Warm the code sandbox, once per run and never from a subagent. The committed interpreter
@@ -1665,6 +1672,21 @@ impl Orchestrator {
                  `\"none\"` (record the reply as sent) or `\"response-healing\"` (record the healed \
                  program)."
             ));
+        }
+        // A `keep` gg could not read is reported on exactly the terms the two above are: a retention
+        // silently reverting to the default is a run holding a different number of programs than the
+        // configuration says, which is unrecoverable from the data afterwards.
+        for agent in &set.agents {
+            for unknown in &crate::programs::resolve_program_library(agent).unknown_params {
+                warnings.push(format!(
+                    "agent `{}`: the `{CAPABILITY_PROGRAM_LIBRARY}` capability declares \
+                     `{unknown}`, which gg could not read as a retention; it keeps the default {} \
+                     most recent programs. Set it to a whole number, or to `0` to keep every \
+                     program of the session.",
+                    agent.name,
+                    crate::programs::DEFAULT_KEEP,
+                ));
+            }
         }
         // The run's module id mint, built before anything it identifies: the board below is the
         // run's single board module, and it takes its id from here.
@@ -6054,7 +6076,18 @@ impl Agent {
         // The per-agent documentation carve-out, behind `object.list()` and `view.openDocsView()`. Built from
         // the same scope-bound tool set the program's objects are, and always present (docs are not a
         // capability), so a code turn can always answer a lookup. Unused on the tool-calling path.
-        let mut docs = crate::docs::DocsRuntime::new(scope_tools(registry), ending_role);
+        // This agent's [program library](crate::programs): the source of every program it runs, and
+        // the `programs` object its programs reach it through. Built here, beside the docs runtime,
+        // because both are per-agent-instance state that only a code turn touches — and because the
+        // three things that must agree about whether the library exists (the object bound into a
+        // program's scope, the functions a doc lookup will describe, and the section the system
+        // prompt renders) all read this one value.
+        let mut programs = crate::programs::resolve_program_library(profile).library;
+        let mut docs = crate::docs::DocsRuntime::new(
+            scope_tools(registry),
+            ending_role,
+            programs.is_enabled(),
+        );
         // This agent's own rules on filing a board issue — who it may assign one to, and whether
         // reviewers are demanded. The native `create_issue` tool carries these already (the registry
         // built it from the same profile); a code turn rebuilds the tool per call, so it needs them
@@ -6092,6 +6125,7 @@ impl Agent {
             vision: &tool_ctx.vision,
             speculative: speculative_active,
             responses_as_code: code.enabled,
+            program_library: programs.is_enabled(),
             // Whether this agent's opening context is pre-seeded with the test case's specs and
             // reference images, so the prompt can tell the model they are already loaded (and,
             // when locked, that they stay) rather than leaving it to infer why they are there.
@@ -6724,6 +6758,9 @@ impl Agent {
                 let turn_skills = std::mem::replace(caps.skills_mut(), SkillsRuntime::disabled());
                 let turn_ctx = CodeTurn {
                     spawner: self,
+                    // The same session turn the window's own headers carry, so the number the model
+                    // reads on a result and the number `programs.get` takes are one number.
+                    turn: turn as u64 + 1,
                     registry,
                     tool_ctx,
                     read_policy,
@@ -6748,6 +6785,8 @@ impl Agent {
                 // every non-fatal path. On the one path it cannot come back (the sandbox task
                 // panicked, a host fault), the turn is `Fatal` and the loop returns below without
                 // reading the window again.
+                let turn_programs =
+                    std::mem::replace(&mut programs, crate::programs::ProgramLibrary::disabled());
                 let (decision, state) = run_code_turn(
                     healed.expect("code mode heals the reply before recording the assistant turn"),
                     &code,
@@ -6756,6 +6795,7 @@ impl Agent {
                     turn_window,
                     turn_skills,
                     docs,
+                    turn_programs,
                     subagents.take(),
                 )
                 .await;
@@ -6803,6 +6843,9 @@ impl Agent {
                             persistence.record(&state.context);
                             *context = state.context;
                             *caps.skills_mut() = state.skills;
+                            // The program library is deliberately not put back: this arm ends the
+                            // session, and a library nothing will read again is state kept for its
+                            // own sake. It is per instance, so nothing outside this loop holds one.
                             *subagents = state.subagents;
                             // A program that forked and then finished still gets its copies: it
                             // handed that work to somebody else, and ending its own session is not
@@ -6873,6 +6916,7 @@ impl Agent {
                             context: turn_context,
                             skills: turn_skills,
                             docs: turn_docs,
+                            programs: turn_programs,
                             subagents: turn_subagents,
                             issue_waits: turn_issue_waits,
                             compact_requested: turn_compaction,
@@ -6883,6 +6927,7 @@ impl Agent {
                         *context = turn_context;
                         *caps.skills_mut() = turn_skills;
                         docs = turn_docs;
+                        programs = turn_programs;
                         *subagents = turn_subagents;
                         last_report = Some(report);
                         // The turn's feedback is pushed **before** the breach return, so a stopped
@@ -8532,6 +8577,11 @@ struct PromptInputs<'a> {
     speculative: bool,
     /// Whether the run responds with programs rather than native tool calls.
     responses_as_code: bool,
+    /// Whether this agent keeps a [program library](crate::programs) — the `programs` object, and
+    /// the section that teaches a model to fetch a program it already ran instead of writing it
+    /// again. Read from the same value that binds the object, so the prompt cannot describe a
+    /// surface the scope does not have.
+    program_library: bool,
     /// Whether this agent's opening context is pre-seeded with the test case's specifications and
     /// reference images ([autoload-specifications](CAPABILITY_AUTOLOAD_SPECS)), and if so whether
     /// they are **locked**: `None` off, `Some(false)` on, `Some(true)` on and locked. Gates the
@@ -8584,7 +8634,7 @@ struct PromptInputs<'a> {
 /// still be able to show its model something. The descriptions are stable product surface authored
 /// here; the *functions* on each object are not listed at all, because a model discovers those on
 /// demand with `object.list()` and `view.openDocsView()`.
-fn api_views(registry: &ToolRegistry, role: EndingRole) -> Vec<ApiView> {
+fn api_views(registry: &ToolRegistry, role: EndingRole, library: bool) -> Vec<ApiView> {
     const OBJECTS: &[(&str, &str)] = &[
         ("fs", "read, write, and edit workspace files"),
         ("system", "run shell commands in the workspace"),
@@ -8602,6 +8652,10 @@ fn api_views(registry: &ToolRegistry, role: EndingRole) -> Vec<ApiView> {
         ("context", "manage your own context window"),
         ("agents", "delegate work to child agents"),
         ("skills", "read authored skills"),
+        (
+            "programs",
+            "fetch a program you already ran, and hand a patched copy back to be run",
+        ),
         ("harness", "end your session"),
         (
             "review",
@@ -8617,10 +8671,15 @@ fn api_views(registry: &ToolRegistry, role: EndingRole) -> Vec<ApiView> {
     };
     let present: BTreeSet<&'static str> = crate::sandbox::catalogue_functions()
         .into_iter()
-        .filter(|function| match (function.gate, function.ending) {
-            (Some(tool), _) => enabled.contains(tool),
-            (None, Some(role)) => role == ending,
-            (None, None) => true,
+        .filter(|function| {
+            if function.library {
+                return library;
+            }
+            match (function.gate, function.ending) {
+                (Some(tool), _) => enabled.contains(tool),
+                (None, Some(role)) => role == ending,
+                (None, None) => true,
+            }
         })
         .map(|function| function.object)
         .collect();
@@ -8763,6 +8822,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         vision,
         speculative,
         responses_as_code,
+        program_library,
         autoload_specs,
         persistence,
         profile,
@@ -8845,10 +8905,14 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             // The API objects the model can inspect — only under responses-as-code, where a program
             // reaches them by name; the tool-calling path puts the tools in the request instead.
             apis: if responses_as_code {
-                api_views(registry, ending_role)
+                api_views(registry, ending_role, program_library)
             } else {
                 Vec::new()
             },
+            // On → the section that teaches a model to fetch a program it already ran and hand back
+            // a patched copy instead of writing the whole thing again. Gated on the capability alone
+            // (and, through `responses_as_code` above, on there being programs at all).
+            program_library: responses_as_code && program_library,
             code_headings,
             // Operator-authored instructions for this agent's profile, inserted near the top of the
             // prompt; `None`/empty renders no section.

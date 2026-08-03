@@ -68,6 +68,7 @@ mod context;
 mod delegation;
 mod docs;
 mod knowledge;
+mod programs;
 mod session;
 mod views;
 mod workspace;
@@ -175,6 +176,19 @@ pub(crate) struct MembraneState<A: ToolApi> {
     revoked_completion: Option<Ending>,
     /// The throw the shim caught, if the program did not run to its end.
     program_error: Option<ProgramError>,
+    /// The program this one handed gg to run in its place with `programs.rerun`, when the
+    /// [library](crate::programs) is bound and the program used it.
+    ///
+    /// A flag in exactly the sense [`completion`](Self::completion) is: the call sets it and
+    /// returns, the program runs on, and the loop reads it once the program has ended. The FIRST
+    /// hand-over stands (a second is refused at the call), and
+    /// [`revoke_completion`](Self::revoke_completion) takes this away alongside an ending, because a
+    /// program that did not run to its end did not decide which program should run next either.
+    rerun: Option<String>,
+    /// Whether a hand-over was revoked because the program then failed, kept for the same reason
+    /// [`revoked_completion`](Self::revoked_completion) is: a model whose replacement program simply
+    /// never ran, with nothing said about it, would sit waiting for a turn that already happened.
+    revoked_rerun: bool,
     /// The agent's [ending role](EndingRole) — which ending calls the guest was given, and (for a
     /// judge) how many attempts its pick is bounded by. The guest is handed the same role, so the
     /// only ending calls that can reach this host are the ones it bound.
@@ -217,6 +231,12 @@ pub(crate) struct MembraneParts {
     pub revoked_completion: Option<Ending>,
     /// The program's uncaught throw, when the shim reported one.
     pub program_error: Option<ProgramError>,
+    /// The program this one handed over with `programs.rerun`, when it did and did not then fail.
+    pub rerun: Option<String>,
+    /// Whether a hand-over was revoked because the program then failed, so the turn's feedback can
+    /// say the replacement was not run rather than leave the model waiting for a program that never
+    /// ran.
+    pub revoked_rerun: bool,
 }
 
 impl<A: ToolApi> MembraneState<A> {
@@ -254,6 +274,8 @@ impl<A: ToolApi> MembraneState<A> {
             completion: None,
             revoked_completion: None,
             program_error: None,
+            rerun: None,
+            revoked_rerun: false,
             role,
         }
     }
@@ -319,6 +341,8 @@ impl<A: ToolApi> MembraneState<A> {
             completion: self.completion,
             revoked_completion: self.revoked_completion,
             program_error: self.program_error,
+            rerun: self.rerun,
+            revoked_rerun: self.revoked_rerun,
         };
         (self.api, parts)
     }
@@ -343,6 +367,13 @@ impl<A: ToolApi> MembraneState<A> {
     pub(crate) fn revoke_completion(&mut self) {
         if let Some(completion) = self.completion.take() {
             self.revoked_completion = Some(completion.ending);
+        }
+        // A hand-over is revoked on exactly the same evidence and for the same reason: the program
+        // that chose which program should run next did not run to its end, so what it chose rests on
+        // checks that never finished. Running it anyway would compound one failed program with a
+        // second the model no longer has a reason to want.
+        if self.rerun.take().is_some() {
+            self.revoked_rerun = true;
         }
     }
 

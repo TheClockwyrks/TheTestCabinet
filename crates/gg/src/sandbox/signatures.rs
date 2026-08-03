@@ -57,6 +57,14 @@ pub(crate) struct SignatureCatalogue {
     /// them has a gg tool name, so folding them in would break the bijection the committed component
     /// is checked against.
     pub views: Vec<ViewSignature>,
+    /// The model-facing functions on the [program library](crate::programs) — the `programs`
+    /// object.
+    ///
+    /// Kept out of [`tools`](Self::tools) on the same rule the two above are: none of them has a gg
+    /// tool name. They carry no gate field at all, because the whole object is bound or absent
+    /// together and what decides that is a *capability* rather than a tool — which is why
+    /// [`CatalogueFunction::library`] exists as a flag of its own.
+    pub programs: Vec<ProgramSignature>,
     /// One entry per gg tool the sandbox binds, in catalogue order.
     pub tools: Vec<ToolSignature>,
     /// The helper functions bound alongside a tool — convenience wrappers that are not gg tools in
@@ -140,6 +148,27 @@ pub(crate) struct ViewSignature {
     pub types: Vec<String>,
 }
 
+/// One program-library function as the guest exports it and a doc lookup describes it.
+///
+/// It is a [`ViewSignature`] with the gate removed rather than made optional, and that is the whole
+/// point of the separate type: no tool gates a program-library function, and modelling the gate as
+/// an always-`None` `Option` would invite a reader to look for the case where it is `Some`.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProgramSignature {
+    /// The function name a program calls (`get`).
+    pub js: String,
+    /// The API object it is grouped under — `programs`, for all three.
+    pub object: String,
+    /// The full TypeScript signature, as the SDK declares it.
+    pub signature: String,
+    /// The SDK's own documentation for it, which is what a doc lookup renders.
+    pub doc: String,
+    /// The type names this signature references, folded into the prompt's declarations exactly as a
+    /// tool's are.
+    pub types: Vec<String>,
+}
+
 /// One helper function, which is bound only when the tool it wraps is enabled.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -213,6 +242,10 @@ pub struct CatalogueFunction {
     /// For an ending call, the [role](crate::ending::EndingRole) whose programs bind it; `None` for
     /// a tool or helper, which every role's programs reach the same way.
     pub ending: Option<&'static str>,
+    /// Whether this function belongs to the [program library](crate::programs) — the one family a
+    /// *capability* gates rather than a tool or a role, and therefore the one whose binding neither
+    /// [`gate`](Self::gate) nor [`ending`](Self::ending) can express.
+    pub library: bool,
     /// The one-line summary `object.list()` shows — the first sentence of the documentation.
     pub summary: &'static str,
     /// The full TypeScript signature.
@@ -237,15 +270,17 @@ fn first_sentence(doc: &'static str) -> &'static str {
     doc
 }
 
-/// Every function the committed catalogue documents — the ending calls, the view calls, the tools,
-/// and the one helper — each projected as a [`CatalogueFunction`]. The docs runtime filters these by
-/// the run's enabled set and the agent's role, and adds the `list` meta function itself, since it
-/// is the carve-out's own and has no catalogue entry.
+/// Every function the committed catalogue documents — the ending calls, the view calls, the
+/// program-library calls, the tools, and the one helper — each projected as a
+/// [`CatalogueFunction`]. The docs runtime filters these by the run's enabled set, the agent's role
+/// and whether it keeps a program library, and adds the `list` meta function itself, since it is the
+/// carve-out's own and has no catalogue entry.
 pub fn catalogue_functions() -> Vec<CatalogueFunction> {
     let catalogue = catalogue();
     let mut functions = Vec::with_capacity(
         catalogue.session.len()
             + catalogue.views.len()
+            + catalogue.programs.len()
             + catalogue.tools.len()
             + catalogue.helpers.len(),
     );
@@ -255,6 +290,7 @@ pub fn catalogue_functions() -> Vec<CatalogueFunction> {
             name: session.js.as_str(),
             gate: None,
             ending: Some(session.ending.as_str()),
+            library: false,
             summary: first_sentence(&session.doc),
             signature: session.signature.as_str(),
             doc: session.doc.as_str(),
@@ -270,10 +306,26 @@ pub fn catalogue_functions() -> Vec<CatalogueFunction> {
             name: view.js.as_str(),
             gate: view.requires.as_deref(),
             ending: None,
+            library: false,
             summary: first_sentence(&view.doc),
             signature: view.signature.as_str(),
             doc: view.doc.as_str(),
             types: view.types.as_slice(),
+        });
+    }
+    // The program library, whose binding neither gate can express: the object is bound or absent as
+    // a whole, from the capability, so the flag carries it instead.
+    for program in &catalogue.programs {
+        functions.push(CatalogueFunction {
+            object: program.object.as_str(),
+            name: program.js.as_str(),
+            gate: None,
+            ending: None,
+            library: true,
+            summary: first_sentence(&program.doc),
+            signature: program.signature.as_str(),
+            doc: program.doc.as_str(),
+            types: program.types.as_slice(),
         });
     }
     for tool in &catalogue.tools {
@@ -282,6 +334,7 @@ pub fn catalogue_functions() -> Vec<CatalogueFunction> {
             name: tool.js.as_str(),
             gate: Some(tool.tool.as_str()),
             ending: None,
+            library: false,
             summary: first_sentence(&tool.doc),
             signature: tool.signature.as_str(),
             doc: tool.doc.as_str(),
@@ -294,6 +347,7 @@ pub fn catalogue_functions() -> Vec<CatalogueFunction> {
             name: helper.js.as_str(),
             gate: Some(helper.requires.as_str()),
             ending: None,
+            library: false,
             summary: first_sentence(&helper.doc),
             signature: helper.signature.as_str(),
             doc: helper.doc.as_str(),

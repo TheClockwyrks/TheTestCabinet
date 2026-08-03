@@ -20,10 +20,11 @@
  * The order is `ALL_TOOL_NAMES`' order, so the prompt lists tools in the same sequence gg documents
  * them everywhere else.
  *
- * The model-facing functions that **end a session** ({@link SESSION_ENTRIES}) and the ones that put
- * material into the agent's own **context window** ({@link VIEW_ENTRIES}) are deliberately in
- * neither array. None of them is a gg tool, and cataloguing them as ones would break the very
- * bijection consumer 2 exists to check.
+ * The model-facing functions that **end a session** ({@link SESSION_ENTRIES}), the ones that put
+ * material into the agent's own **context window** ({@link VIEW_ENTRIES}) and the ones that reach
+ * back into the **program library** ({@link PROGRAM_ENTRIES}) are deliberately in none of these
+ * arrays. None of them is a gg tool, and cataloguing them as ones would break the very bijection
+ * consumer 2 exists to check.
  */
 
 /** One tool: gg's name for it, this SDK's function name, and the module that exports it. */
@@ -57,7 +58,8 @@ export interface CatalogueEntry {
  *
  * `views` maps to the singular `view` for the same reason `files` maps to `fs`: the object name is
  * read at a call site, and `view.openText(...)` states an intent about one thing where
- * `views.openText(...)` would read like a collection being mutated.
+ * `views.openText(...)` would read like a collection being mutated. `programs` keeps its plural for
+ * the mirror reason: it *is* a collection, and `programs.get(12)` reads as reaching into one.
  */
 export const OBJECT_FOR_MODULE: Readonly<Record<string, string>> = {
   shell: "system",
@@ -70,6 +72,7 @@ export const OBJECT_FOR_MODULE: Readonly<Record<string, string>> = {
   delegation: "agents",
   session: "harness",
   views: "view",
+  programs: "programs",
 };
 
 /**
@@ -219,6 +222,23 @@ export const VIEW_ENTRIES: readonly ViewEntry[] = [
 
 /** The module every {@link VIEW_ENTRIES} function is exported by. */
 export const VIEW_MODULE = "views";
+
+/**
+ * Every model-facing function on the **program library** — the object a program reaches back through
+ * for the source of a program it already ran. None of them is a gg tool.
+ *
+ * They are here rather than in {@link TOOL_CATALOGUE} for the reason {@link SESSION_ENTRIES} and
+ * {@link VIEW_ENTRIES} are: they have no gg tool names, so cataloguing them as tools would break the
+ * `boundTools() == ALL_TOOL_NAMES` bijection the committed component is checked against.
+ *
+ * They are a plain list of names rather than gated entries because the whole object is bound or
+ * absent together, from the `library` flag the host passes to {@link "./shim.js".run}: a *capability*
+ * decides this family, and no tool name stands for it.
+ */
+export const PROGRAM_ENTRIES: readonly string[] = ["history", "get", "rerun"];
+
+/** The module every {@link PROGRAM_ENTRIES} function is exported by. */
+export const PROGRAM_MODULE = "programs";
 
 /**
  * The non-enumerable key every bound function carries the name gg knows it by under, so

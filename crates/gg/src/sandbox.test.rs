@@ -49,11 +49,32 @@ fn run_with(
         program,
         enabled,
         EndingRole::Standard,
+        false,
         limits,
         None,
         FakeToolApi::with(&log, responder),
     );
     (outcome, log)
+}
+
+/// Run `program` with the [program library](crate::programs) bound and already holding `held`
+/// (turn, source) — the one scope variation that is not a tool and not a role.
+fn run_with_library(program: &str, held: &[(u64, &str)]) -> SandboxOutcome {
+    let log = CallLog::default();
+    let mut api = FakeToolApi::new(&log);
+    for (turn, source) in held {
+        api = api.with_program(*turn, source);
+    }
+    let (outcome, _api) = run_program(
+        program,
+        &all_tools(),
+        EndingRole::Standard,
+        true,
+        SandboxLimits::default(),
+        None,
+        api,
+    );
+    outcome
 }
 
 /// Run `program` in `role`'s ending group with no tools at all — what the ending calls are bound
@@ -64,6 +85,7 @@ fn run_as(program: &str, role: EndingRole) -> SandboxOutcome {
         program,
         &[],
         role,
+        false,
         SandboxLimits::default(),
         None,
         FakeToolApi::new(&log),
@@ -881,5 +903,98 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
         log.names().is_empty(),
         "a documentation lookup is not a tool call: {:?}",
         log.names()
+    );
+}
+
+/// **The `programs` object: the program library, end to end against the real component.**
+///
+/// One function, many programs, for the reason the module header gives: the compile is per process.
+/// What is proved here is everything the host-only tests cannot — that the object is *bound* only
+/// when the run keeps a library, that its calls are not tool calls, that a hand-over registers
+/// without stopping the program, and that a program failing afterwards loses it.
+#[test]
+fn the_program_library_is_bound_only_when_the_run_keeps_one() {
+    // Absent without the capability: an undefined identifier, not a call that reaches the host to be
+    // refused — the same enforcement every withheld tool gets.
+    let (outcome, log) = run("programs.history();");
+    let error = match &outcome.result {
+        Ok(result) => result.error.as_ref().expect("an unbound object is a throw"),
+        other => panic!("expected the program to run and throw, got {other:?}"),
+    };
+    assert_eq!(error.kind, ProgramErrorKind::UnknownName);
+    assert!(
+        log.names().is_empty(),
+        "nothing reached the host: a withheld family is not a name in scope at all"
+    );
+
+    // Present with it, and carrying exactly the three functions.
+    let outcome = run_with_library(
+        "console.log(JSON.stringify(programs.list().map((f) => f.name)));",
+        &[],
+    );
+    assert_eq!(
+        logged_json(&outcome),
+        json!(["programsFunction"]),
+        "the object is wired into the documentation carve-out like every other one (the double \
+         answers a directory per object; which functions a real one lists is `docs`'s own test)"
+    );
+
+    // `history` describes the shape of what is held, and never its source.
+    let outcome = run_with_library(
+        "console.log(JSON.stringify(programs.history()));",
+        &[(3, "const x = 1;\nconsole.log(x);")],
+    );
+    assert_eq!(
+        logged_json(&outcome),
+        json!([{ "turn": 3, "lines": 2, "chars": 28, "ok": true }]),
+        "a summary carries no source; `get` is how you reach for one"
+    );
+
+    // `get` returns the source verbatim, and takes a turn.
+    let outcome = run_with_library(
+        "console.log(programs.get());",
+        &[(1, "first"), (2, "second")],
+    );
+    assert_eq!(logs(&outcome), ["second"]);
+    let outcome = run_with_library(
+        "console.log(programs.get(1));",
+        &[(1, "first"), (2, "second")],
+    );
+    assert_eq!(logs(&outcome), ["first"]);
+
+    // A turn the library does not hold is a catchable `ToolError`, named after the call the model
+    // made rather than after a gg tool that does not exist.
+    let outcome = run_with_library(
+        "try { programs.get(99); }\n\
+         catch (e) { console.log(JSON.stringify({ isToolError: e instanceof ToolError, tool: e.tool, code: e.code })); }",
+        &[(1, "first")],
+    );
+    assert_eq!(
+        logged_json(&outcome),
+        json!({ "isToolError": true, "tool": "get", "code": "not-found" })
+    );
+
+    // A hand-over returns like any other call and the program runs on — the same shape `finish` has,
+    // and for the same reason: the host owns the flag, so there is no unwind to reason about.
+    let outcome = run_with_library(
+        "programs.rerun(\"console.log('the replacement');\");\nconsole.log('still running');",
+        &[],
+    );
+    assert_eq!(logs(&outcome), ["still running"]);
+    assert_eq!(
+        outcome.rerun.as_deref(),
+        Some("console.log('the replacement');"),
+        "the source survives out of the store for the loop to run"
+    );
+
+    // ...and a program that then throws loses it, exactly as it loses an ending.
+    let outcome = run_with_library(
+        "programs.rerun(\"console.log('never');\");\nthrow new Error('boom');",
+        &[],
+    );
+    assert!(outcome.rerun.is_none());
+    assert!(
+        outcome.revoked_rerun,
+        "the model is told the replacement was not run"
     );
 }

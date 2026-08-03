@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use crate::board::IssueStatus;
 use crate::context::{OpenViewInfo, TurnRange, ViewKind};
+use crate::programs::{ProgramRefusal, ProgramSummary};
 use crate::tasks::TaskStatus;
 use crate::tools::{ToolFailure, ToolOutcome};
 
@@ -308,6 +309,17 @@ pub trait ToolApi: Send + 'static {
     /// What is open in this agent's window right now, in the order it was opened. Charged against
     /// no cap: it opens nothing and reads nothing off disk.
     fn current_views(&mut self) -> Vec<OpenViewInfo>;
+    /// Every program this agent has run that its [library](crate::programs::ProgramLibrary) still
+    /// holds — the whole of `programs.history()`.
+    ///
+    /// Not a tool and not dispatched, on the same rule the documentation directory is not: it reads
+    /// gg's own state rather than the workspace, and an agent whose library is empty gets an empty
+    /// list rather than a failure. An agent without the capability never asks, because the object is
+    /// not in its scope.
+    fn program_history(&mut self) -> Vec<ProgramSummary>;
+    /// The source of one program this agent ran — `None` being the most recent — or the
+    /// [refusal](ProgramRefusal) naming the turns the library holds.
+    fn program_source(&mut self, turn: Option<u64>) -> Result<String, ProgramRefusal>;
 }
 
 /// One stage of a declared run_workflow, lowered from the WIT record to primitive fields.

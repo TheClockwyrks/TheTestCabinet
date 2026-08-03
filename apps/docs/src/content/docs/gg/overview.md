@@ -285,6 +285,8 @@ saved, launched, and analyzed in the console is
   sandbox instead of discrete tool calls.
 - [Response healing](/gg/response-healing/) — the counted, disclosed repairs gg makes
   to a reply before running it as a program.
+- [Program library](/gg/program-library/) — keep every program an agent runs, so it can
+  fetch one back, patch it, and hand it over to be run instead of writing it again.
 
 **Observability**
 

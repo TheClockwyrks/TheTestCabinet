@@ -74,6 +74,28 @@ Either way you are reading a view, so what you asked for arrives on your next
 turn and is not available during the turn you ask for it. Ask in one turn, use it
 in the next.
 
+{{#if programLibrary}}
+### Reusing a program you already ran
+
+gg keeps the source of every program you run. `programs.get()` returns the last
+one; `programs.get(turn)` returns the one from that turn, and
+`programs.history()` lists the turns it still holds.
+
+Use this when a program was nearly right. Fetch it, patch it as a string, and
+hand it back with `programs.rerun(source)` — gg runs what you hand over as this
+turn's program, so a one-character fix costs one line instead of the whole
+program again:
+
+```
+const source = programs.get();
+programs.rerun(source.replace("cosnt total", "const total"));
+```
+
+Everything the handing-over program already did stands, so hand over before
+doing work you do not want done twice. Hand over once per turn: the first
+hand-over is the one that runs.
+{{/if}}
+
 {{#if codeHeadings}}
 ### Messages you receive
 

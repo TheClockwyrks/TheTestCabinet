@@ -46,6 +46,8 @@ import {
   DOCS_NAME,
   HELPER_CATALOGUE,
   OBJECT_FOR_MODULE,
+  PROGRAM_ENTRIES,
+  PROGRAM_MODULE,
   SESSION_ENTRIES,
   TOOL_CATALOGUE,
   VIEW_ENTRIES,
@@ -67,6 +69,7 @@ import * as delegationMod from "./tools/delegation.js";
 import * as docsMod from "./tools/docs.js";
 import * as filesMod from "./tools/files.js";
 import * as memoriesMod from "./tools/memories.js";
+import * as programsMod from "./tools/programs.js";
 import * as shellMod from "./tools/shell.js";
 import * as skillsMod from "./tools/skills.js";
 import * as tasksMod from "./tools/tasks.js";
@@ -83,8 +86,9 @@ type ToolFn = (...args: unknown[]) => unknown;
  * gain by importing lazily, and a static import is what lets `componentize-js` resolve the membrane
  * specifiers at build time.
  *
- * {@link boundTools} iterates {@link TOOL_CATALOGUE} rather than this map's keys, so the `views`
- * entry cannot perturb the `boundTools() == ALL_TOOL_NAMES` bijection: no tool names that module.
+ * {@link boundTools} iterates {@link TOOL_CATALOGUE} rather than this map's keys, so the `views` and
+ * `programs` entries cannot perturb the `boundTools() == ALL_TOOL_NAMES` bijection: no tool names
+ * either module.
  */
 const MODULES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   shell: shellMod,
@@ -96,6 +100,7 @@ const MODULES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   context: contextMod,
   delegation: delegationMod,
   views: viewsMod,
+  programs: programsMod,
 };
 
 /** The helper module, looked up the same way the tool modules are. */
@@ -404,6 +409,7 @@ function documented(fn: ToolFn, name: string): ToolFn {
 function buildScope(
   enabled: readonly string[],
   ending: EndingKind,
+  library: boolean,
 ): Record<string, Record<string, unknown>> {
   const on = new Set(enabled);
   const objects = new Map<string, Record<string, unknown>>();
@@ -445,6 +451,18 @@ function buildScope(
     if (fn) view[entry.js] = documented(guard(entry.js, fn), entry.js);
   }
 
+  // `programs`: the whole object, or no object at all. It is the one family a *capability* gates
+  // rather than a tool or a role, so the host says so with a flag instead of a name in `enabled` —
+  // but the enforcement is identical to every other family's: a run without the program library has
+  // no `programs` in scope, not a `programs` whose calls are refused.
+  if (library) {
+    const programs = objectFor(OBJECT_FOR_MODULE[PROGRAM_MODULE] ?? "programs");
+    for (const js of PROGRAM_ENTRIES) {
+      const fn = lookup(MODULES[PROGRAM_MODULE] ?? {}, js);
+      if (fn) programs[js] = documented(guard(js, fn), js);
+    }
+  }
+
   // The one ending group this role produces. Bound by the same rule the tools are: what is not this
   // role's ending is not a name in the program's scope.
   for (const entry of SESSION_ENTRIES) {
@@ -460,23 +478,28 @@ function buildScope(
  * Evaluate one program against exactly the tools this run enables.
  *
  * `program` is JavaScript: gg type-stripped the model's TypeScript before it got here. `enabled` is
- * the run's gg tool names and `ending` the agent's role, which together are the whole scope. Nothing
- * comes back: a throw is reported over `feedback.report-error` rather than being allowed to escape as
- * an opaque wasm trap, everything a program wanted to show itself it opened a view of, and an ending
- * is a flag the host already holds.
+ * the run's gg tool names, `ending` the agent's role and `library` whether the run keeps a program
+ * library — together the whole scope. Nothing comes back: a throw is reported over
+ * `feedback.report-error` rather than being allowed to escape as an opaque wasm trap, everything a
+ * program wanted to show itself it opened a view of, and an ending is a flag the host already holds.
  *
  * A **returned value is discarded**, and {@link feedback.noteReturn} is how the model learns that
  * rather than by noticing an absence. Discarding it is what makes the rule one sentence — open a
  * view of what you want to see — and it costs a program nothing: there is no value it could return
  * that it could not open a view of.
  */
-export function run(program: string, enabled: string[], ending: EndingKind): void {
+export function run(
+  program: string,
+  enabled: string[],
+  ending: EndingKind,
+  library: boolean,
+): void {
   installConsole();
   installDenials();
   ended = false;
   deferredNoted = false;
 
-  const scope: Record<string, unknown> = buildScope(enabled, ending);
+  const scope: Record<string, unknown> = buildScope(enabled, ending, library);
   // Captured BEFORE `ToolError` joins the scope: the unknown-name hint lists the OBJECTS a program
   // may reach (`fs`, `project`, `harness`, …), and a model offered `ToolError` there would be
   // pointed at a class as though it were an API object.

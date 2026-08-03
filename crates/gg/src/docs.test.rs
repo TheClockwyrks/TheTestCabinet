@@ -16,7 +16,7 @@ fn enabled() -> Vec<String> {
 /// every object carries — and only the functions the run enabled.
 #[test]
 fn list_enumerates_bound_functions_and_the_list_meta() {
-    let docs = DocsRuntime::new(enabled(), EndingRole::Standard);
+    let docs = DocsRuntime::new(enabled(), EndingRole::Standard, false);
     let fs = docs.list("fs");
     let names: Vec<&str> = fs.iter().map(|f| f.name.as_str()).collect();
     assert!(names.contains(&"readFile"), "{names:?}");
@@ -37,7 +37,7 @@ fn list_enumerates_bound_functions_and_the_list_meta() {
 /// `view.openDocsView`, on the object that owns every other channel into the model's window.
 #[test]
 fn harness_always_carries_finish_and_list() {
-    let docs = DocsRuntime::new(Vec::new(), EndingRole::Standard);
+    let docs = DocsRuntime::new(Vec::new(), EndingRole::Standard, false);
     let harness = docs.list("harness");
     let names: Vec<&str> = harness.iter().map(|f| f.name.as_str()).collect();
     assert!(names.contains(&"finish"), "{names:?}");
@@ -49,7 +49,7 @@ fn harness_always_carries_finish_and_list() {
 /// be able to read what the functions it *does* have do.
 #[test]
 fn view_always_carries_open_docs_view() {
-    let docs = DocsRuntime::new(Vec::new(), EndingRole::Standard);
+    let docs = DocsRuntime::new(Vec::new(), EndingRole::Standard, false);
     let names: Vec<String> = docs.list("view").into_iter().map(|f| f.name).collect();
     assert!(names.iter().any(|n| n == "openDocsView"), "{names:?}");
 }
@@ -63,7 +63,7 @@ fn view_always_carries_open_docs_view() {
 /// up. Each one has to read correctly on its own.
 #[test]
 fn every_lookup_is_self_contained() {
-    let docs = DocsRuntime::new(enabled(), EndingRole::Standard);
+    let docs = DocsRuntime::new(enabled(), EndingRole::Standard, false);
 
     let first = docs.read("readFile").expect("readFile is bound");
     assert!(
@@ -85,7 +85,7 @@ fn every_lookup_is_self_contained() {
 /// available rather than shown docs for a method its scope does not carry.
 #[test]
 fn read_of_a_withheld_function_is_none() {
-    let docs = DocsRuntime::new(vec!["read_file".to_string()], EndingRole::Standard);
+    let docs = DocsRuntime::new(vec!["read_file".to_string()], EndingRole::Standard, false);
     assert!(docs.read("writeFile").is_none());
 }
 
@@ -93,10 +93,49 @@ fn read_of_a_withheld_function_is_none() {
 /// `list` has no catalogue entry of its own.
 #[test]
 fn read_documents_the_list_meta_function() {
-    let docs = DocsRuntime::new(Vec::new(), EndingRole::Standard);
+    let docs = DocsRuntime::new(Vec::new(), EndingRole::Standard, false);
     let list = docs.read("list").expect("list is a meta function");
     assert!(list.contains("FunctionSummary"), "{list}");
     // And it now points at the call that replaced `fn.docs()`.
     assert!(list.contains("view.openDocsView"), "{list}");
     assert!(docs.read("readDocs").is_none(), "`readDocs` is retired");
+}
+
+/// The **third gate**: the program library, which neither the enabled set nor the ending role can
+/// express.
+///
+/// It is documented exactly when the capability is on, because a directory that lists a function the
+/// scope did not bind is the one thing a directory must never do — and the failure it would produce
+/// is the worst kind: the model reads a plausible signature, writes the call, and is answered with a
+/// `ReferenceError` about a name gg itself named.
+#[test]
+fn the_program_library_is_documented_only_when_the_agent_keeps_one() {
+    let without = DocsRuntime::new(enabled(), EndingRole::Standard, false);
+    assert!(without.read("rerun").is_none());
+    assert_eq!(
+        without
+            .list("programs")
+            .iter()
+            .map(|f| f.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["list"],
+        "an unknown object lists the meta function alone"
+    );
+
+    let with = DocsRuntime::new(enabled(), EndingRole::Standard, true);
+    let listed = with.list("programs");
+    let names: Vec<&str> = listed.iter().map(|f| f.name.as_str()).collect();
+    assert!(names.contains(&"history"), "{names:?}");
+    assert!(names.contains(&"get"), "{names:?}");
+    assert!(names.contains(&"rerun"), "{names:?}");
+    let doc = with
+        .read("rerun")
+        .expect("the library's calls are documented");
+    assert!(doc.contains("rerun(source: string)"), "{doc}");
+
+    // The gate is the library's alone: it does not withdraw anything else, and it is not withdrawn
+    // by an ending role.
+    assert!(with.read("readFile").is_some());
+    let reviewer = DocsRuntime::new(enabled(), EndingRole::Review, true);
+    assert!(reviewer.read("get").is_some());
 }

@@ -51,11 +51,16 @@ pub struct DocsRuntime {
     /// role is not in this agent's scope, so documenting it would describe a function the model
     /// cannot call. The catalogue's `ending` tag is what this is matched against.
     role: &'static str,
+    /// Whether this agent keeps a [program library](crate::programs) — the third gate, and the one
+    /// neither of the others can express: the `programs` object is bound or absent as a whole, from
+    /// a capability rather than from a tool or a role.
+    library: bool,
 }
 
 impl DocsRuntime {
-    /// A fresh runtime for an agent whose scope binds `enabled`'s tools and `role`'s ending calls.
-    pub fn new(enabled: Vec<String>, role: EndingRole) -> Self {
+    /// A fresh runtime for an agent whose scope binds `enabled`'s tools and `role`'s ending calls,
+    /// and — when `library` — the [program library](crate::programs)'s three.
+    pub fn new(enabled: Vec<String>, role: EndingRole, library: bool) -> Self {
         Self {
             enabled: enabled.into_iter().collect(),
             role: match role {
@@ -63,6 +68,7 @@ impl DocsRuntime {
                 EndingRole::Review => "review",
                 EndingRole::Judge { .. } => "judge",
             },
+            library,
         }
     }
 
@@ -102,9 +108,16 @@ impl DocsRuntime {
         }
     }
 
-    /// Whether a function gated by `gate` is bound this run — a `None` gate is a carve-out, always
-    /// bound; a `Some(tool)` gate is bound exactly when that tool is enabled.
+    /// Whether a function is bound this run, by whichever of the three gates decides it: a
+    /// [library](crate::programs) function by the capability, a `Some(tool)` gate by that tool being
+    /// enabled, an ending call by this agent's role, and a `None`/`None` carve-out always.
     fn bound(&self, function: &CatalogueFunction) -> bool {
+        // The program library first, because it is the one family neither of the two gates below
+        // describes: it carries no tool name and belongs to no role, so without this it would fall
+        // into the ungated arm and be documented for an agent that has no `programs` object.
+        if function.library {
+            return self.library;
+        }
         match (function.gate, function.ending) {
             // A tool or helper: bound when the run enables it.
             (Some(tool), _) => self.enabled.contains(tool),

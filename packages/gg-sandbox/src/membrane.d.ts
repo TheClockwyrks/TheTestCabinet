@@ -523,6 +523,37 @@ declare module "test-cabinet:gg/views" {
   export function currentViews(): OpenViewRaw[];
 }
 
+/**
+ * The library of programs this agent has already run — the fourth model-facing carve-out, beside
+ * `session`, `docs` and `views`, and never a gg tool. `src/tools/programs.ts` is its only importer.
+ *
+ * Unlike the other three the shim binds it conditionally, from the `library` flag the host passes to
+ * `run` rather than from the enabled tool set: the program library is gated by a capability, and no
+ * gg tool answers to it.
+ */
+declare module "test-cabinet:gg/programs" {
+  /** One program this agent ran, as `history` lists it — its shape, never its source. */
+  export interface ProgramSummaryRaw {
+    /** The turn it ran on — what `get` takes. */
+    turn: number;
+    /** How many lines of source it was. */
+    lines: number;
+    /** How many characters of source it was. */
+    chars: number;
+    /** Whether it ran to its end. */
+    ok: boolean;
+    /** The error it ended with, when it did not. */
+    error: string | undefined;
+  }
+
+  /** The programs this agent has run, oldest first. Cannot fail. */
+  export function history(): ProgramSummaryRaw[];
+  /** The source of one program as it was run; `undefined` is the most recent. */
+  export function get(turn: number | undefined): string;
+  /** Register a program for gg to run in place of this one, once this one has ended. */
+  export function rerun(source: string): void;
+}
+
 /** Delegating work to child agents. */
 declare module "test-cabinet:gg/delegation" {
   /** What a child agent is asked to do — exactly one of a written brief or a board issue. */

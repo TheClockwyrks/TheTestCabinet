@@ -793,6 +793,22 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       },
     ],
   },
+  {
+    id: "program-library",
+    name: "Program library",
+    group: "Models & tools",
+    purpose:
+      "Keep every program the agent runs, so it can fetch one back, patch it, and hand it over to be run.",
+    params: [
+      {
+        key: "keep",
+        label: "Programs kept",
+        kind: "number",
+        placeholder: "e.g. 20",
+        hint: "How many of the agent's most recent programs are retained and can be fetched with `programs.get`. Older ones are dropped, and asking for one says which turns are still held. `0` keeps every program of the session; empty is gg's default of 20. Needs Responses as code — there are no programs in a tool-calling session to keep.",
+      },
+    ],
+  },
   // --- Context ----------------------------------------------------------------
   {
     id: "context-window-override",

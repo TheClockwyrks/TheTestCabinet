@@ -8,7 +8,17 @@
 //! [`SandboxOutcome`] in, the message the model reads out.
 
 use super::*;
-use crate::sandbox::{ProgramErrorKind, SandboxRefusal};
+use crate::sandbox::{ProgramErrorKind, SandboxRefusal, SandboxToolCall};
+
+/// One serviced call, as a chained turn's merged roster carries it.
+fn sandbox_call(name: &str) -> SandboxToolCall {
+    SandboxToolCall {
+        name: name.to_string(),
+        ok: true,
+        summary: None,
+        error: None,
+    }
+}
 
 /// An outcome for a program that ran cleanly and did nothing else — every list empty, so a test can
 /// set exactly the one thing it is about.
@@ -28,6 +38,8 @@ fn quiet_outcome() -> SandboxOutcome {
         returned_value: false,
         completion: None,
         revoked_completion: None,
+        rerun: None,
+        revoked_rerun: false,
         elapsed: Duration::ZERO,
         unreachable: None,
         compile_wait: None,
@@ -187,4 +199,116 @@ fn each_kind_of_message_goes_in_its_own_band() {
     ] {
         assert_ne!(feedback.source, GgContextSource::ToolOutput);
     }
+}
+
+/// A turn that made no hand-over says nothing about one — the ordinary turn, and the one this must
+/// stay silent on.
+#[test]
+fn a_turn_with_no_hand_over_gets_no_notice() {
+    let outcome = quiet_outcome();
+    assert!(handover_notice(&ProgramChain::first("p"), &outcome).is_none());
+}
+
+/// A hand-over gg **ran** is likewise silent: the program that ran is the turn's, and saying so
+/// would be gg narrating something the model asked for and got.
+#[test]
+fn an_honoured_hand_over_gets_no_notice() {
+    let mut chain = ProgramChain::first("the trampoline");
+    chain.advance("the replacement");
+    assert!(handover_notice(&chain, &quiet_outcome()).is_none());
+}
+
+/// Each of the three ways a hand-over goes unhonoured gets its own sentence, because each has a
+/// different remedy — and every one of them is invisible to the program that asked.
+#[test]
+fn every_unhonoured_hand_over_says_which_way_it_failed() {
+    let mut revoked = quiet_outcome();
+    revoked.revoked_rerun = true;
+    let notice = handover_notice(&ProgramChain::first("p"), &revoked).expect("a revocation speaks");
+    assert!(notice.contains("failed after handing it over"), "{notice}");
+
+    let mut ended = ProgramChain::first("p");
+    ended.refused = Some(ChainRefusal::Ended);
+    let notice = handover_notice(&ended, &quiet_outcome()).expect("an ending speaks");
+    assert!(notice.contains("ended your session"), "{notice}");
+
+    let mut exhausted = ProgramChain::first("p");
+    exhausted.refused = Some(ChainRefusal::Exhausted);
+    let notice = handover_notice(&exhausted, &quiet_outcome()).expect("a spent chain speaks");
+    assert!(
+        notice.contains(&MAX_PROGRAM_CHAIN.to_string()),
+        "the ceiling names its own number: {notice}"
+    );
+}
+
+/// What the [library](crate::programs) records beside a program: whether it ran out, and the words
+/// the model was already given if it did not.
+#[test]
+fn the_recorded_verdict_matches_what_the_model_was_told() {
+    assert_eq!(program_verdict(&quiet_outcome()), (true, None));
+
+    let mut threw = quiet_outcome();
+    threw.result = Ok(ProgramResult {
+        error: Some(ProgramError {
+            kind: ProgramErrorKind::ToolFailure,
+            message: "`read_file` failed (not-found): no such file".to_string(),
+            location: Some("line 3, column 1".to_string()),
+        }),
+    });
+    let (ok, error) = program_verdict(&threw);
+    assert!(!ok);
+    assert!(error.unwrap().contains("read_file"));
+
+    // A reply that did not compile is kept too — it is the single most likely thing to fetch back.
+    let mut broken = quiet_outcome();
+    broken.result = Err(SandboxError::Host("could not be operated".to_string()));
+    assert!(!program_verdict(&broken).0);
+}
+
+/// Merging a chain keeps everything the turn **accumulated** and takes the last program's
+/// **verdict**. Under-reporting either half would misdescribe the turn: a roster that lost the first
+/// program's calls says the turn did less than it did, and a result taken from the first says the
+/// turn succeeded when the program that did the work failed.
+#[test]
+fn a_chained_turn_accumulates_its_records_and_takes_the_last_result() {
+    let mut earlier = quiet_outcome();
+    earlier.tool_calls = vec![sandbox_call("read_file")];
+    earlier.logs = vec!["fetching".to_string()];
+    earlier.elapsed = Duration::from_millis(10);
+    earlier.compile_wait = Some(Duration::from_millis(700));
+
+    let mut later = quiet_outcome();
+    later.tool_calls = vec![sandbox_call("write_file")];
+    later.logs = vec!["done".to_string()];
+    later.elapsed = Duration::from_millis(5);
+    later.result = Ok(ProgramResult {
+        error: Some(ProgramError {
+            kind: ProgramErrorKind::Other,
+            message: "boom".to_string(),
+            location: None,
+        }),
+    });
+
+    let merged = merge_chain(earlier, later);
+
+    assert_eq!(
+        merged
+            .tool_calls
+            .iter()
+            .map(|call| call.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["read_file", "write_file"],
+        "the turn dispatched both, in order"
+    );
+    assert_eq!(merged.logs, ["fetching", "done"]);
+    assert_eq!(merged.elapsed, Duration::from_millis(15));
+    assert_eq!(
+        merged.compile_wait,
+        Some(Duration::from_millis(700)),
+        "only the first program could have paid the one shared compile"
+    );
+    assert!(
+        matches!(&merged.result, Ok(result) if result.error.is_some()),
+        "the last program's verdict is the turn's"
+    );
 }

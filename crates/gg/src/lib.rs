@@ -56,6 +56,7 @@ mod modules;
 mod observer;
 mod persistence;
 pub mod playback;
+mod programs;
 mod prompts;
 mod replay;
 pub mod replay_cli;

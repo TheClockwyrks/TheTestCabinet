@@ -214,6 +214,11 @@ is said to the model, for the same reason nothing else about a working program i
 strategies, their decline rules,
 their configuration and their metrics are [their own page](/gg/response-healing/).
 
+A reply that was *nearly* right is a different problem, and it has its own capability. Under
+this protocol a one-character mistake in a sixty-line program costs the sixty lines again;
+the [program library](/gg/program-library/) keeps what gg ran and lets the next program fetch
+it, patch it as a string, and hand it back to be run. Opt-in, and off by default.
+
 ## The typed tool surface
 
 Every gg tool is a **distinct, typed TypeScript function** already in the program's
