@@ -33,9 +33,13 @@ export default function item() {
     // The death resolving and the restore that follows are both the behavior, so the clip shows the
     // whole round trip: die, take Continue From Save, and be back in the mine.
     async act(api) {
+      // `actKillByHull` already rests on the Game Over screen, so CONTINUE FROM SAVE is on screen
+      // and readable before it is taken — which is also what distinguishes this clip from the
+      // Hardcore one, where the same screen offers PLAY AGAIN because the save is gone.
       end = await actKillByHull(api);
       await press(api, "Enter"); // Continue From Save (the first Game Over option)
       restored = (await api.snapshot()).screen;
+      await api.advance(90); // 90 ticks = 1.5 s back in the mine, on the restored expedition
     },
 
     async assert(api, check) {

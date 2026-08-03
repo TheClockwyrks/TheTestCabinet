@@ -35,6 +35,11 @@ export default function item() {
       await api.call("setTile", col, row + 2, { kind: "rock" });
       await teleportInto(api, col, row);
       await api.call("grantGear", { hull: 3 }); // survive the deadly rockbed gas
+      // Fill the hull explicitly: a build that raises the ceiling without granting the capacity
+      // leaves the miner on `100/220`, where the rockbed hit (`~60` and rising, `specs/hazards.md`)
+      // can kill it — and a death cue landing on top of the blast is not what this item is reading.
+      // The grant contract has its own item, `economy.grant-applies-tiers`.
+      await api.call("setHull", 100000);
       hull0 = (await api.snapshot()).miner.hull;
       await armAudio(api);
     },

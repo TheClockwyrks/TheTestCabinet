@@ -30,7 +30,13 @@ async function actThrustBurn(api, size) {
   await openColumn(api, col, 24, row); // open shaft above so the miner rises
   await solid(api, col, row + 1); // a floor to stand on
   await teleportInto(api, col, row);
-  await api.call("grantGear", { fuel: 5, jetpack: 3 }); // plenty of fuel; refilled to max
+  await api.call("grantGear", { fuel: 5, jetpack: 3 }); // the tier-5 550 tank, tier-3 engine
+  // Fill the tank explicitly rather than relying on the grant to have filled it. A build that
+  // raises the ceiling without granting the capacity leaves the miner on `100/550`, and a hold
+  // that runs the tank dry stops burning partway through the window — so the three sizes are no
+  // longer measured over the same half second and the burn "does not scale". The grant contract is
+  // checked on its own by `economy.grant-applies-tiers`; this item is about the size scaling.
+  await api.call("setFuel", 100000);
   await teleportInto(api, col, row);
   const f0 = (await api.snapshot()).miner.fuel;
   const snap = await actHoldFor(api, K.thrust, 30); // 30 ticks = the old 0.5 s hold
