@@ -824,10 +824,6 @@ pub struct TasksRuntime {
     ids: ModuleIds,
     /// How this holder came by the list.
     origin: GgModuleOrigin,
-    /// Whether this holder's prompt carries the list — the pinned task block and the tasks section
-    /// of the system prompt. An [unowned](crate::modules::Ownership::Unowned) holder keeps the same
-    /// store and the same tools, and is not shown the list every turn.
-    ownership: Ownership,
     /// The shared, mutable store — the same handle the tools mutate.
     store: Arc<Mutex<TaskStore>>,
 }
@@ -853,7 +849,6 @@ impl TasksRuntime {
     fn with_mode_in(max_tasks: usize, mode: TaskMode, ids: &ModuleIds) -> Self {
         Self {
             enabled: true,
-            ownership: Ownership::Owned,
             store: Arc::new(Mutex::new(TaskStore::with_mode(max_tasks, mode))),
             id: ids.next(ModuleKind::Tasks),
             ids: Arc::clone(ids),
@@ -882,13 +877,6 @@ impl TasksRuntime {
         let max_tasks = params.map(resolve_max_tasks).unwrap_or(DEFAULT_MAX_TASKS);
         let mode = params.map(resolve_task_mode).unwrap_or_default();
         Self::with_mode_in(max_tasks, mode, ctx.ids)
-            .with_ownership(crate::modules::resolve_ownership(profile, CAPABILITY_TASKS).0)
-    }
-
-    /// This runtime with its [ownership](Ownership) set.
-    pub fn with_ownership(mut self, ownership: Ownership) -> Self {
-        self.ownership = ownership;
-        self
     }
 
     /// An **independent** list holding a copy of everything this one holds. Task ids are
@@ -896,7 +884,6 @@ impl TasksRuntime {
     pub fn forked(&self) -> Self {
         Self {
             enabled: self.enabled,
-            ownership: self.ownership,
             store: Arc::new(Mutex::new(
                 self.store.lock().expect("task store lock").clone(),
             )),
@@ -911,7 +898,6 @@ impl TasksRuntime {
     pub fn shared(&self) -> Self {
         Self {
             enabled: self.enabled,
-            ownership: self.ownership,
             store: Arc::clone(&self.store),
             // The same store, so the same id.
             id: Arc::clone(&self.id),
@@ -997,8 +983,11 @@ impl Module for TasksRuntime {
         self.enabled
     }
 
+    /// Always [owned](Ownership::Owned). The list is what the agent steers its work by from
+    /// turn to turn, so it is carried in its holder's prompt as its own message — there is no
+    /// `ownership` param on the tasks capability, and nothing to resolve.
     fn ownership(&self) -> Ownership {
-        self.ownership
+        Ownership::Owned
     }
 
     fn context_source(&self) -> Option<GgContextSource> {
@@ -1010,9 +999,6 @@ impl Module for TasksRuntime {
     }
 
     fn context_block(&self) -> Option<Message> {
-        if self.ownership != Ownership::Owned {
-            return None;
-        }
         TasksRuntime::context_block(self)
     }
 
@@ -1040,7 +1026,7 @@ impl Module for TasksRuntime {
         ModuleHandle::Tasks(self.shared())
     }
 
-    /// Re-resolve the count ceiling, the list mode and the ownership from the receiving profile.
+    /// Re-resolve the count ceiling and the list mode from the receiving profile.
     ///
     /// Unlike the memory strategy, the list [mode](TaskMode) is not a compatibility barrier: both
     /// modes are the same DAG, differing only in which fields a *new* task must carry, so a list
@@ -1062,7 +1048,6 @@ impl Module for TasksRuntime {
             .expect("task store lock")
             .reconfigure(max_tasks, mode);
         self.enabled = true;
-        self.ownership = crate::modules::resolve_ownership(profile, CAPABILITY_TASKS).0;
         self.ids = Arc::clone(ctx.ids);
         self.origin = GgModuleOrigin::Transferred;
         Ok(())

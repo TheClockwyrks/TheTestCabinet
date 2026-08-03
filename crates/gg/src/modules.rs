@@ -766,14 +766,18 @@ pub fn resolve_ownership(profile: &GgAgentConfig, capability: &str) -> (Ownershi
     }
 }
 
-/// Every capability id gg backs with a module, paired with the kind it backs — the list
-/// [`ownership_warnings`] validates and the console's editor offers an `ownership` picker for.
+/// Every capability whose module's ownership is **configurable**, paired with the kind it backs —
+/// the list [`ownership_warnings`] validates and the console's editor offers an `ownership` picker
+/// for.
 ///
-/// [`History`](ModuleKind::History) is absent deliberately: the window is not a capability, it is
-/// the agent.
-const MODULE_CAPABILITIES: [(&str, ModuleKind); 5] = [
+/// Two kinds are absent, and both absences are load-bearing. [`History`](ModuleKind::History) has
+/// no capability behind it at all: the window is not a capability, it is the agent.
+/// [`Tasks`](ModuleKind::Tasks) has one, but no ownership to configure — the task list is what an
+/// agent steers its work by from turn to turn, so it is always carried in its holder's prompt as
+/// its own message. An `ownership` param on [`tasks`](CAPABILITY_TASKS) is read by nothing:
+/// neither resolved nor warned about, exactly like any other key gg does not know.
+const MODULE_CAPABILITIES: [(&str, ModuleKind); 4] = [
     (CAPABILITY_MEMORIES, ModuleKind::Memories),
-    (CAPABILITY_TASKS, ModuleKind::Tasks),
     (CAPABILITY_PROJECT_MANAGEMENT, ModuleKind::Board),
     (CAPABILITY_SKILLS, ModuleKind::Skills),
     (CAPABILITY_AGENT_MANAGED_CONTEXT, ModuleKind::Archive),

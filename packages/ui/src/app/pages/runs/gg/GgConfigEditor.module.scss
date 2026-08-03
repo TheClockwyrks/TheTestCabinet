@@ -625,19 +625,17 @@
 }
 
 // The prompt-cache lifetime selector: intrinsic width like the "Model from" one it
-// sits under, leaving the row's spare space to the note beside it.
+// shares the row with, leaving the row's spare space to the model control between them.
 .cacheTtlField {
   flex: 0 1 18rem;
   min-width: 0;
 }
 
-// The reminder shown beside the selector once an agent is on the extended lifetime —
-// which agents earn back its premium. Guidance, not a fault, so it takes the muted
-// cue rather than the warning or negative one.
+// The reminder shown under the row once an agent is on the extended lifetime — which
+// agents earn back its premium. Guidance, not a fault, so it takes the muted cue rather
+// than the warning or negative one.
 .cacheTtlNote {
-  flex: 1 1 16rem;
-  margin: 0;
-  padding-bottom: t.$space-xs;
+  margin: t.$space-xs 0 0;
   font-size: t.$font-sm;
   color: t.$color-text-muted;
 }
@@ -739,9 +737,15 @@
   text-transform: lowercase;
 }
 
-// The agent-name field row at the top of the per-agent view.
+// The agent-name field row at the top of the per-agent view. Its label is a plain
+// inline span rather than a flex row (the list row's `.agentNameLine` is the one with a
+// gap), so the badge that follows the label text needs its own leading space.
 .agentHeading {
   margin: 0 0 t.$space-md;
+
+  .rootBadge {
+    margin-left: t.$space-sm;
+  }
 }
 
 // The roster lives in its own surface card, like the run limits: it is a table of

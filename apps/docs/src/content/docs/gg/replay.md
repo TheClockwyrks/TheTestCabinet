@@ -53,9 +53,10 @@ itself, so an absent full-only input reads as "this run was not recorded that
 closely" rather than as "the session did not have one".
 
 A per-run byte ceiling (`replayMaxBytes`, among the run's
-[execution limits](/gg/execution-limits/)) bounds the worst case. Crossing it stops
-capture and marks the record truncated: **capture degrades, it never fails the run it
-observes.**
+[execution limits](/gg/execution-limits/)) bounds the worst case — 256 MiB unless a
+configuration says otherwise; the console's editor offers it as **Replay journal (MiB)**
+and writes the byte count itself. Crossing it stops capture and marks the record
+truncated: **capture degrades, it never fails the run it observes.**
 
 ## Replaying from the command line
 

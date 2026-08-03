@@ -123,10 +123,10 @@ are worth knowing before reading the rest of this page:
   takes no turns of its own — its model binding and any other capability it declares are
   ignored, and the editor says so. It is namable everywhere an ordinary profile is: as
   the root, as a roster target, as an issue's implementer.
-- Every capability backed by a [module](/gg/modules/) — memories, tasks, project
-  management, skills, agent-managed context — carries an **`ownership`** param deciding
-  whether the agent's prompt carries that module or only its tools do. Left alone it is
-  `owned`, which is how every configuration written before the param behaves.
+- Most capabilities backed by a [module](/gg/modules/) — memories, project management,
+  skills, agent-managed context — carry an **`ownership`** param deciding whether the
+  agent's prompt carries that module or only its tools do. Left alone it is `owned`. Tasks
+  is the exception: the task list is always in its holder's prompt, so it has no such param.
 
 ## Model slots
 

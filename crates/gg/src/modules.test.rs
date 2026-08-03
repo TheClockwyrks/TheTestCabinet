@@ -155,19 +155,19 @@ fn an_unowned_module_contributes_no_pinned_block() {
         "an owned module with contents renders a block on its own band"
     );
 
+    // The board is unowned; the task list cannot be, so it goes on showing its block beside it.
     let unowned = CapabilityModules::inert()
-        .with(ModuleHandle::Tasks(
-            tasks.shared().with_ownership(Ownership::Unowned),
-        ))
+        .with(ModuleHandle::Tasks(tasks.shared()))
         .with(ModuleHandle::Board(
             board.shared().with_ownership(Ownership::Unowned),
         ));
+    let blocks = unowned.pinned_blocks(Refresh::EveryTurn);
     assert!(
-        unowned
-            .pinned_blocks(Refresh::EveryTurn)
+        blocks
             .iter()
-            .all(|(_, block)| block.is_none()),
-        "an unowned module shows nothing, holding exactly the same contents"
+            .all(|(source, block)| (*source == GgContextSource::Board) == block.is_none()),
+        "an unowned board shows nothing, holding exactly the same contents, and the task list \
+         still shows its own"
     );
 }
 
@@ -199,6 +199,28 @@ fn an_unowned_module_is_still_live() {
     assert!(
         Module::context_block(&memories).is_none(),
         "and it still says nothing in the prompt"
+    );
+}
+
+/// **The task list has no ownership to configure.** It is what an agent steers its work by from
+/// turn to turn, so it is always carried in its holder's prompt as its own message.
+///
+/// A configuration that names `ownership` on `tasks` — a set written before the param was taken
+/// off the capability — resolves an owned list all the same, and earns no warning: the key is one
+/// gg does not know, exactly like any other.
+#[test]
+fn a_task_list_is_owned_whatever_the_profile_declares() {
+    let skills = SkillsRuntime::disabled();
+    let board = BoardRuntime::new(BoardCaps::default());
+    let (registry, inherited, ids) = plain();
+    let profile = profile_with(vec![(CAPABILITY_TASKS, json!({ "ownership": "unowned" }))]);
+
+    let modules =
+        CapabilityModules::resolve(&profile, &ctx(&skills, &board, &registry, &inherited, &ids));
+    assert_eq!(modules.tasks().ownership(), Ownership::Owned);
+    assert!(
+        ownership_warnings(&profile).is_empty(),
+        "an `ownership` key on tasks is not a value gg reads, so there is nothing to warn about"
     );
 }
 
@@ -253,14 +275,17 @@ fn a_profile_without_the_board_capability_holds_it_unowned() {
 #[test]
 fn the_ownership_param_resolves_and_warns() {
     let profile = profile_with(vec![
-        (CAPABILITY_TASKS, json!({ "ownership": "unowned" })),
+        (
+            CAPABILITY_PROJECT_MANAGEMENT,
+            json!({ "ownership": "unowned" }),
+        ),
         (CAPABILITY_MEMORIES, json!({ "ownership": "owned" })),
         (CAPABILITY_SKILLS, json!({ "ownership": "shared" })),
         (CAPABILITY_AGENT_MANAGED_CONTEXT, json!({ "ownership": 7 })),
     ]);
 
     assert_eq!(
-        resolve_ownership(&profile, CAPABILITY_TASKS),
+        resolve_ownership(&profile, CAPABILITY_PROJECT_MANAGEMENT),
         (Ownership::Unowned, None)
     );
     assert_eq!(
@@ -269,7 +294,10 @@ fn the_ownership_param_resolves_and_warns() {
     );
     // An absent param is the default, silently.
     assert_eq!(
-        resolve_ownership(&profile, CAPABILITY_PROJECT_MANAGEMENT),
+        resolve_ownership(
+            &profile_with(vec![(CAPABILITY_MEMORIES, json!({}))]),
+            CAPABILITY_MEMORIES
+        ),
         (Ownership::Owned, None)
     );
 
@@ -484,13 +512,17 @@ fn adopting_re_resolves_the_caps_from_the_receiving_profile() {
     add_task(&tasks, "t1");
     let receiver = profile_with(vec![(
         CAPABILITY_TASKS,
-        json!({ "maxTasks": 40, "mode": "issues", "ownership": "unowned" }),
+        json!({ "maxTasks": 40, "mode": "issues" }),
     )]);
     tasks.adopt(&receiver, &ctx).expect("tasks are adoptable");
 
     assert_eq!(tasks.max_tasks(), 40);
     assert_eq!(tasks.mode(), TaskMode::Issues);
-    assert_eq!(Module::ownership(&tasks), Ownership::Unowned);
+    assert_eq!(
+        Module::ownership(&tasks),
+        Ownership::Owned,
+        "a transferred list is carried in its new holder's prompt like any other"
+    );
     assert_eq!(tasks.count(), 1, "and the contents came with it");
 }
 

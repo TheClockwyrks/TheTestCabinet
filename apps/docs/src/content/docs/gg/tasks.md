@@ -57,7 +57,7 @@ What never happens is two agents writing one list at the same time. Unlike
 scope: task ids are model-authored, so two live writers would mint the same id for two
 different pieces of work and there would be no merge that could tell them apart.
 
-Like every module-backed capability, tasks read an
-[`ownership`](/gg/modules/#ownership) param. An **unowned** task list keeps its tools and its
-contents, and stops reaching the prompt at all — no pinned list, and no section describing
-one. The agent works the list by calling into it rather than by being handed it every turn.
+Tasks are the one module-backed capability with **no [`ownership`](/gg/modules/#ownership)
+param**. The list is always carried in its holder's prompt, as its own message, refreshed at
+every turn boundary — it is what the agent steers its work by from one turn to the next, so
+being handed it every turn is what the capability *is*.

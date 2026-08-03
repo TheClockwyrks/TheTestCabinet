@@ -1177,12 +1177,13 @@ pub(super) struct LoopToolApi {
     view_ops: u32,
     /// How many image-carrying views **this agent** may hold open at once — the
     /// [`imageViewCap`](crate::sandbox::SandboxLimits::image_view_cap) param, resolved from this
-    /// agent's own profile and carried in on its [ceilings](SandboxLimits).
+    /// agent's own profile and carried in on its [ceilings](SandboxLimits). `None` when the
+    /// profile names none, which is the default: no ceiling at all.
     ///
     /// It is a ceiling and not a counter: what it is compared against is counted from the live
     /// window ([`ContextModel::open_image_views`]) at each call, so views that outlived the program
     /// that opened them are counted and nothing has to be reset between turns.
-    image_view_cap: usize,
+    image_view_cap: Option<usize>,
 }
 
 #[allow(dead_code)]
@@ -1613,12 +1614,12 @@ fn text_view_refusal(label: &str, body: &str, open: &[String]) -> Option<ViewRef
 /// The refusal the [open-image-view cap](crate::sandbox::SandboxLimits::image_view_cap) makes about
 /// a `view.openFile` whose read turned out to be a picture, or `None` to let it through.
 ///
-/// `cap` is the agent's own configured ceiling — its `imageViewCap` — `open` is how many image
-/// views its window already holds, and `superseding` is whether this call re-opens one of them.
-/// Superseding is never refused, for the reason re-opening an already-open
-/// label is never refused by [`MAX_OPEN_TEXT_VIEWS`]: it replaces an occupant instead of adding one,
-/// and refusing it would leave an agent at the ceiling unable to *refresh* any of the views holding
-/// it there.
+/// `cap` is the agent's own configured ceiling — its `imageViewCap`, or `None` when its profile
+/// names none, which is the default and refuses nothing. `open` is how many image views its window
+/// already holds, and `superseding` is whether this call re-opens one of them. Superseding is never
+/// refused, for the reason re-opening an already-open label is never refused by
+/// [`MAX_OPEN_TEXT_VIEWS`]: it replaces an occupant instead of adding one, and refusing it would
+/// leave an agent at the ceiling unable to *refresh* any of the views holding it there.
 ///
 /// A cap of zero is honourable and reachable: it refuses every picture, which is exactly what an
 /// arm measuring a run that cannot look at anything asks for. (The
@@ -1631,7 +1632,8 @@ fn text_view_refusal(label: &str, body: &str, open: &[String]) -> Option<ViewRef
 /// catches at the call site, and nothing enters the window: no view, no read charged to it. So the
 /// message has to name both the cap and the way out, which is a close the agent can actually
 /// perform.
-fn image_view_refusal(cap: usize, open: usize, superseding: bool) -> Option<ViewRefusal> {
+fn image_view_refusal(cap: Option<usize>, open: usize, superseding: bool) -> Option<ViewRefusal> {
+    let cap = cap?;
     (open >= cap && !superseding).then(|| ViewRefusal {
         failure: ToolFailure::LimitExceeded,
         message: format!(

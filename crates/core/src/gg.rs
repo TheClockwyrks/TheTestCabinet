@@ -373,12 +373,15 @@ pub const CAPABILITY_TASKS: &str = "tasks";
 /// [unowned](GgModuleOwnership::Unowned).
 ///
 /// A module-backed capability is one whose state gg keeps for the agent rather than one that is
-/// a pure function of a call: [`memories`](CAPABILITY_MEMORIES), [`tasks`](CAPABILITY_TASKS),
+/// a pure function of a call — see [`GgModuleKind`] for the closed list of modules. Four of them
+/// read this param: [`memories`](CAPABILITY_MEMORIES),
 /// [`project-management`](CAPABILITY_PROJECT_MANAGEMENT), [`skills`](CAPABILITY_SKILLS) and
-/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT) — see [`GgModuleKind`] for the
-/// closed list. An unrecognized value falls back to `owned` and is reported as a launch warning,
-/// never as a launch failure, in line with how every other unrecognized capability *value* is
-/// treated.
+/// [`agent-managed-context`](CAPABILITY_AGENT_MANAGED_CONTEXT). [`tasks`](CAPABILITY_TASKS) does
+/// not: the task list is what an agent steers its work by from turn to turn, so it is always
+/// carried in its holder's prompt as its own message, and an `ownership` key on that capability is
+/// read by nothing. An unrecognized value falls back to `owned` and is reported as a launch
+/// warning, never as a launch failure, in line with how every other unrecognized capability
+/// *value* is treated.
 ///
 /// See the [module model](https://docs.testcabinet.ai/gg/modules/) for what ownership changes.
 pub const MODULE_PARAM_OWNERSHIP: &str = "ownership";
@@ -398,8 +401,8 @@ pub const MODULE_PARAM_OWNERSHIP: &str = "ownership";
 pub enum GgModuleOwnership {
     /// The holder's prompt carries the module: its system-prompt section is rendered, and the
     /// pinned block it keeps (the memory index, the task list, the board) is refreshed into the
-    /// window on that module's own schedule. Every capability behaved this way before ownership
-    /// was configurable, so this is the default and the back-compatible value.
+    /// window on that module's own schedule. The default, and what a [task list](GgModuleKind)
+    /// always is.
     #[default]
     Owned,
     /// The module is reachable through the holder's **tools and nothing else**: no system-prompt

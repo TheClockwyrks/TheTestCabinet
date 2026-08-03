@@ -49,7 +49,9 @@ pub struct SandboxLimits {
     /// The linear-memory cap in bytes. A `memory.grow` that would exceed it is denied — which
     /// fails the run rather than letting a runaway allocation inside the guest disturb the host.
     pub max_memory_bytes: usize,
-    /// The most **image-carrying** file views this agent may hold open at once.
+    /// The most **image-carrying** file views this agent may hold open at once, or `None` for no
+    /// ceiling — which is the default, and what an agent whose profile names no `imageViewCap`
+    /// runs under.
     ///
     /// Unlike the two above this is not a per-program ceiling at all: it bounds what is *resident*
     /// in the agent's window, because a picture is tens of megabytes of base64 re-sent on every
@@ -69,7 +71,7 @@ pub struct SandboxLimits {
     /// `read_file` of an image pushes a file view with no budget at all. Capping it would move the
     /// *control* arm of the A/B responses-as-code exists to measure in order to bound the treatment
     /// arm, so the asymmetry is documented rather than closed.
-    pub image_view_cap: usize,
+    pub image_view_cap: Option<usize>,
 }
 
 /// The [default](SandboxLimits::default) execution timeout: **30 seconds** of guest CPU.
@@ -81,27 +83,24 @@ pub struct SandboxLimits {
 /// is never reached outside a program that does not terminate.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// The [default](SandboxLimits::default) [open-image-view cap](SandboxLimits::image_view_cap):
-/// **four** pictures resident in the window at once.
-///
-/// Four is what a run working from reference material actually needs open together — a mockup, a
-/// palette, a screenshot of what it built, and one more — while keeping the base64 re-sent on every
-/// request to something a context window can carry. A study that wants a different number sets
-/// `imageViewCap`; nothing about the enforcement changes, only the number it compares against.
-pub const DEFAULT_IMAGE_VIEW_CAP: usize = 4;
-
 impl Default for SandboxLimits {
-    /// The [default timeout](DEFAULT_TIMEOUT), a 256 MiB linear-memory cap, and the
-    /// [default open-image-view cap](DEFAULT_IMAGE_VIEW_CAP).
+    /// The [default timeout](DEFAULT_TIMEOUT), a 256 MiB linear-memory cap, and **no**
+    /// [open-image-view cap](SandboxLimits::image_view_cap).
     ///
     /// 256 MiB of linear memory is ≈25× the 10.3 MiB the guest engine occupies at rest, which
     /// leaves ample room for the strings a real program builds while still denying a runaway
     /// allocation long before it can disturb the host.
+    ///
+    /// The open-image-view cap is off by default because how many pictures a run needs resident is
+    /// a property of the work, not of the sandbox: a run reproducing a mockup set works from more
+    /// of them at once than one that never looks at anything. A study that wants the ceiling sets
+    /// `imageViewCap`; nothing about the enforcement changes, only whether there is a number to
+    /// compare against.
     fn default() -> Self {
         Self {
             timeout: DEFAULT_TIMEOUT,
             max_memory_bytes: 268_435_456,
-            image_view_cap: DEFAULT_IMAGE_VIEW_CAP,
+            image_view_cap: None,
         }
     }
 }
@@ -140,7 +139,7 @@ pub fn resolve_sandbox_limits(set: &GgAgentConfig) -> SandboxLimits {
     if let Some(views) = positive(capability.params.get(PARAM_IMAGE_VIEW_CAP)) {
         // Saturating for the same reason: a count wider than a `usize` means "as many as you like",
         // which on this platform is every view the window could ever hold.
-        limits.image_view_cap = usize::try_from(views).unwrap_or(usize::MAX);
+        limits.image_view_cap = Some(usize::try_from(views).unwrap_or(usize::MAX));
     }
     limits
 }

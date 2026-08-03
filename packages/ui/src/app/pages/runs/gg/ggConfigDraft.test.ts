@@ -26,7 +26,6 @@ import {
 import {
   CAPABILITIES,
   DEFAULT_ERROR_RATE_WINDOW,
-  DEFAULT_IMAGE_VIEW_CAP,
   DEFAULT_MAX_CONSECUTIVE_ERRORS,
   DEFAULT_MAX_ERROR_RATE,
   DEFAULT_MAX_PARALLEL,
@@ -666,6 +665,21 @@ describe("gg capability params", () => {
     ).not.toHaveProperty("reviewers");
   });
 
+  // The task list is always carried in its holder's prompt, so tasks is the one
+  // module-backed capability with no `ownership` control — while the other four keep one.
+  it("offers no ownership control on tasks", () => {
+    const ownership = (id: string) =>
+      CAPABILITIES.find((cap) => cap.id === id)?.params?.some(
+        (p) => p.key === "ownership",
+      ) ?? false;
+    expect(ownership("tasks")).toBe(false);
+    expect(
+      ["memories", "project-management", "skills", "agent-managed-context"].map(
+        ownership,
+      ),
+    ).toEqual([true, true, true, true]);
+  });
+
   it("round-trips a string param through its text control", () => {
     const configured = capSet([
       { id: "skills", enabled: true, params: { dir: "docs/skills" } },
@@ -754,6 +768,27 @@ describe("gg run limits", () => {
     expect(runLimitsWarning(draft.limits)).toContain("(8)");
     draft.limits.errorRateWindow = "4";
     expect(runLimitsWarning(draft.limits)).toBeNull();
+  });
+
+  // The replay ceiling is the one size among the ceilings: the operator reads and writes
+  // MiB, the wire carries the bytes gg reads, and neither end ever sees the other's unit.
+  it("edits the replay ceiling in MiB and stores it in bytes", () => {
+    const draft = draftFromCapabilitySet(
+      set({ limits: { replayMaxBytes: 512 * 1024 * 1024 } }),
+    );
+    expect(draft.limits.replayMaxBytes).toBe("512");
+    expect(capabilitySetFromDraft(draft, null).limits?.replayMaxBytes).toBe(
+      512 * 1024 * 1024,
+    );
+
+    draft.limits.replayMaxBytes = "64";
+    expect(draftSaveError(draft)).toBeNull();
+    expect(capabilitySetFromDraft(draft, null).limits?.replayMaxBytes).toBe(
+      64 * 1024 * 1024,
+    );
+
+    draft.limits.replayMaxBytes = "-1";
+    expect(draftSaveError(draft)).toContain("cannot be negative");
   });
 
   it("does not warn about the window when the turn ceiling is unbounded", () => {
@@ -929,9 +964,11 @@ describe("params gated on the selected implementation", () => {
     );
   });
 
-  it("seeds the open-image-view cap to the default gg would apply anyway", () => {
+  // gg's own default is no ceiling at all, so there is no figure to seed: an empty field
+  // is the default arm, and seeding one would arm a cap nobody asked for.
+  it("seeds no open-image-view cap", () => {
     expect(paramOf("responses-as-code", "imageViewCap").defaultValue).toBe(
-      String(DEFAULT_IMAGE_VIEW_CAP),
+      undefined,
     );
   });
 

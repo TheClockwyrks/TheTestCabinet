@@ -37,6 +37,7 @@ import type {
   GgSubagentScope,
 } from "@test-cabinet/run-record/gg";
 import {
+  BYTES_PER_MIB,
   CAPABILITIES,
   DEFAULT_CAP_IDS,
   FILESYSTEM_CAP_IDS,
@@ -1244,14 +1245,21 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
 }
 
 /**
- * A stored ceiling set as the form's six text fields. An absent ceiling stays the
- * empty string — the form's own spelling of "off".
+ * A stored ceiling set as the form's text fields. An absent ceiling stays the empty
+ * string — the form's own spelling of "off".
+ *
+ * A [`mib`](RunLimitSpec.kind) ceiling is stored in bytes and edited in mebibytes, so it
+ * is divided down here and multiplied back in [runLimitsFromDraft]. A stored value that
+ * is not a whole number of MiB shows its fraction rather than being rounded to one the
+ * operator did not write.
  */
 function runLimitsDraft(limits: GgRunLimits | undefined): GgRunLimitsDraft {
   const draft = blankRunLimits();
   for (const spec of RUN_LIMIT_SPECS) {
     const value = limits?.[spec.key];
-    if (value !== undefined) draft[spec.key] = String(value);
+    if (value === undefined) continue;
+    draft[spec.key] =
+      spec.kind === "mib" ? String(value / BYTES_PER_MIB) : String(value);
   }
   return draft;
 }
@@ -1386,6 +1394,12 @@ export function runLimitsError(limits: GgRunLimitsDraft): string | null {
     if (spec.kind === "amount" && value <= 0) {
       return `${spec.label} must be greater than zero.`;
     }
+    // A size is edited in MiB and stored in bytes, so a fraction is legitimate (a
+    // stored ceiling that is not a whole MiB shows as one); only a negative size is
+    // not a size.
+    if (spec.kind === "mib" && value < 0) {
+      return `${spec.label} cannot be negative.`;
+    }
   }
   const rate = limits.maxErrorRate.trim();
   const window = limits.errorRateWindow.trim();
@@ -1413,7 +1427,8 @@ export function runLimitsWarning(limits: GgRunLimitsDraft): string | null {
 }
 
 /**
- * A draft's ceilings as the wire shape, or `undefined` when it declares none.
+ * A draft's ceilings as the wire shape, or `undefined` when it declares none. A
+ * [`mib`](RunLimitSpec.kind) ceiling is written back out as the byte count gg reads.
  */
 export function runLimitsFromDraft(
   limits: GgRunLimitsDraft,
@@ -1423,7 +1438,11 @@ export function runLimitsFromDraft(
     const raw = limits[spec.key].trim();
     if (!raw) continue;
     const value = Number(raw);
-    if (Number.isFinite(value)) out[spec.key] = value;
+    if (!Number.isFinite(value)) continue;
+    // Rounded, because bytes are what the wire carries and a fractional MiB would
+    // otherwise write a fraction of a byte.
+    out[spec.key] =
+      spec.kind === "mib" ? Math.round(value * BYTES_PER_MIB) : value;
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }

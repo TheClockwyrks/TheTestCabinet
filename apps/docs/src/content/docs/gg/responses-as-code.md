@@ -674,7 +674,7 @@ behind its back is the failure mode this mechanism exists to remove.
 | `MAX_VIEW_LABEL_BYTES` | 200 | one `openText` label |
 | `MAX_OPEN_TEXT_VIEWS` | 50 | text views open at once, per agent |
 | `MAX_VIEW_OPS_PER_PROGRAM` | 100 | `openFile` + `openText` + `close` calls in one program |
-| [`imageViewCap`](#configuring-it) | 4, per agent | image-carrying **file** views open at once |
+| [`imageViewCap`](#configuring-it) | unset (no ceiling), per agent | image-carrying **file** views open at once |
 
 An **empty label** is `invalid-argument`: a view with no selector could never be closed,
 superseded or attributed. So is an empty selector handed to `close` — a blank string is not a
@@ -949,11 +949,12 @@ The capability is `responses-as-code`, under **Models & tools** in the
 | --- | --- | --- |
 | `timeoutSecs` | `30` | The per-program guest-execution timeout, in seconds. |
 | `maxMemoryBytes` | `268435456` | The per-program linear-memory cap. |
-| `imageViewCap` | `4` | How many [image-carrying views](#the-caps-and-why-none-of-them-truncates) this agent may hold open at once. Labelled **Max open image views** in the editor. |
+| `imageViewCap` | unset — no ceiling | How many [image-carrying views](#the-caps-and-why-none-of-them-truncates) this agent may hold open at once. Labelled **Max open image views** in the editor. |
 | `healing` | every strategy on | Which [response-healing](/gg/response-healing/#configuration) repairs are armed. |
 
 The three numeric params each fall back to their default when absent, non-numeric, or
-non-positive. `timeoutSecs` is a wall-clock time, so a **fraction** is honoured — `0.5` is
+non-positive — and `imageViewCap`'s default is **no ceiling at all**, because how many pictures
+a run needs resident is a property of the work rather than of the sandbox. `timeoutSecs` is a wall-clock time, so a **fraction** is honoured — `0.5` is
 half a second, which a study measuring a very short ceiling has every reason to ask for —
 while `maxMemoryBytes` and `imageViewCap` are counts and truncate a fraction towards zero.
 None of them is clamped — a study may starve the sandbox on purpose to measure what that

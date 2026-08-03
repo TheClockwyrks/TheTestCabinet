@@ -121,7 +121,7 @@ fn every_param_resolves_together() {
     ));
     assert_eq!(limits.timeout, Duration::from_secs(5));
     assert_eq!(limits.max_memory_bytes, 65_536);
-    assert_eq!(limits.image_view_cap, 9);
+    assert_eq!(limits.image_view_cap, Some(9));
 }
 
 /// The defaults themselves, asserted as values: the timeout is a pure infinite-loop guard (see the
@@ -131,8 +131,11 @@ fn the_defaults_are_the_expected_ceilings() {
     let limits = SandboxLimits::default();
     assert_eq!(limits.timeout, Duration::from_secs(30));
     assert_eq!(limits.max_memory_bytes, 268_435_456);
-    assert_eq!(limits.image_view_cap, DEFAULT_IMAGE_VIEW_CAP);
-    assert_eq!(DEFAULT_IMAGE_VIEW_CAP, 4);
+    assert_eq!(
+        limits.image_view_cap, None,
+        "how many pictures a run needs resident is a property of the work, so the ceiling is off \
+         until a profile asks for one"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -144,7 +147,7 @@ fn the_defaults_are_the_expected_ceilings() {
 #[test]
 fn a_configured_image_view_cap_is_honoured() {
     let limits = resolve_sandbox_limits(&set_with(json!({ "imageViewCap": 12 })));
-    assert_eq!(limits.image_view_cap, 12);
+    assert_eq!(limits.image_view_cap, Some(12));
     assert_eq!(
         limits.timeout,
         SandboxLimits::default().timeout,
@@ -163,7 +166,7 @@ fn a_configured_image_view_cap_is_honoured() {
 fn a_cap_of_one_is_honoured_rather_than_clamped() {
     assert_eq!(
         resolve_sandbox_limits(&set_with(json!({ "imageViewCap": 1 }))).image_view_cap,
-        1
+        Some(1)
     );
 }
 
@@ -179,7 +182,7 @@ fn a_zero_negative_or_non_numeric_image_view_cap_falls_back() {
     for nonsense in [json!(0), json!(-3), json!(0.5), json!("four"), json!(null)] {
         let limits = resolve_sandbox_limits(&set_with(json!({ "imageViewCap": nonsense })));
         assert_eq!(
-            limits.image_view_cap, DEFAULT_IMAGE_VIEW_CAP,
+            limits.image_view_cap, None,
             "{nonsense} must not configure a cap"
         );
     }
@@ -192,11 +195,11 @@ fn a_zero_negative_or_non_numeric_image_view_cap_falls_back() {
 fn a_float_image_view_cap_truncates_rather_than_falling_back() {
     assert_eq!(
         resolve_sandbox_limits(&set_with(json!({ "imageViewCap": 6.0 }))).image_view_cap,
-        6
+        Some(6)
     );
     assert_eq!(
         resolve_sandbox_limits(&set_with(json!({ "imageViewCap": 6.9 }))).image_view_cap,
-        6
+        Some(6)
     );
 }
 
@@ -208,7 +211,7 @@ fn the_image_view_cap_param_is_named_image_view_cap() {
     assert_eq!(PARAM_IMAGE_VIEW_CAP, "imageViewCap");
     assert_eq!(
         resolve_sandbox_limits(&set_with(json!({ PARAM_IMAGE_VIEW_CAP: 7 }))).image_view_cap,
-        7
+        Some(7)
     );
 }
 
@@ -232,16 +235,16 @@ fn two_agents_in_one_configuration_resolve_different_caps() {
 
     assert_eq!(
         resolve_sandbox_limits(&profile("builder", 6)).image_view_cap,
-        6
+        Some(6)
     );
     assert_eq!(
         resolve_sandbox_limits(&profile("reviewer", 1)).image_view_cap,
-        1
+        Some(1)
     );
     assert_eq!(
         resolve_sandbox_limits(&GgAgentConfig::root()).image_view_cap,
-        DEFAULT_IMAGE_VIEW_CAP,
-        "a third agent that configures nothing still gets the default"
+        None,
+        "a third agent that configures nothing runs under no ceiling at all"
     );
 }
 

@@ -21,24 +21,24 @@ There are six kinds, and the list is closed:
 
 ## Ownership
 
-Every module-backed capability reads an **`ownership`** param:
+Most module-backed capabilities read an **`ownership`** param:
 
 ```jsonc
-{ "id": "tasks", "enabled": true, "params": { "ownership": "unowned" } }
+{ "id": "memories", "enabled": true, "params": { "ownership": "unowned" } }
 ```
 
-Five capabilities carry it, one per module a configuration can turn on:
-[`memories`](/gg/memories/), [`tasks`](/gg/tasks/),
+Four capabilities carry it: [`memories`](/gg/memories/),
 [`project-management`](/gg/project-management/) (the board), [`skills`](/gg/skills/), and
-[`agent-managed-context`](/gg/agent-managed-context/) (the thread archive). The sixth
-module, `history`, has no capability behind it and no ownership to configure: an agent's
-window *is* its prompt.
+[`agent-managed-context`](/gg/agent-managed-context/) (the thread archive). Two module kinds
+have none. `history` has no capability behind it at all: an agent's window *is* its prompt.
+And [`tasks`](/gg/tasks/) has a capability but no ownership to configure — the task list is
+what an agent steers its work by from turn to turn, so it is always carried in its holder's
+prompt as its own message.
 
 - **`owned`** (the default) — the holder's prompt carries the module's **state**: the
-  pinned block it keeps — the memory index, the task list, the board — is refreshed into
-  the window on that module's own schedule, and skills contribute their up-front catalog
-  listing. This is how every capability behaved before ownership was configurable, so a
-  configuration that says nothing keeps behaving exactly as it did.
+  pinned block it keeps — the memory index, the board — is refreshed into the window on that
+  module's own schedule, and skills contribute their up-front catalog listing. A
+  configuration that says nothing gets this.
 - **`unowned`** — none of that reaches the prompt. No pinned block, no catalog listing, no
   [linked-memory notice](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote)
   — and no system-prompt section either: the capability's own paragraphs, its limits and its

@@ -332,14 +332,6 @@ export const SHELL_OUTPUT_HINT =
 export const DEFAULT_SHELL_MAX_LINES = 250;
 export const DEFAULT_SHELL_MAX_CHARS = 4096;
 
-// How many image-carrying file views a responses-as-code agent may hold open at once
-// when its configuration names no ceiling (`DEFAULT_IMAGE_VIEW_CAP` in
-// `crates/gg/src/sandbox/limits.rs`). This one bounds *occupancy* of the window rather
-// than the size of any one call: the count is derived from the views that are open, so
-// closing one frees a slot, and a pinned autoloaded specification image never occupies
-// a slot at all.
-export const DEFAULT_IMAGE_VIEW_CAP = 4;
-
 // Whether the autoload-specifications capability **locks** the injected specs into the
 // window. The values are gg's implementation ids (`crates/core/src/gg.rs`); the empty
 // value is the default (not locked — ordinary, droppable file reads), and `locked` pins
@@ -418,10 +410,10 @@ export const ASSISTANT_MESSAGE_HINT =
 // Every unit of per-agent state gg keeps behind a capability is a **module** (see
 // gg/modules): memories, the task list, the board, the skills read-set and the thread
 // archive, plus the conversation window itself. Two things about a module are authored
-// here — whether its holder's *prompt* carries it (`ownership`, a param on each of the
-// five module-backed capabilities), and which modules an FSM transition hands to the
-// next state (the transfer list on each edge). Both name the same closed taxonomy, so
-// it is spelled once.
+// here — whether its holder's *prompt* carries it (`ownership`, a param on every
+// module-backed capability except tasks, whose list is always owned), and which modules
+// an FSM transition hands to the next state (the transfer list on each edge). Both name
+// the same closed taxonomy, so it is spelled once.
 
 // The module kinds a transition may carry, in the contract's own declaration order
 // (`GgModuleKind` in `crates/core/src/gg.rs`), each with what carrying it actually
@@ -458,7 +450,7 @@ export const MODULE_KINDS: ReadonlyArray<{
   {
     value: "skills",
     label: "Skills",
-    hint: "Which skills have been read — a promise about the window, so it is only worth carrying beside the history it refers to.",
+    hint: "Which skills have been read. Their bodies are pinned in the window, so this is only meaningful carried alongside History.",
   },
   {
     value: "archive",
@@ -516,23 +508,23 @@ export const FSM_STATES_PARAM = "states";
 // Whether a module-backed capability's state is carried in its holder's **prompt**
 // (`owned` — every turn, as a pinned block and a prompt section) or is reachable only
 // through the tools it contributes (`unowned`). The empty value is the default
-// (`owned`), which is what a module has always been and what every existing
-// configuration keeps.
+// (`owned`).
 export const MODULE_OWNERSHIP_OPTIONS = [
   { value: "", label: "Owned (default)" },
   { value: "unowned", label: "Unowned — tools only, not in the prompt" },
 ] as const;
 
 // One module-backed capability's `ownership` control. The label is shared across the
-// five so the knob reads as one idea rather than five; `what` names the state at stake
-// so the hint says what an unowned arm actually costs that capability.
+// four that offer it so the knob reads as one idea rather than four; `what` names the
+// state at stake so the hint says what an unowned arm actually costs that capability.
+// The task list is not among them: it is always owned.
 function ownershipParam(what: string): ParamSpec {
   return {
     key: "ownership",
     label: "Ownership",
     kind: "select",
     options: MODULE_OWNERSHIP_OPTIONS,
-    hint: `Whether this agent's prompt carries ${what}. Owned is what a module has always been: it is rebuilt into the window on its own schedule and described in the system prompt, so the agent is told what it holds on every turn. Unowned leaves the tools, the state and the telemetry exactly as they are and takes the block out of the prompt — the agent may look ${what} up, and stops paying for it in every request. Worth it for a store an agent works with occasionally, and for one it is holding on another agent's behalf.`,
+    hint: `Whether this agent's prompt carries ${what}. Owned rebuilds it into the window on its own schedule and describes it in the system prompt, so the agent is told what it holds on every turn. Unowned removes both, and leaves the tools, the state and the telemetry unchanged: the agent reaches ${what} through its tools instead, and pays no context for it between calls.`,
   };
 }
 
@@ -580,7 +572,7 @@ export const MEMORY_SCOPE_OPTIONS = [
 // What the scope picker means, in one paragraph, including the two rules that make the
 // four coherent and that a reader of a recorded configuration has to know.
 export const MEMORY_SCOPE_HINT =
-  "Which memory instance this agent binds. Isolated gives every instance its own, which is what memories always were. Shared binds one store per agent profile, so parallel instances of this agent curate it together. Inherited binds the spawner's store when this agent is spawned as a subagent (and its own otherwise), chaining however deep. Read-only is inherited without write access — but only for an inherited handle: an agent that ends up with its own store may write it, and a read-only agent's own inherited subagent gets write access back. Linked holders are told, in their next prompt, when another holder adds, revises or removes a memory.";
+  "Which memory instance this agent binds. Isolated gives every instance its own. Shared binds one store per agent profile, so parallel instances of this agent curate it together. Inherited binds the spawner's store when this agent is spawned as a subagent (and its own otherwise), chaining however deep. Read-only is inherited without write access, and only for an inherited handle: an agent that ends up with its own store may write it, and a read-only agent's own inherited subagent gets write access back. Linked holders are told, in their next prompt, when another holder adds, revises or removes a memory.";
 
 // The memory strategies that bound the store by a **count** of notes: the scratchpad
 // (whose notes live in the window) and keyword search. A markdown run is bounded by its
@@ -764,14 +756,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Responses as code",
     group: "Models & tools",
     purpose:
-      "The agent's whole reply is a TypeScript program over the tools, run in a wasm sandbox instead of one discrete tool call at a time, ending the run by calling `finish` from inside a program.",
+      "The agent's whole reply is a TypeScript program over the tools, run in a wasm sandbox.",
     params: [
       {
         key: "timeoutSecs",
         label: "Execution timeout (seconds)",
         kind: "number",
         placeholder: "e.g. 30",
-        hint: "Wall-clock ceiling on one program's guest execution — a runaway-loop guard, not a work ration, so it is far longer than any program needs. Time parked in a tool call is excluded.",
+        hint: "Wall-clock ceiling on one program's guest execution. Time the program spends parked in a tool call is excluded. gg's default is 30 seconds.",
       },
       {
         key: "maxMemoryBytes",
@@ -783,8 +775,8 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         key: "imageViewCap",
         label: "Max open image views",
         kind: "number",
-        defaultValue: String(DEFAULT_IMAGE_VIEW_CAP),
-        hint: "How many views carrying a picture this agent may hold open at once — an occupancy ceiling on the window, not a per-turn budget, so closing one with `view.close` frees a slot for the next. Opening one past it is refused, not quietly dropped: `view.openFile` throws a catchable limit-exceeded error, no view is opened and nothing is shown. Text views are never refused, and a pinned autoloaded specification image does not occupy a slot.",
+        placeholder: "no limit",
+        hint: "How many views carrying a picture this agent may hold open at once, counted from the views open at that moment: closing one with `view.close` frees a slot. Opening one past the cap throws a catchable limit-exceeded error — no view is opened and nothing is shown. Text views are not counted, and neither is a pinned autoloaded specification image. Empty is no limit, which is gg's default.",
       },
       {
         key: "healing",
@@ -808,7 +800,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Context Window Override",
     group: "Context",
     purpose:
-      "Run the model against a smaller context window than its real one — the way to exercise compaction on a million-token model without paying for a million tokens. Off by default: the model runs against its full catalog window.",
+      "Run the model against a smaller context window than its real one.",
     defaultOn: false,
     params: [
       {
@@ -825,7 +817,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Autoload specifications",
     group: "Context",
     purpose:
-      "Seed an agent's opening context with the full contents of every file the test case provided — its specification and reference images — as though it had already read each, so the whole brief is in the window from the first turn.",
+      "Seed the agent's opening context with the test case's specifications and reference images.",
     implementationLabel: "Locked",
     implementationOptions: AUTOLOAD_LOCKED_OPTIONS,
     implementationHint: AUTOLOAD_LOCKED_HINT,
@@ -867,7 +859,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Agent-managed context",
     group: "Context",
     purpose:
-      "The agent reclaims window space itself — evicting file views and archiving (searchable) thread sections.",
+      "The agent reclaims window space itself: evicting file views, archiving thread sections.",
     params: [ownershipParam("what it has archived")],
     tools: ["evict_file_view", "archive_thread", "search_archive"],
     toolAblation: [
@@ -875,7 +867,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       {
         label: "Archive & search the thread",
         tools: ["archive_thread", "search_archive"],
-        hint: "Archiving and its search go together — archiving without a way to search it back just buries context.",
+        hint: "`archive_thread` and `search_archive` are withheld together: an archive the agent cannot search back is unreadable.",
       },
     ],
   },
@@ -885,7 +877,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Skills",
     group: "Knowledge",
     purpose:
-      "Authored markdown skills whose descriptions are shown up front and bodies survive compaction once read.",
+      "Authored markdown skills, catalogued up front and pinned once read.",
     defaultOn: true,
     params: [
       {
@@ -952,14 +944,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         kind: "number",
         defaultValue: String(DEFAULT_MEMORY_MAX_LEN_INDEX),
         showWhenImplementation: INDEXED_MEMORY_STRATEGY,
-        hint: "Character ceiling on the pinned index — the real budget here: a create whose entry would not fit is refused, which is what bounds how many memories the run can hold. 0 for unlimited.",
+        hint: "Character ceiling on the pinned index. A create whose entry would not fit is refused, so this is what bounds how many memories a markdown run can hold. 0 for unlimited.",
       },
       {
         key: "maxLenDescription",
         label: "Max description length (chars)",
         kind: "number",
         placeholder: "unlimited",
-        hint: "Character ceiling on a memory's one-line description, under every strategy. Off unless set — worth setting on a markdown run, where every description is a line of the pinned index and a verbose one costs the window on every turn.",
+        hint: "Character ceiling on a memory's one-line description, under every strategy. Empty is no ceiling. Under the markdown strategy every description is a line of the pinned index, so it is charged to the window on every turn.",
       },
       {
         key: "maxResults",
@@ -1011,7 +1003,9 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         defaultValue: String(DEFAULT_MAX_TASKS),
         hint: "How many tasks the list may hold at once.",
       },
-      ownershipParam("its task list"),
+      // No `ownership` param: the task list is always carried in its holder's prompt. It
+      // is what the agent steers by from turn to turn, so an unowned one — reachable
+      // through the tools and absent from the prompt — is not a shape this capability has.
     ],
     tools: [
       "add_task",
@@ -1034,7 +1028,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Project management",
     group: "Work tracking",
     purpose:
-      "A single, run-global board of scoped, completion-criteria'd issues that auto-dispatch: submitting an issue enqueues it, and gg spawns a top-level agent to implement it once its blockers clear. An issue is finished when the agent implementing it finishes — there is no completion tool — and gg re-dispatches one whose agent ended any other way up to `maxRetries` before marking it failed.",
+      "A run-global board of scoped issues gg dispatches to agents as their blockers clear.",
     params: [
       {
         key: "maxEpics",
@@ -1131,7 +1125,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Agent persistence",
     group: "Delegation",
     purpose:
-      "Make this agent one long-lived worker instead of a pool of interchangeable ones: only one instance of it runs at a time (further instances queue), and each instance opens on the views the last one had open — a file view re-read from the workspace as it stands then rather than replayed, and a view the agent composed for itself restored exactly as it wrote it.",
+      "One instance of this agent runs at a time, and each opens on the views the last one left open.",
     defaultOn: false,
   },
   {
@@ -1147,7 +1141,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Fork & exec",
     group: "Delegation",
     purpose:
-      "Let this agent become another agent (`exec` — it is replaced, and its successor keeps everything both profiles have, the conversation above all) or run a copy of itself (`fork` — a child that opens already knowing what this agent knows). `exec` needs agents in this one's roster; `fork` needs subagents or workflows, so the copy can be waited on. An agent inside a process is never offered `exec` — there, `transition_state` is the move.",
+      "Let this agent replace itself with another profile (`exec`) or run a copy of itself (`fork`).",
     defaultOn: false,
     tools: ["exec", "fork"],
     toolAblation: [
@@ -1159,7 +1153,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       {
         label: "Run a copy of yourself",
         tools: ["fork"],
-        hint: "Off leaves exec only — the agent can become something else but not work two lines at once.",
+        hint: "Off leaves exec only — the agent can become another profile but cannot run a copy of itself.",
       },
     ],
   },
@@ -1171,14 +1165,14 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     // declares none, because an FSM agent has no turns of its own.
     requiresAuthoring: true,
     purpose:
-      "Make this agent a **process** rather than a worker: a named list of states, each running one of the configuration's other agent profiles, and each declaring where it may go and what it takes with it. The machine is one agent to everyone else — one instance in the tree, one slot, one return value — so it can be the run's root, a subagent, or an issue's implementer. An agent standing in a state is offered `transition_state` for exactly the edges its state declares; a state with no edges ends the machine.",
+      "Run this agent as a state machine whose states each run one of the other agent profiles.",
     defaultOn: false,
     params: [
       {
         key: FSM_STATES_PARAM,
         label: "States",
         kind: "states",
-        hint: "The machine, in order — the first state is the one it enters. Each state runs an agent profile this configuration declares (never another machine), and each transition names the state it leads to, when the model should take it, and which modules travel with it. Transfers are explicit: an edge that carries nothing is a deliberate hard reset, and a new edge is pre-filled with History so the successor at least opens on the conversation it is continuing.",
+        hint: "The machine, in order — the first state is the one it enters. Each state runs an agent profile this configuration declares (never another machine), and each transition names the state it leads to, when the model should take it, and which modules travel with it. A transition carries only the modules it names; one that names none starts its successor on nothing. A new transition is pre-filled with History.",
       },
     ],
     tools: ["transition_state"],
@@ -1190,8 +1184,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     id: "completion",
     name: "Completion",
     group: "Process & quality",
-    purpose:
-      "Commands that must pass before this agent's ending is accepted. How an agent ends is not configurable — it is always an explicit call, shaped by the role it was dispatched in — so this capability only adds the gate. Off takes the model's word for it.",
+    purpose: "Commands that must pass before this agent's ending is accepted.",
     params: [
       {
         key: "validation",
@@ -1230,7 +1223,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     // agent escalates the whole run, which is why the copy says "the run" rather than
     // "this agent" — the previous gate read the root alone and silently did nothing here.
     purpose:
-      "Every run already records a replay record — every agent's model I/O, tool results and prompt frames — so it can be stepped through afterwards. This escalates the whole run to full fidelity: every latency clock read, verbatim startup file loads instead of digests, and no payload truncation. Adds no tools.",
+      "Escalate the whole run's replay record to full fidelity: verbatim payloads, no truncation.",
   },
 ];
 
@@ -1283,7 +1276,13 @@ export const DEFAULT_MAX_PARALLEL = 16;
 export interface RunLimitSpec {
   key: keyof GgRunLimits;
   label: string;
-  kind: "count" | "fraction" | "amount";
+  // `mib` is a size the operator reads and writes in **mebibytes** while the wire field
+  // stays the byte count gg reads: the draft holds the MiB figure, and [ggConfigDraft]
+  // multiplies it out on save and divides it back on load. It is its own kind rather than
+  // a `count` with a unit in its label because of that conversion, and because a value
+  // that is not a whole MiB is legitimate here — a stored ceiling that is not a round
+  // multiple has to survive a round-trip.
+  kind: "count" | "fraction" | "amount" | "mib";
   placeholder?: string;
   hint: string;
   // The value gg falls back to when this ceiling is unset, seeded into a fresh
@@ -1293,10 +1292,14 @@ export interface RunLimitSpec {
   defaultValue?: string;
 }
 
-// gg's default ceiling on the replay capture journal, in bytes (256 MiB). Unlike the
-// others this one is always in force — capture runs for every run — so the default is a
-// number rather than "off".
-export const DEFAULT_REPLAY_MAX_BYTES = 256 * 1024 * 1024;
+// One mebibyte in bytes — the factor the `mib` ceiling converts through, spelled once
+// because both the load and the save path multiply by it.
+export const BYTES_PER_MIB = 1024 * 1024;
+
+// gg's default ceiling on the replay capture journal, in MiB. Unlike the others this one
+// is always in force — capture runs for every run — so the default is a number rather
+// than "off".
+export const DEFAULT_REPLAY_MAX_MIB = 256;
 
 // The guardrails, in the order they read as a sentence: how much of the run happens
 // at once, then how long it may go on for, then how badly it may go, then how much it
@@ -1312,7 +1315,7 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     kind: "count",
     defaultValue: String(DEFAULT_MAX_PARALLEL),
     placeholder: `e.g. ${DEFAULT_MAX_PARALLEL}`,
-    hint: `How many of the run's agents may run at once, counting the root and every subagent, issue implementer and reviewer; gg's default is ${DEFAULT_MAX_PARALLEL}. Alone among these, it stops nothing — an agent spawned while the pool is full queues for a slot rather than being refused, so a low value serializes the run without losing any of its work. A suspended agent (waiting on its subagents or an issue) frees its slot and takes priority over any not-yet-started agent when one opens up.`,
+    hint: `How many of the run's agents may run at once, counting the root and every subagent, issue implementer and reviewer; gg's default is ${DEFAULT_MAX_PARALLEL}. An agent spawned while the pool is full queues for a slot rather than being refused, so this stops nothing — it only serializes the run. A suspended agent (waiting on its subagents or an issue) frees its slot, and takes priority over any not-yet-started agent when one opens up.`,
   },
   {
     key: "maxTurns",
@@ -1350,20 +1353,20 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     kind: "count",
     defaultValue: String(DEFAULT_ERROR_RATE_WINDOW),
     placeholder: "e.g. 50",
-    hint: `How many of an agent's most recent turns the rate is measured over, and also the minimum sample: the ceiling cannot fire until the agent has taken this many turns, so a run can never be killed by its first bad turn. gg's default is ${DEFAULT_ERROR_RATE_WINDOW}.`,
+    hint: `How many of an agent's most recent turns the rate is measured over, and also the minimum sample: the ceiling cannot fire until the agent has taken this many turns. gg's default is ${DEFAULT_ERROR_RATE_WINDOW}.`,
   },
   {
     key: "maxCost",
     label: "Cost (USD)",
     kind: "amount",
     placeholder: "e.g. 25",
-    hint: "Ceiling on the whole run's accumulated cost, checked at each agent's turn boundary. A run whose model reports no cost can never be stopped by it — gg does not invent a figure to stop a run with.",
+    hint: "Ceiling on the whole run's accumulated cost, checked at each agent's turn boundary. The turn that crosses it completes, so the recorded cost can exceed it by up to one turn per running agent. A run whose model reports no cost is never stopped by it.",
   },
   {
     key: "replayMaxBytes",
-    label: "Replay journal (bytes)",
-    kind: "count",
-    placeholder: `e.g. ${DEFAULT_REPLAY_MAX_BYTES}`,
-    hint: `The odd one out, and deliberately so: every other ceiling here stops the run, and this one stops only the record kept of it. Crossing it stops replay capture and marks the record truncated — capture degrades, it never fails the run it observes, because a debugging artifact that can end a paid run is worse than no artifact. Absent means gg's default of ${DEFAULT_REPLAY_MAX_BYTES} bytes (256 MiB); 0 cannot bound anything and is read as no ceiling at all.`,
+    label: "Replay journal (MiB)",
+    kind: "mib",
+    placeholder: `e.g. ${DEFAULT_REPLAY_MAX_MIB}`,
+    hint: `Ceiling on the replay capture journal gg writes as it runs. Crossing it stops capture and marks the record truncated; the run itself continues. Empty means gg's default of ${DEFAULT_REPLAY_MAX_MIB} MiB, and 0 is read as no ceiling at all.`,
   },
 ];

@@ -57,7 +57,7 @@ const GG_MODEL_FAMILY = familyOf("gg");
 // The `step` a ceiling's number input moves in: whole turns/seconds/errors for a
 // count, a twentieth for a rate, and anything for money.
 function limitStep(kind: RunLimitSpec["kind"]): number | "any" {
-  if (kind === "count") return 1;
+  if (kind === "count" || kind === "mib") return 1;
   return kind === "fraction" ? 0.05 : "any";
 }
 
@@ -370,7 +370,7 @@ export function GgConfigEditor({
         <section className={gg.limitsWidget}>
           <p className={runExec.sectionLabel}>
             Run limits
-            <HelpTip text="The ceilings that stop a run and record which one stopped it. Leave a field empty to leave that ceiling off. A cost ceiling stops the run before its next turn, so the final cost can exceed it by up to one turn." />
+            <HelpTip text="The ceilings a run is bounded by, applied to every agent and both execution modes. A run stopped by one records which one stopped it. Leave a field empty to leave that ceiling off." />
           </p>
           <div className={gg.limitGrid}>
             {RUN_LIMIT_SPECS.map((spec) => (
@@ -690,7 +690,11 @@ export function GgConfigEditor({
       </div>
 
       {/* Model binding — one model per agent, taken from a declared model slot (at
-          launch) or pinned here. */}
+          launch) or pinned here — and, on the same row, how long this agent's stable
+          prompt-cache entries live. The cache lifetime is per agent because it is a cost
+          trade that comes out differently for each: the extended lifetime is charged a
+          higher write premium, and only earns it back on an agent whose turns are slow or
+          far enough apart to outlive the provider default. */}
       <div className={gg.slotFields}>
         <label className={`${runExec.field} ${gg.slotSourceField}`}>
           <span className={runExec.fieldLabel}>Model from</span>
@@ -743,23 +747,10 @@ export function GgConfigEditor({
             />
           </label>
         )}
-      </div>
-      {agent.modelSource === "model-slot" && !boundSlot && (
-        <p className={gg.fieldError}>
-          This agent defers to no model slot, so a run could never give it a
-          model. Pick one of the configuration&rsquo;s slots, or pin it a model.
-        </p>
-      )}
-
-      {/* How long this agent's stable prompt-cache entries live. Per agent because it is a
-          cost trade that comes out differently for each: the extended lifetime is charged a
-          higher write premium, and only earns it back on an agent whose turns are slow or
-          far enough apart to outlive the provider default. */}
-      <div className={gg.slotFields}>
         <label className={`${runExec.field} ${gg.cacheTtlField}`}>
           <FieldLabel
             label="Prompt cache"
-            hint="How long this agent asks the provider to keep its stable cache entries — its opening context and the cached points a later turn reads. One hour costs a higher write premium (on Anthropic, 2× the input rate against 5 minutes' 1.25×), and only pays for itself on an agent whose turns are long, or spread far enough apart, that five minutes would have expired before the next one. An agent that runs quickly and is never resumed should stay on 5 minutes."
+            hint="How long this agent asks the provider to keep its stable cache entries — its opening context and the cached points a later turn reads. The one-hour lifetime is charged a higher write premium (on Anthropic, 2× the input rate against 5 minutes' 1.25×), and is only read back by an agent whose turns are long enough, or spread far enough apart, that five minutes would have expired before the next one."
           />
           <select
             className={runExec.select}
@@ -776,14 +767,19 @@ export function GgConfigEditor({
             <option value="extended">1 hour (extended, costs more)</option>
           </select>
         </label>
-        {agent.promptCacheTtl === "extended" && (
-          <p className={gg.cacheTtlNote}>
-            Worth it for an agent that delegates, or whose turns run builds and
-            test suites; wasted on one that answers quickly and is never
-            resumed.
-          </p>
-        )}
       </div>
+      {agent.modelSource === "model-slot" && !boundSlot && (
+        <p className={gg.fieldError}>
+          This agent defers to no model slot, so a run could never give it a
+          model. Pick one of the configuration&rsquo;s slots, or pin it a model.
+        </p>
+      )}
+      {agent.promptCacheTtl === "extended" && (
+        <p className={gg.cacheTtlNote}>
+          Worth it for an agent that delegates, or whose turns run builds and
+          test suites; wasted on one that answers quickly and is never resumed.
+        </p>
+      )}
 
       {/* The full capability catalog, grouped by concern, collapsible — this agent's
           capabilities. */}

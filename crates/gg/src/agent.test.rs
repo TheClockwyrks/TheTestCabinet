@@ -1648,10 +1648,13 @@ fn system_prompt_names_the_api_objects_in_code_mode() {
 ///
 /// `unowned` means the module is reachable through its *tools and nothing else*: not the pinned
 /// block (which each module withholds itself), and not the capability's own section either — the
-/// paragraphs explaining what a task list is for and what its ceiling is. What documents the tools
+/// paragraphs explaining what its store is for and what its ceilings are. What documents the tools
 /// is their own schemas, which are untouched. Withholding only the block would have left an
 /// operator who set the param to cut a large module out of every request still paying for its
 /// prose on every turn.
+///
+/// The task list is the counter-example, asserted here beside it: it has no `ownership` param, so
+/// its section and its block are in the prompt whatever the rest of the profile does.
 #[test]
 fn an_unowned_module_contributes_no_prompt_section() {
     let registry = ToolRegistry::from_capabilities(&GgAgentConfig::root());
@@ -1675,7 +1678,7 @@ fn an_unowned_module_contributes_no_prompt_section() {
     );
 
     let unowned = DisabledRuntimes {
-        tasks: Some(TasksRuntime::new(7).with_ownership(Ownership::Unowned)),
+        tasks: Some(TasksRuntime::new(7)),
         memories: Some(
             MemoriesRuntime::new(
                 crate::memories::MemoryStrategy::Scratchpad,
@@ -1687,12 +1690,12 @@ fn an_unowned_module_contributes_no_prompt_section() {
     };
     let without = system_prompt(unowned.inputs(&registry));
     assert!(
-        !without.contains("add_task"),
-        "an unowned task list is not described at all: {without}"
+        !without.contains("write_memory"),
+        "unowned memories are not described at all: {without}"
     );
     assert!(
-        !without.contains("write_memory"),
-        "nor are its memories: {without}"
+        without.contains("add_task"),
+        "the task list is described whatever the rest of the profile does: {without}"
     );
 }
 
@@ -3262,24 +3265,24 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
     );
 }
 
-/// **An unowned task list is a live list nobody is shown.**
+/// **The task list is always a list the agent is shown.**
 ///
-/// The [ownership](crate::modules::Ownership) param is the one capability configuration whose
-/// effect is invisible in the toolset: every task tool is still offered, every call still lands in
-/// the store, and every `TasksState` still reaches the console — but the pinned block never enters
-/// the window, so the `TaskList` band stays at zero for the whole run.
+/// Every task tool is offered, every call lands in the store, every `TasksState` reaches the
+/// console — and the pinned block enters the window on every turn, because the task list has no
+/// [ownership](crate::modules::Ownership) to configure. It is what the agent steers its work by
+/// from turn to turn, so it is always carried in the prompt as its own message.
 ///
 /// It is asserted from the loop rather than from the module because the claim is about *prompt
-/// assembly*: the loop no longer refreshes the task block by name, so an owned/unowned mistake here
-/// would be a mistake in the one pass that refreshes them all.
+/// assembly*: the loop refreshes every module's block in one pass rather than naming the task
+/// block, so a mistake here would be a mistake in the pass that refreshes them all.
 #[tokio::test]
-async fn drive_keeps_an_unowned_task_list_out_of_the_window() {
+async fn drive_always_carries_the_task_list_in_the_window() {
     let dir = TempDir::new().unwrap();
     let ctx = ToolContext::new(dir.path());
     let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-unowned".to_string()), Box::new(sink.clone()));
+    let emitter = Emitter::with_sink(Some("run-tasks-pinned".to_string()), Box::new(sink.clone()));
 
-    let tasks = TasksRuntime::new(50).with_ownership(crate::modules::Ownership::Unowned);
+    let tasks = TasksRuntime::new(50);
     let set = GgCapabilitySet::minimal("mock/echo");
     let library = Arc::new(SkillLibrary::empty());
     let registry = ToolRegistry::from_run(
@@ -3289,7 +3292,7 @@ async fn drive_keeps_an_unowned_task_list_out_of_the_window() {
     );
     assert!(
         registry.tool_names().iter().any(|name| name == "add_task"),
-        "an unowned module still contributes every one of its tools"
+        "the tasks module contributes every one of its tools"
     );
 
     let client = MockClient::new(
@@ -3354,7 +3357,7 @@ async fn drive_keeps_an_unowned_task_list_out_of_the_window() {
             &e.kind,
             GgTelemetryKind::ToolResult { name, ok, .. } if name == "add_task" && *ok
         )),
-        "an unowned module's tools still work"
+        "the task tools work"
     );
     let last_tasks = events
         .iter()
@@ -3363,22 +3366,22 @@ async fn drive_keeps_an_unowned_task_list_out_of_the_window() {
             GgTelemetryKind::TasksState { tasks, .. } => Some(tasks.clone()),
             _ => None,
         })
-        .expect("an unowned module still reports its state");
+        .expect("the module reports its state");
     assert_eq!(last_tasks.len(), 1);
 
-    // ...and the window never carries it.
+    // ...and once there is a task, the window carries the list.
     assert!(
-        events.iter().all(|e| match &e.kind {
+        events.iter().any(|e| match &e.kind {
             GgTelemetryKind::ContextBreakdown { by_source, .. } =>
                 by_source
                     .iter()
                     .find(|band| band.source == GgContextSource::TaskList)
                     .map(|band| band.tokens)
                     .unwrap_or(0)
-                    == 0,
-            _ => true,
+                    > 0,
+            _ => false,
         }),
-        "an unowned task list must never account tokens to the TaskList source"
+        "a task list with contents accounts tokens to the TaskList source"
     );
 }
 

@@ -167,8 +167,8 @@ with `view.openFile(path)` to actually look at it*). A view is the only channel 
 agent's window, and a picture is not an exception to that. So a program that means to *look*
 at a reference mockup must open a view of it; one that only wants its dimensions or its bytes
 should not, and pays nothing. How many such views may be open at once is the per-agent
-[`imageViewCap`](/gg/responses-as-code/#configuring-it) (default 4); opening one past it is
-refused, not quietly dropped. The **native** `read_file` above is deliberately uncapped and
+[`imageViewCap`](/gg/responses-as-code/#configuring-it), which is unset — no ceiling — unless a
+profile names one; opening one past a configured ceiling is refused, not quietly dropped. The **native** `read_file` above is deliberately uncapped and
 attaches its picture as it always has — the two paths are the control and treatment arms of
 an experiment, and putting a ceiling on the control one to fix a defect in the treatment one
 would move what the study measures.

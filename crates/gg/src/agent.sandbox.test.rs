@@ -806,7 +806,7 @@ async fn a_bare_program_read_of_a_picture_shows_the_model_nothing() {
 
 /// **`view.openFile` is the channel, and the open-image-view cap REFUSES rather than dropping.**
 ///
-/// Five mockups, a cap of four, and a program that catches its throws: the first four views carry
+/// Five mockups, a configured cap of four, and a program that catches its throws: the first four views carry
 /// their pictures into the window, the fifth is refused at the call site with a catchable
 /// `limit-exceeded` naming the cap and the remedy, and **no fifth view exists** — the shipped defect
 /// this replaced was a view whose body promised a picture the window did not carry. This drives the
@@ -821,7 +821,7 @@ async fn the_fifth_image_view_is_refused_rather_than_opened_without_its_picture(
 
     let (outcome, _, requests) = drive_recorded_code_run(
         &dir,
-        code_set("mock/primary", json!({})),
+        code_set("mock/primary", json!({ "imageViewCap": 4 })),
         vec![code_reply(
             "const refused = [];
              for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\", \"e.png\"]) {
@@ -875,7 +875,7 @@ async fn the_fifth_image_view_is_refused_rather_than_opened_without_its_picture(
 
 /// **A text file is never refused by the image cap**, however many pictures are open.
 ///
-/// The cap bounds base64 in the window, and a source file carries none. A cap that refused a
+/// The cap bounds base64 in the window, and a source file carries none. A cap of four that refused a
 /// `view.openFile("src/a.ts")` because four mockups were open would make the feature unusable in
 /// exactly the run that needs it — one working from reference images.
 #[tokio::test]
@@ -888,7 +888,7 @@ async fn a_text_view_is_never_refused_by_the_image_cap() {
 
     let (outcome, _, requests) = drive_recorded_code_run(
         &dir,
-        code_set("mock/primary", json!({})),
+        code_set("mock/primary", json!({ "imageViewCap": 4 })),
         vec![code_reply(
             "for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\"]) {
              \x20 view.openFile(p);
@@ -933,7 +933,7 @@ async fn re_opening_an_open_image_view_succeeds_at_exactly_the_cap() {
 
     let (outcome, _, requests) = drive_recorded_code_run(
         &dir,
-        code_set("mock/primary", json!({})),
+        code_set("mock/primary", json!({ "imageViewCap": 4 })),
         vec![code_reply(
             "for (const p of [\"a.png\", \"b.png\", \"c.png\", \"d.png\"]) {
              \x20 view.openFile(p);
