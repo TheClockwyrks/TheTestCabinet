@@ -19,6 +19,26 @@ This mirrors the skills mechanism used elsewhere in this repository (the
 capability gg offers the *model under test*. [Memories](/gg/memories/) are the same
 mechanism, curated by the model itself.
 
+## The band is shared with documentation views
+
+A read skill lands in the **Documentation** band of the
+[context breakdown](/gg/context-visibility/), and it is not alone there: a
+[responses-as-code](/gg/responses-as-code/#showing-yourself-things) program that calls
+`view.openDocsView` to read a function's signature and documentation puts the result in the
+same band. From the window's point of view the two are the same *kind* of thing — authored
+material the agent asked to see, rather than the workspace, its own output, or the harness
+talking — so they share a band, and the console labels it **Skills & docs**.
+
+What tells them apart is **retention**, not where they came from. A read skill is pinned and
+carries no label: it keeps the bare `Documentation` heading, it survives a
+[compaction](/gg/compaction/) for the reason above, and `view.current()` does not offer it,
+because a close that would reclaim nothing is worse than no close at all. A documentation
+view is ephemeral and labelled with the function it documents (`Documentation: openText`), so
+it is listed, replaceable, and closable like any other view. `view.close(name)` therefore
+reaches a docs view and spares the pinned skill sitting beside it in the same band — the
+removal path skips pinned items, so there is no way for a program to close a skill it did not
+open.
+
 ## The catalog is shared; what has been read is not
 
 Skills are a [module](/gg/modules/) in two halves, because the two halves mean different

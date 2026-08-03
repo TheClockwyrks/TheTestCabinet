@@ -45,7 +45,7 @@
 //!
 //! Under [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) the prompt names the
 //! [API objects](SystemContext::apis) a program has (`fs`, `project`, `harness`, …) and how to
-//! inspect them — `object.list()` and `fn.docs()` — rather than listing every signature up front.
+//! inspect them — `object.list()` and `view.openDocsView()` — rather than listing every signature up front.
 //! The signatures and documentation live behind the [docs carve-out](crate::docs), reflected from
 //! the SDK's own declarations, so a description the sandbox cannot back can never reach a model.
 //!
@@ -84,6 +84,7 @@ use std::sync::OnceLock;
 
 use handlebars::{Handlebars, RenderError};
 use serde::Serialize;
+use serde_json::json;
 
 /// The **tool-calling** system prompt: the base framing plus one conditional section per enabled
 /// capability, with each capability's tools named as the free-standing calls a tool-calling run
@@ -91,7 +92,7 @@ use serde::Serialize;
 const SYSTEM_TOOLS_TEMPLATE: &str = include_str!("../templates/system-tools.hbs");
 
 /// The **responses-as-code** system prompt: the same capability sections, plus the code-protocol
-/// framing (the reply *is* a program, discovery through `object.list()`/`fn.docs()`, the message
+/// framing (the reply *is* a program, discovery through `object.list()`/`view.openDocsView()`, the message
 /// headings), with each capability's calls named in their grouped form — methods on an API object
 /// (`tasks.addTask`, `agents.spawnSubagent`, `project.createEpic`) rather than free-standing tools.
 ///
@@ -116,18 +117,13 @@ const MEMORY_INDEX_TEMPLATE: &str = include_str!("../templates/memory-index.hbs"
 /// shared memory instance did since this agent was last told.
 const MEMORY_NOTICE_TEMPLATE: &str = include_str!("../templates/memory-notice.hbs");
 
-/// The turn feedback for a [code program](crate::sandbox) that **ran** — whether or not it threw.
-const CODE_RESULT_TEMPLATE: &str = include_str!("../templates/code-result.hbs");
-
-/// The turn feedback for a code program that did not compile, so nothing ran.
-const CODE_TRANSPILE_ERROR_TEMPLATE: &str = include_str!("../templates/code-transpile-error.hbs");
-
-/// The turn feedback for a code program the sandbox could not run to a result at all.
-const CODE_SANDBOX_ERROR_TEMPLATE: &str = include_str!("../templates/code-sandbox-error.hbs");
-
-/// The turn feedback for a code program the sandbox stopped at its execution timeout — its own
-/// message, because a timeout means a program that did not terminate, not one that was too heavy.
-const CODE_TIMEOUT_TEMPLATE: &str = include_str!("../templates/code-timeout.hbs");
+/// The notice a [code program](crate::sandbox) that ran cleanly and put **nothing** in its own
+/// window earns — the one message a successful program can produce, and only because a request has
+/// to end on something for the model to answer.
+///
+/// There is deliberately no template for a program that *did* show itself something: the views are
+/// the report, and a covering note over them would be gg narrating what the model can already read.
+const CODE_NOTHING_SHOWN_TEMPLATE: &str = include_str!("../templates/code-nothing-shown.hbs");
 
 /// The turn feedback for a reply that was not a program at all — prose, comments, an empty message.
 ///
@@ -214,10 +210,7 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("memories", MEMORIES_TEMPLATE),
     ("memory-index", MEMORY_INDEX_TEMPLATE),
     ("memory-notice", MEMORY_NOTICE_TEMPLATE),
-    ("code-result", CODE_RESULT_TEMPLATE),
-    ("code-transpile-error", CODE_TRANSPILE_ERROR_TEMPLATE),
-    ("code-sandbox-error", CODE_SANDBOX_ERROR_TEMPLATE),
-    ("code-timeout", CODE_TIMEOUT_TEMPLATE),
+    ("code-nothing-shown", CODE_NOTHING_SHOWN_TEMPLATE),
     ("code-not-a-program", CODE_NOT_A_PROGRAM_TEMPLATE),
     ("issue-brief", ISSUE_BRIEF_TEMPLATE),
     ("review-brief", REVIEW_BRIEF_TEMPLATE),
@@ -278,7 +271,7 @@ fn engine() -> &'static Handlebars<'static> {
 
 /// Render the registered template `name` with `context`, trimmed.
 ///
-/// The fallible form, for the [code feedback](render_code_result) renders that must degrade rather
+/// The fallible form, for the [code feedback](render_code_nothing_shown) renders that must degrade rather
 /// than abort: their input is a model's own program output, so a render failure there costs a turn
 /// its feedback and must never cost the run its process.
 fn try_render<T: Serialize>(name: &str, context: &T) -> Result<String, RenderError> {
@@ -348,7 +341,7 @@ pub struct SystemContext {
     /// the prompt names so a model knows which objects to inspect with `object.list()`. Empty on the
     /// tool-calling path (where tools are in the request); on the code path it always carries at
     /// least `harness`. Not the *functions* — those are discovered on demand with `list()` and
-    /// `fn.docs()`, which is the whole point of the redesign — only the objects and what each is for.
+    /// `view.openDocsView()`, which is the whole point of the redesign — only the objects and what each is for.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub apis: Vec<ApiView>,
     /// The [message headings](crate::context::code_heading) this run's synthesized `user` messages
@@ -481,9 +474,6 @@ pub struct ReadFileView {
     /// Whether a line cap is in force at all. False when `read_file` is not offered, or when it
     /// reads whole files.
     pub capped: bool,
-    /// Whether the cap is a **ceiling** the agent cannot argue past (as opposed to a default it
-    /// may exceed with an explicit `limit`).
-    pub hard_cap: bool,
     /// The cap, in lines. Meaningless (and unreferenced by the template) when not
     /// [capped](Self::capped).
     pub line_cap: usize,
@@ -536,7 +526,7 @@ pub struct CodeHeadingView {
 
 /// One API object a code program has, as the system prompt names it: the object identifier a
 /// program reaches (`fs`) and a one-line description of what it is for. The functions on it are not
-/// listed — the model discovers those with `object.list()` and `fn.docs()`.
+/// listed — the model discovers those with `object.list()` and `view.openDocsView()`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiView {
@@ -729,211 +719,13 @@ pub fn default_system_prompt_template_code() -> &'static str {
 // The code-turn feedback
 // ---------------------------------------------------------------------------
 
-/// The variables `code-result.hbs` may reference: everything one
-/// [program](crate::sandbox::run_program) produced, as the model is shown it.
+/// The variables `code-not-a-program.hbs` may reference: the notice for a turn whose reply never
+/// became something to run.
 ///
-/// It is one context for both endings — ran out, or threw — because a program that threw still
-/// *did* everything up to the throw, and the model needs the same roster, the same views and the
-/// same nudges either way. The template's `{{#if error}}` is the only thing that differs.
-///
-/// **What a program logged is not here.** `console.*` still crosses the membrane and is still
-/// recorded — the turn's own
-/// [`CodeExecution`](test_cabinet_core::gg::GgTelemetryKind::CodeExecution) event carries every line
-/// of it, so the operator's stream, the run record and any analysis still see what a program printed
-/// — it simply no longer reaches the model, because a program's channel into its own window is a
-/// [view](crate::context::ViewKind) and one anonymous blob of interleaved log lines is exactly what
-/// views replaced. All that survives here is [`logged_lines`](Self::logged_lines), which drives the
-/// one-line nudge that tells a model that logged where its output went. Telling it once, in the turn
-/// it happened, is the whole of the disclosure discipline: a model whose output vanished silently
-/// reads the silence as evidence its program never ran.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeResultContext {
-    /// The throw the program did not catch, or `None` if it ran to its end.
-    pub error: Option<CodeErrorView>,
-    /// Whether the program ended with a `return` that carried a value — which gg discarded.
-    ///
-    /// The value is not here because it is nowhere: a program's return value is not a channel, and
-    /// this flag is how a model that used the wrong one is told so in the turn it did it. Saying it
-    /// once, in the moment, is what keeps the rule one sentence long in the system prompt instead of
-    /// a section about what may be returned. The template's note points at `view.openText`, which is
-    /// the channel that does carry.
-    pub returned_value: bool,
-    /// Whether the program declared its session over and then **lost** that ending by throwing.
-    ///
-    /// Without it the model reads an ordinary failed turn and has no reason to think its ending did
-    /// not take — so it fixes the throw, does not declare again, and the session carries on past the
-    /// point the model believes it ended.
-    pub finish_revoked: bool,
-    /// The ending call that was suppressed, named so the model knows which of its calls did not
-    /// take. Empty when [`finish_revoked`](Self::finish_revoked) is false and never rendered then.
-    pub ending_revoked: String,
-    /// The tool calls the roster kept, in call order.
-    pub calls: Vec<CodeCallView>,
-    /// How many calls the program actually made — which exceeds `calls.len()` when the sandbox's
-    /// roster cap stopped describing them, so the sentence counts what happened rather than what
-    /// is listed.
-    pub call_count: usize,
-    /// How many of those calls the roster cap did not describe. Named for the same reason
-    /// [`refusals_suppressed`](Self::refusals_suppressed) and
-    /// [`views_suppressed`](Self::views_suppressed) are: a model told its program made 738
-    /// calls and then shown 500 would read the gap as calls that vanished, rather than as a listing
-    /// that stopped.
-    pub calls_suppressed: u64,
-    /// Calls the sandbox refused before they reached gg's toolset (a withheld tool, a turn-level
-    /// transition, a spent wall-clock budget), pre-rendered one per line.
-    pub refusals: Vec<String>,
-    /// How many refusals the capture caps discarded. Reported for the same reason
-    /// [`calls_suppressed`](Self::calls_suppressed) is: the shape that hits the cap is a program
-    /// that swallows the throws and keeps calling after the run's budget is spent, and a model shown
-    /// only the first hundred would read the list as the whole story.
-    pub refusals_suppressed: u64,
-    /// How many lines the program wrote with `console.*` — **not** the lines themselves.
-    ///
-    /// Logs no longer reach the model (see the [type's docs](Self)), so the only thing the feedback
-    /// says about them is that they happened and where they went. Zero renders nothing at all: a
-    /// program that never logged has no misconception to correct, and a standing paragraph about a
-    /// channel it did not use would be exactly the per-turn boilerplate this template was stripped
-    /// of. It counts what the program *logged*, including lines the capture caps dropped, because
-    /// the model is being told about its own behaviour rather than about gg's buffer.
-    pub logged_lines: u64,
-    /// The [views](crate::context::ViewKind) the program opened, in call order — the counterpart of
-    /// [`calls`](Self::calls) for the window rather than the workspace.
-    ///
-    /// Reported back rather than left implicit because the material itself arrives as separate
-    /// messages, and this is the only place the model reads what those messages *cost* and which of
-    /// its calls **replaced** a view instead of adding one. A model that re-opened a selector
-    /// believing it had opened a second view would mis-read its own accounting.
-    pub views_opened: Vec<CodeViewView>,
-    /// The selectors the program closed, in call order. Only closes that actually closed something
-    /// are here — closing a selector that is not open is a successful no-op by design.
-    pub views_closed: Vec<String>,
-    /// Every view call that was refused — a cap, an unusable selector, or a read that failed —
-    /// pre-rendered one per line.
-    ///
-    /// This is the one list that must never be silently empty. A refused view is material that never
-    /// reached the window at all, and the model is the only party that can do something about it:
-    /// split it, trim it, or write it to a file and open a file view of that.
-    pub view_refusals: Vec<String>,
-    /// How many view records the sandbox's recording cap discarded, across all three lists.
-    pub views_suppressed: u64,
-    /// Whether the program said nothing at all: it opened, closed and was refused no views, logged
-    /// nothing, returned nothing and threw nothing — the one outcome that tells the model absolutely
-    /// nothing, and therefore the one worth naming.
-    pub silent: bool,
-    /// The sandbox's note that the program deferred work into a microtask that ran after the program
-    /// had already ended — the failure mode a `.then()` produces, which is otherwise invisible.
-    pub deferred: Option<String>,
-    /// gg's note that the reply carried top-level statements after a top-level `return`, which
-    /// therefore did not run. `None` — the ordinary case — when every statement the model wrote was
-    /// reachable.
-    ///
-    /// It is here for the same reason [`deferred`](Self::deferred) is: a program can do something
-    /// that has no effect and looks from the outside exactly like a program that ran cleanly, and a
-    /// model cannot fix what it is not told. This one is the sharper of the two, because the shape
-    /// that produces it is a model pasting a second draft after the first — where the half that
-    /// never ran is the half that wrote the deliverable and ended the run.
-    pub unreachable: Option<String>,
-}
-
-/// The throw a program did not catch, as the feedback renders it.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeErrorView {
-    /// What was thrown, already naming the tool (or the identifiers this run offers).
-    pub message: String,
-    /// Where in the **program's own** coordinates it happened (`line 5, column 12`), or `None`
-    /// when no usable frame was found.
-    pub location: Option<String>,
-}
-
-/// One composed tool call, as the feedback's roster renders it.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeCallView {
-    /// The gg tool name the program called.
-    pub name: String,
-    /// Whether it succeeded.
-    pub ok: bool,
-    /// Why it failed, when it did. Carried even for a failure the program *caught*, because a
-    /// caught failure is otherwise invisible to the model — the program carried on as if nothing had
-    /// happened, and the roster would say only that one call went wrong.
-    pub error: Option<String>,
-}
-
-/// One [view](crate::context::ViewKind) a program opened, as the feedback reports it back.
-///
-/// It is the window's answer to [`CodeCallView`]: a tool call says what the program *did*, a view
-/// says what the program will be *shown* on the turn it is reading this, and what carrying it costs.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeViewView {
-    /// `file` or `text` — the word the model wrote the call with, so the line it reads names the
-    /// same thing its program named.
-    pub kind: String,
-    /// The view's selector: a file view's workspace path, or a text view's label. This is the string
-    /// `view.close` takes, which is why it is quoted verbatim rather than prettified.
-    pub selector: String,
-    /// Roughly what the view costs the window, in tokens.
-    pub tokens: u64,
-    /// Whether it **replaced** a view already open under this selector rather than adding one.
-    pub superseded: bool,
-}
-
-/// The variables `code-transpile-error.hbs` may reference.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeTranspileErrorContext {
-    /// The compiler's diagnostic, already located in the program's own coordinates.
-    pub error: String,
-}
-
-/// The variables `code-sandbox-error.hbs` may reference.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeSandboxErrorContext {
-    /// What the sandbox could not do, as it states it.
-    pub error: String,
-    /// Whether the program declared its session over before the sandbox stopped it, and therefore
-    /// lost that ending. Carried here as well as on [`CodeResultContext`] because the two are the
-    /// two ways a program can fail after an ending call, and a model told nothing on this one would
-    /// believe its session ended on a turn it did not.
-    pub finish_revoked: bool,
-    /// The ending call that was suppressed. See [`CodeResultContext::ending_revoked`].
-    pub ending_revoked: String,
-    /// How many tool calls the program had already landed — they stand, and saying so is what
-    /// stops a model redoing work it already did.
-    pub calls: usize,
-}
-
-/// The variables `code-timeout.hbs` may reference: the feedback for a program the sandbox stopped
-/// because it ran past its [execution timeout](crate::sandbox::SandboxError::Timeout).
-///
-/// Its own message rather than a flag on [`CodeSandboxErrorContext`] because the advice is the
-/// opposite: a memory cap or a trap says "this program was too heavy", but a timeout — whose ceiling
-/// is far larger than any honest program needs — says "this program did not terminate". The model is
-/// pointed at a runaway loop or unbounded recursion, not told to write less.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeTimeoutContext {
-    /// The timeout message, already naming the ceiling that was reached.
-    pub error: String,
-    /// Whether the program declared its session over before the timeout stopped it, and therefore
-    /// lost that ending — carried for the same reason [`CodeSandboxErrorContext::finish_revoked`] is.
-    pub finish_revoked: bool,
-    /// The ending call that was suppressed. See [`CodeResultContext::ending_revoked`].
-    pub ending_revoked: String,
-    /// How many tool calls the program had already landed — they stand.
-    pub calls: usize,
-}
-
-/// The variables `code-not-a-program.hbs` may reference: the fourth code feedback, for a turn whose
-/// reply never became something to run.
-///
-/// The narrowest of the four contexts, because there is nothing to report: no roster, no logs, no
-/// diagnostic. The reply was prose, or comments, or empty, or several candidate blocks —
-/// and the only two things the model needs are which of those it was, and what a turn is supposed to
-/// look like instead.
+/// The only code message that takes a context at all, and it is still narrow: the reply was prose,
+/// or comments, or empty, or several candidate blocks, and the two things the model needs are which
+/// of those it was and what a turn is supposed to look like instead. A compiler or runtime error
+/// needs no context because it *is* its error.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeNotAProgramContext {
@@ -953,47 +745,15 @@ pub struct CodeNotAProgramContext {
     pub ending_calls: Vec<String>,
 }
 
-/// The model-facing feedback for a program that **ran** — whether or not it threw.
+/// The notice a program that ran cleanly and showed itself nothing earns.
 ///
-/// Falls back to a plain sentence rather than panicking: this is the one render whose context is
-/// built from a model's own output, and a turn with degraded feedback is recoverable where a
-/// panicked run is not.
-pub fn render_code_result(context: &CodeResultContext) -> String {
-    try_render("code-result", context)
-        .unwrap_or_else(|_| "Your program ran. Reply with your next program.".to_string())
-}
-
-/// The model-facing feedback for a program that did not compile. Nothing ran.
-pub fn render_code_transpile_error(context: &CodeTranspileErrorContext) -> String {
-    try_render("code-transpile-error", context).unwrap_or_else(|_| {
-        format!(
-            "Your program did not compile: {}\n\nNothing ran, so nothing changed. Fix the syntax \
-             and reply with a corrected program.",
-            context.error
-        )
-    })
-}
-
-/// The model-facing feedback for a program the **sandbox** could not run to a result.
-pub fn render_code_sandbox_error(context: &CodeSandboxErrorContext) -> String {
-    try_render("code-sandbox-error", context).unwrap_or_else(|_| {
-        format!(
-            "Your program could not be run to completion: {}. Split the task across several \
-             smaller programs, one per turn.",
-            context.error
-        )
-    })
-}
-
-/// The model-facing feedback for a program stopped by its **execution timeout**.
-pub fn render_code_timeout(context: &CodeTimeoutContext) -> String {
-    try_render("code-timeout", context).unwrap_or_else(|_| {
-        format!(
-            "Your program was stopped: {}. The timeout is far longer than any program needs, so \
-             this almost always means a loop or recursion that never ends — find it and bound it, \
-             then reply with a corrected program.",
-            context.error
-        )
+/// Falls back to a plain sentence rather than panicking, as every model-facing render here does: a
+/// turn with degraded wording is recoverable where a panicked run is not.
+pub fn render_code_nothing_shown() -> String {
+    try_render("code-nothing-shown", &json!({})).unwrap_or_else(|_| {
+        "Your program ran and put nothing in your context. Open a view to see something: \
+         `view.openText(label, body)` for a value you computed, `view.openFile(path)` for a file."
+            .to_string()
     })
 }
 

@@ -271,7 +271,14 @@ pub trait ToolApi: Send + 'static {
         approaches: Vec<String>,
     ) -> ToolOutcome;
     fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary>;
-    fn read_docs(&mut self, name: &str) -> Option<String>;
+    /// Open (or replace) the documentation view for the function called `name` — the whole of
+    /// `view.openDocsView`.
+    ///
+    /// A view rather than a return value, which is what makes documentation accountable: it is
+    /// keyed by the function's name, it supersedes its own earlier copy, it can be closed, and it is
+    /// charged to a band like everything else the model reads. A name this run did not bind is a
+    /// [refusal](ViewRefusal), not an empty view.
+    fn open_docs_view(&mut self, name: String) -> Result<SandboxViewOpened, ViewRefusal>;
     /// Read a workspace file **and** open a file view of it — the one place the code path
     /// deliberately does push a [`FileView`](test_cabinet_core::gg::GgContextSource::FileView).
     ///

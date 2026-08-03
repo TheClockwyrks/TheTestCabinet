@@ -54,11 +54,19 @@
       "types": []
     },
     {
+      "js": "openDocsView",
+      "object": "view",
+      "requires": null,
+      "signature": "openDocsView(target: Function | string): void",
+      "doc": "Show yourself the full documentation for one function: its signature, its description, and the declarations of any types it refers to that you have not already been shown this session. Pass the function itself (`view.openDocsView(fs.readFile)`) or its name (`view.openDocsView(\"readFile\")`). This is how you read what a function does. It is a **view**, not a return value — the documentation arrives in your next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives — so it is not available in the turn you ask for it. Plan for that: ask in one turn, use it in the next. Opening the same function's docs again replaces the view rather than adding a second copy, and `view.close(name)` closes it when you are done with it. An unknown or unbound name throws `not-found`; `<object>.list()` is how you find out which names exist.",
+      "types": []
+    },
+    {
       "js": "close",
       "object": "view",
       "requires": null,
       "signature": "close(selector: string): number",
-      "doc": "Close every view carrying `selector` — for a file that is every page of that path, for a text view the one with that label — and return how many were closed, freeing the tokens they occupied. Closing a selector that is not open returns `0` rather than failing, so a program that tidies up unconditionally does not have to guard every call. Closing a file view forgets what you read, not what exists; closing a text view discards the only copy of what it held, so write anything you will need later to a file or a memory first.",
+      "doc": "Close every view carrying `selector` — for a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name — and return how many were closed, freeing the tokens they occupied. Closing a selector that is not open returns `0` rather than failing, so a program that tidies up unconditionally does not have to guard every call. Closing a file view forgets what you read, not what exists; closing a text view discards the only copy of what it held, so write anything you will need later to a file or a memory first.",
       "types": []
     },
     {
@@ -452,7 +460,7 @@
     },
     {
       "name": "FileRead",
-      "declaration": "type FileRead = { kind: \"text\"; contents: string; firstLine: number; lastLine: number; totalLines: number; byteTruncated: boolean; limitReduced: boolean; } | { kind: \"image\"; mediaType: string; label: string; bytes: number; shown: boolean; notShownReason: string | undefined; }"
+      "declaration": "type FileRead = { kind: \"text\"; contents: string; firstLine: number; lastLine: number; totalLines: number; byteTruncated: boolean; } | { kind: \"image\"; mediaType: string; label: string; bytes: number; shown: boolean; notShownReason: string | undefined; }"
     },
     {
       "name": "DirEntry",
@@ -508,7 +516,7 @@
     },
     {
       "name": "ViewKind",
-      "declaration": "type ViewKind = \"file\" | \"text\""
+      "declaration": "type ViewKind = \"file\" | \"text\" | \"docs\""
     },
     {
       "name": "ViewRegion",

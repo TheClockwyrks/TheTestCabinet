@@ -15,6 +15,7 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 use super::*;
+use crate::context::ViewKind;
 use crate::ending::{Ending, EndingRole};
 use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
 use crate::tools::{ToolFailure, ToolOutcome};
@@ -432,7 +433,6 @@ fn the_limits_stop_a_runaway_program() {
                         last_line: 1,
                         total_lines: 1,
                         byte_truncated: false,
-                        limit_reduced: false,
                     }),
                 );
             }
@@ -711,16 +711,19 @@ fn a_role_gets_only_its_own_ending_calls() {
             items: vec!["`step()` is off by one".to_string()],
         }
     );
-    // `harness` still exists — every program can read documentation — but `finish` is not on it, so
-    // the call is a `TypeError` on the turn it is made rather than a verdict gg has to interpret.
+    // A reviewer's scope has no `harness` object at all. It exists only to carry `finish`, and a
+    // reviewer does not get one — documentation reading, which used to keep the object alive for
+    // every role, is `view.openDocsView` now. So the call is an unknown *name* rather than a missing
+    // method, and either way it is a fault on the turn it is made rather than a verdict gg has to
+    // interpret.
     let outcome = run_as(
         "harness.finish(\"the work is complete\");",
         EndingRole::Review,
     );
-    assert_eq!(program_error(&outcome).kind, ProgramErrorKind::Other);
+    assert_eq!(program_error(&outcome).kind, ProgramErrorKind::UnknownName);
     assert!(
-        program_error(&outcome).message.contains("not a function"),
-        "a reviewer has no `finish`: {:?}",
+        program_error(&outcome).message.contains("harness"),
+        "a reviewer has no `harness`: {:?}",
         program_error(&outcome).message
     );
     assert!(outcome.completion.is_none());
@@ -855,6 +858,28 @@ fn the_view_object_is_always_bound_and_only_open_file_is_gated() {
     // The object is wired into the documentation carve-out under its own name, like every other one.
     let (outcome, _) = run("console.log(JSON.stringify(view.list().map((f) => f.name)));");
     assert_eq!(logged_json(&outcome), json!(["viewFunction"]));
-    let (outcome, _) = run("console.log(view.openText.docs());");
-    assert_eq!(logs(&outcome), ["documentation for `openText`"]);
+
+    // Reading a function's documentation opens a VIEW and returns nothing, which is the whole of
+    // what replaced `fn.docs()`: a call that handed the text back inline was a second channel into
+    // the model that no band was charged for and no `view.close` could reclaim.
+    let (outcome, _) = run("console.log(String(view.openDocsView(view.openText)));");
+    assert_eq!(logs(&outcome), ["undefined"], "it returns nothing");
+    assert_eq!(
+        outcome
+            .views_opened
+            .iter()
+            .map(|view| (view.kind, view.selector.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(ViewKind::Docs, "openText")],
+        "the function is resolved to the name gg knows it by, and opened as a docs view"
+    );
+
+    // A name works as well as the function itself, and neither is a tool call.
+    let (outcome, log) = run("view.openDocsView(\"openText\");");
+    assert_eq!(outcome.views_opened.len(), 1);
+    assert!(
+        log.names().is_empty(),
+        "a documentation lookup is not a tool call: {:?}",
+        log.names()
+    );
 }

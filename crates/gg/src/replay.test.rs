@@ -1751,7 +1751,6 @@ fn a_structured_file_payload_is_pooled_with_the_output_it_duplicates() {
             last_line: 64,
             total_lines: 64,
             byte_truncated: false,
-            limit_reduced: false,
         },
     ));
     for call in 0..5 {

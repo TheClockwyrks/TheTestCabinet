@@ -218,6 +218,16 @@ Extending the `compact` request to name views was considered and is deliberately
 it would give the model a second list to curate at the moment its window is fullest, for
 material it can already preserve through either of the two mechanisms above.
 
+A **documentation view** does not survive either, and that one costs nothing. The
+Documentation band has two occupants and retention is what tells them apart: a skill the
+agent **read** is pinned, so it crosses the boundary with the retained list above, while
+the documentation a program opened with
+[`view.openDocsView`](/gg/responses-as-code/#the-typed-tool-surface) is ephemeral and does
+not. Nothing is lost by that, because a lookup is **self-contained** — it always carries
+every type declaration it references, deduped against nothing an earlier lookup showed — so
+an agent on the far side of a boundary that finds it needs a signature again simply asks for
+it again, and has it back on its next turn at the same one-turn cost it paid the first time.
+
 ## A succession compacts before its first turn
 
 When an agent [becomes another agent](/gg/fork-and-exec/) — an `exec`, or an

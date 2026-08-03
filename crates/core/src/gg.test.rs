@@ -701,18 +701,37 @@ fn the_module_vocabulary_serializes_in_its_documented_spelling() {
 #[test]
 fn context_source_all_covers_every_variant_in_stable_order() {
     // `ALL` constructs every variant (so none is dead) and fixes the band order.
-    assert_eq!(GgContextSource::ALL.len(), 11);
+    assert_eq!(GgContextSource::ALL.len(), 13);
     assert_eq!(GgContextSource::ALL[0], GgContextSource::System);
+    // The two responses-as-code failure bands sit together, immediately after the tool output
+    // they replaced on that path — a code turn produces one of these where a tool-calling turn
+    // produces a tool result.
+    assert_eq!(
+        &GgContextSource::ALL[3..6],
+        &[
+            GgContextSource::ToolOutput,
+            GgContextSource::CompilerError,
+            GgContextSource::RuntimeError,
+        ]
+    );
     // A text view sits immediately after the file view: the two view bands are adjacent,
     // and every band after them keeps its relative order (the console's palette is keyed
     // by index, so this order is the contract).
     assert_eq!(
-        &GgContextSource::ALL[4..7],
+        &GgContextSource::ALL[6..9],
         &[
             GgContextSource::FileView,
             GgContextSource::TextView,
             GgContextSource::Skill,
         ]
+    );
+    assert_eq!(
+        serde_json::to_value(GgContextSource::CompilerError).unwrap(),
+        json!("compiler_error")
+    );
+    assert_eq!(
+        serde_json::to_value(GgContextSource::RuntimeError).unwrap(),
+        json!("runtime_error")
     );
     assert_eq!(
         serde_json::to_value(GgContextSource::TextView).unwrap(),

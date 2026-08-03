@@ -113,6 +113,12 @@ pub use {
     transpile::UnreachableTail,
 };
 
+/// One membrane-refused call, as a test builds an outcome carrying one. Production code reads
+/// refusals only off a [`SandboxOutcome`], which owns them by value, so nothing outside the tests
+/// needs to name the type.
+#[cfg(test)]
+pub use invoker::SandboxRefusal;
+
 use crate::ending::EndingRole;
 use crate::tools::ToolRegistry;
 use membrane::{MembraneParts, MembraneState, Sandbox};

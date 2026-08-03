@@ -291,18 +291,17 @@ export const FILESYSTEM_CAP_IDS = [
 // value is the default (unlimited), which is what gg has always done.
 export const READ_MODE_OPTIONS = [
   { value: "", label: "Unlimited (default)" },
-  { value: "hard-cap", label: "Hard cap" },
   { value: "default-cap", label: "Default cap" },
 ] as const;
 
 // What each read mode does — the detail lifted off the picker's option labels into
 // the field's help tooltip.
 export const READ_MODE_HINT =
-  "Unlimited returns the whole file in one call. Hard cap never returns more than the line cap per call. Default cap returns the line cap unless the model asks for more.";
+  "Unlimited returns the whole file in one call. Default cap returns the line cap unless the model asks for more, which is always honoured — no mode can refuse a whole-file read.";
 
-// The read modes that enforce the line cap — everything except `unlimited`, which
+// The read modes that apply the line cap — everything except `unlimited`, which
 // returns the whole file and never reads it.
-export const CAPPED_READ_MODES = ["hard-cap", "default-cap"] as const;
+export const CAPPED_READ_MODES = ["default-cap"] as const;
 
 // The line cap gg falls back to when a capped read mode names none.
 export const DEFAULT_READ_LINE_CAP = 250;

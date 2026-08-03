@@ -43,6 +43,18 @@ learns once: `harness.finish(…)` in a program and `finish` as a tool are the s
 None of them is a registry tool, and none is [ablatable](/gg/toolset-ablation/) —
 withholding the only way to end a session is not an arm anyone would run.
 
+### A failing program revokes its own ending
+
+In [responses-as-code](/gg/responses-as-code/), an ending call is a statement in a program
+like any other, so a program can call it and then throw. When it does, the ending is
+**revoked** and the session continues: a program that failed did not finish the work its
+summary claims, and taking the summary at its word would publish a run whose last act was
+an error. The model is told the rule once, in its system prompt, rather than on the turn it
+happens — the turn carries the [runtime error](/gg/execution-limits/#what-counts-as-an-error)
+and nothing else, and the revocation itself is recorded on the run's own stream for the
+[operator](/gg/telemetry/). What the model needs in that moment is the fault; what it needs
+to know about revocation it needed *before* it wrote the program.
+
 ### The shapes are enforced, not parsed
 
 `requestChanges` refuses an **empty** list, and `selectWinner` refuses an attempt number
@@ -62,7 +74,10 @@ verdict.
 The capability's **`validation`** param is an ordered list of commands that **gate** an
 ending — in either execution mode, for any role. When the model signals it is done, gg
 runs them in order, and the session only ends if **every one exits `0`**. A failing
-command's output is handed back to the model, which then keeps working and signals again.
+command's output is handed back to the model as a **`Notice`** — the harness's band for a
+process fact the model could not otherwise know, which a rejected ending is: nothing the
+program did went wrong, the run simply is not over. It then keeps working and signals
+again.
 
 Each entry names a `command` (run through `sh -c`, exactly as the [shell](/gg/shell/) tool
 runs one), and optionally:

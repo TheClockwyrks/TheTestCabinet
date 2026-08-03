@@ -41,8 +41,15 @@ Everything on this page rests on one sentence, and it is the same sentence in bo
 execution modes:
 
 > **A turn is an error when the work the turn declared could not be carried out as
-> declared.** A failure *inside* a turn that was reported back to the model, and that
+> declared.** A failure *inside* a turn that was reported back into the turn, and that
 > left the rest of the turn's work intact, is not a turn error.
+
+"Back into the turn" is what the two modes have in common rather than what they share
+literally: under tool calling a failure comes back to the model as a tool result it reads on
+its next turn, and under [responses as code](/gg/responses-as-code/#a-tool-failure-throws) it
+comes back to the **program**, as a typed throw at the statement that made the call. The
+second is earlier and more actionable than the first, which is why a program that catches one
+is not merely excused but doing exactly what the surface is for.
 
 It is deliberately about the turn's *declared work* rather than "did anything go wrong",
 because the whole premise of responses as code is that a program **expects** individual
@@ -55,9 +62,9 @@ failures the one capability that cannot survive them.
 | --- | --- |
 | the model call failed, after the client's own retry/backoff was exhausted | no turn happened at all (and this one is separately fatal — see [below](#a-model-api-error-is-still-fatal)) |
 | the reply was **not a program** — prose, empty, comments only, native tool calls and no text, no block gg reads as a program, or several candidate blocks | nothing ran; the model is told so and told that only `finish` ends the run |
-| the program did not type-strip | nothing ran |
-| the program threw uncaught | every statement after the throw never ran, so the model must re-declare the remainder |
-| the sandbox stopped the program at its execution timeout or memory ceiling, or the guest trapped | the program ran and its landed calls stand, but the work it declared was cut short |
+| the program did not type-strip | nothing ran; the model gets a `Compiler error` carrying the compiler's error and nothing else |
+| the program threw uncaught | every statement after the throw never ran, so the model must re-declare the remainder; it gets a `Runtime error` carrying the throw and nothing else |
+| the sandbox stopped the program at its execution timeout or memory ceiling, or the guest trapped | the program ran and its landed calls stand, but the work it declared was cut short — reported as the same `Runtime error` an uncaught throw produces |
 
 **Does not count**
 
@@ -66,7 +73,7 @@ failures the one capability that cannot survive them.
 | a tool call that **failed inside** a program that carried on | the program handled it — caught it, branched on `result.exitCode`, or ignored it. Counting it would penalise a program that correctly anticipates failure exactly as much as one that crashes. |
 | a **refused** call — a compaction the loop is waiting for, a tool this run withholds, a spent wall-clock budget | it never reached the loop and is reported to the program as a value it can react to |
 | a **healed** reply | [healing](/gg/response-healing/) repairs the message, not the turn. A reply healing turned into a program that then ran is a good turn. Heal counts and error counts are independent measurements. |
-| a program that returned **nothing** | it ran; the feedback nudges it, the ceilings do not |
+| a program that put **nothing** in its own window | it ran. A program that shows itself nothing has still carried out the work it declared — and a value it *returned* is simply discarded, reported to the run's operator and not to the model. The one thing the model hears is a `Notice` saying its program put nothing in its context, and only when the turn would otherwise end on the assistant's own message. A notice is not an error, so the ceilings ignore it. |
 | a tool-calling turn whose dispatched calls **all failed** | every requested call was dispatched and answered; nothing was cut short. The mirror of the first row, and keeping the two symmetrical is what lets one definition serve both modes. |
 | a **compaction** | not a turn outcome at all |
 | gg's own machinery failing | gg's fault, not the model's: recorded so the accounting stays exact, excluded from every ceiling, and fatal on its first occurrence anyway |

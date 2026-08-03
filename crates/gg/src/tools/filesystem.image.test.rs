@@ -147,7 +147,7 @@ async fn an_undeclared_model_is_given_the_image_optimistically() {
 async fn offset_and_limit_do_not_apply_to_an_image() {
     // They describe lines of text. A picture is returned whole or not at all.
     let (_dir, ctx) = workspace_with_image(Some(&["text", "image"]));
-    let outcome = ReadFileTool::new(ReadPolicy::HardCap(1))
+    let outcome = ReadFileTool::new(ReadPolicy::DefaultCap(1))
         .invoke(json!({ "path": "ref.png", "offset": 4, "limit": 2 }), &ctx)
         .await;
 

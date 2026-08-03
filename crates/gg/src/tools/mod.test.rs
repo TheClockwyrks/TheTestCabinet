@@ -169,7 +169,7 @@ fn an_explicit_filesystem_tool_capability_overrides_the_legacy_umbrella() {
 
 /// The read-file capability's implementation and `lineCap` param decide the
 /// [`ReadPolicy`] the offered `read_file` enforces — the configuration seam behind the
-/// three read modes.
+/// two read modes.
 #[test]
 fn read_policy_comes_from_the_read_file_capability() {
     let with_mode = |implementation: &str, params| {
@@ -181,10 +181,6 @@ fn read_policy_comes_from_the_read_file_capability() {
         }])
     };
 
-    assert_eq!(
-        read_policy(&with_mode("hard-cap", json!({ "lineCap": 250 }))),
-        ReadPolicy::HardCap(250)
-    );
     assert_eq!(
         read_policy(&with_mode("default-cap", json!({ "lineCap": 500 }))),
         ReadPolicy::DefaultCap(500)
@@ -203,7 +199,7 @@ fn read_policy_comes_from_the_read_file_capability() {
 
     // The policy actually reaches the offered tool: a capped mode declares paging args.
     let registry =
-        ToolRegistry::from_capabilities(&with_mode("hard-cap", json!({ "lineCap": 250 })));
+        ToolRegistry::from_capabilities(&with_mode("default-cap", json!({ "lineCap": 250 })));
     let definition = registry
         .definitions()
         .into_iter()

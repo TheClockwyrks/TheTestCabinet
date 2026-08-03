@@ -857,19 +857,21 @@ async fn the_fifth_image_view_is_refused_rather_than_opened_without_its_picture(
         after.iter().map(body).collect::<Vec<_>>()
     );
 
-    let feedback = after
-        .iter()
-        .find(|m| body(m).contains("Your program ran to completion."))
-        .expect("the turn feedback");
+    // The refusal is delivered where the program can act on it — thrown at the call site, caught,
+    // and written out above — and nowhere else. gg adds no turn report on top of it: the program
+    // already knows, and a message restating what the model's own `catch` block just handled would
+    // be gg narrating the program back at it.
     assert!(
-        body(feedback).contains("view refused:") && body(feedback).contains("imageViewCap"),
-        "the turn's report has to name the cap that refused the view: {}",
-        body(feedback)
+        !after.iter().any(|m| body(m).contains("view refused")),
+        "gg does not re-report a refusal the program caught: {:?}",
+        after.iter().map(body).collect::<Vec<_>>()
     );
     assert!(
-        body(feedback).contains("view.close(path)"),
-        "and the remedy the model can actually perform: {}",
-        body(feedback)
+        !after
+            .iter()
+            .any(|m| body(m).contains("Your program ran to completion.")),
+        "a program that ran earns no report at all: {:?}",
+        after.iter().map(body).collect::<Vec<_>>()
     );
 }
 
@@ -908,14 +910,14 @@ async fn a_text_view_is_never_refused_by_the_image_cap() {
         "the text view opened with the image cap full: {:?}",
         after.iter().map(body).collect::<Vec<_>>()
     );
-    let feedback = after
-        .iter()
-        .find(|m| body(m).contains("Your program ran to completion."))
-        .expect("the turn feedback");
+    // Nothing was refused, so nothing threw, so gg says nothing at all — the five views are the
+    // whole of what the turn produced.
     assert!(
-        !body(feedback).contains("view refused:"),
-        "nothing was refused: {}",
-        body(feedback)
+        !after
+            .iter()
+            .any(|m| body(m).starts_with("Runtime error\n----\n")),
+        "nothing was refused, so nothing threw: {:?}",
+        after.iter().map(body).collect::<Vec<_>>()
     );
 }
 
@@ -1977,6 +1979,17 @@ async fn statements_after_a_top_level_return_are_disclosed_to_the_model_and_the_
         feedback.contains("Send exactly one program per reply."),
         "the model was not told what to do differently:\n{feedback}"
     );
+    // It is a `Notice` — a fact about the session — not an error. Nothing failed: the program the
+    // model sent compiled and ran, and gg is telling it that half of what it wrote was never part
+    // of that program.
+    assert!(
+        requests[1].iter().any(|message| {
+            message.content.as_deref().is_some_and(|body| {
+                body.starts_with("Notice\n----\n") && body.contains("did not run")
+            })
+        }),
+        "the disclosure is a notice:\n{feedback}"
+    );
 
     assert!(
         warn_messages(&events).iter().any(|message| {
@@ -2144,4 +2157,64 @@ async fn the_disabled_healing_arm_is_named_on_the_log_and_empty_on_the_summary()
         Some(&json!([])),
         "the disabled arm must be readable from the recorded summary alone: {healing}"
     );
+}
+
+/// **Views the program opened before it threw are still there on the next turn.**
+///
+/// The property that makes a `Runtime error` carrying nothing but the error survivable. A program
+/// that reads three files and then throws on the fourth has done real work, and everything it showed
+/// itself stands: the views were pushed as they were opened, on the live window, so the throw does
+/// not roll them back. If it did, the error message would have to re-describe what the program had
+/// found — which is exactly the extra text that band exists not to carry.
+#[tokio::test]
+async fn views_opened_before_a_throw_survive_into_the_next_prompt() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("a.ts"), "the first file").unwrap();
+    std::fs::write(dir.path().join("b.ts"), "the second file").unwrap();
+
+    let (outcome, _, requests) = drive_recorded_code_run(
+        &dir,
+        code_set("mock/primary", json!({})),
+        vec![
+            code_reply(
+                "view.openFile(\"a.ts\");\n\
+                 view.openFile(\"b.ts\");\n\
+                 view.openText(\"progress\", \"read both files\");\n\
+                 missingFunction();",
+            ),
+            code_reply(FINISHING_PROGRAM),
+        ],
+    )
+    .await;
+    assert_eq!(outcome, SessionOutcome::Ran);
+
+    let after = requests.get(1).expect("a turn after the program ran");
+    let bodies: Vec<String> = after
+        .iter()
+        .filter_map(|m| m.content.clone())
+        .collect::<Vec<_>>();
+
+    for shown in ["the first file", "the second file", "read both files"] {
+        assert!(
+            bodies.iter().any(|b| b.contains(shown)),
+            "a view opened before the throw was lost: {bodies:#?}"
+        );
+    }
+
+    // And the error is the last thing the model reads, carrying the error alone.
+    let error = bodies
+        .last()
+        .expect("the window is not empty")
+        .strip_prefix("Runtime error\n----\n")
+        .unwrap_or_else(|| panic!("the turn ends on the runtime error: {bodies:#?}"));
+    assert!(
+        error.contains("missingFunction"),
+        "the error names what went wrong: {error}"
+    );
+    for absent in ["a.ts", "the first file", "progress", "view call"] {
+        assert!(
+            !error.contains(absent),
+            "the error leaked `{absent}`: {error}"
+        );
+    }
 }

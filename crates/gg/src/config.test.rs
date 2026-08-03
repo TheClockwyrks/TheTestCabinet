@@ -18,7 +18,7 @@ fn deserializes_a_full_invocation_file() {
                 {
                     "id": "read-file",
                     "enabled": true,
-                    "implementation": "hard-cap",
+                    "implementation": "default-cap",
                     "params": { "lineCap": 250 }
                 },
                 { "id": "write-file", "enabled": true }
@@ -47,7 +47,7 @@ fn deserializes_a_full_invocation_file() {
         .capability_set
         .capability("read-file")
         .expect("read-file is configured");
-    assert_eq!(read_file.implementation.as_deref(), Some("hard-cap"));
+    assert_eq!(read_file.implementation.as_deref(), Some("default-cap"));
     assert_eq!(read_file.params["lineCap"], 250);
 }
 

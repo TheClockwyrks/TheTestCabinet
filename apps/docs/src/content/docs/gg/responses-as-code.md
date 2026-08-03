@@ -6,9 +6,9 @@ An alternative to traditional tool calling: an agent answers a turn by **writing
 TypeScript program** over its tools, which gg executes in a
 [wasmtime](https://wasmtime.dev/) sandbox — instead of emitting one tool call, waiting
 for its result, and emitting the next. Loops, conditionals, filtering, intermediate
-values and a dozen composed calls all happen inside a single turn, and gg feeds back how
-each call went — alongside the [views](#showing-yourself-things) the program opened, which
-are how anything a program computed reaches the model at all.
+values and a dozen composed calls all happen inside a single turn. What comes back is the
+[views](#showing-yourself-things) the program opened — which are how anything a program
+computed reaches the model at all — and, when something failed, the error and nothing else.
 
 This is well-trodden ground for us: the same approach is already implemented and
 well understood in another of the author's projects (and wasmtime is already the
@@ -18,7 +18,7 @@ runs untrusted controllers in), so it is a low-risk capability to bring to gg.
 It is a capability like any other, which is the point. Turn it on and the model is
 offered **no native tool definitions at all** — the [system prompt](/gg/prompts/) names
 the API objects the program is given, and the model reads the functions on them on demand
-with `object.list()` and `fn.docs()`; turn it off and the same run executes as ordinary
+with `object.list()` and `view.openDocsView()`; turn it off and the same run executes as ordinary
 tool calling. Freeze the model, the test case and the rest of the
 [capability set](/gg/overview/#the-capability-set), vary this one toggle, and the
 difference is attributable to the shape of the response. That A/B — do code-shaped
@@ -58,14 +58,16 @@ itself can render is not a counter-example — it illustrates a message the mode
   which carries every line the program printed (and how many the capture caps dropped).
   That event is what puts a program's output on the operator's stream, in the run record
   and on the console's activity feed, and it is the **only** record of it: a log line is
-  not shown back to the model. A turn whose program logged is told **how many lines** it
-  logged and pointed at the view API, once, in that turn's feedback, so a model whose
-  output went somewhere it cannot read learns that rather than reading the silence as a
-  program that never ran.
+  not shown back to the model, and neither is the count of them. That `console.log()` will
+  not be visible is said once, in the [system prompt](/gg/prompts/), where a standing rule
+  belongs — not on every turn that breaks it. The one thing that can still call it out is
+  the [notice a turn earns](#a-program-that-worked-earns-no-message) when it put nothing in
+  the window at all.
 - **`return` at the top level** ends the program, exactly as it ends any function body,
-  and **its value is discarded**. A program uses it to stop early; it says nothing. A
-  model that returns a value is told, once, in that turn's feedback, that the value went
-  nowhere and what to open instead — see
+  and **its value is discarded**. A program uses it to stop early; it says nothing. That
+  rule, too, is stated once in the system prompt; the fact that a particular program
+  returned something goes to the run's [operator](#what-the-operator-is-told-instead) and
+  not to the model — see
   [the rule that replaced a family of rules](#a-returned-value-is-discarded) below.
 - **An [ending call](/gg/completion/#ending-calls) ends the session** — and nothing else
   does. Which one an agent has depends on the role it was dispatched in:
@@ -76,8 +78,9 @@ itself can render is not a counter-example — it illustrates a message the mode
   function, not a rule about text: it **sets a flag** in the agent's host-side context and
   returns, the program runs on, and the loop reads the flag once the program has ended.
 - **A reply that is not a program is an error turn**, not a conclusion. Prose, an
-  empty reply, comments only, or several candidate code blocks are each fed back to
-  the model naming the shape it sent, saying that nothing ran and nothing changed, and
+  empty reply, comments only, or several candidate code blocks each earn a
+  [`Notice`](#the-three-things-gg-says) naming the shape it sent, saying that nothing ran
+  and nothing changed, and
   telling it which of its own calls would have ended the session. Such a turn counts as an
   **error turn**,
   so a configured [error ceiling](/gg/execution-limits/) can stop a model that has
@@ -138,10 +141,13 @@ catch, and nothing about ending the run depends on the guest behaving.
   `warn` about them.
 - **A program that then fails loses the ending.** An uncaught throw, or a sandbox ceiling
   stopping the guest, **revokes** the flag: the summary describes checks the program never
-  ran to the end of. The run carries on, and the turn's feedback says the ending was
-  cancelled and why — without that sentence a model reads an ordinary failed turn, fixes
-  the throw, and never calls `finish` again. A failure the program **catches** revokes
-  nothing: it ran to its end.
+  ran to the end of. The run carries on, and the model reads the throw and nothing else.
+  What keeps it from fixing the throw and never calling `finish` again is the
+  [system prompt](/gg/prompts/), which states the rule up front — *a program that throws
+  does not end your session, even if it called an ending function before it threw* — rather
+  than a sentence appended to the one turn that tripped over it. The revocation itself is
+  logged for the [operator](#what-the-operator-is-told-instead). A failure the program
+  **catches** revokes nothing: it ran to its end.
 - **An empty summary finishes nothing.** It is refused as `invalid-argument` at the host,
   because the summary is the run's final word — and a subagent's entire answer to whoever
   asked for the work.
@@ -173,8 +179,10 @@ fails.
 ### A returned value is discarded
 
 A top-level `return` ends the program and gg **does not look at the value**. The guest
-reports only *that* a value was returned, so the turn's feedback can point the model at
-`view.openText`; the value itself never crosses the membrane.
+reports only *that* a value was returned — a fact that goes to the run's
+[operator](#what-the-operator-is-told-instead), where a reader can see that a program tried
+to answer through a channel that does not carry; the value itself never crosses the
+membrane.
 
 This is a subtraction, and what it removed is the point. A carried return value needed a
 rule for every shape a program might hand back: a `Promise` (the trace of `async` in a
@@ -188,9 +196,11 @@ sentence replaced all of them — at the time, *`console.log` what you want to s
 once; that there is exactly one, and that it takes a string, has not.
 
 `return` itself is untouched and is still worth writing: it is how a program stops early
-without an `else`. What gg reports about it is unchanged too — statements after a top-level
-`return` are counted and quoted in the feedback, because that shape is what a pasted second
-draft looks like.
+without an `else`. And one thing gg does still say to the model about it — statements after a
+top-level `return` are counted and quoted in a [`Notice`](#the-three-things-gg-says) — is the
+exception that shows where the line is drawn. Nothing the program can observe reveals that
+half its statements never ran: no call failed, nothing threw, and the shape is exactly what a
+pasted second draft looks like. A notice is the only channel that fact has.
 
 ### Malformed replies are healed, and the repair is counted
 
@@ -198,9 +208,10 @@ Between the raw reply and the type-strip sits a **deletion-only healing pass**: 
 unwraps a Markdown fence a model wrapped its program in, drops explanatory lines around
 it, removes `import` lines for a surface that is already in scope, and unwraps an
 `async` wrapper whose continuation this sandbox would have run only after the program
-had already returned. Every repair is
-disclosed to the model in the same turn's feedback and counted on the run, so a healed
-response is a measurement rather than a rescue. The strategies, their decline rules,
+had already returned. Every repair is counted on the run and disclosed to the run's
+operator, so a healed response is a measurement rather than a rescue — but nothing about it
+is said to the model, for the same reason nothing else about a working program is. The
+strategies, their decline rules,
 their configuration and their metrics are [their own page](/gg/response-healing/).
 
 ## The typed tool surface
@@ -229,9 +240,58 @@ interfaces and gg's tool vocabulary is not perturbed by them. A signature and a 
 documentation exist for every function **the run actually offers**, reflected out of the
 sandbox SDK's own emitted declarations by the same build that produces the component; the
 prompt names the objects, and the model reads the functions on demand with `object.list()`
-and `fn.docs()`. A hand-written list would drift, and a prompt that describes a
+and `view.openDocsView()`. A hand-written list would drift, and a prompt that describes a
 signature the sandbox does not have is worse than no prompt, because the model has no
 way to discover the lie.
+
+### Reading the documentation is opening a view
+
+There are two discovery calls and they are deliberately different kinds of thing.
+
+`object.list()` returns **inline**, as a value the program can iterate. It is a *directory* —
+one line per function on that object, name and summary — and a directory is something a
+program consults in order to decide what to do next, in the turn it is deciding. It is
+unchanged, and it is the reason every API object carries a `list` and the view API's own
+listing call had to be named [`current`](#showing-yourself-things) instead.
+
+`view.openDocsView(fn)` is the other one, and it opens a **view**. Pass the bound function
+itself — `view.openDocsView(view.openText)` — or its name, `view.openDocsView("openText")`.
+What comes back is that function's full signature, its documentation, and the declarations of
+every type it mentions, arriving under the [`Documentation`](#three-kinds-of-view) heading
+qualified by the function's name.
+
+That is a reversal, and the thing it replaced is worth stating because the replacement is a
+subtraction. gg used to hang a `.docs()` method off every bound function (and a
+`harness.readDocs(name)` beside it, for a model that had only a name). Calling it did two
+things at once: it **pinned** a documentation block into the window *and* returned the same
+text inline to the program. So the material arrived twice, through two doors that could not
+see each other, and the pinned copy was charged to nobody's account and reclaimable by no
+close — a model that looked up eight functions early and then wanted the room back had no
+call that would give it any. Both `.docs()` and `harness.readDocs` are gone. There is one
+door, it is the door everything else goes through, and what it opens can be closed with
+`view.close(name)` like anything else.
+
+Two consequences fall out of that, and the prompt states both:
+
+- **The documentation arrives on the *next* turn.** A view is material for the window, not a
+  value for the program, so it is not available during the turn that asks for it: ask in one
+  turn, use it in the next. The old prompt claimed exactly this and was simply wrong —
+  `.docs()` did return inline, and a model that believed the prompt wasted a turn waiting for
+  something it already had. It is true now.
+- **A lookup is self-contained.** It carries every type declaration the function refers to,
+  **every time**, with no dedup against what an earlier lookup showed. Deduplicating would be
+  the obvious economy and it is exactly wrong here: a view can be closed, and a view can be
+  superseded, so a block that omitted `FileRead` on the grounds that some other block already
+  carried it would stop making sense the moment the model tidied up. A lookup that only reads
+  correctly in the company of the lookups that preceded it is not a lookup.
+
+The `harness` object shrank in the same change. It now carries `finish` and nothing else — it
+existed to hold `readDocs` for every role, so a reviewer and a judge, whose endings live on
+`review` and `judge`, were each handed a `harness` with one function on it they were not
+supposed to end with. A reviewer now gets no `harness` object at all. The prompt's one-line
+description of it changed to match: from *read documentation* to *end your session*. `view`'s
+grew to say what it had become — *show yourself a file, a value, or a function's
+documentation — the only way material enters your context*.
 
 ### Why typed functions, and not one generic call
 
@@ -308,7 +368,7 @@ after it is dead. That is legal JavaScript and nothing refuses it — but a mode
 pasted a second draft after the first one's `return` would otherwise be told *"your
 program ran to completion"* about a reply whose second half, the half that wrote the
 deliverable and called `finish`, never executed. So gg counts what could not run and says
-so, in the turn's feedback and on the run's stream:
+so, in a [`Notice`](#the-three-things-gg-says) and on the run's stream:
 
 ```text
 2 statements after your top-level `return` did not run — the first is line 4:
@@ -340,8 +400,8 @@ the model's whole reply
                             (gated, routed, streamed as ToolCall/ToolResult, recorded)
                        │  view.openText("summary", …)
                        └─ typed WIT call → host → this agent's live context window
-   ← the call roster + the views it opened + any completion
    ← one message per open view, into the next prompt
+   ← the error, if there was one, and nothing else
 ```
 
 Everything above the tool registry is new; everything below it is the same code an
@@ -461,7 +521,8 @@ spent, every further call is refused with a `limit-exceeded` failure saying that
 everything the program already did stands — a refusal rather than a kill, so the program
 stops cleanly and the turn still reports what it accomplished. `finish` is the exception:
 it performs no work and ends the run, which is exactly what a spent budget wants, so it is
-never refused for one. `view.openText`, `view.close` and `view.current` are carved out for
+never refused for one. `view.openText`, `view.openDocsView`, `view.close` and `view.current`
+are carved out for
 the same reason — they dispatch nothing, and a turn that cannot say what it found is worse
 than one that says it late. `view.openFile` **is** refused, because it reads.
 
@@ -481,15 +542,16 @@ not shown the `TaskUsage` type either. That is the property
 come from one source and cannot disagree.
 
 It extends to the section's **prose**, not just its listing. The line teaching
-`view.openFile` renders only for a run that binds `read_file`, and the `.docs()` call the
-prompt demonstrates is spelled `view.openText.docs()` — against the one view function
+`view.openFile` renders only for a run that binds `read_file`, and the documentation lookup
+the prompt demonstrates is spelled `view.openDocsView(view.openText)` — against the one view
+function
 nothing gates. A call named in a prompt is the part of it a model copies verbatim, so
 naming an ungated one would hand a reduced-toolset run a `ReferenceError` on its first
 turn.
 
 The [filesystem capabilities](/gg/filesystem/) compose the same way: a run with
 `read-file` off has no `fs.readFile`, no `fs.readTextFile` and no `view.openFile`, and a
-capped read mode caps a program's reads exactly as it caps a tool call's.
+capped read mode windows a program's reads exactly as it windows a tool call's.
 
 :::note
 **`harness.finish` and the `view` object are the bound names no capability gates.** A run
@@ -533,19 +595,23 @@ every call returns `{ ok, output }` forces a branch after every line, and the wo
 example at the top of this page becomes unwritable. Three things keep it honest:
 
 1. **The throw is catchable and typed.** `catch (e) { if (e.code === "conflict") … }` is
-   the shape a function's `.docs()` teaches — `fs.editFile`'s names that very code — and
+   the shape a function's [documentation](#reading-the-documentation-is-opening-a-view)
+   teaches — `fs.editFile`'s names that very code — and
    `ToolError` is bound into the program's scope so `e instanceof ToolError` works. It
    also serialises: a plain `Error`'s `message` is non-enumerable, so without an explicit
    `toJSON` a failure a program logged — or put in a [view](#showing-yourself-things) —
    would arrive as `{}`.
-2. **The work before it stands, and is reported.** Every call the program landed before
-   the throw is in the turn's roster, and the model is told which statement threw, on
-   which line of *its own* program — the guest remaps the line out of the interpreter's
-   coordinates.
+2. **The work before it stands.** Every call the program landed before the throw has
+   landed for good, and what the model is told is which statement threw, on which line of
+   *its own* program — the guest remaps the line out of the interpreter's coordinates. That
+   the earlier work stands is a standing rule stated in the
+   [system prompt](/gg/prompts/) — *whatever the program did before it threw stands, so do
+   not repeat that work* — rather than a list of landed calls appended to the throw. A
+   [`Runtime error`](#the-three-things-gg-says) carries the error and nothing else.
 3. **`shell` is carved out.** A non-zero exit is a **value**, not a throw: a process that
    ran is a successful call whatever it exited with, and `shell("npm test")` has to be
-   usable inside an expression. The turn's roster records it as a completed call
-   (`exited 1`) rather than as a failure carrying the command's whole output.
+   usable inside an expression. The program reads the exit code and branches on it; nothing
+   about it reaches the model except through whatever the program chooses to show itself.
 
 ## Showing yourself things
 
@@ -562,6 +628,7 @@ its own set of open views; each view has a **kind**, a **selector** (its key), a
 | --- | --- |
 | `view.openFile(path, options?)` | Reads the file **and** opens a view of it. Returns exactly what `fs.readFile` returns, so a program that wants both the bytes and the view pays for one read. |
 | `view.openText(label, body)` | Opens — or replaces — the text view keyed by `label`. |
+| `view.openDocsView(fn \| "name")` | Opens — or replaces — the [documentation view](#reading-the-documentation-is-opening-a-view) for one bound function, keyed by its name. Returns `void`: the documentation is material for the window, not a value for the program. |
 | `view.close(selector)` | Closes every view carrying that selector (for a file, every page of that path) and returns how many it closed. Closing something that is not open is `0`, not a failure. |
 | `view.current()` | Lists what is open: each view's `kind`, `selector`, roughly what it costs in `tokens`, and a paged file view's `region`. |
 
@@ -572,12 +639,13 @@ The object is bound whatever a run enables — the same carve-out `harness.finis
 for the same reason: a run that offers no tools at all must still be able to show its model
 something. `view.openFile` alone is gated, on `read_file`, because it is a read.
 
-### Two kinds, and deliberately no third
+### Three kinds of view
 
 | Kind | Selector (its key) | [Band](/gg/context-visibility/) | Body |
 | --- | --- | --- | --- |
 | **file** | `(path, region)` | `File views` | what the read returned, plus any picture |
 | **text** | `label` | `Agent views` | the string the program supplied |
+| **docs** | the function's name | `Skills & docs` | one function's signature, documentation and types |
 
 The second band answers to two names on purpose, one per audience: the console calls it
 **Agent views**, beside File views, because that is what it is from outside; the agent's own
@@ -586,9 +654,27 @@ The second band answers to two names on purpose, one per audience: the console c
 
 Everything on disk is a file; everything a program can compute is a string. A directory
 listing, a `shell` result, a subagent's answer, a computed diff, a table the program
-assembled — every one of those is a **text view**. The taxonomy is closed at two on purpose:
-a third kind would hand the model a classification question to answer before it could show
-gg anything, in exchange for a distinction nothing downstream reads.
+assembled — every one of those is a **text view**. That pair is still closed, and for the
+reason it always was: a *fourth* kind of thing a program could compute would hand the model a
+classification question to answer before it could show gg anything, in exchange for a
+distinction nothing downstream reads.
+
+The **docs** kind does not reopen that question, because the model never chooses it. It is
+not a shape material might have; it is what
+[`view.openDocsView`](#reading-the-documentation-is-opening-a-view) produces and the only
+thing it produces, and nothing a program computes could be one. gg picks the kind from the
+call, so the model's classification burden is exactly what it was: none. What the kind buys
+is on the other side of the membrane — `view.current()` can say *this slot is documentation,
+not your work*, and the accounting can charge it to the band that already holds authored
+material rather than to the band that holds the agent's own.
+
+That band is shared with read [skills](/gg/skills/), which is why it answers to
+**Skills & docs** in the console. The two are told apart by **retention**, not by source: a
+read skill is pinned and unlabelled, so it survives a compaction and `view.current()` does
+not list it (offering a close that would reclaim nothing is worse than offering none); a docs
+view is ephemeral and labelled with the function it documents, so it lists, supersedes and
+closes like every other view. `view.close` therefore reaches a docs view and cannot reach the
+skill beside it.
 
 The file-view key is `(path, region)` and not `path`, because
 `view.openFile("a.ts", { offset: 1, limit: 200 })` and the same call at `offset: 201` are a
@@ -607,11 +693,14 @@ for the one number that bounds how many may be open at once.
 ### `fs.readFile` gets bytes; `view.openFile` shows a file
 
 The separation is the point, and it is taught where the model meets the call: in those
-words, as the second sentence of `view.openFile`'s own
-[`.docs()`](#the-typed-tool-surface). It used to be a line in the system prompt as well and
+words, as the second sentence of what
+[`view.openDocsView(view.openFile)`](#reading-the-documentation-is-opening-a-view) opens. It
+used to be a line in the system prompt as well and
 is not any more — the prompt names the two calls and leaves what separates them to the
 documentation the model asks for, so the fact arrives attached to the function it is about
-rather than screens away from it.
+rather than screens away from it. Since documentation is now a view, that sentence lands on
+the turn *after* the model asks for it, which is why the split is also stated by
+`fs.readFile`'s own result — see below — where it arrives at the moment it matters.
 
 A program that reads forty files to grep them puts **nothing** in the window: it consumed
 those reads itself. A program that opens a view of one of them has put one file in the
@@ -663,17 +752,19 @@ The native `read_file` path is unchanged. Only the view API supersedes.
 
 ### The caps, and why none of them truncates
 
-Over a cap is a catchable `ToolError` with code `limit-exceeded` **naming the cap**, and it
-is reported in the turn's feedback so the model can split the body, trim it, or write it to a
-file and open a file view of that instead. Silently truncating a model's only output channel
-behind its back is the failure mode this mechanism exists to remove.
+Over a cap is a catchable `ToolError` with code `limit-exceeded` **naming the cap**, thrown at
+the call site — so the program can split the body, trim it, or write it to a file and open a
+file view of that instead, in the same turn, before it has finished running. Silently
+truncating a model's only output channel behind its back is the failure mode this mechanism
+exists to remove; telling it a turn later, when the material is gone and the program that had
+it has ended, is the second-worst version of the same thing.
 
 | Cap | Value | Applies to |
 | --- | --- | --- |
 | `MAX_TEXT_VIEW_BYTES` | 65,536 (64 KiB) | one `openText` body |
 | `MAX_VIEW_LABEL_BYTES` | 200 | one `openText` label |
 | `MAX_OPEN_TEXT_VIEWS` | 50 | text views open at once, per agent |
-| `MAX_VIEW_OPS_PER_PROGRAM` | 100 | `openFile` + `openText` + `close` calls in one program |
+| `MAX_VIEW_OPS_PER_PROGRAM` | 100 | `openFile` + `openText` + `openDocsView` + `close` calls in one program |
 | [`imageViewCap`](#configuring-it) | unset (no ceiling), per agent | image-carrying **file** views open at once |
 
 An **empty label** is `invalid-argument`: a view with no selector could never be closed,
@@ -722,30 +813,21 @@ a defect in the code arm would move the **control** arm of the A/B this whole ca
 exists to measure, which is worse than an asymmetry — so the asymmetry is documented rather
 than closed.
 
-### What the turn's feedback says about it
+### Nothing reports on the views a program opened
 
-The report on a program lists what it did to its own window, beside the roster of what it
-called:
+gg used to answer every program with a list of what it had done to its own window — *opened
+text view `specs-missing-rules` (~412 tokens)*, *replaced file view `src/main.rs`*, *closed
+view `scratch`*, *view refused: that body is 91,204 bytes…*. That list is gone from the
+model's side of the membrane, and its absence is the point: **the views are the report**. A
+model that opened a view reads the view on its next turn, headed and labelled; being told
+separately that it opened it is being told something it is looking at. A refusal is not on
+that list either, because a refused view [throws](#the-caps-and-why-none-of-them-truncates)
+at the call site, into the program, in a form it can branch on — which is strictly earlier
+and strictly more useful than a line in a report the model reads a turn later.
 
-```text
-- opened text view `specs-missing-rules` (~412 tokens)
-- replaced file view `src/main.rs` (~1,208 tokens)
-- closed view `scratch`
-- view refused: that body is 91,204 bytes; one text view may be at most 65536 …
-```
-
-and, when the program logged at all, the counted nudge that keeps a vanished `console.log`
-from reading as a program that never ran:
-
-```text
-Your program logged 12 line(s). Logs are not shown to you — they go to the run's
-operator. To put something in front of yourself, open a view:
-`view.openText(label, body)` for a value you computed, `view.openFile(path)` for a file.
-```
-
-A program that called nothing, touched no view and logged nothing still says
-`No output recorded.` — the one sentence that says a turn genuinely happened and produced
-nothing, rather than a turn whose output went somewhere the model cannot read.
+What the list was genuinely good for was *diagnosis by a human*, and that is where it went:
+every open, replace, close and refusal is logged to the run's
+[operator](#what-the-operator-is-told-instead), with its selector and its token estimate.
 
 ### A reversal: `console.log` was the channel, and is not any more
 
@@ -795,12 +877,138 @@ disagree about what a context message *is*, and a param that forked the context 
 fork the accounting, the attribution, the persistence and the compaction behaviour along with
 it.
 
+## The three things gg says
+
+Under this protocol every assistant turn is a program and everything gg says back is plain
+`user` text, so the [heading](/gg/prompts/) is the only thing telling the model what it is
+looking at. The vocabulary is therefore deliberately tiny — **three messages, and no
+fourth**:
+
+| Heading | When | Body |
+| --- | --- | --- |
+| `Compiler error` | the program did not compile, so none of it ran | the compiler's error, and nothing else |
+| `Runtime error` | it compiled and then threw, or a sandbox limit stopped it | the error, and nothing else |
+| `Notice` | a fact about the *session* rather than about the program | the fact |
+
+A `Runtime error` from a program that threw is the throw, formatted the way a stack trace is
+formatted, because that is what it is:
+
+```text
+`edit_file` failed (conflict): `oldString` matched 3 times in src/main.rs
+    at line 12, column 5
+```
+
+One frame — the model's own. Every other frame belongs to the interpreter shim or to the SDK,
+and none of them reaches the model: the guest finds the program's frame by matching it
+**positively** (only frames inside the constructed function carry the marker it looks for)
+rather than by filtering gg's out, so there is no denylist to fall behind the internals it
+names. A model cannot act on gg's internals, and a trace full of them is a trace it has to
+read past to find the one line it can.
+
+`Notice` is the `System` band, and it is where the small population of things gg genuinely has
+to say lives: a reply that [was not a program](#the-contract-a-model-sees); an ending a
+[validation command](/gg/completion/) rejected; the results of a deferred `wait_for_issue`;
+[statements after a top-level `return`](#statements-that-cannot-run) that could not run; and
+the one notice a *working* program can earn, [below](#a-program-that-worked-earns-no-message).
+When a turn produces both a notice and an error, the notices come first and the error last —
+so the error is the last thing the model reads before it writes its next program, and so a
+notice can never be mistaken for part of the diagnostic above it.
+
+### An error message carries the error alone
+
+That is the rule the whole design reduces to. No preamble, no *"your program stopped"*, no
+advice, no roster of what the program called, no restatement of the rules it broke.
+
+The argument for it is that everything gg might have added is already somewhere better. A
+failed call **throws into the program** — the program has the code, the message and the tool
+name, at the statement that made the call, in time to catch it. A refused view **throws into
+the program**, at the call site, naming the cap. Everything left over is a *standing rule* —
+that a program which throws does not end the session; that whatever it did before the throw
+stands; that a returned value is discarded; that `console.log` is not a channel — and a
+standing rule belongs in the [system prompt](/gg/prompts/), where it is stated once, rather
+than on every turn that trips over it. Stating it on the failing turn is the arrangement that
+looks most helpful and reads worst: it puts gg's prose between the model and the diagnostic,
+so the model has to parse gg out before it can read its own error, and it spends the tokens
+again on every retry.
+
+The inverse rule holds too, and bounds the restraint: gg may **remove** from an error — a
+stack trace whose frames are its own internals — but never **adds** to one.
+
+There used to be a fourth message, headed `Output`, and its absence is the clearest statement
+of the change. It reported what a program had done: the roster of its composed calls, how many
+lines it logged, the views it opened and closed, whether it returned a value, whether an
+ending was revoked. But `console.log` does not reach the model, and a view is the only channel
+material has into the window, so `Output` was a heading over an empty idea — a report on
+output that was not output, arriving beside the views that already *were* the result.
+
+### A program that worked earns no message
+
+A program that ran and did what it meant to gets **nothing back at all**. The views it opened
+are the turn's result, and the system prompt says so in as many words: *when your program
+compiles and runs, you are not told so — the views it opened are the result. You hear from the
+harness only when something failed or when there is a process fact you could not otherwise
+know.*
+
+There is exactly one exception, and it is a mechanical one rather than a judgement about the
+program. If the turn would otherwise end on the **assistant's own message** — which is what a
+window looks like when a program ran, opened nothing, and gg said nothing — the next request
+asks the provider to *continue* that message rather than to answer it, and the model gets back
+a continuation of its own program instead of a turn. So gg pushes a `Notice`:
+
+```text
+Your program ran and put nothing in your context.
+
+A view is the only way to see anything: `view.openText(label, body)` for a value
+you computed, `view.openFile(path)` for a file. `console.log` goes to the run's
+operator, not to you.
+```
+
+The condition is tested against the **assembled window**, not inferred from the program's
+outcome, and that distinction is load-bearing. A program that opened a view can still leave
+the window ending on its own message, because [superseding](#re-opening-a-selector-replaces-what-was-under-it)
+a view opened earlier in the same turn lands the new copy *in place* rather than at the tail;
+and a [compaction](/gg/compaction/) rewrites the window under the turn entirely. Asking the
+window what it actually ends with is the only test that survives both.
+
+### A runtime error does not roll back the window
+
+The views a program opened before it threw are **still there on the next turn**. They were
+pushed live, as the program ran, against the agent's own context — that is what
+[the turn diagram](#how-a-turn-runs) means by the `view` calls reaching no tool at all — so a
+throw ten statements later takes nothing back.
+
+This is what makes an error-only message survivable rather than brutal. A program that read
+six files, opened views of two of them, and then threw on the seventh leaves its model looking
+at those two views and one error. It does not need a report telling it which calls landed,
+because the ones whose results it wanted to keep are in front of it, and the standing rule in
+the prompt tells it the rest landed too. Rolling the window back to the start of the turn
+would be the arrangement that made a roster necessary.
+
+### What the operator is told instead
+
+None of this is lost — it changed audience. `report_to_operator` writes every fact the old
+report carried to the run's stream, where it reaches [telemetry](/gg/telemetry/), the run
+record, the [replay](/gg/replay/) capture and the console's activity feed:
+
+- every call the program refused or had refused, and how many further ones a cap suppressed;
+- every view opened, replaced or closed, with its selector and token estimate, and every view
+  refusal;
+- that the program returned a value, which was discarded;
+- that a later ending call replaced an earlier one, and the summary the session ended on;
+- that an ending was **revoked** because the program then failed.
+
+Losing the model's copy of these is not losing the record; for most of them the operator's
+stream is now the *only* copy, which makes it more load-bearing than it was rather than less.
+The trade is deliberate: a human reading a run wants to know what the program did, and a model
+writing the next program wants to know what went wrong. They are different questions, and
+answering both in one message was what made the report unreadable to both.
+
 ## What a code turn costs the context window
 
-A code turn is charged to the window as **one ephemeral tool-output message** — the call
-roster, the refusals, the counted log line — **plus one message per view the program opened**.
-The first is gg's report on the program; the second is the program's own material, each item
-charged to its band and tagged with its selector.
+A code turn is charged to the window as **one message per view the program opened**, and — on
+a turn that failed — one short message carrying the error. There is no per-turn report any
+more: a program that ran cleanly and opened one view costs the window that one view and
+nothing else.
 
 A program's `fs.readFile` still pushes **no** [file view](/gg/context-visibility/) and no
 picture: a program that reads forty files to search them should not put forty files in the
@@ -808,27 +1016,28 @@ window, and that is still what makes a code turn cheap. The difference is that t
 now say which of them it wants to keep looking at, with
 [`view.openFile`](#showing-yourself-things), one at a time.
 
-Everything a program can produce in a loop is bounded, and whatever a bound discarded is
-**counted** rather than silently dropped — a model whose roster was cut needs to be told,
-or it will read the shorter list as evidence that its loop never ran:
+Everything a program can produce in a loop is still bounded, and whatever a bound discarded is
+still **counted** rather than silently dropped — but every one of these caps now bounds the
+[operator's record](#what-the-operator-is-told-instead) rather than the prompt, because that
+is where all of it goes:
 
 | What | Cap |
 | --- | --- |
-| Calls described in the roster | 500 (a program can compose far more within its timeout) |
+| Calls described | 500 (a program can compose far more within its timeout) |
 | Refusals described | 100 |
 | View operations described | 100 per kind (opened, closed, refused) |
-| Failure text kept per roster entry | 512 bytes |
+| Failure text kept per entry | 512 bytes |
 | Log lines kept | 200, 16 KiB in total, 2 KiB per line — the **last** lines, evicting from the front |
 
-The log caps no longer describe anything the model reads: logs ride out on the turn's
+None of them describes anything the model reads. They ride out on the turn's
 `code_execution` [telemetry](/gg/telemetry/) event, so what they bound is how much of a runaway
-loop's output is kept for a *reader*, not how much of the prompt it can occupy. What the caps
-discard is reported as `logsSuppressed` on that same event, so a capped list never reads as a
-program that stopped printing. What a program puts in the
+loop's activity is kept for a *reader*, not how much of the prompt it can occupy — and what
+each cap discards is counted on that same event (`logsSuppressed` for the log half), so a
+capped list never reads as a program that stopped doing anything. What a program puts in the
 **prompt** is bounded by [the view caps](#the-caps-and-why-none-of-them-truncates) instead,
 and those refuse rather than truncate.
 
-The dispatched-call count reported in [telemetry](/gg/telemetry/) is the roster **plus**
+The dispatched-call count reported in [telemetry](/gg/telemetry/) is the described set **plus**
 what the cap suppressed, so it always equals the number of `ToolCall`/`ToolResult` pairs
 the turn actually streamed. Refusals are counted separately and never inflate it: nothing
 was dispatched.
@@ -871,30 +1080,35 @@ Every one of these is a **turn** outcome, not a run outcome, and every one emits
 reply was not a program at all, which is what makes that event's count the exact number
 of code-shaped turns a run took.
 
+The third column is what reaches the **model**, under one of
+[the three headings](#the-three-things-gg-says). Several rows say *nothing*: the program
+already knows, because the failure threw into it, and the operator's stream carries the
+record.
+
 | What went wrong | Caught by | What the model is told |
 | --- | --- | --- |
-| The reply was not a program — prose, empty, comments only, native tool calls and no text, no block gg reads as a program, or several candidate blocks | [healing](/gg/response-healing/), before any engine work | which shape it sent, that nothing ran and nothing changed, and that only `finish` ends the run |
-| The program is not valid TypeScript | the type-strip, before any engine work | every parser diagnostic — each with its line, its column and the offending source line quoted — and that nothing ran so nothing changed |
-| The program breaks an **early error** — most often a `const` declared twice, i.e. two programs in one reply | the type-strip's scope analysis, before any engine work | the identifier, and **both** places it was bound, each with a line, a column and the source line quoted |
-| The reply carried statements after a top-level `return` | the type-strip, from the tree it already built | how many did not run, which one was first, and that a top-level `return` ends the program — the program itself still runs |
-| `import`, `export`, a dynamic `import()`, or a top-level `await` | the type-strip | that the sandbox has no module system and is synchronous, and what to write instead |
-| The program is longer than 64 KiB | the size guard, before the parse | its size, the cap, and that a program orchestrates tools rather than carrying a document inline |
-| The program nests brackets past 200 deep | the nesting guard, before the parse | its depth, the cap, that the parse runs on a bounded stack, and that this is almost always a repeated bracket |
-| An unknown identifier (usually a withheld tool) | the guest | the name, the program line — **and the list of tools this run offers** |
-| A tool threw and was not caught | the guest's single `catch` | which tool failed, its code and message, the program line, plus every call that already landed |
-| A tool failed but was caught | the call roster | `- edit_file → failed: …`, so a caught failure is not invisible |
-| A denied global (`setTimeout`, `fetch`, `crypto.randomUUID`, …) | the guest's throwers | the denial, located, plus "every tool function is synchronous" |
-| The program returned a Promise | the guest | to remove `async`/`await`, since every function on the surface is synchronous |
-| The program `return`ed a value | the guest | that return values are discarded, and to use `view.openText(label, body)` for a value it wants to read |
-| A view call broke one of [its caps](#the-caps-and-why-none-of-them-truncates) — a body or label over the ceiling, a fifty-first text view, a hundred-and-first view operation, an empty label | the host, which owns the window | a catchable `limit-exceeded` (or `invalid-argument`) **naming the cap**, and that nothing was truncated — plus a `view refused:` line in the feedback, so material that never reached the window is never silently absent |
-| The program called `finish` and then failed | the host, which revokes the flag | that a program which fails has not finished, and to call `finish` again from one that runs to its end |
-| Work deferred with `.then()` ran after the program ended | the guest's call guard | that deferred work is outside the turn and its failures are never reported |
-| A tool this run withholds, or a second succession in a turn that already declared one | the host's backstop | a `refused:` line in the feedback; **not** counted as a tool call |
-| The run's wall-clock budget ran out mid-program | the deadline check before each call | a `limit-exceeded` failure saying the budget is spent and prior work stands |
-| Execution timeout reached | the trap classifier | the ceiling, and that a timeout this long almost always means a loop or recursion that never ends — find it rather than write less |
-| Memory cap exceeded, or set below the guest's ~10 MiB floor | the memory limiter's denial flag | the configured cap, and the floor the guest engine needs before a program runs at all |
+| The reply was not a program — prose, empty, comments only, native tool calls and no text, no block gg reads as a program, or several candidate blocks | [healing](/gg/response-healing/), before any engine work | a `Notice`: which shape it sent, that nothing ran and nothing changed, and which of its own calls would have ended the run |
+| The program is not valid TypeScript | the type-strip, before any engine work | a `Compiler error` carrying every parser diagnostic — each with its line, its column and the offending source line quoted — and nothing else; that none of it ran is what the heading means |
+| The program breaks an **early error** — most often a `const` declared twice, i.e. two programs in one reply | the type-strip's scope analysis, before any engine work | a `Compiler error`: the identifier, and **both** places it was bound, each with a line, a column and the source line quoted |
+| The reply carried statements after a top-level `return` | the type-strip, from the tree it already built | a `Notice`: how many did not run, which one was first, and that a top-level `return` ends the program — the program itself still runs |
+| `import`, `export`, a dynamic `import()`, or a top-level `await` | the type-strip | a `Compiler error` saying the sandbox has no module system and is synchronous, and what to write instead |
+| The program is longer than 64 KiB | the size guard, before the parse | a `Compiler error`: its size, the cap, and that a program orchestrates tools rather than carrying a document inline |
+| The program nests brackets past 200 deep | the nesting guard, before the parse | a `Compiler error`: its depth, the cap, that the parse runs on a bounded stack, and that this is almost always a repeated bracket |
+| An unknown identifier (usually a withheld tool) | the guest | a `Runtime error`: the name, the program line — **and the API objects this run binds**, because the question a `ReferenceError` provokes is *what do I have?*, and the guest composes that into the error rather than gg wrapping prose around it |
+| A tool threw and was not caught | the guest's single `catch` | a `Runtime error`: which tool failed, its code and message, and the one line of *its own* program it threw on. Not the calls that already landed — those stand, which the [system prompt](/gg/prompts/) says once |
+| A tool failed but was caught | the program's own `catch` | nothing. It was handed the typed `ToolError` at the statement that made the call, which is the whole point of the surface; the operator's stream still records the failure |
+| A denied global (`setTimeout`, `fetch`, `crypto.randomUUID`, …) | the guest's throwers | a `Runtime error`: the denial, located, plus "every tool function is synchronous" |
+| The program returned a Promise | the guest | a `Runtime error` telling it to remove `async`/`await`, since every function on the surface is synchronous |
+| The program `return`ed a value | the guest | nothing. That a returned value is discarded is a standing rule in the system prompt; that this program returned one goes to the operator |
+| A view call broke one of [its caps](#the-caps-and-why-none-of-them-truncates) — a body or label over the ceiling, a fifty-first text view, a hundred-and-first view operation, an empty label | the host, which owns the window | a catchable `limit-exceeded` (or `invalid-argument`) thrown at the call site, **naming the cap**, and nothing afterwards: material that never reached the window is refused where the program can still do something about it |
+| The program called `finish` and then failed | the host, which revokes the flag | the failure, as a `Runtime error`, and nothing about the revocation — the system prompt states that a program which throws has not finished, and the operator's stream records that this one lost its ending |
+| Work deferred with `.then()` ran after the program ended | the guest's call guard | nothing; the note that deferred work is outside the turn and its failures are never reported goes to the operator |
+| A tool this run withholds, or a second succession in a turn that already declared one | the host's backstop | a catchable `refused` `ToolError` thrown into the program; **not** counted as a tool call |
+| The run's wall-clock budget ran out mid-program | the deadline check before each call | a catchable `limit-exceeded` failure saying the budget is spent and prior work stands |
+| Execution timeout reached | the trap classifier | a `Runtime error`: the ceiling, and that a timeout this long almost always means a loop or recursion that never ends — find it rather than write less |
+| Memory cap exceeded, or set below the guest's ~10 MiB floor | the memory limiter's denial flag | a `Runtime error`: the configured cap, and the floor the guest engine needs before a program runs at all |
 | The committed component fails to compile or instantiate, or gg's own wasm plumbing fails | the engine, or the host | nothing — the **session ends** with a model-error status and a log naming which of the two it was, because every further turn would fail identically |
-| A configured [error ceiling](/gg/execution-limits/) was breached | the loop, at the turn boundary | the last turn's feedback, then the **session ends** `limit_exceeded` with the breach recorded |
+| A configured [error ceiling](/gg/execution-limits/) was breached | the loop, at the turn boundary | the last turn's message, then the **session ends** `limit_exceeded` with the breach recorded |
 
 Which of these count as an **error turn** follows one definition shared by both execution
 modes: a turn is an error when the work it *declared* could not be carried out as
@@ -917,7 +1131,7 @@ outputs are **committed** into the Rust crate:
 | Artifact | What it is |
 | --- | --- |
 | `crates/gg/src/sandbox/gg-sandbox.component.wasm` | The baked component, embedded in the binary (13,941,785 bytes as committed). |
-| `crates/gg/src/sandbox/signatures.json` | The signature catalogue the model reads through `object.list()` and `fn.docs()`. |
+| `crates/gg/src/sandbox/signatures.json` | The signature catalogue the model reads through `object.list()` and `view.openDocsView()`. |
 
 Committing them follows the precedent the `foray-ref-*` guests already set, and it is
 what means **no build or CI step ever needs `componentize-js`**: the host

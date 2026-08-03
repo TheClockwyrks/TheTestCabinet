@@ -65,7 +65,6 @@ fn a_paged_file_view_reports_its_region() {
                 last_line: 400,
                 total_lines: 1_000,
                 byte_truncated: false,
-                limit_reduced: false,
             },
         ))
     });

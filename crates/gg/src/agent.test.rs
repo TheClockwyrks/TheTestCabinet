@@ -1624,7 +1624,7 @@ fn system_prompt_names_the_api_objects_in_code_mode() {
     assert!(full.contains("`system`"), "{full}");
     assert!(full.contains("`harness`"), "{full}");
     assert!(full.contains(".list()"), "{full}");
-    assert!(full.contains(".docs()"), "{full}");
+    assert!(full.contains("view.openDocsView"), "{full}");
     // No tool function is spelled out in the prompt.
     assert!(!full.contains("writeFile"), "{full}");
     assert!(!full.contains("write_file"), "{full}");
@@ -1710,7 +1710,7 @@ fn system_prompt_states_the_configured_read_cap() {
         .iter_mut()
         .find(|cap| cap.id == CAPABILITY_READ_FILE)
         .expect("the minimal set offers read_file");
-    read_file.implementation = Some("hard-cap".to_string());
+    read_file.implementation = Some("default-cap".to_string());
     read_file.params = json!({ "lineCap": 42 });
 
     let library = Arc::new(SkillLibrary::empty());
@@ -1724,7 +1724,10 @@ fn system_prompt_states_the_configured_read_cap() {
         read_policy: read_policy(set.root()),
         ..runtimes.inputs(&registry)
     });
-    assert!(capped.contains("at most 42 lines"), "{capped}");
+    assert!(
+        capped.contains("42 lines per call unless you ask for more"),
+        "{capped}"
+    );
 
     // The default (unlimited) mode says nothing about a cap.
     let uncapped = system_prompt(runtimes.inputs(&registry));
@@ -1790,6 +1793,133 @@ async fn autoload_seeds_the_provided_files_as_read_pairs() {
         .filter(|item| item.source() == GgContextSource::Assistant)
         .count();
     assert_eq!(assistant_calls, 2, "one read_file call per provided file");
+}
+
+/// **In code mode, autoload seeds through a program the model could have written.**
+///
+/// The counterpart of the test above, and the whole reason the two paths differ. A code turn's
+/// assistant message is a *program* — it carries no `tool_calls`, and there is no `read_file`
+/// function for a program to call — so a synthesized `tool_use` naming one would put a call in the
+/// model's own mouth that it cannot make, quoting an id its assistant messages never carry. What it
+/// gets instead is one program calling `view.openFile` per spec, and the file views that program
+/// opened, arriving headed exactly as a real `view.openFile` would deliver them.
+#[tokio::test]
+async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("SPEC.md"), "# The spec\n\nBuild a game.\n").unwrap();
+    std::fs::create_dir_all(dir.path().join("reference")).unwrap();
+    std::fs::write(dir.path().join("reference").join("title.png"), FAKE_PNG).unwrap();
+
+    let ctx = ToolContext::new(dir.path());
+    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+    let mut context = ContextModel::new(
+        Arc::new(HeuristicTokenEstimator::new()),
+        Some(100_000),
+        // The one difference from the test above.
+        true,
+    );
+
+    let provided = vec![
+        PathBuf::from("SPEC.md"),
+        PathBuf::from("reference/title.png"),
+    ];
+    autoload_specifications(&mut context, &provided, &ctx, false, &emitter).await;
+
+    // One assistant turn, and it is a program naming both files in seeding order.
+    let assistant: Vec<String> = context
+        .items()
+        .iter()
+        .filter(|item| item.source() == GgContextSource::Assistant)
+        .map(|item| item.message().content.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        assistant,
+        vec!["view.openFile(\"SPEC.md\");\nview.openFile(\"reference/title.png\");".to_string()],
+        "one program opens every spec, in order"
+    );
+
+    // And it carries no tool calls at all — the invariant a code-mode transcript holds everywhere
+    // else, which the old synthesized `read_file` pair was the single exception to.
+    assert!(
+        context
+            .items()
+            .iter()
+            .filter(|item| item.source() == GgContextSource::Assistant)
+            .all(|item| item.message().tool_calls.is_empty()),
+        "a code-mode assistant turn never carries tool calls"
+    );
+
+    // The views arrive as headed `user` messages — what `view.openFile` pushes — not as `tool`
+    // results answering a call id that would dangle.
+    let views: Vec<&crate::context::ContextItem> = context
+        .items()
+        .iter()
+        .filter(|item| item.source() == GgContextSource::FileView)
+        .collect();
+    assert_eq!(views.len(), 2);
+    assert!(
+        views
+            .iter()
+            .all(|v| v.message().role == crate::model::Role::User),
+        "a seeded view uses the same envelope a program's own view does"
+    );
+    assert!(
+        views.iter().all(|v| v
+            .message()
+            .content
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("File\n----\n")),
+        "and is headed like one"
+    );
+    assert_eq!(
+        views.iter().filter_map(|v| v.label()).collect::<Vec<_>>(),
+        vec!["SPEC.md", "reference/title.png"],
+        "each keyed by its path, so `view.close` can name it"
+    );
+    // The specs are still read in full, and the mockup is still a picture.
+    let messages = context.messages();
+    assert!(
+        messages.iter().any(|m| m
+            .content
+            .as_deref()
+            .is_some_and(|c| c.contains("Build a game."))),
+        "the spec's contents are loaded"
+    );
+    assert!(
+        messages.iter().any(|m| !m.images.is_empty()),
+        "the reference mockup is attached as an image"
+    );
+}
+
+/// A **locked** code-mode seed is still pinned, which is the one thing `seed_file_view` adds over
+/// the `view.openFile` path it otherwise reuses — that path hardcodes ephemeral, and `locked` is
+/// exactly the setting that must not be.
+#[tokio::test]
+async fn a_locked_code_mode_seed_is_pinned() {
+    let dir = TempDir::new().unwrap();
+    std::fs::write(dir.path().join("SPEC.md"), "the whole specification").unwrap();
+    let ctx = ToolContext::new(dir.path());
+    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
+    let mut context = ContextModel::new(Arc::new(HeuristicTokenEstimator::new()), None, true);
+
+    autoload_specifications(
+        &mut context,
+        &[PathBuf::from("SPEC.md")],
+        &ctx,
+        true,
+        &emitter,
+    )
+    .await;
+
+    assert!(
+        context
+            .items()
+            .iter()
+            .filter(|item| item.source() == GgContextSource::FileView)
+            .all(|item| item.retention() == Retention::Pinned),
+        "a locked spec is pinned on the code path too"
+    );
 }
 
 /// Locked autoload pins the injected views, so they survive a compaction verbatim while an

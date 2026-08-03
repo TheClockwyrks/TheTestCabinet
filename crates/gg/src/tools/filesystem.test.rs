@@ -232,7 +232,6 @@ async fn read_file_reports_the_window_it_returned() {
                 (1, 3, 3)
             );
             assert!(!data.byte_truncated);
-            assert!(!data.limit_reduced);
         }
         other => panic!("expected file text, got {other:?}"),
     }
@@ -326,13 +325,13 @@ async fn argument_and_confinement_diagnostics_are_classified_as_invalid_argument
         ),
         (
             "a non-positive paging argument",
-            ReadFileTool::new(ReadPolicy::HardCap(10))
+            ReadFileTool::new(ReadPolicy::DefaultCap(10))
                 .invoke(json!({ "path": "f.txt", "limit": 0 }), &ctx)
                 .await,
         ),
         (
             "an offset past the end",
-            ReadFileTool::new(ReadPolicy::HardCap(10))
+            ReadFileTool::new(ReadPolicy::DefaultCap(10))
                 .invoke(json!({ "path": "f.txt", "offset": 99 }), &ctx)
                 .await,
         ),

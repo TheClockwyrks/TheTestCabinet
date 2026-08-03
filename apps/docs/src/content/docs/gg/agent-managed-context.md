@@ -57,7 +57,12 @@ It reports the share of the window each [source](/gg/context-visibility/) holds,
 percentage to one decimal place, in the same fixed source order the context graph uses,
 with the per-file list nested inside the file-view band rather than added to it. A category
 holding nothing is **left out** rather than listed at `0.0%`: the block exists to say where
-the window is going, and a column of zeroes says nothing. The figures are computed over the
+the window is going, and a column of zeroes says nothing. That is why the sample above has no
+`Compiler Errors` or `Runtime Errors` line — the two bands a
+[responses-as-code](/gg/responses-as-code/) run fills with programs that did not work, which
+a run whose programs are running leaves empty. When they do appear they sit directly after
+`Tool Output`, where the fixed order puts them, so a run that is losing its window to failing
+programs says so in the same place every turn. The figures are computed over the
 conversation items alone, so the block never accounts for itself. The closing lines name
 only the reclaim calls this agent actually has — `evict_file_view` and `archive_thread` are
 separately [ablatable](/gg/toolset-ablation/) and are read off the registry, `view.close`
@@ -66,9 +71,9 @@ appears only under [responses-as-code](/gg/responses-as-code/) because that is w
 saying nothing at all.
 
 **Text Views** is the band a [responses-as-code](/gg/responses-as-code/) agent fills itself,
-with `view.openText`, and it is the one band such an agent is always able to act on:
-`view.close` is bound into every program's scope whatever the rest of the capability set
-says, so the block can always name it. Unlike the file-view band it carries no nested
+with `view.openText`, and — together with the documentation it looked up — it is what such an
+agent can always act on: `view.close` is bound into every program's scope whatever the rest
+of the capability set says, so the block can always name it. Unlike the file-view band it carries no nested
 list, because its selectors are labels the agent chose and `view.current()` answers the same
 question on demand, for free, without spending a slot of the window every turn to do it.
 
@@ -134,8 +139,18 @@ that selector — for a file, every page of that path — returning how many it 
 something that is not open returns `0` rather than failing, so a program that tidies up
 unconditionally does not have to guard every call.
 
-It sits **beside** `evict_file_view` rather than inside it, and the two differences are the
-whole reason it is documented separately:
+All three view bands are swept, the **documentation** band included: a lookup opened with
+`view.openDocsView` is a view like any other and answers to `view.close(name)`. A selector is
+what the *model* wrote, and it has no obligation to tell gg which kind of view it meant, so
+one call reaches all three rather than making the agent pick the right one. The one thing a
+close cannot reach is a **read [skill](/gg/skills/)**, which shares the documentation band
+with docs views and is told apart from them by retention: the skill is pinned, and the
+removal path spares every pinned item. So a program tidying up its lookups can never take the
+skill down with them — not by a special case, but by the same rule that keeps an eviction off
+a locked [autoloaded specification](/gg/autoload-specifications/).
+
+`view.close` sits **beside** `evict_file_view` rather than inside it, and the two differences
+are the whole reason it is documented separately:
 
 - **It is not gated.** `evict_file_view` is one of this capability's tools and an ablation
   can withhold it. `view.close` is bound whatever a run enables, because closing material the
@@ -144,8 +159,10 @@ whole reason it is documented separately:
 - **The trade is not the same.** An evicted file view is recoverable: the file is unchanged
   on disk and can be read again. A closed **text** view held the agent's only copy of
   something it computed, so closing one discards it unless the agent wrote it down first. The
-  telemetry keeps the two apart for that reason — a close naming a workspace path is reported
-  as an `evict_file_views` action, one naming a view label as `close_text_views`.
+  telemetry keeps the bands apart for that reason — a close naming a workspace path is
+  reported as an `evict_file_views` action, one naming a view label as `close_text_views`,
+  and one naming a documentation lookup as `close_docs_views`, which is recoverable again
+  (the lookup can simply be re-opened).
 
 `view.close` reclaims from the live window exactly as an eviction does, so it resets the
 provider's cache prefix from that point on, and the next
@@ -184,11 +201,18 @@ tokens, which is well inside what "estimate" already means here.
 Headers are attached **only** for an agent that actually has `archive_thread`, so nothing
 pays for them that cannot use them: without archival they would be a per-result tax on the
 window buying the model nothing. Under
-[responses-as-code](/gg/responses-as-code/) the code-mode heading (`Output`, `File`, or
-`View: <label>` for a view the agent [opened itself](/gg/responses-as-code/#showing-yourself-things))
-still leads the message, and the turn header sits directly beneath it on the results that
-carry one. A view does not: it is a `user` message rather than a tool result, so it carries
-its heading alone and is named by its selector rather than by a turn number.
+[responses-as-code](/gg/responses-as-code/) hardly anything carries one, and that follows
+from what a code turn produces: a program's calls return **into the program**, so the turn
+leaves no tool results behind. Everything gg puts in such a window is a headed `user`
+message — a `File`, a `View: <label>` or a `Documentation: <fn>` view the program
+[opened itself](/gg/responses-as-code/#showing-yourself-things), or one of the harness's own
+messages — and each carries its heading alone, named by its selector rather than by a turn
+number. The exception is a window **carried over from a tool-calling agent** by an
+[`exec` or an FSM transition](/gg/fork-and-exec/): the tool results already in it keep the
+headers they were pushed with, and `Output` is the heading such an item takes when a
+[compaction](/gg/compaction/) re-frames it as a `user` message. That is what `Output` is for,
+and equally why it is **not** one of the headings the code-mode system prompt
+[lists](/gg/prompts/): a code-native agent will never be sent one.
 
 ## Archiving the thread, and searching it back
 
@@ -265,10 +289,10 @@ Evict, [close](#closing-views-which-no-capability-gates) and archive each emit a
 `ContextManaged` telemetry event carrying the `action`,
 the `reclaimedTokens`, the number of `items` removed, and a human-readable `detail`
 (the evicted paths, the closed labels, or how many turns were archived and the archive's new
-size). A `view.close` reports `evict_file_views` when it named a path and
-`close_text_views` when it named a label, so the console can draw a **close** marker where
-the trade is "the agent's only copy is gone" and an **evict** marker where it is "the file
-can be read again". The
+size). A `view.close` reports one action per band it actually emptied — `evict_file_views`
+for a path, `close_text_views` for a label, `close_docs_views` for a documentation lookup —
+so the console can draw a **close** marker where the trade is "the agent's only copy is gone"
+and an **evict** marker where it is "the file can be read again". The
 underlying `ToolCall`/`ToolResult` still stream too; the `ContextManaged` event carries
 the *effect*, which the console draws as a marker on the timeline and the context graph
 next to the band drop the following breakdown shows. `search_archive` reclaims nothing,

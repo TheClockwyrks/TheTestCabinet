@@ -37,30 +37,28 @@ with.
 
 ## Read modes
 
-How much of a file **one `read_file` call may return** is the read-file capability's
-swappable implementation. Capping reads is one of the load-bearing differences between
-real coding harnesses, and which way it cuts is an open question: a cap stops a single
-call from flooding the window and forces an agent to be deliberate about what it looks
-at, but it also costs a round trip per page and gives the agent room to lose the thread
-of a file it only ever half-sees. The three modes are the arms of that experiment.
+How much of a file **one `read_file` call returns by default** is the read-file
+capability's swappable implementation. Capping reads is one of the load-bearing
+differences between real coding harnesses, and which way it cuts is an open question: a
+cap stops a single call from flooding the window and forces an agent to be deliberate
+about what it looks at, but it also costs a round trip per page and gives the agent room
+to lose the thread of a file it only ever half-sees. The two modes are the arms of that
+experiment.
 
-| Mode | `read_file` returns | The agent can ask for more |
+| Mode | `read_file` returns | Paging arguments |
 | --- | --- | --- |
 | `unlimited` *(default)* | The whole file, one call. | — (there is nothing to page) |
-| `hard-cap` | At most `lineCap` lines. | **No** — a larger `limit` is reduced. |
-| `default-cap` | `lineCap` lines by default. | **Yes** — a larger `limit` is honored. |
+| `default-cap` | `lineCap` lines by default. | `offset` and `limit` |
 
-The `lineCap` param sets the cap for both capped modes and defaults to **250** lines. It
-is ignored under `unlimited`.
+The `lineCap` param sets the default window and itself defaults to **250** lines. It is
+ignored under `unlimited`.
 
-Both capped modes give `read_file` two extra arguments, so the agent can page through a
-file it cannot see at once:
+`default-cap` gives `read_file` two extra arguments, so the agent can page through a file
+it did not get at once:
 
 - `offset` — the 1-based line to start from (default `1`). An offset past the end of the
   file is an error that names the file's length, rather than an empty result.
-- `limit` — how many lines to return. Under `hard-cap` a value above the cap is
-  **reduced** to it and the agent is told so, so the ceiling is not something it can
-  argue its way past; under `default-cap` a larger value is simply honored.
+- `limit` — how many lines to return. **A larger value is always honored, verbatim.**
 
 A windowed result ends with a line saying what the agent is looking at and where to
 continue from:
@@ -69,11 +67,28 @@ continue from:
 [showing lines 251-500 of 1200; continue with offset: 501]
 ```
 
-Two deliberate properties keep the arms comparable:
+### Every mode can return a whole file
 
-- **A file shorter than the cap reads identically under all three modes** — no window
-  note, no paging footer. Only files big enough to actually be capped differ between
-  arms, so a comparison measures the cap rather than incidental formatting.
+The cap is a **default, never a ceiling**. There is deliberately no mode that refuses a
+whole-file read: an agent that asks for a `limit` covering the file gets the file, byte
+for byte, exactly as `unlimited` would have returned it — same text, and no window note
+appended, because nothing was windowed.
+
+That is a property rather than a convenience. gg itself has to be able to put a document
+in front of a model in full — [autoload-specifications](/gg/autoload-specifications/)
+seeds a case's specifications, whole, into an agent's opening context — and a mode that
+could refuse would put the run's own read tool out of reach of something gg needs done,
+leaving the agent unable to ask for what gg hands it unasked.
+
+gg once had a `hard-cap` mode that reduced a larger `limit` to the cap and told the agent
+so. It is gone. A saved configuration still naming it resolves to `unlimited`, the same
+as any other unrecognized implementation, rather than resurrecting a ceiling.
+
+Two further deliberate properties keep the arms comparable:
+
+- **A file shorter than the cap reads identically under both modes** — no window note, no
+  paging footer. Only files big enough to actually be capped differ between arms, so a
+  comparison measures the cap rather than incidental formatting.
 - **`unlimited` offers no `offset`/`limit` at all.** Offering knobs that never bind would
   misrepresent the control arm to the model.
 
@@ -146,7 +161,7 @@ provider charges images by its own tiling of the decoded dimensions, which gg do
 decode, so the figure is a deliberately coarse stand-in whose job is only to stop an
 attached mockup being accounted as free (which would let fullness drift below the truth
 and delay compaction, precisely on the runs that read the most reference material). A capped read puts only the
-window it returned into the context, so the two capped modes and the eviction tool are
+window it returned into the context, so `default-cap` and the eviction tool are
 different answers to the same problem: one rations what enters the window, the other
 reclaims it after the fact. They compose, and comparing them is a reasonable study.
 
@@ -154,9 +169,12 @@ Under [responses as code](/gg/responses-as-code/) the same read costs the window
 `fs.readFile` hands the bytes to the program and stops there. What puts a file in the window
 is `view.openFile(path)`, which does the identical read — same line cap, same magic-number
 image detection, same 8 MiB ceiling — and *also* opens a file view of it, keyed by the path
-and closable by it. The split is the point, and `view.openFile`'s own
-[`.docs()`](/gg/responses-as-code/#the-typed-tool-surface) teaches it in one line:
-`fs.readFile` gets bytes for your program; `view.openFile` shows a file to you.
+and closable by it. The split is the point, and the documentation
+[`view.openDocsView(view.openFile)`](/gg/responses-as-code/#the-typed-tool-surface) opens
+teaches it in one line: `fs.readFile` gets bytes for your program; `view.openFile` shows a
+file to you. Because documentation is itself a view, though, that line arrives on the turn
+*after* the program asks for it — which is one reason the split is taught a second time by
+`fs.readFile`'s own result, at the moment it actually matters rather than a turn late.
 
 **A picture obeys that split exactly, which is the one place it can surprise.** Under the
 code arm `fs.readFile` of a mockup *describes* it and `view.openFile` *shows* it — the bare

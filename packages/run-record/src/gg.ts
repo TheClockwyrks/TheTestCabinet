@@ -574,6 +574,8 @@ export type GgContextSource =
   | "user_prompt"
   | "assistant"
   | "tool_output"
+  | "compiler_error"
+  | "runtime_error"
   | "file_view"
   | "text_view"
   | "skill"
@@ -1116,14 +1118,16 @@ export type GgRetainedState = {
  * capability lets a disciplined agent reclaim window space itself rather than waiting for
  * the automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer
  * needs (safe — it can re-read the file later), [close text views](Self::CloseTextViews)
- * it composed and no longer wants in front of it, or [archive a section of its
+ * it composed and no longer wants in front of it, [close documentation
+ * views](Self::CloseDocsViews) it has finished with, or [archive a section of its
  * thread](Self::ArchiveThread) (removed from the live window but kept **searchable** via
- * `search_archive`). All three reclaim tokens; a `search_archive` call reclaims nothing and
+ * `search_archive`). All four reclaim tokens; a `search_archive` call reclaims nothing and
  * so is reported only as an ordinary tool result, not as a `ContextManaged` action.
  */
 export type GgContextAction =
   | "evict_file_views"
   | "close_text_views"
+  | "close_docs_views"
   | "archive_thread";
 
 /**

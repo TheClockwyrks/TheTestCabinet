@@ -31,68 +31,72 @@ fn list_enumerates_bound_functions_and_the_list_meta() {
     assert!(fs.iter().all(|f| !f.summary.is_empty()));
 }
 
-/// The `harness` object always carries `finish` and the two meta functions, whatever a run enables.
+/// The `harness` object always carries `finish` and `list`, whatever a run enables.
+///
+/// It no longer carries `readDocs`: reading a function's documentation is
+/// `view.openDocsView`, on the object that owns every other channel into the model's window.
 #[test]
-fn harness_always_carries_finish_readdocs_and_list() {
+fn harness_always_carries_finish_and_list() {
     let docs = DocsRuntime::new(Vec::new(), EndingRole::Standard);
     let harness = docs.list("harness");
     let names: Vec<&str> = harness.iter().map(|f| f.name.as_str()).collect();
     assert!(names.contains(&"finish"), "{names:?}");
-    assert!(names.contains(&"readDocs"), "{names:?}");
     assert!(names.contains(&"list"), "{names:?}");
+    assert!(!names.contains(&"readDocs"), "{names:?}");
 }
 
-/// A doc lookup returns the signature and description, and includes a referenced type's declaration
-/// the first time it is shown but not the second — the session-level dedup only gg can do.
+/// The `view` object carries `openDocsView`, ungated — a run that enables no tools at all must still
+/// be able to read what the functions it *does* have do.
 #[test]
-fn read_includes_a_referenced_type_only_once() {
-    let mut docs = DocsRuntime::new(enabled(), EndingRole::Standard);
+fn view_always_carries_open_docs_view() {
+    let docs = DocsRuntime::new(Vec::new(), EndingRole::Standard);
+    let names: Vec<String> = docs.list("view").into_iter().map(|f| f.name).collect();
+    assert!(names.iter().any(|n| n == "openDocsView"), "{names:?}");
+}
+
+/// A doc lookup returns the signature, the description, and every referenced type's declaration —
+/// **every time**, with no dedup against what an earlier lookup showed.
+///
+/// That is a property of documentation being a [view](crate::context::ViewKind::Docs) rather than a
+/// pinned block: a view can be closed and it can be replaced, so a block that omitted a declaration
+/// because some *other* block already carried it would stop making sense the moment the model tidied
+/// up. Each one has to read correctly on its own.
+#[test]
+fn every_lookup_is_self_contained() {
+    let docs = DocsRuntime::new(enabled(), EndingRole::Standard);
 
     let first = docs.read("readFile").expect("readFile is bound");
-    assert!(first.fresh, "the first read of a function is fresh");
     assert!(
-        first.text.contains("readFile("),
-        "the signature is included: {}",
-        first.text
+        first.contains("readFile("),
+        "the signature is included: {first}"
     );
     assert!(
-        first.text.contains("FileRead"),
-        "the referenced type's declaration is shown the first time: {}",
-        first.text
+        first.contains("FileRead"),
+        "the referenced type's declaration is included: {first}"
     );
 
-    // A second read of the same function is not fresh, and does not re-show the type.
+    // A second lookup says exactly the same thing. A repeat that quietly said less would be a view
+    // the model could not trust to be complete.
     let second = docs.read("readFile").expect("readFile is bound");
-    assert!(!second.fresh, "a repeat read is not fresh");
-    assert!(
-        !second.text.contains("interface FileRead"),
-        "the type declaration is not repeated: {}",
-        second.text
-    );
+    assert_eq!(first, second);
 }
 
 /// A lookup for a function the run did not enable is `None` — the model is told the name is not
 /// available rather than shown docs for a method its scope does not carry.
 #[test]
 fn read_of_a_withheld_function_is_none() {
-    let mut docs = DocsRuntime::new(vec!["read_file".to_string()], EndingRole::Standard);
+    let docs = DocsRuntime::new(vec!["read_file".to_string()], EndingRole::Standard);
     assert!(docs.read("writeFile").is_none());
 }
 
-/// The meta functions document themselves.
+/// The one meta function documents itself, so `view.openDocsView("list")` is answerable even though
+/// `list` has no catalogue entry of its own.
 #[test]
-fn read_documents_the_meta_functions() {
-    let mut docs = DocsRuntime::new(Vec::new(), EndingRole::Standard);
-    assert!(
-        docs.read("list")
-            .expect("list is a meta function")
-            .text
-            .contains("FunctionSummary")
-    );
-    assert!(
-        docs.read("readDocs")
-            .expect("readDocs is a meta function")
-            .text
-            .contains("readDocs(")
-    );
+fn read_documents_the_list_meta_function() {
+    let docs = DocsRuntime::new(Vec::new(), EndingRole::Standard);
+    let list = docs.read("list").expect("list is a meta function");
+    assert!(list.contains("FunctionSummary"), "{list}");
+    // And it now points at the call that replaced `fn.docs()`.
+    assert!(list.contains("view.openDocsView"), "{list}");
+    assert!(docs.read("readDocs").is_none(), "`readDocs` is retired");
 }

@@ -433,10 +433,15 @@ impl ToolApi for FakeToolApi {
         }]
     }
 
-    /// Answers every name with a canned line, so a program that reads docs gets a value rather than
-    /// a `not-found`.
-    fn read_docs(&mut self, name: &str) -> Option<String> {
-        Some(format!("documentation for `{name}`"))
+    /// Opens a docs view for every name, so a program that asks for documentation gets a view rather
+    /// than a `not-found`. Recorded as a view, not as a call: a documentation lookup is not a tool.
+    fn open_docs_view(&mut self, name: String) -> Result<SandboxViewOpened, ViewRefusal> {
+        Ok(SandboxViewOpened {
+            kind: ViewKind::Docs,
+            selector: name,
+            tokens: 0,
+            superseded: false,
+        })
     }
 
     /// The read, recorded as the `read_file` it really is, plus the view it opens.
@@ -736,7 +741,6 @@ fn read_outcome(path: &str) -> ToolOutcome {
         last_line: 2,
         total_lines: 2,
         byte_truncated: false,
-        limit_reduced: false,
     }))
 }
 

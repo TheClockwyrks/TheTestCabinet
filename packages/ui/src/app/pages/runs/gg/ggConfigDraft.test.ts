@@ -413,18 +413,18 @@ describe("gg filesystem capabilities", () => {
       {
         id: "read-file",
         enabled: true,
-        implementation: "hard-cap",
+        implementation: "default-cap",
         params: { lineCap: 250 },
       },
     ]);
     const draft = draftFromCapabilitySet(configured);
-    expect(draftCaps(draft)["read-file"]?.implementation).toBe("hard-cap");
+    expect(draftCaps(draft)["read-file"]?.implementation).toBe("default-cap");
     expect(draftCaps(draft)["read-file"]?.params?.lineCap).toBe("250");
     expect(draftCaps(draft)["read-file"]?.extraParams).toEqual({});
 
     const back = capabilitySetFromDraft(draft, null);
     const readFile = setCaps(back).find((cap) => cap.id === "read-file");
-    expect(readFile?.implementation).toBe("hard-cap");
+    expect(readFile?.implementation).toBe("default-cap");
     expect(readFile?.params).toEqual({ lineCap: 250 });
   });
 });
@@ -972,10 +972,9 @@ describe("params gated on the selected implementation", () => {
     );
   });
 
-  it("offers the read-file line cap under the capped modes only", () => {
+  it("offers the read-file line cap under the capped mode only", () => {
     const param = paramOf("read-file", "lineCap");
     expect(paramApplies(param, "")).toBe(false);
-    expect(paramApplies(param, "hard-cap")).toBe(true);
     expect(paramApplies(param, "default-cap")).toBe(true);
   });
 

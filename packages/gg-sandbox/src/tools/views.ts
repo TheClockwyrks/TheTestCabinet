@@ -1,8 +1,8 @@
 /**
  * The `view` object: the only way material enters an agent's own context window.
  *
- * These are not gg tools. No capability offers one, nothing dispatches one by name, and three of the
- * four are bound into **every** program's scope — the same carve-out `session` has, and for the same
+ * These are not gg tools. No capability offers one, nothing dispatches one by name, and four of the
+ * five are bound into **every** program's scope — the same carve-out `session` has, and for the same
  * reason: a run that enables no tools at all must still be able to show its model something.
  * Cataloguing them among the tools would break the `boundTools() == ALL_TOOL_NAMES` bijection the
  * committed component is checked against, so they have their own membrane interface, their own
@@ -20,10 +20,11 @@
  * boundary, so nothing a program touches is ever a `bigint`.
  *
  * Every JSDoc block below is **model-facing**: `tools/signatures.mjs` reflects it into the signature
- * catalogue, and it is what `view.openText.docs()` answers with.
+ * catalogue, and it is what `view.openDocsView("openText")` shows the model.
  */
 
 import * as raw from "test-cabinet:gg/views";
+import { DOCS_NAME } from "../catalogue.js";
 import { U32_MAX, call, opts, uint } from "../errors.js";
 import type { FileRead, OpenView } from "../types.js";
 import { asFileRead } from "./files.js";
@@ -69,8 +70,41 @@ export function openText(label: string, body: string): void {
 }
 
 /**
+ * Show yourself the full documentation for one function: its signature, its description, and the
+ * declarations of any types it refers to that you have not already been shown this session. Pass the
+ * function itself (`view.openDocsView(fs.readFile)`) or its name (`view.openDocsView("readFile")`).
+ *
+ * This is how you read what a function does. It is a **view**, not a return value — the
+ * documentation arrives in your next prompt under a `Documentation` heading keyed by the function
+ * name, exactly as a file or a computed value arrives — so it is not available in the turn you ask
+ * for it. Plan for that: ask in one turn, use it in the next. Opening the same function's docs again
+ * replaces the view rather than adding a second copy, and `view.close(name)` closes it when you are
+ * done with it. An unknown or unbound name throws `not-found`; `<object>.list()` is how you find out
+ * which names exist.
+ */
+export function openDocsView(target: Function | string): void {
+  call(() => raw.openDocsView(docsName(target)));
+}
+
+/**
+ * The catalogue name behind a `view.openDocsView` argument: the string itself, or the name the shim
+ * tagged onto the bound function.
+ *
+ * A bare `String(fn)` would give the source of the wrapper rather than the name gg knows it by,
+ * which is why the tag exists at all. A function that carries no tag — something the program defined
+ * itself — falls through to its own `name`, so the lookup fails as `not-found` on a name the model
+ * can recognise rather than on a stringified closure.
+ */
+function docsName(target: Function | string): string {
+  if (typeof target === "string") return target;
+  const tagged = (target as unknown as Record<symbol, unknown> | null | undefined)?.[DOCS_NAME];
+  return typeof tagged === "string" ? tagged : String(target?.name ?? target);
+}
+
+/**
  * Close every view carrying `selector` — for a file that is every page of that path, for a text view
- * the one with that label — and return how many were closed, freeing the tokens they occupied.
+ * the one with that label, for a documentation view the function's name — and return how many were
+ * closed, freeing the tokens they occupied.
  *
  * Closing a selector that is not open returns `0` rather than failing, so a program that tidies up
  * unconditionally does not have to guard every call. Closing a file view forgets what you read, not

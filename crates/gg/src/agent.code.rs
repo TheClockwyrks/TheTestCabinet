@@ -44,7 +44,8 @@ use test_cabinet_core::gg_replay::GgShellOrigin;
 use crate::context::{EvictionResult, OpenViewInfo, ViewKind};
 use crate::ending::Ending;
 use crate::sandbox::{
-    SandboxViewOpened, ToolApi, ViewOpenOutcome, ViewRefusal, WorkflowStageInput,
+    ProgramError, SandboxViewOpened, ToolApi, UnreachableTail, ViewOpenOutcome, ViewRefusal,
+    WorkflowStageInput,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -78,12 +79,19 @@ pub(super) enum CodeTurnOutcome {
     },
     /// The turn produced feedback for the model; the loop pushes it and takes another turn.
     Continue {
-        /// The rendered feedback, pushed as an ephemeral user message.
+        /// What gg has to say back, in the order it is pushed — **empty** for the ordinary outcome
+        /// of a program that compiled, ran, and showed itself what it meant to.
         ///
-        /// It carries **no pictures**. A picture reaches the model through a
+        /// A list rather than one message because a turn can produce a process fact *and* a fault,
+        /// and the two must not be welded into one blob: an error message carries the error alone
+        /// (see [`CodeFeedback`]), so anything else gg needs to say is a message of its own. The
+        /// error goes last, so it is the final thing the model reads before writing its next
+        /// program.
+        ///
+        /// They carry **no pictures**. A picture reaches the model through a
         /// [view](crate::context::ViewKind) — its own attributable, evictable context item — or not
-        /// at all; the turn report is gg's reporting, not a channel for workspace material.
-        feedback: String,
+        /// at all; a message from gg is gg's reporting, not a channel for workspace material.
+        feedback: Vec<CodeFeedback>,
         /// Why this turn was an error, or `None` for a turn that carried out its declared work.
         error: Option<TurnErrorKind>,
         /// One line describing what this turn produced, in gg's own words.
@@ -102,6 +110,75 @@ pub(super) enum CodeTurnOutcome {
         /// The operator-facing sentence for the `error` log and the `CodeExecution` event.
         message: String,
     },
+}
+
+/// One message gg sends a [responses-as-code](crate::sandbox) agent, and the
+/// [band](GgContextSource) it goes in — which is also the
+/// [heading](crate::context::code_heading) the model reads it under.
+///
+/// # There are exactly three kinds, and two of them carry nothing but an error
+///
+/// Under this protocol every assistant turn is a program and everything gg says back is plain `user`
+/// text, so the heading is the only thing telling the model what it is looking at. The vocabulary is
+/// therefore deliberately tiny:
+///
+/// - [`CompilerError`](GgContextSource::CompilerError) — the program did not compile. Nothing ran.
+/// - [`RuntimeError`](GgContextSource::RuntimeError) — it compiled and then threw, or a sandbox
+///   limit stopped it. What it did before that stands.
+/// - [`System`](GgContextSource::System) — a process notice: something about the *session* rather
+///   than about the program.
+///
+/// The two error kinds carry **the error and nothing else**. No preamble, no "your program stopped",
+/// no advice, no roster of what the program called, no restatement of the rules. A model reading its
+/// own transcript learns the shape of a turn from what is in it, and a diagnostic wrapped in gg's
+/// prose is a diagnostic the model has to parse gg out of first — so everything that is not the
+/// error is either information the program already has (a failed call throws into the program; a
+/// refused view throws into the program) or a *standing rule*, which belongs in the system prompt
+/// where it is stated once instead of on every failing turn.
+///
+/// gg may **remove** from an error — a stack trace whose frames are gg's own internals tells the
+/// model nothing it can act on — but never adds to one.
+///
+/// # There is no `Output`
+///
+/// There used to be. It is gone, and its absence is the point: `console.log` does not reach the
+/// model (it reaches the run's operator), and a [view](crate::context::ViewKind) is the only channel
+/// material has into the window. A band called `Output` on a protocol where a program produces no
+/// output the model can read was a heading over an empty idea.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct CodeFeedback {
+    /// Which of the three bands this message belongs to.
+    pub(super) source: GgContextSource,
+    /// The message body, unheaded — [`ContextModel`](crate::context::ContextModel) prefixes the
+    /// heading when it is pushed.
+    pub(super) body: String,
+}
+
+impl CodeFeedback {
+    /// A [`CompilerError`](GgContextSource::CompilerError) carrying `error` verbatim.
+    fn compiler(error: impl Into<String>) -> Self {
+        Self {
+            source: GgContextSource::CompilerError,
+            body: error.into(),
+        }
+    }
+
+    /// A [`RuntimeError`](GgContextSource::RuntimeError) carrying `error` verbatim.
+    fn runtime(error: impl Into<String>) -> Self {
+        Self {
+            source: GgContextSource::RuntimeError,
+            body: error.into(),
+        }
+    }
+
+    /// A [`System`](GgContextSource::System) notice — gg speaking about the session rather than
+    /// reporting a fault in the program.
+    pub(super) fn notice(body: impl Into<String>) -> Self {
+        Self {
+            source: GgContextSource::System,
+            body: body.into(),
+        }
+    }
 }
 
 impl CodeTurnOutcome {
@@ -240,6 +317,8 @@ pub(super) async fn run_code_turn(
         );
     }
 
+    report_to_operator(&outcome, emitter);
+
     // Statements the model wrote that could not run are said out loud on the operator's stream as
     // well as in the model's own feedback, for the same reason a repaired reply is: a program gg
     // ran that is not the whole program the model sent has to be visible without waiting for a
@@ -336,6 +415,16 @@ pub(super) async fn run_code_turn(
         ));
     }
 
+    // The process facts this turn produced, independent of whether it also failed. They are
+    // separate messages from any error, and they come first: an error carries the error alone, so
+    // a fact welded onto it would be exactly the extra text that band exists not to have.
+    let notices: Vec<CodeFeedback> = outcome
+        .unreachable
+        .as_ref()
+        .map(|tail| CodeFeedback::notice(unreachable_notice(tail)))
+        .into_iter()
+        .collect();
+
     let decision = match &outcome.result {
         // gg's own machinery, in its two flavours. Both would fail identically on every further
         // turn, so neither is fed back and neither is ever charged to the model's error budget.
@@ -355,18 +444,24 @@ pub(super) async fn run_code_turn(
                  identically."
             ),
         },
-        Err(error @ SandboxError::Transpile(_)) => CodeTurnOutcome::Continue {
-            feedback: code_failure_feedback(error, &outcome),
+        // The compiler's own diagnostic, with nothing wrapped around it. `SandboxError::Transpile`'s
+        // `Display` prefixes it ("the program did not compile: …"), which the `Compiler error`
+        // heading already says, so the inner error is what goes out.
+        Err(SandboxError::Transpile(transpile)) => CodeTurnOutcome::Continue {
+            feedback: vec![CodeFeedback::compiler(transpile.to_string())],
             error: Some(TurnErrorKind::Transpile),
             report: "its last program did not compile".to_string(),
         },
+        // A ceiling the sandbox enforced — a timeout, the memory cap, a trap. The program compiled
+        // and started, so this is a runtime failure and reads as one; the variant's own `Display` is
+        // the error, and gg adds no advice on top of it.
         Err(error) => {
             emitter.emit(log(
                 "warn",
                 format!("the code program did not run to a result: {error}"),
             ));
             CodeTurnOutcome::Continue {
-                feedback: code_failure_feedback(error, &outcome),
+                feedback: with_error(&notices, CodeFeedback::runtime(error.to_string())),
                 error: Some(TurnErrorKind::SandboxLimit),
                 report: "its last program was stopped by a sandbox limit".to_string(),
             }
@@ -378,7 +473,10 @@ pub(super) async fn run_code_turn(
                 .is_some()
                 .then_some(TurnErrorKind::ProgramFault);
             CodeTurnOutcome::Continue {
-                feedback: prompts::render_code_result(&code_result_context(&outcome, result)),
+                feedback: match result.error.as_ref() {
+                    Some(error) => with_error(&notices, program_error_feedback(error)),
+                    None => notices.clone(),
+                },
                 error,
                 report,
             }
@@ -416,10 +514,15 @@ fn not_a_program(
         healing: healing_record_with(healed, Some(reason)),
     });
     CodeTurnOutcome::Continue {
-        feedback: prompts::render_code_not_a_program(&CodeNotAProgramContext {
-            reason: reason.message(),
-            ending_calls: turn.ending_calls(),
-        }),
+        // A `Notice`, not a `Compiler error`. Nothing was compiled: the reply was not a program in
+        // the first place, so there is no diagnostic to hand back — what the model needs is the
+        // process fact that gg could not act on what it sent, which is exactly what a notice is for.
+        feedback: vec![CodeFeedback::notice(prompts::render_code_not_a_program(
+            &CodeNotAProgramContext {
+                reason: reason.message(),
+                ending_calls: turn.ending_calls(),
+            },
+        ))],
         error: Some(TurnErrorKind::NotAProgram),
         report: format!("its last reply was not a program ({})", reason.short()),
     }
@@ -561,99 +664,135 @@ fn wire_reason(reason: NotAProgramReason) -> GgNotAProgram {
 }
 
 // ---------------------------------------------------------------------------
-// Feedback contexts
+// Feedback
 // ---------------------------------------------------------------------------
 
-/// The [feedback context](CodeResultContext) for a program that **ran** — whether it returned a
-/// value or threw.
+/// Everything one program did that the **model** is not told, said on the operator's stream.
 ///
-/// Everything here is what the model needs in order to write its *next* program: what each composed
-/// call did, what each [view](crate::context::ViewKind) it opened costs the window it is about to
-/// read, and the eight things that are otherwise invisible — a failure it caught, a view that was
-/// refused, records the capture caps dropped, output that went to the operator rather than to it,
-/// work it deferred past its own end, a value it returned into the void, an ending it declared and
-/// lost, and [what gg repaired in its reply](crate::healing) before any of it ran.
-fn code_result_context(outcome: &SandboxOutcome, result: &ProgramResult) -> CodeResultContext {
-    CodeResultContext {
-        error: result.error.as_ref().map(|error| CodeErrorView {
-            message: error.message.clone(),
-            location: error.location.clone(),
-        }),
-        returned_value: outcome.returned_value,
-        finish_revoked: outcome.revoked_completion.is_some(),
-        ending_revoked: revoked_call(outcome),
-        calls: outcome
-            .tool_calls
-            .iter()
-            .map(|call| CodeCallView {
-                name: call.name.clone(),
-                ok: call.ok,
-                error: call.error.clone(),
-            })
-            .collect(),
-        call_count: outcome.tool_calls.len() + outcome.tool_calls_suppressed as usize,
-        calls_suppressed: outcome.tool_calls_suppressed,
-        refusals: outcome
-            .refusals
-            .iter()
-            .map(|refusal| format!("`{}` — {}", refusal.name, refusal.message))
-            .collect(),
-        refusals_suppressed: outcome.refusals_suppressed,
-        // The lines themselves are deliberately not here — see `CodeResultContext`. What the model
-        // gets is the count, which drives the one-line nudge naming where its output went. The
-        // suppressed lines are counted in too: the number describes what the *program* did, not what
-        // gg's capture buffer kept.
-        logged_lines: outcome.logs.len() as u64 + outcome.logs_suppressed,
-        views_opened: outcome
-            .views_opened
-            .iter()
-            .map(|view| CodeViewView {
-                kind: view_kind_word(view.kind).to_string(),
-                selector: view.selector.clone(),
-                tokens: view.tokens,
-                superseded: view.superseded,
-            })
-            .collect(),
-        views_closed: outcome.views_closed.clone(),
-        view_refusals: outcome.view_refusals.clone(),
-        views_suppressed: outcome.views_suppressed,
-        // Named only when the program genuinely said nothing at all: a throw is itself a report, and
-        // telling a model that threw to open a view would be noise on top of the fault. A program
-        // that returned a value is not silent either — it said something, into the one channel that
-        // does not carry — and is answered by its own note instead. A program that *logged* is not
-        // silent either: its output went to the operator, and it is answered by the nudge that says
-        // so. Every list the feedback can render counts, not just the opens: a program whose only
-        // act was a `view.close` is told that it closed something, and adding "No output recorded."
-        // underneath would contradict the line above it.
-        silent: result.error.is_none()
-            && !outcome.returned_value
-            && outcome.logs.is_empty()
-            && outcome.views_opened.is_empty()
-            && outcome.views_closed.is_empty()
-            && outcome.view_refusals.is_empty(),
-        deferred: outcome.deferred_note.clone(),
-        unreachable: outcome.unreachable.as_ref().map(unreachable_note),
+/// gg used to hand the model a per-turn report: the roster of calls, the views opened and closed, a
+/// refusal, a discarded return value, work deferred past the program's end. That report is gone —
+/// see [`CodeFeedback`] — because every item in it is either something the program already learned
+/// by running (a call returns; a refusal throws) or a standing rule the system prompt states once.
+///
+/// None of it stops being worth *recording*, though, and losing the model's copy makes this one the
+/// only copy. A study reading a finished run has to be able to see that a view was refused or that a
+/// program returned a value into the void, and the operator's stream is where a run says what it did.
+/// So the same facts go out here, worded for a reader outside the agent rather than for the agent.
+///
+/// Deliberately quiet on the ordinary path: a program that called some tools and opened some views
+/// did what programs do, and a line per turn saying so would bury the turns worth reading.
+fn report_to_operator(outcome: &SandboxOutcome, emitter: &Emitter) {
+    for refusal in &outcome.refusals {
+        emitter.emit(log(
+            "warn",
+            format!(
+                "the program's `{}` call was refused before it ran: {}",
+                refusal.name, refusal.message
+            ),
+        ));
+    }
+    if outcome.refusals_suppressed > 0 {
+        emitter.emit(log(
+            "warn",
+            format!(
+                "{} further refused call(s) were not recorded",
+                outcome.refusals_suppressed
+            ),
+        ));
+    }
+    for refusal in &outcome.view_refusals {
+        emitter.emit(log("warn", format!("a view call was refused: {refusal}")));
+    }
+    if outcome.views_suppressed > 0 {
+        emitter.emit(log(
+            "warn",
+            format!(
+                "{} further view record(s) were not recorded",
+                outcome.views_suppressed
+            ),
+        ));
+    }
+    // Worth a line because it is the one way a program can produce a result and lose it: a `return`
+    // is the shape a model reaches for when it wants to *say* something, and under this protocol the
+    // only thing that says anything is a view.
+    if outcome.returned_value {
+        emitter.emit(log(
+            "info",
+            "the program returned a value, which was discarded — a program reports by opening a \
+             view, not by returning",
+        ));
+    }
+    if let Some(note) = &outcome.deferred_note {
+        emitter.emit(log("info", note.clone()));
+    }
+    for view in &outcome.views_opened {
+        emitter.emit(log(
+            "debug",
+            format!(
+                "the program {} the {} view `{}` (~{} tokens)",
+                if view.superseded {
+                    "replaced"
+                } else {
+                    "opened"
+                },
+                view_kind_word(view.kind),
+                view.selector,
+                view.tokens
+            ),
+        ));
+    }
+    for selector in &outcome.views_closed {
+        emitter.emit(log(
+            "debug",
+            format!("the program closed the view `{selector}`"),
+        ));
     }
 }
 
-/// The word the feedback names a [view kind](ViewKind) with — the same word the model wrote its own
-/// call with (`view.openText` opens a `text` view), so the line it reads back describes its program
-/// in its program's vocabulary rather than in gg's.
+/// The word a [view kind](ViewKind) is named with — the same word the model wrote its own call with
+/// (`view.openText` opens a `text` view), so an operator reading the stream sees the program's own
+/// vocabulary rather than gg's.
 fn view_kind_word(kind: ViewKind) -> &'static str {
     match kind {
         ViewKind::File => "file",
         ViewKind::Text => "text",
+        ViewKind::Docs => "documentation",
     }
 }
 
-/// The model-facing sentence for [statements that could not run](UnreachableTail).
+/// The [`Runtime error`](GgContextSource::RuntimeError) message for a program that threw.
 ///
-/// Rendered in Rust rather than in the template for the reason every other count-bearing clause is:
-/// a template that has to pluralise is a template that will one day say "1 statements". It names the
-/// count, quotes the first statement, and states the rule that made them dead — because the model
-/// that produced this shape believed its whole reply ran, and only the quote lets it recognise which
-/// half did not.
-fn unreachable_note(tail: &UnreachableTail) -> String {
+/// The body is the error, and the error is `{name}: {message}` as the guest composed it, followed by
+/// the one stack frame that is the model's own — rendered the way a stack trace renders, because
+/// that is what it is. Every other frame belongs to the shim or to the SDK and never reaches here
+/// (the guest matches the program's frame positively rather than filtering gg's out): a model cannot
+/// act on gg's internals, and a trace full of them is a trace it has to read past.
+///
+/// Nothing else goes in. Not what the program called, not what it opened, not that an ending it
+/// declared was revoked — a call returned its result into the program, a refused view threw into the
+/// program, and the revocation rule is a standing one the system prompt states once. See
+/// [`CodeFeedback`] for why that restraint is the design rather than an omission.
+/// `notices` followed by `error` — the order a turn's messages are pushed in.
+///
+/// The error goes last so it is the final thing the model reads before it writes its next program,
+/// and so a notice can never be mistaken for part of the diagnostic above it.
+fn with_error(notices: &[CodeFeedback], error: CodeFeedback) -> Vec<CodeFeedback> {
+    let mut all = notices.to_vec();
+    all.push(error);
+    all
+}
+
+/// The [`Notice`](GgContextSource::System) for [statements that could not run](UnreachableTail).
+///
+/// A notice rather than an error, and one gg keeps saying even though it says almost nothing else
+/// about a program that ran: the model wrote a reply it believes executed in full, and half of it
+/// silently did not. Nothing the program can observe reveals that — no call failed, nothing threw —
+/// so this is the only channel it has. It names the count, quotes the first dead statement so the
+/// model can recognise which half was lost, and states the rule that made them dead.
+///
+/// Rendered in Rust rather than in a template for the reason every count-bearing line here is: a
+/// template that has to pluralise is a template that will one day say "1 statements".
+fn unreachable_notice(tail: &UnreachableTail) -> String {
     format!(
         "{} after your top-level `return` did not run — the first is line {}: {}. A top-level \
          `return` ends the program, so nothing written after it executes. Send exactly one program \
@@ -664,53 +803,11 @@ fn unreachable_note(tail: &UnreachableTail) -> String {
     )
 }
 
-/// The model-facing feedback for a program the sandbox could not run to a result.
-///
-/// Two templates, because the two failures need opposite advice. A **transpile** error means
-/// nothing ran and nothing changed — saying so is what stops the model re-checking a workspace it
-/// never touched. Everything else means the program *did* run, landed real calls, and hit a
-/// ceiling, so the advice is to do less per program rather than to fix a mistake.
-///
-/// Both carry the [healing note](crate::healing::Healed::notes), which is what happened to the
-/// model's **message** rather than to its program. It matters most on the transpile path: the
-/// diagnostic is located in the *healed* source's coordinates, so a model told "line 4" without also
-/// being told that a wrapper came off the top of its reply cannot reconcile the two.
-fn code_failure_feedback(error: &SandboxError, outcome: &SandboxOutcome) -> String {
-    let calls = outcome.tool_calls.len() + outcome.tool_calls_suppressed as usize;
-    let finish_revoked = outcome.revoked_completion.is_some();
-    let ending_revoked = revoked_call(outcome);
-    match error {
-        SandboxError::Transpile(transpile) => {
-            prompts::render_code_transpile_error(&CodeTranspileErrorContext {
-                error: transpile.to_string(),
-            })
-        }
-        // A timeout is not "too much work for one program" — the ceiling is far larger than any
-        // honest program needs — it is a program that did not terminate. It gets its own message so
-        // the advice is to find the runaway loop rather than to write less.
-        SandboxError::Timeout { .. } => prompts::render_code_timeout(&CodeTimeoutContext {
-            error: error.to_string(),
-            finish_revoked,
-            ending_revoked: ending_revoked.clone(),
-            calls,
-        }),
-        _ => prompts::render_code_sandbox_error(&CodeSandboxErrorContext {
-            error: error.to_string(),
-            finish_revoked,
-            ending_revoked,
-            calls,
-        }),
-    }
-}
-
-/// Which ending call a program declared and then lost, for the feedback that has to say so. Empty
-/// when nothing was revoked, which is also when no template renders it.
-fn revoked_call(outcome: &SandboxOutcome) -> String {
-    outcome
-        .revoked_completion
-        .as_ref()
-        .map(|ending| ending.call_name().to_string())
-        .unwrap_or_default()
+fn program_error_feedback(error: &ProgramError) -> CodeFeedback {
+    CodeFeedback::runtime(match &error.location {
+        Some(location) => format!("{}\n    at {location}", error.message),
+        None => error.message.clone(),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -808,7 +905,7 @@ pub(super) struct CodeTurnState {
     pub(super) context: ContextModel,
     /// The skills runtime (skill library + what has been read this session).
     pub(super) skills: SkillsRuntime,
-    /// The per-agent documentation runtime behind `object.list()` / `fn.docs()`.
+    /// The per-agent documentation runtime behind `object.list()` / `view.openDocsView()`.
     pub(super) docs: DocsRuntime,
     /// This agent's delegation context, when the capability is on.
     pub(super) subagents: Option<SubagentContext>,
@@ -1041,28 +1138,6 @@ fn pin_read_skill(
             emitter.emit(state);
         }
     }
-}
-
-/// Pin a fresh `fn.docs()` lookup into the context — the documentation counterpart of
-/// [`pin_read_skill`].
-///
-/// Documentation the model asked for is reference material it should keep, so it is pinned
-/// (retained verbatim across a compaction boundary) rather than left in the summarizable history —
-/// exactly as a read skill is. It is pinned as a standalone `user` message for the same reason a
-/// read skill is: a code turn's assistant message carries no native `tool_calls`, so there is no
-/// call for a `tool` message to answer.
-///
-/// It reuses the [`Skill`](GgContextSource::Skill) source rather than adding a context source of its
-/// own: a read skill and a fetched doc are the same *kind* of thing — authored reference material
-/// the model pulled in on demand and keeps across compaction — so they share the one band. The
-/// [`DocsRuntime`] is what guarantees the pin happens at most once per function; this only records
-/// the block it was handed.
-fn pin_docs(context: &mut ContextModel, text: &str) {
-    context.push(
-        GgContextSource::Skill,
-        Retention::Pinned,
-        Message::user(text.to_string()),
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1543,6 +1618,21 @@ impl LoopToolApi {
 // from the call and from what is already open. Keeping them out of `LoopToolApi` is what lets the
 // rules — and the exact words a refused model reads — be read and tested without standing up an
 // agent, a workspace and a tokio runtime.
+
+/// The refusal a `view.openDocsView` of a name this run did not bind earns.
+///
+/// A refusal rather than an empty view: an unbound name is almost always a guess, and an empty
+/// `Documentation: whatever` block in the window would confirm the guess instead of correcting it.
+/// The message names the one call that enumerates what the run *did* bind.
+fn docs_not_found_refusal(name: &str) -> ViewRefusal {
+    ViewRefusal {
+        failure: ToolFailure::NotFound,
+        message: format!(
+            "no function named `{name}` is available this run, so there is nothing to show you. \
+             Call `<object>.list()` to see the functions on an object."
+        ),
+    }
+}
 
 /// The refusal [`MAX_VIEW_OPS_PER_PROGRAM`] makes when a program has already spent its budget.
 fn view_ops_refusal(made: u32) -> Option<ViewRefusal> {
@@ -2220,12 +2310,17 @@ impl ToolApi for LoopToolApi {
     fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary> {
         self.docs.list(object)
     }
-    fn read_docs(&mut self, name: &str) -> Option<String> {
-        self.docs.read(name).map(|read| {
-            if read.fresh {
-                pin_docs(&mut self.context, &read.text);
-            }
-            read.text
+    fn open_docs_view(&mut self, name: String) -> Result<SandboxViewOpened, ViewRefusal> {
+        self.charge_view_op()?;
+        let Some(read) = self.docs.read(&name) else {
+            return Err(docs_not_found_refusal(&name));
+        };
+        let opened = self.context.open_docs_view(name.clone(), read);
+        Ok(SandboxViewOpened {
+            kind: ViewKind::Docs,
+            selector: name,
+            tokens: opened.tokens as u64,
+            superseded: opened.superseded,
         })
     }
     /// Read a file and show it to the model — the one place a code turn pushes a
@@ -2235,7 +2330,8 @@ impl ToolApi for LoopToolApi {
     /// the replay entry, the roster line and the read policy are the ones a bare `fs.readFile`
     /// gets; there is no second, quieter read path. What follows it is the view: the `(path,
     /// region)` key comes from what the tool actually **returned** rather than from what the call
-    /// asked for (an unlimited read policy ignores the window; a hard cap reduces it), so
+    /// asked for (an unlimited read policy ignores the window; a capped one applies its default when
+    /// the call named none), so
     /// re-opening the same page supersedes it instead of stacking a second copy beside it.
     ///
     /// The content is cloned rather than moved out of the outcome because the outcome goes on to
@@ -2336,8 +2432,8 @@ impl ToolApi for LoopToolApi {
     }
     /// Close every view carrying `selector` — every page of a path, or the text view under a label.
     ///
-    /// Both bands are swept, because a selector is what the *model* wrote and it has no obligation
-    /// to tell gg which kind it meant. A selector that names nothing closes `0`, which is a
+    /// All three bands are swept, because a selector is what the *model* wrote and it has no
+    /// obligation to tell gg which kind it meant. A selector that names nothing closes `0`, which is a
     /// successful call: a program that tidies up unconditionally should not have to guard every
     /// call with a `current()` check.
     fn close_view(&mut self, selector: String) -> Result<u32, ViewRefusal> {
@@ -2347,16 +2443,18 @@ impl ToolApi for LoopToolApi {
         }
         let files = self.context.evict_file_views(Some(&selector));
         let texts = self.context.close_text_views(Some(&selector));
+        let docs = self.context.close_docs_views(Some(&selector));
         for event in [
             view_close_event(GgContextAction::EvictFileViews, &selector, &files),
             view_close_event(GgContextAction::CloseTextViews, &selector, &texts),
+            view_close_event(GgContextAction::CloseDocsViews, &selector, &docs),
         ]
         .into_iter()
         .flatten()
         {
             self.emitter.emit(event);
         }
-        Ok(saturating_u32(files.items + texts.items))
+        Ok(saturating_u32(files.items + texts.items + docs.items))
     }
     fn current_views(&mut self) -> Vec<OpenViewInfo> {
         self.context.open_views()

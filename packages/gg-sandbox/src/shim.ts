@@ -43,6 +43,7 @@ import * as feedback from "test-cabinet:gg/feedback";
 import type { ProgramError } from "test-cabinet:gg/feedback";
 import type { EndingKind } from "./catalogue.js";
 import {
+  DOCS_NAME,
   HELPER_CATALOGUE,
   OBJECT_FOR_MODULE,
   SESSION_ENTRIES,
@@ -328,36 +329,23 @@ function guard(js: string, fn: ToolFn): ToolFn {
   };
 }
 
-/** The non-enumerable key a bound function carries the name `harness.readDocs` fetches its docs by. */
-const DOCS_NAME = Symbol("gg.docsName");
-
 /**
- * Wrap a bound function so its documentation is reachable two ways: `fn.docs()` fetches it, and
- * `harness.readDocs(fn)` finds the name to fetch it by. `name` is the name a program calls the
- * function by (`readFile`, `finish`, `list`), which is what the host's doc directory is keyed on.
+ * Tag a bound function with the name gg knows it by, so `view.openDocsView(fs.readFile)` can be
+ * spelled with the function instead of a string. `name` is the name a program calls the function by
+ * (`readFile`, `finish`, `list`), which is what the host's doc directory is keyed on.
  *
- * `.docs` is a non-enumerable property so it never shows up when a model iterates an object, and the
- * name is a `Symbol` for the same reason — neither is part of the callable surface, only reachable
- * when asked for by name.
+ * The tag is a non-enumerable `Symbol`, so it never shows up when a model iterates an object and is
+ * not part of the callable surface — it is metadata, reachable only by something that knows to look.
+ *
+ * There is deliberately **no** `.docs()` method here any more. Documentation is a view: it reaches
+ * the model in its next prompt, keyed, closable and replaceable like everything else it reads. A
+ * method that returned the text inline was a second, quieter channel into the model — the exact
+ * thing views exist to remove.
  */
 function documented(fn: ToolFn, name: string): ToolFn {
   const wrapped: ToolFn = (...args) => fn(...args);
-  Object.defineProperty(wrapped, "docs", { value: () => docsMod.readDoc(name) });
   Object.defineProperty(wrapped, DOCS_NAME, { value: name });
   return wrapped;
-}
-
-/**
- * `harness.readDocs`: fetch a function's documentation given the function itself (`readDocs(fs.readFile)`)
- * or its name (`readDocs("readFile")`). The equivalent of `fn.docs()`, for a model that reaches for a
- * top-level call instead of a method on the function.
- */
-function readDocs(target: unknown): string {
-  const name =
-    typeof target === "string"
-      ? target
-      : (target as Record<symbol, unknown> | null | undefined)?.[DOCS_NAME];
-  return docsMod.readDoc(typeof name === "string" ? name : String(name));
 }
 
 /**
@@ -370,10 +358,9 @@ function readDocs(target: unknown): string {
  * both the capability set and its enforcement: a withheld tool is a missing method, and a namespace
  * with nothing enabled is a missing object.
  *
- * Every object also carries a `list()` (the directory of its own functions), and every bound
- * function carries a `.docs()` — both routed to the {@link docsMod} carve-out. The `harness` and
- * `view` objects are present whatever a run enables — one holds `readDocs`, the other is the only
- * way material reaches the model's context window at all. The session-ending calls are bound
+ * Every object also carries a `list()` (the directory of its own functions), routed to the
+ * {@link docsMod} carve-out. The `view` object is present whatever a run enables: it is the only way
+ * material reaches the model's context window at all, documentation included. The session-ending calls are bound
  * from `ending`, one group per role, so a program has exactly the ending its role produces — a
  * reviewer gets a `review` object and no `finish`, a judge a `judge` object and no `finish`.
  * Everything goes through {@link guard}, so a call made from deferred work — which lands after the
@@ -410,10 +397,6 @@ function buildScope(
     const object = required ? OBJECT_FOR_MODULE[required.module] : undefined;
     if (fn && object) objectFor(object)[helper.js] = documented(guard(helper.js, fn), helper.js);
   }
-
-  // `harness`: always present, because `readDocs` is always available.
-  const harness = objectFor(OBJECT_FOR_MODULE["session"] ?? "harness");
-  harness["readDocs"] = documented(guard("readDocs", readDocs as ToolFn), "readDocs");
 
   // `view`: always present, on the same carve-out `harness` has — a run that enables no tools at all
   // must still be able to show its model something, and a view is the only channel that reaches it.

@@ -258,9 +258,11 @@ stay with the Cost widget's own account.
 
 Attributing a view to its *selector* is what the `context_message` event's **`label`**
 carries: the window item's selector tag — a file view's workspace path, the same tag
-`evict_file_view { path }` targets, or the label a program opened an
+`evict_file_view { path }` targets; the label a program opened an
 [agent view](/gg/responses-as-code/#showing-yourself-things) under, which
-`view.close(label)` targets. It rides on the pooled definition (emitted once per distinct message) rather
+`view.close(label)` targets; or, for a **docs view**, the name of the function it
+documents, which is both its heading (`Documentation: openText`) and what
+`view.close(name)` targets. It rides on the pooled definition (emitted once per distinct message) rather
 than on each turn's pointer, because it is a property of the material, not of the turn.
 The tag also survives what the message envelope does not: a **locked**, autoloaded
 specification is re-framed as a `user` message across a
@@ -350,7 +352,17 @@ directly:
   own window (what a program shows itself is a
   [view](/gg/responses-as-code/#showing-yourself-things), which arrives as its own context
   message), so a log line goes to whoever is watching the run and nowhere else. Both fields
-  are omitted for a turn that printed nothing. It also carries `compileWaitMs` on the one turn that
+  are omitted for a turn that printed nothing. The same is now true of far more than the
+  logs. A program that ran is told **nothing** — an
+  [error message carries the error alone](/gg/responses-as-code/), and a successful one
+  earns no message at all — so this event and the operator-facing lines gg writes beside it
+  on the run's own stream are the *only* surviving record of what a turn actually did: every
+  refused call and how many further refusals the cap suppressed, every refused view, every
+  view opened, replaced or closed with its selector and token estimate, the roster's count
+  of composed calls, a value the program returned and gg discarded, the summary a program
+  ended with, and the revocation when a program called an ending function and then threw.
+  None of that reaches the model any more, which makes losing it here losing it outright —
+  the reason it is written at all. It also carries `compileWaitMs` on the one turn that
   ever needs it: the sandbox's ~13 MB interpreter component is compiled once per process
   and the run starts that compile before its first model request, but starting it early
   only *overlaps* it with the request — so a model that answers quickly, on a container

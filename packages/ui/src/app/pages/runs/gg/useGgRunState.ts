@@ -775,13 +775,18 @@ export function moduleFate(
 // Dropping a file view and dropping a text view read differently because they *are* different
 // trades — an evicted file view can be re-read from the workspace, whereas a closed text view
 // was the agent's only copy of something it composed — so the feed names them apart rather
-// than folding both into "evict".
+// than folding both into "evict". Closing a documentation view is the cheapest of the three —
+// the page can always be re-opened by name — and is named apart from a text view's close for
+// the same reason: a reader scanning the feed should be able to tell a discarded working note
+// from a shelved reference page without opening the row.
 function contextActionLabel(action: GgContextAction): string {
   switch (action) {
     case "evict_file_views":
       return "evict";
     case "close_text_views":
       return "close";
+    case "close_docs_views":
+      return "close docs";
     case "archive_thread":
       return "archive";
   }

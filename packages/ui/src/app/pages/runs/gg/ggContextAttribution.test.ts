@@ -12,6 +12,9 @@
 // honest reporting of what neither path resolves, that an agent-composed text view is
 // attributed by its label on the same footing, and that a profile's several instances sum
 // into one accounting.
+//
+// They also pin the one band that is not a single thing: `skill` carries both pinned read skills
+// and the documentation views `view.openDocsView` opens, and only the latter are views.
 
 import { describe, expect, it } from "vitest";
 import type {
@@ -296,6 +299,66 @@ describe("attributeGgContext", () => {
       "text:changed-files",
       "file:specs/rules.md",
     ]);
+  });
+
+  it("attributes a documentation view but not the read skill sharing its band", () => {
+    // The `skill` band holds two different things: a pinned read skill, and the ephemeral
+    // documentation view `view.openDocsView` opens. Only the second is a view — it is keyed by
+    // the function's name, can be closed, and is worth ranking against the files and text views
+    // an operator is deciding what to trim. gg tells them apart by that selector alone, and a
+    // fold that read the band instead of the selector would file an unnameable read skill into
+    // the view list under whatever the fallback happened to resolve.
+    const state = reduceGgEvents([
+      message("m-skill", 500, { role: "user" }),
+      message("m-docs", 300, { role: "user", label: "readFile" }),
+      prompt(
+        [
+          ["m-skill", "skill"],
+          ["m-docs", "skill"],
+        ],
+        { uncached: 800 },
+      ),
+    ]);
+
+    const attribution = attributeGgContext(state, "vendor/m", priceOf);
+    const docs = row(attribution.byView, "docs:readFile");
+    expect(docs.kind).toBe("docs");
+    expect(docs.billedTokens).toBeCloseTo(300, 6);
+    // The read skill is neither a view nor unattributed material — it is simply not a view.
+    expect(attribution.byView.map((r) => r.key)).toEqual(["docs:readFile"]);
+    expect(attribution.unattributedViewTokens).toBe(0);
+    // Both still account to the band they share, which is what the graph draws.
+    expect(row(attribution.bySource, "skill").billedTokens).toBeCloseTo(800, 6);
+  });
+
+  it("leaves a program's compiler and runtime errors to their own bands", () => {
+    // Both are plain user messages carrying what a responses-as-code failure said: no selector,
+    // so no view, and no tool call id, so nothing for the per-tool breakdown to answer to. Their
+    // whole account is the band — and the bands must not fall through into the tool list, which
+    // would invent a tool nobody called.
+    const state = reduceGgEvents([
+      message("m-compile", 400, { role: "user" }),
+      message("m-runtime", 200, { role: "user" }),
+      prompt(
+        [
+          ["m-compile", "compiler_error"],
+          ["m-runtime", "runtime_error"],
+        ],
+        { uncached: 600 },
+      ),
+    ]);
+
+    const attribution = attributeGgContext(state, "vendor/m", priceOf);
+    expect(row(attribution.bySource, "compiler_error").label).toBe(
+      "compiler errors",
+    );
+    expect(row(attribution.bySource, "runtime_error").billedTokens).toBeCloseTo(
+      200,
+      6,
+    );
+    expect(attribution.byView).toEqual([]);
+    expect(attribution.byTool).toEqual([]);
+    expect(attribution.unattributedViewTokens).toBe(0);
   });
 
   it("keeps a file and an agent view of the same name apart", () => {

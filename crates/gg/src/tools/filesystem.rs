@@ -21,11 +21,13 @@
 //!
 //! How much of a file one `read_file` call may return is the first of those per-tool
 //! variables, selected by the read-file capability's *implementation* (see [`ReadPolicy`]):
-//! [unlimited](ReadPolicy::Unlimited) (the whole file, one call), a
-//! [hard cap](ReadPolicy::HardCap) (never more than N lines, whatever the model asks for),
-//! or a [default cap](ReadPolicy::DefaultCap) (N lines unless the model explicitly asks for
-//! more). The capped modes take `offset`/`limit` so the agent can page through a file; the
+//! [unlimited](ReadPolicy::Unlimited) (the whole file, one call) or a
+//! [default cap](ReadPolicy::DefaultCap) (N lines unless the model explicitly asks for
+//! more). The capped mode takes `offset`/`limit` so the agent can page through a file; the
 //! unlimited mode offers neither, because there is nothing to page.
+//!
+//! Neither mode can refuse a whole-file read — see [`ReadPolicy`] for why that is a property
+//! rather than an accident.
 //!
 //! # Reading images
 //!
@@ -80,8 +82,7 @@ pub(crate) const READ_FILE_CAP: usize = 256 * 1024;
 /// succeeds.
 const IMAGE_ATTACH_CAP: u64 = 8 * 1024 * 1024;
 
-/// The read-file capability's `lineCap` param: how many lines a
-/// [capped](ReadPolicy::HardCap) read returns, and the default a
+/// The read-file capability's `lineCap` param: the default number of lines a
 /// [default-capped](ReadPolicy::DefaultCap) read returns.
 pub const PARAM_LINE_CAP: &str = "lineCap";
 
@@ -90,17 +91,13 @@ pub const PARAM_LINE_CAP: &str = "lineCap";
 /// capability set that says nothing about read modes behaves as gg always has.
 pub const READ_MODE_UNLIMITED: &str = "unlimited";
 
-/// The implementation id selecting the hard-capped read mode: a call returns at most
-/// [`lineCap`](PARAM_LINE_CAP) lines and the agent cannot ask for more.
-pub const READ_MODE_HARD_CAP: &str = "hard-cap";
-
 /// The implementation id selecting the default-capped read mode: a call returns
 /// [`lineCap`](PARAM_LINE_CAP) lines unless the agent explicitly asks for more, which is
 /// honored.
 pub const READ_MODE_DEFAULT_CAP: &str = "default-cap";
 
-/// The line cap the capped read modes use when their capability declares no
-/// [`lineCap`](PARAM_LINE_CAP) (or declares a nonsensical one).
+/// The line cap the [default-capped](ReadPolicy::DefaultCap) read mode uses when its capability
+/// declares no [`lineCap`](PARAM_LINE_CAP) (or declares a nonsensical one).
 pub const DEFAULT_READ_LINE_CAP: usize = 250;
 
 // ---------------------------------------------------------------------------
@@ -115,7 +112,13 @@ pub const DEFAULT_READ_LINE_CAP: usize = 250;
 /// which way it cuts is an open question: a cap keeps a single call from flooding the
 /// window (and forces the agent to be deliberate about what it looks at), but it also costs
 /// a round trip per page and gives the agent a chance to lose the thread of a file it only
-/// ever half-sees. These three modes are the arms of that experiment.
+/// ever half-sees. These two modes are the arms of that experiment.
+///
+/// **Every mode a caller can reach is one the caller can read a whole file through** — either
+/// because the mode returns it whole or because a large enough `limit` is honoured. There is
+/// deliberately no mode that refuses: a hard ceiling would make it impossible to put a document
+/// in front of an agent in full, and gg has one caller that must be able to
+/// ([autoloaded specifications](crate::agent), which seed a case's specs whole).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ReadPolicy {
     /// Return the whole file in one call, with no `offset`/`limit` arguments — gg's
@@ -123,12 +126,8 @@ pub enum ReadPolicy {
     /// read-file capability reads exactly as gg always has.
     #[default]
     Unlimited,
-    /// Return at most this many lines per call. A `limit` above the cap is **reduced** to
-    /// it, and the agent is told so, so the ceiling is not something it can argue its way
-    /// past — it must page with `offset`.
-    HardCap(usize),
     /// Return this many lines per call *by default*, honoring any larger `limit` the agent
-    /// explicitly asks for. The cap becomes a nudge rather than a ceiling.
+    /// explicitly asks for. The cap is a nudge rather than a ceiling.
     DefaultCap(usize),
 }
 
@@ -149,7 +148,6 @@ impl ReadPolicy {
             .map(|n| n as usize)
             .unwrap_or(DEFAULT_READ_LINE_CAP);
         match implementation.map(str::trim) {
-            Some(READ_MODE_HARD_CAP) => Self::HardCap(cap),
             Some(READ_MODE_DEFAULT_CAP) => Self::DefaultCap(cap),
             Some(READ_MODE_UNLIMITED) | None => Self::Unlimited,
             // An unrecognized mode is a misconfiguration, not an instruction: fall back to
@@ -164,20 +162,22 @@ impl ReadPolicy {
     pub fn line_cap(&self) -> Option<usize> {
         match *self {
             Self::Unlimited => None,
-            Self::HardCap(cap) | Self::DefaultCap(cap) => Some(cap),
+            Self::DefaultCap(cap) => Some(cap),
         }
     }
 
-    /// How many lines a call asking for `requested` lines actually gets, and whether that
-    /// request was cut down to the cap. `None` for `requested` means the agent named no
-    /// `limit`, so the mode's default applies.
-    fn window(&self, requested: Option<usize>) -> (Option<usize>, bool) {
+    /// How many lines a call asking for `requested` lines actually gets. `None` for `requested`
+    /// means the agent named no `limit`, so the mode's default applies; `None` in the return
+    /// means the whole file.
+    ///
+    /// A `requested` window is always honoured verbatim — no mode reduces one — which is what
+    /// makes a whole-file read reachable from every mode.
+    fn window(&self, requested: Option<usize>) -> Option<usize> {
         match (*self, requested) {
-            (Self::Unlimited, _) => (None, false),
-            (Self::HardCap(cap), Some(want)) => (Some(want.min(cap)), want > cap),
-            (Self::HardCap(cap), None) | (Self::DefaultCap(cap), None) => (Some(cap), false),
+            (Self::Unlimited, _) => None,
+            (Self::DefaultCap(cap), None) => Some(cap),
             // The default cap is exactly the one the agent can talk its way past.
-            (Self::DefaultCap(_), Some(want)) => (Some(want), false),
+            (Self::DefaultCap(_), Some(want)) => Some(want),
         }
     }
 }
@@ -487,7 +487,6 @@ impl ReadFileTool {
                     returned_lines
                 },
                 byte_truncated: truncated,
-                limit_reduced: false,
                 contents,
             },
         ))
@@ -498,9 +497,9 @@ impl ReadFileTool {
     /// rest.
     ///
     /// A window that happens to cover the whole file produces **no** footer, so a file
-    /// shorter than the cap reads identically under all three modes and only files big
+    /// shorter than the cap reads identically under both modes and only files big
     /// enough to actually be capped differ between arms.
-    fn read_window(bytes: &[u8], offset: usize, window: usize, reduced: bool) -> ToolOutcome {
+    fn read_window(bytes: &[u8], offset: usize, window: usize) -> ToolOutcome {
         let text = String::from_utf8_lossy(bytes);
         let lines: Vec<&str> = text.split_inclusive('\n').collect();
         let total = lines.len();
@@ -537,7 +536,6 @@ impl ReadFileTool {
             last_line: saturating_u32(end),
             total_lines: saturating_u32(total),
             byte_truncated,
-            limit_reduced: reduced,
         });
 
         let windowed = start > 0 || end < total;
@@ -546,11 +544,6 @@ impl ReadFileTool {
         }
 
         let mut note = format!("showing lines {}-{end} of {total}", start + 1);
-        if reduced {
-            note.push_str(&format!(
-                "; `limit` was reduced to this run's {window}-line cap"
-            ));
-        }
         if end < total {
             note.push_str(&format!("; continue with offset: {}", end + 1));
         }
@@ -597,33 +590,17 @@ impl Tool for ReadFileTool {
             );
         };
 
-        let (description, limit_description) = match self.policy {
-            ReadPolicy::HardCap(cap) => (
-                format!(
-                    "Read a file from the workspace. A text file returns at most {cap} \
-                     lines per call, so read a long one a window at a time by passing \
-                     `offset`; the result tells you how many lines the file has and where \
-                     to continue from. A PNG, JPEG, GIF, or WebP image is returned whole, \
-                     as the image itself, when the session's model can see one — \
-                     `offset`/`limit` do not apply to it."
-                ),
-                format!(
-                    "How many lines to return (default and maximum {cap}; a larger value \
-                     is reduced to {cap})."
-                ),
+        let (description, limit_description) = (
+            format!(
+                "Read a file from the workspace. A text file returns {cap} lines by \
+                 default, starting at `offset`; pass a larger `limit` when you need \
+                 more of the file at once. The result tells you how many lines the file \
+                 has and where to continue from. A PNG, JPEG, GIF, or WebP image is \
+                 returned whole, as the image itself, when the session's model can see \
+                 one — `offset`/`limit` do not apply to it."
             ),
-            _ => (
-                format!(
-                    "Read a file from the workspace. A text file returns {cap} lines by \
-                     default, starting at `offset`; pass a larger `limit` when you need \
-                     more of the file at once. The result tells you how many lines the file \
-                     has and where to continue from. A PNG, JPEG, GIF, or WebP image is \
-                     returned whole, as the image itself, when the session's model can see \
-                     one — `offset`/`limit` do not apply to it."
-                ),
-                format!("How many lines to return (default {cap}; larger is allowed)."),
-            ),
-        };
+            format!("How many lines to return (default {cap}; larger is allowed)."),
+        );
 
         ToolDefinition::new(
             "read_file",
@@ -705,8 +682,8 @@ impl ReadFileTool {
         }
 
         match self.policy.window(limit) {
-            (Some(window), reduced) => Self::read_window(&bytes, offset, window, reduced),
-            (None, _) => Self::read_whole(&bytes),
+            Some(window) => Self::read_window(&bytes, offset, window),
+            None => Self::read_whole(&bytes),
         }
     }
 }

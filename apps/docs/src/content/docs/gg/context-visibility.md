@@ -2,9 +2,10 @@
 title: "Context visibility"
 ---
 
-gg **tracks what is consuming the context window**, broken down by source: skills,
-memories, file contents, material an agent composed and showed itself, the
-thread/history, tool output, and so on.
+gg **tracks what is consuming the context window**, broken down by source: skills and the
+documentation an agent looked up, memories, file contents, material an agent composed and
+showed itself, the thread/history, tool output, the compiler and runtime errors a
+[responses-as-code](/gg/responses-as-code/) program earned, and so on.
 
 - Internally this is the accounting that powers the context-usage signal in
   [agent-managed context](/gg/agent-managed-context/) and the trigger in
@@ -89,9 +90,17 @@ axis — the composition the graph exists to show, unreadable. The dashed window
 rule appears once the frame actually reaches it.
 
 The legend lists only the sources this run's [configuration](/gg/configurations/)
-can produce: with [skills](/gg/skills/) disabled there is no Skills band to explain.
-A source that holds tokens is never hidden, whatever the configuration says, so
+can produce: with the [board](/gg/project-management/) disabled there is no Board band to
+explain. A source that holds tokens is never hidden, whatever the configuration says, so
 nothing can silently drop out of the stack.
+
+**Skills & docs** is the band that does not follow from one capability, and it is worth
+knowing why it can appear in a run you would not expect it in. It has two occupants: a
+pinned [skill](/gg/skills/) an agent read, and the ephemeral documentation view a
+[responses-as-code](/gg/responses-as-code/) program opened with `view.openDocsView`. The
+second is bound whatever the capability set says, because reading the signature of a call
+you were given is not a privilege, so a run with skills switched off can still fill the band
+— and a run whose agents look up a lot of documentation reads on the graph as one.
 
 The bands give the window's **shape**; the figures come on **hover**. Pointing at any
 turn marks it with a rule and gives that turn's whole composition — the window total,
@@ -101,6 +110,31 @@ question a reader has at a bulge is what the window held *then*, not only how ta
 one band was; the marker is what says which band they are pointed at. The rows keep the
 graph's fixed source order rather than sorting by size, so the same window never reads
 differently from one turn to the next.
+
+## What gg says back is a diagnostic, and it is banded as one
+
+Under [responses as code](/gg/responses-as-code/) a turn's message from the harness is not a
+report on what happened. A program that compiled and ran earns no message at all — the views
+it opened are the result — so the only thing gg has to say back is a **diagnostic**: the
+compiler's error, or the runtime's, carried verbatim. Those get bands of their own,
+**Compiler errors** and **Runtime errors**, sitting directly after tool output rather than
+inside it. Tool output is the answer to something an agent asked for and got; a diagnostic is
+what a turn cost when it asked for something and got nothing it could use. Charged
+separately, they let a run's context graph answer a question that is otherwise unaskable —
+how much of this window went to programs that did not work — at a glance, from the shape of
+the stack.
+
+They are **two** bands rather than one `Errors` band because the two failures are not the
+same failure, and telling them apart is most of what the graph is read for here. A compiler
+error means **nothing ran**: no work, no side effects, no views, and the remedy is to resend
+the whole program. A runtime error means the program ran up to the throw and **everything it
+did before that stands** — the files it wrote, the calls it made, the views it opened, all
+still in front of the model on the next turn. So a window filling with compiler errors is an
+agent that cannot write valid code against the surface it was given, and a window filling
+with runtime errors is an agent writing code that runs and then breaks somewhere specific.
+The first is a question about the prompt and the API; the second is a question about the
+work. One band would draw them identically and lose the distinction exactly where a reader
+came looking for it.
 
 ## The message log: the exact requests, de-duplicated
 
@@ -206,22 +240,28 @@ and paging through a file appends one view per page.
 
 **Views a program opened.** Under [responses as code](/gg/responses-as-code/) a program
 puts material in front of itself by opening a **view** — `view.openFile(path)` for a file,
-`view.openText(label, body)` for something it computed — and gg pushes one message per open
-view into the next prompt. A file view lands in the same band a `read_file` result does; a
-text view lands in a band of its own, **Agent views**, keyed by the label the agent gave it.
-The band is separate because the *authorship* is: a file view is workspace material with an
-on-disk truth behind it, tool output is gg's own reporting back to the agent, and an agent
-view exists nowhere but the window.
+`view.openText(label, body)` for something it computed, `view.openDocsView(fn)` for a
+function's signature and documentation — and gg pushes one message per open view into the
+next prompt. A file view lands in the same band a `read_file` result does; a text view lands
+in a band of its own, **Agent views**, keyed by the label the agent gave it; a docs view
+lands in **Skills & docs**, keyed by the function's name, beside any skill the agent read.
+The bands are separate because the *authorship* is: a file view is workspace material with an
+on-disk truth behind it, tool output is gg's own reporting back to the agent, documentation
+is gg describing its own surface, and an agent view exists nowhere but the window.
 
 Re-opening a selector **supersedes** the view that was under it, which is the one place this
 page's append-per-read rule does not apply — and the difference is what the two calls name:
 
 - `read_file` names an **action**. It happened; it returned what the file said at that
   moment; each one appends. Collapsing two reads would be rewriting the thread.
-- `view.openFile` / `view.openText` name an **intent** — _this should be visible to me_.
-  Re-stating an intent replaces it. A program that loops over changed files and re-opens
-  each one would otherwise pile up a duplicate per turn, and the per-item accounting the
-  view mechanism exists to deliver would be worse than the single blob it replaced.
+- `view.openFile` / `view.openText` / `view.openDocsView` name an **intent** — _this should
+  be visible to me_. Re-stating an intent replaces it. A program that loops over changed
+  files and re-opens each one would otherwise pile up a duplicate per turn, and the per-item
+  accounting the view mechanism exists to deliver would be worse than the single blob it
+  replaced. A second lookup of the same function supersedes the first for the same reason,
+  which is also why a documentation block is always self-contained: it repeats every type
+  declaration it references rather than relying on one an earlier lookup showed, since that
+  earlier view may well have been closed.
 
 Superseding still honours append-only: a copy already sent on an earlier turn is left where
 it sits and retagged as ordinary history with its selector cleared, and the new copy is
@@ -234,6 +274,9 @@ Four things do remove material from the middle of the window, and each is a deli
 choice whose point is to reclaim tokens: `evict_file_view` and `archive_thread`, both
 [invoked by the agent](/gg/agent-managed-context/); `view.close(selector)`, which a code-mode
 program may call whether or not it holds the agent-managed-context capability, since closing
-what it opened itself is not a privilege; and a [compaction](/gg/compaction/) boundary, which
+what it opened itself is not a privilege, and which sweeps all three view bands because a
+selector is what the model wrote and it need not say which kind it meant — a pinned skill
+sharing the documentation band is spared, as every pinned item is; and a
+[compaction](/gg/compaction/) boundary, which
 rewrites the window wholesale. Each necessarily resets the cache; that is the price of the
 space they buy back.

@@ -143,17 +143,16 @@ use crate::modules::{
 use crate::observer::SessionObserver;
 use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
-    self, ApiView, AssignedIssueView, AttemptBriefContext, AutoloadView, BoardView, CodeCallView,
-    CodeErrorView, CodeHeadingView, CodeNotAProgramContext, CodeResultContext,
-    CodeSandboxErrorContext, CodeTimeoutContext, CodeTranspileErrorContext, CodeViewView,
-    EndingView, FixBriefContext, JudgeAttemptView, JudgeBriefContext, MemoriesView,
-    MergeBriefContext, NumberedItem, ReadFileView, ReviewBriefContext, ReviewChangesView,
-    ReviewRecordView, ShellView, SpawnableAgentView, SystemContext, TasksView,
+    self, ApiView, AssignedIssueView, AttemptBriefContext, AutoloadView, BoardView,
+    CodeHeadingView, CodeNotAProgramContext, EndingView, FixBriefContext, JudgeAttemptView,
+    JudgeBriefContext, MemoriesView, MergeBriefContext, NumberedItem, ReadFileView,
+    ReviewBriefContext, ReviewChangesView, ReviewRecordView, ShellView, SpawnableAgentView,
+    SystemContext, TasksView,
 };
 use crate::replay::{GgRecorder, RecordedSeed, RecordingClient};
 use crate::sandbox::{
     self, FunctionSummary, PROGRAM_CALL_ID_PREFIX, ProgramResult, SandboxError, SandboxLimits,
-    SandboxOutcome, UnreachableTail, run_program, scope_tools,
+    SandboxOutcome, run_program, scope_tools,
 };
 use crate::skills::{DEFAULT_SKILLS_DIR, ReadRecord, SkillLibrary, SkillsRuntime};
 use crate::subagents::{
@@ -6052,7 +6051,7 @@ impl Agent {
         // The full offered toolset — every turn offers all of it, so the tool schemas are a stable
         // prefix a provider can cache.
         let all_tools = registry.definitions();
-        // The per-agent documentation carve-out, behind `object.list()` and `fn.docs()`. Built from
+        // The per-agent documentation carve-out, behind `object.list()` and `view.openDocsView()`. Built from
         // the same scope-bound tool set the program's objects are, and always present (docs are not a
         // capability), so a code turn can always answer a lookup. Unused on the tool-calling path.
         let mut docs = crate::docs::DocsRuntime::new(scope_tools(registry), ending_role);
@@ -6778,8 +6777,11 @@ impl Agent {
                         .await
                         {
                             None => CodeTurnOutcome::Finished { ending },
+                            // A process notice, not an error message: the program itself did not
+                            // fail — it ran, it declared an ending, and the *session* was refused
+                            // one because the run's validation commands did not pass.
                             Some(feedback) => CodeTurnOutcome::Continue {
-                                feedback,
+                                feedback: vec![CodeFeedback::notice(feedback)],
                                 error: None,
                                 report: "its ending was rejected by validation".to_string(),
                             },
@@ -6888,11 +6890,19 @@ impl Agent {
                         // pictures: a program's `view.openFile` already pushed the mockup it opened
                         // as its own file view, and a bare `fs.readFile` of one shows the model
                         // nothing. One channel, so the picture is paid for exactly once.
-                        context.push(
-                            GgContextSource::ToolOutput,
-                            Retention::Ephemeral,
-                            Message::user(feedback),
-                        );
+                        //
+                        // Very often there is nothing to push. A program that compiled, ran, and
+                        // opened the views it meant to has already put everything the model gets in
+                        // the window, and gg saying "your program ran to completion" on top of that
+                        // would be a message with no information in it. gg speaks here only to
+                        // report a fault or a process fact — see `CodeFeedback`.
+                        for feedback in feedback {
+                            context.push(
+                                feedback.source,
+                                Retention::Ephemeral,
+                                Message::user(feedback.body),
+                            );
+                        }
                         // The copies this program declared. Started here, with the turn's feedback
                         // already in the window, so a copy inherits the conversation its forker is
                         // actually holding — and before the breach return below, because a fork is
@@ -6951,7 +6961,7 @@ impl Agent {
                                 resolved.push(outcome.output);
                             }
                             context.push(
-                                GgContextSource::ToolOutput,
+                                GgContextSource::System,
                                 Retention::Ephemeral,
                                 Message::user(resolved.join("\n\n")),
                             );
@@ -7025,6 +7035,23 @@ impl Agent {
                                 limit: None,
                                 handoff: Some(handoff),
                             };
+                        }
+                        // The turn must end on a message from gg. Usually it already does — a view
+                        // the program opened, an error, a rebuilt state block — but a program that
+                        // ran cleanly and opened nothing new leaves this turn's assistant message
+                        // last, and a request whose final message is an assistant one is a request
+                        // asking the provider to *continue that message* rather than to answer it.
+                        //
+                        // Checked against the window rather than inferred from the outcome, because
+                        // what lands last is not a property of the program alone: a re-opened view
+                        // supersedes in place rather than appending, a compaction rewrites the
+                        // window wholesale, and either can leave the turn ending where it started.
+                        if context.ends_on_assistant() {
+                            context.push(
+                                GgContextSource::System,
+                                Retention::Ephemeral,
+                                Message::user(prompts::render_code_nothing_shown()),
+                            );
                         }
                         continue;
                     }
@@ -8551,11 +8578,12 @@ struct PromptInputs<'a> {
 /// [signature catalogue](crate::sandbox::catalogue_functions), the same grouping the guest builds a
 /// program's scope from — so a withheld capability drops its whole object rather than leaving a
 /// named-but-empty one, and a reviewer is shown a `review` object where an implementer is not.
-/// `harness` and `view` always appear, because they carry the two things nothing gates: the
-/// documentation lookup, and the channel a program puts material into its own window with — a run
-/// that offers no tools at all must still be able to show its model something. The descriptions are
-/// stable product surface authored here; the *functions* on each object are not listed at all,
-/// because a model discovers those on demand with `object.list()` and `fn.docs()`.
+/// `view` always appears, because it carries the one thing nothing gates: the channel a program puts
+/// material into its own window with — including documentation, which is why the object that used to
+/// exist purely to hold the doc lookup no longer has to. A run that offers no tools at all must
+/// still be able to show its model something. The descriptions are stable product surface authored
+/// here; the *functions* on each object are not listed at all, because a model discovers those on
+/// demand with `object.list()` and `view.openDocsView()`.
 fn api_views(registry: &ToolRegistry, role: EndingRole) -> Vec<ApiView> {
     const OBJECTS: &[(&str, &str)] = &[
         ("fs", "read, write, and edit workspace files"),
@@ -8568,12 +8596,13 @@ fn api_views(registry: &ToolRegistry, role: EndingRole) -> Vec<ApiView> {
         ("memory", "durable memories that survive context compaction"),
         (
             "view",
-            "show yourself a file or a value — the only way material enters your context",
+            "show yourself a file, a value, or a function's documentation — the only way material \
+             enters your context",
         ),
         ("context", "manage your own context window"),
         ("agents", "delegate work to child agents"),
         ("skills", "read authored skills"),
-        ("harness", "read documentation"),
+        ("harness", "end your session"),
         (
             "review",
             "return your verdict on the work you are reviewing",
@@ -8629,9 +8658,16 @@ fn code_heading_views(
             true,
         ),
         (
-            GgContextSource::ToolOutput,
-            "the report on your last program — what it called, what it opened, and whether it ran, \
-             failed, or was stopped",
+            GgContextSource::CompilerError,
+            "your last program did not compile, so none of it ran; the message is the compiler's \
+             error and nothing else. Fix it and resend the whole program",
+            true,
+        ),
+        (
+            GgContextSource::RuntimeError,
+            "your last program compiled and then threw, or was stopped by a sandbox limit; the \
+             message is the error and nothing else. Whatever the program did before it threw \
+             stands, so do not repeat that work",
             true,
         ),
         (
@@ -8753,7 +8789,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
     let read_file = ReadFileView {
         offered: offers_read,
         capped: offers_read && read_policy.line_cap().is_some(),
-        hard_cap: matches!(read_policy, ReadPolicy::HardCap(_)),
         line_cap: read_policy.line_cap().unwrap_or_default(),
         images: offers_read && !vision.declared_text_only(),
     };
@@ -8927,22 +8962,42 @@ fn ending_calls(role: EndingRole, responses_as_code: bool) -> Vec<String> {
 }
 
 /// Seed `context` with the test case's [provided files](Orchestrator::provided_files) — its
-/// specifications then its reference images — as though the agent had already `read_file`d each:
-/// one synthesized `read_file` assistant call per file, immediately answered by the file's contents
-/// (a [`FileView`](GgContextSource::FileView), image and all), so the model opens with the whole
-/// brief already in the window. This is the [autoload-specifications](CAPABILITY_AUTOLOAD_SPECS)
-/// capability's whole effect.
+/// specifications then its reference images — as though the agent had already opened each itself,
+/// so the model opens with the whole brief already in the window. This is the
+/// [autoload-specifications](CAPABILITY_AUTOLOAD_SPECS) capability's whole effect.
+///
+/// # The synthesized turn is written in the agent's own protocol
+///
+/// Seeding means putting words in the agent's mouth: a reply it did not send, answered by material
+/// it did not ask for. Those words have to be a reply it *could* have sent, because the model reads
+/// its own transcript as the example of what a well-formed turn looks like — and the two protocols
+/// gg runs have nothing in common at that layer.
+///
+/// - **Tool calling**: one synthesized `read_file` assistant call per file, immediately answered by
+///   the file's contents as a [`FileView`](GgContextSource::FileView) `tool` result. The
+///   [call id](READ_FILE_TOOL) pairs them, so the opening conversation is well-formed exactly as a
+///   real read would be.
+/// - **Responses as code**: one synthesized **program** that calls `view.openFile` once per file,
+///   followed by the file views it opened. There are no tools on this path — a program is the only
+///   shape an assistant turn takes, `view.openFile` is the only way a file enters the window, and
+///   a synthesized `tool_use` naming `read_file` would be a call to a function the model cannot
+///   make, quoting an id its own assistant messages never carry. The reads still go through the
+///   real [`ReadFileTool`], so what the model sees under the synthesized call is what that call
+///   actually returns.
+///
+/// # What is the same either way
 ///
 /// The files are read **whole** — an unlimited [`ReadPolicy`], independent of the run's own
 /// `read_file` [line cap](ReadPolicy) — because the capability's promise is the *full* contents of
-/// every spec, not a capped first window of it. Image handling is the read tool's own: a mockup is
-/// attached as a picture when this agent's model can see one and described otherwise, so an
-/// autoloaded reference behaves exactly like a read one. When `locked`, each view is
-/// [`Pinned`](Retention::Pinned) so it survives compaction and eviction; otherwise the views are
-/// ordinary ephemeral reads that compaction may summarize and agent-managed context may evict. The
-/// synthesized assistant call is always ephemeral — only the file view is ever locked — mirroring
-/// how a read skill pins the body but not the `read_skill` call that fetched it. A file that cannot
-/// be read (a reference that failed to seed) is skipped with a warning rather than failing the run.
+/// every spec, not a capped first window of it. (No read mode can refuse that; see [`ReadPolicy`].)
+/// Image handling is the read tool's own: a mockup is attached as a picture when this agent's model
+/// can see one and described otherwise, so an autoloaded reference behaves exactly like a read one.
+/// When `locked`, each view is [`Pinned`](Retention::Pinned) so it survives compaction and eviction;
+/// otherwise the views are ordinary ephemeral reads that compaction may summarize and agent-managed
+/// context may evict. The synthesized assistant turn is always ephemeral — only the file view is
+/// ever locked — mirroring how a read skill pins the body but not the `read_skill` call that fetched
+/// it. A file that cannot be read (a reference that failed to seed) is skipped with a warning rather
+/// than failing the run, and never appears in the synthesized program.
 async fn autoload_specifications(
     context: &mut ContextModel,
     provided_files: &[PathBuf],
@@ -8959,7 +9014,13 @@ async fn autoload_specifications(
     } else {
         Retention::Ephemeral
     };
-    for (index, path) in provided_files.iter().enumerate() {
+
+    // Read first, push second. The code path's assistant turn is ONE program naming every file it
+    // opened, so it cannot be written until it is known which reads succeeded — a program listing a
+    // call whose view never arrived would teach the model that `view.openFile` sometimes silently
+    // does nothing.
+    let mut seeded: Vec<(String, ToolOutcome)> = Vec::with_capacity(provided_files.len());
+    for path in provided_files {
         let rel = path.to_string_lossy().into_owned();
         let outcome = reader.invoke(json!({ "path": rel }), tool_ctx).await;
         if !outcome.ok {
@@ -8969,6 +9030,24 @@ async fn autoload_specifications(
             ));
             continue;
         }
+        seeded.push((rel, outcome));
+    }
+    if seeded.is_empty() {
+        return;
+    }
+
+    if context.code_mode() {
+        context.push_assistant(
+            Some(open_file_program(seeded.iter().map(|(rel, _)| rel))),
+            Vec::new(),
+        );
+        for (rel, outcome) in seeded {
+            context.seed_file_view(rel, outcome.output, outcome.images, retention);
+        }
+        return;
+    }
+
+    for (index, (rel, outcome)) in seeded.into_iter().enumerate() {
         // A deterministic, per-agent-unique id (the turn loop never assigns an `autoload-` one)
         // pairs the synthesized assistant call with its result, so the opening conversation is
         // well-formed exactly as a real read would be.
@@ -8989,6 +9068,20 @@ async fn autoload_specifications(
             retention,
         );
     }
+}
+
+/// The program gg synthesizes to open `paths` on a [code-mode](ContextModel::code_mode) agent's
+/// behalf — one `view.openFile` per path, in seeding order, and nothing else.
+///
+/// It is deliberately the plainest program that does the job: no `const`, no loop, no logging. It
+/// is read by the model as an example of its own output, so anything clever in it is a style the
+/// run did not intend to teach. Paths are rendered through [`serde_json`] so a quote or a backslash
+/// in one cannot produce a program that would not parse.
+fn open_file_program<'a>(paths: impl Iterator<Item = &'a String>) -> String {
+    paths
+        .map(|path| format!("view.openFile({});", Value::String(path.clone())))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Re-read the workspace paths a [`compact`](COMPACT_TOOL) call named, so they can be seeded back
@@ -9388,6 +9481,7 @@ fn session_ended(status: impl Into<String>) -> GgTelemetryKind {
 /// lived here.
 #[path = "agent.code.rs"]
 mod code;
+use code::CodeFeedback;
 
 use code::{CodeTurn, CodeTurnOutcome, CodeTurnState, run_code_turn};
 

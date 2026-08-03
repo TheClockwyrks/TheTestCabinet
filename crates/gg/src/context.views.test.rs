@@ -1014,3 +1014,116 @@ fn a_tool_calling_agent_is_never_pointed_at_view_close() {
         .expect("the signal carries text");
     assert!(!text.contains("view.close"), "{text}");
 }
+
+// ---------------------------------------------------------------------------
+// Documentation views
+// ---------------------------------------------------------------------------
+
+/// **A documentation view is a view**, not the pinned block a doc lookup used to leave behind.
+///
+/// The whole of what `view.openDocsView` changed. A pin could not be closed, could not be
+/// superseded, and grew for the life of the agent; this is keyed by the function's name, replaces
+/// its own earlier copy, and answers to `view.close`. It shares the `Skill` band with a read skill
+/// because both are reference material gg holds — but a read skill is pinned and this is not, which
+/// is the only thing telling the two apart.
+#[test]
+fn a_docs_view_is_ephemeral_keyed_and_closable() {
+    let mut ctx = code_model();
+    ctx.open_docs_view(
+        "readFile".to_string(),
+        "readFile(path): FileRead".to_string(),
+    );
+
+    let item = ctx
+        .items()
+        .iter()
+        .find(|item| item.source() == GgContextSource::Skill)
+        .expect("the docs view is in the Documentation band");
+    assert_eq!(item.retention(), Retention::Ephemeral);
+    assert_eq!(item.label(), Some("readFile"));
+    assert_eq!(item.message().role, Role::User);
+    assert!(
+        item.message()
+            .content
+            .as_deref()
+            .expect("a body")
+            .starts_with("Documentation: readFile\n----\n"),
+        "it is headed by the function it documents, so the model can name it in a close"
+    );
+
+    // Closing it by that name reclaims it.
+    let closed = ctx.close_docs_views(Some("readFile"));
+    assert_eq!(closed.items, 1);
+    assert!(
+        !ctx.items()
+            .iter()
+            .any(|item| item.source() == GgContextSource::Skill)
+    );
+}
+
+/// Re-opening the same function's docs **replaces** the view rather than stacking a second copy —
+/// the same intent semantics `view.openText` has, and the reason a model may ask again freely.
+#[test]
+fn re_opening_a_functions_docs_supersedes_the_copy_that_was_there() {
+    let mut ctx = code_model();
+    ctx.open_docs_view("readFile".to_string(), "the first copy".to_string());
+    let opened = ctx.open_docs_view("readFile".to_string(), "the second copy".to_string());
+    assert!(opened.superseded);
+
+    let bodies: Vec<String> = ctx
+        .items()
+        .iter()
+        .filter(|item| item.source() == GgContextSource::Skill)
+        .map(|item| item.message().content.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(bodies.len(), 1, "one copy, not two: {bodies:?}");
+    assert!(bodies[0].contains("the second copy"), "{bodies:?}");
+}
+
+/// **Closing docs views never touches a read skill.**
+///
+/// The two share a band and are told apart by retention alone, so the pinned carve-out
+/// `remove_views` already applies is exactly the rule that makes `view.close` safe here. Without it
+/// a program tidying up its documentation would silently drop an authored skill it cannot get back.
+#[test]
+fn closing_docs_views_spares_a_read_skill() {
+    let mut ctx = code_model();
+    ctx.push(
+        GgContextSource::Skill,
+        Retention::Pinned,
+        Message::user("the authored skill's body".to_string()),
+    );
+    ctx.open_docs_view("readFile".to_string(), "the function's docs".to_string());
+
+    // A blanket close — the most dangerous form — still spares the skill.
+    let closed = ctx.close_docs_views(None);
+    assert_eq!(closed.items, 1);
+    let left: Vec<String> = ctx
+        .items()
+        .iter()
+        .filter(|item| item.source() == GgContextSource::Skill)
+        .map(|item| item.message().content.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(left.len(), 1);
+    assert!(left[0].contains("the authored skill's body"), "{left:?}");
+}
+
+/// A docs view shows up in `view.current()` as its own kind, so a model deciding what to close can
+/// see it — and a read skill does not, because it cannot be closed.
+#[test]
+fn open_views_reports_a_docs_view_and_not_a_read_skill() {
+    let mut ctx = code_model();
+    ctx.push(
+        GgContextSource::Skill,
+        Retention::Pinned,
+        Message::user("the authored skill's body".to_string()),
+    );
+    ctx.open_docs_view("readFile".to_string(), "the function's docs".to_string());
+
+    let open: Vec<(ViewKind, String)> = ctx
+        .open_views()
+        .into_iter()
+        .map(|view| (view.kind, view.selector))
+        .collect();
+    assert_eq!(open, vec![(ViewKind::Docs, "readFile".to_string())]);
+}

@@ -40,7 +40,6 @@ fn full_system() -> SystemContext {
         read_file: ReadFileView {
             offered: true,
             capped: true,
-            hard_cap: true,
             line_cap: 250,
             images: true,
         },
@@ -209,7 +208,7 @@ fn code_mode_names_objects_and_teaches_discovery() {
         "run shell commands in the workspace",
         "`harness`",
         "<object>.list()",
-        ".docs()",
+        "view.openDocsView(fn)",
         "finish",
     ] {
         assert!(flat.contains(keyword), "missing `{keyword}`:\n{prompt}");
@@ -319,7 +318,10 @@ fn a_full_run_renders_the_read_facts_and_tasks() {
     let prompt = render_system(&full_system(), None);
     let flat = flat(&prompt);
     assert!(prompt.contains("Reading images is supported."), "{prompt}");
-    assert!(flat.contains("at most 250 lines"), "{prompt}");
+    assert!(
+        flat.contains("250 lines per call unless you ask for more"),
+        "{prompt}"
+    );
     assert!(prompt.contains("## Tasks"), "{prompt}");
     assert!(!prompt.contains("\n\n\n"), "prompt has a blank-line run");
 }
@@ -382,12 +384,12 @@ fn the_ending_section_always_demands_an_explicit_call() {
 #[test]
 fn no_run_describes_compaction() {
     for responses_as_code in [false, true] {
-        // `harness` is always present in a code run — the object `readDocs` lives on — and the code
-        // template renders its object list, so a realistic code context carries at least it.
+        // `harness` is the object a standard role's `finish` lives on, and the code template
+        // renders its object list, so a realistic code context carries at least it.
         let apis = if responses_as_code {
             vec![ApiView {
                 object: "harness".to_string(),
-                description: "read documentation".to_string(),
+                description: "end your session".to_string(),
             }]
         } else {
             Vec::new()
@@ -692,11 +694,12 @@ fn the_read_cap_is_stated_only_when_one_is_in_force() {
             capped: true,
             line_cap: 40,
             images: true,
-            ..ReadFileView::default()
         },
         ..SystemContext::default()
     };
-    assert!(flat(&render_system(&capped, None)).contains("at most 40 lines"));
+    assert!(
+        flat(&render_system(&capped, None)).contains("40 lines per call unless you ask for more")
+    );
     let uncapped = SystemContext {
         read_file: ReadFileView {
             offered: true,
@@ -745,9 +748,8 @@ fn the_tool_calling_prompt_names_no_tools() {
 // The code-turn feedback
 // ---------------------------------------------------------------------------
 
-/// A skipped `{{#if}}` section must not leave a run of blank lines behind. The feedback templates
-/// are not put through [`tidy`] — a program's own logs are its words, and squeezing blank lines out
-/// of them would be editing the model's output back at it — so the whitespace has to be right in the
+/// A skipped `{{#if}}` section must not leave a run of blank lines behind. The one feedback template
+/// that still takes a context is not put through [`tidy`], so the whitespace has to be right in the
 /// template itself.
 fn assert_no_blank_run(rendered: &str) {
     assert!(
@@ -756,470 +758,45 @@ fn assert_no_blank_run(rendered: &str) {
     );
 }
 
-/// The feedback for a program that ran cleanly, made no calls and logged nothing — every optional
-/// section off at once.
-fn quiet_result() -> CodeResultContext {
-    CodeResultContext {
-        error: None,
-        returned_value: false,
-        finish_revoked: false,
-        ending_revoked: "finish".to_string(),
-        calls: Vec::new(),
-        call_count: 0,
-        calls_suppressed: 0,
-        refusals: Vec::new(),
-        refusals_suppressed: 0,
-        logged_lines: 0,
-        views_opened: Vec::new(),
-        views_closed: Vec::new(),
-        view_refusals: Vec::new(),
-        views_suppressed: 0,
-        unreachable: None,
-        silent: true,
-        deferred: None,
+/// **A program that ran is not reported on, so there is no template to report it with.**
+///
+/// The four templates that used to answer a code turn — the result report, the transpile error, the
+/// sandbox error, the timeout — are gone, and this is what stands in their place. A compiler or
+/// runtime error *is* its error: gg renders no prose around it, so there is nothing to template and
+/// nothing that can drift between what gg says and what the model was told to expect.
+#[test]
+fn the_code_turn_has_no_result_template_to_render() {
+    let registered: Vec<&str> = TEMPLATES.iter().map(|(name, _)| *name).collect();
+    for retired in [
+        "code-result",
+        "code-transpile-error",
+        "code-sandbox-error",
+        "code-timeout",
+    ] {
+        assert!(
+            !registered.contains(&retired),
+            "`{retired}` is retired and must not be registered: {registered:?}"
+        );
     }
 }
 
-/// The clean-run branch: the roster of what the program called, and the roster of what it opened
-/// into its own window. The feedback carries no standing instructions — how a session ends is the
-/// system prompt's job, and repeating it on every turn is the noise this template was stripped of —
-/// so a clean turn is exactly a report of what happened.
+/// The one notice a **successful** program can earn: it ran, and it put nothing in the window.
 ///
-/// The view lines are the counterpart of the call lines: a call says what the program did to the
-/// workspace, a view says what the model is about to be *shown* and what carrying it costs. The
-/// material itself is not here — it arrives as its own message, one per view, which is the entire
-/// point of the mechanism.
+/// It exists for a protocol reason rather than an informational one — a request whose last message
+/// is the assistant's own is a request to continue that message — so it earns its place by also
+/// naming the two calls that would have put something there.
 #[test]
-fn the_result_feedback_shows_the_views_and_the_roster() {
-    let rendered = render_code_result(&CodeResultContext {
-        views_opened: vec![
-            CodeViewView {
-                kind: "text".to_string(),
-                selector: "changed-files".to_string(),
-                tokens: 42,
-                superseded: false,
-            },
-            CodeViewView {
-                kind: "file".to_string(),
-                selector: "specs/rules.md".to_string(),
-                tokens: 1200,
-                superseded: true,
-            },
-        ],
-        views_closed: vec!["stale-notes".to_string()],
-        calls: vec![
-            CodeCallView {
-                name: "list_dir".to_string(),
-                ok: true,
-                error: None,
-            },
-            CodeCallView {
-                name: "edit_file".to_string(),
-                ok: false,
-                error: Some("`foo` appears 3 times".to_string()),
-            },
-        ],
-        call_count: 2,
-        silent: false,
-        ..quiet_result()
-    });
-    assert!(rendered.starts_with("Your program ran to completion."));
-    assert!(rendered.contains("- opened text view `changed-files` (~42 tokens)"));
-    // A re-opened selector REPLACED what was under it; a model told "opened" twice would read its
-    // own window as holding two copies.
-    assert!(rendered.contains("- replaced file view `specs/rules.md` (~1200 tokens)"));
-    assert!(rendered.contains("- closed view `stale-notes`"));
-    assert!(rendered.contains("2 tool call(s) were made:"));
-    assert!(rendered.contains("- list_dir: ok"));
-    // A failure the program CAUGHT is still reported, or it would be invisible.
-    assert!(rendered.contains("- edit_file: failed: `foo` appears 3 times"));
-    assert!(!rendered.contains("Your program stopped"));
+fn the_nothing_shown_notice_names_the_calls_that_would_have_shown_something() {
+    let rendered = render_code_nothing_shown();
+    assert!(rendered.contains("view.openText"), "{rendered}");
+    assert!(rendered.contains("view.openFile"), "{rendered}");
+    assert!(
+        rendered.contains("console.log"),
+        "a model whose output vanished must be told where it went: {rendered}"
+    );
     assert_no_blank_run(&rendered);
 }
 
-/// **A program's logs are not in its feedback, and the fact that it logged is.**
-///
-/// `console.*` still crosses the membrane and still reaches the operator, telemetry, replay and the
-/// console — it simply stops being a channel into the prompt, because one anonymous blob of
-/// interleaved lines is exactly what views replaced. What the model gets instead is a counted nudge
-/// naming both halves: where the output went, and the call that would have put it in front of the
-/// model instead. Disclosed rather than silent, in the turn it happened, or a model whose output
-/// vanished reads the silence as evidence its program never ran.
-#[test]
-fn the_result_feedback_replaces_logs_with_a_counted_nudge() {
-    let rendered = render_code_result(&CodeResultContext {
-        logged_lines: 12,
-        silent: false,
-        ..quiet_result()
-    });
-    assert!(
-        flat(&rendered).contains(
-            "Your program logged 12 line(s). Logs are not shown to you — they go to the run's \
-             operator. To put something in front of yourself, open a view: \
-             `view.openText(label, body)` for a value you computed, `view.openFile(path)` for a \
-             file."
-        ),
-        "{rendered}"
-    );
-    // The old channel is not described as one anywhere in the feedback.
-    assert!(!rendered.contains("Output:"));
-    assert!(!rendered.contains("console.log"));
-    // A program that logged nothing is told nothing about logging: a standing paragraph about a
-    // channel it did not use is exactly the per-turn boilerplate this template was stripped of.
-    let quiet = render_code_result(&quiet_result());
-    assert!(!quiet.contains("logged"));
-    assert_no_blank_run(&rendered);
-    assert_no_blank_run(&quiet);
-}
-
-/// **A refused view is never quiet.** The material never reached the window, and the model is the
-/// only party that can do something about it — split it, trim it, or write it to a file and open a
-/// file view of that — so the refusal is reported with the cap's own words.
-#[test]
-fn the_result_feedback_reports_a_refused_view() {
-    let rendered = render_code_result(&CodeResultContext {
-        view_refusals: vec![
-            "`view.openText` was refused: the body is 91234 bytes, over the 65536-byte \
-             MAX_TEXT_VIEW_BYTES cap. Nothing was truncated and nothing was shown."
-                .to_string(),
-        ],
-        views_suppressed: 7,
-        silent: false,
-        ..quiet_result()
-    });
-    assert!(flat(&rendered).contains("- view refused: `view.openText` was refused"));
-    assert!(flat(&rendered).contains("MAX_TEXT_VIEW_BYTES"));
-    assert!(rendered.contains("(7 further view call(s) were not listed)"));
-    assert_no_blank_run(&rendered);
-}
-
-/// The throw branch: what threw, where in the **program's** coordinates, and — load-bearing — that
-/// the work before it stands.
-#[test]
-fn the_result_feedback_locates_a_throw_and_says_the_work_stands() {
-    let rendered = render_code_result(&CodeResultContext {
-        error: Some(CodeErrorView {
-            message: "`specs/rules.md` does not exist".to_string(),
-            location: Some("line 3, column 7".to_string()),
-        }),
-        calls: vec![CodeCallView {
-            name: "write_file".to_string(),
-            ok: true,
-            error: None,
-        }],
-        call_count: 1,
-        silent: false,
-        ..quiet_result()
-    });
-    assert!(
-        rendered.starts_with(
-            "Your program stopped at line 3, column 7: `specs/rules.md` does not exist"
-        )
-    );
-    assert!(rendered.contains("Everything it did before that still stands."));
-    assert!(!rendered.contains("Return value:"));
-
-    // With no location and no calls, neither clause is invented.
-    let bare = render_code_result(&CodeResultContext {
-        error: Some(CodeErrorView {
-            message: "boom".to_string(),
-            location: None,
-        }),
-        silent: false,
-        ..quiet_result()
-    });
-    assert!(bare.starts_with("Your program stopped: boom"));
-    assert!(!bare.contains("still stands"));
-    assert!(bare.contains("No tool calls were made."));
-    assert_no_blank_run(&rendered);
-    assert_no_blank_run(&bare);
-}
-
-/// The three things that would otherwise be invisible: refusals, view records the recording cap
-/// dropped, and deferred work.
-#[test]
-fn the_result_feedback_reports_what_was_dropped_refused_and_deferred() {
-    let rendered = render_code_result(&CodeResultContext {
-        views_suppressed: 41,
-        refusals: vec!["`speculate` — the run has no worktree isolation".to_string()],
-        refusals_suppressed: 3,
-        deferred: Some("your program deferred work with `.then()`; it ran after the program had already ended.".to_string()),
-        silent: false,
-        ..quiet_result()
-    });
-    assert!(flat(&rendered).contains("(41 further view call(s) were not listed"));
-    assert!(rendered.contains("- refused: `speculate` — the run has no worktree isolation"));
-    assert!(rendered.contains("(3 further refusal(s) were not listed"));
-    assert!(rendered.contains("it ran after the program had already ended."));
-    assert_no_blank_run(&rendered);
-}
-
-/// A roster the cap truncated says so, and a program that `return`ed a value is told where that
-/// value went.
-///
-/// Both are the same failure of omission: a model shown "it made 738 tool call(s)" and then 500
-/// bullets reads the gap as calls that vanished, and one whose returned value is nowhere in the
-/// feedback reads it as a value that was lost rather than as the wrong channel.
-#[test]
-fn the_result_feedback_explains_a_truncated_roster_and_a_discarded_return_value() {
-    let rendered = render_code_result(&CodeResultContext {
-        returned_value: true,
-        logged_lines: 1,
-        calls: vec![CodeCallView {
-            name: "read_file".to_string(),
-            ok: true,
-            error: None,
-        }],
-        call_count: 738,
-        calls_suppressed: 737,
-        silent: false,
-        ..quiet_result()
-    });
-    assert!(rendered.contains("738 tool call(s) were made:"));
-    assert!(
-        rendered.contains("(737 further call(s) were made but not listed"),
-        "a truncated roster must say so:\n{rendered}"
-    );
-    assert!(
-        rendered.contains("Returning values does nothing"),
-        "a discarded return value is named, and the model is pointed at the channel that works:\n\
-         {rendered}"
-    );
-    assert!(rendered.contains("`view.openText(label, body)`"));
-    assert_no_blank_run(&rendered);
-}
-
-/// A program that logged nothing and threw nothing gets told so — the one outcome that teaches the
-/// model absolutely nothing about its own workspace.
-#[test]
-fn the_result_feedback_nudges_a_silent_program() {
-    let rendered = render_code_result(&quiet_result());
-    assert!(rendered.contains("No output recorded."));
-    assert!(rendered.contains("No tool calls were made."));
-    // ...and a program that said something — into either channel — is not nagged.
-    let spoke = render_code_result(&CodeResultContext {
-        views_opened: vec![CodeViewView {
-            kind: "text".to_string(),
-            selector: "12 files".to_string(),
-            tokens: 8,
-            superseded: false,
-        }],
-        silent: false,
-        ..quiet_result()
-    });
-    assert!(!spoke.contains("No output recorded."));
-    assert_no_blank_run(&rendered);
-    assert_no_blank_run(&spoke);
-}
-
-/// An ending the program declared and then lost is stated in the feedback, on both paths that can
-/// lose one.
-///
-/// It is the one turn in which a model's belief about the run and gg's are opposite: the model wrote
-/// `finish` and read a failure, and without this sentence the obvious reading — fix the throw, the
-/// ending stands — leaves it never finishing the run at all.
-#[test]
-fn the_feedback_says_when_a_finish_was_revoked() {
-    let threw = render_code_result(&CodeResultContext {
-        error: Some(CodeErrorView {
-            message: "`out/manifest.md` does not exist".to_string(),
-            location: Some("line 9, column 3".to_string()),
-        }),
-        finish_revoked: true,
-        ending_revoked: "finish".to_string(),
-        silent: false,
-        ..quiet_result()
-    });
-    assert!(
-        flat(&threw).contains(
-            "Your session was NOT ended: `finish` was suppressed because your program did not run \
-             to completion."
-        ),
-        "{threw}"
-    );
-
-    let stopped = render_code_sandbox_error(&CodeSandboxErrorContext {
-        error: "the program exceeded its 268435456-byte memory cap".to_string(),
-        finish_revoked: true,
-        ending_revoked: "finish".to_string(),
-        calls: 3,
-    });
-    assert!(
-        flat(&stopped)
-            .contains("Your session was NOT ended: `finish` was suppressed by the error."),
-        "{stopped}"
-    );
-
-    // A reviewer is told which of *its* calls was lost, never one it does not have.
-    let reviewer = render_code_sandbox_error(&CodeSandboxErrorContext {
-        error: "the program exceeded its 268435456-byte memory cap".to_string(),
-        finish_revoked: true,
-        ending_revoked: "request_changes".to_string(),
-        calls: 3,
-    });
-    assert!(
-        flat(&reviewer).contains("`request_changes` was suppressed"),
-        "{reviewer}"
-    );
-
-    // And a turn that declared no ending is told nothing about one.
-    let ordinary = render_code_result(&CodeResultContext {
-        logged_lines: 1,
-        silent: false,
-        ..quiet_result()
-    });
-    assert!(!ordinary.contains("was suppressed"));
-    assert_no_blank_run(&threw);
-    assert_no_blank_run(&ordinary);
-}
-
-/// A transpile failure hands back the compiler's own diagnostic, then restates the rule a failure
-/// to compile most often means the model broke: the *entire reply* is compiled, so anything in it
-/// that is not TypeScript is a syntax error in the program.
-///
-/// The diagnostic in the fixture is the shape the real pipeline produces — `line L, column C:` plus
-/// the quoted source line — and it is the real round-1 failure: a model glued prose to its closing
-/// fence, the prose was compiled as program text, and a locationless diagnostic left it unable to
-/// see what had happened. An earlier version of this test asserted against a located-*looking*
-/// string the transpiler never emitted, which certified a location the model was in fact never
-/// given.
-#[test]
-fn the_transpile_feedback_reports_the_diagnostic_and_the_code_only_rule() {
-    let rendered = render_code_transpile_error(&CodeTranspileErrorContext {
-        error: "line 4, column 1: Expected a semicolon or an implicit semicolon after a \
-                statement, but found none | ```Consumed fuel: 24,000 / 1,000,000 budget."
-            .to_string(),
-    });
-    assert_eq!(
-        rendered,
-        "Your program did not compile:\n\n```\nline 4, column 1: Expected a semicolon or an \
-         implicit semicolon after a statement, but found none | ```Consumed fuel: 24,000 / \
-         1,000,000 budget.\n```\n\nYour entire response is treated as TypeScript. Anything else \
-         in it fails the\ncompilation."
-    );
-}
-
-/// A sandbox limit is framed as "too much for one program" — split it up — while a **timeout** gets
-/// its own, opposite advice: the ceiling is far larger than any program needs, so a timeout means a
-/// program that never terminated, not one that was too heavy.
-#[test]
-fn the_sandbox_feedback_separates_a_limit_a_timeout_and_a_mistake() {
-    let memory = render_code_sandbox_error(&CodeSandboxErrorContext {
-        error: "the program exceeded its 4194304-byte memory cap".to_string(),
-        finish_revoked: false,
-        ending_revoked: "finish".to_string(),
-        calls: 12,
-    });
-    assert!(memory.contains("Your program could not be run to completion:"));
-    assert!(memory.contains("Split the work across several smaller programs, one per turn."));
-    assert!(flat(&memory).contains("The 12 tool call(s) it made stand."));
-    // A memory cap is "too heavy", not "you looped": it must not carry the timeout's runaway advice.
-    assert!(!memory.contains("unbounded loop"));
-
-    let timeout = render_code_timeout(&CodeTimeoutContext {
-        error: "the program ran longer than its 30s execution timeout and was stopped".to_string(),
-        finish_revoked: false,
-        ending_revoked: "finish".to_string(),
-        calls: 0,
-    });
-    assert!(timeout.contains("Your program hit the execution limit:"));
-    assert!(timeout.contains("Check for an unbounded loop or recursion."));
-    // A timeout is not a "do less" problem, so it does not carry the "split it up" framing.
-    assert!(!timeout.contains("Split the work"));
-    assert!(!timeout.contains("made stand"));
-    assert_no_blank_run(&memory);
-    assert_no_blank_run(&timeout);
-}
-
-/// **Healing is invisible to the model.**
-///
-/// gg repairs a reply — strips a fence, drops an import line, unwraps an `async` wrapper — and then
-/// says nothing about it. None of the five feedback templates opens with a note about what was
-/// changed, and none of their contexts can carry one.
-///
-/// The disclosure it replaces was a paragraph at the top of every repaired turn explaining what the
-/// harness had done to the model's words, in the harness's own name. It taught the model about a
-/// mechanism it cannot invoke, cannot disable and does not need to reason about; it named gg on
-/// every one of those turns; and it had to be kept honest about whether the repaired reply then ran,
-/// which is a second contract to get wrong. What the model needs is the diagnostic, which it gets.
-/// What a study needs is the record, which is telemetry.
-#[test]
-fn healing_is_never_disclosed_to_the_model() {
-    let rendered = [
-        render_code_result(&CodeResultContext {
-            logged_lines: 1,
-            silent: false,
-            ..quiet_result()
-        }),
-        render_code_transpile_error(&CodeTranspileErrorContext {
-            error: "line 1, column 1: Unexpected token".to_string(),
-        }),
-        render_code_sandbox_error(&CodeSandboxErrorContext {
-            error: "the program exceeded its memory cap".to_string(),
-            finish_revoked: false,
-            ending_revoked: "finish".to_string(),
-            calls: 3,
-        }),
-        render_code_timeout(&CodeTimeoutContext {
-            error: "the program ran longer than its 30s execution timeout and was stopped"
-                .to_string(),
-            finish_revoked: false,
-            ending_revoked: "finish".to_string(),
-            calls: 3,
-        }),
-        render_code_not_a_program(&CodeNotAProgramContext {
-            reason: NotAProgramReason::CommentOnly.message(),
-            ending_calls: vec!["harness.finish".to_string()],
-        }),
-    ];
-    for feedback in &rendered {
-        let flat = flat(feedback);
-        for leaked in [
-            "repaired your reply",
-            "Only text was removed",
-            "gg ",
-            "the harness",
-        ] {
-            assert!(!flat.contains(leaked), "leaked `{leaked}`:\n{feedback}");
-        }
-        assert_no_blank_run(feedback);
-    }
-}
-
-/// **No code feedback describes anything but this turn.**
-///
-/// The per-turn feedback does not restate the termination rule, does not say what ending a session
-/// would end, and does not vary with who is reading it. The system prompt owns the contract; a
-/// second statement of it, arriving far later in the context and therefore winning any disagreement,
-/// is how a subagent came to be told that returning its verdict would end somebody else's run.
-#[test]
-fn no_code_feedback_restates_the_termination_rule() {
-    let ran = render_code_result(&CodeResultContext {
-        logged_lines: 1,
-        silent: false,
-        ..quiet_result()
-    });
-    let transpile = render_code_transpile_error(&CodeTranspileErrorContext {
-        error: "line 1, column 1: Unexpected token".to_string(),
-    });
-
-    for rendered in [&ran, &transpile] {
-        let flat = flat(rendered);
-        for leaked in ["end the run", "ends the run", "finish"] {
-            assert!(!flat.contains(leaked), "leaked `{leaked}`:\n{rendered}");
-        }
-        assert_no_blank_run(rendered);
-    }
-}
-
-/// **A reply that was not a program is told what it was, and pointed at the ending it does have.**
-///
-/// This is the feedback that closes the failure round 1 documented most starkly: a model narrated a
-/// completed task, gg read the prose turn as "finished", and the run reported success over a
-/// workspace with no deliverable in it. Under this protocol such a turn is a *failed* turn, and the
-/// feedback has to carry both halves — what the reply was, and what a turn is supposed to look like
-/// — for every one of the six reasons a reply can fail to be a program.
-///
 /// The ending it names is the reader's **own**. A reviewer that answers in prose because it has
 /// reached a verdict is exactly the agent this turn is for, and pointing it at a `harness.finish`
 /// that is not in its scope would send it to a function that does not exist.

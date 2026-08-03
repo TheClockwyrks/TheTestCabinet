@@ -257,7 +257,9 @@ the model meant.
 
 Both halves of that warrant matter, which is why an **uncalled** wrapper declines. Its
 body never ran, so there is no `await` to throw and no promise to reject — nothing is
-broken, the reply is simply a program that does nothing, and the turn feedback says so.
+broken, the reply is simply a program that does nothing, and gg already has a message for
+that: a program that put nothing in its own context earns the
+[notice](/gg/responses-as-code/#showing-yourself-things) that says so.
 Unwrapping it would not repair anything; it would *execute* statements the response never
 asked to execute, and it would make `async` the difference between a forgotten call doing
 nothing and a forgotten call deleting a directory.
@@ -265,9 +267,9 @@ nothing and a forgotten call deleting a directory.
 ### `strip-comment-only`
 
 Classifies a reply whose bytes, minus comments and whitespace, are empty. It rewrites
-nothing. It exists because a comment-only program type-strips *cleanly*, runs, returns
-nothing, and produces a turn that looks like a success — the worst available outcome,
-because the model then believes it did something.
+nothing. It exists because a comment-only program type-strips *cleanly*, runs, does
+nothing, and produces a turn that counts as a success — the worst available outcome,
+because a success turn is one no error ceiling will ever stop.
 
 ### The lexical mask, and the one thing it cannot lex
 
@@ -317,8 +319,10 @@ a silent success, and loops forever on a model that has stopped answering.
 
 ## Why healing is silent
 
-gg says nothing to the model about what it repaired. The turn's feedback is about the
-turn: what the program did, what it threw, why it did not compile.
+gg says nothing to the model about what it repaired. A turn carries back the fault and
+nothing else — why the program did not compile, or what it threw. It does not report what
+the program *did*, so there is no running commentary for a note about healing to attach
+itself to in the first place.
 
 That is a deliberate reversal. Healing used to open every repaired turn with a paragraph
 naming each repair, bounding what gg was allowed to change, and explaining where prose
@@ -331,8 +335,8 @@ belongs — in the harness's own name. Three things were wrong with it:
   never what is driving it.
 - **It had a second contract to get wrong.** The note had to say whether the repaired
   reply then *ran* — and when it did not (a reply that failed to type-strip, or one gg
-  refused as not a program) an unconditional wording contradicted the very feedback it
-  opened. That shipped, and a model cannot act on a turn that asserts both.
+  refused as not a program) an unconditional wording contradicted the very error message
+  it opened. That shipped, and a model cannot act on a turn that asserts both.
 
 What the model needs from a repaired turn is the diagnostic, which it gets. A type-strip
 error is located in the **healed** source; a model told "line 4" fixes line 4, which is
@@ -386,8 +390,8 @@ The point of a toggle is the arm it creates, so each one's cost is stated plainl
 | `strip-prose` | A bare program with an explanatory sentence around it fails to type-strip, or — if none of it is code-shaped — is classified as prose. (No real reply has yet taken this shape: every model fenced.) |
 | `drop-duplicate-program` | A reply that sent the same program twice reaches the type-strip, which refuses it as an early error naming the redeclared identifier, its line and its column. That is a good diagnostic and a lost turn: this is the arm that measures whether a model recovers from it on its own. |
 | `drop-imports` | An `import` line reaches the type-strip, which refuses it and tells the model the sandbox has no module system. |
-| `unwrap-async` | An `async`-wrapped program runs to its first `await` and defers the rest past its own return, so the turn reports a program that did almost nothing — and says so, since deferred work is noticed and named. |
-| `strip-comment-only` | A comments-only reply type-strips cleanly, runs, returns nothing, and reports a **silent success** — precisely the cost that strategy exists to measure. |
+| `unwrap-async` | An `async`-wrapped program runs to its first `await` and defers the rest past its own return. Nothing names the deferred half: a program that ran is told nothing at all, so the only sign the model gets is the notice a turn earns when the program put nothing in its context — and even that is absent for a program whose synchronous prefix managed to open a view. This is the arm that measures how long a model goes on wrapping. |
+| `strip-comment-only` | A comments-only reply type-strips cleanly, runs and does nothing, so instead of the error turn the classification would have made it, it is a **success turn** the ceilings never count — precisely the cost that strategy exists to measure. The model is not left entirely in the dark (a program that shows itself nothing earns a notice), but a notice is not an error, and nothing stops the run from looping on it. |
 
 `empty` and `tool_calls_only` still classify under every arm, including the master
 switch's, for the reason given [above](#the-six-not-a-program-reasons).

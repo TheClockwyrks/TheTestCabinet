@@ -12,12 +12,12 @@ variable.
 
 {{#if readFile.offered}}
 Use `view.openFile(path: str)` to read a file.
-{{#if readFile.capped}}Reading a file returns at most {{readFile.lineCap}} lines per call.{{/if}}
+{{#if readFile.capped}}Reading a file returns {{readFile.lineCap}} lines per call unless you ask for more.{{/if}}
 {{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}
 {{/if}}
 
 Views are the only way that you can read data from your code. `console.log()`
-will not be visible.
+will not be visible. Returning a value does nothing — the value is discarded.
 
 All functions are synchronous. Do not use `await` or treat return values as
 promises.
@@ -25,6 +25,11 @@ promises.
 ### Ending your session
 
 Turns continue until you end your session.
+
+A program that throws does **not** end your session, even if it called an ending
+function before it threw: the ending is revoked, because a program that failed
+did not finish the work its summary claims. Fix the fault and end the session in
+a program that runs to completion.
 
 {{#if ending.standard}}
 Call `{{ending.finish}}` with a short summary of what you did once the work is
@@ -46,11 +51,15 @@ capability. Call a function using `<object>.<function>(args...)`.
 - `{{object}}`: {{description}}
 {{/each}}
 
-Call `<object>.list()` to see the functions on an object. Use the `.docs()`
-function (e.g. `view.openText.docs()`) or `harness.readDocs(fn)` to read a
-function's full signature, documentation, and types it uses. These will be
-provided in your next turn and are not visible during the turn the doc functions
-are called in.
+Call `<object>.list()` to see the functions on an object, each with a one-line
+summary. Call `view.openDocsView(fn)` to read a function's full signature,
+documentation, and the types it uses — pass the function itself
+(`view.openDocsView(view.openText)`) or its name
+(`view.openDocsView("openText")`).
+
+`view.openDocsView` opens a view like any other, so the documentation arrives on
+your next turn and is not available during the turn you ask for it. Ask in one
+turn, use it in the next.
 
 {{#if codeHeadings}}
 ### Messages you receive
@@ -62,13 +71,17 @@ line, followed by a `----` rule and then the content:
 - `{{heading}}` — {{description}}
 {{/each}}
 
-For example, your program's report arrives as:
+For example, a file you opened a view of arrives as:
 
 ```
-Output
+File
 ----
-...what your program did...
+...the file's contents...
 ```
+
+When your program compiles and runs, you are not told so — the views it opened
+are the result. You hear from the harness only when something failed or when
+there is a process fact you could not otherwise know.
 {{/if}}
 
 {{#if memories}}

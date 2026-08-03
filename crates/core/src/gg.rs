@@ -98,11 +98,12 @@ pub const CAPABILITY_FILESYSTEM: &str = "filesystem";
 /// run workspace (the `read_file` tool).
 ///
 /// Its [implementation](GgCapabilityConfig::implementation) selects how much of a file one
-/// call may return — the *unlimited*, *hard-cap*, and *default-cap*
+/// call may return by default — the *unlimited* and *default-cap*
 /// [read modes](https://docs.testcabinet.ai/gg/filesystem/) — and its `lineCap` param sets
-/// the cap the two capped modes enforce. How a coding agent copes when it can only see a
-/// file a window at a time is a first-class experimental variable, so it is configured
-/// rather than hardcoded.
+/// the default window the capped mode returns. How a coding agent copes when it only sees a
+/// file a window at a time unless it asks for more is a first-class experimental variable, so
+/// it is configured rather than hardcoded. Neither mode can *refuse* a whole-file read: an
+/// explicit larger `limit` is always honoured.
 pub const CAPABILITY_READ_FILE: &str = "read-file";
 
 /// The stable id of the write-file capability: the agent's ability to create or overwrite
@@ -2381,7 +2382,24 @@ pub enum GgContextSource {
     /// An assistant turn's own output (its natural-language text and tool calls).
     Assistant,
     /// The output of a tool the agent called, fed back as a tool result.
+    ///
+    /// **Tool calling only.** A
+    /// [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program has no tool
+    /// results: a call's value returns into the program, and the only thing that reaches the model
+    /// is a [view](Self::FileView) it opened. What gg has to say back to a code-mode agent is
+    /// therefore never tool output — it is a [compiler](Self::CompilerError) or
+    /// [runtime](Self::RuntimeError) error, or a [notice](Self::System).
     ToolOutput,
+    /// A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program that failed
+    /// to compile, carrying the compiler's error and nothing else.
+    CompilerError,
+    /// A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) program that
+    /// compiled and then threw, or that the sandbox stopped, carrying the error and nothing else.
+    ///
+    /// Split from [`CompilerError`](Self::CompilerError) because the two are different failures with
+    /// different recoveries — one means nothing ran, the other means part of the program's work
+    /// stands — and a model that cannot tell them apart cannot pick the right one.
+    RuntimeError,
     /// The contents of a file the agent viewed — evictable working material (an
     /// agent-managed context capability may drop these; ordinary tool output is not a
     /// file view).
@@ -2395,7 +2413,7 @@ pub enum GgContextSource {
     /// about *authorship*, not about content: a [`FileView`](Self::FileView) is workspace
     /// material (gg read a path the agent named, and the file on disk is the truth the
     /// view is a snapshot of), [`ToolOutput`](Self::ToolOutput) is gg's own per-turn
-    /// reporting back to the agent, and a text view is the agent's own material — a
+    /// reporting back to the agent on the tool-calling path, and a text view is the agent's own material — a
     /// summary, a diff, a table, a subagent's answer — that exists nowhere but the window.
     /// Each one is keyed by the label the agent gave it, so it can be attributed, superseded
     /// and closed by name exactly as a file view is by path.
@@ -2422,11 +2440,13 @@ impl GgContextSource {
     /// Every source, in a stable order. A [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown)
     /// reports one entry per source in this order (zero when a source contributed
     /// nothing), so the console's stacked graph keeps stable bands across turns.
-    pub const ALL: [GgContextSource; 11] = [
+    pub const ALL: [GgContextSource; 13] = [
         GgContextSource::System,
         GgContextSource::UserPrompt,
         GgContextSource::Assistant,
         GgContextSource::ToolOutput,
+        GgContextSource::CompilerError,
+        GgContextSource::RuntimeError,
         GgContextSource::FileView,
         GgContextSource::TextView,
         GgContextSource::Skill,
@@ -2907,9 +2927,10 @@ pub struct GgRetainedState {
 /// capability lets a disciplined agent reclaim window space itself rather than waiting for
 /// the automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer
 /// needs (safe — it can re-read the file later), [close text views](Self::CloseTextViews)
-/// it composed and no longer wants in front of it, or [archive a section of its
+/// it composed and no longer wants in front of it, [close documentation
+/// views](Self::CloseDocsViews) it has finished with, or [archive a section of its
 /// thread](Self::ArchiveThread) (removed from the live window but kept **searchable** via
-/// `search_archive`). All three reclaim tokens; a `search_archive` call reclaims nothing and
+/// `search_archive`). All four reclaim tokens; a `search_archive` call reclaims nothing and
 /// so is reported only as an ordinary tool result, not as a `ContextManaged` action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2928,6 +2949,13 @@ pub enum GgContextAction {
     /// discards it unless the agent wrote it down. A close request naming a workspace path
     /// is reported as `EvictFileViews`; one naming a view label is reported here.
     CloseTextViews,
+    /// The agent closed one or more [documentation views](GgContextSource::Skill) — the blocks
+    /// `view.openDocsView` opened — reclaiming their tokens.
+    ///
+    /// Its own action rather than a [`CloseTextViews`](Self::CloseTextViews) because the two differ
+    /// in what closing costs: a docs view is re-openable by name at any time, like a file view,
+    /// whereas a closed text view is gone.
+    CloseDocsViews,
     /// The agent archived a section of its [thread](GgContextSource::History) — the oldest
     /// ephemeral turns — removing it from the live window while keeping it searchable and
     /// recoverable through `search_archive`.

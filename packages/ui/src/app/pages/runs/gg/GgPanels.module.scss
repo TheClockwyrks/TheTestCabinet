@@ -65,21 +65,25 @@
 // this whole map against `CONTEXT_SOURCE_COLORS` in the same commit — do not append.
 // (Index 5, `text_view`, arrived that way, shifting skill/memory/task_list/board/
 // history down one; index 9, `board`, arrived with the Phase 3 work-decomposition
-// source.)
-// 0 system · 1 user_prompt · 2 assistant · 3 tool_output · 4 file_view ·
-// 5 text_view · 6 skill · 7 memory · 8 task_list · 9 board · 10 history
+// source; indices 4 and 5, the two responses-as-code error bands, arrived together
+// and shifted the six bands from `file_view` on down by two.)
+// 0 system · 1 user_prompt · 2 assistant · 3 tool_output · 4 compiler_error ·
+// 5 runtime_error · 6 file_view · 7 text_view · 8 skill · 9 memory ·
+// 10 task_list · 11 board · 12 history
 $context-palette: (
   0: #6ea8fe,
   1: #ffca3a,
   2: #8ac926,
   3: #ff924c,
-  4: #4cc9c0,
-  5: #4361ee,
-  6: #c77dff,
-  7: #ff6b9d,
-  8: #b5e48c,
-  9: #ef5350,
-  10: #9aa5b1,
+  4: #765a72,
+  5: #ba04b5,
+  6: #4cc9c0,
+  7: #4361ee,
+  8: #c77dff,
+  9: #ff6b9d,
+  10: #b5e48c,
+  11: #ef5350,
+  12: #9aa5b1,
 );
 
 .swatch {

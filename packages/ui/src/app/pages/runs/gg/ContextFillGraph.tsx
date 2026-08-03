@@ -39,7 +39,7 @@ import { agentCapabilityOn, LEGACY_FILESYSTEM_CAP_ID } from "./ggCatalog";
 import { formatPercent } from "./GgOverviewWidgets";
 import styles from "./GgPanels.module.scss";
 
-// The eleven context sources in their fixed, stable order (mirrors
+// The thirteen context sources in their fixed, stable order (mirrors
 // `GgContextSource::ALL`). Band order and colors are keyed to this list so the
 // graph stays stable across turns — a source is the same band, the same hue,
 // everywhere.
@@ -48,6 +48,8 @@ export const CONTEXT_SOURCES: readonly GgContextSource[] = [
   "user_prompt",
   "assistant",
   "tool_output",
+  "compiler_error",
+  "runtime_error",
   "file_view",
   "text_view",
   "skill",
@@ -64,14 +66,26 @@ export const CONTEXT_SOURCES: readonly GgContextSource[] = [
 // the workspace, or the agent itself. Naming the second one "Text views" would say
 // what its body is made of, which is not the thing an operator reading a fill graph
 // needs to know.
+//
+// "Compiler errors" and "Runtime errors" are the other deliberate pair: both are what a
+// responses-as-code program's failure left in the window, and the split is the one a reader
+// tuning a run cares about — a program that never compiled versus one that ran and blew up (or
+// hit a sandbox limit) are different failures with different fixes.
+//
+// "Skills & docs" is one band holding two things, and says so: gg files both a pinned read skill
+// and an ephemeral `view.openDocsView` documentation page under `skill`. Calling the band
+// "Skills" would leave a reader hunting for the documentation their agent opened in a band that
+// never mentions it.
 export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
   system: "System",
   user_prompt: "User prompt",
   assistant: "Assistant",
   tool_output: "Tool output",
+  compiler_error: "Compiler errors",
+  runtime_error: "Runtime errors",
   file_view: "File views",
   text_view: "Agent views",
-  skill: "Skills",
+  skill: "Skills & docs",
   memory: "Memories",
   task_list: "Task list",
   board: "Board",
@@ -94,11 +108,40 @@ export const CONTEXT_SOURCE_LABELS: Record<GgContextSource, string> = {
 // in lightness as much as in hue); its nearest under simulation is `skill` at ΔE 11.
 // It also has to survive sitting directly beside `file_view` in the stack, which it
 // does at ΔE 31.
+//
+// `compiler_error` and `runtime_error` were admitted the same way, against the same three floors,
+// under one extra constraint: they are a **pair** — both are a responses-as-code program's
+// failure — so they had to read as related hues without collapsing into each other.
+//
+// The obvious failure slots were already spent: `board` is a red and `tool_output` an orange. The
+// warm arc will still take one more band, but it will not take two. Sweeping every in-gamut
+// colour from crimson through brown, the only *pairs* that clear the floors together sit ~70°
+// apart in hue (an amber-brown against a rose) and clear them by almost nothing — ΔE 15.5 in
+// normal vision, 8.6 under simulation. That is neither a related pair nor a comfortable margin.
+//
+// What the measurement did leave open was the magenta wedge, which this palette had spent only on
+// `skill`'s pale lavender. So the two sit at one hue (≈331°) and are told apart by lightness and
+// chroma instead — a muted plum for the program that never ran, a hot magenta for the one that
+// ran and blew up — which is exactly the relation they have. What they clear:
+//
+// - `compiler_error` #765a72 — nearest band in normal vision `text_view` at ΔE 20, then its own
+//   sibling at 20; nearest under simulation `board` at ΔE 10.2 (protan) and `runtime_error` at
+//   10.2 (tritan). Contrast 6.0:1 on the light surface, 3.2:1 on the dark one.
+// - `runtime_error` #ba04b5 — nearest band in normal vision `skill` at ΔE 20 (the pale lavender
+//   this saturated magenta sits far below in lightness and far above in chroma), then its own
+//   sibling; nearest under simulation `compiler_error` at ΔE 10.2 (tritan) and `text_view` at
+//   10.7 (deutan). Contrast 5.6:1 light, 3.5:1 dark.
+//
+// So the pair holds ΔE ≥ 19.5 against all twelve other bands in normal vision and ≥ 10.2 under
+// every one of deutan/protan/tritan — clear of the 15/8 floors, on a wider margin than the one
+// `text_view` was admitted on.
 export const CONTEXT_SOURCE_COLORS: Record<GgContextSource, string> = {
   system: "#6ea8fe",
   user_prompt: "#ffca3a",
   assistant: "#8ac926",
   tool_output: "#ff924c",
+  compiler_error: "#765a72",
+  runtime_error: "#ba04b5",
   file_view: "#4cc9c0",
   text_view: "#4361ee",
   skill: "#c77dff",
@@ -115,11 +158,17 @@ export const CONTEXT_SOURCE_COLORS: Record<GgContextSource, string> = {
 // retagged as history whether or not compaction ever fires), and agent views are
 // ungated by design — `view.openText` is bound whatever the capability set says, so
 // that a run with every tool withheld can still show its model something.
+//
+// The two error bands are the sharpest case for the filter: they exist only where a reply is a
+// *program*, so a tool-calling run can never produce either one, and drawing an empty Compiler
+// errors band on every such run would be a permanent lie about what that run can even fail at.
 const SOURCE_CAPABILITIES: Partial<Record<GgContextSource, readonly string[]>> =
   {
     // The umbrella capability that sets saved before the per-tool filesystem split
     // still name counts as read-file, exactly as gg resolves it.
     file_view: ["read-file", LEGACY_FILESYSTEM_CAP_ID],
+    compiler_error: ["responses-as-code"],
+    runtime_error: ["responses-as-code"],
     skill: ["skills"],
     memory: ["memories"],
     task_list: ["tasks"],

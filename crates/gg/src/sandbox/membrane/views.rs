@@ -57,6 +57,8 @@ use crate::tools::READ_FILE_TOOL;
 const OPEN_TEXT_VIEW_FUNCTION: &str = "openText";
 /// The name a refused `view.close` is reported under, on the same terms.
 const CLOSE_VIEW_FUNCTION: &str = "close";
+/// The name a refused (or unresolvable) `view.openDocsView` is reported under.
+const OPEN_DOCS_VIEW_FUNCTION: &str = "openDocsView";
 
 impl<A: ToolApi> ViewsHost for MembraneState<A> {
     /// Read a workspace file and open a view of it.
@@ -98,6 +100,26 @@ impl<A: ToolApi> ViewsHost for MembraneState<A> {
                 Ok(())
             }
             Err(refusal) => Err(self.refuse_view(OPEN_TEXT_VIEW_FUNCTION, refusal)),
+        }
+    }
+
+    /// Open (or replace) the documentation view for the function called `name`.
+    ///
+    /// It sits beside `open_text_view` rather than beside the [docs directory](super::docs) for the
+    /// reason the whole call exists: documentation is something the model *reads*, and everything
+    /// the model reads is a view — keyed, replaceable, closable, and charged to a band. A lookup
+    /// that handed the text straight back to the program instead was a second channel into the
+    /// model that nothing could account for.
+    ///
+    /// An unknown or unbound name is `not-found`, worded so the model is pointed at the one call
+    /// that enumerates what it *does* have.
+    fn open_docs_view(&mut self, name: String) -> Result<(), ToolError> {
+        match self.api.open_docs_view(name) {
+            Ok(view) => {
+                self.record_view_opened(view);
+                Ok(())
+            }
+            Err(refusal) => Err(self.refuse_view(OPEN_DOCS_VIEW_FUNCTION, refusal)),
         }
     }
 
@@ -159,6 +181,7 @@ fn open_view(view: OpenViewInfo) -> OpenView {
         kind: match kind {
             HostViewKind::File => ViewKind::File,
             HostViewKind::Text => ViewKind::Text,
+            HostViewKind::Docs => ViewKind::Docs,
         },
         selector,
         tokens,

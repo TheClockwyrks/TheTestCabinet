@@ -188,10 +188,6 @@ pub struct FileTextData {
     /// Whether the 256 KiB byte ceiling cut the returned text. Distinct from a line window: a
     /// single enormous line is truncated in bytes even when the whole file was asked for.
     pub byte_truncated: bool,
-    /// Whether a [hard-cap](super::ReadPolicy::HardCap) read policy reduced the `limit` that was
-    /// asked for — the run's ceiling being non-negotiable, reported as a fact rather than only as
-    /// a sentence.
-    pub limit_reduced: bool,
 }
 
 /// A picture `read_file` recognised, described.

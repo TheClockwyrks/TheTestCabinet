@@ -35,20 +35,25 @@
 //
 // # What can be attributed
 //
-// A **view** — a file the agent opened, or a value it composed and showed itself — is
-// attributed to its *selector* by the [tag](PooledMessage.label) gg records on the pooled
-// message: a path for a file view, the agent's own label for a text view. A stream recorded
+// A **view** — a file the agent opened, a value it composed and showed itself, or a page of
+// tool documentation it opened — is attributed to its *selector* by the
+// [tag](PooledMessage.label) gg records on the pooled message: a path for a file view, the
+// agent's own label for a text view, the function's name for a docs view. A stream recorded
 // before gg carried that tag falls back to the `read_file` call the view answers (matching its
 // `toolCallId` to the arguments of the assistant call that made it), which covers an ordinary
 // read but not a pinned, autoloaded specification whose `tool` message was re-framed by a
 // compaction. What neither resolves is reported as unattributed rather than dropped, so the
 // view list never silently understates the bands it decomposes.
 //
-// The two view bands share one grain deliberately. They answer the same question — *which
-// material sat in this window, and what did keeping it cost* — and an operator tuning a
-// configuration wants a 12k specification and a 12k agent-composed summary ranked against each
-// other, not filed apart. Each row carries its [kind](GgViewAttributionRow.kind) so the two are
-// still tellable apart where that matters.
+// The view bands share one grain deliberately. They answer the same question — *which material
+// sat in this window, and what did keeping it cost* — and an operator tuning a configuration
+// wants a 12k specification, a 12k agent-composed summary and a documentation page ranked
+// against each other, not filed apart. Each row carries its
+// [kind](GgViewAttributionRow.kind) so they are still tellable apart where that matters.
+//
+// Docs views are the one band that has to be *separated* from its neighbours rather than merely
+// read: they share the `skill` band with pinned read skills, and only the docs views are views.
+// See [viewKindOf].
 //
 // Tool output is attributed the same way, by the name of the call each result answers.
 //
@@ -61,11 +66,17 @@ import type { ModelPriceLookup } from "./ggCost";
 import type { DerivedGgState, PooledMessage } from "./useGgRunState";
 
 /**
- * Which of the two kinds of view a row is: a file the agent opened, or a value it composed
- * and showed itself. Mirrors gg's own closed taxonomy — everything on disk is a file, and
- * everything a program can compute is text.
+ * Which of the three kinds of view a row is: a file the agent opened, a value it composed and
+ * showed itself, or a page of the tool documentation it asked to read. Mirrors gg's own closed
+ * taxonomy — everything on disk is a file, everything a program can compute is text, and
+ * everything the harness can explain about itself is documentation.
+ *
+ * A docs view is what `view.openDocsView` opens. It shares the `skill` band with pinned read
+ * skills and is told apart from them the same way gg tells them apart: a docs view carries the
+ * selector it is keyed by (the function's name — what `view.close` names and what heads it
+ * `Documentation: readFile`), and a read skill carries none.
  */
-export type GgViewKind = "file" | "text";
+export type GgViewKind = "file" | "text" | "docs";
 
 /** One thing the window carried — a band, a view, or a tool — and what it was answerable for. */
 export interface GgAttributionRow {
@@ -95,8 +106,9 @@ export interface GgAttributionRow {
 }
 
 /**
- * A view's row, which additionally says which kind of view it was — the one thing a path and
- * an agent-chosen label do not tell apart on their own (`notes` could be either).
+ * A view's row, which additionally says which kind of view it was — the one thing a path, an
+ * agent-chosen label and a function's name do not tell apart on their own (`notes` could be any
+ * of them).
  */
 export interface GgViewAttributionRow extends GgAttributionRow {
   kind: GgViewKind;
@@ -119,7 +131,8 @@ export interface GgContextAttribution {
   bySource: GgAttributionRow[];
   /**
    * One row per view that sat in the window — a file by its path, an agent-composed text view
-   * by its label — costliest first, the two kinds ranked against each other.
+   * by its label, a documentation view by its function's name — costliest first, the kinds
+   * ranked against each other.
    */
   byView: GgViewAttributionRow[];
   /** One row per tool whose output sat in the window, costliest first. */
@@ -138,9 +151,11 @@ const SOURCE_LABELS: Record<GgContextSource, string> = {
   user_prompt: "user prompt",
   assistant: "assistant turns",
   tool_output: "tool output",
+  compiler_error: "compiler errors",
+  runtime_error: "runtime errors",
   file_view: "file views",
   text_view: "agent views",
-  skill: "skills",
+  skill: "skills & docs",
   memory: "memories",
   task_list: "task list",
   board: "board",
@@ -285,6 +300,30 @@ function viewRowsFrom(
 }
 
 /**
+ * Which kind of view a pooled message is, or null when it is not a view at all.
+ *
+ * The two view bands map straight across. The `skill` band does not: it holds **both** pinned read
+ * skills and the ephemeral documentation views `view.openDocsView` opens, and gg tells the two
+ * apart by the selector — a docs view is keyed by the function's name (which is what heads it
+ * `Documentation: readFile` and what `view.close` names), while a read skill is pushed unlabelled
+ * and cannot be closed at all. So a `skill` message is a view exactly when it carries a label, and
+ * a read skill stays counted in its band and out of the view list, which is right: it is not a view
+ * and there is no selector to rank it by.
+ *
+ * The label is read off the message rather than through {@link viewSelectorOf}, whose `read_file`
+ * fallback would answer for a message that is not a view.
+ */
+function viewKindOf(
+  source: GgContextSource,
+  message: PooledMessage,
+): GgViewKind | null {
+  if (source === "file_view") return "file";
+  if (source === "text_view") return "text";
+  if (source === "skill" && message.label) return "docs";
+  return null;
+}
+
+/**
  * The selector a pooled view message shows: the tag gg records on it — a path for a file view,
  * the agent's label for a text view — or, on a stream recorded before gg carried one, the
  * `path` argument of the `read_file` call the view answers, resolved through `callPaths`. Null
@@ -394,8 +433,8 @@ export function attributeGgContext(
         shareCost,
       );
 
-      if (ref.source === "file_view" || ref.source === "text_view") {
-        const kind: GgViewKind = ref.source === "file_view" ? "file" : "text";
+      const kind = viewKindOf(ref.source, message);
+      if (kind) {
         const selector = viewSelectorOf(message, paths);
         if (selector == null) unattributedViewTokens += shareBilled;
         else
@@ -406,6 +445,9 @@ export function attributeGgContext(
             shareBilled,
             shareCost,
           );
+        // A compiler or runtime error is neither a view nor a tool result — it is a plain user
+        // message carrying what a program's failure said, with no call to trace it back to — so
+        // it falls through to its own band and nowhere else, which is the whole of its account.
       } else if (ref.source === "tool_output" && message.toolCallId) {
         const name = names.get(message.toolCallId);
         if (name)

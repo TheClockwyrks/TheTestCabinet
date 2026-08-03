@@ -25,7 +25,6 @@ fn one_of_each() -> Vec<ToolData> {
             last_line: 1,
             total_lines: 9,
             byte_truncated: false,
-            limit_reduced: true,
         }),
         ToolData::FileImage(FileImageData {
             media_type: "image/png".to_string(),
@@ -157,14 +156,12 @@ fn payload_fields_are_camel_case() {
         last_line: 500,
         total_lines: 1_000,
         byte_truncated: false,
-        limit_reduced: true,
     }))
     .unwrap();
     assert_eq!(read["data"]["firstLine"], json!(251));
     assert_eq!(read["data"]["lastLine"], json!(500));
     assert_eq!(read["data"]["totalLines"], json!(1_000));
     assert_eq!(read["data"]["byteTruncated"], json!(false));
-    assert_eq!(read["data"]["limitReduced"], json!(true));
 }
 
 /// A signal-terminated process has no exit code, and that is representable — the reason

@@ -125,8 +125,6 @@ interface files {
         total-lines: u32,
         /// The 256 KiB byte ceiling cut the returned text.
         byte-truncated: bool,
-        /// A hard-cap read policy reduced the `limit` that was asked for.
-        limit-reduced: bool,
     }
 
     /// A picture. The bytes never enter the program: they are attached to the turn's feedback so
@@ -640,15 +638,6 @@ interface docs {
     /// is never a promise the scope cannot keep. An unknown object name returns an empty list.
     list-functions: func(object: string) -> list<function-summary>;
 
-    /// The full documentation for one function, addressed by the name it is called by (`readFile`,
-    /// `createIssue`, `finish`): its signature, its description, and the declarations of any types it
-    /// refers to that have NOT already been shown this session.
-    ///
-    /// It also INJECTS a durable copy of that documentation into the agent's context, exactly as
-    /// reading a skill pins the skill, so the model keeps it across turns without re-fetching. The
-    /// returned string is that same text, so a program may use it in the turn it asked. An unknown
-    /// name is `not-found`.
-    read-docs: func(name: string) -> result<string, tool-error>;
 }
 
 /// Putting material into your own context window — the third model-facing carve-out, and like
@@ -660,25 +649,30 @@ interface docs {
 /// tool call — the program registers what should be VISIBLE to it, and gg emits one attributable
 /// message per view.
 ///
-/// There are exactly two kinds and the taxonomy is closed. Everything on disk is a **file**;
+/// There are exactly three kinds and the taxonomy is closed. Everything on disk is a **file**;
 /// everything a program can compute is a **string**, so a directory listing, a `shell` result, a
 /// subagent's answer, a computed diff and an assembled table are all text views. An image is not a
-/// third kind either: it is a file view of an image file, and the view carries the picture.
+/// fourth kind: it is a file view of an image file, and the view carries the picture. **Docs** are
+/// the third kind because they are neither — gg holds them, not the workspace and not the program —
+/// and because they are the one kind whose content the model cannot produce for itself.
 ///
-/// `open-text-view`, `close-view` and `current-views` are bound into every program's scope whatever
-/// a run enables — a run with no tools at all must still be able to show its model something.
+/// `open-text-view`, `open-docs-view`, `close-view` and `current-views` are bound into every
+/// program's scope whatever a run enables — a run with no tools at all must still be able to show
+/// its model something, and must always be able to read what the functions it *does* have do.
 /// `open-file-view` is bound only when the `read-file` tool is: it is a read, and a run with reading
 /// withheld must not get one through a side door.
 interface views {
     use types.{tool-error};
     use files.{file-read};
 
-    /// Which of the two kinds a view is.
+    /// Which of the three kinds a view is.
     enum view-kind {
         /// A file view, keyed by its workspace path (and, for a paged read, its region).
         file,
         /// A text view, keyed by the label the program gave it.
         text,
+        /// A documentation view, keyed by the name of the function it documents.
+        docs,
     }
 
     /// The line window a **paged** file view covers. Absent for a whole-file view and for every
@@ -724,6 +718,17 @@ interface views {
     /// was showing is now empty. A body or label over gg's caps is `limit-exceeded` naming the cap,
     /// never a silent truncation.
     open-text-view: func(label: string, body: string) -> result<_, tool-error>;
+
+    /// Show yourself the full documentation for one function, addressed by the name it is called by
+    /// (`readFile`, `createIssue`, `finish`) or by the function itself (`view.openDocsView(fs.readFile)`):
+    /// its signature, its description, and the declarations of any types it refers to that have NOT
+    /// already been shown this session.
+    ///
+    /// It is a VIEW, not a return value. The documentation reaches you in your next prompt, under a
+    /// `Documentation` heading keyed by the function name — the same way a file or a computed value
+    /// reaches you. It can be closed with `close-view` and it is replaced rather than duplicated if
+    /// you open it again. An unknown name is `not-found`.
+    open-docs-view: func(name: string) -> result<_, tool-error>;
 
     /// Close every view whose selector matches — for a file, every page of that path — and return
     /// how many were closed. Closing a selector that is not open returns `0`; it is not a failure.

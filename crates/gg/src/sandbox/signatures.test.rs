@@ -201,7 +201,7 @@ fn the_catalogue_carries_every_view_function() {
         "opening a file view is a read, and closes with reading"
     );
 
-    for js in ["openText", "close", "current"] {
+    for js in ["openText", "openDocsView", "close", "current"] {
         let entry = by_name(js);
         assert_eq!(entry.object, "view");
         assert!(
@@ -212,8 +212,8 @@ fn the_catalogue_carries_every_view_function() {
 
     assert_eq!(
         catalogue().views.len(),
-        4,
-        "the view surface is the four functions and nothing else"
+        5,
+        "the view surface is the five functions and nothing else"
     );
 
     // None of them is a gg tool, and none collides with one: two vocabularies share a program's

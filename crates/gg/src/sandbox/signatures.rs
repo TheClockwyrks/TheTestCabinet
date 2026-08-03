@@ -1,7 +1,7 @@
 //! The committed signature catalogue: what the model is *told* it may call, reflected out of what
 //! the guest actually exports.
 //!
-//! When a model asks for a function's documentation — `fs.readFile.docs()`, serviced by the
+//! When a model asks for a function's documentation — `view.openDocsView(fs.readFile)`, serviced by the
 //! [docs carve-out](crate::docs) — gg answers with a TypeScript signature, a sentence of
 //! documentation, and the declarations of the types the signature references. Hand-writing that
 //! would guarantee it drifts — a renamed parameter, an options object that became positional, a tool
@@ -75,7 +75,7 @@ pub(crate) struct ToolSignature {
     /// The function name a program calls (`readFile`).
     pub js: String,
     /// The API object this function is grouped under in a program's scope (`fs`) — what
-    /// `object.list()` enumerates and what `readDocs` routes by.
+    /// `object.list()` enumerates and what `view.openDocsView` routes by.
     pub object: String,
     /// The full TypeScript signature, as the SDK declares it.
     pub signature: String,
@@ -199,12 +199,12 @@ pub(crate) fn sandbox_tool_names() -> Vec<&'static str> {
 /// renders.
 ///
 /// It is the catalogue projected for a purpose the prompt does not serve: the model asks for one
-/// function's documentation on demand (`fs.readFile.docs()`), rather than being shown every
+/// function's documentation on demand (`view.openDocsView(fs.readFile)`), rather than being shown every
 /// signature up front. The prose is the SDK's own JSDoc, reflected here exactly as the prompt's was.
 pub struct CatalogueFunction {
     /// The API object it is grouped under (`fs`).
     pub object: &'static str,
-    /// The name a program calls it by (`readFile`) — what `readDocs` is keyed on.
+    /// The name a program calls it by (`readFile`) — what `view.openDocsView` is keyed on.
     pub name: &'static str,
     /// The gg tool whose being enabled gates this function; `None` for a carve-out the enabled set
     /// does not decide — an ending call, which the agent's [role](Self::ending) decides, or a view
@@ -239,8 +239,8 @@ fn first_sentence(doc: &'static str) -> &'static str {
 
 /// Every function the committed catalogue documents — the ending calls, the view calls, the tools,
 /// and the one helper — each projected as a [`CatalogueFunction`]. The docs runtime filters these by
-/// the run's enabled set and the agent's role, and adds the two meta functions (`list`, `readDocs`)
-/// itself, since those are the carve-out's own and have no catalogue entry.
+/// the run's enabled set and the agent's role, and adds the `list` meta function itself, since it
+/// is the carve-out's own and has no catalogue entry.
 pub fn catalogue_functions() -> Vec<CatalogueFunction> {
     let catalogue = catalogue();
     let mut functions = Vec::with_capacity(

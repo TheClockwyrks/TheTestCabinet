@@ -478,7 +478,7 @@ async fn no_post_processing_records_the_raw_reply() {
 /// vocabulary the system prompt names — so a plain-text transcript reads as structured turns rather
 /// than an undifferentiated wall.
 #[tokio::test]
-async fn a_code_run_heads_the_task_and_the_program_output() {
+async fn a_code_run_heads_the_task_and_gg_s_reply() {
     let dir = TempDir::new().unwrap();
     let (_, _, requests) = drive_recorded_code_run(
         &dir,
@@ -495,8 +495,14 @@ async fn a_code_run_heads_the_task_and_the_program_output() {
         contents.iter().any(|c| c.starts_with("Task\n----\n")),
         "the task is headed:\n{contents:#?}"
     );
+    // A program that ran and put nothing in the window earns the one notice a *successful* program
+    // can — and it is headed `Notice`, not the retired `Output`.
     assert!(
-        contents.iter().any(|c| c.starts_with("Output\n----\n")),
-        "the program's output is headed:\n{contents:#?}"
+        contents.iter().any(|c| c.starts_with("Notice\n----\n")),
+        "gg's message back is headed:\n{contents:#?}"
+    );
+    assert!(
+        !contents.iter().any(|c| c.starts_with("Output\n----\n")),
+        "the `Output` band is retired:\n{contents:#?}"
     );
 }

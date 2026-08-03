@@ -26,6 +26,8 @@ const SOURCE_ORDER: GgContextSource[] = [
   "user_prompt",
   "assistant",
   "tool_output",
+  "compiler_error",
+  "runtime_error",
   "file_view",
   "text_view",
   "skill",
@@ -241,7 +243,9 @@ describe("ContextFillGraph", () => {
         capabilitySet={caps(["shell", "skills"])}
       />,
     );
-    expect(screen.getByText("Skills")).toBeInTheDocument();
+    // The band is named for both the things gg files under it — a pinned read skill and an
+    // ephemeral `view.openDocsView` page.
+    expect(screen.getByText("Skills & docs")).toBeInTheDocument();
     expect(screen.queryByText("Memories")).not.toBeInTheDocument();
     expect(screen.queryByText("Task list")).not.toBeInTheDocument();
     expect(screen.getByText("System")).toBeInTheDocument();

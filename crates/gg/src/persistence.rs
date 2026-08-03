@@ -59,7 +59,7 @@ use std::sync::{Arc, Mutex};
 use serde_json::json;
 use test_cabinet_core::gg::{CAPABILITY_AGENT_PERSISTENCE, GgAgentConfig, GgTelemetryKind};
 
-use crate::context::{ContextModel, OpenFileView, OpenTextView};
+use crate::context::{ContextModel, OpenFileView, OpenTextView, Retention};
 use crate::model::ToolCall;
 use crate::telemetry::Emitter;
 use crate::tools::{READ_FILE_TOOL, ReadFileTool, ReadPolicy, Tool, ToolContext};
@@ -68,6 +68,21 @@ use crate::tools::{READ_FILE_TOOL, ReadFileTool, ReadPolicy, Tool, ToolContext};
 /// re-opened views with. Distinct from the turn loop's own ids (and from autoload's), so a restored
 /// view can never collide with a call the model actually made.
 const RESTORED_CALL_PREFIX: &str = "persisted";
+
+/// The one `view.openFile` call gg synthesizes to restore `view` on a
+/// [code-mode](ContextModel::code_mode) agent's behalf, spelled the way the agent would have had to
+/// spell it: the bare path for a whole-file view, the `offset`/`limit` window for a paged one, so a
+/// restored page reads as the paging call that produced it.
+fn open_file_call(view: &OpenFileView) -> String {
+    let path = serde_json::Value::String(view.path.clone());
+    match view.region {
+        Some(region) => format!(
+            "view.openFile({path}, {{ offset: {}, limit: {} }});",
+            region.offset, region.limit
+        ),
+        None => format!("view.openFile({path});"),
+    }
+}
 
 /// Whether `profile` is **persistent** — its instances are serialized and carry their open file views
 /// between sessions.
@@ -224,12 +239,15 @@ impl PersistenceSetup {
     }
 }
 
-/// Re-open `views` in `context` as though the agent had already `read_file`d each: one synthesized
-/// `read_file` assistant call per view, immediately answered by what the file says **now**.
+/// Re-open `views` in `context` as though the agent had already opened each itself, answered by what
+/// each file says **now**.
 ///
 /// The same shape [autoload](crate::agent) seeds a test case's specifications with, and for the same
-/// reason: a file view the model can act on is a well-formed call/result pair, not a narrated summary
-/// of one. Each view is read through this agent's own `read_policy`, so a re-opened window is the same
+/// reason: a file view the model can act on is a turn it could have taken, not a narrated summary of
+/// one. That means the *envelope* follows the run's protocol — a synthesized `read_file` call/result
+/// pair on the tool-calling path, a synthesized program calling `view.openFile` on the
+/// [responses-as-code](crate::sandbox) path, where there are no tools to call and an assistant turn
+/// is a program. Each view is read through this agent's own `read_policy`, so a re-opened window is the same
 /// size the agent's own reads are, and a paged view is re-read over the region it covered rather than
 /// from the top of the file. The views are ordinary [ephemeral](crate::context::Retention::Ephemeral)
 /// reads — compaction may summarize them and agent-managed context may evict them, exactly as if the
@@ -280,6 +298,20 @@ pub async fn restore_file_views(
                     view.path, outcome.output
                 ),
             });
+            continue;
+        }
+        if context.code_mode() {
+            // One program per restored view rather than one for all of them: a restore is a list of
+            // windows, not a single opening brief, and a per-view program keeps each assistant turn
+            // paired with the view it produced even when a later read fails and is skipped.
+            context.push_assistant(Some(open_file_call(view)), Vec::new());
+            context.seed_file_view(
+                view.path.clone(),
+                outcome.output,
+                outcome.images,
+                Retention::Ephemeral,
+            );
+            restored += 1;
             continue;
         }
         // A deterministic id the turn loop never mints, so the synthesized pair cannot collide with a

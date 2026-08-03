@@ -47,8 +47,8 @@ over its own lines — the desk is a list of `(path, region)` pairs, not a set o
 working a large file through a capped [read mode](/gg/filesystem/#read-modes) does not come back to
 only its first or last page. The region recorded is the window the read **returned**, not the one
 the call asked for: under an unlimited read mode `offset`/`limit` are not part of `read_file`'s
-schema and the whole file comes back, and a `limit` above a hard cap is reduced to it. Recording
-the ask instead would give a view a window it never had.
+schema and the whole file comes back, and a `limit` running past the end of the file stops at
+the end. Recording the ask instead would give a view a window it never had.
 
 What is recorded for a file is the **reference** to each read, never the bytes it returned.
 The next instance re-reads each file from the workspace, so it opens on what the files say
@@ -71,13 +71,35 @@ of the workspace. This is also why the re-read happens when the instance **start
 turn** rather than when it was spawned: a spawn-time snapshot would be stale by the time the
 instance actually ran.
 
-The re-opened views are ordinary, matched `read_file` call/result pairs — the same shape
-[autoload-specifications](/gg/autoload-specifications/) uses — so the model can act on them
-directly, they show up in the **file** band of the [context breakdown](/gg/context-visibility/),
-and they are ephemeral working material that [compaction](/gg/compaction/) may summarize and
-[agent-managed context](/gg/agent-managed-context/) may evict. Each is read through the
-profile's own `read_file` [line cap](/gg/filesystem/#read-modes), and a paged view is re-read
-over the region it covered rather than from the top of the file.
+The re-opened views are synthesized in whatever shape the profile's own execution mode would
+have produced — the same shape
+[autoload-specifications](/gg/autoload-specifications/) uses, and for the same reason. A
+tool-calling profile gets ordinary, matched `read_file` call/result pairs; a
+[responses-as-code](/gg/responses-as-code/) profile gets an assistant message that is a
+program of `view.openFile` calls, followed by the views it opened, because a code turn
+carries no tool calls and `read_file` is not a function a program can call. Either way the
+model can act on them directly, they show up in the **file** band of the
+[context breakdown](/gg/context-visibility/), and they are ephemeral working material that
+[compaction](/gg/compaction/) may summarize and
+[agent-managed context](/gg/agent-managed-context/) may evict.
+
+There is one deliberate difference from autoload's version of this. Autoload seeds a single
+program listing every file; a restore emits **one program per restored view**. A restore is a
+list of windows rather than a single opening brief, and writing it one view at a time keeps
+each assistant turn paired with the view it produced — which matters precisely because a
+restore can come up short: a file that can no longer be read is skipped, and a per-view
+program leaves no orphaned call behind when it is. A paged view is spelled as the call that
+would have opened it:
+
+```ts
+view.openFile("src/main.rs", { offset: 40, limit: 120 });
+```
+
+Each view is re-read over the region it covered rather than from the top of the file, and
+because a larger explicit `limit` is [always honored verbatim](/gg/filesystem/#every-mode-can-return-a-whole-file),
+the region comes back as the desk recorded it under either [read mode](/gg/filesystem/#read-modes) —
+a window a `default-cap` profile paged out is handed back whole rather than re-capped into
+pages the agent would have to walk again.
 
 The agent is told all of this in its [system prompt](/gg/prompts/), because it has to be: reads
 it never made, sitting at the top of a fresh session, are otherwise indistinguishable from a

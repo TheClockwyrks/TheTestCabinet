@@ -112,8 +112,6 @@ declare module "test-cabinet:gg/files" {
     totalLines: number;
     /** The 256 KiB byte ceiling cut the returned text. */
     byteTruncated: boolean;
-    /** A hard-cap read policy reduced the `limit` that was asked for. */
-    limitReduced: boolean;
   }
 
   /**
@@ -472,15 +470,13 @@ declare module "test-cabinet:gg/docs" {
 
   /** List one API object's bound functions, each with a one-line summary. */
   export function listFunctions(object: string): FunctionSummary[];
-  /** Full docs for one function by the name it is called by; injects a durable copy into context. */
-  export function readDocs(name: string): string;
 }
 
 /**
  * Putting material into the agent's own context window — the third model-facing carve-out, beside
  * `session` and `docs`, and never a gg tool. `src/tools/views.ts` is its only importer.
  *
- * Three of the four functions are bound into every program's scope whatever a run enables, exactly
+ * Four of the five functions are bound into every program's scope whatever a run enables, exactly
  * as `finish` is; `open-file-view` is a read, so the shim binds it only when `read_file` is enabled.
  * Cataloguing any of them as a tool would break the `boundTools() == ALL_TOOL_NAMES` bijection the
  * committed component is checked against, which is why they have their own interface.
@@ -488,8 +484,8 @@ declare module "test-cabinet:gg/docs" {
 declare module "test-cabinet:gg/views" {
   import type { FileReadRaw } from "test-cabinet:gg/files";
 
-  /** Which of the two kinds a view is, in the WIT's spelling. */
-  export type ViewKindRaw = "file" | "text";
+  /** Which of the three kinds a view is, in the WIT's spelling. */
+  export type ViewKindRaw = "file" | "text" | "docs";
 
   /** The line window a paged file view covers. */
   export interface ViewRegionRaw {
@@ -501,9 +497,9 @@ declare module "test-cabinet:gg/views" {
 
   /** One view currently open in the agent's context window. */
   export interface OpenViewRaw {
-    /** Whether it is a file or a text view. */
+    /** Whether it is a file, text, or documentation view. */
     kind: ViewKindRaw;
-    /** What `closeView` takes: a file view's path, or a text view's label. */
+    /** What `closeView` takes: a file view's path, a text view's label, or a docs view's function name. */
     selector: string;
     /** Roughly what holding it costs, in tokens. A `u64`, so a `bigint` here. */
     tokens: bigint;
@@ -519,6 +515,8 @@ declare module "test-cabinet:gg/views" {
   ): FileReadRaw;
   /** Open, or replace, the text view keyed by `label`. */
   export function openTextView(label: string, body: string): void;
+  /** Open, or replace, the documentation view for the function called `name`. */
+  export function openDocsView(name: string): void;
   /** Close every view carrying `selector`, and return how many were closed. */
   export function closeView(selector: string): number;
   /** What is open in the agent's window right now. Cannot fail. */

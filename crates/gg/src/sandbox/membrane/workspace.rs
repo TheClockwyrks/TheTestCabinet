@@ -163,7 +163,6 @@ pub(super) fn file_read<A: ToolApi>(
             last_line: text.last_line,
             total_lines: text.total_lines,
             byte_truncated: text.byte_truncated,
-            limit_reduced: text.limit_reduced,
         })),
         // A picture's bytes never enter the program: they were moved onto the turn's attachments
         // (a bare read) or into the file view's own context item (`open-file-view`), so the model

@@ -86,8 +86,6 @@ export type FileRead =
       totalLines: number;
       /** A 256 KiB byte ceiling cut the returned text. */
       byteTruncated: boolean;
-      /** A capped read policy reduced the `limit` you asked for. */
-      limitReduced: boolean;
     }
   | {
       /** This file is a picture; gg shows it to you rather than handing you its bytes. */
@@ -231,13 +229,14 @@ export interface ArchiveSearch {
 }
 
 /**
- * Which of the two kinds a view is.
+ * Which of the three kinds a view is.
  *
- * The taxonomy is closed at two on purpose: everything on disk is a file, and everything a program
- * can compute is a string. A directory listing, a command's output, a child agent's answer, a table
- * you assembled — every one of those is a **text** view.
+ * The taxonomy is closed at three on purpose: everything on disk is a file, everything a program can
+ * compute is a string, and documentation is neither — gg holds it. A directory listing, a command's
+ * output, a child agent's answer, a table you assembled are all **text** views; what
+ * `view.openDocsView` opens is a **docs** view.
  */
-export type ViewKind = "file" | "text";
+export type ViewKind = "file" | "text" | "docs";
 
 /** The window of lines a **paged** file view covers; absent for a whole-file view. */
 export interface ViewRegion {
@@ -249,9 +248,9 @@ export interface ViewRegion {
 
 /** One view open in your context window, as `view.current()` reports it. */
 export interface OpenView {
-  /** Whether it is a file view or a text view. */
+  /** Whether it is a file, text, or documentation view. */
   kind: ViewKind;
-  /** What `view.close` takes: a file view's workspace path, or a text view's label. */
+  /** What `view.close` takes: a file's path, a text view's label, or a docs view's function name. */
   selector: string;
   /** Roughly what holding it costs you, in tokens. */
   tokens: number;

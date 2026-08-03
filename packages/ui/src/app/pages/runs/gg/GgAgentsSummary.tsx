@@ -1053,6 +1053,7 @@ function AttributionList({
               </span>
               <span className={styles.attrMeta}>
                 {"kind" in row && row.kind === "text" ? "agent view · " : ""}
+                {"kind" in row && row.kind === "docs" ? "docs view · " : ""}
                 {shortTokens(row.tokens)} · {row.messages}× · resident{" "}
                 {row.turns} turn{row.turns === 1 ? "" : "s"}
               </span>

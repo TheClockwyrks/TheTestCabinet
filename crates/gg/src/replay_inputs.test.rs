@@ -159,7 +159,6 @@ impl Builder {
             last_line: 9,
             total_lines: 9,
             byte_truncated: true,
-            limit_reduced: false,
         }))
         .unwrap();
         self.push(

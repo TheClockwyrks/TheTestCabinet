@@ -20,11 +20,30 @@ renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-templa
 | `board.hbs`                | The pinned [Project management](/gg/project-management/) board block.                                                                                                                  |
 | `memories.hbs`             | The pinned [memories](/gg/memories/) block.                                                                                                                                            |
 | `memory-notice.hbs`        | The per-turn notice a holder of a [linked memory instance](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote) is given when **another** holder wrote, revised or deleted one. |
-| `code-result.hbs`          | The turn feedback for a [responses-as-code](/gg/responses-as-code/) program that ran — its call roster, the [views](/gg/responses-as-code/#showing-yourself-things) it opened, closed or was refused, and anything it needs telling. |
-| `code-transpile-error.hbs` | The turn feedback for a [program](/gg/responses-as-code/) that did not compile, so nothing ran.                                                                                        |
-| `code-sandbox-error.hbs`   | The turn feedback for a [program](/gg/responses-as-code/) the sandbox could not run to a result — a memory ceiling or a trap.                                                          |
-| `code-timeout.hbs`         | The turn feedback for a [program](/gg/responses-as-code/) the sandbox stopped at its execution timeout — its own message, because a timeout means a program that did not terminate.    |
-| `code-not-a-program.hbs`   | The turn feedback for a reply that was not a program at all — prose, empty, comments only, or several candidate blocks.                                                                |
+| `code-not-a-program.hbs`   | The **`Notice`** a reply that was not a program at all earns — prose, empty, comments only, or several candidate blocks.                                                               |
+| `code-nothing-shown.hbs`   | The **`Notice`** a [program](/gg/responses-as-code/) that ran but put nothing in the window earns, checked against the assembled window rather than inferred from the outcome.         |
+
+### Two `code-*` templates, where there were six
+
+gg used to author a per-turn report for every [responses-as-code](/gg/responses-as-code/)
+turn: one template for a program that ran — its roster of composed calls, the views it
+opened, closed or was refused, the value it discarded — and one each for a program that did
+not compile, for one the sandbox could not run to a result, and for one it stopped at its
+execution timeout. All four are gone, and what is left is the two `Notice` templates above.
+
+gg now authors almost nothing for a code turn, because the whole vocabulary is three
+messages — `Compiler error`, `Runtime error`, and a `Notice` — and a program that compiled,
+ran and did what it meant to earns none of them: the views it opened are the turn's result.
+Two of the three are not templates at all. `Compiler error` and `Runtime error` carry the
+compiler's or the runtime's own text verbatim and nothing else, and having nowhere to author
+them is precisely how that holds. A template is somewhere for gg's prose to accumulate — a
+preamble here, a line of advice there, a restatement of a rule the system prompt already
+states — and the two messages that most invite that accumulation are the two that can least
+afford it: a model reading its own error wants the error. So they deliberately have no
+template. What a failing turn used to be told alongside its diagnostic is now either
+something the program already learned by running (a failed call throws into the program) or a
+standing rule stated once in the system prompt, and everything else gg used to say goes to
+the operator's [telemetry](/gg/telemetry/) stream rather than to the model.
 
 ### The briefs gg dispatches with
 
@@ -126,21 +145,52 @@ The code arm teaches four things the tool-calling arm has no need of:
   this run does not bind is a `ReferenceError` the model copies verbatim.
 - **What is in scope, and how to read its documentation.** One line per API object — its
   name and what it is for — and then the two discovery calls, `<object>.list()` and
-  `fn.docs()`. No signatures and no type declarations: the surface is
+  `view.openDocsView(fn)`. No signatures and no type declarations: the surface is
   [read on demand](/gg/responses-as-code/#the-typed-tool-surface) rather than dumped up
   front, and what a call's options are, what it throws, and the rest of the `view`
   object's own functions (`view.close`, `view.current`) are answers the model asks for
-  rather than paragraphs it is handed. The rules those functions obey are documented for *humans* on
+  rather than paragraphs it is handed. The two calls answer on **different turns**, and the
+  prompt says so. `list()` returns **inline**: it is a directory — one line per function —
+  small enough to hand back within the turn that asked for it. `openDocsView` opens a
+  **view**, so a lookup lands in the window the way every other piece of material a program
+  shows itself does, and the documentation is there on the *next* turn: *"Ask in one turn,
+  use it in the next."* The prompt used to make that claim about the old `.docs()` method,
+  which returned its text inline and made a liar of the sentence; a view is what makes it
+  true. The rules those functions obey are documented for *humans* on
   the [responses as code](/gg/responses-as-code/#showing-yourself-things) page; the model
-  gets them from `.docs()`.
+  opens a docs view.
 
 The code arm also lists the **message headings** a run can produce — the `<label>\n----\n`
 rule every message it receives obeys — and that list is gated the same way everything else
-is: a heading whose capability is off (`Tasks`, `Memory`, `Board`, `File`) is not described,
-because a model should never be told about a message kind this run cannot send it. `View` is
-one of the rows nothing gates, since the object that produces it is bound whatever a run
-enables, and it is the only heading **qualified by a selector** — `View: changed-files`
-rather than a bare word — because a label is the sole thing telling two views apart.
+is: a heading whose capability is off (`Memories`, `Tasks`, `Board`, `File`) is not
+described, because a model should never be told about a message kind this run cannot send
+it. Everything else in the vocabulary is ungated, and that is most of it: `Task` for the
+brief or a parent's message, `Compiler error` and `Runtime error` for the two ways a program
+fails, `Notice` for a process fact from the harness, `Summary` for the recap a
+[compaction](/gg/compaction/) restarts the thread from, `Documentation` for a lookup or a
+skill, and `View` for something the program showed itself.
+
+The two error rows are ungated because every program can fail, and their descriptions carry
+the one distinction the model has to act on: a `Compiler error` means "none of it ran; fix
+it and resend the whole program", while a `Runtime error` means "whatever the program did
+before it threw stands, so do not repeat that work". `Documentation` is ungated for a
+different reason — the band has two occupants and only one of them belongs to the
+[skills](/gg/skills/) capability, since a docs view a program opened with
+`view.openDocsView` arrives under that heading whether or not the run has skills at all.
+It is also described as arriving "on the following turn", which is the same fact the
+discovery paragraph states from the other side.
+
+`View` is the heading **qualified by a selector** — `View: changed-files` rather than a bare
+word — because a label is the sole thing telling two views apart, and `Documentation` is
+qualified the same way, and for the same reason, when what it carries is a docs view
+(`Documentation: openText`) rather than a read skill. A skill keeps the bare word: it is
+pinned, its body opens by naming itself, and there is no `view.close` that could name it.
+
+The list closes on the sentence that makes the whole vocabulary legible: *"When your program
+compiles and runs, you are not told so — the views it opened are the result. You hear from
+the harness only when something failed or when there is a process fact you could not
+otherwise know."* That is the reading order gg wants: a turn with no message from the harness
+is a turn that worked.
 
 Both arms then carry an **Ending your session** section naming this agent's own
 [ending calls](/gg/completion/#ending-calls) — `finish`, the two review verdicts, or
@@ -149,6 +199,17 @@ the ending is taught: the briefs gg dispatches with say nothing about it, becaus
 that restated the contract would be a second authority on it, arriving later in the
 context and therefore winning any disagreement. That is how a code-mode reviewer once came
 to be told to end with a final message its protocol does not have.
+
+The code arm's version of that section carries one standing rule the tool-calling arm has no
+use for: a program that throws does **not** end the session, even if it called an ending
+function before it threw — the ending is revoked, because a program that failed did not
+finish the work its summary claims. That rule used to be delivered as a line appended to the
+report on the turn that tripped over it, which is the least useful moment to state it: a
+model only ever read it *after* it had already lost an ending it thought it had, and, sitting
+beside a diagnostic, it read as commentary on the program just written rather than as a fact
+about the protocol. It belongs where a standing rule belongs — in the one place it is stated
+once, ahead of the first program — and moving it there is what let the error messages carry
+the error alone.
 
 ## The pinned blocks carry state, not instructions
 

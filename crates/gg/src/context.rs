@@ -178,7 +178,8 @@ impl ContextItem {
 /// It is what the read **actually returned**, not what the call asked for. The two differ often
 /// enough to matter: an `offset`/`limit` on a call made under an
 /// [unlimited](crate::tools::ReadPolicy::Unlimited) policy is ignored by the tool and the whole file
-/// comes back, and a `limit` above a [hard cap](crate::tools::ReadPolicy::HardCap) is reduced to it.
+/// comes back, and a read that names no `limit` under a
+/// [default cap](crate::tools::ReadPolicy::DefaultCap) comes back as the cap's window.
 /// Recording the ask rather than the answer would give a view a window it does not have — two
 /// whole-file views recorded as two *different* windows, or a re-opened page that silently covers
 /// fewer lines than the one it replaces.
@@ -240,6 +241,15 @@ pub enum ViewKind {
     File,
     /// A [text view](GgContextSource::TextView), keyed by the label the agent gave it.
     Text,
+    /// A [documentation view](GgContextSource::Skill), keyed by the name of the function it
+    /// documents — what `view.openDocsView` opens.
+    ///
+    /// It shares the `Skill` band with a read skill because both are reference material gg holds
+    /// rather than material the workspace or the program produced, and the model meets both under
+    /// the same `Documentation` heading. What separates them is retention: a read skill is
+    /// [`Pinned`](Retention::Pinned) for the life of the agent, a docs view is an ordinary
+    /// [`Ephemeral`](Retention::Ephemeral) view the agent can close and compaction can drop.
+    Docs,
 }
 
 /// One [text view](GgContextSource::TextView) open in the window: the label it is keyed by and the
@@ -969,6 +979,34 @@ impl ContextModel {
         self.code_mode = code_mode;
     }
 
+    /// Whether the last thing in the window is an [assistant](GgContextSource::Assistant) turn —
+    /// that is, whether gg has said nothing back since the model last spoke.
+    ///
+    /// A request in that state does not ask the provider a question; it asks it to *continue* the
+    /// assistant message it ends on. Under [responses-as-code](crate::sandbox) that is reachable
+    /// without anything having gone wrong — a program may compile, run, and put nothing new in its
+    /// own window — so the turn loop checks it and gives the model something to answer.
+    ///
+    /// Read off the assembled window rather than off the item list, so the
+    /// [context-usage signal](Self::refresh_context_usage_signal) and every other
+    /// [slot](PromptSlot) count as the messages they are.
+    pub fn ends_on_assistant(&self) -> bool {
+        self.window_items()
+            .last()
+            .is_some_and(|item| item.message.role == Role::Assistant)
+    }
+
+    /// Whether this window is a [code-mode](Self::set_code_mode) one.
+    ///
+    /// Read by the two places that seed material on the agent's behalf — [autoload](crate::agent)
+    /// and [agent persistence](crate::persistence) — because the *envelope* they must use differs
+    /// by mode and nothing else about them does: a tool-calling window takes a synthesized
+    /// `read_file` call/result pair, a code-mode window takes a synthesized **program** and the
+    /// [file views](Self::seed_file_view) it opened.
+    pub fn code_mode(&self) -> bool {
+        self.code_mode
+    }
+
     /// Move the window out, leaving an **empty** one with the same configuration (estimator,
     /// window limit, code mode, turn number, turn headers) behind.
     ///
@@ -1590,6 +1628,35 @@ impl ContextModel {
         self.remove_views(GgContextSource::TextView, label)
     }
 
+    /// Close the [documentation views](ViewKind::Docs) keyed by `name` (or all of them when `name`
+    /// is `None`), the docs-band counterpart of [`close_text_views`](Self::close_text_views).
+    ///
+    /// It shares [`remove_views`](Self::remove_views)'s pinned carve-out, which is what keeps it
+    /// from touching a **read skill**: skills and docs views live in the same
+    /// [`Skill`](GgContextSource::Skill) band and are told apart by retention alone, so the rule
+    /// that spares every pinned item is exactly the rule that makes this call safe.
+    pub fn close_docs_views(&mut self, name: Option<&str>) -> EvictionResult {
+        self.remove_views(GgContextSource::Skill, name)
+    }
+
+    /// Open (or re-open) the [documentation view](ViewKind::Docs) for the function called `name` —
+    /// what `view.openDocsView` pushes.
+    ///
+    /// A view rather than the pinned block a documentation lookup used to leave behind, and the
+    /// difference is the whole point: a pinned block could not be closed, could not be superseded,
+    /// and grew for the life of the agent. This is keyed by the function's name, replaces its own
+    /// earlier copy, is [`Ephemeral`](Retention::Ephemeral), and answers to `view.close(name)` like
+    /// every other view.
+    ///
+    /// It heads as `Documentation: {name}` — qualified, unlike a read skill's bare `Documentation`,
+    /// because several may be open at once and the model has to be able to name the one it wants
+    /// closed.
+    pub fn open_docs_view(&mut self, name: String, body: String) -> ViewOpened {
+        let superseded = self.supersede_view(GgContextSource::Skill, &name, None);
+        let item = self.view_item(GgContextSource::Skill, Message::user(body), name, None);
+        self.place_view(item, superseded)
+    }
+
     /// Open (or re-open) the [text view](GgContextSource::TextView) keyed by `label`: agent-composed
     /// material — a computed summary, a diff, a table, a subagent's answer — pushed into the window
     /// as its own attributable item.
@@ -1662,6 +1729,39 @@ impl ContextModel {
         self.place_view(item, superseded)
     }
 
+    /// Open a [file view](GgContextSource::FileView) that **gg** opened on the agent's behalf, in a
+    /// [code-mode](Self::set_code_mode) window, with an explicit [`Retention`].
+    ///
+    /// This is what [autoload](https://docs.testcabinet.ai/gg/autoload-specifications/) and
+    /// [agent persistence](https://docs.testcabinet.ai/gg/agent-persistence/) seed with on the code
+    /// path. Both put a file in front of an agent that did not ask for it *this turn*, and on the
+    /// tool-calling path both do it as a synthesized `read_file` call/result pair. That envelope is
+    /// unavailable here: a code turn's assistant message is a **program**, it carries no
+    /// `tool_calls`, and a `tool`-role message would quote a call id that dangles. So the view is
+    /// pushed exactly as the program's own `view.openFile` would push it — a headed `user` item
+    /// keyed by path — and the synthesized assistant turn beside it is the program that opened it.
+    ///
+    /// The one thing it does not borrow from [`open_file_view_deduped`](Self::open_file_view_deduped)
+    /// is the hardcoded [`Ephemeral`](Retention::Ephemeral): a **locked** autoloaded specification is
+    /// [`Pinned`](Retention::Pinned), which is the whole difference between `locked` and not.
+    pub fn seed_file_view(
+        &mut self,
+        path: String,
+        content: String,
+        images: Vec<ImageContent>,
+        retention: Retention,
+    ) -> ViewOpened {
+        let superseded = self.supersede_view(GgContextSource::FileView, &path, None);
+        let item = self.view_item_with_retention(
+            GgContextSource::FileView,
+            Message::user(content).with_images(images),
+            path,
+            None,
+            retention,
+        );
+        self.place_view(item, superseded)
+    }
+
     /// Build the [`ContextItem`] a view is pushed as: [headed](Self::headed) for its selector,
     /// measured, tagged with the current [turn](Self::begin_turn), and always
     /// [`Ephemeral`](Retention::Ephemeral).
@@ -1677,11 +1777,24 @@ impl ContextModel {
         selector: String,
         region: Option<FileRegion>,
     ) -> ContextItem {
+        self.view_item_with_retention(source, message, selector, region, Retention::Ephemeral)
+    }
+
+    /// [`view_item`](Self::view_item) with the retention spelled out — the one seam
+    /// [`seed_file_view`](Self::seed_file_view) needs and nothing an agent's own view call may use.
+    fn view_item_with_retention(
+        &self,
+        source: GgContextSource,
+        message: Message,
+        selector: String,
+        region: Option<FileRegion>,
+        retention: Retention,
+    ) -> ContextItem {
         let message = self.headed(source, Some(&selector), message);
         let tokens = self.estimator.estimate_message(&message);
         ContextItem {
             source,
-            retention: Retention::Ephemeral,
+            retention,
             message,
             tokens,
             label: Some(selector),
@@ -1845,6 +1958,9 @@ impl ContextModel {
             let kind = match item.source {
                 GgContextSource::FileView => ViewKind::File,
                 GgContextSource::TextView => ViewKind::Text,
+                // A `Skill` item is a docs view exactly when it is not pinned — a read skill is
+                // pinned and was skipped above, so what reaches here is a `view.openDocsView`.
+                GgContextSource::Skill => ViewKind::Docs,
                 _ => continue,
             };
             // A view whose selector is unknown (a malformed native read) is unnameable, so there is
@@ -1967,7 +2083,12 @@ impl ContextModel {
 pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
     match source {
         GgContextSource::UserPrompt => Some("Task"),
+        // Unreachable on the code path — a program has no tool results — but a heading is what makes
+        // that a *fact about the band* rather than a hole: a window carried over from a
+        // tool-calling agent still holds items in it, and they must not go out unheaded.
         GgContextSource::ToolOutput => Some("Output"),
+        GgContextSource::CompilerError => Some("Compiler error"),
+        GgContextSource::RuntimeError => Some("Runtime error"),
         GgContextSource::FileView => Some("File"),
         GgContextSource::TextView => Some("View"),
         GgContextSource::Skill => Some("Documentation"),
@@ -1990,13 +2111,20 @@ pub fn code_heading(source: GgContextSource) -> Option<&'static str> {
 /// match to its own `view.openText` calls nor name in a `view.close`. So a text view reads
 /// `View: {label}`.
 ///
+/// A [`Skill`](GgContextSource::Skill) item is qualified when it *has* a selector, which is exactly
+/// when it is a [documentation view](ViewKind::Docs) — `Documentation: readFile`, nameable in a
+/// `view.close`. A **read skill** carries no selector and keeps the bare `Documentation`, because
+/// its body opens by naming the skill and it cannot be closed anyway.
+///
 /// Every other band keeps the bare word, including [`FileView`](GgContextSource::FileView) —
 /// deliberately, because a file view's body opens with the read's own path header, so `File` plus
 /// the path would say the path twice.
 pub(crate) fn item_heading(source: GgContextSource, label: Option<&str>) -> Option<String> {
     let heading = code_heading(source)?;
     match (source, label) {
-        (GgContextSource::TextView, Some(label)) => Some(format!("{heading}: {label}")),
+        (GgContextSource::TextView | GgContextSource::Skill, Some(label)) => {
+            Some(format!("{heading}: {label}"))
+        }
         _ => Some(heading.to_string()),
     }
 }
@@ -2044,6 +2172,8 @@ fn source_label(source: GgContextSource) -> &'static str {
         GgContextSource::UserPrompt => "Task Prompt",
         GgContextSource::Assistant => "Your Messages",
         GgContextSource::ToolOutput => "Tool Output",
+        GgContextSource::CompilerError => "Compiler Errors",
+        GgContextSource::RuntimeError => "Runtime Errors",
         GgContextSource::FileView => "File Views",
         GgContextSource::TextView => "Text Views",
         GgContextSource::Skill => "Documentation",

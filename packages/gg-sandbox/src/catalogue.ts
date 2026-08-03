@@ -49,7 +49,7 @@ export interface CatalogueEntry {
  * The names are model-facing product surface, chosen for what a model already expects the object to
  * mean: `fs` for the workspace filesystem, `system` for running commands, `project` for the
  * epic/issue board, `agents` for delegation, `harness` for the calls that are about the session
- * itself rather than the workspace (`finish`, and the documentation lookup).
+ * itself rather than the workspace (today just `finish`).
  *
  * The two role-shaped ending objects — `review` and `judge` — are named on {@link SESSION_ENTRIES}
  * instead, because they are grouped by *role* rather than by module: all three groups are exported
@@ -199,8 +199,9 @@ export interface ViewEntry {
  * them tools would hand a native tool-calling session an `open_file_view` that duplicates
  * `read_file`, which on that path already arrives as an attributable message.
  *
- * `openText`, `close` and `current` are **ungated**, the carve-out `harness` has and for the same
- * reason: a run that enables no tools at all must still be able to show its model something.
+ * `openText`, `openDocsView`, `close` and `current` are **ungated**, the carve-out `harness` has and
+ * for the same reason: a run that enables no tools at all must still be able to show its model
+ * something — and must always be able to read what the functions it does have do.
  * `openFile` is a read, so it carries `requires: "read_file"` — a run with reading withheld must not
  * get a read through a side door.
  *
@@ -211,9 +212,20 @@ export interface ViewEntry {
 export const VIEW_ENTRIES: readonly ViewEntry[] = [
   { js: "openFile", requires: "read_file" },
   { js: "openText" },
+  { js: "openDocsView" },
   { js: "close" },
   { js: "current" },
 ];
 
 /** The module every {@link VIEW_ENTRIES} function is exported by. */
 export const VIEW_MODULE = "views";
+
+/**
+ * The non-enumerable key every bound function carries the name gg knows it by under, so
+ * `view.openDocsView(fs.readFile)` can be spelled with the function rather than with a string.
+ *
+ * A `Symbol` rather than a property name so it is invisible to a model iterating an object, and here
+ * rather than in the shim because both the shim (which writes it) and `tools/views.ts` (which reads
+ * it) need the identical symbol.
+ */
+export const DOCS_NAME = Symbol("gg.docsName");

@@ -98,7 +98,7 @@ describe("a param the selected strategy does not read", () => {
     const row = capabilityRow("read-file");
 
     expect(within(row).queryByLabelText(/Line cap/)).toBeNull();
-    select(within(row).getByLabelText(/Read mode/), "hard-cap");
+    select(within(row).getByLabelText(/Read mode/), "default-cap");
     expect(within(row).getByLabelText(/Line cap/)).toBeDefined();
   });
 

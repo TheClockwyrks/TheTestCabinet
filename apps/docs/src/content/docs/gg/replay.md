@@ -112,7 +112,8 @@ only on this view:
 - the **Context column**, from the turn's [prompt frame](/gg/analysis/replay-records/) —
   each message's band, whether it is pinned or ephemeral, the session turn it was pushed
   on, and a view's selector — a paged file view as `path@offset+limit`, an
-  [agent view](/gg/responses-as-code/#showing-yourself-things) as its bare label. It is the
+  [agent view](/gg/responses-as-code/#showing-yourself-things) as its bare label, a docs
+  view as the name of the function it documents. It is the
   only place gg's window construction is visible after the fact;
 - **images**, resolved out of the blob pool and shown inline rather than as descriptors —
   the telemetry stream deliberately records an image's media type and size and never its

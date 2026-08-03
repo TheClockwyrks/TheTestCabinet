@@ -7,14 +7,16 @@
 //! reason `session` does: so the one-to-one correspondence the tool interfaces hold with
 //! [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES) is not perturbed.
 //!
-//! Both functions bypass [`dispatch`](super::MembraneState) — its deadline and enabled-set guards
-//! are wrong for a call that is not a tool and must never be withheld — and go straight to the
-//! [api](super::ToolApi), whose loop-side implementation answers them against the agent's
-//! [`DocsRuntime`](crate::docs) and pins a fresh doc block into context, exactly as a read skill is
-//! pinned.
+//! It bypasses [`dispatch`](super::MembraneState) — its deadline and enabled-set guards are wrong
+//! for a call that is not a tool and must never be withheld — and goes straight to the
+//! [api](super::ToolApi), whose loop-side implementation answers it against the agent's
+//! [`DocsRuntime`](crate::docs).
+//!
+//! Only the **directory** lives here. Reading what a function does is
+//! [`view.openDocsView`](super::views), because documentation is material the model reads and every
+//! channel into the model is a view.
 
 use super::test_cabinet::gg::docs::{FunctionSummary, Host as DocsHost};
-use super::test_cabinet::gg::types::{ErrorCode, ToolError};
 use super::{MembraneState, ToolApi};
 
 impl<A: ToolApi> DocsHost for MembraneState<A> {
@@ -29,19 +31,5 @@ impl<A: ToolApi> DocsHost for MembraneState<A> {
                 summary: summary.summary,
             })
             .collect()
-    }
-
-    /// One function's full documentation by name. `not-found` for a name this run did not bind — the
-    /// message points the model back at the two ways to discover what it does have.
-    fn read_docs(&mut self, name: String) -> Result<String, ToolError> {
-        self.api.read_docs(&name).ok_or_else(|| ToolError {
-            code: ErrorCode::NotFound,
-            tool: "readDocs".to_string(),
-            message: format!(
-                "no function named `{name}` is available this run. Call `<object>.list()` to see \
-                 an object's functions, or read a function's docs from the function itself with \
-                 `fn.docs()`."
-            ),
-        })
     }
 }

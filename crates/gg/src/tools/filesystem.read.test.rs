@@ -50,11 +50,7 @@ fn resolve_defaults_to_unlimited() {
 }
 
 #[test]
-fn resolve_reads_the_line_cap_for_each_capped_mode() {
-    assert_eq!(
-        ReadPolicy::resolve(Some(READ_MODE_HARD_CAP), &json!({ "lineCap": 120 })),
-        ReadPolicy::HardCap(120)
-    );
+fn resolve_reads_the_line_cap_for_the_capped_mode() {
     assert_eq!(
         ReadPolicy::resolve(Some(READ_MODE_DEFAULT_CAP), &json!({ "lineCap": 120 })),
         ReadPolicy::DefaultCap(120)
@@ -69,8 +65,8 @@ fn resolve_falls_back_to_the_default_cap_when_the_param_is_missing_or_absurd() {
         json!({ "lineCap": "250" }),
     ] {
         assert_eq!(
-            ReadPolicy::resolve(Some(READ_MODE_HARD_CAP), &params),
-            ReadPolicy::HardCap(DEFAULT_READ_LINE_CAP),
+            ReadPolicy::resolve(Some(READ_MODE_DEFAULT_CAP), &params),
+            ReadPolicy::DefaultCap(DEFAULT_READ_LINE_CAP),
             "params {params} should fall back to the default cap"
         );
     }
@@ -78,11 +74,16 @@ fn resolve_falls_back_to_the_default_cap_when_the_param_is_missing_or_absurd() {
 
 #[test]
 fn resolve_treats_an_unknown_mode_as_unlimited() {
-    // A typo'd arm must not silently enforce a cap nobody configured.
-    assert_eq!(
-        ReadPolicy::resolve(Some("hardcap"), &json!({ "lineCap": 10 })),
-        ReadPolicy::Unlimited
-    );
+    // A typo'd arm must not silently enforce a cap nobody configured — and neither must a
+    // *retired* one. `hard-cap` was a real mode once; a config still naming it is now as
+    // unrecognized as a typo, and reads whole files rather than resurrecting a ceiling.
+    for implementation in ["hardcap", "default_cap", "hard-cap"] {
+        assert_eq!(
+            ReadPolicy::resolve(Some(implementation), &json!({ "lineCap": 10 })),
+            ReadPolicy::Unlimited,
+            "`{implementation}` is not a mode gg offers"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -115,14 +116,14 @@ async fn unlimited_returns_the_whole_file_and_offers_no_paging_arguments() {
 }
 
 // ---------------------------------------------------------------------------
-// Hard cap
+// The default cap: the window it applies, and the limit that talks past it
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn hard_cap_returns_at_most_the_cap_and_says_where_to_continue() {
+async fn the_cap_applies_when_no_limit_is_given_and_says_where_to_continue() {
     let (_dir, ctx) = workspace_with_lines(1_000);
 
-    let read = tool(ReadPolicy::HardCap(250))
+    let read = tool(ReadPolicy::DefaultCap(250))
         .invoke(json!({ "path": "lines.txt" }), &ctx)
         .await;
     assert!(read.ok, "{}", read.output);
@@ -138,27 +139,10 @@ async fn hard_cap_returns_at_most_the_cap_and_says_where_to_continue() {
 }
 
 #[tokio::test]
-async fn hard_cap_reduces_a_larger_limit_and_says_so() {
+async fn a_smaller_limit_is_honored() {
     let (_dir, ctx) = workspace_with_lines(1_000);
 
-    let read = tool(ReadPolicy::HardCap(250))
-        .invoke(json!({ "path": "lines.txt", "limit": 900 }), &ctx)
-        .await;
-    assert!(read.ok, "{}", read.output);
-    assert!(!read.output.contains("line 251\n"), "the cap is a ceiling");
-    assert!(
-        read.output
-            .contains("`limit` was reduced to this run's 250-line cap"),
-        "the agent is told the ceiling is not negotiable: {}",
-        read.output
-    );
-}
-
-#[tokio::test]
-async fn hard_cap_honors_a_smaller_limit() {
-    let (_dir, ctx) = workspace_with_lines(1_000);
-
-    let read = tool(ReadPolicy::HardCap(250))
+    let read = tool(ReadPolicy::DefaultCap(250))
         .invoke(json!({ "path": "lines.txt", "limit": 3 }), &ctx)
         .await;
     assert!(read.ok, "{}", read.output);
@@ -167,14 +151,77 @@ async fn hard_cap_honors_a_smaller_limit() {
         ["line 1", "line 2", "line 3"]
     );
     assert!(read.output.contains("[showing lines 1-3 of 1000"));
-    assert!(!read.output.contains("was reduced"));
+}
+
+#[tokio::test]
+async fn a_limit_larger_than_the_cap_is_honored_verbatim() {
+    let (_dir, ctx) = workspace_with_lines(1_000);
+
+    let read = tool(ReadPolicy::DefaultCap(250))
+        .invoke(json!({ "path": "lines.txt", "limit": 900 }), &ctx)
+        .await;
+    assert!(read.ok, "{}", read.output);
+    assert!(
+        read.output.contains("line 900\n"),
+        "the cap is a nudge, not a ceiling"
+    );
+    assert!(
+        !read.output.contains("line 901\n"),
+        "and not a floor either"
+    );
+    assert!(read.output.contains("[showing lines 1-900 of 1000"));
+    let data = text_data(&read);
+    assert_eq!(
+        (data.first_line, data.last_line, data.total_lines),
+        (1, 900, 1_000),
+        "the window the agent asked for, verbatim"
+    );
+}
+
+/// **The invariant behind dropping the hard cap**: a `limit` large enough to cover the file
+/// returns the file, byte for byte, exactly as the unlimited mode would — footer and all
+/// (that is, none). No mode gg offers can refuse a whole-file read, because gg has a caller
+/// that must be able to make one (autoloaded specifications seed a case's specs whole).
+#[tokio::test]
+async fn a_large_enough_limit_reads_the_whole_file_exactly_as_the_unlimited_mode_does() {
+    let (_dir, ctx) = workspace_with_lines(1_000);
+
+    let whole = tool(ReadPolicy::Unlimited)
+        .invoke(json!({ "path": "lines.txt" }), &ctx)
+        .await;
+    let capped = tool(ReadPolicy::DefaultCap(250))
+        .invoke(json!({ "path": "lines.txt", "limit": 1_000 }), &ctx)
+        .await;
+
+    assert!(capped.ok, "{}", capped.output);
+    assert_eq!(
+        capped.output, whole.output,
+        "a cap the agent asked past adds nothing — no window note, no reduction note"
+    );
+    assert_eq!(capped.summary, whole.summary);
+    assert!(capped.output.ends_with("line 1000\n"));
+}
+
+#[tokio::test]
+async fn a_limit_past_the_end_stops_at_the_end() {
+    let (_dir, ctx) = workspace_with_lines(10);
+
+    let read = tool(ReadPolicy::DefaultCap(250))
+        .invoke(json!({ "path": "lines.txt", "limit": 10_000 }), &ctx)
+        .await;
+    assert!(read.ok, "{}", read.output);
+    assert!(
+        read.output.ends_with("line 10\n"),
+        "no window note: {}",
+        read.output
+    );
 }
 
 #[tokio::test]
 async fn offset_pages_through_a_file() {
     let (_dir, ctx) = workspace_with_lines(1_000);
 
-    let read = tool(ReadPolicy::HardCap(250))
+    let read = tool(ReadPolicy::DefaultCap(250))
         .invoke(json!({ "path": "lines.txt", "offset": 251 }), &ctx)
         .await;
     assert!(read.ok, "{}", read.output);
@@ -189,7 +236,7 @@ async fn offset_pages_through_a_file() {
 async fn the_last_page_does_not_offer_a_continuation() {
     let (_dir, ctx) = workspace_with_lines(300);
 
-    let read = tool(ReadPolicy::HardCap(250))
+    let read = tool(ReadPolicy::DefaultCap(250))
         .invoke(json!({ "path": "lines.txt", "offset": 251 }), &ctx)
         .await;
     assert!(read.ok, "{}", read.output);
@@ -202,7 +249,7 @@ async fn the_last_page_does_not_offer_a_continuation() {
 async fn an_offset_past_the_end_is_an_error_naming_the_length() {
     let (_dir, ctx) = workspace_with_lines(10);
 
-    let read = tool(ReadPolicy::HardCap(250))
+    let read = tool(ReadPolicy::DefaultCap(250))
         .invoke(json!({ "path": "lines.txt", "offset": 11 }), &ctx)
         .await;
     assert!(!read.ok);
@@ -220,16 +267,14 @@ async fn a_file_shorter_than_the_cap_reads_identically_in_every_mode() {
     let whole = tool(ReadPolicy::Unlimited)
         .invoke(json!({ "path": "lines.txt" }), &ctx)
         .await;
-    for policy in [ReadPolicy::HardCap(250), ReadPolicy::DefaultCap(250)] {
-        let read = tool(policy)
-            .invoke(json!({ "path": "lines.txt" }), &ctx)
-            .await;
-        assert!(read.ok, "{}", read.output);
-        assert_eq!(
-            read.output, whole.output,
-            "{policy:?} should add no window note to a file that fits"
-        );
-    }
+    let capped = tool(ReadPolicy::DefaultCap(250))
+        .invoke(json!({ "path": "lines.txt" }), &ctx)
+        .await;
+    assert!(capped.ok, "{}", capped.output);
+    assert_eq!(
+        capped.output, whole.output,
+        "a capped mode should add no window note to a file that fits"
+    );
 }
 
 #[tokio::test]
@@ -241,59 +286,12 @@ async fn a_non_positive_paging_argument_is_rejected_rather_than_defaulted() {
         json!({ "path": "lines.txt", "limit": 0 }),
         json!({ "path": "lines.txt", "limit": "5" }),
     ] {
-        let read = tool(ReadPolicy::HardCap(250))
+        let read = tool(ReadPolicy::DefaultCap(250))
             .invoke(args.clone(), &ctx)
             .await;
         assert!(!read.ok, "{args} should be rejected");
         assert!(read.output.contains("must be a positive integer"));
     }
-}
-
-// ---------------------------------------------------------------------------
-// Default cap
-// ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn default_cap_applies_when_no_limit_is_given() {
-    let (_dir, ctx) = workspace_with_lines(1_000);
-
-    let read = tool(ReadPolicy::DefaultCap(250))
-        .invoke(json!({ "path": "lines.txt" }), &ctx)
-        .await;
-    assert!(read.ok, "{}", read.output);
-    assert!(!read.output.contains("line 251\n"));
-    assert!(read.output.contains("[showing lines 1-250 of 1000"));
-}
-
-#[tokio::test]
-async fn default_cap_honors_a_larger_limit() {
-    let (_dir, ctx) = workspace_with_lines(1_000);
-
-    let read = tool(ReadPolicy::DefaultCap(250))
-        .invoke(json!({ "path": "lines.txt", "limit": 900 }), &ctx)
-        .await;
-    assert!(read.ok, "{}", read.output);
-    assert!(
-        read.output.contains("line 900\n"),
-        "the default is a nudge, not a ceiling"
-    );
-    assert!(!read.output.contains("was reduced"));
-    assert!(read.output.contains("[showing lines 1-900 of 1000"));
-}
-
-#[tokio::test]
-async fn default_cap_reading_past_the_end_stops_at_the_end() {
-    let (_dir, ctx) = workspace_with_lines(10);
-
-    let read = tool(ReadPolicy::DefaultCap(250))
-        .invoke(json!({ "path": "lines.txt", "limit": 10_000 }), &ctx)
-        .await;
-    assert!(read.ok, "{}", read.output);
-    assert!(
-        read.output.ends_with("line 10\n"),
-        "no window note: {}",
-        read.output
-    );
 }
 
 // ---------------------------------------------------------------------------
@@ -306,7 +304,7 @@ async fn default_cap_reading_past_the_end_stops_at_the_end() {
 async fn a_windowed_read_reports_its_window_without_the_footer() {
     let (_dir, ctx) = workspace_with_lines(1_000);
 
-    let read = tool(ReadPolicy::HardCap(250))
+    let read = tool(ReadPolicy::DefaultCap(250))
         .invoke(json!({ "path": "lines.txt", "offset": 251 }), &ctx)
         .await;
 
@@ -322,27 +320,7 @@ async fn a_windowed_read_reports_its_window_without_the_footer() {
         "the footer belongs to the prose, not to the file: {}",
         data.contents
     );
-    assert!(!data.limit_reduced);
     assert!(!data.byte_truncated);
-}
-
-/// A hard cap that cut the requested `limit` says so as a flag, so a caller can tell "this is all
-/// of it" from "this is all you may have at once" without reading the note.
-#[tokio::test]
-async fn a_reduced_limit_is_reported_in_the_sidecar() {
-    let (_dir, ctx) = workspace_with_lines(1_000);
-
-    let reduced = tool(ReadPolicy::HardCap(250))
-        .invoke(json!({ "path": "lines.txt", "limit": 900 }), &ctx)
-        .await;
-    assert!(text_data(&reduced).limit_reduced);
-
-    // The default cap is a nudge rather than a ceiling, so a larger limit is honoured and nothing
-    // was reduced.
-    let honoured = tool(ReadPolicy::DefaultCap(250))
-        .invoke(json!({ "path": "lines.txt", "limit": 900 }), &ctx)
-        .await;
-    assert!(!text_data(&honoured).limit_reduced);
 }
 
 /// An unlimited read reports the whole file as one window.
@@ -377,11 +355,10 @@ async fn the_byte_ceiling_is_reported_separately_from_the_window() {
         .await;
     let data = text_data(&whole);
     assert!(data.byte_truncated);
-    assert!(!data.limit_reduced);
     assert_eq!(data.total_lines, 2, "the file's length, not the prefix's");
     assert!(!data.contents.contains("[truncated"));
 
-    let windowed = tool(ReadPolicy::HardCap(250))
+    let windowed = tool(ReadPolicy::DefaultCap(250))
         .invoke(json!({ "path": "huge.txt" }), &ctx)
         .await;
     let data = text_data(&windowed);
@@ -399,7 +376,7 @@ async fn an_empty_file_reports_an_empty_window() {
     std::fs::write(dir.path().join("empty.txt"), "").unwrap();
     let ctx = ToolContext::new(dir.path());
 
-    for policy in [ReadPolicy::Unlimited, ReadPolicy::HardCap(250)] {
+    for policy in [ReadPolicy::Unlimited, ReadPolicy::DefaultCap(250)] {
         let read = tool(policy)
             .invoke(json!({ "path": "empty.txt" }), &ctx)
             .await;
@@ -430,29 +407,31 @@ async fn an_unterminated_last_line_is_counted() {
 // The tool declaration the model sees
 // ---------------------------------------------------------------------------
 
+/// Two modes, two declarations: the capped one offers the paging arguments and states the
+/// default *as* a default, and the unlimited one offers neither knob.
 #[test]
-fn a_capped_mode_declares_its_paging_arguments_and_its_ceiling() {
-    let hard = tool(ReadPolicy::HardCap(250)).definition();
+fn each_mode_declares_exactly_the_arguments_it_honors() {
+    let capped = tool(ReadPolicy::DefaultCap(250)).definition();
     assert!(
-        hard.description.contains("at most 250 lines"),
+        capped.description.contains("250 lines by default"),
         "{}",
-        hard.description
+        capped.description
     );
-    let properties = hard.parameters["properties"].as_object().unwrap();
+    let properties = capped.parameters["properties"].as_object().unwrap();
     assert!(properties.contains_key("offset"));
     let limit = properties["limit"]["description"].as_str().unwrap();
-    assert!(limit.contains("maximum 250"), "{limit}");
-
-    let soft = tool(ReadPolicy::DefaultCap(250)).definition();
     assert!(
-        soft.description.contains("250 lines by default"),
-        "{}",
-        soft.description
+        limit.contains("larger is allowed"),
+        "the declaration says the cap is negotiable: {limit}"
     );
-    let limit = soft.parameters["properties"]["limit"]["description"]
-        .as_str()
-        .unwrap();
-    assert!(limit.contains("larger is allowed"), "{limit}");
+
+    let unlimited = tool(ReadPolicy::Unlimited).definition();
+    let properties = unlimited.parameters["properties"].as_object().unwrap();
+    assert!(!properties.contains_key("offset"));
+    assert!(
+        !properties.contains_key("limit"),
+        "there is nothing to page through"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -467,7 +446,7 @@ async fn the_byte_ceiling_still_bounds_a_windowed_read() {
     std::fs::write(dir.path().join("huge.txt"), format!("{huge}\n{huge}\n")).unwrap();
     let ctx = ToolContext::new(dir.path());
 
-    let read = tool(ReadPolicy::HardCap(250))
+    let read = tool(ReadPolicy::DefaultCap(250))
         .invoke(json!({ "path": "huge.txt" }), &ctx)
         .await;
     assert!(read.ok, "{}", read.output);
@@ -475,6 +454,30 @@ async fn the_byte_ceiling_still_bounds_a_windowed_read() {
     assert!(
         read.output.len() < READ_FILE_CAP + 256,
         "a windowed read is still bounded in bytes"
+    );
+}
+
+/// The byte ceiling is a separate limit from the line window, and an honoured larger `limit`
+/// does not buy past it: asking for the whole of a file made of enormous lines still returns
+/// at most [`READ_FILE_CAP`] bytes, and says so.
+#[tokio::test]
+async fn the_byte_ceiling_bounds_even_an_honored_larger_limit() {
+    let dir = TempDir::new().unwrap();
+    let huge = "x".repeat(READ_FILE_CAP);
+    std::fs::write(dir.path().join("huge.txt"), format!("{huge}\n{huge}\n")).unwrap();
+    let ctx = ToolContext::new(dir.path());
+
+    let read = tool(ReadPolicy::DefaultCap(1))
+        .invoke(json!({ "path": "huge.txt", "limit": 2 }), &ctx)
+        .await;
+    assert!(read.ok, "{}", read.output);
+    let data = text_data(&read);
+    assert!(data.byte_truncated);
+    assert_eq!(data.contents.len(), READ_FILE_CAP);
+    assert_eq!(
+        (data.first_line, data.last_line, data.total_lines),
+        (1, 2, 2),
+        "the window was honoured in lines; only the bytes were cut"
     );
 }
 
@@ -494,7 +497,7 @@ async fn a_windowed_read_that_is_also_byte_truncated_states_both() {
     .unwrap();
     let ctx = ToolContext::new(dir.path());
 
-    let read = tool(ReadPolicy::HardCap(2))
+    let read = tool(ReadPolicy::DefaultCap(2))
         .invoke(json!({ "path": "huge.txt" }), &ctx)
         .await;
 
@@ -525,7 +528,7 @@ async fn the_byte_ceiling_respects_character_boundaries() {
     std::fs::write(dir.path().join("wide.txt"), "é".repeat(READ_FILE_CAP)).unwrap();
     let ctx = ToolContext::new(dir.path());
 
-    let read = tool(ReadPolicy::HardCap(250))
+    let read = tool(ReadPolicy::DefaultCap(250))
         .invoke(json!({ "path": "wide.txt" }), &ctx)
         .await;
     assert!(read.ok, "{}", read.output);

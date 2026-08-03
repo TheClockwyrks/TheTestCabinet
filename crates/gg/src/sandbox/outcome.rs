@@ -48,12 +48,14 @@ pub struct SandboxOutcome {
     /// [`CodeExecution`](test_cabinet_core::gg::GgTelemetryKind::CodeExecution) event, which is what
     /// carries them onto the run's stream, into the run record and into any analysis over it. The
     /// tail of them is also the spawner's one-line report. They are deliberately *not* shown to the
-    /// model, whose channel into its own window is a [view](crate::context::ViewKind); all the
-    /// turn's feedback says about them is how many there were. See
-    /// [`CodeResultContext`](crate::prompts::CodeResultContext).
+    /// model **in any form** — not the lines, and not a count of them. Their channel into their own
+    /// window is a [view](crate::context::ViewKind), and a count would still be a channel: it says
+    /// the output went somewhere, which is where the argument that it might come back begins. See
+    /// [`CodeFeedback`](crate::agent).
     pub logs: Vec<String>,
-    /// How many log lines the caps discarded. Added to `logs.len()` for the line count the feedback
-    /// reports, so the model is told what its program did rather than what gg's buffer kept.
+    /// How many log lines the caps discarded — the figure that separates what the *program* printed
+    /// from what gg's buffer kept, on the operator's record. Never reported to the model, for the
+    /// reason [`logs`](Self::logs) is not.
     pub logs_suppressed: u64,
     /// The [views](crate::context::ViewKind) the program opened, in call order — what the turn's
     /// feedback reports back so the model can read its own accounting: which selector it showed,

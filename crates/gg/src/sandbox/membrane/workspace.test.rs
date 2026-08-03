@@ -218,7 +218,6 @@ fn read_file_returns_text_with_its_window() {
         (1, 2, 2)
     );
     assert!(!text.byte_truncated);
-    assert!(!text.limit_reduced);
     assert_eq!(
         log.args("read_file"),
         Some(json!({ "path": "src/a.ts", "offset": null, "limit": 200 }))
