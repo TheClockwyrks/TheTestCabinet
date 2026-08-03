@@ -14,6 +14,13 @@ name = "Fathom"
 # sits at easy.
 difficulty = "easy"
 
+# Marks this version as still being iterated on. An experimental case is hidden
+# from the catalog and refuses to resolve unless the deployment opts in with
+# TCAB_BACKEND_ALLOW_EXPERIMENTAL (the local cluster does; production does not),
+# so no runs are published against it while it is still being tuned. Purely a
+# visibility filter — it has no effect on how a run executes.
+experimental = true
+
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["arcade", "2d", "maze", "stealth"]
 
