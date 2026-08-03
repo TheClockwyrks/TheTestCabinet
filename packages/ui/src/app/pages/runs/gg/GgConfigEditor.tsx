@@ -1,51 +1,52 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import {
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE,
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
 } from "@test-cabinet/run-record/gg-system-prompt";
 import type { GgSubagentScope } from "@test-cabinet/run-record/gg";
+import { SegmentedControl } from "@test-cabinet/ui";
 import type { Model } from "../../../../client/types";
 import { ModelCombobox } from "../../../components/ModelCombobox";
 import { familyOf } from "../../../data/families";
 import {
-  CAPABILITIES,
+  AGENT_MODES,
+  AGENT_MODE_HINT,
   CAP_GROUPS,
+  FSM_CAP,
+  RESPONSES_AS_CODE_CAP,
   RUN_LIMIT_SPECS,
   SUBAGENT_SCOPES,
-  paramApplies,
+  capabilitiesForMode,
   type CapGroup,
-  type ParamSpec,
+  type CapSpec,
+  type GgAgentMode,
   type RunLimitSpec,
 } from "./ggCatalog";
 import {
+  CapabilityBody,
+  FieldLabel,
+  HelpTip,
+  Switch,
+} from "./GgCapabilityFields";
+import {
   agentParamErrors,
+  agentStates,
   blankAgentDraft,
   blankCapabilityDraft,
-  blankCommandDraft,
   blankModelSlot,
-  commandsDraftValue,
-  commandsFromDraft,
+  capabilityActive,
   dropAgentReferences,
-  fsmStatesWarnings,
-  isFsmShell,
   referencedModelSlots,
   runLimitsError,
   runLimitsWarning,
   seedAgentParams,
   setToolBundle,
-  statesDraftValue,
-  statesFromDraft,
-  togglesDraftValue,
-  togglesOff,
-  toolBundleOn,
   unusedAgentName,
-  type CommandDraft,
   type GgAgentDraft,
   type GgCapabilityDraft,
   type GgConfigDraft,
   type GgModelSlotDraft,
 } from "./ggConfigDraft";
-import { GgFsmStatesField } from "./GgFsmStatesField";
 import runExec from "../RunExec.module.scss";
 import gg from "./GgConfigEditor.module.scss";
 
@@ -61,149 +62,25 @@ function limitStep(kind: RunLimitSpec["kind"]): number | "any" {
   return kind === "fraction" ? 0.05 : "any";
 }
 
-// A "?" affordance whose help text appears in a custom on-hover/focus tooltip.
-function HelpTip({ text }: { text: string }) {
-  return (
-    <span
-      className={gg.help}
-      data-tooltip={text}
-      tabIndex={0}
-      aria-label={text}
-    >
-      ?
-    </span>
-  );
-}
+// The agent-type selector's segments, derived from the catalog so a type added there
+// appears here without a second list to keep in step.
+const AGENT_MODE_OPTIONS = AGENT_MODES.map((mode) => ({
+  value: mode.value,
+  label: mode.label,
+}));
 
-// A field label with an optional help tooltip beside it.
-function FieldLabel({ label, hint }: { label: ReactNode; hint?: string }) {
-  return (
-    <span className={runExec.fieldLabel}>
-      {label}
-      {hint && <HelpTip text={hint} />}
-    </span>
-  );
-}
-
-// The capability enable control: a slider switch that stays a real checkbox to AT and
-// to the test suite.
-function Switch({
-  checked,
-  disabled,
-  onChange,
-}: {
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <span className={gg.switch}>
-      <input
-        className={gg.switchInput}
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span className={gg.switchTrack} aria-hidden="true" />
-    </span>
-  );
-}
-
-/**
- * A [`model` param](ParamSpec)'s control: the same two-field binding an agent's own model
- * uses, so "which model condenses the thread" is picked the way every other model in the
- * configuration is — from a slot the launch form fills in, or pinned here.
- *
- * The param defers to a slot exactly while its [slot key](ParamSpec.slotKey) is *present*
- * in the draft, empty or not: an operator who has chosen to defer but not yet picked a
- * slot is a real state the form has to hold (and flag), not one it should silently
- * collapse back into a pinned model.
- */
-function ModelParamField({
-  param,
-  slotKey,
-  params,
-  modelSlots,
-  models,
-  readOnly,
-  onSet,
-  onClear,
-}: {
-  param: ParamSpec;
-  slotKey: string;
-  params: Record<string, string>;
-  modelSlots: ReadonlyArray<GgModelSlotDraft>;
-  models: Model[];
-  readOnly?: boolean;
-  onSet: (key: string, value: string) => void;
-  onClear: (key: string) => void;
-}) {
-  const deferred = slotKey in params;
-  const slotId = params[slotKey] ?? "";
-  const boundSlot = modelSlots.find((s) => s.id === slotId);
-  return (
-    <div className={`${gg.capParamField} ${gg.modelParamField}`}>
-      <FieldLabel label={param.label} hint={param.hint} />
-      <div className={gg.slotFields}>
-        <label className={`${runExec.field} ${gg.slotSourceField}`}>
-          <span className={runExec.fieldLabel}>Model from</span>
-          <select
-            className={runExec.select}
-            value={deferred ? "model-slot" : "model"}
-            disabled={readOnly}
-            onChange={(e) => {
-              if (e.target.value === "model-slot") {
-                onSet(slotKey, modelSlots[0]?.id ?? "");
-              } else {
-                onClear(slotKey);
-              }
-            }}
-          >
-            <option value="model-slot">a model slot (at launch)</option>
-            <option value="model">a specific model (fixed here)</option>
-          </select>
-        </label>
-        {deferred ? (
-          <label className={`${runExec.field} ${gg.slotModelField}`}>
-            <span className={runExec.fieldLabel}>Model slot</span>
-            <select
-              className={runExec.select}
-              value={slotId}
-              disabled={readOnly}
-              onChange={(e) => onSet(slotKey, e.target.value)}
-            >
-              {!boundSlot && <option value={slotId}>(none)</option>}
-              {modelSlots.map((slot) => (
-                <option key={slot.id} value={slot.id}>
-                  {slot.name.trim() || "(unnamed slot)"}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <label className={`${runExec.field} ${gg.slotModelField}`}>
-            <span className={runExec.fieldLabel}>Model</span>
-            <ModelCombobox
-              value={params[param.key] ?? ""}
-              onChange={(v) => onSet(param.key, v)}
-              models={models}
-              harnessFamily={GG_MODEL_FAMILY}
-              inputClassName={runExec.input}
-              disabled={readOnly}
-              placeholder={param.placeholder}
-            />
-          </label>
-        )}
-      </div>
-      {deferred && !boundSlot && (
-        <p className={gg.fieldError}>
-          This defers to no model slot, so a run would never fill it in. Pick one
-          of the configuration&rsquo;s slots, or name a model outright.
-        </p>
-      )}
-    </div>
-  );
+// What an agent's row in the configuration's list says about it after its name: its
+// type, and then what that type makes it — a worker's enabled capabilities, or a
+// machine's states.
+function agentSummary(agent: GgAgentDraft, label: string): string {
+  if (agent.mode === "fsm") {
+    const states = agentStates(agent).length;
+    return `${label} · ${states} ${states === 1 ? "state" : "states"}`;
+  }
+  const on = capabilitiesForMode(agent.mode).filter((cap) =>
+    capabilityActive(agent, cap),
+  ).length;
+  return `${label} · ${on} capabilities enabled`;
 }
 
 interface GgConfigEditorProps {
@@ -231,10 +108,15 @@ interface GgConfigEditorProps {
 
 // The gg capability-set editor. Its top level is the run's execution ceilings, the
 // declared launch-time model slots, and the list of **agent profiles**; opening an
-// agent switches to a per-agent view (its capabilities, model, custom prompt, and the
-// agents it may spawn). Capabilities are per agent now — there is no run-global
-// capability list — so an ablation can vary what each agent in a run can do, and give
-// different agents different models or even different execution modes.
+// agent switches to a per-agent view (its type, its capabilities, its model, its custom
+// prompt, and the agents it may spawn).
+//
+// An agent's **type** ([GgAgentMode]) is the first thing chosen about it, because it
+// decides what the rest of the form even offers: Tools and RaC are two ways of driving
+// the same capabilities (with a couple that only one of them reads), and FSM is not a
+// worker at all — a machine has no capabilities of its own, so it is configured by its
+// states instead. Capabilities are per agent, so an ablation can vary what each agent in
+// a run can do, and give different agents different models or even different types.
 //
 // Which profile is the **root** — the one that drives the run's top-level session — is a
 // flag on the draft, so it can be renamed to anything and moved to another profile;
@@ -364,13 +246,12 @@ export function GgConfigEditor({
     const referenced = referencedModelSlots(value);
     return (
       <>
-        {/* Run limits — the operator's guardrails, applied to every agent and both
-            execution modes at once, so they sit above the agents rather than inside
-            one. */}
+        {/* Run limits — the operator's guardrails, applied to every agent and every
+            agent type at once, so they sit above the agents rather than inside one. */}
         <section className={gg.limitsWidget}>
           <p className={runExec.sectionLabel}>
             Run limits
-            <HelpTip text="The ceilings a run is bounded by, applied to every agent and both execution modes. A run stopped by one records which one stopped it. Leave a field empty to leave that ceiling off." />
+            <HelpTip text="The ceilings a run is bounded by, applied to every agent whatever its type. A run stopped by one records which one stopped it. Leave a field empty to leave that ceiling off." />
           </p>
           <div className={gg.limitGrid}>
             {RUN_LIMIT_SPECS.map((spec) => (
@@ -486,16 +367,13 @@ export function GgConfigEditor({
           Agents
         </p>
         <p className={`${runExec.muted} ${gg.backdropNote}`}>
-          Each agent has its own capabilities, model, custom prompt, and the set
-          of agents it may spawn. Open one to configure it. The{" "}
+          Each agent has its own type, capabilities, model, custom prompt, and
+          the set of agents it may spawn. Open one to configure it. The{" "}
           <strong>root</strong> agent drives the run&rsquo;s top-level session;
           make another one the root at any time.
         </p>
         <div className={gg.slotList}>
           {value.agents.map((agent) => {
-            const onCount = CAPABILITIES.filter(
-              (c) => agent.capabilities[c.id]?.enabled,
-            ).length;
             const slotName = value.modelSlots.find(
               (s) => s.id === agent.modelSlotId,
             )?.name;
@@ -503,6 +381,8 @@ export function GgConfigEditor({
               agent.modelSource === "model-slot"
                 ? `slot: ${slotName?.trim() || "none"}`
                 : agent.modelId || "no model";
+            const modeLabel =
+              AGENT_MODES.find((m) => m.value === agent.mode)?.label ?? "";
             const isRootAgent = agent.id === value.rootAgentId;
             return (
               <div key={agent.id} className={gg.slotBlock}>
@@ -519,7 +399,7 @@ export function GgConfigEditor({
                       )}
                     </span>
                     <span className={gg.capId}>
-                      {onCount} capabilities enabled · {modelSummary}
+                      {agentSummary(agent, modeLabel)} · {modelSummary}
                     </span>
                   </span>
                   {!readOnly && !isRootAgent && (
@@ -583,6 +463,11 @@ export function GgConfigEditor({
   // *other* profiles, so whether they name anything real is a question about the set.
   const paramsErrors = agentParamErrors(agent, value.agents);
   const boundSlot = value.modelSlots.find((s) => s.id === agent.modelSlotId);
+  const modeSpec = AGENT_MODES.find((m) => m.value === agent.mode);
+  const isMachine = agent.mode === "fsm";
+  // The capabilities this agent's type reads — empty for a machine, which is why the
+  // whole Capabilities section is absent under one.
+  const modeCaps = capabilitiesForMode(agent.mode);
 
   const patchAgent = (patch: Partial<GgAgentDraft>) =>
     updateAgent(agent.id, patch);
@@ -613,6 +498,30 @@ export function GgConfigEditor({
     patchAgent({
       disabledTools: setToolBundle(agent.disabledTools, tools, on),
     });
+  // Changing the type changes nothing else. Everything the other types were configured
+  // with stays in the draft untouched, so switching away and back inside one session is
+  // not an edit — the wind-back to a type's defaults happens when the agent is
+  // *committed* (`resetCapabilitiesForMode`), not while it is being edited.
+  const setMode = (mode: GgAgentMode) => patchAgent({ mode });
+
+  // The props every capability body takes, threaded once: which capability it is and how
+  // to write to it is all that differs between the three places one is rendered.
+  const capabilityFields = (cap: CapSpec) => ({
+    cap,
+    agent,
+    agents: value.agents,
+    modelSlots: value.modelSlots,
+    models,
+    isRoot,
+    readOnly,
+    error: paramsErrors[cap.id],
+    onUpdateCap: (patch: Partial<GgCapabilityDraft>) =>
+      updateCap(cap.id, patch),
+    onSetParam: (key: string, param: string) => setParam(cap.id, key, param),
+    onClearParam: (key: string) => clearParam(cap.id, key),
+    onSetToolAblation: setToolAblation,
+  });
+
   // A roster entry exists exactly while it carries at least one scope: turning the
   // last one off removes it, and turning the first one on adds it. There is no
   // separate "listed" toggle, because an entry that is listed but usable for nothing
@@ -647,17 +556,18 @@ export function GgConfigEditor({
       ),
     });
 
-  // gg renders one of two built-in system prompts per agent, chosen by its execution
-  // mode: the responses-as-code arm names each capability's grouped methods and teaches
-  // the code protocol; the tool-calling arm names the free-standing tools. The editor
-  // seeds (and resets to) whichever default this agent will actually run against, so an
-  // operator starts from the prompt gg would have used.
-  const defaultPrompt = agent.capabilities["responses-as-code"]?.enabled
-    ? DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE
-    : DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE;
+  // gg renders one of two built-in system prompts per agent, chosen by its type: the
+  // responses-as-code arm names each capability's grouped methods and teaches the code
+  // protocol; the tool-calling arm names the free-standing tools. The editor seeds (and
+  // resets to) whichever default this agent will actually run against, so an operator
+  // starts from the prompt gg would have used.
+  const defaultPrompt =
+    agent.mode === "rac"
+      ? DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE
+      : DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE;
 
   // The full system prompt shown in the (collapsed-by-default) editor: this agent's
-  // override, or the built-in default for its mode. Editing it to exactly that default
+  // override, or the built-in default for its type. Editing it to exactly that default
   // stores no override.
   const promptValue = agent.systemPromptTemplate || defaultPrompt;
   const promptOverridden = agent.systemPromptTemplate.trim().length > 0;
@@ -781,546 +691,138 @@ export function GgConfigEditor({
         </p>
       )}
 
-      {/* The full capability catalog, grouped by concern, collapsible — this agent's
-          capabilities. */}
-      <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
-        Capabilities
-      </p>
-      {CAP_GROUPS.map(({ group }) => {
-        const groupCaps = CAPABILITIES.filter((c) => c.group === group);
-        const isCollapsed = collapsed.has(group);
-        const onCount = groupCaps.filter(
-          (c) => agent.capabilities[c.id]?.enabled,
-        ).length;
-        return (
-          <div key={group} className={gg.group}>
-            <button
-              type="button"
-              className={gg.groupHeader}
-              onClick={() => toggleGroup(group)}
-              aria-expanded={!isCollapsed}
-            >
-              <span className={gg.groupToggle}>{isCollapsed ? "▸" : "▾"}</span>
-              <span className={gg.groupName}>{group}</span>
-              <span className={gg.groupCount}>
-                {onCount}/{groupCaps.length} on
-              </span>
-            </button>
-            {!isCollapsed && (
-              <div className={gg.capList}>
-                {groupCaps.map((cap) => {
-                  const draft =
-                    agent.capabilities[cap.id] ?? blankCapabilityDraft();
-                  const enabled = Boolean(draft.enabled);
-                  const error = paramsErrors[cap.id];
-                  const implementation = draft.implementation;
-                  // Run-level "which agent runs this?" knobs (the merge and judge
-                  // agents) are read off the root agent, so only offer them there — and
-                  // a param the selected implementation does not read (the compaction
-                  // model outside a handoff strategy) is not offered at all, rather
-                  // than sitting there inert.
-                  const offered = (cap.params ?? []).filter(
-                    (p) =>
-                      (p.kind !== "agent" || isRoot) &&
-                      paramApplies(p, implementation),
-                  );
-                  // A boolean param is a feature switch, not a value: it renders with
-                  // the tool-ablation sliders rather than in the param grid.
-                  const params = offered.filter((p) => p.kind !== "boolean");
-                  const flags = offered.filter((p) => p.kind === "boolean");
-                  // A `states` control renders the capability's error itself, beside the
-                  // rows that have to change; showing it again under the whole form
-                  // would say the same thing twice, once far from the fix.
-                  const errorInline = params.some((p) => p.kind === "states");
-                  const hasBody =
-                    params.length ||
-                    flags.length ||
-                    cap.implementationLabel ||
-                    cap.toolAblation?.length ||
-                    error;
-                  return (
-                    <div
-                      key={cap.id}
-                      className={`${gg.capRow}${enabled ? "" : ` ${gg.capOff}`}`}
-                    >
-                      <label className={gg.capHeader}>
-                        <Switch
-                          checked={enabled}
-                          disabled={readOnly}
-                          onChange={(next) =>
-                            updateCap(cap.id, { enabled: next })
-                          }
-                        />
-                        <span className={gg.capName}>{cap.name}</span>
-                        <span className={gg.capId}>{cap.id}</span>
-                      </label>
-                      <p className={gg.capPurpose}>{cap.purpose}</p>
-                      {enabled && hasBody && (
-                        <div className={gg.capBody}>
-                          {(params.length || cap.implementationLabel) && (
-                            <div className={gg.capParamGrid}>
-                              {cap.implementationLabel && (
-                                <label className={gg.capParamField}>
-                                  <FieldLabel
-                                    label={cap.implementationLabel}
-                                    hint={cap.implementationHint}
-                                  />
-                                  {cap.implementationOptions ? (
-                                    <select
-                                      className={runExec.select}
-                                      value={implementation ?? ""}
-                                      disabled={readOnly}
-                                      onChange={(e) =>
-                                        updateCap(cap.id, {
-                                          implementation: e.target.value,
-                                        })
-                                      }
-                                    >
-                                      {cap.implementationOptions.map((o) => (
-                                        <option key={o.value} value={o.value}>
-                                          {o.label}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  ) : (
-                                    <input
-                                      className={runExec.input}
-                                      type="text"
-                                      value={draft.implementation ?? ""}
-                                      disabled={readOnly}
-                                      onChange={(e) =>
-                                        updateCap(cap.id, {
-                                          implementation: e.target.value,
-                                        })
-                                      }
-                                      placeholder={
-                                        cap.implementationPlaceholder ??
-                                        "default"
-                                      }
-                                      spellCheck={false}
-                                    />
-                                  )}
-                                </label>
-                              )}
-                              {params.map((p) => {
-                                if (p.kind === "toggles") {
-                                  const off = togglesOff(
-                                    p,
-                                    draft.params?.[p.key],
-                                  );
-                                  return (
-                                    <div
-                                      key={p.key}
-                                      className={`${gg.capParamField} ${gg.toggleField}`}
-                                      role="group"
-                                      aria-label={p.label}
-                                    >
-                                      <FieldLabel
-                                        label={p.label}
-                                        hint={p.hint}
-                                      />
-                                      <div className={gg.toggleList}>
-                                        {(p.options ?? []).map((o) => (
-                                          <label
-                                            key={o.value}
-                                            className={gg.toggleItem}
-                                          >
-                                            <input
-                                              type="checkbox"
-                                              checked={!off.includes(o.value)}
-                                              disabled={readOnly}
-                                              onChange={(e) =>
-                                                setParam(
-                                                  cap.id,
-                                                  p.key,
-                                                  togglesDraftValue(
-                                                    p,
-                                                    e.target.checked
-                                                      ? off.filter(
-                                                          (id) =>
-                                                            id !== o.value,
-                                                        )
-                                                      : [...off, o.value],
-                                                  ),
-                                                )
-                                              }
-                                            />
-                                            <span>{o.label}</span>
-                                          </label>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  );
-                                }
-                                if (p.kind === "commands") {
-                                  const rows = commandsFromDraft(
-                                    draft.params?.[p.key],
-                                  );
-                                  const setRows = (
-                                    next: ReadonlyArray<CommandDraft>,
-                                  ) =>
-                                    setParam(
-                                      cap.id,
-                                      p.key,
-                                      commandsDraftValue(next),
-                                    );
-                                  return (
-                                    <div
-                                      key={p.key}
-                                      className={`${gg.capParamField} ${gg.commandField}`}
-                                      role="group"
-                                      aria-label={p.label}
-                                    >
-                                      <FieldLabel
-                                        label={p.label}
-                                        hint={p.hint}
-                                      />
-                                      <div className={gg.commandList}>
-                                        {rows.map((row, i) => (
-                                          // Keyed by position: a row has no identity of
-                                          // its own, and reordering is not offered — the
-                                          // commands run in the order they are listed.
-                                          <div
-                                            key={i}
-                                            className={gg.commandRow}
-                                          >
-                                            <input
-                                              className={`${runExec.input} ${gg.commandLine}`}
-                                              type="text"
-                                              value={row.command}
-                                              disabled={readOnly}
-                                              aria-label={`Command ${i + 1}`}
-                                              onChange={(e) =>
-                                                setRows(
-                                                  rows.map((r, j) =>
-                                                    j === i
-                                                      ? {
-                                                          ...r,
-                                                          command:
-                                                            e.target.value,
-                                                        }
-                                                      : r,
-                                                  ),
-                                                )
-                                              }
-                                              placeholder="e.g. npm run build"
-                                              spellCheck={false}
-                                            />
-                                            <input
-                                              className={`${runExec.input} ${gg.commandCwd}`}
-                                              type="text"
-                                              value={row.cwd}
-                                              disabled={readOnly}
-                                              aria-label={`Command ${i + 1} working directory`}
-                                              onChange={(e) =>
-                                                setRows(
-                                                  rows.map((r, j) =>
-                                                    j === i
-                                                      ? {
-                                                          ...r,
-                                                          cwd: e.target.value,
-                                                        }
-                                                      : r,
-                                                  ),
-                                                )
-                                              }
-                                              placeholder="workspace root"
-                                              spellCheck={false}
-                                            />
-                                            <input
-                                              className={`${runExec.input} ${gg.commandTimeout}`}
-                                              type="number"
-                                              min={0}
-                                              value={row.timeoutSecs}
-                                              disabled={readOnly}
-                                              aria-label={`Command ${i + 1} timeout (seconds)`}
-                                              onChange={(e) =>
-                                                setRows(
-                                                  rows.map((r, j) =>
-                                                    j === i
-                                                      ? {
-                                                          ...r,
-                                                          timeoutSecs:
-                                                            e.target.value,
-                                                        }
-                                                      : r,
-                                                  ),
-                                                )
-                                              }
-                                              placeholder="timeout s"
-                                            />
-                                            {!readOnly && (
-                                              <button
-                                                type="button"
-                                                className={gg.slotRemove}
-                                                aria-label={`Remove command ${i + 1}`}
-                                                onClick={() =>
-                                                  setRows(
-                                                    rows.filter(
-                                                      (_, j) => j !== i,
-                                                    ),
-                                                  )
-                                                }
-                                              >
-                                                ✕
-                                              </button>
-                                            )}
-                                          </div>
-                                        ))}
-                                        {!readOnly && (
-                                          <button
-                                            type="button"
-                                            className={runExec.secondary}
-                                            onClick={() =>
-                                              setRows([
-                                                ...rows,
-                                                blankCommandDraft(),
-                                              ])
-                                            }
-                                          >
-                                            + Add command
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                }
-                                if (p.kind === "states") {
-                                  return (
-                                    <div key={p.key} className={gg.fsmWrapper}>
-                                      <FieldLabel
-                                        label={p.label}
-                                        hint={p.hint}
-                                      />
-                                      <GgFsmStatesField
-                                        states={statesFromDraft(
-                                          draft.params?.[p.key],
-                                        )}
-                                        agents={value.agents.map((a) => ({
-                                          id: a.id,
-                                          name: a.name,
-                                          machine: isFsmShell(a),
-                                        }))}
-                                        readOnly={readOnly}
-                                        // The machine's structural fault reads here,
-                                        // beside the rows that have to change, rather
-                                        // than in the capability's shared error slot
-                                        // below the whole form.
-                                        error={error}
-                                        warnings={fsmStatesWarnings(
-                                          agent,
-                                          value.agents,
-                                        )}
-                                        onChange={(next) =>
-                                          setParam(
-                                            cap.id,
-                                            p.key,
-                                            statesDraftValue(next),
-                                          )
-                                        }
-                                      />
-                                    </div>
-                                  );
-                                }
-                                if (p.kind === "model" && p.slotKey) {
-                                  return (
-                                    <ModelParamField
-                                      key={p.key}
-                                      param={p}
-                                      slotKey={p.slotKey}
-                                      params={draft.params ?? {}}
-                                      modelSlots={value.modelSlots}
-                                      models={models}
-                                      readOnly={readOnly}
-                                      onSet={(key, next) =>
-                                        setParam(cap.id, key, next)
-                                      }
-                                      onClear={(key) =>
-                                        clearParam(cap.id, key)
-                                      }
-                                    />
-                                  );
-                                }
-                                return (
-                                  <label
-                                    key={p.key}
-                                    className={gg.capParamField}
-                                  >
-                                    <FieldLabel label={p.label} hint={p.hint} />
-                                    {p.kind === "select" ? (
-                                      <select
-                                        className={runExec.select}
-                                        value={draft.params?.[p.key] ?? ""}
-                                        disabled={readOnly}
-                                        onChange={(e) =>
-                                          setParam(
-                                            cap.id,
-                                            p.key,
-                                            e.target.value,
-                                          )
-                                        }
-                                      >
-                                        {(p.options ?? []).map((o) => (
-                                          <option key={o.value} value={o.value}>
-                                            {o.label}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    ) : p.kind === "agent" ? (
-                                      <select
-                                        className={runExec.select}
-                                        value={draft.params?.[p.key] ?? ""}
-                                        disabled={readOnly}
-                                        onChange={(e) =>
-                                          setParam(
-                                            cap.id,
-                                            p.key,
-                                            e.target.value,
-                                          )
-                                        }
-                                      >
-                                        {/* An agent named by a stored param that no
-                                            longer exists stays selectable so the
-                                            value round-trips until re-pointed. Live
-                                            profiles are offered by id, so renaming one
-                                            never breaks the param. */}
-                                        {draft.params?.[p.key] &&
-                                          !value.agents.some(
-                                            (a) =>
-                                              a.id === draft.params?.[p.key],
-                                          ) && (
-                                            <option value={draft.params[p.key]}>
-                                              {draft.params[p.key]} (missing)
-                                            </option>
-                                          )}
-                                        {value.agents.map((a) => (
-                                          <option key={a.id} value={a.id}>
-                                            {a.name || "unnamed"}
-                                          </option>
-                                        ))}
-                                      </select>
-                                    ) : p.kind === "text" ? (
-                                      <input
-                                        className={runExec.input}
-                                        type="text"
-                                        value={draft.params?.[p.key] ?? ""}
-                                        disabled={readOnly}
-                                        onChange={(e) =>
-                                          setParam(
-                                            cap.id,
-                                            p.key,
-                                            e.target.value,
-                                          )
-                                        }
-                                        placeholder={p.placeholder}
-                                        spellCheck={false}
-                                      />
-                                    ) : (
-                                      <input
-                                        className={runExec.input}
-                                        type="number"
-                                        min={0}
-                                        max={
-                                          p.kind === "fraction" ? 1 : undefined
-                                        }
-                                        step={p.kind === "fraction" ? 0.05 : 1}
-                                        value={draft.params?.[p.key] ?? ""}
-                                        disabled={readOnly}
-                                        onChange={(e) =>
-                                          setParam(
-                                            cap.id,
-                                            p.key,
-                                            e.target.value,
-                                          )
-                                        }
-                                        placeholder={p.placeholder}
-                                      />
-                                    )}
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          )}
-                          {cap.toolAblation?.length || flags.length ? (
-                            <div
-                              className={gg.ablationGroup}
-                              role="group"
-                              aria-label={`${cap.name} features`}
-                            >
-                              <span className={runExec.fieldLabel}>
-                                Features
-                              </span>
-                              <div className={gg.ablationList}>
-                                {(cap.toolAblation ?? []).map((bundle) => (
-                                  <div
-                                    key={bundle.label}
-                                    className={gg.ablationItem}
-                                  >
-                                    <label className={gg.ablationLabel}>
-                                      <Switch
-                                        checked={toolBundleOn(
-                                          agent.disabledTools,
-                                          bundle.tools,
-                                        )}
-                                        disabled={readOnly}
-                                        onChange={(on) =>
-                                          setToolAblation(bundle.tools, on)
-                                        }
-                                      />
-                                      <span className={gg.ablationName}>
-                                        {bundle.label}
-                                      </span>
-                                    </label>
-                                    {bundle.hint && (
-                                      <HelpTip text={bundle.hint} />
-                                    )}
-                                  </div>
-                                ))}
-                                {/* A feature that changes what an offered tool
-                                    demands, rather than which tools exist: same box,
-                                    same slider, a capability param behind it. */}
-                                {flags.map((flag) => (
-                                  <div
-                                    key={flag.key}
-                                    className={gg.ablationItem}
-                                  >
-                                    <label className={gg.ablationLabel}>
-                                      <Switch
-                                        checked={
-                                          draft.params?.[flag.key] === "true"
-                                        }
-                                        disabled={readOnly}
-                                        onChange={(on) =>
-                                          setParam(
-                                            cap.id,
-                                            flag.key,
-                                            on ? "true" : "",
-                                          )
-                                        }
-                                      />
-                                      <span className={gg.ablationName}>
-                                        {flag.label}
-                                      </span>
-                                    </label>
-                                    {flag.hint && <HelpTip text={flag.hint} />}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          ) : null}
-                          {error && !errorInline && (
-                            <span className={gg.fieldError}>{error}</span>
+      {/* Agent type — how this agent is implemented, and so what the rest of the form
+          offers. Panelled and above the capabilities, because it is the choice the
+          capabilities below are a consequence of rather than one of them. */}
+      <section className={gg.modeWidget}>
+        <p className={runExec.sectionLabel}>
+          Agent type
+          <HelpTip text={AGENT_MODE_HINT} />
+        </p>
+        <SegmentedControl
+          options={AGENT_MODE_OPTIONS}
+          value={agent.mode}
+          onChange={setMode}
+          ariaLabel="Agent type"
+          disabled={readOnly}
+        />
+        {modeSpec && <p className={gg.modePurpose}>{modeSpec.purpose}</p>}
+      </section>
+
+      {/* The RaC agent's own settings: the sandbox's ceilings, the repairs gg makes to a
+          reply before running it, and what the transcript records. These are the type's
+          configuration, not a capability of it, which is why they sit here rather than in
+          a row of the list below. */}
+      {agent.mode === "rac" && (
+        <>
+          <p
+            className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
+          >
+            Responses as code
+          </p>
+          <p className={`${runExec.muted} ${gg.backdropNote}`}>
+            {RESPONSES_AS_CODE_CAP.purpose}
+          </p>
+          <div
+            className={gg.modePanel}
+            role="group"
+            aria-label="Responses as code"
+          >
+            <CapabilityBody {...capabilityFields(RESPONSES_AS_CODE_CAP)} />
+          </div>
+        </>
+      )}
+
+      {/* The machine itself — the whole configuration of an FSM agent. */}
+      {isMachine && (
+        <>
+          <p
+            className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
+          >
+            Process
+          </p>
+          <p className={`${runExec.muted} ${gg.backdropNote}`}>
+            {FSM_CAP.purpose} A machine has no turns of its own, so the model,
+            the prompt and the roster on this page are never read: each state
+            runs the profile it names, with that profile&rsquo;s configuration.
+          </p>
+          <div className={gg.modePanel} role="group" aria-label="Process">
+            <CapabilityBody {...capabilityFields(FSM_CAP)} />
+          </div>
+        </>
+      )}
+
+      {/* The capability catalog for this agent's type, grouped by concern, collapsible.
+          A machine has none — its states run other profiles — so the whole section is
+          absent rather than shown empty. */}
+      {!isMachine && (
+        <>
+          <p
+            className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
+          >
+            Capabilities
+          </p>
+          {CAP_GROUPS.map(({ group }) => {
+            const groupCaps = modeCaps.filter((c) => c.group === group);
+            // A group every capability of which belongs to another type is not an empty
+            // box to open, it is not a group of this agent's at all.
+            if (!groupCaps.length) return null;
+            const isCollapsed = collapsed.has(group);
+            const onCount = groupCaps.filter(
+              (c) => agent.capabilities[c.id]?.enabled,
+            ).length;
+            return (
+              <div key={group} className={gg.group}>
+                <button
+                  type="button"
+                  className={gg.groupHeader}
+                  onClick={() => toggleGroup(group)}
+                  aria-expanded={!isCollapsed}
+                >
+                  <span className={gg.groupToggle}>
+                    {isCollapsed ? "▸" : "▾"}
+                  </span>
+                  <span className={gg.groupName}>{group}</span>
+                  <span className={gg.groupCount}>
+                    {onCount}/{groupCaps.length} on
+                  </span>
+                </button>
+                {!isCollapsed && (
+                  <div className={gg.capList}>
+                    {groupCaps.map((cap) => {
+                      const enabled = Boolean(
+                        agent.capabilities[cap.id]?.enabled,
+                      );
+                      return (
+                        <div
+                          key={cap.id}
+                          className={`${gg.capRow}${enabled ? "" : ` ${gg.capOff}`}`}
+                        >
+                          <label className={gg.capHeader}>
+                            <Switch
+                              checked={enabled}
+                              disabled={readOnly}
+                              onChange={(next) =>
+                                updateCap(cap.id, { enabled: next })
+                              }
+                            />
+                            <span className={gg.capName}>{cap.name}</span>
+                            <span className={gg.capId}>{cap.id}</span>
+                          </label>
+                          <p className={gg.capPurpose}>{cap.purpose}</p>
+                          {enabled && (
+                            <CapabilityBody {...capabilityFields(cap)} />
                           )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })}
+        </>
+      )}
 
       {/* Roster — which other agents this one may put to work, and for what. An agent
           may list itself, for recursion. Panelled, like the run limits: it is a table of

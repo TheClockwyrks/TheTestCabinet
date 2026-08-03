@@ -28,10 +28,11 @@ read-only **built-ins** every operator shares:
 | `shell-only`    | Shell and nothing else — the ablation extreme.                           |
 
 A built-in is one agent, and it is offered as something you can launch without editing it,
-which shapes the two "everything on" ones in two ways worth knowing. They leave out any
-capability that is inert or refused without something authored beside it — today that is
-[`fsm`](/gg/fsms/), whose whole content is a state table over *other* agent profiles a
-single-agent configuration does not have. And their one agent lists **itself** in its
+which shapes the two "everything on" ones in three ways worth knowing. Their one agent is
+a **RaC** [agent](#agent-type) — "everything on" includes
+[responses as code](/gg/responses-as-code/), which is a type rather than a capability, and
+the type that reads the most of the catalogue. They leave out any capability that is inert
+or refused without something authored beside it. And their one agent lists **itself** in its
 roster, in every scope, because that is the only profile it can name: without it
 `spawn_subagent` and `exec` would be offered nothing to target, and an agent that may file
 issues with no implementer to assign them to is refused at launch.
@@ -90,10 +91,10 @@ the edits, **Cancel** returns discarding them, and the configuration itself is o
 written to your account by the Save button on the configuration view. Each profile
 carries:
 
+- an **agent type** (below), chosen above everything else because it decides what the
+  rest of the form even offers;
 - its own enabled **capabilities**, their implementations and params, and per-tool
-  [ablation](/gg/toolset-ablation/) overrides — so [responses as
-  code](/gg/responses-as-code/) is a per-agent choice too, and one run can mix
-  code-emitting and tool-calling agents;
+  [ablation](/gg/toolset-ablation/) overrides;
 - **one model**, either pinned outright or deferred to a run-level [model
   slot](#model-slots) (below), and the
   [prompt-cache lifetime](#prompt-cache-lifetime) its requests ask for;
@@ -115,19 +116,50 @@ carries:
   does double duty: it is also the allowlist [`exec`](/gg/fork-and-exec/) is checked
   against, since becoming a profile and briefing one are both putting it to work.
 
-Two capability choices change what a profile *is*, rather than what it can do, so they
-are worth knowing before reading the rest of this page:
+One more thing is worth knowing before reading the rest of this page: two capabilities
+backed by a [module](/gg/modules/) — project management and agent-managed context — carry
+an **`ownership`** param deciding whether the agent's prompt carries that module or only
+its tools do. Left alone it is `owned`. The other module-backed capabilities have no such
+param: a task list, a memory store and a skills catalogue are about the agent holding
+them, so they are always in its prompt.
 
-- A profile that enables **[`fsm`](/gg/fsms/)** is a **machine**, not an agent. Its
-  `states` param is an ordered list over the configuration's *other* profiles, and it
-  takes no turns of its own — its model binding and any other capability it declares are
-  ignored, and the editor says so. It is namable everywhere an ordinary profile is: as
-  the root, as a roster target, as an issue's implementer.
-- Two capabilities backed by a [module](/gg/modules/) — project management and
-  agent-managed context — carry an **`ownership`** param deciding whether the agent's prompt
-  carries that module or only its tools do. Left alone it is `owned`. The other module-backed
-  capabilities have no such param: a task list, a memory store and a skills catalogue are
-  about the agent holding them, so they are always in its prompt.
+### Agent type
+
+**How** an agent is implemented is a different question from **what** it can do, and it
+is asked first — as a three-way selector above the capabilities, because the answer
+decides which capabilities the form offers at all:
+
+- **Tools** — tool calling: gg offers each capability's functions as tools and the model
+  calls them one at a time, a turn per round trip.
+- **RaC** — [responses as code](/gg/responses-as-code/): the model's whole reply is a
+  TypeScript program over the same functions, run in a wasm sandbox, so one turn can make
+  dozens of calls, branch on their results, and loop.
+- **FSM** — a [state machine](/gg/fsms/) over the configuration's _other_ profiles. Not a
+  worker at all: it takes no turns, so its model binding, its prompt and any capability
+  are never read — each state runs the profile it names, with that profile's
+  configuration.
+
+It is a per-agent choice, so one run can mix code-emitting and tool-calling agents, and
+swapping a profile between Tools and RaC is the single biggest lever a study has. A
+machine is namable everywhere an ordinary profile is: as the root, as a roster target, as
+an issue's implementer.
+
+The selected type opens its own settings where a capability's would sit — the sandbox
+ceilings and [response healing](/gg/response-healing/) for **RaC**, the state table for
+**FSM** — and filters the capability list below it. A capability only one type reads is
+listed only under that type: [program library](/gg/program-library/) is offered to a RaC
+agent and not to a Tools one, because there are no programs in a tool-calling session to
+keep. An **FSM** profile is offered no capabilities whatever; its configuration _is_ the
+machine.
+
+On the wire there is no type field — gg reads the type off the `responses-as-code` and
+`fsm` capabilities, which is what the editor writes. That has one consequence worth
+stating: **a saved agent carries the configuration of the type it was saved under, and
+none of any other.** Switching type while an agent is open loses nothing (flip back and
+forth freely; everything is still there), but once **Save agent** is pressed the types
+you switched away from are wound back to their defaults — so reopening the agent and
+switching to one of them shows what a fresh agent of that type would have been, not what
+was on screen before.
 
 ## Model slots
 
@@ -240,14 +272,14 @@ A launched gg run is watched on gg's own live monitor, which renders its
 **Dashboard** — the whole-run read-out (status, the token/cost tally with its
 caching and reasoning splits as rings, how many agents ran, and the configuration it
 is running under); **Agents** —
-the run read per *configured* agent, each profile's instances summed into one
+the run read per _configured_ agent, each profile's instances summed into one
 read-out (how many ran, what they spent between them, which files and tools
 filled their windows, and what [state](/gg/modules/) they held between them), which is
 the grain an ablation is read at;
 **Instances**, the per-running-agent explorer that lays the run out as a filesystem
 (an instance is a folder, the things you can monitor about it are its files — including
 a `modules` folder for what it holds — and a spawned agent is a folder under
-`subagents`); and **Modules**, the run read by the *state* it holds rather than by the
+`subagents`); and **Modules**, the run read by the _state_ it holds rather than by the
 agents holding it, grouped by kind so that one store four agents share reads as one
 store. That view is not only for the session that launched the run:
 

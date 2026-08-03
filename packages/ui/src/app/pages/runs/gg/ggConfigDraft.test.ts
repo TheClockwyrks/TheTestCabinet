@@ -18,8 +18,8 @@ import {
   fsmStatesWarnings,
   launchModelSlots,
   renameStateDraft,
+  resetCapabilitiesForMode,
   runLimitsWarning,
-  statesDraftValue,
   type GgAgentDraft,
   type GgConfigDraft,
 } from "./ggConfigDraft";
@@ -1306,46 +1306,166 @@ describe("a state machine", () => {
 
   it("warns about what is odd rather than wrong", () => {
     const draft = draftFromCapabilitySet(
-      machineSet(
-        [
-          ...LINEAR,
-          // Declared, correct, and unreachable — kept, because deleting an author's
-          // state to make a warning go away would be worse than saying so.
-          { name: "verify", agent: "Builder", transitions: [] },
-        ],
-        // A shell's own capabilities are never read; the author is told rather than
-        // left believing the states inherited them.
-        { capabilities: [{ id: "memories", enabled: true, params: {} }] },
-      ),
+      machineSet([
+        ...LINEAR,
+        // Declared, correct, and unreachable — kept, because deleting an author's
+        // state to make a warning go away would be worse than saying so.
+        { name: "verify", agent: "Builder", transitions: [] },
+      ]),
     );
-    // `machineSet`'s `over` replaces the capability list, so put the machine back.
-    const shell: GgAgentDraft = {
-      ...draft.agents[0]!,
-      capabilities: {
-        ...draft.agents[0]!.capabilities,
-        fsm: {
-          enabled: true,
-          params: {
-            states: statesDraftValue([
-              {
-                name: "explore",
-                agentId: draft.agents[1]!.id,
-                transitions: [],
-              },
-              { name: "verify", agentId: draft.agents[2]!.id, transitions: [] },
-            ]),
-          },
-          extraParams: {},
-        },
-        memories: { enabled: true, params: {}, extraParams: {} },
-      },
-    };
-    const warnings = fsmStatesWarnings(shell, [
-      shell,
-      ...draft.agents.slice(1),
-    ]);
+    const warnings = fsmStatesWarnings(draft.agents[0]!, draft.agents);
     expect(warnings.join(" ")).toMatch(/unreachable from `explore`/);
-    expect(warnings.join(" ")).toMatch(/other capabilities \(Memories\)/);
+  });
+
+  // A shell used to be able to enable capabilities it would never read, and the editor
+  // could only warn about it. An agent's [type](GgAgentMode) is chosen now, a machine
+  // offers no capability controls, and none is saved for one — so what was a warning is a
+  // state that cannot be reached, which is what this pins.
+  it("saves no capability of its own, whatever a stored config claimed", () => {
+    const draft = draftFromCapabilitySet(
+      machineSet(LINEAR, {
+        capabilities: [
+          { id: FSM, enabled: true, params: { states: LINEAR } },
+          { id: "memories", enabled: true, params: { maxCount: 4 } },
+          { id: "shell", enabled: true, params: {} },
+        ],
+      }),
+    );
+    expect(draft.agents[0]!.mode).toBe("fsm");
+    const shell = capabilitySetFromDraft(draft, null).agents[0]!;
+    expect(
+      shell.capabilities.filter((c) => c.enabled).map((c) => c.id),
+    ).toEqual([FSM]);
+    // …and nothing of what it claimed is carried along either.
+    expect(shell.capabilities.find((c) => c.id === "memories")?.params).toEqual(
+      {},
+    );
+  });
+});
+
+// --- Agent types ------------------------------------------------------------------
+//
+// An agent's type is not a capability: it decides how the agent is implemented, and so
+// which capabilities are even offered to it. The wire format has no field for it — it
+// records the type as the two mode-marker capabilities — so the draft's job is to project
+// one onto the other in both directions, and to save exactly the selected type's
+// configuration and no other's.
+
+describe("an agent's type", () => {
+  const capsOf = (s: GgCapabilitySet, id: string) =>
+    s.agents[0]!.capabilities.find((c) => c.id === id);
+
+  it("is read off the mode-marker capabilities a stored config carries", () => {
+    expect(draftFromCapabilitySet(capSet([])).agents[0]!.mode).toBe("tools");
+    expect(
+      draftFromCapabilitySet(
+        capSet([{ id: "responses-as-code", enabled: true, params: {} }]),
+      ).agents[0]!.mode,
+    ).toBe("rac");
+    expect(
+      draftFromCapabilitySet(capSet([{ id: "fsm", enabled: true, params: {} }]))
+        .agents[0]!.mode,
+    ).toBe("fsm");
+  });
+
+  it("writes itself back out as those same two flags", () => {
+    const draft = emptyDraft();
+    draft.agents[0]!.mode = "rac";
+    const saved = capabilitySetFromDraft(draft, null);
+    expect(capsOf(saved, "responses-as-code")?.enabled).toBe(true);
+    expect(capsOf(saved, "fsm")?.enabled).toBe(false);
+  });
+
+  // The rule the whole projection exists for: a saved agent carries the configuration of
+  // the type it was saved under, and none of any other. Anything else would record a run
+  // as having had a capability gg never read.
+  it("saves only the selected type's configuration", () => {
+    const draft = draftFromCapabilitySet(
+      capSet([
+        { id: "responses-as-code", enabled: true, params: { imageViewCap: 4 } },
+        { id: "program-library", enabled: true, params: { keep: 5 } },
+        { id: "shell", enabled: true, params: {} },
+      ]),
+    );
+    // As a code agent, all three are its configuration.
+    const asCode = capabilitySetFromDraft(draft, null);
+    expect(capsOf(asCode, "program-library")?.enabled).toBe(true);
+    expect(capsOf(asCode, "responses-as-code")?.params).toEqual({
+      imageViewCap: 4,
+    });
+
+    // Turned into a tool-calling agent, the two that only a code agent reads are not
+    // written down at all — and the one both types read is untouched.
+    draft.agents[0]!.mode = "tools";
+    const asTools = capabilitySetFromDraft(draft, null);
+    expect(capsOf(asTools, "responses-as-code")).toEqual({
+      id: "responses-as-code",
+      enabled: false,
+      params: {},
+    });
+    expect(capsOf(asTools, "program-library")).toEqual({
+      id: "program-library",
+      enabled: false,
+      params: {},
+    });
+    expect(capsOf(asTools, "shell")?.enabled).toBe(true);
+  });
+
+  // Switching type inside one editing session must lose nothing…
+  it("keeps another type's configuration in the draft until the agent is committed", () => {
+    const draft = draftFromCapabilitySet(
+      capSet([
+        { id: "responses-as-code", enabled: true, params: {} },
+        { id: "program-library", enabled: true, params: { keep: 5 } },
+      ]),
+    );
+    draft.agents[0]!.mode = "tools";
+    expect(draft.agents[0]!.capabilities["program-library"]).toMatchObject({
+      enabled: true,
+      params: { keep: "5" },
+    });
+  });
+
+  // …and committing the agent is what turns that scratch space back into the defaults a
+  // fresh agent of the other type would have had, so reopening it and switching back
+  // never resurrects a configuration that was not saved.
+  it("winds another type's configuration back to the catalog defaults on commit", () => {
+    const draft = draftFromCapabilitySet(
+      capSet([
+        { id: "responses-as-code", enabled: true, params: {} },
+        { id: "program-library", enabled: true, params: { keep: 5 } },
+      ]),
+    );
+    const committed = resetCapabilitiesForMode({
+      ...draft.agents[0]!,
+      mode: "tools",
+    });
+    expect(committed.capabilities["program-library"]).toEqual({
+      enabled: false,
+      implementation: "",
+      params: {},
+      extraParams: {},
+    });
+    // A capability the catalog turns on by default comes back on, not merely blank —
+    // "the defaults for that type" is what a fresh agent of it would have been.
+    expect(
+      resetCapabilitiesForMode({ ...draft.agents[0]!, mode: "fsm" })
+        .capabilities["shell"]?.enabled,
+    ).toBe(true);
+  });
+
+  // The same wind-back on the way in, so a reload and a commit agree: a stored agent
+  // opens on its own type's configuration and on the defaults for every other.
+  it("opens a stored agent on the defaults for the types it was not saved under", () => {
+    const draft = draftFromCapabilitySet(
+      capSet([{ id: "responses-as-code", enabled: true, params: {} }]),
+    );
+    expect(draft.agents[0]!.mode).toBe("rac");
+    // `shell` is a catalog default and the stored config named it nowhere, so it loads
+    // off — a stored capability list is exhaustive for the type it was saved under.
+    expect(draft.agents[0]!.capabilities["shell"]?.enabled).toBe(false);
+    // The machine, which this agent is not, opens on nothing authored.
+    expect(agentStates(draft.agents[0]!)).toEqual([]);
   });
 });
 

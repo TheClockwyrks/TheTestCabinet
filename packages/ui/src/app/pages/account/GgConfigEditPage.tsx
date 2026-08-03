@@ -15,6 +15,7 @@ import {
   draftFromCapabilitySet,
   draftSaveError,
   emptyDraft,
+  resetCapabilitiesForMode,
   type GgConfigDraft,
 } from "../runs/gg/ggConfigDraft";
 import { builtInDraft } from "../runs/gg/useGgConfigs";
@@ -194,8 +195,21 @@ export function GgConfigEditPage() {
     setAgentSnapshot(null);
     setEditingAgentId(null);
   }
+  // Saving an agent keeps the edits already applied and returns to the configuration —
+  // and commits its **type**: what the other types were configured with was scratch
+  // space the editor held so that switching type and back lost nothing, and an agent
+  // that has been saved carries the configuration of the type it was saved under and no
+  // other. Winding it back here is what makes reopening the agent and switching type
+  // show that type's defaults, exactly as it would after a reload (the save path writes
+  // no capability the agent's type does not read).
   function saveAgent() {
     if (agentError) return;
+    setDraft((current) => ({
+      ...current,
+      agents: current.agents.map((a) =>
+        a.id === editingAgentId ? resetCapabilitiesForMode(a) : a,
+      ),
+    }));
     setAgentSnapshot(null);
     setEditingAgentId(null);
   }

@@ -122,6 +122,62 @@ export const CAP_GROUPS: ReadonlyArray<{
   { group: "Debugging", startOpen: false },
 ];
 
+// --- Agent type -------------------------------------------------------------------
+//
+// How an agent is **implemented**, which is a different question from what it can do.
+// A *Tools* agent is driven by tool calls; a *RaC* agent's whole reply is a TypeScript
+// program over the same functions, run in a wasm sandbox; and an *FSM* agent is not a
+// worker at all — it is a state machine over the configuration's other profiles, with
+// no turns, no model and no capabilities of its own.
+//
+// This is deliberately **not** a capability, and the distinction is the point. A
+// capability is a feature an agent either has or has not, listed beside its peers and
+// ablatable one at a time. The agent type decides which capabilities are offered in the
+// first place — and, for a machine, whether the question applies at all.
+//
+// The wire format has no `type` field: it records the type as the two mode-marker
+// capabilities ([RESPONSES_AS_CODE_CAP_ID] and [FSM_CAP_ID]), which is what gg reads. So
+// this vocabulary is a *projection* of the contract, and the load/save paths in
+// [ggConfigDraft] are where the two meet.
+export type GgAgentMode = "tools" | "rac" | "fsm";
+
+// The agent types, in the order the selector offers them: the two ways of driving a
+// worker, and then the one that is not a worker.
+export const AGENT_MODES: ReadonlyArray<{
+  value: GgAgentMode;
+  label: string;
+  // What picking this type means for the agent, shown under the selector — the one
+  // sentence an operator needs before choosing.
+  purpose: string;
+}> = [
+  {
+    value: "tools",
+    label: "Tools",
+    purpose:
+      "Tool calling: gg offers each capability's functions as tools and the model calls them one at a time, a turn per round trip.",
+  },
+  {
+    value: "rac",
+    label: "RaC",
+    purpose:
+      "Responses as code: the model's whole reply is a TypeScript program over the same functions, run in a wasm sandbox — one turn can make dozens of calls, branch on their results, and loop.",
+  },
+  {
+    value: "fsm",
+    label: "FSM",
+    purpose:
+      "A state machine over the configuration's other profiles. It is not a worker: it has no turns of its own, so its model, its prompt and any capabilities are never read — each state runs the profile it names, with that profile's configuration.",
+  },
+];
+
+export const AGENT_MODE_HINT =
+  "How this agent is implemented — and so what it can be configured with. Tools and RaC are two ways of driving the same capabilities, and swapping between them is the single biggest lever a study has. A state machine has no capabilities of its own at all; its configuration is the machine.";
+
+// The agent types a capability is offered under when its [spec](CapSpec.modes) names
+// none: both of the types a real worker can be. A machine is never in this list — it
+// holds no capabilities whatever.
+const WORKER_MODES: ReadonlyArray<GgAgentMode> = ["tools", "rac"];
+
 // A dedicated param control on a capability. `kind` picks the input + how the value
 // coerces into the JSON params object: fraction/number/bytes → a JSON number,
 // select → a JSON string (an empty selection omits the param entirely), text → a
@@ -232,6 +288,12 @@ export interface CapSpec {
   name: string;
   group: CapGroup;
   purpose: string;
+  // The [agent types](GgAgentMode) that offer this capability, when it is not offered
+  // under every type a worker can be. `program-library` is the case that matters: there
+  // are no programs in a tool-calling session to keep, and gg gates the capability on
+  // the execution mode outright (`program_library: responses_as_code && program_library`),
+  // so offering the switch to a Tools agent could only mislead.
+  modes?: ReadonlyArray<GgAgentMode>;
   // Part of the default (minimal) capability set — on when the config form first
   // opens.
   defaultOn?: boolean;
@@ -513,6 +575,55 @@ export function capabilityParam(
 // validation that mirrors gg's launch checks — all have to spell them the same way.
 export const FSM_CAP_ID = "fsm";
 export const FSM_STATES_PARAM = "states";
+
+// The capability that *is* the responses-as-code [agent type](GgAgentMode)
+// (`CAPABILITY_RESPONSES_AS_CODE` in `crates/core/src/gg.rs`). Like `fsm` it is how the
+// wire format records which type an agent is, not a feature listed beside its peers —
+// the editor never offers it as a capability row.
+export const RESPONSES_AS_CODE_CAP_ID = "responses-as-code";
+
+// The two capabilities that record an [agent type](GgAgentMode) rather than a feature of
+// one. Their `enabled` flag is read off (and written from) the agent's type; nothing
+// else in the editor may switch them.
+export function isModeCapability(id: string): boolean {
+  return id === FSM_CAP_ID || id === RESPONSES_AS_CODE_CAP_ID;
+}
+
+/**
+ * Whether a capability's configuration is read at all by an agent of this
+ * [type](GgAgentMode).
+ *
+ * The two mode-marker capabilities apply under exactly their own type, because they
+ * *are* it. A machine holds nothing else: it has no turns, and each of its states runs
+ * another profile with that profile's configuration, so every remaining capability is
+ * inapplicable to it. Everything else applies under whichever worker types its spec
+ * names.
+ */
+export function capabilityAppliesToMode(
+  cap: CapSpec,
+  mode: GgAgentMode,
+): boolean {
+  if (cap.id === FSM_CAP_ID) return mode === "fsm";
+  if (cap.id === RESPONSES_AS_CODE_CAP_ID) return mode === "rac";
+  if (mode === "fsm") return false;
+  return (cap.modes ?? WORKER_MODES).includes(mode);
+}
+
+/**
+ * The capabilities the editor **lists** for an agent of this type — everything the type
+ * reads, minus the two mode markers, which the type selector already stands for. Empty
+ * for a machine, which is the whole of "an FSM agent has no capabilities".
+ */
+export function capabilitiesForMode(mode: GgAgentMode): ReadonlyArray<CapSpec> {
+  return CAPABILITIES.filter(
+    (cap) => !isModeCapability(cap.id) && capabilityAppliesToMode(cap, mode),
+  );
+}
+
+/** One capability's catalog entry, or `undefined` for an id the catalog has none for. */
+export function capabilitySpec(id: string): CapSpec | undefined {
+  return CAPABILITIES.find((cap) => cap.id === id);
+}
 
 // Whether a module-backed capability's state is carried in its holder's **prompt**
 // (`owned` — every turn, as a pinned block and a prompt section) or is reachable only
@@ -859,9 +970,11 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     tools: ["list_dir"],
   },
   {
-    id: "responses-as-code",
+    id: RESPONSES_AS_CODE_CAP_ID,
     name: "Responses as code",
     group: "Models & tools",
+    // Never rendered as a capability row: this entry is the RaC [agent
+    // type](GgAgentMode)'s settings panel, and the type selector is its switch.
     purpose:
       "The agent's whole reply is a TypeScript program over the tools, run in a wasm sandbox.",
     params: [
@@ -905,6 +1018,9 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     id: "program-library",
     name: "Program library",
     group: "Models & tools",
+    // There are no programs in a tool-calling session to keep, and gg gates the
+    // capability on the execution mode itself, so it is offered to a RaC agent only.
+    modes: ["rac"],
     purpose:
       "Keep every program the agent runs, so it can fetch one back, patch it, and hand it over to be run.",
     params: [
@@ -913,7 +1029,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
         label: "Programs kept",
         kind: "number",
         placeholder: "e.g. 20",
-        hint: "How many of the agent's most recent programs are retained and can be fetched with `programs.get`. Older ones are dropped, and asking for one says which turns are still held. `0` keeps every program of the session; empty is gg's default of 20. Needs Responses as code — there are no programs in a tool-calling session to keep.",
+        hint: "How many of the agent's most recent programs are retained and can be fetched with `programs.get`. Older ones are dropped, and asking for one says which turns are still held. `0` keeps every program of the session; empty is gg's default of 20.",
       },
     ],
   },
@@ -1295,11 +1411,13 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
   },
   {
     id: FSM_CAP_ID,
-    name: "Process (state machine)",
+    name: "Process",
     group: "Delegation",
     // A machine is its `states`: gg refuses to launch an agent that enables this and
     // declares none, because an FSM agent has no turns of its own.
     requiresAuthoring: true,
+    // Never rendered as a capability row either: this entry is the FSM [agent
+    // type](GgAgentMode)'s settings panel — the machine itself.
     purpose:
       "Run this agent as a state machine whose states each run one of the other agent profiles.",
     defaultOn: false,
@@ -1362,6 +1480,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
       "Escalate the whole run's replay record to full fidelity: verbatim payloads, no truncation.",
   },
 ];
+
+// The two [mode-marker](isModeCapability) entries, resolved once. They are not listed
+// among an agent's capabilities — the [agent type](GgAgentMode) selector is what turns
+// them on — but their params are still authored, in the panel the selected type opens,
+// so the editor needs the specs themselves.
+export const RESPONSES_AS_CODE_CAP: CapSpec = CAPABILITIES.find(
+  (c) => c.id === RESPONSES_AS_CODE_CAP_ID,
+)!;
+export const FSM_CAP: CapSpec = CAPABILITIES.find((c) => c.id === FSM_CAP_ID)!;
 
 export const DEFAULT_CAP_IDS = CAPABILITIES.filter((c) => c.defaultOn).map(
   (c) => c.id,

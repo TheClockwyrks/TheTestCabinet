@@ -1,12 +1,16 @@
-// The gg configuration editor's **per-agent capability form**, on the two things it has to
-// get right about a control that is not always meaningful.
+// The gg configuration editor's **per-agent form**, on the things it has to get right
+// about a control that is not always meaningful.
 //
-// 1. A param the selected strategy does not read is not offered. The catalog says which
+// 1. An agent's **type** decides what the form offers at all: a capability only one type
+//    reads is listed only under that type, and a machine — which has no capabilities of
+//    its own — is offered none. Switching type has to be free (nothing is lost until the
+//    agent is committed), which is a thing only rendering the form and driving it shows.
+// 2. A param the selected strategy does not read is not offered. The catalog says which
 //    implementations each param applies under (`ParamSpec.showWhenImplementation`), but the
 //    only thing that proves an operator is not staring at a box that changes nothing is
 //    rendering the form and looking. A stale, ignored ceiling sitting beside a live one is
 //    exactly the kind of thing that gets set, saved, and then blamed for a run's behavior.
-// 2. A `model` param binds like every other model in the configuration — from a model slot
+// 3. A `model` param binds like every other model in the configuration — from a model slot
 //    the launch form fills in, or pinned here. That control is two fields that swap, and
 //    which one is showing is decided by whether the param's slot key is *present* in the
 //    draft, which is a distinction no unit test of the draft can see.
@@ -15,7 +19,7 @@ import { useState } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { GgConfigEditor } from "./GgConfigEditor";
-import { BUILT_IN_SKILL_OPTIONS } from "./ggCatalog";
+import { BUILT_IN_SKILL_OPTIONS, type GgAgentMode } from "./ggCatalog";
 import {
   blankAgentDraft,
   blankModelSlot,
@@ -39,12 +43,13 @@ function Harness({ initial }: { initial: GgConfigDraft }) {
   );
 }
 
-// A draft with one agent, opened on that agent's capability form, with `capId` enabled and
-// carrying `params`.
+// A draft with one agent, opened on that agent's form, of the given type (Tools unless
+// said otherwise), with `capId` enabled and carrying `params`.
 function draftWith(
   capId: string,
   implementation: string,
   params: Record<string, string> = {},
+  mode: GgAgentMode = "tools",
 ): GgConfigDraft {
   const draft = emptyDraft();
   const agent = draft.agents[0]!;
@@ -53,6 +58,7 @@ function draftWith(
     agents: [
       {
         ...agent,
+        mode,
         capabilities: {
           ...agent.capabilities,
           [capId]: { enabled: true, implementation, params, extraParams: {} },
@@ -60,6 +66,13 @@ function draftWith(
       },
     ],
   };
+}
+
+// The agent-type selector's segment for a type, by the label it wears.
+function typeSegment(label: string): HTMLElement {
+  return within(
+    screen.getByRole("radiogroup", { name: "Agent type" }),
+  ).getByRole("radio", { name: label });
 }
 
 // Pick an option on a <select> the way an operator would — the editor is controlled, so
@@ -142,21 +155,126 @@ describe("a param the selected strategy does not read", () => {
   });
 });
 
-// The responses-as-code image-view cap is an ungated number — the capability has no
-// implementations, so the control is offered whenever the capability is on. The catalog
-// entry is the whole of this feature's UI, so rendering the form is the only thing that
-// says the generic param grid picked it up: a label that never appears is a cap an
-// operator can only reach by hand-editing the configuration's JSON.
+// An agent's **type** is not a capability, and the whole point of the selector is that
+// the form below it changes: responses-as-code and the state machine are the type's own
+// settings rather than rows in the capability list, and a capability only one type reads
+// is listed only there. None of that is visible without rendering the form and driving
+// the selector.
+describe("an agent's type", () => {
+  it("is chosen above the capabilities, and says what the choice means", () => {
+    render(<Harness initial={emptyDraft()} />);
+    expect(typeSegment("Tools")).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText(/Tool calling: gg offers/)).toBeInTheDocument();
+    // Its own row *above* Capabilities, because the capabilities below are a
+    // consequence of the choice rather than one of them.
+    expect(
+      screen
+        .getByText("Agent type")
+        .compareDocumentPosition(screen.getByText("Capabilities")),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    fireEvent.click(typeSegment("RaC"));
+    expect(typeSegment("RaC")).toHaveAttribute("aria-checked", "true");
+    expect(
+      screen.getByText(/one turn can make dozens of calls/),
+    ).toBeInTheDocument();
+  });
+
+  it("offers responses-as-code as the type's settings, not as a capability", () => {
+    render(<Harness initial={emptyDraft()} />);
+    // Under Tools it is not on the page at all — it is the other type.
+    expect(
+      screen.queryByRole("group", { name: "Responses as code" }),
+    ).toBeNull();
+
+    fireEvent.click(typeSegment("RaC"));
+    const panel = screen.getByRole("group", { name: "Responses as code" });
+    // Its params are the same controls a capability's are…
+    expect(within(panel).getByLabelText(/Max open image views/)).toBeDefined();
+    // …but it has no switch of its own: the type selector is the switch.
+    expect(
+      screen.queryByText("responses-as-code", { selector: "span" }),
+    ).toBeNull();
+  });
+
+  it("lists a capability only the code type reads only under it", () => {
+    render(<Harness initial={emptyDraft()} />);
+    // There are no programs in a tool-calling session to keep.
+    expect(
+      screen.queryByText("program-library", { selector: "span" }),
+    ).toBeNull();
+
+    fireEvent.click(typeSegment("RaC"));
+    expect(
+      screen.getByText("program-library", { selector: "span" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers a machine no capabilities at all — its configuration is the machine", () => {
+    render(<Harness initial={emptyDraft()} />);
+    expect(screen.getByText("Capabilities")).toBeInTheDocument();
+
+    fireEvent.click(typeSegment("FSM"));
+    expect(screen.queryByText("Capabilities")).toBeNull();
+    expect(screen.queryByText("shell", { selector: "span" })).toBeNull();
+    expect(screen.getByRole("group", { name: "Process" })).toBeInTheDocument();
+  });
+
+  // Switching type is a look, not an edit: an operator comparing the two arms of a study
+  // must be able to flip between them without the form quietly forgetting what the one
+  // they flipped away from was set to. (The wind-back to a type's defaults happens when
+  // the agent is *committed*, which is the page's job and is covered in the draft tests.)
+  it("keeps what another type was configured with while the agent is open", () => {
+    render(<Harness initial={draftWith("shell", "")} />);
+    const shell = capabilityRow("shell");
+    select(within(shell).getByLabelText(/Output mode/), "inline");
+
+    fireEvent.click(typeSegment("RaC"));
+    const panel = screen.getByRole("group", { name: "Responses as code" });
+    fireEvent.change(within(panel).getByLabelText(/Max open image views/), {
+      target: { value: "3" },
+    });
+
+    fireEvent.click(typeSegment("Tools"));
+    expect(
+      (
+        within(capabilityRow("shell")).getByLabelText(
+          /Output mode/,
+        ) as HTMLSelectElement
+      ).value,
+    ).toBe("inline");
+
+    fireEvent.click(typeSegment("RaC"));
+    expect(
+      (
+        within(
+          screen.getByRole("group", { name: "Responses as code" }),
+        ).getByLabelText(/Max open image views/) as HTMLInputElement
+      ).value,
+    ).toBe("3");
+  });
+});
+
+// The responses-as-code image-view cap is an ungated number — the type has no
+// implementations, so the control is offered whenever the agent is a code agent. The
+// catalog entry is the whole of this feature's UI, so rendering the form is the only
+// thing that says the generic param grid picked it up: a label that never appears is a
+// cap an operator can only reach by hand-editing the configuration's JSON.
 describe("the responses-as-code image-view cap", () => {
-  it("is offered whenever the capability is on, and holds what is typed into it", () => {
+  it("is offered whenever the agent is a code agent, and holds what is typed into it", () => {
     render(
       <Harness
-        initial={draftWith("responses-as-code", "", { imageViewCap: "4" })}
+        initial={draftWith(
+          "responses-as-code",
+          "",
+          { imageViewCap: "4" },
+          "rac",
+        )}
       />,
     );
-    const row = capabilityRow("responses-as-code");
+    const panel = screen.getByRole("group", { name: "Responses as code" });
 
-    const field = within(row).getByLabelText(
+    const field = within(panel).getByLabelText(
       /Max open image views/,
     ) as HTMLInputElement;
     expect(field.type).toBe("number");
@@ -164,7 +282,7 @@ describe("the responses-as-code image-view cap", () => {
 
     fireEvent.change(field, { target: { value: "1" } });
     expect(
-      (within(row).getByLabelText(/Max open image views/) as HTMLInputElement)
+      (within(panel).getByLabelText(/Max open image views/) as HTMLInputElement)
         .value,
     ).toBe("1");
   });
@@ -250,6 +368,7 @@ describe("authoring a state machine", () => {
     const shell = {
       ...base.agents[0]!,
       name: "Feature",
+      mode: "fsm" as const,
       capabilities: {
         ...base.agents[0]!.capabilities,
         fsm: {
@@ -264,12 +383,11 @@ describe("authoring a state machine", () => {
     return { ...base, agents: [shell, explorer, builder] };
   }
 
-  // The machine lives in the Delegation group, which opens collapsed (it is opt-in),
-  // so every one of these starts by opening it.
+  // A machine is the FSM type's whole configuration, so it is on the page the moment the
+  // agent opens — there is no capability group to expand first.
   function openMachine(draft: GgConfigDraft) {
     render(<Harness initial={draft} />);
-    fireEvent.click(screen.getByRole("button", { name: /Delegation/ }));
-    return capabilityRow("fsm");
+    return screen.getByRole("group", { name: "Process" });
   }
 
   const LINEAR = (workers: [string, string]) => [

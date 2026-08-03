@@ -159,6 +159,54 @@
   flex-wrap: wrap;
 }
 
+// --- Agent type ---------------------------------------------------------------------
+//
+// How the agent is implemented, chosen above its capabilities because the capabilities
+// are a consequence of it. Panelled like the run limits: a segmented track and a line of
+// prose need a surface to read against, and a panelled heading takes the panel's own
+// contrast rather than the backdrop halo.
+
+.modeWidget {
+  padding: t.$space-md t.$space-lg t.$space-lg;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  > :last-child {
+    margin-bottom: 0;
+  }
+}
+
+// What the selected type means, under the track. Muted like every other explanatory
+// line in the form, and given room so the track does not sit on top of it.
+.modePurpose {
+  margin: t.$space-sm 0 0;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+}
+
+// The selected type's own settings — the responses-as-code sandbox, or the machine. The
+// same panel a capability row wears, because they are the same fields; what it is
+// missing is the switch, which the type selector above already is.
+.modePanel {
+  padding: t.$space-md;
+  margin-bottom: t.$space-md;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: s.$panel-bg;
+
+  // The body's own top margin sets it off from a capability's purpose line; here it is
+  // the first thing in the panel and the panel's padding is the whole gutter.
+  > .capBody {
+    margin-top: 0;
+  }
+}
+
 // A capability group: a collapsible header over its capability rows.
 .group {
   margin-bottom: t.$space-md;

@@ -47,10 +47,15 @@ import {
   MODULE_KINDS,
   PRESET_CAP_IDS,
   PRIMARY_SLOT,
+  RESPONSES_AS_CODE_CAP_ID,
   ROOT_AGENT,
   RUN_LIMIT_SPECS,
   SUBAGENT_SCOPES,
+  capabilityAppliesToMode,
+  capabilitySpec,
+  isModeCapability,
   type CapSpec,
+  type GgAgentMode,
   type ParamSpec,
 } from "./ggCatalog";
 
@@ -125,6 +130,18 @@ export interface GgAgentDraft {
   // part of the editor decides it by looking for a particular name.
   id: string;
   name: string;
+  // How this agent is implemented. The wire format has no field for it — it records the
+  // type as the two [mode-marker](isModeCapability) capabilities — so this is derived on
+  // the way in and written back out as those two flags. It is held explicitly rather than
+  // read off the capability map because the map must be free to keep what the *other*
+  // types were configured with: switching type and back inside one editing session is
+  // not an edit, and must lose nothing.
+  mode: GgAgentMode;
+  // Every catalog capability's draft, whether or not this agent's type reads it. The
+  // ones its type does not read are the session's scratch space: they are shown by no
+  // control, written to no capability set ([agentConfigFromDraft]), and returned to the
+  // catalog's defaults whenever the agent is committed or reloaded
+  // ([resetCapabilitiesForMode]).
   capabilities: Record<string, GgCapabilityDraft>;
   modelSource: GgAgentModelSource;
   // The [id](GgModelSlotDraft.id) of the model slot this agent defers to, or empty when
@@ -259,6 +276,79 @@ export function blankCapabilityDraft(): GgCapabilityDraft {
   return { enabled: false, implementation: "", params: {}, extraParams: {} };
 }
 
+/**
+ * A capability row as a *fresh* agent would carry it: the catalog's own on/off default,
+ * with every param seeded to its documented default.
+ *
+ * This is what a capability the agent's [type](GgAgentMode) does not read is returned
+ * to. An agent is saved with one type's configuration and no other, so reopening it and
+ * switching type has to start from somewhere — and the only honest somewhere is what a
+ * new agent of that type would have been, rather than whatever was on screen before the
+ * type was changed.
+ */
+function defaultCapabilityDraft(cap: CapSpec): GgCapabilityDraft {
+  return {
+    enabled: Boolean(cap.defaultOn),
+    implementation: "",
+    params: seededParams(cap),
+    extraParams: {},
+  };
+}
+
+/**
+ * The [type](GgAgentMode) a stored agent config records, read off the two mode-marker
+ * capabilities. A config that names neither is a tool-calling agent, which is what every
+ * configuration written before either existed was.
+ *
+ * A machine wins over responses-as-code when a (hand-written, or pre-type-selector)
+ * config claims both: an FSM shell has no turns, so there is no reply for a program to
+ * be, and the machine is unambiguously the thing that would run.
+ */
+function agentModeOf(
+  capabilities: ReadonlyArray<GgCapabilityConfig>,
+): GgAgentMode {
+  const on = (id: string) =>
+    capabilities.some((cap) => cap.id === id && cap.enabled);
+  if (on(FSM_CAP_ID)) return "fsm";
+  if (on(RESPONSES_AS_CODE_CAP_ID)) return "rac";
+  return "tools";
+}
+
+/**
+ * Whether a capability is live on this agent: its [type](GgAgentMode) reads it *and* it
+ * is switched on. The two mode markers have no switch of their own — the type is their
+ * switch — so for them the first half is the whole question.
+ *
+ * Everything that asks "does this agent have X?" has to ask it this way rather than
+ * reading `capabilities[x].enabled`, which is only half the answer now: the draft
+ * deliberately keeps what the agent's *other* types were configured with.
+ */
+export function capabilityActive(agent: GgAgentDraft, cap: CapSpec): boolean {
+  if (!capabilityAppliesToMode(cap, agent.mode)) return false;
+  return (
+    isModeCapability(cap.id) || Boolean(agent.capabilities[cap.id]?.enabled)
+  );
+}
+
+/**
+ * `agent` with every capability its [type](GgAgentMode) does not read returned to the
+ * catalog's [defaults](defaultCapabilityDraft).
+ *
+ * This is the *commit* half of the type contract, and it is deliberately not applied
+ * while the operator is editing: switching type and back inside one session must lose
+ * nothing, but an agent that has been committed carries the configuration of the type it
+ * was committed under and no other — which is exactly what gets saved, and so exactly
+ * what has to come back.
+ */
+export function resetCapabilitiesForMode(agent: GgAgentDraft): GgAgentDraft {
+  const capabilities = { ...agent.capabilities };
+  for (const cap of CAPABILITIES) {
+    if (capabilityAppliesToMode(cap, agent.mode)) continue;
+    capabilities[cap.id] = defaultCapabilityDraft(cap);
+  }
+  return { ...agent, capabilities };
+}
+
 /** A freshly identified model-slot declaration with the given name and no default. */
 export function blankModelSlot(name: string = ""): GgModelSlotDraft {
   return { id: localId("slot"), name, defaultModelId: "" };
@@ -294,6 +384,10 @@ function draftsFor(
  * on. The name defaults to [ROOT_AGENT] — the name a first profile is born with, not a
  * name anything checks for; pass another for an added agent. `modelSlotId` is empty when
  * the configuration declares no slot for it to defer to yet.
+ *
+ * The [type](GgAgentMode) is read off `enabledIds` the same way a stored config's is read
+ * off its capability list, so a caller says "everything on" once and gets the agent that
+ * describes — rather than having to say which type "everything" implies.
  */
 export function blankAgentDraft(
   name: string = ROOT_AGENT,
@@ -304,6 +398,9 @@ export function blankAgentDraft(
   return {
     id: localId("agent"),
     name,
+    mode: agentModeOf(
+      enabledIds.map((id) => ({ id, enabled: true, params: {} })),
+    ),
     capabilities: draftsFor(enabledIds, paramDefaults),
     modelSource: "model-slot",
     modelSlotId,
@@ -909,12 +1006,14 @@ function statesToParam(
 
 /** Whether `agent`'s profile is an **FSM shell** — a machine rather than a worker. */
 export function isFsmShell(agent: GgAgentDraft): boolean {
-  return Boolean(agent.capabilities[FSM_CAP_ID]?.enabled);
+  return agent.mode === "fsm";
 }
 
 /** The machine `agent` declares, empty when it declares none. */
 export function agentStates(agent: GgAgentDraft): ReadonlyArray<StateDraft> {
-  return statesFromDraft(agent.capabilities[FSM_CAP_ID]?.params?.[FSM_STATES_PARAM]);
+  return statesFromDraft(
+    agent.capabilities[FSM_CAP_ID]?.params?.[FSM_STATES_PARAM],
+  );
 }
 
 /**
@@ -977,17 +1076,11 @@ export function fsmStatesWarnings(
   if (!isFsmShell(agent) || fsmStatesError(agent, agents)) return [];
   const warnings: string[] = [];
   const states = agentStates(agent);
-  // A shell has no turns of its own, so anything else it enables is configuration that
-  // will never be read — said out loud, because the alternative is an author who
-  // believes the machine's states inherited the shell's memories.
-  const extra = CAPABILITIES.filter(
-    (cap) => cap.id !== FSM_CAP_ID && agent.capabilities[cap.id]?.enabled,
-  ).map((cap) => cap.name);
-  if (extra.length) {
-    warnings.push(
-      `A state machine has no turns of its own, so this agent's model and its other capabilities (${extra.join(", ")}) are ignored — each state runs the profile it names, with that profile's configuration.`,
-    );
-  }
+  // There is deliberately no "this shell also enables X" warning any more: an agent's
+  // [type](GgAgentMode) is now the thing that is chosen, a machine offers no capability
+  // controls at all, and none is saved for one — so the state the warning existed to
+  // report is no longer reachable.
+  //
   // Reachability, walked from the entry state exactly as gg walks it.
   const reachable = new Set<string>();
   const queue = [states[0]!.name.trim()];
@@ -1102,9 +1195,13 @@ function agentDraftFromConfig(
       extraParams,
     };
   }
-  return {
+  // The type first, then the capabilities its type does not read wound back to the
+  // catalog's defaults: a stored agent carries one type's configuration and no other, so
+  // there is nothing for the rest of them to be loaded *from*.
+  return resetCapabilitiesForMode({
     id: localId("agent"),
     name: agent.name,
+    mode: agentModeOf(agent.capabilities ?? []),
     capabilities,
     modelSource: agent.modelSlot ? "model-slot" : "model",
     modelSlotId: slotIdByName.get(agent.modelSlot?.trim() ?? "") ?? "",
@@ -1117,7 +1214,7 @@ function agentDraftFromConfig(
     promptCacheTtl: agent.promptCacheTtl ?? "standard",
     // Filled in by [resolveAgentReferences], which needs every profile's id.
     subagents: [],
-  };
+  });
 }
 
 /**
@@ -1216,7 +1313,11 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
   const declare = (name: string | undefined) => {
     const trimmed = name?.trim();
     if (trimmed && !modelSlots.some((m) => m.name === trimmed)) {
-      modelSlots.push({ id: localId("slot"), name: trimmed, defaultModelId: "" });
+      modelSlots.push({
+        id: localId("slot"),
+        name: trimmed,
+        defaultModelId: "",
+      });
     }
   };
   for (const agent of stored) {
@@ -1234,11 +1335,19 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
   const idByName = new Map(
     stored.map((agent, i) => [agent.name, agents[i]!.id] as const),
   );
+  const rootAgentId = agents[0]!.id;
   return {
     agents: agents.map((agent, i) =>
-      resolveAgentReferences(agent, stored[i]!, idByName),
+      // [seedAgentParams] fills only the `agent` params that are *unset*, which after the
+      // load is exactly the ones a capability the agent's type does not read was wound
+      // back to its default. A stored value has already been resolved to a local id by
+      // the pass before it and is left alone.
+      seedAgentParams(
+        resolveAgentReferences(agent, stored[i]!, idByName),
+        rootAgentId,
+      ),
     ),
-    rootAgentId: agents[0]!.id,
+    rootAgentId,
     modelSlots,
     limits: runLimitsDraft(set.limits),
   };
@@ -1461,12 +1570,17 @@ export function agentParamErrors(
 ): Record<string, string | null> {
   const errors: Record<string, string | null> = {};
   for (const cap of CAPABILITIES) {
-    const capDraft = agent.capabilities[cap.id];
-    if (!capDraft?.enabled) {
+    // A capability the agent's [type](GgAgentMode) does not read is not offered, is not
+    // saved, and so cannot be at fault — reporting its params would block a save on a
+    // control that is not on the screen.
+    if (!capabilityActive(agent, cap)) {
       errors[cap.id] = null;
       continue;
     }
-    const parsed = capabilityParams(cap, capDraft);
+    const parsed = capabilityParams(
+      cap,
+      agent.capabilities[cap.id] ?? blankCapabilityDraft(),
+    );
     errors[cap.id] = parsed.ok ? null : parsed.error;
   }
   // The machine's own structure, checked the way gg checks it at launch — reported on
@@ -1508,6 +1622,10 @@ export function referencedModelSlots(draft: GgConfigDraft): Set<string> {
   );
   for (const agent of draft.agents) {
     for (const { capId, slotKey } of MODEL_PARAMS) {
+      // A slot named by a capability the agent's [type](GgAgentMode) does not read is
+      // named by nothing that will be saved, so it feeds no launch input either.
+      const cap = capabilitySpec(capId);
+      if (!cap || !capabilityAppliesToMode(cap, agent.mode)) continue;
       const slotId = agent.capabilities[capId]?.params?.[slotKey];
       if (slotId) out.add(slotId);
     }
@@ -1527,8 +1645,9 @@ const CREATE_ISSUE_TOOL = "create_issue";
  * its issue-creation feature has not been switched off.
  */
 function filesIssues(agent: GgAgentDraft): boolean {
+  const board = capabilitySpec(PROJECT_MANAGEMENT_CAP_ID);
   return (
-    Boolean(agent.capabilities[PROJECT_MANAGEMENT_CAP_ID]?.enabled) &&
+    Boolean(board && capabilityActive(agent, board)) &&
     !agent.disabledTools.includes(CREATE_ISSUE_TOOL)
   );
 }
@@ -1634,12 +1753,21 @@ function agentConfigFromDraft(
   slotName: (slotId: string) => string,
 ): GgAgentConfig {
   const capabilities: GgCapabilityConfig[] = CAPABILITIES.map((cap) => {
+    // Only the selected [type](GgAgentMode)'s configuration is recorded. What the draft
+    // still holds for the other types is a convenience of the editing session — switching
+    // type and back must not lose an edit — and writing it down would be a claim about
+    // the run that is not true: gg never reads it.
+    if (!capabilityAppliesToMode(cap, agent.mode)) {
+      return { id: cap.id, enabled: false, params: {} };
+    }
     const capDraft = agent.capabilities[cap.id] ?? blankCapabilityDraft();
     const parsed = capabilityParams(cap, capDraft, agentName, slotName);
     const impl = (capDraft.implementation ?? "").trim();
     return {
       id: cap.id,
-      enabled: Boolean(capDraft.enabled),
+      // A mode marker has no switch of its own: reaching here at all means the agent's
+      // type *is* this one, which is what the flag records.
+      enabled: isModeCapability(cap.id) || Boolean(capDraft.enabled),
       ...(impl ? { implementation: impl } : {}),
       // Record the config even for a disabled capability, so an ablation's on/off arms
       // stay symmetric.
