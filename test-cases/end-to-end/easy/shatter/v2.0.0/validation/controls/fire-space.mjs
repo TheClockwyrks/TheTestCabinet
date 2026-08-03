@@ -7,11 +7,12 @@
 // flying, rather than opening on a bullet that is already in the air.
 //
 // The tap is read through `actTapFire`, which gives the shot one simulation tick before
-// counting it. Firing is a simulation event: a build may launch the round inside `press` or
-// latch the tap and launch it on the next fixed step exactly as a real key tap does, and
-// `specs/instrumentation.md` sanctions both (the one-shot actions it says are applied
-// immediately are the menu, pause and mute ones). Counting bullets with no time elapsed sees
-// only the first kind and fails the second for a shot it does fire.
+// counting it. `specs/instrumentation.md` puts firing among the one-shot actions a key applies
+// on the press itself, and sanctions either shape that follows from it — launching the round
+// inside `keyDown`, or latching the request there and launching it on the next fixed step.
+// Counting bullets with no time elapsed sees only the first shape and would fail the second
+// for a shot it does fire; one tick sees both. A build that instead samples the fire key's
+// HELD state on the step answers a tap with nothing, which is the fault this reports.
 
 import { newGame, poseShip, actTapFire } from "../_helpers.mjs";
 

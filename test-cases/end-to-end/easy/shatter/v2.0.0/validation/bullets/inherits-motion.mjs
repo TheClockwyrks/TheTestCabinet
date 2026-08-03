@@ -11,9 +11,19 @@
 //
 // Each tap goes through `actTapFire`, which gives the shot one simulation tick before reading
 // it. A build may launch the round inside `press` or latch the tap and launch it on the next
-// fixed step, exactly as a real key tap does, and both are conformant; reading with no time
+// fixed step, and both are conformant (`specs/instrumentation.md`); reading with no time
 // elapsed sees no bullet at all on the second kind. That tick costs at most a fraction of a
 // px/s of gravity on the round, which the tolerances below absorb.
+//
+// A tap that produces NO bullet is a failure of this item, not a crash in it. Reading a launch
+// velocity straight off `shot.bullet` threw a bare `Cannot read properties of undefined
+// (reading 'vx')` on a build whose gun never answered the tap, and the driver reports a throw
+// out of a check as the script never having RUN — so the one thing the run had actually proved
+// (the shot was never taken) was reported as "the build exposed the debug API this check
+// drives", which is both wrong and useless to whoever reads it. Each shot is therefore
+// asserted to exist first, and the velocity comparisons read through `launch`, which
+// substitutes a sentinel rather than throwing. The verdict is the same either way; only the
+// reason it gives changes.
 
 import {
   newGame,
@@ -25,6 +35,16 @@ import {
 } from "../_helpers.mjs";
 
 const DRIFT = 300; // px/s of ship motion the second shot must carry
+
+/**
+ * The launch velocity of the round `shot` produced, or `NaN` if the tap produced no
+ * round at all. `NaN` fails every comparison below without throwing, so a gun that
+ * never answered is reported as the wrong launch speed it is, next to the assertion
+ * that already said no bullet was fired.
+ */
+function launch(shot) {
+  return shot.bullet ? shot.bullet.vx : Number.NaN;
+}
 
 export default function item() {
   // The two shots, compared by `assert`.
@@ -72,22 +92,26 @@ export default function item() {
         0,
       );
 
+      // Both taps must have produced a round before any launch speed means anything.
+      check.expectOk("the at-rest tap fires a round", Boolean(atRest.bullet));
+      check.expectOk("the moving tap fires a round", Boolean(moving.bullet));
+
       check.expectClose(
         "a shot fired at rest leaves at the muzzle speed",
-        atRest.bullet.vx,
+        launch(atRest),
         MUZZLE_SPEED,
         2,
       );
       check.expectClose(
         "a shot fired while moving carries the ship's velocity",
-        moving.bullet.vx,
+        launch(moving),
         MUZZLE_SPEED + DRIFT,
         2,
       );
       check.expectGt(
         "the moving shot is faster than the at-rest shot",
-        moving.bullet.vx,
-        atRest.bullet.vx + 250,
+        launch(moving),
+        launch(atRest) + 250,
       );
     },
   };

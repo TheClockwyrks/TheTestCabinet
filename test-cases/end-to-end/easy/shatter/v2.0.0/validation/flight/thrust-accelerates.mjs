@@ -4,8 +4,19 @@
 // resulting velocity is read back — a stationary ship cannot gain speed on its own.
 //
 // The ship's pose is the precondition (`arrange`); holding thrust while the real sim runs is
-// the behavior under test (`act`), so that quarter-second burn IS the clip — the reviewer sees
-// the same acceleration the numbers describe. 0.25 s x 120 Hz = 30 ticks.
+// the behavior under test (`act`), so the burn IS the clip — the reviewer sees the same
+// acceleration the numbers describe.
+//
+// The verdict is read a quarter of a second in (0.25 s x 120 Hz = 30 ticks) and the hold then
+// continues to a full 1.5 s (180 ticks). The two lengths answer different questions. A quarter
+// second is where the NUMBER is sharp: drag has barely bitten, so the speed is within a couple
+// of px/s of the 480 px/s^2 the spec states and the ~116 px/s window below pins it. But a
+// quarter second on screen is a ship that twitches and stops — far too short to read as
+// acceleration at all. By 1.5 s the ship has wound up to ~608 px/s and crossed a third of the
+// field, which is unmistakably a ship building speed. It is still under the 680 px/s cap
+// (`specs/ship.md`), so the clip never strays into what `flight/speed-cap` exists to show, and
+// the ship — free of the star's pull — flies straight past the well and stays on the field.
+// The dwell runs AFTER the snapshot the assertions read, so it cannot move the verdict.
 
 import { newGame, poseShip, actHoldKey, speedOf } from "../_helpers.mjs";
 
@@ -22,7 +33,8 @@ export default function item() {
     },
 
     async act(api) {
-      ({ after } = await actHoldKey(api, "ArrowUp", 30));
+      // Measure at 30 ticks; keep thrusting to 180 so the clip is a 1.5 s burn.
+      ({ after } = await actHoldKey(api, "ArrowUp", 30, { dwell: 150 }));
     },
 
     async assert(api, check) {
