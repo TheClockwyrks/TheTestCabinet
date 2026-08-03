@@ -1396,6 +1396,26 @@ impl GgCapabilitySet {
         self.root().is_tool_disabled(tool)
     }
 
+    /// The profile that actually **runs** when work is dispatched onto the profile named `name`:
+    /// that profile, or — when it is an [FSM shell](GgAgentConfig::is_fsm_shell) — the agent its
+    /// machine's [entry state](GgAgentConfig::fsm_entry_agent) runs.
+    ///
+    /// This is the profile a dispatch takes its **model** from, because it is the one whose turns
+    /// are about to be taken: an agent put to work on a machine *becomes* that machine's entry
+    /// state before its first turn, and the shell itself has no model at all. One hop is enough —
+    /// a state may not run another shell.
+    ///
+    /// Falls back to the shell itself when its machine names an entry agent the set does not
+    /// declare, so a broken machine is reported by whoever asked (a launch check with the whole
+    /// set in hand) rather than silently answered `None` here.
+    pub fn dispatched_agent(&self, name: &str) -> Option<&GgAgentConfig> {
+        let agent = self.agent(name)?;
+        match agent.fsm_entry_agent() {
+            Some(entry) => Some(self.agent(entry).unwrap_or(agent)),
+            None => Some(agent),
+        }
+    }
+
     /// The declaration of the named [model slot](GgModelSlot), or `None` when this set
     /// declares no such slot.
     pub fn model_slot(&self, name: &str) -> Option<&GgModelSlot> {
@@ -1410,7 +1430,7 @@ impl GgCapabilitySet {
     /// [`GgInvocation::model_windows`]): a run may span several models, so one figure
     /// for "the run's model" would be wrong for every agent off the Root's model. An
     /// agent whose binding is still [deferred](GgAgentConfig::model_slot) names no model
-    /// and is skipped.
+    /// and is skipped, as is an [FSM shell](GgAgentConfig::is_fsm_shell), which runs none.
     pub fn bound_model_ids(&self) -> Vec<&str> {
         let mut ids: Vec<&str> = Vec::new();
         for agent in &self.agents {
@@ -1430,10 +1450,13 @@ impl GgCapabilitySet {
     ///
     /// Launching resolves every one of them, so this is empty for the capability set a
     /// run records; a non-empty result is a configuration being *launched*, not run.
+    ///
+    /// An [FSM shell](GgAgentConfig::is_fsm_shell) is never listed: a machine takes no turns,
+    /// so there is no model for a launch to supply and nothing about it is outstanding.
     pub fn unresolved_agents(&self) -> Vec<&str> {
         self.agents
             .iter()
-            .filter(|a| !a.is_resolved())
+            .filter(|a| !a.is_fsm_shell() && !a.is_resolved())
             .map(|a| a.name.as_str())
             .collect()
     }
@@ -1526,12 +1549,14 @@ pub struct GgAgentConfig {
     pub capabilities: Vec<GgCapabilityConfig>,
     /// The opaque model id this agent runs on, passed through to the model client.
     /// Empty while the binding is [deferred](Self::model_slot) to a model slot the
-    /// launch has not filled in yet.
+    /// launch has not filled in yet — and empty for good on an
+    /// [FSM shell](Self::is_fsm_shell), which takes no turns and so runs no model.
     #[serde(default)]
     pub model_id: String,
     /// The [model slot](GgModelSlot) this agent takes its model from at launch, when it
     /// does not pin one itself. `None` on a pinned binding — which is every binding on
-    /// the set a run records, because launching resolves the deferred ones.
+    /// the set a run records, because launching resolves the deferred ones — and on an
+    /// [FSM shell](Self::is_fsm_shell), which has no model to defer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub model_slot: Option<String>,
@@ -1651,8 +1676,44 @@ impl GgAgentConfig {
         self.effective_capability(id).is_some_and(|c| c.enabled)
     }
 
+    /// Whether this profile is an **FSM shell**: a [machine](CAPABILITY_FSM) over the set's
+    /// other profiles rather than a worker.
+    ///
+    /// A shell takes no turns of its own — each state runs the profile it names, with that
+    /// profile's configuration — so it has **no model**, no prompt, no roster and no
+    /// capabilities beyond the machine itself. Everything that asks an agent for a model has to
+    /// ask this first: a shell answering "none" is the configuration being correct, not
+    /// incomplete.
+    pub fn is_fsm_shell(&self) -> bool {
+        self.is_enabled(CAPABILITY_FSM)
+    }
+
+    /// The [agent profile](GgFsmState::agent) this shell's machine **enters first** — the agent an
+    /// instance dispatched onto it is running before its first turn — or `None` when this profile
+    /// is not a [shell](Self::is_fsm_shell) or declares no readable entry state.
+    ///
+    /// The entry state is `states[0]`: the declaration order is the machine's, and its first
+    /// element is where every instance starts. Read straight off the raw param rather than through
+    /// the engine's parsed machine so the answer is a borrow of this set — and so the two crates
+    /// that need it (gg, to resolve a dispatch's model; the backend, to name a run's model at
+    /// launch) share one definition of "the profile a machine actually runs".
+    pub fn fsm_entry_agent(&self) -> Option<&str> {
+        let agent = self
+            .capability(CAPABILITY_FSM)
+            .filter(|capability| capability.enabled)?
+            .params
+            .get(FSM_PARAM_STATES)?
+            .as_array()?
+            .first()?
+            .get("agent")?
+            .as_str()?
+            .trim();
+        (!agent.is_empty()).then_some(agent)
+    }
+
     /// The model id this agent runs on, or `None` while its binding is still
-    /// [deferred](Self::model_slot) to a model slot the launch has not filled in.
+    /// [deferred](Self::model_slot) to a model slot the launch has not filled in — or forever,
+    /// on an [FSM shell](Self::is_fsm_shell), which runs none.
     pub fn resolved_model_id(&self) -> Option<&str> {
         let id = self.model_id.trim();
         (!id.is_empty()).then_some(id)
@@ -1660,6 +1721,11 @@ impl GgAgentConfig {
 
     /// Whether this agent names a model to run — a pinned binding, or a deferred one the
     /// launch has since filled in.
+    ///
+    /// Asked only of a profile that *needs* one: an [FSM shell](Self::is_fsm_shell) is
+    /// unresolved by this measure and perfectly runnable, which is why
+    /// [`unresolved_agents`](GgCapabilitySet::unresolved_agents) excludes it rather than
+    /// this returning `true` for a machine that has no model to be resolved.
     pub fn is_resolved(&self) -> bool {
         self.resolved_model_id().is_some()
     }

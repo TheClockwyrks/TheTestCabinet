@@ -367,20 +367,25 @@ export function GgConfigEditor({
           Agents
         </p>
         <p className={`${runExec.muted} ${gg.backdropNote}`}>
-          Each agent has its own type, capabilities, model, custom prompt, and
-          the set of agents it may spawn. Open one to configure it. The{" "}
-          <strong>root</strong> agent drives the run&rsquo;s top-level session;
-          make another one the root at any time.
+          Each agent has its own type and — where its type is a worker&rsquo;s —
+          its capabilities, model, custom prompt, and the set of agents it may
+          spawn. Open one to configure it. The <strong>root</strong> agent
+          drives the run&rsquo;s top-level session; make another one the root at
+          any time.
         </p>
         <div className={gg.slotList}>
           {value.agents.map((agent) => {
             const slotName = value.modelSlots.find(
               (s) => s.id === agent.modelSlotId,
             )?.name;
+            // A machine contributes no model half to its row: it runs none, so "no
+            // model" would read as something missing rather than as the type it is.
             const modelSummary =
-              agent.modelSource === "model-slot"
-                ? `slot: ${slotName?.trim() || "none"}`
-                : agent.modelId || "no model";
+              agent.mode === "fsm"
+                ? null
+                : agent.modelSource === "model-slot"
+                  ? `slot: ${slotName?.trim() || "none"}`
+                  : agent.modelId || "no model";
             const modeLabel =
               AGENT_MODES.find((m) => m.value === agent.mode)?.label ?? "";
             const isRootAgent = agent.id === value.rootAgentId;
@@ -399,7 +404,8 @@ export function GgConfigEditor({
                       )}
                     </span>
                     <span className={gg.capId}>
-                      {agentSummary(agent, modeLabel)} · {modelSummary}
+                      {agentSummary(agent, modeLabel)}
+                      {modelSummary ? ` · ${modelSummary}` : ""}
                     </span>
                   </span>
                   {!readOnly && !isRootAgent && (
@@ -501,7 +507,7 @@ export function GgConfigEditor({
   // Changing the type changes nothing else. Everything the other types were configured
   // with stays in the draft untouched, so switching away and back inside one session is
   // not an edit — the wind-back to a type's defaults happens when the agent is
-  // *committed* (`resetCapabilitiesForMode`), not while it is being edited.
+  // *committed* (`resetAgentForMode`), not while it is being edited.
   const setMode = (mode: GgAgentMode) => patchAgent({ mode });
 
   // The props every capability body takes, threaded once: which capability it is and how
@@ -604,91 +610,104 @@ export function GgConfigEditor({
           prompt-cache entries live. The cache lifetime is per agent because it is a cost
           trade that comes out differently for each: the extended lifetime is charged a
           higher write premium, and only earns it back on an agent whose turns are slow or
-          far enough apart to outlive the provider default. */}
-      <div className={gg.slotFields}>
-        <label className={`${runExec.field} ${gg.slotSourceField}`}>
-          <span className={runExec.fieldLabel}>Model from</span>
-          <select
-            className={runExec.select}
-            value={agent.modelSource}
-            disabled={readOnly}
-            onChange={(e) =>
-              patchAgent({
-                modelSource: e.target.value as GgAgentDraft["modelSource"],
-              })
-            }
-          >
-            <option value="model-slot">a model slot (at launch)</option>
-            <option value="model">a specific model (fixed here)</option>
-          </select>
-        </label>
-        {agent.modelSource === "model-slot" ? (
-          <label className={`${runExec.field} ${gg.slotModelField}`}>
-            <span className={runExec.fieldLabel}>Model slot</span>
-            <select
-              className={runExec.select}
-              value={agent.modelSlotId}
-              disabled={readOnly}
-              onChange={(e) => patchAgent({ modelSlotId: e.target.value })}
-            >
-              {/* The offered slots are the ones this configuration declares, by id — a
+          far enough apart to outlive the provider default.
+
+          Absent under a machine, along with the roster and the prompt below it: an FSM
+          agent takes no turns, so it has no model to run, no cache to keep and nobody to
+          spawn. A control for a value gg would never read is worse than no control — it
+          invites an operator to configure a run that does not exist. */}
+      {!isMachine && (
+        <>
+          <div className={gg.slotFields}>
+            <label className={`${runExec.field} ${gg.slotSourceField}`}>
+              <span className={runExec.fieldLabel}>Model from</span>
+              <select
+                className={runExec.select}
+                value={agent.modelSource}
+                disabled={readOnly}
+                onChange={(e) =>
+                  patchAgent({
+                    modelSource: e.target.value as GgAgentDraft["modelSource"],
+                  })
+                }
+              >
+                <option value="model-slot">a model slot (at launch)</option>
+                <option value="model">a specific model (fixed here)</option>
+              </select>
+            </label>
+            {agent.modelSource === "model-slot" ? (
+              <label className={`${runExec.field} ${gg.slotModelField}`}>
+                <span className={runExec.fieldLabel}>Model slot</span>
+                <select
+                  className={runExec.select}
+                  value={agent.modelSlotId}
+                  disabled={readOnly}
+                  onChange={(e) => patchAgent({ modelSlotId: e.target.value })}
+                >
+                  {/* The offered slots are the ones this configuration declares, by id — a
                   slot the operator renamed keeps its binding, and one they deleted
                   leaves the agent on "(none)" rather than on a name nothing answers
                   to. */}
-              {!boundSlot && <option value={agent.modelSlotId}>(none)</option>}
-              {value.modelSlots.map((slot) => (
-                <option key={slot.id} value={slot.id}>
-                  {slot.name.trim() || "(unnamed slot)"}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <label className={`${runExec.field} ${gg.slotModelField}`}>
-            <span className={runExec.fieldLabel}>Model</span>
-            <ModelCombobox
-              value={agent.modelId}
-              onChange={(v) => patchAgent({ modelId: v })}
-              models={models}
-              harnessFamily={GG_MODEL_FAMILY}
-              inputClassName={runExec.input}
-              disabled={readOnly}
-              placeholder="model id (e.g. anthropic/claude-opus-4.8)"
-            />
-          </label>
-        )}
-        <label className={`${runExec.field} ${gg.cacheTtlField}`}>
-          <FieldLabel
-            label="Prompt cache"
-            hint="How long this agent asks the provider to keep its stable cache entries — its opening context and the cached points a later turn reads. The one-hour lifetime is charged a higher write premium (on Anthropic, 2× the input rate against 5 minutes' 1.25×), and is only read back by an agent whose turns are long enough, or spread far enough apart, that five minutes would have expired before the next one."
-          />
-          <select
-            className={runExec.select}
-            value={agent.promptCacheTtl}
-            disabled={readOnly}
-            onChange={(e) =>
-              patchAgent({
-                promptCacheTtl: e.target
-                  .value as GgAgentDraft["promptCacheTtl"],
-              })
-            }
-          >
-            <option value="standard">5 minutes (provider default)</option>
-            <option value="extended">1 hour (extended, costs more)</option>
-          </select>
-        </label>
-      </div>
-      {agent.modelSource === "model-slot" && !boundSlot && (
-        <p className={gg.fieldError}>
-          This agent defers to no model slot, so a run could never give it a
-          model. Pick one of the configuration&rsquo;s slots, or pin it a model.
-        </p>
-      )}
-      {agent.promptCacheTtl === "extended" && (
-        <p className={gg.cacheTtlNote}>
-          Worth it for an agent that delegates, or whose turns run builds and
-          test suites; wasted on one that answers quickly and is never resumed.
-        </p>
+                  {!boundSlot && (
+                    <option value={agent.modelSlotId}>(none)</option>
+                  )}
+                  {value.modelSlots.map((slot) => (
+                    <option key={slot.id} value={slot.id}>
+                      {slot.name.trim() || "(unnamed slot)"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className={`${runExec.field} ${gg.slotModelField}`}>
+                <span className={runExec.fieldLabel}>Model</span>
+                <ModelCombobox
+                  value={agent.modelId}
+                  onChange={(v) => patchAgent({ modelId: v })}
+                  models={models}
+                  harnessFamily={GG_MODEL_FAMILY}
+                  inputClassName={runExec.input}
+                  disabled={readOnly}
+                  placeholder="model id (e.g. anthropic/claude-opus-4.8)"
+                />
+              </label>
+            )}
+            <label className={`${runExec.field} ${gg.cacheTtlField}`}>
+              <FieldLabel
+                label="Prompt cache"
+                hint="How long this agent asks the provider to keep its stable cache entries — its opening context and the cached points a later turn reads. The one-hour lifetime is charged a higher write premium (on Anthropic, 2× the input rate against 5 minutes' 1.25×), and is only read back by an agent whose turns are long enough, or spread far enough apart, that five minutes would have expired before the next one."
+              />
+              <select
+                className={runExec.select}
+                value={agent.promptCacheTtl}
+                disabled={readOnly}
+                onChange={(e) =>
+                  patchAgent({
+                    promptCacheTtl: e.target
+                      .value as GgAgentDraft["promptCacheTtl"],
+                  })
+                }
+              >
+                <option value="standard">5 minutes (provider default)</option>
+                <option value="extended">1 hour (extended, costs more)</option>
+              </select>
+            </label>
+          </div>
+          {agent.modelSource === "model-slot" && !boundSlot && (
+            <p className={gg.fieldError}>
+              This agent defers to no model slot, so a run could never give it a
+              model. Pick one of the configuration&rsquo;s slots, or pin it a
+              model.
+            </p>
+          )}
+          {agent.promptCacheTtl === "extended" && (
+            <p className={gg.cacheTtlNote}>
+              Worth it for an agent that delegates, or whose turns run builds
+              and test suites; wasted on one that answers quickly and is never
+              resumed.
+            </p>
+          )}
+        </>
       )}
 
       {/* Agent type — how this agent is implemented, and so what the rest of the form
@@ -742,8 +761,8 @@ export function GgConfigEditor({
             Process
           </p>
           <p className={`${runExec.muted} ${gg.backdropNote}`}>
-            {FSM_CAP.purpose} A machine has no turns of its own, so the model,
-            the prompt and the roster on this page are never read: each state
+            {FSM_CAP.purpose} A machine has no turns of its own, which is why
+            this page asks it for no model, no prompt and no roster: each state
             runs the profile it names, with that profile&rsquo;s configuration.
           </p>
           <div className={gg.modePanel} role="group" aria-label="Process">
@@ -827,123 +846,140 @@ export function GgConfigEditor({
       {/* Roster — which other agents this one may put to work, and for what. An agent
           may list itself, for recursion. Panelled, like the run limits: it is a table of
           sliders, and a table reads against a surface rather than straight on the
-          backdrop (which is also why its heading takes no readability halo). */}
-      <section className={gg.rosterWidget}>
-        <p className={runExec.sectionLabel}>Roster</p>
-        <p className={runExec.muted}>
-          The agents this one may put to work, and what for:{" "}
-          <strong>Subagent</strong> (spawnable with <code>spawn_subagent</code>,{" "}
-          <code>speculate</code>, or <code>run_workflow</code>),{" "}
-          <strong>Implementer</strong> (assignable as an issue&rsquo;s agent),
-          and <strong>Reviewer</strong> (namable among an issue&rsquo;s
-          reviewers). The three are independent. Describe when to use a target —
-          the description is what this agent sees.
-        </p>
-        <div className={gg.subagentList}>
-          {value.agents.map((target) => {
-            const entry = agent.subagents.find((s) => s.agentId === target.id);
-            const on = Boolean(entry);
-            return (
-              <div key={target.id} className={gg.subagentRow}>
-                <span className={gg.ablationName}>
-                  {target.name || "unnamed"}
-                  {target.id === agent.id && (
-                    <span className={gg.capId}> (self)</span>
-                  )}
-                </span>
-                <span className={gg.subagentScopes}>
-                  {SUBAGENT_SCOPES.map((scope) => (
-                    <label
-                      key={scope.value}
-                      className={gg.ablationLabel}
-                      title={scope.hint}
-                    >
-                      <Switch
-                        checked={Boolean(entry?.scopes.includes(scope.value))}
+          backdrop (which is also why its heading takes no readability halo).
+
+          A machine has none: it never takes a turn, so it never calls a delegation tool
+          and never staffs an issue. Its *states* put profiles to work, and each of those
+          spawns from its own roster. */}
+      {!isMachine && (
+        <>
+          <section className={gg.rosterWidget}>
+            <p className={runExec.sectionLabel}>Roster</p>
+            <p className={runExec.muted}>
+              The agents this one may put to work, and what for:{" "}
+              <strong>Subagent</strong> (spawnable with{" "}
+              <code>spawn_subagent</code>, <code>speculate</code>, or{" "}
+              <code>run_workflow</code>), <strong>Implementer</strong>{" "}
+              (assignable as an issue&rsquo;s agent), and{" "}
+              <strong>Reviewer</strong> (namable among an issue&rsquo;s
+              reviewers). The three are independent. Describe when to use a
+              target — the description is what this agent sees.
+            </p>
+            <div className={gg.subagentList}>
+              {value.agents.map((target) => {
+                const entry = agent.subagents.find(
+                  (s) => s.agentId === target.id,
+                );
+                const on = Boolean(entry);
+                return (
+                  <div key={target.id} className={gg.subagentRow}>
+                    <span className={gg.ablationName}>
+                      {target.name || "unnamed"}
+                      {target.id === agent.id && (
+                        <span className={gg.capId}> (self)</span>
+                      )}
+                    </span>
+                    <span className={gg.subagentScopes}>
+                      {SUBAGENT_SCOPES.map((scope) => (
+                        <label
+                          key={scope.value}
+                          className={gg.ablationLabel}
+                          title={scope.hint}
+                        >
+                          <Switch
+                            checked={Boolean(
+                              entry?.scopes.includes(scope.value),
+                            )}
+                            disabled={readOnly}
+                            onChange={(next) =>
+                              toggleSubagentScope(target.id, scope.value, next)
+                            }
+                          />
+                          <span className={gg.capId}>{scope.label}</span>
+                        </label>
+                      ))}
+                    </span>
+                    {on && (
+                      <input
+                        className={`${runExec.input} ${gg.subagentDescription}`}
+                        type="text"
+                        value={entry?.description ?? ""}
                         disabled={readOnly}
-                        onChange={(next) =>
-                          toggleSubagentScope(target.id, scope.value, next)
+                        onChange={(e) =>
+                          setSubagentDescription(target.id, e.target.value)
                         }
+                        placeholder="when to use this agent"
                       />
-                      <span className={gg.capId}>{scope.label}</span>
-                    </label>
-                  ))}
-                </span>
-                {on && (
-                  <input
-                    className={`${runExec.input} ${gg.subagentDescription}`}
-                    type="text"
-                    value={entry?.description ?? ""}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      setSubagentDescription(target.id, e.target.value)
-                    }
-                    placeholder="when to use this agent"
-                  />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Custom instructions — the field an operator edits normally; inserted into the
+          system prompt. There is no prompt to insert them into under a machine, which
+          renders none. */}
+          <p
+            className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
+          >
+            Custom instructions
+          </p>
+          <textarea
+            className={gg.textarea}
+            value={agent.customInstructions}
+            disabled={readOnly}
+            onChange={(e) => patchAgent({ customInstructions: e.target.value })}
+            placeholder="Extra instructions for this agent, inserted into its system prompt."
+            rows={4}
+          />
+
+          {/* System prompt — the full Handlebars template, collapsed by default. Editing
+          it is the escape hatch; most operators only touch Custom instructions. */}
+          <div className={gg.group}>
+            <button
+              type="button"
+              className={gg.groupHeader}
+              onClick={() => setPromptOpen((v) => !v)}
+              aria-expanded={promptOpen}
+            >
+              <span className={gg.groupToggle}>{promptOpen ? "▾" : "▸"}</span>
+              <span className={gg.groupName}>System Prompt</span>
+              <span className={gg.groupCount}>
+                {promptOverridden ? "overridden" : "default"}
+              </span>
+            </button>
+            {promptOpen && (
+              <div className={gg.capList}>
+                <p className={`${runExec.muted}`}>
+                  The full template gg renders for this agent. Custom
+                  instructions are inserted at the{" "}
+                  <code>{"{{customInstructions}}"}</code> block near the top.
+                  Edit here only to rewrite the whole prompt; leaving it equal
+                  to the default stores no override.
+                </p>
+                <textarea
+                  className={`${gg.textarea} ${gg.promptTextarea}`}
+                  value={promptValue}
+                  disabled={readOnly}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  spellCheck={false}
+                  rows={20}
+                />
+                {!readOnly && promptOverridden && (
+                  <button
+                    type="button"
+                    className={runExec.secondary}
+                    onClick={() => setPrompt(defaultPrompt)}
+                  >
+                    Reset to default
+                  </button>
                 )}
               </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Custom instructions — the field an operator edits normally; inserted into the
-          system prompt. */}
-      <p className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}>
-        Custom instructions
-      </p>
-      <textarea
-        className={gg.textarea}
-        value={agent.customInstructions}
-        disabled={readOnly}
-        onChange={(e) => patchAgent({ customInstructions: e.target.value })}
-        placeholder="Extra instructions for this agent, inserted into its system prompt."
-        rows={4}
-      />
-
-      {/* System prompt — the full Handlebars template, collapsed by default. Editing
-          it is the escape hatch; most operators only touch Custom instructions. */}
-      <div className={gg.group}>
-        <button
-          type="button"
-          className={gg.groupHeader}
-          onClick={() => setPromptOpen((v) => !v)}
-          aria-expanded={promptOpen}
-        >
-          <span className={gg.groupToggle}>{promptOpen ? "▾" : "▸"}</span>
-          <span className={gg.groupName}>System Prompt</span>
-          <span className={gg.groupCount}>
-            {promptOverridden ? "overridden" : "default"}
-          </span>
-        </button>
-        {promptOpen && (
-          <div className={gg.capList}>
-            <p className={`${runExec.muted}`}>
-              The full template gg renders for this agent. Custom instructions
-              are inserted at the <code>{"{{customInstructions}}"}</code> block
-              near the top. Edit here only to rewrite the whole prompt; leaving
-              it equal to the default stores no override.
-            </p>
-            <textarea
-              className={`${gg.textarea} ${gg.promptTextarea}`}
-              value={promptValue}
-              disabled={readOnly}
-              onChange={(e) => setPrompt(e.target.value)}
-              spellCheck={false}
-              rows={20}
-            />
-            {!readOnly && promptOverridden && (
-              <button
-                type="button"
-                className={runExec.secondary}
-                onClick={() => setPrompt(defaultPrompt)}
-              >
-                Reset to default
-              </button>
             )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </>
   );
 }

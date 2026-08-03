@@ -24,11 +24,11 @@
         },
         "modelId": {
           "default": "",
-          "description": "The opaque model id this agent runs on, passed through to the model client.\nEmpty while the binding is [deferred](Self::model_slot) to a model slot the\nlaunch has not filled in yet.",
+          "description": "The opaque model id this agent runs on, passed through to the model client.\nEmpty while the binding is [deferred](Self::model_slot) to a model slot the\nlaunch has not filled in yet — and empty for good on an\n[FSM shell](Self::is_fsm_shell), which takes no turns and so runs no model.",
           "type": "string"
         },
         "modelSlot": {
-          "description": "The [model slot](GgModelSlot) this agent takes its model from at launch, when it\ndoes not pin one itself. `None` on a pinned binding — which is every binding on\nthe set a run records, because launching resolves the deferred ones.",
+          "description": "The [model slot](GgModelSlot) this agent takes its model from at launch, when it\ndoes not pin one itself. `None` on a pinned binding — which is every binding on\nthe set a run records, because launching resolves the deferred ones — and on an\n[FSM shell](Self::is_fsm_shell), which has no model to defer.",
           "type": ["string", "null"]
         },
         "name": {

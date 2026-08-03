@@ -50,11 +50,13 @@ fn state_agent(name: &str, script: &str) -> GgAgentConfig {
 
 /// A capability set whose **root is an FSM shell** driving `states`, over the three state agents.
 ///
-/// The shell keeps a model binding it never uses: gg reads the machine off it and runs each state's
-/// own profile, so what the shell is bound to means nothing — but every profile a set declares must
-/// resolve to *some* model, and a run is launched with its slots already bound.
+/// The shell binds **no model**, which is the point: a machine takes no turns, so there is nothing
+/// for a model on it to do — the run resolves its client through the entry state's profile instead.
+/// A set that pinned one here would launch just as well and prove nothing, since the value would
+/// never be read.
 fn machine_set(states: serde_json::Value) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/shell");
+    set.agents[0].model_id = String::new();
     set.agents[0].capabilities = vec![GgCapabilityConfig {
         params: json!({ FSM_PARAM_STATES: states }),
         ..GgCapabilityConfig::enabled(CAPABILITY_FSM)

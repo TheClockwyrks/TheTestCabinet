@@ -220,6 +220,28 @@ describe("an agent's type", () => {
     expect(screen.getByRole("group", { name: "Process" })).toBeInTheDocument();
   });
 
+  // A machine takes no turns, so it runs no model, keeps no cache, renders no prompt and
+  // spawns from no roster. None of those controls is shown under one — a field an
+  // operator can set and gg would never read is worse than no field, because it invites
+  // them to configure a run that does not exist.
+  it("asks a machine for no model, prompt or roster", () => {
+    render(<Harness initial={emptyDraft()} />);
+    expect(screen.getByLabelText("Model from")).toBeInTheDocument();
+
+    fireEvent.click(typeSegment("FSM"));
+    for (const label of ["Model from", "Model slot", "Prompt cache"]) {
+      expect(screen.queryByLabelText(label)).toBeNull();
+    }
+    expect(screen.queryByText("Roster")).toBeNull();
+    expect(screen.queryByText("Custom instructions")).toBeNull();
+    expect(screen.queryByText("System Prompt")).toBeNull();
+
+    // …and they are all back the moment it is a worker again.
+    fireEvent.click(typeSegment("Tools"));
+    expect(screen.getByLabelText("Model from")).toBeInTheDocument();
+    expect(screen.getByText("Roster")).toBeInTheDocument();
+  });
+
   // Switching type is a look, not an edit: an operator comparing the two arms of a study
   // must be able to flip between them without the form quietly forgetting what the one
   // they flipped away from was set to. (The wind-back to a type's defaults happens when

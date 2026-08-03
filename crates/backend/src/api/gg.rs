@@ -125,13 +125,20 @@ impl GgRunRequest {
                     .to_string(),
             );
         }
+        // A root that is an [FSM shell](GgAgentConfig::is_fsm_shell) has no model of its own — a
+        // machine takes no turns — so the run's model is the one its entry state runs, which is
+        // the model the session's very first turn is actually charged to.
         let root = self.capability_set.root();
-        let model = root
+        let runner = self
+            .capability_set
+            .dispatched_agent(&root.name)
+            .unwrap_or(root);
+        let model = runner
             .resolved_model_id()
             .ok_or_else(|| {
                 format!(
                     "the gg capability set must bind a model to its root agent (`{}`)",
-                    root.name
+                    runner.name
                 )
             })?
             .to_string();

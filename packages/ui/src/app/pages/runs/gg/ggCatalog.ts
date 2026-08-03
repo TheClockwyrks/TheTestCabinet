@@ -166,12 +166,12 @@ export const AGENT_MODES: ReadonlyArray<{
     value: "fsm",
     label: "FSM",
     purpose:
-      "A state machine over the configuration's other profiles. It is not a worker: it has no turns of its own, so its model, its prompt and any capabilities are never read — each state runs the profile it names, with that profile's configuration.",
+      "A state machine over the configuration's other profiles. It is not a worker: it has no turns of its own, so it is given no model, no prompt, no roster and no capabilities — each state runs the profile it names, with that profile's configuration.",
   },
 ];
 
 export const AGENT_MODE_HINT =
-  "How this agent is implemented — and so what it can be configured with. Tools and RaC are two ways of driving the same capabilities, and swapping between them is the single biggest lever a study has. A state machine has no capabilities of its own at all; its configuration is the machine.";
+  "How this agent is implemented — and so what it can be configured with. Tools and RaC are two ways of driving the same capabilities, and swapping between them is the single biggest lever a study has. A state machine is not a worker at all: it takes no turns, so it is asked for no model, no prompt and no roster, and its configuration is the machine.";
 
 // The agent types a capability is offered under when its [spec](CapSpec.modes) names
 // none: both of the types a real worker can be. A machine is never in this list — it

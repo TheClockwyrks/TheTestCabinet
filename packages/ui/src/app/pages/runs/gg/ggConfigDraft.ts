@@ -124,6 +124,13 @@ export interface GgSubagentDraft {
 // `systemPromptTemplate` is empty when this agent uses gg's built-in template; a
 // non-empty value is a full override. The editor blanks it back to `""` when it
 // matches the built-in default, so an unedited override is not stored.
+//
+// Everything from `modelSource` down describes a **worker**. A machine
+// ([isFsmShell](isFsmShell)) is not one — it takes no turns, so it runs no model, renders
+// no prompt and spawns from no roster — and for one of those the fields below are shown by
+// no control, written to no capability set ([agentConfigFromDraft]) and returned to their
+// defaults when the agent is committed ([resetAgentForMode]), exactly as another type's
+// capabilities are.
 export interface GgAgentDraft {
   // Editor-only identity, stable across every rename. Which profile is the **root** is
   // a flag on the configuration ([GgConfigDraft.rootAgentId]) holding this id, so no
@@ -141,7 +148,7 @@ export interface GgAgentDraft {
   // ones its type does not read are the session's scratch space: they are shown by no
   // control, written to no capability set ([agentConfigFromDraft]), and returned to the
   // catalog's defaults whenever the agent is committed or reloaded
-  // ([resetCapabilitiesForMode]).
+  // ([resetAgentForMode]).
   capabilities: Record<string, GgCapabilityDraft>;
   modelSource: GgAgentModelSource;
   // The [id](GgModelSlotDraft.id) of the model slot this agent defers to, or empty when
@@ -331,8 +338,9 @@ export function capabilityActive(agent: GgAgentDraft, cap: CapSpec): boolean {
 }
 
 /**
- * `agent` with every capability its [type](GgAgentMode) does not read returned to the
- * catalog's [defaults](defaultCapabilityDraft).
+ * `agent` with everything its [type](GgAgentMode) does not read returned to the catalog's
+ * [defaults](defaultCapabilityDraft): every capability that belongs to another type, and —
+ * for a machine, which is not a worker — the whole of a worker's configuration.
  *
  * This is the *commit* half of the type contract, and it is deliberately not applied
  * while the operator is editing: switching type and back inside one session must lose
@@ -340,13 +348,28 @@ export function capabilityActive(agent: GgAgentDraft, cap: CapSpec): boolean {
  * was committed under and no other — which is exactly what gets saved, and so exactly
  * what has to come back.
  */
-export function resetCapabilitiesForMode(agent: GgAgentDraft): GgAgentDraft {
+export function resetAgentForMode(agent: GgAgentDraft): GgAgentDraft {
   const capabilities = { ...agent.capabilities };
   for (const cap of CAPABILITIES) {
     if (capabilityAppliesToMode(cap, agent.mode)) continue;
     capabilities[cap.id] = defaultCapabilityDraft(cap);
   }
-  return { ...agent, capabilities };
+  // A machine takes no turns, so it has no model to run, no prompt to render and no
+  // roster to spawn from. The form offers none of them under this type; committing is
+  // where what an earlier type held stops being held.
+  const worker = isFsmShell(agent)
+    ? {
+        modelSource: "model-slot" as const,
+        modelSlotId: "",
+        modelId: "",
+        promptCacheTtl: "standard" as const,
+        disabledTools: [],
+        customInstructions: "",
+        systemPromptTemplate: "",
+        subagents: [],
+      }
+    : {};
+  return { ...agent, ...worker, capabilities };
 }
 
 /** A freshly identified model-slot declaration with the given name and no default. */
@@ -1198,7 +1221,7 @@ function agentDraftFromConfig(
   // The type first, then the capabilities its type does not read wound back to the
   // catalog's defaults: a stored agent carries one type's configuration and no other, so
   // there is nothing for the rest of them to be loaded *from*.
-  return resetCapabilitiesForMode({
+  return resetAgentForMode({
     id: localId("agent"),
     name: agent.name,
     mode: agentModeOf(agent.capabilities ?? []),
@@ -1616,7 +1639,9 @@ export const MODEL_PARAMS: ReadonlyArray<{
 export function referencedModelSlots(draft: GgConfigDraft): Set<string> {
   const out = new Set(
     draft.agents
-      .filter((a) => a.modelSource === "model-slot")
+      // A machine binds no model at all, so a slot it was pointed at under an earlier type
+      // feeds nothing and must not become a launch input.
+      .filter((a) => !isFsmShell(a) && a.modelSource === "model-slot")
       .map((a) => a.modelSlotId)
       .filter(Boolean),
   );
@@ -1680,9 +1705,9 @@ export function agentSaveError(
 /**
  * Why a draft cannot be saved, or `null` when it is well-formed. A *saved*
  * configuration may still be waiting on its models — that is what a model slot is for
- * — so this rejects only an agent-less configuration, structurally broken names, an
- * agent deferred to a model slot that was never declared, a pinned agent with no model,
- * an issue filer with nobody to assign issues to, and unparseable params.
+ * — so this rejects only an agent-less configuration, structurally broken names, a
+ * *worker* deferred to a model slot that was never declared, a pinned worker with no
+ * model, an issue filer with nobody to assign issues to, and unparseable params.
  *
  * A roster reference cannot dangle here — the draft holds it as a local id, and removing
  * an agent takes its references with it — so there is nothing to check for.
@@ -1704,13 +1729,18 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
     return "Model slot names must be unique.";
 
   for (const agent of draft.agents) {
-    if (agent.modelSource === "model-slot") {
-      const slot = draft.modelSlots.find((s) => s.id === agent.modelSlotId);
-      if (!slot) {
-        return `The \`${agent.name.trim()}\` agent defers to a model slot this configuration doesn't declare — pick one of its slots, or pin the agent a model.`;
+    // A machine is asked for no model: it takes no turns, so there is nothing for one to
+    // do, and the profiles its states run are checked as the workers they are, on their
+    // own passes through this loop.
+    if (!isFsmShell(agent)) {
+      if (agent.modelSource === "model-slot") {
+        const slot = draft.modelSlots.find((s) => s.id === agent.modelSlotId);
+        if (!slot) {
+          return `The \`${agent.name.trim()}\` agent defers to a model slot this configuration doesn't declare — pick one of its slots, or pin the agent a model.`;
+        }
+      } else if (!agent.modelId.trim()) {
+        return `The \`${agent.name.trim()}\` agent pins no model — choose one, or bind it to a model slot.`;
       }
-    } else if (!agent.modelId.trim()) {
-      return `The \`${agent.name.trim()}\` agent pins no model — choose one, or bind it to a model slot.`;
     }
     // An issue names the agent it is dispatched to, drawn from the filer's own
     // *implementers* — so an agent that may file issues but lists none could never
@@ -1774,6 +1804,14 @@ function agentConfigFromDraft(
       params: parsed.ok ? parsed.value : {},
     };
   });
+  // A machine is not a worker: it takes no turns, so it runs no model, renders no prompt
+  // and spawns from no roster — each state runs the profile it names, with that profile's
+  // configuration. None of that is written, for the same reason another type's
+  // capabilities are not: a recorded run must not claim a binding gg never read. The
+  // empty `modelId` is the contract's own spelling of "no model bound".
+  if (isFsmShell(agent)) {
+    return { name: agent.name.trim(), capabilities, modelId: "" };
+  }
   const subagents: GgSubagentRef[] = agent.subagents
     .filter((s) => agentName(s.agentId) && s.scopes.length)
     .map((s) => ({

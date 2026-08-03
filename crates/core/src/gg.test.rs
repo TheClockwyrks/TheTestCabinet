@@ -461,6 +461,54 @@ fn a_deferred_agent_is_unresolved_until_a_launch_fills_its_model_slot() {
     );
 }
 
+/// An FSM shell has no model and is not waiting for one: a machine takes no turns, so a
+/// launch has nothing to bind to it, and the model a dispatch onto it resolves is the one
+/// its **entry state** runs.
+#[test]
+fn a_machine_is_neither_bound_to_a_model_nor_waiting_for_one() {
+    let set = GgCapabilitySet {
+        preset: None,
+        agents: vec![
+            GgAgentConfig {
+                capabilities: vec![GgCapabilityConfig {
+                    params: json!({
+                        FSM_PARAM_STATES: [
+                            { "name": "explore", "agent": "judge" },
+                            { "name": "build", "agent": ROOT_AGENT },
+                        ],
+                    }),
+                    ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
+                }],
+                model_id: String::new(),
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                name: "judge".to_string(),
+                model_id: "openai/o-fixed".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        model_slots: Vec::new(),
+        limits: GgRunLimits::default(),
+    };
+    assert!(set.root().is_fsm_shell());
+    // Nothing is outstanding, and the machine contributes no model to price or to size a
+    // context window for.
+    assert!(set.unresolved_agents().is_empty());
+    assert_eq!(set.bound_model_ids(), vec!["openai/o-fixed"]);
+    // The entry state is `states[0]`, so it is the `judge` profile that a dispatch onto
+    // this machine runs — and an ordinary profile resolves as itself.
+    assert_eq!(set.root().fsm_entry_agent(), Some("judge"));
+    assert_eq!(
+        set.dispatched_agent(ROOT_AGENT).map(|a| a.name.as_str()),
+        Some("judge")
+    );
+    assert_eq!(
+        set.dispatched_agent("judge").map(|a| a.name.as_str()),
+        Some("judge")
+    );
+}
+
 /// The models a launch resolves per-model facts for: every distinct model an agent can
 /// run on, deduplicated, with a still-deferred agent (which names no model) skipped.
 #[test]

@@ -11,10 +11,15 @@
 //! # The shape of a machine
 //!
 //! A profile that enables the [`fsm`](CAPABILITY_FSM) capability is an **FSM shell**. It has no
-//! turns of its own — its model binding and its other capabilities are ignored — and its whole
-//! content is the [`states`](FSM_PARAM_STATES) param: an ordered list of states, of which the first
-//! is the entry, each naming the profile it runs and where it may go from there. A state with no
-//! outgoing edges is terminal, and the machine ends when the agent in it ends.
+//! turns of its own — so it carries **no model**, no prompt, no roster and no other capabilities —
+//! and its whole content is the [`states`](FSM_PARAM_STATES) param: an ordered list of states, of
+//! which the first is the entry, each naming the profile it runs and where it may go from there. A
+//! state with no outgoing edges is terminal, and the machine ends when the agent in it ends.
+//!
+//! Because a shell runs no model, a dispatch onto one resolves its client through
+//! [`dispatched_profile`] — the entry state's agent — rather than through the shell. A machine is
+//! therefore namable everywhere an ordinary profile is without ever being given a model binding
+//! that nothing would read.
 //!
 //! ```jsonc
 //! { "id": "fsm", "enabled": true, "params": { "states": [
@@ -360,7 +365,30 @@ pub fn machines(set: &GgCapabilitySet) -> Result<BTreeMap<String, Arc<FsmSpec>>,
 /// Whether `profile` is an **FSM shell** — a profile whose whole content is a machine, with no
 /// turns of its own.
 pub fn is_shell(profile: &GgAgentConfig) -> bool {
-    profile.is_enabled(CAPABILITY_FSM)
+    profile.is_fsm_shell()
+}
+
+/// The profile whose **model** actually runs when work is dispatched onto the profile named
+/// `profile`: itself, or — when it is an [FSM shell](is_shell) — the agent its machine's
+/// [entry state](FsmSpec::entry) runs.
+///
+/// A shell has no model of its own, so a dispatch onto one has to resolve its client through the
+/// state the agent will be standing in the moment it starts. This is the seam that lets a machine
+/// be named anywhere an ordinary profile is — as the root, as a roster target, as an issue's
+/// implementer — without the configuration having to give it a model it would never call.
+///
+/// One hop is enough: [`validate`] refuses a machine whose state runs another shell, so the entry
+/// state's agent is always an ordinary worker.
+///
+/// The entry state is read by [`GgCapabilitySet::dispatched_agent`] rather than off a parsed
+/// [`FsmSpec`], so the profile a dispatch binds and the profile the backend names as a run's model
+/// cannot come apart. A machine that will not parse at all resolves as itself, and the caller
+/// reports the model binding it does not have — which is the right error for a set [`validate`] has
+/// already refused.
+pub fn dispatched_profile<'a>(set: &'a GgCapabilitySet, profile: &'a str) -> &'a str {
+    set.dispatched_agent(profile)
+        .map(|agent| agent.name.as_str())
+        .unwrap_or(profile)
 }
 
 /// Validate every [machine](FsmSpec) `set` declares, returning the first structural problem.
@@ -433,20 +461,20 @@ pub fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
     for (fsm, spec) in machines {
         // A shell has no turns of its own, so anything else it declares is configuration that will
         // never be read. Said out loud because the alternative is an operator who believes the
-        // machine's agents inherited the shell's memories.
+        // machine's agents inherited the shell's memories. The console's editor offers a machine
+        // none of these fields, so reaching here means a hand-written set (or one written by an
+        // older editor) is carrying them.
         if let Some(profile) = set.agent(&fsm) {
-            let extra: Vec<&str> = profile
-                .capabilities
-                .iter()
-                .filter(|capability| capability.enabled && capability.id != CAPABILITY_FSM)
-                .map(|capability| capability.id.as_str())
-                .collect();
-            if !extra.is_empty() {
+            let ignored = ignored_shell_declarations(profile);
+            if let Some((last, rest)) = ignored.split_last() {
+                let named = match rest {
+                    [] => format!("the {last}"),
+                    _ => format!("the {} and the {last}", rest.join(", the ")),
+                };
                 warnings.push(format!(
-                    "agent `{fsm}`: it is an FSM shell, so its own model binding and its other \
-                     capabilities ({}) are ignored — each state runs the agent profile it names, \
-                     with that profile's configuration.",
-                    extra.join(", "),
+                    "agent `{fsm}`: it is an FSM shell, so {named} it declares {} ignored — each \
+                     state runs the agent profile it names, with that profile's configuration.",
+                    if rest.is_empty() { "is" } else { "are" },
                 ));
             }
         }
@@ -463,6 +491,40 @@ pub fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
     }
     warnings.extend(unknown_transfer_kinds(set));
     warnings
+}
+
+/// What an [FSM shell](is_shell) profile declares that gg will never read, named as a reader would
+/// name it — the body of the warning above, in the order the editor used to show these fields.
+///
+/// Everything a *worker* profile is configured with is on this list, because a machine is not a
+/// worker: it never takes a turn, so there is no model to call, no prompt to render, no roster to
+/// spawn from, and no capability whose tools anything would be offered.
+fn ignored_shell_declarations(profile: &GgAgentConfig) -> Vec<String> {
+    let mut ignored = Vec::new();
+    if profile.resolved_model_id().is_some() || profile.model_slot.is_some() {
+        ignored.push("model binding".to_string());
+    }
+    if profile
+        .custom_instructions
+        .as_deref()
+        .is_some_and(|prose| !prose.trim().is_empty())
+        || profile.system_prompt_template.is_some()
+    {
+        ignored.push("system prompt".to_string());
+    }
+    if !profile.subagents.is_empty() {
+        ignored.push("roster".to_string());
+    }
+    let capabilities: Vec<&str> = profile
+        .capabilities
+        .iter()
+        .filter(|capability| capability.enabled && capability.id != CAPABILITY_FSM)
+        .map(|capability| capability.id.as_str())
+        .collect();
+    if !capabilities.is_empty() {
+        ignored.push(format!("capabilities ({})", capabilities.join(", ")));
+    }
+    ignored
 }
 
 /// The warnings for a `transfer` entry naming something that is not a [module kind](ModuleKind).

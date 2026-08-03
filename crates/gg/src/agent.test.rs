@@ -32,13 +32,13 @@ use crate::telemetry::{CollectingSink, Emitter};
 use crate::tools::{ToolContext, ToolRegistry, VisionContext};
 use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION,
-    CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
-    CAPABILITY_READ_FILE, CAPABILITY_REPLAY, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL,
-    CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
-    CAPABILITY_WORKFLOWS, GgAgentConfig, GgAgentStatus, GgCapabilityConfig, GgCapabilitySet,
-    GgContextAction, GgContextSource, GgIssueReviewPhase, GgIssueStatus, GgPromptCacheTtl,
-    GgSessionSummary, GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent,
-    GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
+    CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_FSM, CAPABILITY_MEMORIES,
+    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_REPLAY,
+    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, FSM_PARAM_STATES, GgAgentConfig,
+    GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource,
+    GgIssueReviewPhase, GgIssueStatus, GgPromptCacheTtl, GgSessionSummary, GgSlotBinding,
+    GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::gg_replay::{
     GG_REPLAY_BLOB_REF_KEY, GgClientRole, GgReplayAgent, GgReplayAgentOrigin, GgReplayEntry,
@@ -4834,6 +4834,33 @@ fn validate_agents_enforces_the_profile_invariants() {
         ..GgCapabilitySet::default()
     };
     assert!(validate_agents(&empty_model).is_err());
+
+    // ...but an FSM shell with no model is exactly right: a machine takes no turns, so the model
+    // check is asked of the profiles its states run and not of the machine itself.
+    let machine = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                model_id: String::new(),
+                capabilities: vec![GgCapabilityConfig {
+                    params: json!({ FSM_PARAM_STATES: [{ "name": "only", "agent": "Worker" }] }),
+                    ..GgCapabilityConfig::enabled(CAPABILITY_FSM)
+                }],
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                name: "Worker".to_string(),
+                model_id: "mock/a".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::default()
+    };
+    assert!(validate_agents(&machine).is_ok());
+    // And the client a dispatch onto that machine resolves is the entry state's, not the shell's.
+    assert_eq!(
+        profile_binding(&machine, ROOT_AGENT).expect("the machine resolves a model"),
+        GgSlotBinding::new("Worker", "mock/a"),
+    );
 
     // A subagent allowlist naming an agent this set does not declare is rejected.
     let dangling = GgCapabilitySet {

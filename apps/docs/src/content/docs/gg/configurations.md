@@ -92,7 +92,8 @@ written to your account by the Save button on the configuration view. Each profi
 carries:
 
 - an **agent type** (below), chosen above everything else because it decides what the
-  rest of the form even offers;
+  rest of the form even offers — everything after this point describes a *worker*, and
+  an **FSM** profile is offered none of it;
 - its own enabled **capabilities**, their implementations and params, and per-tool
   [ablation](/gg/toolset-ablation/) overrides;
 - **one model**, either pinned outright or deferred to a run-level [model
@@ -135,9 +136,8 @@ decides which capabilities the form offers at all:
   TypeScript program over the same functions, run in a wasm sandbox, so one turn can make
   dozens of calls, branch on their results, and loop.
 - **FSM** — a [state machine](/gg/fsms/) over the configuration's _other_ profiles. Not a
-  worker at all: it takes no turns, so its model binding, its prompt and any capability
-  are never read — each state runs the profile it names, with that profile's
-  configuration.
+  worker at all: it takes no turns, so it is given no model, no prompt, no roster and no
+  capabilities — each state runs the profile it names, with that profile's configuration.
 
 It is a per-agent choice, so one run can mix code-emitting and tool-calling agents, and
 swapping a profile between Tools and RaC is the single biggest lever a study has. A
@@ -149,8 +149,18 @@ ceilings and [response healing](/gg/response-healing/) for **RaC**, the state ta
 **FSM** — and filters the capability list below it. A capability only one type reads is
 listed only under that type: [program library](/gg/program-library/) is offered to a RaC
 agent and not to a Tools one, because there are no programs in a tool-calling session to
-keep. An **FSM** profile is offered no capabilities whatever; its configuration _is_ the
-machine.
+keep.
+
+An **FSM** profile is offered no capabilities whatever — and no model binding, no prompt
+cache lifetime, no custom instructions, no system-prompt override and no roster either.
+Its configuration _is_ the machine. The rule the whole form follows is that a control
+exists only where gg would read what it sets: a field an operator can fill in and the
+harness ignores invites them to configure a run that does not exist, and then to read the
+recorded set as though it had. So a machine is never asked for a model, the save gate
+never demands one of it, and a launch collects no [model slot](#model-slots) on its
+behalf. What the machine runs on is each state's own profile — and when the machine is the
+root, the run is recorded under the model its **entry state** runs, which is the model its
+first turn is actually charged to.
 
 On the wire there is no type field — gg reads the type off the `responses-as-code` and
 `fsm` capabilities, which is what the editor writes. That has one consequence worth

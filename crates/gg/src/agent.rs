@@ -461,7 +461,15 @@ impl SlotAccounting {
 /// right profile in telemetry, and its
 /// [prompt-cache lifetime](GgAgentConfig::prompt_cache_ttl) carries this profile's choice through
 /// to the client built for it.
+///
+/// Naming an [FSM shell](crate::fsm::is_shell) resolves the
+/// [entry state's](crate::fsm::dispatched_profile) profile instead, model and cache lifetime alike:
+/// a machine takes no turns, so it has no model, and the agent dispatched onto it *becomes* its
+/// entry state before its first one. Binding the shell would mean demanding a model of every
+/// machine and then discarding the client built from it — which is also why the returned binding
+/// names the state's profile: it is the profile whose turns are about to be charged to it.
 fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding, String> {
+    let profile = crate::fsm::dispatched_profile(set, profile);
     let agent = set.agent(profile).ok_or_else(|| {
         format!("no `{profile}` agent profile is declared; there is no model to run")
     })?;
@@ -507,7 +515,8 @@ fn removed_capability_warnings(set: &GgCapabilitySet) -> Vec<String> {
 
 /// Validate a run's [agent profiles](GgAgentConfig) before launch: the set must declare at least
 /// one profile (its [root](GgCapabilitySet::root) — the run has no model otherwise), every profile
-/// must have a non-empty name and a resolved model, no name may be declared twice, every
+/// must have a non-empty name and — unless it is an [FSM shell](crate::fsm::is_shell), which runs
+/// no model — a resolved one, no name may be declared twice, every
 /// [roster reference](GgAgentConfig::subagents) must name a declared profile, no profile may
 /// be able to **file [issues](crate::board)** without anyone to assign them to, and a run with
 /// [project management](CAPABILITY_PROJECT_MANAGEMENT) on must name a shell-capable
@@ -527,19 +536,25 @@ fn validate_agents(set: &GgCapabilitySet) -> Result<(), String> {
         if name.is_empty() {
             return Err("an agent profile has an empty name".to_string());
         }
-        if agent
-            .model_slot
-            .as_deref()
-            .is_some_and(|_| !agent.is_resolved())
-        {
-            // A configuration is launched, not run: whoever launched it was supposed to bind a
-            // model to every deferred profile. One left over means the launch skipped it.
-            return Err(format!(
-                "the `{name}` agent still defers to a model slot; launching must bind a model to it"
-            ));
-        }
-        if !agent.is_resolved() {
-            return Err(format!("the `{name}` agent is bound to an empty model id"));
+        // An FSM shell is exempt from both model checks below, and from nothing else: a machine
+        // takes no turns, so a model on it would be a value nothing reads rather than the thing
+        // that makes it runnable. Its states' profiles are checked as the workers they are.
+        if !crate::fsm::is_shell(agent) {
+            if agent
+                .model_slot
+                .as_deref()
+                .is_some_and(|_| !agent.is_resolved())
+            {
+                // A configuration is launched, not run: whoever launched it was supposed to bind a
+                // model to every deferred profile. One left over means the launch skipped it.
+                return Err(format!(
+                    "the `{name}` agent still defers to a model slot; launching must bind a model \
+                     to it"
+                ));
+            }
+            if !agent.is_resolved() {
+                return Err(format!("the `{name}` agent is bound to an empty model id"));
+            }
         }
         if seen.contains(&name) {
             return Err(format!("the `{name}` agent is declared more than once"));
@@ -2669,8 +2684,7 @@ async fn run_agent(
     // machine indistinguishable from an ordinary agent to whoever put it to work — one id in the
     // tree, one scheduler slot, one return value — and it is done before the slot is taken, so the
     // slot is acquired under the state agent's own exclusivity rather than the shell's.
-    let entered_machine = orch.machine(&agent.slot).cloned();
-    let mut agent = match &entered_machine {
+    let mut agent = match orch.machine(&agent.slot) {
         Some(machine) => agent.entering(machine),
         None => agent,
     };
@@ -2764,10 +2778,12 @@ async fn run_agent(
     // these at their initial values.
     //
     // The client is an option because the *first* incarnation's was resolved by whoever dispatched
-    // this agent — except when that dispatch named an FSM shell, whose model binding means nothing;
-    // then, as at every later incarnation, the state's own profile resolves one.
-    let mut pending_client: Option<Box<dyn ModelClient>> =
-        entered_machine.is_none().then_some(client);
+    // this agent, and every later one resolves its own from the profile the machine (or the exec)
+    // named. A dispatch onto an FSM shell resolved the entry state's profile
+    // ([`crate::fsm::dispatched_profile`]), which is the profile this agent is already standing in
+    // by the time it gets here — so the client it was handed is the right one, and re-resolving it
+    // would ask the model seam for a second client on one agent's identity.
+    let mut pending_client: Option<Box<dyn ModelClient>> = Some(client);
     // What the previous incarnation handed over: its modules (already transferred), the opening note
     // gg wrote about the handoff, and the state it came from.
     //

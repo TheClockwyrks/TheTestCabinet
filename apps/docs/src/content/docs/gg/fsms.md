@@ -23,9 +23,9 @@ they run, and what each transition carries are configuration.
 ## The shape of a machine
 
 An agent profile that enables the `fsm` capability is an **FSM shell**. It has no
-turns of its own — its model binding and its other capabilities are ignored — and its
-whole content is the `states` param: an ordered list of states over the run's *other*
-[agent profiles](/gg/configurations/#agents).
+turns of its own — so it carries **no model**, no prompt and no roster, and no other
+capabilities — and its whole content is the `states` param: an ordered list of states
+over the run's *other* [agent profiles](/gg/configurations/#agents).
 
 ```jsonc
 {
@@ -75,6 +75,13 @@ An FSM shell is namable everywhere an agent profile is: as the run's root, as a
 `spawn_subagent` target, as an issue's implementer, as a workflow stage. Whoever put
 it to work cannot tell the difference — the whole machine is **one agent**, with one
 id in the tree, one scheduler slot, and one return value.
+
+Because a machine has no model, the agent dispatched onto one resolves its client from
+the **entry state's** profile: the profile it is already standing in before its first
+turn. That is also the model a run whose *root* is a machine is recorded under. Nothing
+asks a machine for a model — a launch does not collect one for it, the editor does not
+offer the field, and the save gate does not require it. A hand-written set that binds one
+anyway is told at launch that it will not be read.
 
 ## How a transition happens
 
@@ -187,7 +194,9 @@ on the root agent's stream before the first turn.
 
 - a `transfer` entry naming something that is not a module kind (it carries nothing);
 - a state unreachable from the entry state (it is kept, but nothing can enter it);
-- an FSM shell declaring capabilities other than `fsm` (they are ignored).
+- an FSM shell declaring any of a worker's configuration — a model binding, a prompt, a
+  roster, or capabilities other than `fsm` — which is named part by part and ignored. The
+  editor offers a machine none of these fields, so this is a hand-written set.
 
 ## Telemetry
 

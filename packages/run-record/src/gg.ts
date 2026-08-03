@@ -42,13 +42,15 @@ export type GgAgentConfig = {
   /**
    * The opaque model id this agent runs on, passed through to the model client.
    * Empty while the binding is [deferred](Self::model_slot) to a model slot the
-   * launch has not filled in yet.
+   * launch has not filled in yet — and empty for good on an
+   * [FSM shell](Self::is_fsm_shell), which takes no turns and so runs no model.
    */
   modelId: string;
   /**
    * The [model slot](GgModelSlot) this agent takes its model from at launch, when it
    * does not pin one itself. `None` on a pinned binding — which is every binding on
-   * the set a run records, because launching resolves the deferred ones.
+   * the set a run records, because launching resolves the deferred ones — and on an
+   * [FSM shell](Self::is_fsm_shell), which has no model to defer.
    */
   modelSlot?: string;
   /**

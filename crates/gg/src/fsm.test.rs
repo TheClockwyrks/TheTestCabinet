@@ -1,6 +1,8 @@
 use super::*;
 use serde_json::json;
-use test_cabinet_core::gg::{GgAgentConfig, GgCapabilityConfig, GgCapabilitySet};
+use test_cabinet_core::gg::{
+    GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgSubagentRef, GgSubagentScope, ROOT_AGENT,
+};
 
 /// An ordinary (non-shell) agent profile bound to the mock model.
 fn agent(name: &str) -> GgAgentConfig {
@@ -23,11 +25,12 @@ fn fsm_capability(states: Value) -> GgCapabilityConfig {
 /// name in `agents`.
 fn machine_set(states: Value, agents: &[&str]) -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/echo");
-    // A **bare** shell: the machine and nothing else. A shell that also carried the default
-    // capabilities would earn the "its other capabilities are ignored" warning in every test here,
-    // which is the one this file checks for on purpose.
+    // A **bare** shell: the machine and nothing else — no model binding, no other capability. This
+    // is the shape the editor writes, and anything more would earn the "what it declares is
+    // ignored" warning in every test here, which is the one this file checks for on purpose.
     set.agents[0].capabilities.clear();
     set.agents[0].capabilities.push(fsm_capability(states));
+    set.agents[0].model_id = String::new();
     for name in agents {
         set.agents.push(agent(name));
     }
@@ -262,6 +265,38 @@ fn a_shell_declaring_other_capabilities_warns() {
         warnings.iter().any(|warning| warning.contains("memories")),
         "{warnings:?}"
     );
+}
+
+/// The whole of a worker's configuration is dead weight on a shell, so a hand-written set that
+/// carries any of it is told which parts gg will not read — by name, in one warning.
+#[test]
+fn a_shell_declaring_a_workers_configuration_warns_about_each_part() {
+    let mut set = machine_set(two_state(), &["Explorer", "Builder"]);
+    set.agents[0].model_id = "mock/echo".to_string();
+    set.agents[0].custom_instructions = Some("be brief".to_string());
+    set.agents[0].subagents = vec![GgSubagentRef {
+        agent: "Builder".to_string(),
+        description: String::new(),
+        scopes: vec![GgSubagentScope::Subagent],
+    }];
+    let warnings = launch_warnings(&set);
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    for part in ["model binding", "system prompt", "roster"] {
+        assert!(warnings[0].contains(part), "{}", warnings[0]);
+    }
+}
+
+/// A dispatch onto a machine resolves the profile its **entry state** runs — the one whose turns
+/// the agent is about to take. An ordinary profile resolves as itself.
+#[test]
+fn a_dispatch_onto_a_shell_resolves_the_entry_states_agent() {
+    let set = machine_set(two_state(), &["Explorer", "Builder"]);
+    assert_eq!(dispatched_profile(&set, ROOT_AGENT), "Explorer");
+    assert_eq!(dispatched_profile(&set, "Builder"), "Builder");
+    // A machine gg cannot read resolves as itself, so the caller reports the missing model binding
+    // rather than a second reading of a set `validate` has already refused.
+    let broken = machine_set(json!("not a state list"), &[]);
+    assert_eq!(dispatched_profile(&broken, ROOT_AGENT), ROOT_AGENT);
 }
 
 /// A duplicated transfer entry carries the module once — the transfer is a set, and a repeated

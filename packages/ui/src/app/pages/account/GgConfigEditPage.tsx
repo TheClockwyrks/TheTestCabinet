@@ -15,7 +15,7 @@ import {
   draftFromCapabilitySet,
   draftSaveError,
   emptyDraft,
-  resetCapabilitiesForMode,
+  resetAgentForMode,
   type GgConfigDraft,
 } from "../runs/gg/ggConfigDraft";
 import { builtInDraft } from "../runs/gg/useGgConfigs";
@@ -207,7 +207,7 @@ export function GgConfigEditPage() {
     setDraft((current) => ({
       ...current,
       agents: current.agents.map((a) =>
-        a.id === editingAgentId ? resetCapabilitiesForMode(a) : a,
+        a.id === editingAgentId ? resetAgentForMode(a) : a,
       ),
     }));
     setAgentSnapshot(null);

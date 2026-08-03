@@ -18,7 +18,7 @@ import {
   fsmStatesWarnings,
   launchModelSlots,
   renameStateDraft,
-  resetCapabilitiesForMode,
+  resetAgentForMode,
   runLimitsWarning,
   type GgAgentDraft,
   type GgConfigDraft,
@@ -1341,6 +1341,62 @@ describe("a state machine", () => {
       {},
     );
   });
+
+  // The same argument as the capabilities above, applied to the rest of a worker's
+  // configuration: a machine takes no turns, so a model on it would be a binding gg
+  // never calls — and a recorded run that claimed one would be describing a model that
+  // answered nothing.
+  it("saves no model binding, prompt or roster of its own", () => {
+    const draft = draftFromCapabilitySet(
+      machineSet(LINEAR, {
+        modelId: "anthropic/claude-opus-4.8",
+        customInstructions: "be brief",
+        promptCacheTtl: "extended",
+        subagents: [
+          { agent: "Builder", description: "", scopes: ["subagent"] },
+        ],
+      }),
+    );
+    const shell = capabilitySetFromDraft(draft, null).agents[0]!;
+    expect(shell.modelId).toBe("");
+    expect(shell.modelSlot).toBeUndefined();
+    expect(shell.customInstructions).toBeUndefined();
+    expect(shell.systemPromptTemplate).toBeUndefined();
+    expect(shell.promptCacheTtl).toBeUndefined();
+    expect(shell.subagents).toBeUndefined();
+  });
+
+  // …so the save gate must not ask for one either. This is the whole point: a machine
+  // with no model is a complete configuration, not an unfinished one.
+  it("saves with no model at all", () => {
+    const set = machineSet(LINEAR);
+    set.agents![0]!.modelId = "";
+    expect(draftSaveError(draftFromCapabilitySet(set))).toBeNull();
+  });
+
+  // And a slot a machine was pointed at under an earlier type feeds nothing, so the
+  // launch form must not ask for a model to fill it.
+  it("asks for no model slot at launch", () => {
+    const set = machineSet(LINEAR);
+    set.agents![0]!.modelId = "";
+    set.agents![0]!.modelSlot = "director";
+    set.modelSlots = [{ name: "director" }];
+    const saved = capabilitySetFromDraft(draftFromCapabilitySet(set), null);
+    expect(saved.modelSlots ?? []).toEqual([]);
+    expect(launchModelSlots(saved)).toEqual([]);
+  });
+
+  // Committing an agent as a machine is where the worker's configuration it used to
+  // carry stops being carried — the same wind-back another type's capabilities get.
+  it("winds a worker's configuration back on commit", () => {
+    const draft = draftFromCapabilitySet(machineSet(LINEAR));
+    const committed = resetAgentForMode(draft.agents[0]!);
+    expect(committed.modelId).toBe("");
+    expect(committed.modelSlotId).toBe("");
+    expect(committed.customInstructions).toBe("");
+    expect(committed.subagents).toEqual([]);
+    expect(committed.promptCacheTtl).toBe("standard");
+  });
 });
 
 // --- Agent types ------------------------------------------------------------------
@@ -1436,7 +1492,7 @@ describe("an agent's type", () => {
         { id: "program-library", enabled: true, params: { keep: 5 } },
       ]),
     );
-    const committed = resetCapabilitiesForMode({
+    const committed = resetAgentForMode({
       ...draft.agents[0]!,
       mode: "tools",
     });
@@ -1449,8 +1505,9 @@ describe("an agent's type", () => {
     // A capability the catalog turns on by default comes back on, not merely blank —
     // "the defaults for that type" is what a fresh agent of it would have been.
     expect(
-      resetCapabilitiesForMode({ ...draft.agents[0]!, mode: "fsm" })
-        .capabilities["shell"]?.enabled,
+      resetAgentForMode({ ...draft.agents[0]!, mode: "fsm" }).capabilities[
+        "shell"
+      ]?.enabled,
     ).toBe(true);
   });
 
