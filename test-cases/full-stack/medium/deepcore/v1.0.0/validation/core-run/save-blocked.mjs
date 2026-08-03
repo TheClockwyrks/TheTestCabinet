@@ -7,6 +7,7 @@
 import { newRun } from "../_helpers.mjs";
 
 export default function item() {
+  let unsavedBefore;
   let blocked;
   let allowed;
 
@@ -16,8 +17,20 @@ export default function item() {
     // A live Core Sample in the satchel, on the surface, with no save banked yet. Only the
     // PRECONDITION is posed here — the refusal itself belongs in `act`.
     async arrange(api) {
-      await newRun(api); // clears any save, miner on the surface
+      await newRun(api); // a fresh expedition: no save of its own (specs/gameplay.md)
       await api.call("spawnCoreSample");
+      // Record whether a save exists BEFORE anything is attempted, and assert it below.
+      //
+      // The refusal is read as "no save was written", which only means that if there was no save to
+      // begin with. `specs/gameplay.md` guarantees there is not — "there is no autosave", and
+      // "Starting a NEW EXPEDITION abandons any existing save" — so this is a spec-backed
+      // precondition rather than an assumption about the reference. But it was never CHECKED, and a
+      // build that writes a save when an expedition starts breaks it: its Save Pad then refuses
+      // exactly as it should, `hasSave` is true anyway, and this item fails saying the refusal did
+      // not happen. The blame lands on the one part of that build which was correct. Reading it
+      // here means such a build fails on the sentence that names what it actually did — and
+      // `modes.save-discipline` fails alongside, which is the item that owns the rule.
+      unsavedBefore = (await api.snapshot()).hasSave;
     },
 
     // The refused save is the behavior this item is named for, so it happens HERE, where it is
@@ -43,6 +56,15 @@ export default function item() {
     },
 
     async assert(api, check) {
+      // A HARD assert: if a save was already sitting there, the reading below cannot mean what this
+      // item needs it to mean, so stop rather than go on to report a refusal that was never
+      // measured. A build that autosaves then fails here with one assertion naming the autosave,
+      // instead of two, the louder of which would accuse it of a broken Save Pad it does not have.
+      check.assertEq(
+        "the fresh expedition starts with nothing saved",
+        unsavedBefore,
+        false,
+      );
       check.expectEq(
         "saving is refused while a Sample is live",
         blocked,

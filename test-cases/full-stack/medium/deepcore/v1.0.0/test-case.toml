@@ -36,6 +36,13 @@ type = "full-stack"
 # asset-production pass make this a demanding medium case.
 difficulty = "medium"
 
+# Marks this version as still being iterated on. An experimental case is hidden
+# from the catalog and refuses to resolve unless the deployment opts in with
+# TCAB_BACKEND_ALLOW_EXPERIMENTAL (the local cluster does; production does not),
+# so no runs are published against it while it is still being tuned. Purely a
+# visibility filter — it has no effect on how a run executes.
+experimental = true
+
 # Free-form classification tags, surfaced on the site for browsing and search.
 tags = ["mining", "resource-management", "2d", "motherload"]
 
@@ -444,8 +451,13 @@ validation = { script = "validation/economy/value-rises-depth.mjs", outputs = [{
 [[review.categories.items]]
 id = "buy-upgrade"
 title = "Buying an upgrade deducts Credits and raises the tier"
-description = "Buying the next tier on a track deducts its pinned price, raises the tier, and grants the new capacity (a bigger fuel tank raises max fuel)."
+description = "Buying the next tier on a track deducts its pinned price, raises the tier, and grants the new capacity as usable fuel right then (a bigger tank raises max fuel AND fills in the capacity it added), without being a free top-up to full."
 validation = { script = "validation/economy/buy-upgrade.mjs", outputs = [{ id = "upgrade", name = "Buying a fuel-tank tier", kind = "video" }] }
+[[review.categories.items]]
+id = "grant-applies-tiers"
+title = "Setting a tier applies the real upgrade path"
+description = "Upgrade tiers set from the debug API go through the real upgrade path: the maxima rise to those tiers' values AND at least the added capacity arrives as usable fuel/hull immediately, rather than the ceiling moving and the miner being left with a bigger, still-empty tank."
+validation = { script = "validation/economy/grant-applies-tiers.mjs", outputs = [{ id = "granted", name = "Granting tiers raises and fills the gauges", kind = "video" }] }
 
 # --- Exotic Materials & Scanner -----------------------------------------------
 [[review.categories]]
@@ -542,6 +554,11 @@ title = "A long plunge deals impact damage"
 description = "A long free-fall lands hard enough to damage the hull, scaled to the excess landing speed — feathering the descent is rewarded."
 validation = { script = "validation/hazards/fall-impact.mjs", outputs = [{ id = "slam", name = "A hard landing after a long plunge", kind = "video" }] }
 [[review.categories.items]]
+id = "hull-death"
+title = "An emptied hull is a death"
+description = "A hull standing at 0 kills the miner on its own: the empty hull is what is fatal, not the particular blow that emptied it, so the run ends at Game Over with a hull-destroyed cause the moment the hull is empty, whatever brought it there."
+validation = { script = "validation/hazards/hull-death.mjs", outputs = [{ id = "destroyed", name = "An emptied hull ends the run", kind = "video" }] }
+[[review.categories.items]]
 id = "first-tip"
 title = "First-hazard explanation cards"
 description = "The first gas detonation and the first lava burn each raise a one-time, dismissible, non-blocking card explaining the 'random' hull loss — appearing a short beat AFTER the hit (not on top of the blast) and placed clear of the miner rather than over the centre of the action."
@@ -630,6 +647,11 @@ id = "save-continue"
 title = "Save at the pad, continue from the menu"
 description = "Saving at the surface Save Pad writes the single slot, and the main menu's Continue resumes the saved expedition exactly."
 validation = { script = "validation/modes/save-continue.mjs", outputs = [{ id = "continue", name = "Saving then continuing", kind = "video" }] }
+[[review.categories.items]]
+id = "save-discipline"
+title = "The pad is the only way to save — no autosave"
+description = "Saving is explicit: beginning an expedition writes no save of its own, only the Save Pad does, and starting a new expedition abandons whatever was saved before."
+validation = { script = "validation/modes/save-discipline.mjs", outputs = [{ id = "discipline", name = "No save until the pad is used", kind = "video" }] }
 [[review.categories.items]]
 id = "credits-survive"
 title = "Banked Credits survive death"

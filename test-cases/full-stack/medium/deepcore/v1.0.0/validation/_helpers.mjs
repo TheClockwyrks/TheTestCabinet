@@ -181,26 +181,60 @@ export async function actHoldFor(api, code, ticks, { release = true } = {}) {
 // ---- Death (arrange + act pair) -------------------------------------------
 
 /**
- * ARRANGE half of a hull death underground: stand the miner on a solid floor at (col, row) and
- * empty its hull. Nothing is faked — the death itself is produced by the REAL death path (hull
- * <= 0 in live play -> triggerDeath) when time runs forward.
+ * ARRANGE half of a hull death underground: stand the miner on a solid floor at (col, row) over a
+ * gas pocket, with the hull set to a sliver so the pocket's detonation finishes it.
+ *
+ * Why a hazard and not `setHull(0)`. This used to pose the death outright by emptying the hull and
+ * then wait for the screen to turn over. That reads as arranging a precondition, but it is not one:
+ * it asks the build to treat a DEBUG WRITE as the death event itself. `specs/instrumentation.md`
+ * says the opposite about every control op — they "set up a specific situation ... arranging the
+ * world rather than faking outcomes; the outcome is then produced by running the real simulation
+ * forward" — and the one hull example it gives is posing "a near-death hull", not a destroyed one.
+ * A build is therefore free to run its death check where damage is DEALT (the only place hull
+ * reaches 0 in real play) rather than polling the field every tick, and such a build never dies
+ * from the poke: it sits underground at 0 hull, and every item that only wanted "a death to have
+ * happened" fails on `screen === "game-over"` for a reason that has nothing to do with what it
+ * claims to check. Two independent builds did exactly that.
+ *
+ * So the death is produced the way the game produces it: a real hit. The pocket is a gas pocket
+ * because a detonation is the case's most unambiguous single lethal hit (`specs/hazards.md` puts
+ * the raw rockbed hit at `~60` hull), and the hull is set to a sliver first, which IS the posed
+ * near-death precondition the spec sanctions — so the item does not depend on how hard a given
+ * build's gas hits, only on its dealing damage at all. The resulting death is a hull death
+ * (`deathCause: "hull-destroyed"`), the same one the old pose intended.
  *
  * Pair with `actKillByHull`.
  */
 export async function arrangeKillByHull(api, col, row) {
   await standAt(api, col, row);
-  await api.call("setHull", 0);
+  await api.call("setTile", col, row + 1, { kind: "gas" });
+  await api.call("setTile", col, row + 2, { kind: "rock" });
+  await teleportInto(api, col, row);
+  // A sliver, so ANY damage the detonation deals is lethal — the item under test is what survives
+  // the death, never how hard this build's gas hits.
+  await api.call("setHull", 1);
 }
 
 /**
- * ACT half of a hull death: run the real simulation until the Game Over screen resolves and
- * return the end snapshot. Polls coarsely — nothing read here changes before the death lands.
+ * ACT half of a hull death: drill into the posed pocket, let the real detonation kill the miner,
+ * and hold on the Game Over screen for a beat before returning its snapshot.
+ *
+ * `max` is deliberately generous (600 ticks = 10 s). The cut has to break a band tile before the
+ * pocket goes off, and `specs/character.md` fixes neither a drill duration nor a death-animation
+ * length, so a tighter cap would pin a build to the reference's own pace rather than to the rule.
+ * The validate pass is instant regardless of the cap; only a build that never dies pays the wait.
+ *
+ * The closing beat is what a reviewer needs: without it the clip cuts on the very frame the screen
+ * turns over, so the Game Over screen — and the run summary that is the actual evidence for
+ * several of these items — is never on screen long enough to read.
  *
  * Pair with `arrangeKillByHull`. Returns the snapshot (what the old `killByHull` returned).
  */
-export async function actKillByHull(api, { max = 180, poll = 6 } = {}) {
-  // 180 ticks = the old 3s cap; poll 6 = the old 0.1s chunk.
+export async function actKillByHull(api, { max = 600, poll = 6 } = {}) {
+  await api.call("keyDown", K.down); // cut into the pocket
   const r = await api.until((s) => s.screen === "game-over", { max, poll });
+  await api.call("keyUp", K.down);
+  await api.advance(90); // 90 ticks = 1.5 s resting on the Game Over screen
   return r.snap;
 }
 
