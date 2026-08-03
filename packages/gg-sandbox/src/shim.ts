@@ -51,7 +51,14 @@ import {
   VIEW_ENTRIES,
   VIEW_MODULE,
 } from "./catalogue.js";
-import { ToolError, asToolError } from "./errors.js";
+import {
+  ToolError,
+  asToolError,
+  describeThrown,
+  errorMessage,
+  errorName,
+  isErrorLike,
+} from "./errors.js";
 import * as helpers from "./helpers.js";
 import * as sessionMod from "./session.js";
 import * as boardMod from "./tools/board.js";
@@ -277,12 +284,11 @@ function installConsole(): void {
 function render(arg: unknown): string {
   if (typeof arg === "string") return arg;
   if (arg instanceof ToolError) return `${arg.name}(${arg.code}) on ${arg.tool}: ${arg.message}`;
-  if (arg instanceof Error) return `${arg.name}: ${arg.message}`;
-  try {
-    return JSON.stringify(arg) ?? String(arg);
-  } catch {
-    return String(arg);
-  }
+  // Error-like rather than `instanceof Error`, for the reason `isErrorLike` documents: a fault
+  // raised inside the generated bindings comes from another realm, and logging it as `{}` loses the
+  // only line that says what went wrong.
+  if (isErrorLike(arg)) return `${errorName(arg)}: ${errorMessage(arg)}`;
+  return describeThrown(arg);
 }
 
 /** Whether {@link run} has already handed control back to the host. */
@@ -325,8 +331,37 @@ function noteDeferred(name: string): void {
 function guard(js: string, fn: ToolFn): ToolFn {
   return (...args: unknown[]) => {
     if (ended) noteDeferred(js);
-    return fn(...args);
+    try {
+      return fn(...args);
+    } catch (thrown) {
+      throw attribute(js, thrown);
+    }
   };
+}
+
+/**
+ * Name the function a binding-level fault came out of.
+ *
+ * The SDK validates what it can ({@link "./errors.js".uint}, {@link "./errors.js".list}, …), but
+ * most argument mistakes are caught one layer further in, by the generated lowering code, which
+ * knows the *shape* it wanted and nothing about the call: `tasks.addTask({ title: "x" })` — an
+ * `addTask` missing its required `id` — raises `TypeError: expected a string, received [undefined]`
+ * with no function name, no field name and no clue which of a record's fields was wrong.
+ *
+ * Re-tagging it as a {@link ToolError} on `js` puts the model back on the path it needs: the call
+ * that failed, and the one operation that tells it what that call takes. A {@link ToolError} is
+ * passed straight through — the membrane already said something better — and so is anything that is
+ * not error-like, which the shim describes on its own terms.
+ */
+function attribute(js: string, thrown: unknown): unknown {
+  const err = asToolError(thrown);
+  if (err instanceof ToolError || !isErrorLike(err)) return err;
+  return new ToolError(
+    js,
+    "invalid-argument",
+    `${errorName(err)}: ${errorMessage(err)}. Check the arguments \`${js}\` takes with ` +
+      `\`view.openDocsView("${js}")\`.`,
+  );
 }
 
 /**
@@ -485,7 +520,11 @@ export function run(program: string, enabled: string[], ending: EndingKind): voi
  */
 function describe(thrown: unknown, names: readonly string[]): ProgramError {
   const err = asToolError(thrown);
-  const frame = firstProgramFrame(err);
+  // The frame is looked for in what was thrown *first*, and only then in the normalised form. A
+  // membrane failure arrives as a bare record with no stack at all, while the `ToolError` built from
+  // it was constructed at the call site and carries one — so neither alone finds the program's line
+  // in every case, and the original is the more faithful of the two when both have one.
+  const frame = firstProgramFrame(thrown) ?? firstProgramFrame(err);
   const location = frame ? `line ${frame.line - lineOffset()}, column ${frame.column}` : undefined;
   if (err instanceof ToolError) {
     return {
@@ -494,28 +533,27 @@ function describe(thrown: unknown, names: readonly string[]): ProgramError {
       location,
     };
   }
-  if (err instanceof ReferenceError) {
-    // The most common cause is a program reaching for a flat name (`readFile`) instead of the
-    // object form (`fs.readFile`), so answer the question it is about to ask: which objects does it
-    // have? Each object's `list()` then names that object's functions.
-    return {
-      kind: "unknown-name",
-      message:
-        `${err.message}. The API objects available to your program this run are: ` +
-        `${names.join(", ")}. Call \`<object>.list()\` to see an object's functions.`,
-      location,
-    };
+  // Every branch below classifies by NAME rather than by `instanceof`, because a fault raised inside
+  // the generated bindings is an `Error` from another realm — see `isErrorLike`. Classifying it by
+  // constructor identity dropped it into the fallback, where it was reported as `{}`.
+  if (isErrorLike(err)) {
+    const name = errorName(err);
+    const message = errorMessage(err);
+    if (name === "ReferenceError") {
+      // The most common cause is a program reaching for a flat name (`readFile`) instead of the
+      // object form (`fs.readFile`), so answer the question it is about to ask: which objects does
+      // it have? Each object's `list()` then names that object's functions.
+      return {
+        kind: "unknown-name",
+        message:
+          `${message}. The API objects available to your program this run are: ` +
+          `${names.join(", ")}. Call \`<object>.list()\` to see an object's functions.`,
+        location,
+      };
+    }
+    return { kind: "other", message: `${name}: ${message}`, location };
   }
-  if (err instanceof Error) {
-    return { kind: "other", message: `${err.name}: ${err.message}`, location };
-  }
-  let message: string;
-  try {
-    message = typeof err === "string" ? err : (JSON.stringify(err) ?? String(err));
-  } catch {
-    message = String(err);
-  }
-  return { kind: "other", message, location };
+  return { kind: "other", message: describeThrown(err), location };
 }
 
 /** Whether a value is a Promise (or anything else with a `then`), which a program must not return. */

@@ -1623,14 +1623,16 @@ impl LoopToolApi {
 ///
 /// A refusal rather than an empty view: an unbound name is almost always a guess, and an empty
 /// `Documentation: whatever` block in the window would confirm the guess instead of correcting it.
-/// The message names the one call that enumerates what the run *did* bind.
+///
+/// Stated flatly, and deliberately so. The prose version of this — *"so there is nothing to show
+/// you"*, followed by advice — read as an explanation of gg's reasoning, which is not what a model
+/// correcting a lookup needs; what it needs is the name that failed. A guess about the *argument*
+/// never reaches here at all: `view.openDocsView(system.run)` is refused in the guest, by the one
+/// layer that can still see the value was `undefined` rather than a name.
 fn docs_not_found_refusal(name: &str) -> ViewRefusal {
     ViewRefusal {
         failure: ToolFailure::NotFound,
-        message: format!(
-            "no function named `{name}` is available this run, so there is nothing to show you. \
-             Call `<object>.list()` to see the functions on an object."
-        ),
+        message: format!("No documentation for function `{name}` found."),
     }
 }
 

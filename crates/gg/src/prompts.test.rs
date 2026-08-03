@@ -44,6 +44,7 @@ fn full_system() -> SystemContext {
             images: true,
         },
         shell: ShellView {
+            offered: true,
             offloaded: true,
             tail: "last 200 lines".to_string(),
             directory: "/tmp/gg-shell".to_string(),
@@ -308,6 +309,150 @@ fn code_mode_teaches_views_rather_than_logging() {
     );
     assert!(!no_reads.contains("view.openFile"), "{no_reads}");
     assert!(!no_reads.contains("\n\n\n"), "blank-line run:\n{no_reads}");
+}
+
+/// **The code prompt names the shape of the calls a program cannot get started without.**
+///
+/// The surface is otherwise [read on demand](https://docs.testcabinet.ai/gg/responses-as-code/), and
+/// that stays true — but three calls are load-bearing enough that discovering them costs a turn each,
+/// and a turn spent finding `system.shell` is a turn not spent working. So the opening section names
+/// the argument shape of exactly these, and no others.
+///
+/// Both facts under test are **gated**, on the same rule every named call in this prompt follows: a
+/// call named to a run that does not bind it is a `ReferenceError` the model copies verbatim, and an
+/// argument named to a run where it does nothing is worse than not naming it — the model spends the
+/// turn wondering why the window it asked for was ignored.
+#[test]
+fn code_mode_names_the_argument_shapes_a_program_starts_from() {
+    let code = |read_file: ReadFileView, shell: ShellView| {
+        render_system(
+            &SystemContext {
+                responses_as_code: true,
+                apis: vec![ApiView {
+                    object: "view".to_string(),
+                    description: "show yourself a file or a value".to_string(),
+                }],
+                read_file,
+                shell,
+                ..SystemContext::default()
+            },
+            None,
+        )
+    };
+
+    // A capped read is the only one that has a window to teach: under the unlimited policy
+    // `read_file` takes no `offset`/`limit` at all, so naming them would describe knobs that do
+    // nothing to the one run that cannot use them.
+    let capped = code(
+        ReadFileView {
+            offered: true,
+            capped: true,
+            line_cap: 250,
+            images: true,
+        },
+        ShellView::default(),
+    );
+    let flat_capped = flat(&capped);
+    assert!(
+        flat_capped.contains("view.openFile(path, { offset: 400, limit: 200 })"),
+        "{capped}"
+    );
+    assert!(
+        flat_capped.contains("A `limit` larger than 250 is honored."),
+        "{capped}"
+    );
+
+    let uncapped = code(
+        ReadFileView {
+            offered: true,
+            images: true,
+            ..ReadFileView::default()
+        },
+        ShellView::default(),
+    );
+    assert!(uncapped.contains("view.openFile(path: str)"), "{uncapped}");
+    assert!(!uncapped.contains("offset"), "{uncapped}");
+    assert!(!uncapped.contains("limit"), "{uncapped}");
+
+    // Running a command is the most common thing a program does, and it is named exactly when the
+    // run offers it — independently of whether that run offloads the output.
+    let with_shell = code(
+        ReadFileView::default(),
+        ShellView {
+            offered: true,
+            ..ShellView::default()
+        },
+    );
+    assert!(
+        with_shell.contains("`system.shell(command: str)`"),
+        "{with_shell}"
+    );
+    assert!(with_shell.contains("`exitCode`"), "{with_shell}");
+    assert!(
+        !with_shell.contains("\n\n\n"),
+        "blank-line run:\n{with_shell}"
+    );
+
+    let without_shell = code(ReadFileView::default(), ShellView::default());
+    assert!(!without_shell.contains("system.shell"), "{without_shell}");
+    assert!(
+        !without_shell.contains("\n\n\n"),
+        "blank-line run:\n{without_shell}"
+    );
+}
+
+/// **The prompt says which of the two discovery calls actually reaches the model.**
+///
+/// They read as a pair and they are not one: `<object>.list()` **returns** its directory to the
+/// program, and `view.openDocsView` **opens a view**. A prompt that offers them as two ways to look
+/// something up teaches that calling `system.list()` shows you the functions on `system` — and it
+/// does not. It shows them to your program, which then discards them, and the turn produces nothing
+/// at all: the model reads a `Notice` saying its program put nothing in its context, having done
+/// exactly what it was told.
+///
+/// So the route each takes is the thing the paragraph is about, and the wrapping call a directory
+/// needs is written out rather than left to be inferred.
+#[test]
+fn code_mode_distinguishes_a_returned_directory_from_an_opened_view() {
+    let prompt = render_system(
+        &SystemContext {
+            responses_as_code: true,
+            apis: vec![ApiView {
+                object: "fs".to_string(),
+                description: "read, write, and edit workspace files".to_string(),
+            }],
+            ..SystemContext::default()
+        },
+        None,
+    );
+    let flat = flat(&prompt);
+    // `list()` hands its answer to the PROGRAM, and the prompt shows the one call that forwards it
+    // to the model.
+    assert!(
+        flat.contains("`<object>.list()` **returns** an object's functions to your program"),
+        "{prompt}"
+    );
+    assert!(
+        flat.contains("it puts nothing in front of you on its own"),
+        "{prompt}"
+    );
+    assert!(
+        flat.contains("`view.openText(\"fs\", JSON.stringify(fs.list()))`"),
+        "{prompt}"
+    );
+    // `openDocsView` is the one that opens a view directly.
+    assert!(
+        flat.contains("`view.openDocsView(fn)` **opens a view** directly"),
+        "{prompt}"
+    );
+    // And whichever route was taken, the material lands on the next turn.
+    assert!(
+        flat.contains("arrives on your next turn and is not available during the turn you ask for"),
+        "{prompt}"
+    );
+    // The example is written inline: this prompt forbids Markdown formatting in a reply, so it can
+    // hardly fence a line of program code as the model it wants copied.
+    assert!(!prompt.contains("```"), "{prompt}");
 }
 
 /// A tool-calling run's non-code sections still render: the read-cap and image facts (when

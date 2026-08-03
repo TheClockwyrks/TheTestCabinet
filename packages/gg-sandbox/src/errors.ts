@@ -97,8 +97,72 @@ function unwrap(thrown: unknown): { tool: string; code: ErrorCode; message: stri
  * is returned unchanged, so the shim can describe it on its own terms.
  */
 export function asToolError(thrown: unknown): unknown {
+  // Already normalised: return it untouched rather than rebuilding an identical one. The rebuild
+  // was not free — a fresh `Error` captures a fresh stack, and this function is called a second
+  // time by the shim, from a frame the model's program is nowhere near. Re-wrapping there replaced
+  // the stack that knew which line of the program called the tool, and every tool failure lost its
+  // reported location.
+  if (thrown instanceof ToolError) return thrown;
   const record = unwrap(thrown);
   return record ? new ToolError(record.tool, record.code, record.message) : thrown;
+}
+
+/**
+ * Whether a thrown value is an `Error`, **whichever realm made it**.
+ *
+ * `instanceof Error` is not enough here, and getting that wrong cost every binding-level fault its
+ * message. The generated component bindings live in `initializer.js`, which this engine evaluates
+ * against a *different* `Error` intrinsic than the one this module and the model's program see — so
+ * the `TypeError: expected a string, received [undefined]` that a mistyped argument raises answers
+ * `false` to `instanceof Error`, falls past every branch that reads `.name` and `.message`, and is
+ * reported by {@link "./shim.js".describe} as whatever `JSON.stringify` makes of it. An `Error`'s
+ * own fields are non-enumerable, so that is the literal string `{}` — a runtime error carrying no
+ * information at all, for the single most common mistake a model makes against this API.
+ *
+ * The brand check is realm-independent: `Object.prototype.toString` reads the internal slot every
+ * `Error` carries whatever intrinsic constructed it.
+ */
+export function isErrorLike(thrown: unknown): thrown is Error {
+  if (thrown instanceof Error) return true;
+  return (
+    typeof thrown === "object" &&
+    thrown !== null &&
+    Object.prototype.toString.call(thrown) === "[object Error]"
+  );
+}
+
+/** An error-like value's `name`, defaulting to `Error` when it carries nothing usable. */
+export function errorName(error: Error): string {
+  return typeof error.name === "string" && error.name !== "" ? error.name : "Error";
+}
+
+/** An error-like value's `message`, coerced, so a cross-realm error is never rendered as `{}`. */
+export function errorMessage(error: Error): string {
+  return typeof error.message === "string" ? error.message : String(error);
+}
+
+/**
+ * A thrown value that is **not** an error, as a line of text that says something.
+ *
+ * `JSON.stringify` alone is not enough: a `Map`, a `Set`, a class instance with only accessor
+ * properties and an `Error` from another realm all serialise to `{}`, which tells the model
+ * precisely nothing. When that happens the value is described instead — what it stringifies to, and
+ * which own properties it carries — so the model can at least recognise what it threw.
+ */
+export function describeThrown(thrown: unknown): string {
+  if (typeof thrown === "string") return thrown;
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(thrown);
+  } catch {
+    json = undefined;
+  }
+  if (json !== undefined && json !== "{}") return json;
+  const text = String(thrown);
+  if (thrown === null || typeof thrown !== "object") return text;
+  const own = Object.getOwnPropertyNames(thrown);
+  const fields = own.length > 0 ? `, own properties: ${own.join(", ")}` : "";
+  return `your program threw a value that is not an Error: ${text}${fields}`;
 }
 
 /** Run one membrane call, converting a thrown WIT record into a {@link ToolError}. */

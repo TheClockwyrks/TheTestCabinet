@@ -121,7 +121,7 @@ on the run's execution mode. An operator's per-agent template override still ren
 the same context in either mode; the console seeds its editor with whichever built-in default
 matches the agent's mode.
 
-The code arm teaches four things the tool-calling arm has no need of:
+The code arm teaches five things the tool-calling arm has no need of:
 
 - **What a reply _is_.** The model's whole reply is the program, and the prompt says so
   in as many words: no plain text, no Markdown formatting, no other non-code text. The
@@ -139,24 +139,50 @@ The code arm teaches four things the tool-calling arm has no need of:
   carries — `view.openText(slug, contents)` for a value the program computed,
   `view.openFile(path)` for a file — and say plainly that `console.log()` will not be
   visible, which is the one sentence keeping a model from writing its answer somewhere
-  only the operator can read it. `openText` is never withheld (the object is bound
-  whatever a run enables, since a run with no tools at all must still be able to show its
-  model something); the `openFile` line is gated on `read_file`, because naming a call
-  this run does not bind is a `ReferenceError` the model copies verbatim.
+  only the operator can read it. The `openFile` line grows a second half when, and only
+  when, this run's [read mode](/gg/filesystem/#read-modes) caps a read: the windowed form,
+  `view.openFile(path, { offset: 400, limit: 200 })`, with the run's own line cap
+  interpolated and the promise that a larger `limit` is honored. Under `unlimited` the
+  call takes no `offset`/`limit` at all, so naming them there would sell the one arm that
+  cannot use them a pair of knobs that do nothing — which is worse than saying nothing,
+  because the model spends the turn wondering why the window it asked for was ignored.
+  `openText` is never withheld (the object is bound whatever a run enables, since a run
+  with no tools at all must still be able to show its model something); the two lines whose
+  call a run can withhold — `openFile`, and `system.shell` below — are each gated on this
+  run binding it, because naming a call it does not bind is a `ReferenceError` the model
+  copies verbatim.
+- **How to run a command.** `system.shell(command)` earns a line of its own, naming what
+  it hands back: the `exitCode` and the merged output, to the **program**, with the
+  reminder to open a view on that output to read it yourself. The surface is otherwise
+  read on demand, and this is one of the places that rule does not pay — running a build
+  or a test is the most common thing a program does, and a model that has to discover the
+  call through `system.list()` spends a turn on it. The line is gated on `shell` being
+  offered and on nothing else; in particular it is not gated on whether the run
+  [offloads](/gg/shell/#output-offloading) that output, which is a fact about what comes
+  back rather than about whether the call exists at all.
 - **What is in scope, and how to read its documentation.** One line per API object — its
   name and what it is for — and then the two discovery calls, `<object>.list()` and
-  `view.openDocsView(fn)`. No signatures and no type declarations: the surface is
+  `view.openDocsView(fn)`. No signatures and no type declarations: the prompt names the
+  argument shape of the two or three calls a program cannot bootstrap without, and nothing
+  else. The rest of the surface is
   [read on demand](/gg/responses-as-code/#the-typed-tool-surface) rather than dumped up
   front, and what a call's options are, what it throws, and the rest of the `view`
   object's own functions (`view.close`, `view.current`) are answers the model asks for
-  rather than paragraphs it is handed. The two calls answer on **different turns**, and the
-  prompt says so. `list()` returns **inline**: it is a directory — one line per function —
-  small enough to hand back within the turn that asked for it. `openDocsView` opens a
-  **view**, so a lookup lands in the window the way every other piece of material a program
-  shows itself does, and the documentation is there on the *next* turn: *"Ask in one turn,
-  use it in the next."* The prompt used to make that claim about the old `.docs()` method,
-  which returned its text inline and made a liar of the sentence; a view is what makes it
-  true. The rules those functions obey are documented for *humans* on
+  rather than paragraphs it is handed. What the prompt distinguishes the two discovery
+  calls by is the **route** each takes, not the turn each answers on. `<object>.list()`
+  **returns** its directory to the *program*, one `{ name, summary }` per function — an
+  ordinary return value, so it puts nothing in front of the model on its own, and the
+  prompt writes out the call that forwards it:
+  `view.openText("fs", JSON.stringify(fs.list()))`. `view.openDocsView(fn)` **opens a
+  view** directly, of one function's signature, documentation and types. Getting that
+  wrong is not a slow turn but an empty one: a prompt that offers them as two ways to look
+  something up teaches that `system.list()` shows you the functions on `system`, and it
+  does not — it shows them to a program that then discards them, and the model reads a
+  `Notice` saying its program put nothing in its context, having done exactly what it was
+  told. Either route lands in the window on the *next* turn: *"Ask in one turn, use it in
+  the next."* The prompt used to make that claim about the old `.docs()` method, which
+  returned its text inline and made a liar of the sentence; a view is what makes it true.
+  The rules those functions obey are documented for *humans* on
   the [responses as code](/gg/responses-as-code/#showing-yourself-things) page; the model
   opens a docs view.
 

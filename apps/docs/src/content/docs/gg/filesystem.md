@@ -90,7 +90,14 @@ Two further deliberate properties keep the arms comparable:
   paging footer. Only files big enough to actually be capped differ between arms, so a
   comparison measures the cap rather than incidental formatting.
 - **`unlimited` offers no `offset`/`limit` at all.** Offering knobs that never bind would
-  misrepresent the control arm to the model.
+  misrepresent the control arm to the model. Neither the tool's schema carries them nor,
+  under [responses as code](/gg/responses-as-code/), does the
+  [system prompt](/gg/prompts/) teach the windowed call: `default-cap` is the only mode
+  whose prompt spells out `view.openFile(path, { offset: 400, limit: 200 })` — with this
+  run's own `lineCap` interpolated beside it, and the promise that a larger `limit` is
+  honored — while `unlimited` is shown the bare `view.openFile(path)` and nothing more.
+  Naming a window to the arm that has none is worse than naming nothing, since the model
+  spends the turn wondering why the window it asked for was ignored.
 
 A separate 256 KiB **byte** ceiling backstops every mode (a file can have enormous lines),
 and applies to whatever the line window selected. A read truncated by it says so.

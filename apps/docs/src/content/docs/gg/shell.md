@@ -15,6 +15,18 @@ the code and the output come back so the agent can branch on them, because check
 whether a build or a test run passed is the single most common thing an agent does with
 this tool.
 
+Under [responses as code](/gg/responses-as-code/) the call is `system.shell(command)`, and
+it is one of the two or three the [system prompt](/gg/prompts/) spells out up front rather
+than leaving to `system.list()` and `view.openDocsView` — for the reason above, restated as
+a cost: running a build or a test is the most common thing a *program* does, and a model
+that has to discover the call spends a turn on it. That line renders only when this
+capability is **offered**, because a call named to a run that does not bind it is a
+`ReferenceError` the model copies verbatim, and it is gated on nothing else. What it says is
+what a program needs and no more: the call returns the `exitCode` and the merged output **to
+the program**, so a model that wants to read that output opens a view on it. Everything
+below is a fact about what that output contains, and it reaches the model where it always
+has — [inside the output itself](#what-the-agent-sees), not as a paragraph of prompt.
+
 ## Output offloading
 
 How much of a command's output comes back **inline** is the shell capability's swappable

@@ -254,6 +254,13 @@ fn a_bad_return_value_is_explained_rather_than_lost() {
     let error = program_error(&outcome);
     assert!(error.message.contains("nope"), "{}", error.message);
 
+    // And a value `JSON.stringify` renders as `{}` — a Map, a Set, a class with only accessors —
+    // is described rather than reported as an empty object. `{}` is not a diagnostic.
+    let (outcome, _) = run("throw new Map();");
+    let error = program_error(&outcome);
+    assert_ne!(error.message, "{}");
+    assert!(error.message.contains("Map"), "{}", error.message);
+
     // And a program that says nothing at all is a clean run — not an error, and not a trap.
     let (outcome, log) = run("fs.writeFile(\"a.txt\", \"hi\");");
     match &outcome.result {
@@ -262,4 +269,91 @@ fn a_bad_return_value_is_explained_rather_than_lost() {
     }
     assert!(outcome.logs.is_empty(), "and it said nothing");
     assert_eq!(log.names(), ["write_file"]);
+}
+
+/// **An argument of the wrong shape names the call it was wrong for.**
+///
+/// The most common mistake a model makes against an API it cannot compile against is an argument —
+/// a missing required field, a number where a string goes — and it is caught one layer below the
+/// SDK's own validators, by the generated lowering code, which knows the shape it wanted and
+/// nothing about the call.
+///
+/// It used to be caught by nothing at all. The `TypeError` those bindings raise is an `Error` from
+/// **another realm**, so `instanceof Error` answered `false`, the guest's classifier dropped it into
+/// the value branch, and an `Error`'s fields are non-enumerable — so `JSON.stringify` rendered it as
+/// the literal string `{}`, and that is the entire runtime error the model received. It could not
+/// tell which call failed, what was wrong with it, or that an argument was involved.
+///
+/// So three properties are pinned here, and the first is the one that regressed: the message is not
+/// `{}`; it names the function and the underlying fault; and it still carries the line of the
+/// program that made the call.
+#[test]
+fn a_mistyped_argument_names_the_function_and_the_fault() {
+    // A record missing a required field. `addTask` takes an `id`, and this program has none.
+    let (outcome, _) = run("tasks.addTask({ title: \"ship it\" });");
+    let error = program_error(&outcome);
+    assert_ne!(error.message, "{}", "the fault that used to arrive empty");
+    assert_eq!(error.kind, ProgramErrorKind::ToolFailure);
+    for fragment in [
+        // Which call was wrong,
+        "`addTask` failed (invalid-argument)",
+        // what the bindings actually said about it,
+        "expected a string",
+        // and the one operation that answers the question it provokes.
+        "view.openDocsView(\"addTask\")",
+    ] {
+        assert!(error.message.contains(fragment), "{}", error.message);
+    }
+    // And the program's own line survives the re-tagging: the `ToolError` is built at the call site,
+    // and normalising it a second time must not replace the stack that knows where that was.
+    assert_eq!(error.location.as_deref(), Some("line 1, column 7"));
+
+    // A plain scalar in place of a string, on a different object, reported the same way.
+    let (outcome, _) = run("fs.readFile(123);");
+    let error = program_error(&outcome);
+    assert!(
+        error
+            .message
+            .contains("`readFile` failed (invalid-argument)"),
+        "{}",
+        error.message
+    );
+    assert!(error.location.is_some(), "{error:?}");
+}
+
+/// **A documentation lookup of something that is not a function says so.**
+///
+/// `view.openDocsView(system.run)` — a name the run does not bind — evaluates to `undefined` before
+/// the call is even made, and the guest used to coerce it, look up a function literally named
+/// `"undefined"`, and report that name back as unknown. The name was never the model's: nothing it
+/// wrote said `undefined`, so it was sent hunting a typo that did not exist.
+///
+/// The argument is refused instead, by the last layer that can still see what the value was.
+#[test]
+fn a_docs_lookup_of_a_non_function_is_refused_on_the_argument() {
+    for program in [
+        "view.openDocsView(fs.thereIsNoSuchFunction);",
+        "view.openDocsView(undefined);",
+    ] {
+        let (outcome, _) = run(program);
+        let error = program_error(&outcome);
+        assert!(
+            error
+                .message
+                .contains("`openDocsView` failed (invalid-argument)"),
+            "{}: {}",
+            program,
+            error.message
+        );
+        assert!(
+            !error.message.contains("undefined`"),
+            "the model never wrote that name, so it is never quoted back: {}",
+            error.message
+        );
+    }
+
+    // A value of the wrong type entirely is named for what it is.
+    let (outcome, _) = run("view.openDocsView(42);");
+    let error = program_error(&outcome);
+    assert!(error.message.contains("not a number"), "{}", error.message);
 }

@@ -25,7 +25,7 @@
 
 import * as raw from "test-cabinet:gg/views";
 import { DOCS_NAME } from "../catalogue.js";
-import { U32_MAX, call, opts, uint } from "../errors.js";
+import { ToolError, U32_MAX, call, opts, uint } from "../errors.js";
 import type { FileRead, OpenView } from "../types.js";
 import { asFileRead } from "./files.js";
 
@@ -94,11 +94,29 @@ export function openDocsView(target: Function | string): void {
  * which is why the tag exists at all. A function that carries no tag — something the program defined
  * itself — falls through to its own `name`, so the lookup fails as `not-found` on a name the model
  * can recognise rather than on a stringified closure.
+ *
+ * An argument that is neither is refused **here**, before the lookup, and that is the point.
+ * `view.openDocsView(system.run)` — a function this run does not bind — evaluates to `undefined`
+ * long before the call, and coercing it produced a lookup for a function literally named
+ * `"undefined"`, reported back as an unknown name. The name was never the model's; nothing it wrote
+ * said `undefined`, and telling it so sends it looking for a typo that is not there. The real fault
+ * is the argument, so that is what is named.
  */
 function docsName(target: Function | string): string {
   if (typeof target === "string") return target;
-  const tagged = (target as unknown as Record<symbol, unknown> | null | undefined)?.[DOCS_NAME];
-  return typeof tagged === "string" ? tagged : String(target?.name ?? target);
+  if (typeof target !== "function") {
+    throw new ToolError(
+      "openDocsView",
+      "invalid-argument",
+      target === undefined || target === null
+        ? "openDocsView(…) was given a value that does not exist, so there is no function to " +
+            "document. That is what a name this run did not bind evaluates to — check the object " +
+            "really carries the function, with `<object>.list()`."
+        : `openDocsView(…) takes a function or a function name, not a ${typeof target}.`,
+    );
+  }
+  const tagged = (target as unknown as Record<symbol, unknown>)[DOCS_NAME];
+  return typeof tagged === "string" ? tagged : String(target.name);
 }
 
 /**

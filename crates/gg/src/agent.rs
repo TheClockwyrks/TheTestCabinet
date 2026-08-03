@@ -8793,20 +8793,28 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         images: offers_read && !vision.declared_text_only(),
     };
 
-    // What a `shell` call returns, stated only when the tool is offered *and* its output is
-    // offloaded: under the default policy there is nothing to say that the tool's own description
+    // Two independent facts about `shell`, and they gate different prose.
+    //
+    // Whether the tool is offered at all is what the code prompt's one-line `system.shell` teaching
+    // hangs on: naming a call a run does not bind hands that run a `ReferenceError` on its first
+    // turn, which is the same rule the `view.openFile` line follows.
+    //
+    // Whether its output is *offloaded* is stated only when it is, and only when the tool is
+    // offered: under the default policy there is nothing to say that the tool's own description
     // does not already say. Under offloading there is — the model has to know that what it is
     // reading is a tail, and that the rest of it is a `grep` away rather than gone.
-    let shell = match shell_offload
-        .limits()
-        .filter(|_| registry.offers(SHELL_TOOL))
-    {
+    let offers_shell = registry.offers(SHELL_TOOL);
+    let shell = match shell_offload.limits().filter(|_| offers_shell) {
         Some(limits) => ShellView {
+            offered: true,
             offloaded: true,
             tail: limits.describe(),
             directory: limits.dir.display().to_string(),
         },
-        None => ShellView::default(),
+        None => ShellView {
+            offered: offers_shell,
+            ..ShellView::default()
+        },
     };
 
     // The message headings this run can put in front of a synthesized `user` message — only under

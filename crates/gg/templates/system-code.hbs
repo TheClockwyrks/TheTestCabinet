@@ -12,8 +12,14 @@ variable.
 
 {{#if readFile.offered}}
 Use `view.openFile(path: str)` to read a file.
-{{#if readFile.capped}}Reading a file returns {{readFile.lineCap}} lines per call unless you ask for more.{{/if}}
+{{#if readFile.capped}}Reading a file returns {{readFile.lineCap}} lines per call. To read a different part of one, pass a line window as a second argument: `view.openFile(path, { offset: 400, limit: 200 })` reads 200 lines starting at line 400. A `limit` larger than {{readFile.lineCap}} is honored.{{/if}}
 {{#if readFile.images}}Reading images is supported.{{else}}Reading images is not supported.{{/if}}
+{{/if}}
+
+{{#if shell.offered}}
+Use `system.shell(command: str)` to run a shell command in the workspace. It
+returns the command's `exitCode` and its merged output to your program — open a
+view on that output if you need to read it yourself.
 {{/if}}
 
 Views are the only way that you can read data from your code. `console.log()`
@@ -51,15 +57,22 @@ capability. Call a function using `<object>.<function>(args...)`.
 - `{{object}}`: {{description}}
 {{/each}}
 
-Call `<object>.list()` to see the functions on an object, each with a one-line
-summary. Call `view.openDocsView(fn)` to read a function's full signature,
-documentation, and the types it uses — pass the function itself
+Two calls tell you what an object holds, and they reach you by different routes.
+
+`<object>.list()` **returns** an object's functions to your program, each as
+`{ name, summary }`. It is an ordinary return value, so it puts nothing in front
+of you on its own: to read it yourself you must open a view of it, exactly as you
+would any other value your program computed —
+`view.openText("fs", JSON.stringify(fs.list()))`.
+
+`view.openDocsView(fn)` **opens a view** directly, of one function's full
+signature, documentation, and the types it uses. Pass the function itself
 (`view.openDocsView(view.openText)`) or its name
 (`view.openDocsView("openText")`).
 
-`view.openDocsView` opens a view like any other, so the documentation arrives on
-your next turn and is not available during the turn you ask for it. Ask in one
-turn, use it in the next.
+Either way you are reading a view, so what you asked for arrives on your next
+turn and is not available during the turn you ask for it. Ask in one turn, use it
+in the next.
 
 {{#if codeHeadings}}
 ### Messages you receive

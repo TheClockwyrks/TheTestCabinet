@@ -239,10 +239,12 @@ not tools: no capability offers them, they dispatch nothing, and each is declare
 interfaces and gg's tool vocabulary is not perturbed by them. A signature and a sentence of
 documentation exist for every function **the run actually offers**, reflected out of the
 sandbox SDK's own emitted declarations by the same build that produces the component; the
-prompt names the objects, and the model reads the functions on demand with `object.list()`
-and `view.openDocsView()`. A hand-written list would drift, and a prompt that describes a
-signature the sandbox does not have is worse than no prompt, because the model has no
-way to discover the lie.
+prompt names the objects — plus the argument shape of the two or three calls a program
+cannot bootstrap without, `view.openText`, `view.openFile` and `system.shell`, each named
+only when this run binds it — and the model reads the rest of the functions on demand with
+`object.list()` and `view.openDocsView()`. A hand-written list would drift, and a prompt
+that describes a signature the sandbox does not have is worse than no prompt, because the
+model has no way to discover the lie.
 
 ### Reading the documentation is opening a view
 
@@ -254,11 +256,33 @@ program consults in order to decide what to do next, in the turn it is deciding.
 unchanged, and it is the reason every API object carries a `list` and the view API's own
 listing call had to be named [`current`](#showing-yourself-things) instead.
 
+What it returns inline it returns **to the program**, which is the whole distinction between
+the two calls and the one the [prompt](/gg/prompts/) now draws in as many words. A directory
+is an ordinary return value, so it reaches the model's window not at all unless the program
+forwards it — `view.openText("fs", JSON.stringify(fs.list()))` — and the failure of not
+saying so is silent rather than noisy. A model told that `list()` and `openDocsView` are two
+ways of looking a function up writes `system.list();`, the program runs, the value is
+discarded like every other returned value, and the turn produces *nothing*: the only thing
+that comes back is the [`Notice`](#a-program-that-worked-earns-no-message) saying the program
+put nothing in its context, earned by a program that did exactly what it was told.
+
 `view.openDocsView(fn)` is the other one, and it opens a **view**. Pass the bound function
 itself — `view.openDocsView(view.openText)` — or its name, `view.openDocsView("openText")`.
 What comes back is that function's full signature, its documentation, and the declarations of
 every type it mentions, arriving under the [`Documentation`](#three-kinds-of-view) heading
 qualified by the function's name.
+
+An argument that is *neither* a bound function nor a name is refused in the **guest**, before
+any lookup happens, and that placement is the point. `view.openDocsView(system.run)` — a
+function this run does not bind — evaluates to `undefined` long before the call is made, and
+coercing it looked up a function literally named `"undefined"` and reported that name back as
+unknown. The name was never the model's: nothing it wrote said `undefined`, so it was sent
+hunting a typo that did not exist. The last layer that can still see what the value *was* is
+the one that names it, so `undefined` and `null` are answered with the fault that actually
+occurred — the object does not carry that function, check with `<object>.list()` — and any
+other wrong type is named for what it is (*takes a function or a function name, not a
+number*). A name that is merely unknown still throws `not-found`, because that one really is
+a name the model wrote.
 
 That is a reversal, and the thing it replaced is worth stating because the replacement is a
 subtraction. gg used to hang a `.docs()` method off every bound function (and a
@@ -542,12 +566,15 @@ not shown the `TaskUsage` type either. That is the property
 come from one source and cannot disagree.
 
 It extends to the section's **prose**, not just its listing. The line teaching
-`view.openFile` renders only for a run that binds `read_file`, and the documentation lookup
-the prompt demonstrates is spelled `view.openDocsView(view.openText)` — against the one view
-function
+`view.openFile` renders only for a run that binds `read_file`, the line teaching
+`system.shell` only for one that offers `shell`, and the documentation lookup the prompt
+demonstrates is spelled `view.openDocsView(view.openText)` — against the one view function
 nothing gates. A call named in a prompt is the part of it a model copies verbatim, so
 naming an ungated one would hand a reduced-toolset run a `ReferenceError` on its first
-turn.
+turn. The gate is drawn at the finest grain the fact has: the `openFile` line's *second
+half*, the `{ offset, limit }` window, renders only under a
+[capped read mode](/gg/filesystem/#read-modes), because `unlimited`'s `read_file` takes no
+such arguments and teaching a knob that does nothing is its own kind of lie.
 
 The [filesystem capabilities](/gg/filesystem/) compose the same way: a run with
 `read-file` off has no `fs.readFile`, no `fs.readTextFile` and no `view.openFile`, and a
@@ -590,8 +617,19 @@ Under tool calling, a failed tool returns its failure **into** the conversation 
 value. Inside a program, a failed tool **throws** a typed `ToolError` carrying `.tool`,
 `.code` and `.message`, and an uncaught throw ends the program at that statement.
 
-That inversion is deliberate, and it is why composition works at all. A surface where
-every call returns `{ ok, output }` forces a branch after every line, and the worked
+`.tool` is worth reading precisely: it names **the function the program called**, and no
+longer implies that a tool ran and failed. The guest re-tags a binding-level `TypeError` as a
+`ToolError` on the call it came out of, so `tasks.addTask({ title: "x" })` — an `addTask`
+with no `id`, refused by the generated lowering code before anything reached a tool — is
+reported as `` `addTask` failed (invalid-argument) `` with the bindings' own complaint after
+it. That is the honest attribution rather than a widened one. The field always answered the
+question a model actually asks (*which of my calls was this about?*), and the alternative was
+worse in both directions: a fault that named no call at all, or a second failure vocabulary
+for the class of mistakes a model makes most.
+
+The inversion — a failure that throws rather than one that comes back as a value — is
+deliberate, and it is why composition works at all. A surface where every call returns
+`{ ok, output }` forces a branch after every line, and the worked
 example at the top of this page becomes unwritable. Three things keep it honest:
 
 1. **The throw is catchable and typed.** `catch (e) { if (e.code === "conflict") … }` is
@@ -601,6 +639,19 @@ example at the top of this page becomes unwritable. Three things keep it honest:
    also serialises: a plain `Error`'s `message` is non-enumerable, so without an explicit
    `toJSON` a failure a program logged — or put in a [view](#showing-yourself-things) —
    would arrive as `{}`.
+
+   That `toJSON` was only ever half the answer, and the other half is a **realm** check.
+   The generated component bindings are evaluated against a *different* `Error` intrinsic
+   than the SDK and the model's program see, so the `TypeError` a mistyped argument raises
+   answers `false` to `instanceof Error` — it fell past every branch that reads `.name` and
+   `.message`, reached the fallback that stringifies a thrown value, and an `Error`'s own
+   fields are non-enumerable, so what the model received was the literal string `{}`: a
+   runtime error carrying no information at all, for the single most common mistake anyone
+   makes against this API. Every classifier in the guest — what gets logged, what gets
+   re-tagged, what gets reported — therefore asks `Object.prototype.toString` for the brand
+   instead, which reads the internal slot every `Error` carries whatever intrinsic
+   constructed it. `instanceof` was never the question being asked; *is this thing an
+   error* was.
 2. **The work before it stands.** Every call the program landed before the throw has
    landed for good, and what the model is told is which statement threw, on which line of
    *its own* program — the guest remaps the line out of the interpreter's coordinates. That
@@ -628,7 +679,7 @@ its own set of open views; each view has a **kind**, a **selector** (its key), a
 | --- | --- |
 | `view.openFile(path, options?)` | Reads the file **and** opens a view of it. Returns exactly what `fs.readFile` returns, so a program that wants both the bytes and the view pays for one read. |
 | `view.openText(label, body)` | Opens — or replaces — the text view keyed by `label`. |
-| `view.openDocsView(fn \| "name")` | Opens — or replaces — the [documentation view](#reading-the-documentation-is-opening-a-view) for one bound function, keyed by its name. Returns `void`: the documentation is material for the window, not a value for the program. |
+| `view.openDocsView(fn \| "name")` | Opens — or replaces — the [documentation view](#reading-the-documentation-is-opening-a-view) for one bound function, keyed by its name. Returns `void`: the documentation is material for the window, not a value for the program. An argument that is neither a bound function nor a name is `invalid-argument` in the guest, before the lookup, so a name this run does not bind is never quoted back as `undefined`. |
 | `view.close(selector)` | Closes every view carrying that selector (for a file, every page of that path) and returns how many it closed. Closing something that is not open is `0`, not a failure. |
 | `view.current()` | Lists what is open: each view's `kind`, `selector`, roughly what it costs in `tokens`, and a paged file view's `region`. |
 
@@ -770,8 +821,10 @@ it has ended, is the second-worst version of the same thing.
 An **empty label** is `invalid-argument`: a view with no selector could never be closed,
 superseded or attributed. So is an empty selector handed to `close` — a blank string is not a
 name that happens to match nothing, it is a bug, and answering it with a cheerful `0` would
-hide one. An empty **body** is allowed, because it is how a program says that something it was
-showing is now empty, and refusing it would make that unexpressible.
+hide one. So, one layer earlier, is an
+[`openDocsView` argument](#reading-the-documentation-is-opening-a-view) that is neither a
+function nor a name. An empty **body** is allowed, because it is how a program says that
+something it was showing is now empty, and refusing it would make that unexpressible.
 
 The last one is the only cap here that counts **occupancy** rather than events, and it has
 to. A picture is not sent once: it is re-sent whole on every request for as long as the view
@@ -934,6 +987,17 @@ again on every retry.
 The inverse rule holds too, and bounds the restraint: gg may **remove** from an error — a
 stack trace whose frames are its own internals — but never **adds** to one.
 
+There is one carve-out, and it is narrower than it looks: the layer that *raises* a fault may
+compose into it the answer to the question that fault provokes, because at that point the
+answer is part of the diagnostic rather than commentary on it. A `ReferenceError` provokes
+*what do I have?*, so the guest names the API objects this run bound — the model would
+otherwise have to spend a turn asking. A mistyped argument provokes *what does this call
+take?*, so the re-tagged failure names the call and points at
+`view.openDocsView("addTask")`, the one operation that answers it. Both are composed **in the
+guest, at the call site**, by the code that knows what went wrong; neither is gg reading a
+finished error and deciding to be helpful about it a turn later, which is the thing this rule
+forbids.
+
 There used to be a fourth message, headed `Output`, and its absence is the clearest statement
 of the change. It reported what a program had done: the roster of its composed calls, how many
 lines it logged, the views it opened and closed, whether it returned a value, whether an
@@ -1095,6 +1159,7 @@ record.
 | The program is longer than 64 KiB | the size guard, before the parse | a `Compiler error`: its size, the cap, and that a program orchestrates tools rather than carrying a document inline |
 | The program nests brackets past 200 deep | the nesting guard, before the parse | a `Compiler error`: its depth, the cap, that the parse runs on a bounded stack, and that this is almost always a repeated bracket |
 | An unknown identifier (usually a withheld tool) | the guest | a `Runtime error`: the name, the program line — **and the API objects this run binds**, because the question a `ReferenceError` provokes is *what do I have?*, and the guest composes that into the error rather than gg wrapping prose around it |
+| An argument of the wrong shape — a record missing a required field, a number where a string goes | the SDK's validators, or the generated bindings one layer below them | a catchable `invalid-argument` `ToolError` thrown at the call site and, uncaught, a `Runtime error`: **which function** the argument was wrong for, what the bindings said was wrong with it, the line of the program that made the call, and `view.openDocsView("<fn>")`. It used to be caught by nothing at all — the bindings' `TypeError` is an `Error` from [another realm](#a-tool-failure-throws), so it fell through to the value branch and arrived as the literal string `{}` |
 | A tool threw and was not caught | the guest's single `catch` | a `Runtime error`: which tool failed, its code and message, and the one line of *its own* program it threw on. Not the calls that already landed — those stand, which the [system prompt](/gg/prompts/) says once |
 | A tool failed but was caught | the program's own `catch` | nothing. It was handed the typed `ToolError` at the statement that made the call, which is the whole point of the surface; the operator's stream still records the failure |
 | A denied global (`setTimeout`, `fetch`, `crypto.randomUUID`, …) | the guest's throwers | a `Runtime error`: the denial, located, plus "every tool function is synchronous" |

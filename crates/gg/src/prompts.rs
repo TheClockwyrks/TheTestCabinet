@@ -500,6 +500,14 @@ pub struct ReadFileView {
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShellView {
+    /// Whether `shell` is offered at all this run.
+    ///
+    /// Separate from [`offloaded`](Self::offloaded), which describes how much of a command's output
+    /// comes back: this one gates whether the prompt says a program can run commands *at all*. It is
+    /// worth its own line under responses-as-code for the reason `view.openFile` is: running a build
+    /// or a test is the most common thing a program does, and a model that has to discover the call
+    /// through `system.list()` spends a turn on it.
+    pub offered: bool,
     /// Whether `shell` output is offloaded this run. False when the tool is not offered, or when its
     /// output comes back inline — in which case nothing else here is referenced by the template.
     pub offloaded: bool,
