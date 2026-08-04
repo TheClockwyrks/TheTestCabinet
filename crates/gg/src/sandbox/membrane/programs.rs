@@ -23,6 +23,7 @@
 use super::test_cabinet::gg::programs::{Host as ProgramsHost, ProgramSummary};
 use super::test_cabinet::gg::types::{ErrorCode, ToolError};
 use super::{MembraneState, ToolApi};
+use crate::sandbox::language::{PROGRAMS_GET, PROGRAMS_HISTORY, PROGRAMS_RERUN};
 
 /// The name the membrane reports a `programs.rerun` refusal under.
 ///
@@ -34,32 +35,38 @@ impl<A: ToolApi> ProgramsHost for MembraneState<A> {
     /// The programs this agent has run, oldest first. Cannot fail: an empty library is an empty
     /// list, which is the honest answer on the first turn of every session.
     fn history(&mut self) -> Vec<ProgramSummary> {
-        self.api
-            .program_history()
-            .into_iter()
-            .map(|summary| ProgramSummary {
-                // The library counts turns in `u64` because a session's turn numbers are the
-                // context window's, which are; the membrane carries `u32`, which no real session
-                // approaches. Saturating rather than wrapping keeps a nonsense value out of a
-                // number the model will pass straight back to `get`.
-                turn: u32::try_from(summary.turn).unwrap_or(u32::MAX),
-                lines: summary.lines,
-                chars: summary.chars,
-                ok: summary.ok,
-                error: summary.error,
-            })
-            .collect()
+        self.recorded_ok(PROGRAMS_HISTORY, |state, rec| {
+            state
+                .api(rec)
+                .program_history()
+                .into_iter()
+                .map(|summary| ProgramSummary {
+                    // The library counts turns in `u64` because a session's turn numbers are the
+                    // context window's, which are; the membrane carries `u32`, which no real session
+                    // approaches. Saturating rather than wrapping keeps a nonsense value out of a
+                    // number the model will pass straight back to `get`.
+                    turn: u32::try_from(summary.turn).unwrap_or(u32::MAX),
+                    lines: summary.lines,
+                    chars: summary.chars,
+                    ok: summary.ok,
+                    error: summary.error,
+                })
+                .collect()
+        })
     }
 
     /// The source of one program as it was run, or `not-found` naming the turns that are held.
     fn get(&mut self, turn: Option<u32>) -> Result<String, ToolError> {
-        self.api
-            .program_source(turn.map(u64::from))
-            .map_err(|refusal| ToolError {
-                code: super::error_code(Some(refusal.failure)),
-                tool: "get".to_string(),
-                message: refusal.message,
-            })
+        self.recorded(PROGRAMS_GET, |state, rec| {
+            state
+                .api(rec)
+                .program_source(turn.map(u64::from))
+                .map_err(|refusal| ToolError {
+                    code: super::error_code(Some(refusal.failure)),
+                    tool: "get".to_string(),
+                    message: refusal.message,
+                })
+        })
     }
 
     /// Register the program gg is to run in place of this one, and return.
@@ -70,20 +77,26 @@ impl<A: ToolApi> ProgramsHost for MembraneState<A> {
     /// argument that makes a succession first-wins — and a blank source is refused rather than
     /// handed to a compiler that would answer with a syntax error about nothing.
     fn rerun(&mut self, source: String) -> Result<(), ToolError> {
-        if source.trim().is_empty() {
-            return Err(refused(
-                ErrorCode::InvalidArgument,
-                "`source` must not be blank",
-            ));
-        }
-        if self.rerun.is_some() {
-            return Err(refused(
-                ErrorCode::Refused,
-                "a program was already handed over this turn",
-            ));
-        }
-        self.rerun = Some(source);
-        Ok(())
+        // The one host function on this membrane that touches neither the api nor the dispatch path
+        // — it writes a field and returns — and it opens the bracket anyway. What is recorded is
+        // that the model made the call, which is a fact about the model rather than about what gg
+        // did with it.
+        self.recorded(PROGRAMS_RERUN, |state, _rec| {
+            if source.trim().is_empty() {
+                return Err(refused(
+                    ErrorCode::InvalidArgument,
+                    "`source` must not be blank",
+                ));
+            }
+            if state.rerun.is_some() {
+                return Err(refused(
+                    ErrorCode::Refused,
+                    "a program was already handed over this turn",
+                ));
+            }
+            state.rerun = Some(source);
+            Ok(())
+        })
     }
 }
 

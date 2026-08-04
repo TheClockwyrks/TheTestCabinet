@@ -153,30 +153,32 @@ fn an_unreadable_language_falls_back_and_says_so() {
     }
 }
 
-/// **Every call gg quotes back at a model resolves in every registered language's catalogue.**
+/// **Every model-facing call resolves in every registered language's catalogue.**
 ///
-/// gg quotes the model's own surface in its own sentences — the ending section of the system prompt,
-/// the context-pressure notice, the account of the message kinds an agent receives. It names those
-/// calls by [`SurfaceCall`], which carries the object and the language-independent *key* and no
-/// spelling at all, and [`spell`](crate::sandbox::spell) resolves the spelling out of the language's
-/// own catalogue. So there is no authored second copy of a reflected fact to drift.
+/// The table is read for two things. gg quotes the model's own surface in its own sentences — the
+/// ending section of the system prompt, the context-pressure notice, the account of the message
+/// kinds an agent receives — naming those calls by [`SurfaceCall`], which carries the object and the
+/// language-independent *key* and no spelling at all, so [`spell`](crate::sandbox::spell) resolves
+/// the spelling out of the language's own catalogue and there is no authored second copy to drift.
+/// And the [membrane](crate::sandbox) records every call under the same pair, which is what a
+/// console joins a bound function's count on.
 ///
 /// What remains possible is a `SurfaceCall` naming a key **no** catalogue carries — a key renamed on
-/// one side of the guest build and not the other. That would silently degrade to the bare key, and
-/// gg would tell a model to call something its scope does not bind. So every quoted call is resolved
-/// here, against every registered language, and the resolution has to be a real function rather than
-/// the fallback.
+/// one side of the guest build and not the other. Quoted, that degrades to the bare key and gg tells
+/// a model to call something its scope does not bind; recorded, it produces a count that joins to no
+/// row of the agent's own reported surface. So every call is resolved here, against every registered
+/// language, and the resolution has to be a real function rather than the fallback.
 #[test]
-fn every_call_gg_quotes_resolves_in_every_language() {
+fn every_model_facing_call_resolves_in_every_language() {
     for language in all_languages() {
         let functions = crate::sandbox::catalogue_functions(language);
-        for call in crate::sandbox::QUOTED_CALLS {
+        for call in crate::sandbox::MODEL_FACING_CALLS {
             let entry = functions
                 .iter()
                 .find(|function| function.object == call.object && function.key == call.key)
                 .unwrap_or_else(|| {
                     panic!(
-                        "{}: gg quotes `{}.{}`, which its catalogue does not carry",
+                        "{}: gg names `{}.{}`, which its catalogue does not carry",
                         language.id(),
                         call.object,
                         call.key
@@ -187,6 +189,36 @@ fn every_call_gg_quotes_resolves_in_every_language() {
                 format!("{}.{}", call.object, entry.name),
                 "{}: the quoted spelling is not the one the catalogue gives that key",
                 language.id()
+            );
+        }
+    }
+}
+
+/// **And the table covers the catalogue whole** — the other half of the same agreement.
+///
+/// The test above proves no entry in the table is invented. This one proves none is *missing*: a
+/// function a language's SDK binds with no entry here is a call the membrane has no identity to
+/// record under, which is precisely the silent undercount the per-function accounting exists to
+/// remove — the model calls it, the console reports it as offered and never called, and nothing
+/// anywhere says otherwise.
+///
+/// [`list`](crate::docs::LIST_FUNCTION) is the one exclusion, and it is excluded from the
+/// *catalogue* too: the guest seeds it onto every object rather than exporting it once, so it has no
+/// catalogue entry on either side to compare.
+#[test]
+fn the_model_facing_table_covers_every_catalogued_function() {
+    for language in all_languages() {
+        for function in crate::sandbox::catalogue_functions(language) {
+            assert!(
+                crate::sandbox::MODEL_FACING_CALLS
+                    .iter()
+                    .any(|call| { call.object == function.object && call.key == function.key }),
+                "{}: the catalogue binds `{}.{}` (spelled `{}`), which gg has no identity to record \
+                 it under",
+                language.id(),
+                function.object,
+                function.key,
+                function.name
             );
         }
     }
@@ -310,8 +342,8 @@ fn no_language_serves_another_languages_artifacts() {
         fixture.prompt().system_template,
     );
     assert_ne!(
-        crate::sandbox::spell(ts, crate::sandbox::REQUEST_CHANGES),
-        crate::sandbox::spell(fixture, crate::sandbox::REQUEST_CHANGES),
+        crate::sandbox::spell(ts, crate::sandbox::REVIEW_REQUEST_CHANGES),
+        crate::sandbox::spell(fixture, crate::sandbox::REVIEW_REQUEST_CHANGES),
     );
 
     assert_ne!(
@@ -321,7 +353,7 @@ fn no_language_serves_another_languages_artifacts() {
     );
 }
 
-/// **Every quoted call resolves against the *fixture's* catalogue too**, in the fixture's own
+/// **Every model-facing call resolves against the *fixture's* catalogue too**, in the fixture's own
 /// spellings.
 ///
 /// The registry's own version of this is next door; running it over a second surface is what proves
@@ -332,7 +364,7 @@ fn no_language_serves_another_languages_artifacts() {
 fn the_fixture_quotes_only_functions_its_own_catalogue_carries() {
     let fixture = fixture_language();
     let functions = crate::sandbox::catalogue_functions(fixture);
-    for call in crate::sandbox::QUOTED_CALLS {
+    for call in crate::sandbox::MODEL_FACING_CALLS {
         let name = functions
             .iter()
             .find(|function| function.object == call.object && function.key == call.key)

@@ -158,6 +158,22 @@ declare module "test-cabinet:gg/files" {
   export function listDir(path: string | undefined): DirEntry[];
 }
 
+/**
+ * The convenience wrappers built on a tool without being one.
+ *
+ * Imported rather than composed in the guest out of {@link readFile}, so the host can tell the two
+ * apart: a helper the guest built would arrive as its wrapped tool's call and be recorded under a
+ * function the model never wrote.
+ */
+declare module "test-cabinet:gg/helpers" {
+  /** Read a text file's contents. A path naming a picture is `invalid-argument`. */
+  export function readTextFile(
+    path: string,
+    offset: number | undefined,
+    limit: number | undefined,
+  ): string;
+}
+
 /** The authored skill library. */
 declare module "test-cabinet:gg/skills" {
   /** Read an authored skill by name, returning its body with the front matter stripped. */

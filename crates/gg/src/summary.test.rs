@@ -50,6 +50,7 @@ fn code_turn(healing: GgResponseHealing) -> GgTelemetryKind {
     GgTelemetryKind::CodeExecution {
         ok: true,
         tool_calls: 0,
+        api_calls: 0,
         duration_ms: Some(0),
         error: None,
         finished: None,

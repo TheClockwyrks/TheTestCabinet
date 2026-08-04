@@ -140,6 +140,77 @@ pub(crate) struct FakeToolApi {
     /// from — a real one, because it is a small self-contained value with the retention already in
     /// it, and a second model of it here would be the thing that drifts.
     programs: ProgramLibrary,
+    /// Every model-facing API call the membrane bracketed, in order, shared with the test that
+    /// built this double.
+    ///
+    /// Kept apart from [`log`](Self::log) because they record different layers: `log` is what
+    /// *ran* (a tool, with the exact JSON the membrane composed), this is what the *model wrote*
+    /// (an object and a function key, whether or not a tool backs it). A test that asserted the
+    /// two together could not tell `view.openFile` from `fs.readFile`, which is the whole
+    /// distinction they exist to keep.
+    api: ApiLog,
+}
+
+/// The API calls a [`FakeToolApi`] was bracketed with, shared through an `Arc` for the reason
+/// [`CallLog`] is: the api is moved into the store and cannot be borrowed back.
+#[derive(Clone, Default)]
+pub(crate) struct ApiLog(Arc<Mutex<Vec<RecordedApiCall>>>);
+
+/// One bracketed API call, as [`ApiLog`] records it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RecordedApiCall {
+    /// The API object — `fs`, `view`, `context`.
+    pub(crate) object: String,
+    /// The function's language-independent key — `read_file`, `open_file`, `list`.
+    pub(crate) function: String,
+    /// `None` until the call closed; `Some(ok)` once it did. A call still open when the program
+    /// ended — impossible today, since the bracket is synchronous — would be visible as `None`.
+    pub(crate) ok: Option<bool>,
+}
+
+#[allow(dead_code)]
+impl ApiLog {
+    /// Every call, in order.
+    pub(crate) fn calls(&self) -> Vec<RecordedApiCall> {
+        self.0
+            .lock()
+            .expect("the api log is never poisoned")
+            .clone()
+    }
+
+    /// The calls as `object.function`, in order — the cheapest assertion for "what did the model
+    /// write?".
+    pub(crate) fn names(&self) -> Vec<String> {
+        self.calls()
+            .into_iter()
+            .map(|call| format!("{}.{}", call.object, call.function))
+            .collect()
+    }
+
+    /// Open one call's record.
+    fn begin(&self, object: &str, function: &str) {
+        self.0
+            .lock()
+            .expect("the api log is never poisoned")
+            .push(RecordedApiCall {
+                object: object.to_string(),
+                function: function.to_string(),
+                ok: None,
+            });
+    }
+
+    /// Close the most recent open record for `object.function` — the innermost one, so a call
+    /// nested inside another closes its own bracket rather than its parent's.
+    fn end(&self, object: &str, function: &str, ok: bool) {
+        let mut calls = self.0.lock().expect("the api log is never poisoned");
+        if let Some(call) = calls
+            .iter_mut()
+            .rev()
+            .find(|call| call.ok.is_none() && call.object == object && call.function == function)
+        {
+            call.ok = Some(ok);
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -160,7 +231,14 @@ impl FakeToolApi {
             responder: Box::new(responder),
             views: Vec::new(),
             programs: ProgramLibrary::enabled(None),
+            api: ApiLog::default(),
         }
+    }
+
+    /// The API-call log this double writes, for a test that wants to assert what the model wrote
+    /// rather than what ran.
+    pub(crate) fn api_log(&self) -> ApiLog {
+        self.api.clone()
     }
 
     /// Seed the library with a program said to have run on `turn`, so a test can drive
@@ -215,6 +293,14 @@ impl FakeToolApi {
 
 #[allow(dead_code)]
 impl ToolApi for FakeToolApi {
+    fn begin_api_call(&mut self, object: &str, function: &str) {
+        self.api.begin(object, function);
+    }
+
+    fn end_api_call(&mut self, object: &str, function: &str, ok: bool) {
+        self.api.end(object, function, ok);
+    }
+
     fn shell(&mut self, command: String, timeout: std::time::Duration) -> ToolOutcome {
         self.call(
             "shell",

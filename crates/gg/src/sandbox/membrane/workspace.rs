@@ -1,6 +1,7 @@
-//! The workspace half of the membrane: `shell` and the four file tools.
+//! The workspace half of the membrane: `shell`, the four file tools, and the one helper built on
+//! them.
 //!
-//! These five are what almost every program touches, and two of them carry rules worth stating
+//! These six are what almost every program touches, and two of them carry rules worth stating
 //! where they are implemented. `shell` reports a non-zero exit as a **value**, because branching on
 //! `result.exitCode` is the single most common thing a program does — and, for the same reason, a
 //! process that ran is recorded as a completed call however it exited.
@@ -16,9 +17,13 @@ use std::time::Duration;
 use super::test_cabinet::gg::files::{
     DirEntry, EntryKind, FileRead, Host as FilesHost, ImageRead, TextRead,
 };
+use super::test_cabinet::gg::helpers::Host as HelpersHost;
 use super::test_cabinet::gg::shell::{Host as ShellHost, ShellOutput};
-use super::test_cabinet::gg::types::ToolError;
+use super::test_cabinet::gg::types::{ErrorCode, ToolError};
 use super::{MembraneState, ToolApi};
+use crate::sandbox::language::{
+    FS_EDIT_FILE, FS_LIST_DIR, FS_READ_FILE, FS_READ_TEXT_FILE, FS_WRITE_FILE, SYSTEM_SHELL,
+};
 use crate::tools::{DirEntryData, DirEntryKind, READ_FILE_TOOL, ToolData};
 
 /// The `shell` tool name.
@@ -62,25 +67,28 @@ impl<A: ToolApi> ShellHost for MembraneState<A> {
         command: String,
         timeout_secs: Option<f64>,
     ) -> Result<ShellOutput, ToolError> {
-        let timeout = Duration::from_secs_f64(clamp_timeout(timeout_secs, self.remaining_budget()));
-        let mut outcome = self.call_raw(SHELL_TOOL, |api| api.shell(command, timeout))?;
-        let data = outcome.data.take();
-        match data {
-            // The process ran. Whatever it exited with, that is a completed call, and the program
-            // is handed the facts to branch on rather than an exception to catch.
-            Some(ToolData::Shell(shell)) => Ok(ShellOutput {
-                exit_code: shell.exit_code,
-                output: shell.body,
-                truncated: shell.truncated,
-            }),
-            // No `shell` sidecar means no process ran: it could not be launched, or the timeout
-            // killed it. That is a genuine failure of the call, and it throws.
-            other => Err(if outcome.ok {
-                self.missing_data(SHELL_TOOL, other.as_ref())
-            } else {
-                self.tool_error(SHELL_TOOL, &outcome)
-            }),
-        }
+        self.recorded(SYSTEM_SHELL, |state, rec| {
+            let timeout =
+                Duration::from_secs_f64(clamp_timeout(timeout_secs, state.remaining_budget()));
+            let mut outcome = state.call_raw(rec, SHELL_TOOL, |api| api.shell(command, timeout))?;
+            let data = outcome.data.take();
+            match data {
+                // The process ran. Whatever it exited with, that is a completed call, and the
+                // program is handed the facts to branch on rather than an exception to catch.
+                Some(ToolData::Shell(shell)) => Ok(ShellOutput {
+                    exit_code: shell.exit_code,
+                    output: shell.body,
+                    truncated: shell.truncated,
+                }),
+                // No `shell` sidecar means no process ran: it could not be launched, or the timeout
+                // killed it. That is a genuine failure of the call, and it throws.
+                other => Err(if outcome.ok {
+                    state.missing_data(SHELL_TOOL, other.as_ref())
+                } else {
+                    state.tool_error(SHELL_TOOL, &outcome)
+                }),
+            }
+        })
     }
 }
 
@@ -91,17 +99,23 @@ impl<A: ToolApi> FilesHost for MembraneState<A> {
         offset: Option<u32>,
         limit: Option<u32>,
     ) -> Result<FileRead, ToolError> {
-        let (offset, limit) = read_window(offset, limit);
-        let outcome = self.call(READ_FILE_TOOL, |api| api.read_file(path, offset, limit))?;
-        file_read(self, outcome.data)
+        self.recorded(FS_READ_FILE, |state, rec| {
+            let (offset, limit) = read_window(offset, limit);
+            let outcome = state.call(rec, READ_FILE_TOOL, |api| {
+                api.read_file(path, offset, limit)
+            })?;
+            file_read(state, outcome.data)
+        })
     }
 
     fn write_file(&mut self, path: String, contents: String) -> Result<u64, ToolError> {
-        let outcome = self.call(WRITE_FILE_TOOL, |api| api.write_file(path, contents))?;
-        match outcome.data {
-            Some(ToolData::BytesWritten(bytes)) => Ok(bytes),
-            other => Err(self.missing_data(WRITE_FILE_TOOL, other.as_ref())),
-        }
+        self.recorded(FS_WRITE_FILE, |state, rec| {
+            let outcome = state.call(rec, WRITE_FILE_TOOL, |api| api.write_file(path, contents))?;
+            match outcome.data {
+                Some(ToolData::BytesWritten(bytes)) => Ok(bytes),
+                other => Err(state.missing_data(WRITE_FILE_TOOL, other.as_ref())),
+            }
+        })
     }
 
     fn edit_file(
@@ -112,18 +126,58 @@ impl<A: ToolApi> FilesHost for MembraneState<A> {
     ) -> Result<(), ToolError> {
         // A successful edit has nothing structured to say, which is why it declares
         // `result<_, tool-error>`: reaching here at all means the replacement landed.
-        self.call(EDIT_FILE_TOOL, |api| {
-            api.edit_file(path, old_string, new_string)
-        })?;
-        Ok(())
+        self.recorded(FS_EDIT_FILE, |state, rec| {
+            state.call(rec, EDIT_FILE_TOOL, |api| {
+                api.edit_file(path, old_string, new_string)
+            })?;
+            Ok(())
+        })
     }
 
     fn list_dir(&mut self, path: Option<String>) -> Result<Vec<DirEntry>, ToolError> {
-        let outcome = self.call(LIST_DIR_TOOL, |api| api.list_dir(path))?;
-        match outcome.data {
-            Some(ToolData::DirEntries(entries)) => Ok(entries.into_iter().map(entry).collect()),
-            other => Err(self.missing_data(LIST_DIR_TOOL, other.as_ref())),
-        }
+        self.recorded(FS_LIST_DIR, |state, rec| {
+            let outcome = state.call(rec, LIST_DIR_TOOL, |api| api.list_dir(path))?;
+            match outcome.data {
+                Some(ToolData::DirEntries(entries)) => Ok(entries.into_iter().map(entry).collect()),
+                other => Err(state.missing_data(LIST_DIR_TOOL, other.as_ref())),
+            }
+        })
+    }
+}
+
+impl<A: ToolApi> HelpersHost for MembraneState<A> {
+    /// Read a text file's contents directly — `fs.readTextFile`.
+    ///
+    /// It is the same core read as `fs.readFile` and the same `read_file` tool underneath, and it is
+    /// **its own API function** with its own host binding, which is the whole reason this interface
+    /// exists. Composed in the guest out of `readFile`, as it once was, the host could not tell the
+    /// two apart: every `readTextFile` a program wrote would be recorded as a `readFile` its author
+    /// never typed, and `readTextFile` itself would report a zero — a console accusing a model of
+    /// ignoring the call it in fact used, which is the one reading the offered-versus-called
+    /// contrast exists to rule out.
+    ///
+    /// A picture is an `invalid-argument` rather than an empty string: the caller asked for text and
+    /// there is none, and the variant-returning `fs.readFile` is the call that inspects one.
+    fn read_text_file(
+        &mut self,
+        path: String,
+        offset: Option<u32>,
+        limit: Option<u32>,
+    ) -> Result<String, ToolError> {
+        self.recorded(FS_READ_TEXT_FILE, |state, rec| {
+            let (offset, limit) = read_window(offset, limit);
+            let outcome = state.call(rec, READ_FILE_TOOL, |api| {
+                api.read_file(path.clone(), offset, limit)
+            })?;
+            match file_read(state, outcome.data)? {
+                FileRead::Text(text) => Ok(text.contents),
+                FileRead::Image(image) => Err(ToolError {
+                    code: ErrorCode::InvalidArgument,
+                    tool: READ_FILE_TOOL.to_string(),
+                    message: format!("`{path}` is a {} image, not text", image.label),
+                }),
+            }
+        })
     }
 }
 

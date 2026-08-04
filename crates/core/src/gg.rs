@@ -691,25 +691,31 @@ pub struct GgAgentApi {
 }
 
 /// One function bound on a [`GgAgentApi`] — what a
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call, and what gates it.
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call.
 ///
-/// The load-bearing field is [`tool`](Self::tool): a code program's calls are recorded under the gg
-/// **tool** they run through, not under the name a program spells them with, so it is the join key between a
-/// bound function and how many times this agent actually called it. A function with no tool behind
-/// it — a view call, an ending call, a program-library call — has none, and a consumer reports it
-/// as bound rather than as bound-and-never-called.
+/// The load-bearing field is [`key`](Self::key): every model-facing call a program makes is recorded
+/// under its **own** identity — the object it hangs off and this key — as an
+/// [`ApiCall`](GgTelemetryKind::ApiCall)/[`ApiResult`](GgTelemetryKind::ApiResult) pair, so joining a
+/// bound function to how many times this agent actually called it is a join on `(object, key)` and
+/// on nothing else. No gg tool name appears here, and none is needed: the API surface and the tool
+/// vocabulary are two independent surfaces over one core, and a function no tool backs — a view
+/// call, an ending call, a program-library call, `list` — is counted exactly as a function one does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgAgentApiFunction {
     /// The name a program calls it by — `readFile`, `openDocsView`, `finish`.
     pub name: String,
-    /// The gg tool whose being offered binds this function, and the name its calls are counted
-    /// under. `None` for the calls no tool backs: the view channel, the ending calls the agent's
-    /// dispatched role decides, and the program library's own calls.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "contract", ts(optional))]
-    pub tool: Option<String>,
+    /// This function's language-independent identity — `read_file`, `open_docs_view`, `finish`,
+    /// `list` — which is what its [`ApiCall`](GgTelemetryKind::ApiCall) records name it by, so a
+    /// count survives a run whose programs were written in another language with other spellings.
+    ///
+    /// Absent only on a record written before gg recorded a call per function, where a consumer must
+    /// say the record predates the accounting rather than report a zero: zero accuses the model of
+    /// ignoring what it was offered.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    #[cfg_attr(feature = "contract", ts(optional = nullable))]
+    pub key: String,
 }
 
 /// The stable id of the Phase 2 [compaction] capability: the automatic
@@ -4774,6 +4780,47 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         summary: Option<String>,
     },
+    /// A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program called a function on one of its
+    /// API objects — the **model-facing** record, emitted once per call the program makes.
+    ///
+    /// It is deliberately independent of [`ToolCall`](Self::ToolCall). The API surface and gg's tool
+    /// vocabulary are two surfaces over one core, so a call is recorded here under what the *model
+    /// wrote* (`view`.`open_file`) and there under what *ran* (`read_file`), and neither figure is
+    /// derived from the other. That independence is the whole reason this event exists: a call no
+    /// tool backs — `view.openText`, `harness.finish`, `programs.get`, every object's `list` — has
+    /// no `ToolCall` to be counted through, and used to be counted nowhere at all.
+    ///
+    /// It carries **no arguments**. A bridged call's `ToolCall` already carries them, and a
+    /// carve-out's are either trivial (`list("fs")`) or enormous (`view.openText(label, body)`) —
+    /// so a second copy would double the stream's largest payloads to say nothing new.
+    ///
+    /// Emitted **before** the call runs, so anything the call produces — a delegation's child
+    /// events, the `ToolCall`/`ToolResult` pair of the tool it bridges to — lands between it and its
+    /// [`ApiResult`](Self::ApiResult), exactly as `ToolCall` brackets a native tool call. An agent
+    /// answering with tool calls rather than programs emits none of these.
+    ApiCall {
+        /// The API object the function hangs off — `fs`, `view`, `harness`, `context`.
+        object: String,
+        /// The function's language-independent identity — `read_file`, `open_file`, `finish`,
+        /// `list` — the same [`key`](GgAgentApiFunction::key) the agent's
+        /// [surface](Self::AgentSurface) reports it under, never one language's spelling of it.
+        function: String,
+    },
+    /// The [`ApiCall`](Self::ApiCall) beside this one returned.
+    ///
+    /// `ok` is the **API function's** verdict, which can legitimately differ from the verdict of the
+    /// tool underneath it: it is settled after the call's result has been converted into what the
+    /// program is handed, so a tool that answered `ok` with a payload the function could not use is
+    /// a failed call here and a successful one on the tool stream. The API layer is the one the
+    /// model experienced.
+    ApiResult {
+        /// The API object, repeated so this event stands alone.
+        object: String,
+        /// The function's language-independent identity.
+        function: String,
+        /// Whether the call returned a value to the program rather than throwing into it.
+        ok: bool,
+    },
     /// Token usage (and, when known, cost) accounted since the previous usage event,
     /// **attributed to the agent profile and model that spent it**.
     /// Reuses the shared [`TokenCounts`] and [`Cost`] contract types so gg usage is
@@ -5603,6 +5650,22 @@ pub enum GgTelemetryKind {
         /// got that far — a turn-level transition, or a tool this run did not enable — is not one of
         /// these and never inflates the count.
         tool_calls: u64,
+        /// How many **model-facing API calls** the program made — one per
+        /// [`ApiCall`](Self::ApiCall)/[`ApiResult`](Self::ApiResult) pair the turn produced, whether
+        /// or not a gg tool backs the function.
+        ///
+        /// It legitimately **exceeds** [`tool_calls`](Self::CodeExecution::tool_calls), and by two
+        /// things: the calls no tool backs (a view, an ending, a program-library call, an
+        /// `object.list()`), and the calls the sandbox refused before dispatch (a spent wall-clock
+        /// budget, a tool this run does not offer) — the model made those, so the API layer counts
+        /// them even though nothing ran. The two figures answer different questions and are not
+        /// meant to agree.
+        ///
+        /// Omitted when zero — a program that made no calls at all, and every record written
+        /// before gg counted them, which are indistinguishable and equally uninteresting.
+        #[serde(default, skip_serializing_if = "is_zero_u64")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        api_calls: u64,
         /// How long the program's **own execution** took, in milliseconds — the wall-clock time it
         /// spent running, excluding time parked in a bridged tool call, which is the per-program
         /// efficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.

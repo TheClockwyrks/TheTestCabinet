@@ -23,15 +23,15 @@
       "type": "object"
     },
     "GgAgentApiFunction": {
-      "description": "One function bound on a [`GgAgentApi`] — what a\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call, and what gates it.\n\nThe load-bearing field is [`tool`](Self::tool): a code program's calls are recorded under the gg\n**tool** they run through, not under the name a program spells them with, so it is the join key between a\nbound function and how many times this agent actually called it. A function with no tool behind\nit — a view call, an ending call, a program-library call — has none, and a consumer reports it\nas bound rather than as bound-and-never-called.",
+      "description": "One function bound on a [`GgAgentApi`] — what a\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call.\n\nThe load-bearing field is [`key`](Self::key): every model-facing call a program makes is recorded\nunder its **own** identity — the object it hangs off and this key — as an\n[`ApiCall`](GgTelemetryKind::ApiCall)/[`ApiResult`](GgTelemetryKind::ApiResult) pair, so joining a\nbound function to how many times this agent actually called it is a join on `(object, key)` and\non nothing else. No gg tool name appears here, and none is needed: the API surface and the tool\nvocabulary are two independent surfaces over one core, and a function no tool backs — a view\ncall, an ending call, a program-library call, `list` — is counted exactly as a function one does.",
       "properties": {
+        "key": {
+          "description": "This function's language-independent identity — `read_file`, `open_docs_view`, `finish`,\n`list` — which is what its [`ApiCall`](GgTelemetryKind::ApiCall) records name it by, so a\ncount survives a run whose programs were written in another language with other spellings.\n\nAbsent only on a record written before gg recorded a call per function, where a consumer must\nsay the record predates the accounting rather than report a zero: zero accuses the model of\nignoring what it was offered.",
+          "type": "string"
+        },
         "name": {
           "description": "The name a program calls it by — `readFile`, `openDocsView`, `finish`.",
           "type": "string"
-        },
-        "tool": {
-          "description": "The gg tool whose being offered binds this function, and the name its calls are counted\nunder. `None` for the calls no tool backs: the view channel, the ending calls the agent's\ndispatched role decides, and the program library's own calls.",
-          "type": ["string", "null"]
         }
       },
       "required": ["name"],
@@ -1207,6 +1207,48 @@
       "type": "object"
     },
     {
+      "description": "A [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program called a function on one of its\nAPI objects — the **model-facing** record, emitted once per call the program makes.\n\nIt is deliberately independent of [`ToolCall`](Self::ToolCall). The API surface and gg's tool\nvocabulary are two surfaces over one core, so a call is recorded here under what the *model\nwrote* (`view`.`open_file`) and there under what *ran* (`read_file`), and neither figure is\nderived from the other. That independence is the whole reason this event exists: a call no\ntool backs — `view.openText`, `harness.finish`, `programs.get`, every object's `list` — has\nno `ToolCall` to be counted through, and used to be counted nowhere at all.\n\nIt carries **no arguments**. A bridged call's `ToolCall` already carries them, and a\ncarve-out's are either trivial (`list(\"fs\")`) or enormous (`view.openText(label, body)`) —\nso a second copy would double the stream's largest payloads to say nothing new.\n\nEmitted **before** the call runs, so anything the call produces — a delegation's child\nevents, the `ToolCall`/`ToolResult` pair of the tool it bridges to — lands between it and its\n[`ApiResult`](Self::ApiResult), exactly as `ToolCall` brackets a native tool call. An agent\nanswering with tool calls rather than programs emits none of these.",
+      "properties": {
+        "function": {
+          "description": "The function's language-independent identity — `read_file`, `open_file`, `finish`,\n`list` — the same [`key`](GgAgentApiFunction::key) the agent's\n[surface](Self::AgentSurface) reports it under, never one language's spelling of it.",
+          "type": "string"
+        },
+        "object": {
+          "description": "The API object the function hangs off — `fs`, `view`, `harness`, `context`.",
+          "type": "string"
+        },
+        "type": {
+          "const": "api_call",
+          "type": "string"
+        }
+      },
+      "required": ["type", "object", "function"],
+      "type": "object"
+    },
+    {
+      "description": "The [`ApiCall`](Self::ApiCall) beside this one returned.\n\n`ok` is the **API function's** verdict, which can legitimately differ from the verdict of the\ntool underneath it: it is settled after the call's result has been converted into what the\nprogram is handed, so a tool that answered `ok` with a payload the function could not use is\na failed call here and a successful one on the tool stream. The API layer is the one the\nmodel experienced.",
+      "properties": {
+        "function": {
+          "description": "The function's language-independent identity.",
+          "type": "string"
+        },
+        "object": {
+          "description": "The API object, repeated so this event stands alone.",
+          "type": "string"
+        },
+        "ok": {
+          "description": "Whether the call returned a value to the program rather than throwing into it.",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "api_result",
+          "type": "string"
+        }
+      },
+      "required": ["type", "object", "function", "ok"],
+      "type": "object"
+    },
+    {
       "description": "Token usage (and, when known, cost) accounted since the previous usage event,\n**attributed to the agent profile and model that spent it**.\nReuses the shared [`TokenCounts`] and [`Cost`] contract types so gg usage is\nreported in the same units as every other run.\n\nA gg run spans several models (one per [agent profile](GgAgentConfig)), so an unattributed\ndelta is unattributable: summed over a multi-model run it says what was spent but not on\nwhat, and no consumer can price it per token class or split it per model. Each delta\ntherefore names the profile and the concrete model that produced it, which makes the *live*\nper-model breakdown derivable from the delta stream alone — the\n[`SlotUsage`](Self::SlotUsage) rollups say the same thing, but only once an agent has\nfinished, which is too late for a run being watched. Summing the deltas of one\n`(slot, model_id)` key reproduces that key's rollup exactly.",
       "properties": {
         "cost": {
@@ -2055,6 +2097,12 @@
     {
       "description": "A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) **turn** — the\nevent that makes a code-shaped turn observable: what gg had to do to the model's reply\nbefore it could run it, what the program then did, and whether it ended the run.\n\nEmitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)\nonce per code-shaped turn, on the agent that emitted the reply, so it rides on that agent's\nown [`agent_id`](GgTelemetryEvent::agent_id). That includes a turn whose reply was **not a\nprogram at all** — prose, or an empty reply — which is prepared for the guest like anything\nelse and is reported the same way a program that did not compile is: `ok: false` and an\n[`error`](Self::CodeExecution::error) carrying the compiler's diagnostic. One event per\ncode-shaped turn is the invariant, and it is what makes\n[`code_executions`](GgSessionSummary::code_executions) the exact denominator for the run's\n[healing rollup](GgHealingSummary).\n\nThe individual tool calls the program made still stream as ordinary\n[`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the\nprogram composed them — this event carries the *turn* itself: whether the program returned\nnormally, how many tool calls it composed, how long its own execution took (the efficiency\nsignal that replaced the wasmtime fuel the sandbox used to meter), and — when it did not\nreturn normally — the fault. A run with the capability off emits none.",
       "properties": {
+        "apiCalls": {
+          "description": "How many **model-facing API calls** the program made — one per\n[`ApiCall`](Self::ApiCall)/[`ApiResult`](Self::ApiResult) pair the turn produced, whether\nor not a gg tool backs the function.\n\nIt legitimately **exceeds** [`tool_calls`](Self::CodeExecution::tool_calls), and by two\nthings: the calls no tool backs (a view, an ending, a program-library call, an\n`object.list()`), and the calls the sandbox refused before dispatch (a spent wall-clock\nbudget, a tool this run does not offer) — the model made those, so the API layer counts\nthem even though nothing ran. The two figures answer different questions and are not\nmeant to agree.\n\nOmitted when zero — a program that made no calls at all, and every record written\nbefore gg counted them, which are indistinguishable and equally uninteresting.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "compileWaitMs": {
           "description": "How long **this** program spent obtaining the sandbox's compiled interpreter component,\nin milliseconds — absent (the ordinary case) when the component was already compiled and\nnothing here was on the turn's critical path.\n\nThe component is compiled once per process, and a run that enables the capability starts\nthat compile before its first model request. But starting it early only **overlaps** it\nwith the request rather than eliminating it: on a run container with one or two cores the\ncompile takes seconds, so a model that answers quickly gets its first program back before\nthe warm-up has finished, and that program compiles the component itself. This is the\nfigure that says so — without it, \"did this program wait on the one shared compile or is\nit genuinely slow?\" is only answerable by comparing timestamps across sibling runs.",
           "format": "uint64",

@@ -135,7 +135,7 @@ describe("agent surface reduction", () => {
     expect(state.agents.get("agent-1")?.surface?.withheld).toEqual([]);
   });
 
-  it("keeps a responses-as-code agent's api objects and their gates", () => {
+  it("keeps a responses-as-code agent's api objects and each function's own key", () => {
     const state = reduceGgEvents([
       spawn("root", "Root"),
       surface(
@@ -145,13 +145,14 @@ describe("agent surface reduction", () => {
           {
             object: "fs",
             description: "Read and write the workspace.",
-            functions: [{ name: "readFile", tool: "read_file" }],
+            functions: [{ name: "readFile", key: "read_file" }],
           },
           {
             object: "view",
             description: "Show the model something.",
-            // No gate: a view call is not backed by a tool, so it has no call count to join.
-            functions: [{ name: "openFile" }],
+            // No tool backs this one, and it carries a key all the same: the API layer
+            // counts it exactly as it counts the read next to it.
+            functions: [{ name: "openFile", key: "open_file" }],
           },
         ],
       ),
@@ -159,8 +160,47 @@ describe("agent surface reduction", () => {
 
     const apis = state.agents.get("root")!.surface!.apis;
     expect(apis.map((api) => api.object)).toEqual(["fs", "view"]);
-    expect(apis[0]!.functions[0]!.tool).toBe("read_file");
-    expect(apis[1]!.functions[0]!.tool).toBeUndefined();
+    expect(apis[0]!.functions[0]!.key).toBe("read_file");
+    expect(apis[1]!.functions[0]!.key).toBe("open_file");
+  });
+
+  it("counts each api function's calls under its own identity", () => {
+    // The complaint this accounting exists to answer: `view.openFile` runs a `read_file`
+    // and `context.list` runs nothing at all, and both are calls the model made.
+    const state = reduceGgEvents([
+      spawn("root", "Root"),
+      gg("root", {
+        type: "api_call",
+        object: "view",
+        function: "open_file",
+      } as GgTelemetryKind),
+      gg("root", {
+        type: "tool_call",
+        name: "read_file",
+        args: {},
+      } as GgTelemetryKind),
+      gg("root", {
+        type: "api_result",
+        object: "view",
+        function: "open_file",
+        ok: true,
+      } as GgTelemetryKind),
+      gg("root", {
+        type: "api_call",
+        object: "context",
+        function: "list",
+      } as GgTelemetryKind),
+      gg("root", {
+        type: "api_call",
+        object: "context",
+        function: "list",
+      } as GgTelemetryKind),
+    ]);
+
+    expect(state.apiCalls.get("view.open_file")).toBe(1);
+    expect(state.apiCalls.get("context.list")).toBe(2);
+    // The tool layer records what ran, and is not where a function's count comes from.
+    expect(state.apiCalls.get("fs.read_file")).toBeUndefined();
   });
 
   it("leaves a stream that never reported one with no surface", () => {

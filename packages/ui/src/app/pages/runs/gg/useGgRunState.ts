@@ -742,7 +742,6 @@ export interface GgRunState {
   // empty when no issue named reviewers (no `issue_review` events).
   issueReviews: Map<string, IssueReviewState>;
 
-
   // --- The run's configuration ---------------------------------------------
   // The capability set the run is (or was) configured with: gg announces it on the
   // `session_started` event, so it is known from the run's first event rather than
@@ -997,6 +996,14 @@ function ggFeedRow(
     // Per-turn phase timing drives the Metrics graph, not the feed — a row per turn
     // saying where its milliseconds went would drown the feed it sits in.
     case "turn_timing":
+    // What a responses-as-code program CALLED, in the model's own vocabulary. Its
+    // consumer is the APIs surface, which counts per function; the feed stays the
+    // EXECUTION record, so a bridged call keeps its one `read_file` row rather than
+    // gaining a second saying `view.openFile` about the same work. The calls no tool
+    // backs are the ones this drops entirely, and deliberately: `view.openText` is
+    // already in the feed as the context message it produced.
+    case "api_call":
+    case "api_result":
     case "skills_state":
     // The memory panel carries both the live set and the per-memory revision
     // history, so neither kind needs a feed row of its own.
@@ -1105,6 +1112,16 @@ export interface DerivedGgState {
   errors: GgErrorTally;
   usage: UsageTally;
   slotUsage: SlotUsage[];
+  // How many times each API function this partition's programs called was called, keyed
+  // `object.function` on the function's own language-independent identity — `view.open_file`,
+  // `context.list`, `harness.finish`.
+  //
+  // Kept apart from the tool breakdown beside it because they are two layers over one core:
+  // this is what the model WROTE, that is what RAN. A `view.openFile` appears here once and
+  // there as a `read_file`; a `context.list` appears only here, because nothing dispatched.
+  // Empty for a tool-calling agent, which emits no `api_call` at all, and for a record written
+  // before gg counted per function.
+  apiCalls: Map<string, number>;
   agents: Map<string, AgentNode>;
   agentForest: AgentTreeNode[];
   // The states an FSM agent walked, in order, and the successions between them.
@@ -1510,6 +1527,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   const prompts: PromptTurn[] = [];
   // One per `turn_timing` — the turn's three-phase wall-clock split (see `TurnTiming`).
   const turnTimings: TurnTiming[] = [];
+  // Per-function API call counts, keyed `object.function` (see `DerivedGgState.apiCalls`).
+  const apiCalls = new Map<string, number>();
   let sawSession = false;
   let sessionEndStatus: string | null = null;
   let skills: GgSkillState[] = [];
@@ -1864,6 +1883,16 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           durationMs: gg.durationMs ?? null,
         });
         break;
+      case "api_call": {
+        // One model-facing call, counted under the function the model wrote. The OPENING
+        // half is what counts: it is emitted before the call runs, so a program stopped
+        // mid-call still shows the call it was making rather than losing it for want of a
+        // result. `api_result` carries the verdict, which the surface does not read — a
+        // call that threw is still a call the model made.
+        const key = `${gg.object}.${gg.function}`;
+        apiCalls.set(key, (apiCalls.get(key) ?? 0) + 1);
+        break;
+      }
       case "turn_timing":
         // The turn's phase split, emitted as the last event of the turn it describes.
         // Keyed to the turn it closes — the `turn_started` already counted — so the
@@ -2152,6 +2181,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     errors,
     usage,
     slotUsage,
+    apiCalls,
     agents,
     agentForest: buildAgentForest(agents),
     fsmPath,

@@ -8566,10 +8566,13 @@ struct PromptInputs<'a> {
 /// discovery deliberately does not answer up front. Both read this, so neither can drift from what
 /// the guest actually binds.
 ///
-/// Each function carries the gg tool that gates it — `None` for the calls no tool backs — because
-/// that name, not the language's spelling of it, is what a program's calls are recorded under. Every object
-/// ends with [`list`](crate::docs::LIST_FUNCTION), which is bound but not catalogued — see the note
-/// at the tail of the function.
+/// Each function carries its own language-independent
+/// [key](crate::sandbox::signatures::CatalogueFunction::key) — never a gg tool name, and never the
+/// spelling one SDK gives it — because that key is what every call the program makes is
+/// [recorded](test_cabinet_core::gg::GgTelemetryKind::ApiCall) under. So a consumer joins a bound
+/// function to its own count, whether or not a tool backs it, and a function offered and never
+/// called reports a real zero. Every object ends with [`list`](crate::docs::LIST_FUNCTION), which is
+/// bound but not catalogued — see the note at the tail of the function.
 fn api_surface(
     registry: &ToolRegistry,
     role: EndingRole,
@@ -8628,7 +8631,7 @@ fn api_surface(
                 .or_default()
                 .push(GgAgentApiFunction {
                     name: function.name.to_string(),
-                    tool: function.gate.map(str::to_string),
+                    key: function.key.to_string(),
                 });
         }
     }
@@ -8645,7 +8648,7 @@ fn api_surface(
                 // list the same functions in the same order.
                 functions.push(GgAgentApiFunction {
                     name: crate::docs::LIST_FUNCTION.to_string(),
-                    tool: None,
+                    key: crate::docs::LIST_FUNCTION.to_string(),
                 });
                 GgAgentApi {
                     object: (*object).to_string(),
@@ -8716,7 +8719,7 @@ fn code_heading_views(
     let text_view = format!(
         "a value you showed yourself with `{}`; the view's label follows the heading, as \
          `View: changed-files`",
-        crate::sandbox::spell(crate::sandbox::language(language), sandbox::OPEN_TEXT)
+        crate::sandbox::spell(crate::sandbox::language(language), sandbox::VIEW_OPEN_TEXT)
     );
     // (source, one-line description, whether this run can produce it). The heading word itself comes
     // from `code_heading(source)`, the single source of truth both this list and the prefix share.
@@ -9028,9 +9031,12 @@ fn ending_view(role: EndingRole, program_language: Option<GgProgramLanguage>) ->
     EndingView {
         standard: matches!(role, EndingRole::Standard),
         review: matches!(role, EndingRole::Review),
-        finish: call(sandbox::FINISH, completion::FINISH_TOOL),
-        approve: call(sandbox::APPROVE, completion::APPROVE_TOOL),
-        request_changes: call(sandbox::REQUEST_CHANGES, completion::REQUEST_CHANGES_TOOL),
+        finish: call(sandbox::HARNESS_FINISH, completion::FINISH_TOOL),
+        approve: call(sandbox::REVIEW_APPROVE, completion::APPROVE_TOOL),
+        request_changes: call(
+            sandbox::REVIEW_REQUEST_CHANGES,
+            completion::REQUEST_CHANGES_TOOL,
+        ),
     }
 }
 

@@ -66,6 +66,10 @@ pub struct SandboxToolCall {
 /// and no replay entry — nothing was dispatched — so counting them together would make the
 /// `CodeExecution` event's `tool_calls` disagree with the number of `ToolCall`/`ToolResult` pairs
 /// the turn actually streamed.
+///
+/// The **API** record makes the opposite choice, and the contrast is the difference between the two
+/// layers: the model wrote the call, so [`begin_api_call`](ToolApi::begin_api_call) records it (as a
+/// failure), while the tool layer records nothing because nothing ran.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxRefusal {
     /// The gg tool name that was refused.
@@ -153,6 +157,33 @@ pub const PROGRAM_CALL_ID_PREFIX: &str = "program:";
 /// two documentation carve-outs. No method takes a serde_json::Value: a program's typed call reaches
 /// gg's tools without a round trip through JSON. `&mut self` because a call records what it composed.
 pub trait ToolApi: Send + 'static {
+    /// A program has begun a model-facing call to `function` on `object` — the **opening** half of
+    /// the API layer's own record, taken whether or not a gg tool backs the call.
+    ///
+    /// Independent of the tool layer by construction: the membrane brackets every host function with
+    /// this pair, and only *some* of those host functions go on to dispatch a tool. That is what
+    /// makes `view.openFile` a `view.open_file` here and a `read_file` on the tool stream, and what
+    /// gives `context.list` — which dispatches nothing at all — a count.
+    ///
+    /// Called **before** the work, so anything the call produces (a bridged `ToolCall`/`ToolResult`
+    /// pair, a delegation's whole subtree of child events) lands inside the bracket, exactly as the
+    /// tool layer's own [`ToolCall`](test_cabinet_core::gg::GgTelemetryKind::ToolCall) brackets what
+    /// it dispatches.
+    ///
+    /// The `function` is the language-independent
+    /// [key](crate::sandbox::SurfaceCall::key), never one SDK's spelling, so two arms of a
+    /// cross-language study compare like with like.
+    fn begin_api_call(&mut self, object: &str, function: &str);
+
+    /// That call returned — the **closing** half, with the verdict the *program* saw.
+    ///
+    /// `ok` is settled after the outcome has been converted into what the program is handed, so it
+    /// can legitimately disagree with the `ToolResult` beside it: a tool that answered `ok` with a
+    /// payload the typed function could not use failed the program, and the API layer is the one the
+    /// model experienced. There is no default body, deliberately — an api that forgot to record
+    /// would report a model as having ignored its whole surface.
+    fn end_api_call(&mut self, object: &str, function: &str, ok: bool);
+
     fn shell(&mut self, command: String, timeout: Duration) -> ToolOutcome;
     fn read_file(
         &mut self,

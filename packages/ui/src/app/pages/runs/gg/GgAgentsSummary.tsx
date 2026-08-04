@@ -22,12 +22,7 @@ import type {
   GgAttributionRow,
   GgViewAttributionRow,
 } from "./ggContextAttribution";
-import {
-  sharedSurfaceGates,
-  surfaceCallCount,
-  surfaceCallPhrase,
-  type SurfaceCallCount,
-} from "./ggSurfaceCalls";
+import { surfaceCallPhrase } from "./ggSurfaceCalls";
 import type {
   AgentTransition,
   AgentTreeNode,
@@ -527,45 +522,45 @@ function readsAsApis(surface: GgAgentSurfaceSummary): boolean {
 // The offered surface of one profile: its tools, or its API objects and what each binds.
 function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
   const { surface } = agent;
-  // The profile's observed calls, keyed by the gg tool a call is RECORDED under. That is the
-  // key an entry joins on, never the name it reads by: a code program's `readFile` is
-  // recorded as `read_file`, and joining on the displayed name would report every function
-  // of an API surface as never called.
+  const asApis = surface != null && readsAsApis(surface);
+  // The profile's observed calls, keyed the way this section's entries are RECORDED: an API
+  // surface joins on `object.function` — the function the model wrote — and a tool surface on
+  // the gg tool name. Two layers over one core, and only the layer this section is showing.
   const calls = useMemo(
-    () => new Map(agent.tools.tools.map((tool) => [tool.name, tool.calls])),
-    [agent.tools],
+    () =>
+      asApis
+        ? agent.apiCalls
+        : new Map(agent.tools.tools.map((tool) => [tool.name, tool.calls])),
+    [asApis, agent.apiCalls, agent.tools],
   );
   if (!surface) return null;
 
-  const asApis = readsAsApis(surface);
   if (!asApis && surface.tools.length === 0) return null;
   const label = asApis ? "APIs" : "Tools";
-  // Entries under the names they are joined and explained by. A chip reads by its bare
-  // function name under the object heading above it, but a shared figure has to name the
-  // functions it covers across objects — `readFile` alone would not say which one.
+  // Entries under the names they are explained by. A chip reads by its bare function name
+  // under the object heading above it; a hover has to qualify it, since every object binds a
+  // `list` and `readFile` alone would not say whose.
   const shown: GgAgentSurfaceEntry[] = asApis
     ? surface.apis.flatMap((api) =>
         api.functions.map((fn) => ({
           ...fn,
           name: `${api.object}.${fn.name}`,
+          key: fn.key ? `${api.object}.${fn.key}` : "",
         })),
       )
     : surface.tools;
-  // Taken across the whole surface, never per object — the two functions `read_file` backs on
-  // `fs` and the one it backs on `view` are one gate, and only a pass over all of them sees it.
-  const shared = sharedSurfaceGates(shown);
   // The markings are only worth explaining where the section actually carries one — a legend
   // for a distinction nothing below it draws is a line to read and discard.
-  const counts = shown.map((entry) => surfaceCallCount(entry, calls, shared));
+  const counts = shown.map((entry) => entryCount(entry, calls));
   const notes = [
-    counts.some((count) => count.count === 0)
+    counts.some((count) => count === 0)
       ? "Dimmed entries were offered and never called."
       : null,
     shown.some((entry) => entry.offeredBy < surface.reportingInstances)
       ? `A fraction marks an entry only some of the ${plural(surface.reportingInstances, "instance")} were offered — where an instance stands in its state machine gates what it may call.`
       : null,
-    counts.some((count) => count.sharedGate != null)
-      ? "A figure named with a tool is that tool's own: gg records a call under the tool behind a function, and one tool can back several of them."
+    counts.some((count) => count == null)
+      ? "An entry with no figure comes from a record written before gg counted a call per function — which is not the same as a count of zero."
       : null,
   ].filter((note): note is string => note != null);
 
@@ -593,7 +588,6 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
                 entries={api.functions}
                 object={api.object}
                 calls={calls}
-                shared={shared}
                 instances={surface.reportingInstances}
               />
             </li>
@@ -603,7 +597,6 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
         <SurfaceEntries
           entries={surface.tools}
           calls={calls}
-          shared={shared}
           instances={surface.reportingInstances}
         />
       )}
@@ -614,26 +607,38 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
   );
 }
 
+// How often one offered entry was called: its own figure, on its own identity.
+//
+// Null only where the entry carries no identity at all — a surface record written before gg
+// counted a call per function. That is a fact about the RECORD, and the views say so; a zero
+// there would read as "the model ignored this", which is the one thing it does not mean.
+function entryCount(
+  entry: GgAgentSurfaceEntry,
+  calls: ReadonlyMap<string, number>,
+  object?: string,
+): number | null {
+  if (!entry.key) return null;
+  const key = object == null ? entry.key : `${object}.${entry.key}`;
+  return calls.get(key) ?? 0;
+}
+
 // The offered things themselves, as chips: a set rather than a ranking, so it is read for
 // what is and is not in it rather than down a column of counts.
 //
-// A chip reads by its bare name under the object heading above it, but joins and explains
-// itself by the qualified one: `readFile` is not enough to say which function a shared
-// figure covers, and every object on the surface binds a `list`.
+// A chip reads by its bare name under the object heading above it, and explains itself by the
+// qualified one: `readFile` is not enough to say which object's function a hover is about, and
+// every object on the surface binds a `list`.
 function SurfaceEntries({
   entries,
   object,
   calls,
-  shared,
   instances,
 }: {
   entries: readonly GgAgentSurfaceEntry[];
   /** The object these functions sit on, where they sit on one — the qualifying prefix. */
   object?: string;
-  /** The profile's observed calls, keyed by the tool they are recorded under. */
+  /** The profile's observed calls, keyed the way this section's entries are recorded. */
   calls: ReadonlyMap<string, number>;
-  /** The gates backing more than one offered entry, whose counts are the gate's own. */
-  shared: ReadonlyMap<string, readonly string[]>;
   /** The instances the union was taken over — the denominator of "offered by N of them". */
   instances: number;
 }) {
@@ -642,11 +647,7 @@ function SurfaceEntries({
       {entries.map((entry) => {
         const qualified =
           object == null ? entry.name : `${object}.${entry.name}`;
-        const count = surfaceCallCount(
-          { name: qualified, tool: entry.tool },
-          calls,
-          shared,
-        );
+        const count = entryCount(entry, calls, object);
         const partial = entry.offeredBy < instances;
         return (
           <li key={entry.name}>
@@ -655,22 +656,12 @@ function SurfaceEntries({
               // An attribute rather than a second class, matching how the module views mark
               // a row that is present but no longer live: the chip states a fact about the
               // entry and the stylesheet decides what that looks like.
-              data-uncalled={count.count === 0 ? "" : undefined}
+              data-uncalled={count === 0 ? "" : undefined}
               title={entryTitle(qualified, entry, count, instances)}
             >
               <span>{entry.name}</span>
-              {count.count != null && (
-                <span className={styles.surfaceEntryCalls}>
-                  {/* Whose figure it is, said on the chip itself. A count several functions
-                      share is the gate's, and a chip that showed it bare would read as this
-                      function's own — the one false reading this section must not produce. */}
-                  {count.sharedGate != null && (
-                    <span className={styles.surfaceEntryGate}>
-                      {count.sharedGate}
-                    </span>
-                  )}
-                  {count.count}×
-                </span>
+              {count != null && (
+                <span className={styles.surfaceEntryCalls}>{count}×</span>
               )}
               {partial && (
                 <span className={styles.surfaceEntryPartial}>
@@ -686,13 +677,12 @@ function SurfaceEntries({
 }
 
 // What a chip says on hover: what became of it, and — where it was not offered to all of
-// them — why a profile's instances can honestly differ. The dimming, the fraction and the
-// gate a figure is named with are all silent about their reason, and this is where the
-// reasons live.
+// them — why a profile's instances can honestly differ. The dimming and the fraction are both
+// silent about their reason, and this is where the reasons live.
 function entryTitle(
   qualified: string,
   entry: GgAgentSurfaceEntry,
-  count: SurfaceCallCount,
+  count: number | null,
   instances: number,
 ): string {
   const outcome = surfaceCallPhrase(qualified, count);

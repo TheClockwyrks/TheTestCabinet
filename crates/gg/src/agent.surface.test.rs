@@ -52,14 +52,14 @@ fn surfaces(events: &[GgTelemetryEvent]) -> Vec<Surface> {
         .collect()
 }
 
-/// The functions bound on `object` in `apis`, as `(name, gating tool)`.
-fn functions_on(apis: &[GgAgentApi], object: &str) -> Vec<(String, Option<String>)> {
+/// The functions bound on `object` in `apis`, as `(spelling, catalogue key)`.
+fn functions_on(apis: &[GgAgentApi], object: &str) -> Vec<(String, String)> {
     apis.iter()
         .find(|api| api.object == object)
         .unwrap_or_else(|| panic!("the surface binds a `{object}` object"))
         .functions
         .iter()
-        .map(|function| (function.name.clone(), function.tool.clone()))
+        .map(|function| (function.name.clone(), function.key.clone()))
         .collect()
 }
 
@@ -212,10 +212,11 @@ async fn a_subagent_reports_its_own_surface() {
 }
 
 /// The code-mode surface: one object per family the agent binds, each carrying the functions
-/// actually bound and the gg tool that gates each — the join a console counts a program's calls by,
-/// because a program's calls are recorded under the tool name, never the JavaScript one.
+/// actually bound and each function's own language-independent key — the join a console counts a
+/// program's calls by, because a call is recorded under the function the model wrote and no gg tool
+/// name reaches this surface at all.
 #[test]
-fn the_api_surface_carries_each_objects_functions_and_the_tool_that_gates_them() {
+fn the_api_surface_carries_each_objects_functions_and_their_own_keys() {
     let set = GgCapabilitySet::minimal("mock/echo");
     let registry = ToolRegistry::from_capabilities(set.root());
     let apis = api_surface(
@@ -228,30 +229,45 @@ fn the_api_surface_carries_each_objects_functions_and_the_tool_that_gates_them()
     assert_eq!(
         functions_on(&apis, "fs"),
         vec![
-            ("readFile".to_string(), Some("read_file".to_string())),
-            ("writeFile".to_string(), Some("write_file".to_string())),
-            ("editFile".to_string(), Some("edit_file".to_string())),
-            ("listDir".to_string(), Some("list_dir".to_string())),
-            ("readTextFile".to_string(), Some("read_file".to_string())),
-            ("list".to_string(), None),
+            ("readFile".to_string(), "read_file".to_string()),
+            ("writeFile".to_string(), "write_file".to_string()),
+            ("editFile".to_string(), "edit_file".to_string()),
+            ("listDir".to_string(), "list_dir".to_string()),
+            // The helper's key is its own, not the `read_file` it shares a core with: two API
+            // functions over one core are two functions, and each is counted as itself.
+            ("readTextFile".to_string(), "read_text_file".to_string()),
+            ("list".to_string(), "list".to_string()),
         ],
-        "every bound `fs` call names the tool its calls are counted under"
+        "every bound `fs` call carries its own identity"
     );
-    // The calls no tool backs report none, so a consumer shows them as bound rather than as bound
-    // and never called — a zero there would be a claim about the model that is not true.
+    // The view channel is the case the old tool-keyed join could not express: `openFile` runs a
+    // `read_file` and the other four run nothing at all, and all five are counted as themselves.
     assert_eq!(
-        functions_on(&apis, "view")
-            .into_iter()
-            .filter(|(_, tool)| tool.is_none())
-            .map(|(name, _)| name)
-            .collect::<Vec<_>>(),
-        vec!["openText", "openDocsView", "close", "current", "list"],
-        "the ungated view channel carries no gate"
+        functions_on(&apis, "view"),
+        vec![
+            ("openFile".to_string(), "open_file".to_string()),
+            ("openText".to_string(), "open_text".to_string()),
+            ("openDocsView".to_string(), "open_docs_view".to_string()),
+            ("close".to_string(), "close".to_string()),
+            ("current".to_string(), "current".to_string()),
+            ("list".to_string(), "list".to_string()),
+        ],
+        "the view channel is counted per function, tool or no tool"
     );
     assert_eq!(
         functions_on(&apis, "harness"),
-        vec![("finish".to_string(), None), ("list".to_string(), None)],
-        "the ending call is the role's, not a tool's"
+        vec![
+            ("finish".to_string(), "finish".to_string()),
+            ("list".to_string(), "list".to_string()),
+        ],
+        "the ending call is counted as itself"
+    );
+    assert!(
+        apis.iter().all(|api| api
+            .functions
+            .iter()
+            .all(|function| !function.key.is_empty())),
+        "no bound function reaches a console with nothing to join on"
     );
 
     // An object appears exactly when something on it is bound: this role has no verdict to return,
@@ -280,9 +296,9 @@ fn the_api_surface_carries_each_objects_functions_and_the_tool_that_gates_them()
     assert_eq!(
         functions_on(&reviewer, "review"),
         vec![
-            ("approve".to_string(), None),
-            ("requestChanges".to_string(), None),
-            ("list".to_string(), None),
+            ("approve".to_string(), "approve".to_string()),
+            ("requestChanges".to_string(), "request_changes".to_string()),
+            ("list".to_string(), "list".to_string()),
         ]
     );
     assert!(
@@ -411,9 +427,9 @@ fn every_object_reports_the_list_meta_function_last_and_ungated() {
             api.functions.last(),
             Some(&GgAgentApiFunction {
                 name: "list".to_string(),
-                tool: None,
+                key: "list".to_string(),
             }),
-            "`{}` ends with an ungated `list`: {:?}",
+            "`{}` ends with a `list` keyed as itself: {:?}",
             api.object,
             api.functions
         );

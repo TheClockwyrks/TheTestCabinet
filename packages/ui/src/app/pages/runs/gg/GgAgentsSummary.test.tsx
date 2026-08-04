@@ -238,45 +238,59 @@ const TOOL_SURFACE_EVENTS: HarnessEvent[] = [
   offered("r2", ["read_file", "write_file"]),
 ];
 
+// One model-facing call, as a responses-as-code program's turn streams it.
+function apiCall(agentId: string, object: string, fn: string): HarnessEvent {
+  return gg(agentId, {
+    type: "api_call",
+    object,
+    function: fn,
+  } as GgTelemetryKind);
+}
+
 // The same run with both reviewers running programs instead: one object, whose functions
-// cover both joins — one gated by the tool the calls are recorded under, and one gated by
-// nothing at all, which therefore has no count rather than a count of zero.
+// cover both cases — one each instance called, and one no gg tool backs at all, which used
+// to be reported as having no count and is now counted like anything else.
 const API_SURFACE_EVENTS: HarnessEvent[] = [
   ...EVENTS,
-  ...["r1", "r2"].map((id) =>
-    offered(id, ["read_file"], [
-      {
-        object: "fs",
-        description: "the run's working tree",
-        functions: [{ name: "readFile", tool: "read_file" }, { name: "watch" }],
-      },
-    ] as GgAgentApi[]),
-  ),
-];
-
-// The same again, with the catalogue's one genuinely shared gate in it: `read_file` backs
-// `fs.readFile`, `fs.readTextFile` AND `view.openFile`, and the stream records all three as a
-// `read_file` call. A profile that read every file through one of them must not be reported as
-// having called the other two.
-const SHARED_GATE_EVENTS: HarnessEvent[] = [
-  ...EVENTS,
-  ...["r1", "r2"].map((id) =>
+  ...["r1", "r2"].flatMap((id) => [
     offered(id, ["read_file"], [
       {
         object: "fs",
         description: "the run's working tree",
         functions: [
-          { name: "readFile", tool: "read_file" },
-          { name: "readTextFile", tool: "read_file" },
+          { name: "readFile", key: "read_file" },
+          { name: "watch", key: "watch" },
+        ],
+      },
+    ] as GgAgentApi[]),
+    apiCall(id, "fs", "read_file"),
+  ]),
+];
+
+// The same again, over the three functions that share one core: `fs.readFile`,
+// `fs.readTextFile` and `view.openFile` all run a `read_file`, and each is recorded as
+// itself. Both reviewers wrote `view.openFile` and neither wrote the other two, so a profile
+// that read every file through one of them must not be reported as having called the rest.
+const SHARED_CORE_EVENTS: HarnessEvent[] = [
+  ...EVENTS,
+  ...["r1", "r2"].flatMap((id) => [
+    offered(id, ["read_file"], [
+      {
+        object: "fs",
+        description: "the run's working tree",
+        functions: [
+          { name: "readFile", key: "read_file" },
+          { name: "readTextFile", key: "read_text_file" },
         ],
       },
       {
         object: "view",
         description: "show yourself a file",
-        functions: [{ name: "openFile", tool: "read_file" }],
+        functions: [{ name: "openFile", key: "open_file" }],
       },
     ] as GgAgentApi[]),
-  ),
+    apiCall(id, "view", "open_file"),
+  ]),
 ];
 
 const CAPABILITIES: GgCapabilitySet = {
@@ -348,13 +362,6 @@ const SECTION_LABELS: ReadonlyArray<readonly [string, RegExp]> = [
  * is what identifies it: the name sits in a bare span inside the chip, and class names are a
  * stylesheet's business rather than a contract to assert against.
  */
-/** Whether a stream entry is one of gg's own events, of a given kind. */
-function isGgKind(event: HarnessEvent, type: string): boolean {
-  return (
-    event.type === "gg" && (event.event as { type?: string }).type === type
-  );
-}
-
 function chip(section: HTMLElement, name: string): HTMLElement {
   return within(section).getByText(name).closest("span[title]")!;
 }
@@ -491,71 +498,52 @@ describe("GgAgentsSummary offered surface", () => {
     ).toBeNull();
   });
 
-  it("shows no count for a function no tool is recorded under", () => {
-    // A view, ending or program-library call is bound without a gg tool behind it, so
-    // nothing counts it. Reporting that as `0×` would accuse the agent of ignoring
-    // something it may well have used every turn.
+  it("counts a function no gg tool backs exactly as it counts one that has a tool", () => {
+    // The complaint this accounting answers. A view, ending, program-library or `list` call
+    // is bound with no tool behind it, and the old tool-keyed join could only say "nothing
+    // behind it is recorded as a tool call, so it has no count" — a sentence about gg's own
+    // bookkeeping, printed where a fact about the model belongs. It is a call. It is counted.
     const { detail } = openReviewer(stubNav(), API_SURFACE_EVENTS);
     const section = within(detail).getByRole("region", {
       name: "reviewer apis",
     });
-    const ungated = chip(section, "watch");
-    expect(within(ungated).queryByText(/×$/)).toBeNull();
-    expect(ungated).not.toHaveAttribute("data-uncalled");
-    // …while the gated one joins through its tool, not through the name it reads by.
+    const untooled = chip(section, "watch");
+    expect(within(untooled).getByText("0×")).toBeInTheDocument();
+    expect(untooled).toHaveAttribute("data-uncalled");
+    expect(untooled).toHaveAttribute(
+      "title",
+      "fs.watch was offered and never called.",
+    );
+    // …and the one both instances called reads as its own figure, on its own identity.
     expect(
       within(chip(section, "readFile")).getByText("2×"),
     ).toBeInTheDocument();
+    // No gg tool name reaches a responses-as-code profile's API surface.
+    expect(within(section).queryByText("read_file")).toBeNull();
   });
 
-  it("attributes a figure several functions share to the tool it belongs to", () => {
-    // gg records a call under the tool and at no finer grain, so the two calls here could
-    // have been any mix of the three functions `read_file` backs. Claiming them for each
-    // function in turn would report six calls where two happened, and — worse for a section
-    // built on the offered/called contrast — would leave a function the model genuinely
-    // never wrote reading as one it used.
-    const { detail } = openReviewer(stubNav(), SHARED_GATE_EVENTS);
+  it("counts three functions over one core as three functions", () => {
+    // `fs.readFile`, `fs.readTextFile` and `view.openFile` all run a `read_file`. Both
+    // reviewers wrote `view.openFile` and neither wrote the other two, so claiming the tool's
+    // figure for each in turn would report six calls where two happened — and would leave two
+    // functions the model genuinely never wrote reading as ones it used.
+    const { detail } = openReviewer(stubNav(), SHARED_CORE_EVENTS);
     const section = within(detail).getByRole("region", {
       name: "reviewer apis",
     });
-    for (const name of ["readFile", "readTextFile", "openFile"]) {
-      const shared = chip(section, name);
-      // The figure is shown as the gate's: named with it, and said in words on hover.
-      expect(within(shared).getByText("read_file")).toBeInTheDocument();
-      expect(within(shared).getByText("2×")).toBeInTheDocument();
-      expect(shared.getAttribute("title")).toMatch(
-        /^read_file — the tool behind fs\.readFile, fs\.readTextFile, view\.openFile — was called 2 times\./,
-      );
-      // …and never as the function's own, which is the reading that would be false.
-      expect(shared.getAttribute("title")).not.toMatch(
-        new RegExp(`${name} was called`),
-      );
-    }
-    expect(
-      within(section).getByText(
-        /A figure named with a tool is that tool's own/,
-      ),
-    ).toBeInTheDocument();
-  });
 
-  it("keeps the never-called reading exact for a shared gate", () => {
-    // The other direction needs no care and must not acquire any: nothing recorded under the
-    // gate means none of the functions behind it ran, which is true of each one on its own.
-    const quiet = [
-      ...EVENTS.filter((event) => !isGgKind(event, "tool_call")),
-      ...SHARED_GATE_EVENTS.slice(EVENTS.length),
-    ];
-    const { detail } = openReviewer(stubNav(), quiet);
-    const section = within(detail).getByRole("region", {
-      name: "reviewer apis",
-    });
-    const uncalled = chip(section, "readTextFile");
-    expect(uncalled).toHaveAttribute("data-uncalled");
-    expect(uncalled).toHaveAttribute(
+    const called = chip(section, "openFile");
+    expect(within(called).getByText("2×")).toBeInTheDocument();
+    expect(called).toHaveAttribute(
       "title",
-      "fs.readTextFile was offered and never called.",
+      "view.openFile was called 2 times.",
     );
-    expect(within(uncalled).queryByText("read_file")).toBeNull();
+
+    for (const name of ["readFile", "readTextFile"]) {
+      const untouched = chip(section, name);
+      expect(untouched).toHaveAttribute("data-uncalled");
+      expect(within(untouched).getByText("0×")).toBeInTheDocument();
+    }
   });
 
   it("renders no section at all for a run that reported no surface", () => {

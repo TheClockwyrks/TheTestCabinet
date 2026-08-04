@@ -288,7 +288,27 @@ things carry it:
 A roster says what an agent **holds**. It does not say what the agent may **call**, and
 until this release nothing on the stream did: a `tool_call` reports only what an agent
 reached for, so *"the model was never given that tool"* and *"the model had it and never
-touched it"* arrive as the same silence. Those are opposite findings — the first is a fact
+touched it"* arrive as the same silence.
+
+For a [responses-as-code](/gg/responses-as-code/) agent there is a second silence, and it
+is on the *called* side: a `tool_call` says what **ran**, not what the model **wrote**. The
+two are separate surfaces over one core of typed functions, so a program's `view.openFile`
+runs a `read_file`, a `fs.readTextFile` runs the same one, and a `context.list` runs nothing
+at all. gg therefore records the model-facing call in its own right:
+
+- **`api_call`** / **`api_result`** — one pair per call a program makes, naming the API
+  `object` and the function's language-independent `function` key (`view` / `open_file`),
+  and nothing else. No tool name, and no arguments: the `ToolCall` beside a bridged call
+  already carries those, and a carve-out's are either trivial (`list("fs")`) or enormous
+  (`view.openText(label, body)`). The opening half is emitted **before** the call runs, so a
+  bridged `tool_call`/`tool_result` pair and a delegation's whole subtree of child events
+  land inside the bracket. `ok` is the verdict the *program* saw, settled after the result
+  was converted into what it was handed — which can legitimately differ from the
+  `tool_result` beside it. A **tool-calling** agent emits none of these, and a call the
+  sandbox refused emits a pair with `ok: false` where the tool layer emits nothing at all:
+  the model made the call, and that it went nowhere is a fact about the run's capability
+  set. `code_execution.apiCalls` is the turn's total, and legitimately exceeds
+  `toolCalls` by exactly those two things. Those are opposite findings — the first is a fact
 about the run, the second a fact about the model — and telling them apart is the entire
 question a [toolset ablation](/gg/toolset-ablation/) is run to answer. So the offered set
 is its own event, the other half of the pair `agent_modules` opens:
@@ -332,21 +352,22 @@ is its own event, the other half of the pair `agent_modules` opens:
   the catalogue is reflected out of the SDK's exported signatures and `list` is the
   documentation carve-out's own, so the surface appends it rather than finding it — last,
   where the model's own `object.list()` puts it, so the read-out and the directory the
-  model gets for itself agree function for function. Each function names the gg **tool**
-  that gates it, and
-  that field is the load-bearing one: a program's calls are recorded under the tool they
-  run through, not under their JavaScript name, so it is the join key from a bound function
-  to how many times it was really called. A function no tool backs — a view call, an ending
-  call, a [program-library](/gg/program-library/) call, an object's own `list` — names none,
-  and reads as bound rather than as bound-and-never-called.
+  model gets for itself agree function for function. Each function names its own
+  language-independent **key** (`read_file`, `open_file`, `finish`, `list`), and that field
+  is the load-bearing one: every call a program makes is recorded as an `api_call` under
+  exactly that key, so it is the join from a bound function to how many times *it* was
+  called. No gg tool name appears here at all. A responses-as-code agent does not call
+  tools — it writes `view.openFile`, and the `read_file` underneath is gg's business — so
+  naming one would report a call the model never made.
 
-  The join is at the grain of the **tool**, and one tool can gate several functions:
-  `read_file` is the gate on `fs.readFile`, `fs.readTextFile` and `view.openFile` alike.
-  A count read off that gate is therefore the group's, not any one function's, and the
-  console shows it as the tool's rather than repeating it as each function's own — the
-  latter would report calls that never happened and, worse, would stop a function the
-  model genuinely ignored from reading as ignored. Nothing is lost in the direction that
-  matters: a gate with no calls under it means every function behind it went unused.
+  The join is at the grain of the **function**, which is what makes the two halves of the
+  contrast trustworthy in both directions. A function with no tool behind it is counted like
+  any other, so an ending call and an `object.list()` have figures instead of blanks; and
+  three functions over one core (`fs.readFile`, `fs.readTextFile`, `view.openFile` all run a
+  `read_file`) are three figures, so a function the model genuinely ignored reads as ignored
+  rather than inheriting its neighbour's calls. The only entry with no figure is one from a
+  record written *before* gg counted per function, and the console says exactly that — a
+  zero there would accuse the model of ignoring what it was given.
 
   `withheld` is the other side of `tools`: what this instance's per-agent
   `disabledTools` [ablation](/gg/toolset-ablation/) actually took away, which is the

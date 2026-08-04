@@ -305,9 +305,9 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
         fs.functions
             .iter()
             .find(|function| function.name == "writeFile")
-            .and_then(|function| function.tool.as_deref()),
+            .map(|function| function.key.as_str()),
         Some("write_file"),
-        "the composed call is joined to its tool"
+        "the composed call carries its own identity, which is what its count joins on"
     );
 }
 

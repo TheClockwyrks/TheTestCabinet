@@ -1,0 +1,166 @@
+//! The **API-call bracket**: the one place a model-facing call is recorded, and the reason no host
+//! function on this membrane can quietly skip it.
+//!
+//! # Two surfaces over one core, recorded separately
+//!
+//! gg's tools and gg's API objects are two surfaces over one core of typed functions
+//! ([`ToolApi`]), and they are independent: a tool exists because a tool-calling model needs a JSON
+//! name to dispatch, an API function exists because a program needs something to write, and neither
+//! is defined in terms of the other. What follows is that a call has **two** honest records, and
+//! they answer different questions:
+//!
+//! * the [tool record](super::capture) — what *ran*: `read_file`, dispatched, streamed as a
+//!   `ToolCall`/`ToolResult` pair, pinned in the [replay](crate::replay) so a re-run feeds the
+//!   recorded outcome back;
+//! * the API record — what the *model wrote*: `view.open_file`, which happens to bridge to
+//!   `read_file`, and `context.list`, which bridges to nothing at all.
+//!
+//! Only the second can answer "was this agent offered that call, and did it use it?", which is the
+//! question an ablation is run to ask. The first cannot: several API functions share one tool
+//! (`fs.readFile`, `fs.readTextFile` and `view.openFile` are all reads), fourteen API functions have
+//! no tool at all, and a call the membrane refused has no tool record even though the model made it.
+//!
+//! # Why the bracket is at the host function, not inside `dispatch`
+//!
+//! [`dispatch`](super::MembraneState::dispatch) knows a tool name and nothing else — the API
+//! identity is the host function's own knowledge and is gone by the time dispatch is reached. So the
+//! bracket goes around the *whole* host function body, which buys three things at once: it covers
+//! the carve-outs that never dispatch; it closes **after** the typed conversion, so a tool that
+//! answered `ok` with a payload the function could not use is a failed API call even though its
+//! `ToolResult` already streamed a success; and it encloses the bridged pair, so the nesting on the
+//! stream reads the way it happened.
+//!
+//! # Why a token
+//!
+//! [`GuardedApi`] owns the [api](ToolApi) behind a field this module alone can see, and hands it out
+//! only against a [`Recording`] — which only [`recorded`](MembraneState::recorded) and its siblings
+//! can mint. A host function in a sibling module therefore *cannot* reach the api, dispatch a tool,
+//! or declare an ending without having opened a bracket first: the omission this whole file exists
+//! to prevent is a compile error rather than a silent zero on a console. The
+//! [`every_host_function_records_its_own_api_call`](tests) gate closes the remaining gap — a host
+//! function that opened a bracket naming the *wrong* call, and the one function that touches
+//! neither the api nor a tool and could therefore have skipped the bracket and still compiled.
+
+use super::test_cabinet::gg::types::ToolError;
+use super::{MembraneState, ToolApi};
+use crate::sandbox::language::SurfaceCall;
+
+/// Proof that a model-facing API call is being recorded around whatever is done with it.
+///
+/// Its field is private to this module, so no sibling can forge one: the only way to hold a
+/// `Recording` is to be inside the closure [`recorded`](MembraneState::recorded) ran. That is the
+/// whole enforcement mechanism — see the module docs.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Recording(());
+
+/// The [api](ToolApi) itself, reachable only from inside an open [`Recording`].
+///
+/// A newtype rather than a bare field on [`MembraneState`] for one reason: Rust privacy is
+/// module-*subtree* privacy, so a field declared in `membrane.rs` is visible to every host function
+/// file under it and could be called without a record. Declared here, it is visible to this module
+/// alone, and [`get`](Self::get) is the only door.
+pub(super) struct GuardedApi<A: ToolApi> {
+    /// The native, typed tool surface. Private to this module on purpose.
+    api: A,
+}
+
+impl<A: ToolApi> GuardedApi<A> {
+    /// Take ownership of the api for one program.
+    pub(super) fn new(api: A) -> Self {
+        Self { api }
+    }
+
+    /// Hand the api back when the program has ended, so the loop reclaims the per-turn state it
+    /// moved in. Not a call, so it needs no [`Recording`].
+    pub(super) fn into_inner(self) -> A {
+        self.api
+    }
+
+    /// The api, for the duration of a recorded call.
+    pub(super) fn get(&mut self, _: Recording) -> &mut A {
+        &mut self.api
+    }
+}
+
+impl<A: ToolApi> MembraneState<A> {
+    /// Record one model-facing API call around `body` — the bracket every host function on this
+    /// membrane opens, and the only source of the [`Recording`] its body needs to do anything.
+    ///
+    /// The identity is a [`SurfaceCall`]: the API object and the function's language-independent
+    /// [key](SurfaceCall::key), never the SDK spelling the model actually typed, so a count means
+    /// the same thing in every arm of a cross-language study.
+    ///
+    /// A membrane **refusal** — a spent wall-clock budget, a tool this run does not offer — closes
+    /// the bracket as a failed call rather than skipping it. The model made the call; that nothing
+    /// ran is the tool layer's fact, which is exactly why
+    /// [`SandboxRefusal`](crate::sandbox::invoker::SandboxRefusal) is kept out of the tool roster
+    /// and why an API call is not.
+    pub(super) fn recorded<R>(
+        &mut self,
+        call: SurfaceCall,
+        body: impl FnOnce(&mut Self, Recording) -> Result<R, ToolError>,
+    ) -> Result<R, ToolError> {
+        self.recorded_on(call.object, call.key, body)
+    }
+
+    /// As [`recorded`](Self::recorded), for a call whose object is only known at run time.
+    ///
+    /// One caller: `object.list()`, the [documentation carve-out](crate::docs)'s meta function. The
+    /// guest seeds it onto *every* object it creates and passes the object's name as the argument,
+    /// so there is no fixed pair to write into
+    /// [`MODEL_FACING_CALLS`](crate::sandbox::language::MODEL_FACING_CALLS) — and the object it
+    /// records is therefore whatever the guest sent. In practice that is one of the names the shim
+    /// seeded; a guest that sent something else records a row that joins to no reported surface,
+    /// which is inert rather than dangerous.
+    pub(super) fn recorded_on<R>(
+        &mut self,
+        object: &str,
+        function: &str,
+        body: impl FnOnce(&mut Self, Recording) -> Result<R, ToolError>,
+    ) -> Result<R, ToolError> {
+        self.api.api.begin_api_call(object, function);
+        self.api_calls = self.api_calls.saturating_add(1);
+        let result = body(self, Recording(()));
+        self.api.api.end_api_call(object, function, result.is_ok());
+        result
+    }
+
+    /// As [`recorded`](Self::recorded), for the three calls that cannot fail.
+    ///
+    /// `view.current`, `programs.history` and `object.list()` each answer with a list — an agent
+    /// with nothing open, nothing run and nothing bound gets an empty one, which is an answer rather
+    /// than an error — so there is no verdict to take and the record is always `ok`. Spelling that
+    /// out here is what keeps their host functions from having to invent a `Result` they would then
+    /// unwrap.
+    pub(super) fn recorded_ok<R>(
+        &mut self,
+        call: SurfaceCall,
+        body: impl FnOnce(&mut Self, Recording) -> R,
+    ) -> R {
+        self.recorded_ok_on(call.object, call.key, body)
+    }
+
+    /// [`recorded_ok`](Self::recorded_ok) with a run-time object — `object.list()`.
+    pub(super) fn recorded_ok_on<R>(
+        &mut self,
+        object: &str,
+        function: &str,
+        body: impl FnOnce(&mut Self, Recording) -> R,
+    ) -> R {
+        self.api.api.begin_api_call(object, function);
+        self.api_calls = self.api_calls.saturating_add(1);
+        let value = body(self, Recording(()));
+        self.api.api.end_api_call(object, function, true);
+        value
+    }
+
+    /// The api, for a caller holding a [`Recording`] — the shorthand every carve-out uses instead of
+    /// reaching through the guard by hand.
+    pub(super) fn api(&mut self, recording: Recording) -> &mut A {
+        self.api.get(recording)
+    }
+}
+
+#[cfg(test)]
+#[path = "recording.test.rs"]
+mod tests;

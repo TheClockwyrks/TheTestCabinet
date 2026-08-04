@@ -8636,7 +8636,7 @@ fn the_view_heading_is_documented_for_every_code_run() {
     assert!(
         row.description.contains(&crate::sandbox::spell(
             crate::sandbox::language(GgProgramLanguage::TypeScript),
-            crate::sandbox::OPEN_TEXT
+            crate::sandbox::VIEW_OPEN_TEXT
         )),
         "{row:#?}"
     );

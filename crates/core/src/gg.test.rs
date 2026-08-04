@@ -1210,6 +1210,7 @@ fn a_code_execution_omits_finished_and_healing_when_the_turn_was_clean() {
     let kind = GgTelemetryKind::CodeExecution {
         ok: true,
         tool_calls: 3,
+        api_calls: 3,
         duration_ms: Some(24_000),
         error: None,
         finished: None,
@@ -1239,6 +1240,7 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
     let finished = GgTelemetryKind::CodeExecution {
         ok: true,
         tool_calls: 1,
+        api_calls: 1,
         duration_ms: Some(9_100),
         error: None,
         finished: Some("Built the game and wrote MANIFEST.md.".to_string()),
@@ -1275,6 +1277,7 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
     let uncompiled = GgTelemetryKind::CodeExecution {
         ok: false,
         tool_calls: 0,
+        api_calls: 0,
         duration_ms: Some(0),
         error: Some("SyntaxError: redeclaration of const files".to_string()),
         finished: None,
@@ -2119,17 +2122,17 @@ fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
                 description: "read, write, and edit workspace files".to_string(),
                 functions: vec![GgAgentApiFunction {
                     name: "readFile".to_string(),
-                    tool: Some("read_file".to_string()),
+                    key: "read_file".to_string(),
                 }],
             },
-            // The ending call: bound by the agent's dispatched role rather than by a tool, so it
-            // carries no gate to count against.
+            // The ending call: bound by the agent's dispatched role rather than by a tool, and
+            // counted exactly as a tool-backed function is — its own key, its own figure.
             GgAgentApi {
                 object: "harness".to_string(),
                 description: "end your session".to_string(),
                 functions: vec![GgAgentApiFunction {
                     name: "finish".to_string(),
-                    tool: None,
+                    key: "finish".to_string(),
                 }],
             },
         ],
@@ -2144,8 +2147,11 @@ fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
     assert_eq!(value["programLanguage"], json!("typescript"));
     assert_eq!(value["tools"], json!(["read_file", "finish"]));
     assert_eq!(value["withheld"], json!(["write_file"]));
-    assert_eq!(value["apis"][0]["functions"][0]["tool"], json!("read_file"));
-    assert!(value["apis"][1]["functions"][0].get("tool").is_none());
+    // Every function carries its own key — the ending call as much as the tool-backed read — and
+    // no gg tool name appears anywhere on the surface.
+    assert_eq!(value["apis"][0]["functions"][0]["key"], json!("read_file"));
+    assert_eq!(value["apis"][1]["functions"][0]["key"], json!("finish"));
+    assert!(value["apis"][0]["functions"][0].get("tool").is_none());
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
     assert_eq!(back, kind);
 

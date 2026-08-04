@@ -1455,7 +1455,7 @@ impl ContextModel {
                 .map(|language| {
                     crate::sandbox::spell(
                         crate::sandbox::language(language),
-                        crate::sandbox::CLOSE_VIEW,
+                        crate::sandbox::VIEW_CLOSE,
                     )
                 })
                 .unwrap_or_default(),

@@ -26,6 +26,7 @@ fn quiet_outcome() -> SandboxOutcome {
     SandboxOutcome {
         tool_calls: Vec::new(),
         tool_calls_suppressed: 0,
+        api_calls: 0,
         refusals: Vec::new(),
         refusals_suppressed: 0,
         logs: Vec::new(),

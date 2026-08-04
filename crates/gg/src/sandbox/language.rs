@@ -230,15 +230,22 @@ pub struct PromptDialect {
     pub list_summary: &'static str,
 }
 
-/// One model-facing call **gg itself quotes** back at a model, named the only way the seam is
-/// allowed to name a function: by the API object it hangs off and the catalogue
-/// [key](super::signatures::CatalogueFunction::key) that is its language-independent identity.
+/// One model-facing call, named the only way the seam is allowed to name a function: by the API
+/// object it hangs off and the catalogue [key](super::signatures::CatalogueFunction::key) that is
+/// its language-independent identity.
 ///
 /// The **object** half is identity rather than spelling — `harness`, `review`, `judge` and `view`
 /// are on the wire, the console groups by them, and no language may rename them. The function half
 /// is a spelling, so it is not written down here at all: [`spell`] resolves it against the
 /// language's own committed catalogue. That is the difference between "a test checks the two agree"
 /// and "there is only one of them".
+///
+/// It is used for two things, and the second is why the table below covers the *whole* surface
+/// rather than the handful gg quotes. It is what gg [spells](spell) when it names a call back at a
+/// model — and it is the identity every call is **recorded** under, as the
+/// [`ApiCall`](test_cabinet_core::gg::GgTelemetryKind::ApiCall) pair the
+/// [membrane](super::membrane) brackets each host function with. One vocabulary for both, so the
+/// count a console joins to a bound function is keyed on the same thing that named the function.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SurfaceCall {
     /// The API object it is grouped under in a program's scope.
@@ -255,44 +262,220 @@ impl SurfaceCall {
     }
 }
 
-/// The [standard](crate::ending::EndingRole::Standard) role's ending call.
-pub const FINISH: SurfaceCall = SurfaceCall::new("harness", "finish");
+/// Run a shell command in the workspace.
+pub const SYSTEM_SHELL: SurfaceCall = SurfaceCall::new("system", "shell");
 
-/// The [review](crate::ending::EndingRole::Review) role's approval.
-pub const APPROVE: SurfaceCall = SurfaceCall::new("review", "approve");
+/// Read a workspace file, as the variant the tool returns.
+pub const FS_READ_FILE: SurfaceCall = SurfaceCall::new("fs", "read_file");
 
-/// The review role's change request.
-pub const REQUEST_CHANGES: SurfaceCall = SurfaceCall::new("review", "request_changes");
+/// Read a workspace file's text directly — the one helper, which shares
+/// [`read_file`](crate::tools::READ_FILE_TOOL)'s tool and gate and has an identity of its own.
+pub const FS_READ_TEXT_FILE: SurfaceCall = SurfaceCall::new("fs", "read_text_file");
 
-/// The call that closes a view — what the context-pressure block points an agent at when text views
-/// are holding window it could reclaim.
-pub const CLOSE_VIEW: SurfaceCall = SurfaceCall::new("view", "close");
+/// Write a workspace file whole.
+pub const FS_WRITE_FILE: SurfaceCall = SurfaceCall::new("fs", "write_file");
+
+/// Replace one string in a workspace file.
+pub const FS_EDIT_FILE: SurfaceCall = SurfaceCall::new("fs", "edit_file");
+
+/// List a workspace directory.
+pub const FS_LIST_DIR: SurfaceCall = SurfaceCall::new("fs", "list_dir");
+
+/// Read an authored skill.
+pub const SKILLS_READ_SKILL: SurfaceCall = SurfaceCall::new("skills", "read_skill");
+
+/// Write the agent's single scratchpad memory.
+pub const MEMORY_WRITE_MEMORY: SurfaceCall = SurfaceCall::new("memory", "write_memory");
+
+/// Update an existing memory whole.
+pub const MEMORY_UPDATE_MEMORY: SurfaceCall = SurfaceCall::new("memory", "update_memory");
+
+/// Create a new memory.
+pub const MEMORY_CREATE_MEMORY: SurfaceCall = SurfaceCall::new("memory", "create_memory");
+
+/// Read one memory.
+pub const MEMORY_READ_MEMORY: SurfaceCall = SurfaceCall::new("memory", "read_memory");
+
+/// Replace one string in a memory.
+pub const MEMORY_EDIT_MEMORY: SurfaceCall = SurfaceCall::new("memory", "edit_memory");
+
+/// Search the memory index by keyword.
+pub const MEMORY_SEARCH_MEMORIES: SurfaceCall = SurfaceCall::new("memory", "search_memories");
+
+/// Delete a memory.
+pub const MEMORY_DELETE_MEMORY: SurfaceCall = SurfaceCall::new("memory", "delete_memory");
+
+/// Add a task to the agent's own list.
+pub const TASKS_ADD_TASK: SurfaceCall = SurfaceCall::new("tasks", "add_task");
+
+/// Patch a task.
+pub const TASKS_UPDATE_TASK: SurfaceCall = SurfaceCall::new("tasks", "update_task");
+
+/// Re-state a task's dependencies.
+pub const TASKS_SET_BLOCKED_BY: SurfaceCall = SurfaceCall::new("tasks", "set_blocked_by");
+
+/// Mark a task done.
+pub const TASKS_COMPLETE_TASK: SurfaceCall = SurfaceCall::new("tasks", "complete_task");
+
+/// Drop a task.
+pub const TASKS_REMOVE_TASK: SurfaceCall = SurfaceCall::new("tasks", "remove_task");
+
+/// Open an epic on the board.
+pub const PROJECT_CREATE_EPIC: SurfaceCall = SurfaceCall::new("project", "create_epic");
+
+/// File an issue on the board.
+pub const PROJECT_CREATE_ISSUE: SurfaceCall = SurfaceCall::new("project", "create_issue");
+
+/// Patch an issue.
+pub const PROJECT_UPDATE_ISSUE: SurfaceCall = SurfaceCall::new("project", "update_issue");
+
+/// Re-state an issue's dependencies.
+pub const PROJECT_SET_ISSUE_BLOCKED_BY: SurfaceCall =
+    SurfaceCall::new("project", "set_issue_blocked_by");
+
+/// Remove an epic.
+pub const PROJECT_REMOVE_EPIC: SurfaceCall = SurfaceCall::new("project", "remove_epic");
+
+/// Remove an issue.
+pub const PROJECT_REMOVE_ISSUE: SurfaceCall = SurfaceCall::new("project", "remove_issue");
+
+/// Register a deferred wait on a board issue.
+pub const PROJECT_WAIT_FOR_ISSUE: SurfaceCall = SurfaceCall::new("project", "wait_for_issue");
+
+/// Reclaim a file view from the agent's own window.
+pub const CONTEXT_EVICT_FILE_VIEW: SurfaceCall = SurfaceCall::new("context", "evict_file_view");
+
+/// Archive a range of the agent's own thread.
+pub const CONTEXT_ARCHIVE_THREAD: SurfaceCall = SurfaceCall::new("context", "archive_thread");
+
+/// Search what the agent has archived.
+pub const CONTEXT_SEARCH_ARCHIVE: SurfaceCall = SurfaceCall::new("context", "search_archive");
+
+/// Register a compaction of the agent's own window.
+pub const CONTEXT_COMPACT: SurfaceCall = SurfaceCall::new("context", "compact");
+
+/// Spawn a child agent.
+pub const AGENTS_SPAWN_SUBAGENT: SurfaceCall = SurfaceCall::new("agents", "spawn_subagent");
+
+/// Block until child agents return.
+pub const AGENTS_WAIT_FOR_SUBAGENTS: SurfaceCall = SurfaceCall::new("agents", "wait_for_subagents");
+
+/// Send a message to a running child.
+pub const AGENTS_SEND_MESSAGE: SurfaceCall = SurfaceCall::new("agents", "send_message");
+
+/// Declare a move to another state of this agent's machine.
+pub const AGENTS_TRANSITION_STATE: SurfaceCall = SurfaceCall::new("agents", "transition_state");
+
+/// Declare that this session continues as another agent.
+pub const AGENTS_EXEC: SurfaceCall = SurfaceCall::new("agents", "exec");
+
+/// Register a copy of this agent.
+pub const AGENTS_FORK: SurfaceCall = SurfaceCall::new("agents", "fork");
+
+/// Read a workspace file **and** show it to the agent. Bridged to
+/// [`read_file`](crate::tools::READ_FILE_TOOL) and recorded as itself: what the model wrote is
+/// `view.openFile`, and the tool underneath it is the execution layer's business.
+pub const VIEW_OPEN_FILE: SurfaceCall = SurfaceCall::new("view", "open_file");
 
 /// The call that shows the agent a value it computed — quoted in the prompt's account of the
 /// message kinds an agent receives.
-pub const OPEN_TEXT: SurfaceCall = SurfaceCall::new("view", "open_text");
+pub const VIEW_OPEN_TEXT: SurfaceCall = SurfaceCall::new("view", "open_text");
 
-/// The [program library](crate::programs) call that fetches a program the agent already ran.
-pub const PROGRAM_GET: SurfaceCall = SurfaceCall::new("programs", "get");
+/// Show the agent one function's documentation.
+pub const VIEW_OPEN_DOCS_VIEW: SurfaceCall = SurfaceCall::new("view", "open_docs_view");
+
+/// The call that closes a view — what the context-pressure block points an agent at when text views
+/// are holding window it could reclaim.
+pub const VIEW_CLOSE: SurfaceCall = SurfaceCall::new("view", "close");
+
+/// What is open in the agent's window right now.
+pub const VIEW_CURRENT: SurfaceCall = SurfaceCall::new("view", "current");
+
+/// The [program library](crate::programs)'s own directory.
+pub const PROGRAMS_HISTORY: SurfaceCall = SurfaceCall::new("programs", "history");
+
+/// The program-library call that fetches a program the agent already ran.
+pub const PROGRAMS_GET: SurfaceCall = SurfaceCall::new("programs", "get");
 
 /// The program-library call that hands gg a program to run in place of the current one — quoted in
 /// every notice about a hand-over gg did not honour.
-pub const PROGRAM_RERUN: SurfaceCall = SurfaceCall::new("programs", "rerun");
+pub const PROGRAMS_RERUN: SurfaceCall = SurfaceCall::new("programs", "rerun");
 
-/// Every call gg quotes, for the gate that asserts each one resolves in every registered language.
+/// The [standard](crate::ending::EndingRole::Standard) role's ending call.
+pub const HARNESS_FINISH: SurfaceCall = SurfaceCall::new("harness", "finish");
+
+/// The [review](crate::ending::EndingRole::Review) role's approval.
+pub const REVIEW_APPROVE: SurfaceCall = SurfaceCall::new("review", "approve");
+
+/// The review role's change request.
+pub const REVIEW_REQUEST_CHANGES: SurfaceCall = SurfaceCall::new("review", "request_changes");
+
+/// **Every model-facing call gg has**, in catalogue order — the vocabulary the membrane records
+/// under and gg quotes from.
 ///
-/// A `SurfaceCall` gg quotes but no language binds would put a sentence in front of a model telling
-/// it to call something its scope does not hold, so the set is enumerated here and checked rather
-/// than trusted.
+/// Enumerated rather than derived because it is one half of an agreement: the
+/// [gate](super::signatures) asserts this table and every registered language's committed catalogue
+/// name exactly the same set of `(object, key)` pairs. A call that reached a program with no entry
+/// here would be recorded under nothing; an entry here that no language binds would put a sentence
+/// in front of a model naming a call its scope does not hold. Deriving one from the other would
+/// prove neither.
+///
+/// [`list`](crate::docs::LIST_FUNCTION) is deliberately **not** here. It is the
+/// [documentation carve-out](crate::docs)'s own meta function, seeded onto *every* object the guest
+/// creates rather than catalogued on one, so its object is a runtime argument and there is no fixed
+/// pair to write down — see `MembraneState::recorded_on`.
+///
+/// `#[cfg(test)]` because it is a gate rather than a runtime need: production reaches for one call
+/// by name, and the whole set is only ever walked to prove the two halves agree.
 #[cfg(test)]
-pub(crate) const QUOTED_CALLS: [SurfaceCall; 7] = [
-    FINISH,
-    APPROVE,
-    REQUEST_CHANGES,
-    CLOSE_VIEW,
-    OPEN_TEXT,
-    PROGRAM_GET,
-    PROGRAM_RERUN,
+pub(crate) const MODEL_FACING_CALLS: [SurfaceCall; 47] = [
+    SYSTEM_SHELL,
+    FS_READ_FILE,
+    FS_READ_TEXT_FILE,
+    FS_WRITE_FILE,
+    FS_EDIT_FILE,
+    FS_LIST_DIR,
+    SKILLS_READ_SKILL,
+    MEMORY_WRITE_MEMORY,
+    MEMORY_UPDATE_MEMORY,
+    MEMORY_CREATE_MEMORY,
+    MEMORY_READ_MEMORY,
+    MEMORY_EDIT_MEMORY,
+    MEMORY_SEARCH_MEMORIES,
+    MEMORY_DELETE_MEMORY,
+    TASKS_ADD_TASK,
+    TASKS_UPDATE_TASK,
+    TASKS_SET_BLOCKED_BY,
+    TASKS_COMPLETE_TASK,
+    TASKS_REMOVE_TASK,
+    PROJECT_CREATE_EPIC,
+    PROJECT_CREATE_ISSUE,
+    PROJECT_UPDATE_ISSUE,
+    PROJECT_SET_ISSUE_BLOCKED_BY,
+    PROJECT_REMOVE_EPIC,
+    PROJECT_REMOVE_ISSUE,
+    PROJECT_WAIT_FOR_ISSUE,
+    CONTEXT_EVICT_FILE_VIEW,
+    CONTEXT_ARCHIVE_THREAD,
+    CONTEXT_SEARCH_ARCHIVE,
+    CONTEXT_COMPACT,
+    AGENTS_SPAWN_SUBAGENT,
+    AGENTS_WAIT_FOR_SUBAGENTS,
+    AGENTS_SEND_MESSAGE,
+    AGENTS_TRANSITION_STATE,
+    AGENTS_EXEC,
+    AGENTS_FORK,
+    VIEW_OPEN_FILE,
+    VIEW_OPEN_TEXT,
+    VIEW_OPEN_DOCS_VIEW,
+    VIEW_CLOSE,
+    VIEW_CURRENT,
+    PROGRAMS_HISTORY,
+    PROGRAMS_GET,
+    PROGRAMS_RERUN,
+    HARNESS_FINISH,
+    REVIEW_APPROVE,
+    REVIEW_REQUEST_CHANGES,
 ];
 
 /// How `language` spells `call`, qualified exactly as a program writes it —
@@ -301,9 +484,9 @@ pub(crate) const QUOTED_CALLS: [SurfaceCall; 7] = [
 /// Resolved from that language's own committed catalogue by the call's language-independent
 /// [key](SurfaceCall::key), so a language that renamed a function renames it in gg's sentences too,
 /// with nothing to keep in step. A catalogue that carries no such key falls back to the key itself:
-/// the [agreement gate](agreement) proves every [quoted call](QUOTED_CALLS) resolves in every
-/// registered language, so the fallback is unreachable — and degrading one word of a notice is the
-/// right failure anyway, where panicking mid-run is not.
+/// the [agreement gate](agreement) proves every [model-facing call](MODEL_FACING_CALLS) resolves in
+/// every registered language, so the fallback is unreachable — and degrading one word of a notice is
+/// the right failure anyway, where panicking mid-run is not.
 pub fn spell(language: &'static dyn ProgramLanguage, call: SurfaceCall) -> String {
     let name = super::signatures::spelling(language, call).unwrap_or(call.key);
     format!("{}.{name}", call.object)

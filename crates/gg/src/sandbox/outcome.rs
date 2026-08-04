@@ -35,6 +35,14 @@ pub struct SandboxOutcome {
     /// How many serviced calls the roster cap discarded. They happened, and they streamed their
     /// telemetry — this is only how many of them the roster stopped describing.
     pub tool_calls_suppressed: u64,
+    /// How many **model-facing API calls** the program made — one per `ApiCall`/`ApiResult` pair the
+    /// turn streamed, whatever the roster caps did.
+    ///
+    /// A count rather than a roster, and a superset of the dispatched calls by two things: the
+    /// carve-outs no gg tool backs (a view, an ending, a program-library call, an `object.list()`),
+    /// and the calls the membrane refused. The model made those, so the API layer counts them; the
+    /// tool layer does not, because nothing ran.
+    pub api_calls: u64,
     /// Calls the membrane refused before they reached the loop: a turn-level transition, or a tool
     /// this run does not offer. They produce no telemetry and no replay entry, so they are counted
     /// apart from [`tool_calls`](Self::tool_calls) and only mentioned in the model's feedback.
@@ -152,6 +160,7 @@ impl SandboxOutcome {
         Self {
             tool_calls: Vec::new(),
             tool_calls_suppressed: 0,
+            api_calls: 0,
             refusals: Vec::new(),
             refusals_suppressed: 0,
             logs: Vec::new(),

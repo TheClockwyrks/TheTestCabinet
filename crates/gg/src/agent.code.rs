@@ -320,6 +320,9 @@ pub(super) async fn run_code_turn(
     emitter.emit(GgTelemetryKind::CodeExecution {
         ok: matches!(&outcome.result, Ok(result) if result.error.is_none()),
         tool_calls,
+        // Every call the model wrote, which legitimately exceeds `tool_calls`: the fourteen-odd
+        // functions no gg tool backs are calls too, and so is one the membrane refused.
+        api_calls: outcome.api_calls,
         duration_ms: Some(saturating_u64(outcome.elapsed.as_millis())),
         error: match &outcome.result {
             Ok(result) => result.error.as_ref().map(|error| error.message.clone()),
@@ -723,7 +726,7 @@ fn handover_notice(
     // The one call these sentences quote, spelled the way *this* agent's language spells it. These
     // are model-facing notices about the model's own surface, so a spelling frozen here would tell
     // an agent to look at a call its scope does not bind.
-    let rerun = crate::sandbox::spell(crate::sandbox::language(language), sandbox::PROGRAM_RERUN);
+    let rerun = crate::sandbox::spell(crate::sandbox::language(language), sandbox::PROGRAMS_RERUN);
     if outcome.revoked_rerun {
         return Some(format!(
             "the program you handed to `{rerun}` was NOT run: your program failed after handing it \
@@ -1108,8 +1111,10 @@ async fn run_code_program(
             let outcome = SandboxOutcome {
                 tool_calls: Vec::new(),
                 // The api's own roster died with the panic, so the count of calls it had already
-                // serviced is not recoverable here; the turn is fatal regardless.
+                // serviced is not recoverable here; the turn is fatal regardless. The API-call
+                // counter died with it, on the same terms.
                 tool_calls_suppressed: 0,
+                api_calls: 0,
                 refusals: Vec::new(),
                 refusals_suppressed: 0,
                 logs: Vec::new(),
@@ -1217,6 +1222,7 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
     let SandboxOutcome {
         tool_calls: mut calls,
         tool_calls_suppressed: calls_suppressed,
+        api_calls: earlier_api_calls,
         mut refusals,
         refusals_suppressed,
         mut logs,
@@ -1259,6 +1265,9 @@ fn merge_chain(earlier: SandboxOutcome, later: SandboxOutcome) -> SandboxOutcome
     SandboxOutcome {
         tool_calls: calls,
         tool_calls_suppressed: calls_suppressed.saturating_add(later.tool_calls_suppressed),
+        // Summed for the reason every other per-turn count is: a chained turn's model wrote both
+        // programs' calls, and reporting only the later link's would hide the hand-over.
+        api_calls: earlier_api_calls.saturating_add(later.api_calls),
         refusals,
         refusals_suppressed: refusals_suppressed.saturating_add(later.refusals_suppressed),
         logs,
@@ -2167,6 +2176,33 @@ fn issue_status_word(status: IssueStatus) -> &'static str {
 
 #[allow(dead_code)]
 impl ToolApi for LoopToolApi {
+    /// Stream the opening half of one model-facing call's record.
+    ///
+    /// Deliberately a **plain emit** rather than a second `serviced`-shaped path: the API layer has
+    /// no gate of its own to apply (a withheld call is not a name in the program's scope, and a
+    /// refused one is the tool layer's refusal), nothing to reclaim, and nothing to pin. What it has
+    /// is an identity and an ordering, and this is both — emitted before the work, so a bridged
+    /// `ToolCall`/`ToolResult` pair and a delegation's whole subtree of child events nest inside it.
+    ///
+    /// It is not recorded for [replay](crate::replay): replay re-feeds a *tool's* recorded outcome
+    /// to a re-run, and an API call has no outcome of its own to feed — the call is re-made and
+    /// re-recorded when the program runs again.
+    fn begin_api_call(&mut self, object: &str, function: &str) {
+        self.emitter.emit(GgTelemetryKind::ApiCall {
+            object: object.to_string(),
+            function: function.to_string(),
+        });
+    }
+
+    /// Stream the closing half, with the verdict the program saw.
+    fn end_api_call(&mut self, object: &str, function: &str, ok: bool) {
+        self.emitter.emit(GgTelemetryKind::ApiResult {
+            object: object.to_string(),
+            function: function.to_string(),
+            ok,
+        });
+    }
+
     fn shell(&mut self, command: String, timeout: Duration) -> ToolOutcome {
         self.serviced(
             "shell",

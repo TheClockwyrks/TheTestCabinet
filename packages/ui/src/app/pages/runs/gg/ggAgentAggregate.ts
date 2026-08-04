@@ -84,23 +84,25 @@ export interface GgAgentInstance {
  * One thing a profile's instances were offered: a gg tool, or a function bound on one of a
  * responses-as-code program's API objects.
  *
- * The load-bearing field is {@link tool} — the name a call is RECORDED under, which is not
- * always the name the entry reads by. A tool entry is called by its own name, but a code
- * program's `readFile` is recorded as `read_file`, so joining a function to how many times
- * it was actually called goes through the gate, never through {@link name}. A function with
- * no tool behind it (a view call, an ending call, a program-library call) has none, and is
- * reported as bound rather than as bound-and-never-called.
+ * The load-bearing field is {@link key} — the identity the entry's calls are RECORDED under,
+ * which is not always the name it reads by. A tool entry is called by its own name; a code
+ * program's `readFile` is written as `readFile` and recorded as `read_file`, because a count
+ * has to survive a run whose programs were written in another language with other spellings.
+ * Every entry has one, tool or no tool: the API layer counts a `view.openFile` and a
+ * `context.list` exactly as it counts a read.
  */
 export interface GgAgentSurfaceEntry {
   /** The name the entry reads by: the gg tool's name, or the function's name on its object. */
   name: string;
   /**
-   * The gg tool this entry's calls are counted under — the join key into the profile's
-   * {@link GgAgentSummary.tools} breakdown. Equal to {@link name} for a tool entry; the
-   * function's gate for an API entry; null for a function no tool backs, which therefore has
-   * no call count to show rather than a count of zero.
+   * This entry's language-independent identity — the join key into the profile's call counts:
+   * {@link GgAgentSummary.tools} for a tool entry, {@link GgAgentSummary.apiCalls} for an API
+   * one. Equal to {@link name} for a tool; the catalogue key for a function.
+   *
+   * Empty only on a record written before gg counted a call per function, where a consumer
+   * must say the record predates the accounting rather than report a zero.
    */
-  tool: string | null;
+  key: string;
   /**
    * How many of the profile's REPORTING instances were offered it — out of
    * {@link GgAgentSurfaceSummary.reportingInstances}. Short of that total is the interesting
@@ -232,6 +234,14 @@ export interface GgAgentSummary {
   tokensPerSecond: number | null;
   /** Every tool its instances called, most-used first. */
   tools: GgToolBreakdown;
+  /**
+   * How many times each API function its instances called was called, keyed
+   * `object.function` on the function's own identity — `view.open_file`, `context.list`.
+   *
+   * The counterpart of {@link tools} for the other layer: that is what RAN, this is what the
+   * model WROTE. Empty for a tool-calling profile, which writes no programs.
+   */
+  apiCalls: ReadonlyMap<string, number>;
   /**
    * How many tool calls the profile got out of each assistant response — every call its
    * instances made over every turn they took. Null when no instance took a turn.
@@ -384,7 +394,7 @@ export function mergeAgentSurfaces(
     for (const name of part.tools) {
       const at = tools.get(name);
       if (at) at.offeredBy += 1;
-      else tools.set(name, { name, tool: name, offeredBy: 1 });
+      else tools.set(name, { name, key: name, offeredBy: 1 });
     }
     for (const api of part.apis) {
       let group = apis.get(api.object);
@@ -403,7 +413,7 @@ export function mergeAgentSurfaces(
         else
           group.functions.set(fn.name, {
             name: fn.name,
-            tool: fn.tool ?? null,
+            key: fn.key ?? "",
             offeredBy: 1,
           });
       }
@@ -495,6 +505,9 @@ export function deriveGgAgentSummaries(
     const usage = emptyTally();
     const pricedSlots: PricedSlot[] = [];
     const toolParts: GgToolBreakdown[] = [];
+    // The profile's API-call counts, summed across its instances — the same fold the tool
+    // breakdown gets, over the other layer's records.
+    const apiCalls = new Map<string, number>();
     // Collected off the forest nodes rather than the per-agent slices, so an instance whose
     // slice never materialized still contributes what it was offered — the surface is a fact
     // about the instance opening, not about anything it went on to do.
@@ -549,6 +562,8 @@ export function deriveGgAgentSummaries(
         ...agentPricedSlots(state.slotUsage, state.usage, node.modelId),
       );
       toolParts.push(ggToolBreakdown(state));
+      for (const [call, count] of state.apiCalls)
+        apiCalls.set(call, (apiCalls.get(call) ?? 0) + count);
       contextParts.push(attributeGgContext(state, node.modelId, priceOf));
       if (peak) {
         if (peak.tokens > peakTokens) peakTokens = peak.tokens;
@@ -600,6 +615,7 @@ export function deriveGgAgentSummaries(
       compactions,
       tokensPerSecond: modelMs > 0 ? generated / (modelMs / 1000) : null,
       tools,
+      apiCalls,
       toolCallsPerResponse: toolCallsPerResponse(tools, turns),
       context: mergeGgAttributions(contextParts),
       modules: modules?.byProfile.get(name) ?? [],

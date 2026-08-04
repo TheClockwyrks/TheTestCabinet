@@ -285,6 +285,15 @@ function sessionStartedAblating(
 // Its state is carried on data attributes rather than on a class, because the test
 // environment stubs CSS modules away — and "offered but never called" is a state, not a
 // look.
+// One model-facing call, as a responses-as-code program's turn streams it.
+function apiCall(object: string, fn: string): HarnessEvent {
+  return gg({
+    type: "api_call",
+    object,
+    function: fn,
+  } as GgTelemetryKind);
+}
+
 function surfaceRow(section: string, name: string): HTMLElement {
   const region = screen.getByRole("region", { name: section });
   return within(region).getByText(name).closest("li")!;
@@ -1189,11 +1198,11 @@ describe("GgRunMonitorPage", () => {
     expect(within(offered).getByText("read_file")).toBeInTheDocument();
   });
 
-  it("names a code agent's surface APIs, and joins each function to its tool", () => {
-    // A responses-as-code instance is offered the same tools through namespaced objects,
-    // so the file is called `apis` and reads by object. Its calls are still recorded
-    // under the gg tool behind each function, which is how a function joins to a count —
-    // and why a function no tool backs shows none at all rather than a zero.
+  it("names a code agent's surface APIs, and counts each function as itself", () => {
+    // A responses-as-code instance is offered the same core through namespaced objects, so
+    // the file is called `apis` and reads by object. Every call it makes is recorded under
+    // the function the model WROTE, so each row carries its own figure — including the ones
+    // no gg tool backs, which used to carry none at all. No tool name appears on this file.
     renderMonitor([
       sessionStarted(["shell", "filesystem"]),
       gg({
@@ -1210,20 +1219,28 @@ describe("GgRunMonitorPage", () => {
             object: "fs",
             description: "Read and write the workspace.",
             functions: [
-              { name: "readFile", tool: "read_file" },
-              { name: "writeFile", tool: "write_file" },
+              { name: "readFile", key: "read_file" },
+              { name: "writeFile", key: "write_file" },
               // The meta function every object binds, reported last, exactly where the
-              // agent's own `object.list()` puts it. No tool gates it.
-              { name: "list" },
+              // agent's own `object.list()` puts it. Nothing dispatches it; it is counted
+              // all the same.
+              { name: "list", key: "list" },
             ],
           },
           {
             object: "view",
             description: "Put material in front of the model.",
-            functions: [{ name: "openFile" }, { name: "list" }],
+            functions: [
+              { name: "openFile", key: "open_file" },
+              { name: "list", key: "list" },
+            ],
           },
         ],
       ),
+      // What the model wrote, and what that ran. Only the first is what a row counts.
+      apiCall("fs", "read_file"),
+      gg({ type: "tool_call", name: "read_file", args: {} }),
+      apiCall("view", "open_file"),
       gg({ type: "tool_call", name: "read_file", args: {} }),
     ]);
     openTab("Instances");
@@ -1239,32 +1256,37 @@ describe("GgRunMonitorPage", () => {
     expect(surfaceRow("offered apis", "fs.writeFile")).toHaveTextContent(
       "never called",
     );
-    // Ungated: the view channel runs through no tool, so it is bound with nothing to
-    // count — which must not read as a tool the model ignored.
-    const ungated = surfaceRow("offered apis", "view.openFile");
-    expect(ungated).not.toHaveAttribute("data-uncalled");
-    expect(ungated).not.toHaveTextContent("never called");
-    // `list` is bound and therefore counted, on every object and in the header's total —
-    // a reader asking "was this agent offered `list`?" gets an answer rather than silence.
-    // Ungated like any other function no tool backs.
+    // The call no tool backs — and the whole complaint this accounting answers. It was
+    // written once, it reads as once, and the `read_file` it ran through is nowhere on the
+    // page.
+    const view = surfaceRow("offered apis", "view.openFile");
+    expect(view).toHaveTextContent("1×");
+    expect(view).not.toHaveAttribute("data-uncalled");
+    expect(view).toHaveAttribute("title", "view.openFile was called 1 time.");
+    // `list` is bound on every object, and now reads as a real zero rather than as a blank:
+    // "offered and never called" is an answer, "no count" was not.
     const list = surfaceRow("offered apis", "fs.list");
-    expect(list).not.toHaveAttribute("data-uncalled");
-    expect(list).not.toHaveTextContent("never called");
+    expect(list).toHaveAttribute("data-uncalled");
+    expect(list).toHaveTextContent("never called");
     expect(
       within(screen.getByRole("region", { name: "offered apis" })).getByText(
         "view.list",
       ),
     ).toBeInTheDocument();
+    // No gg tool name anywhere on a responses-as-code agent's API surface.
+    const apis = screen.getByRole("region", { name: "offered apis" });
+    expect(within(apis).queryByText("read_file")).toBeNull();
+    expect(within(apis).queryByText("write_file")).toBeNull();
     expect(screen.getByText(/2 objects · 5 functions/)).toBeInTheDocument();
   });
 
-  it("shows a figure several functions share as the tool's, not as each function's", () => {
-    // The catalogue really does bind three functions behind one gate: `fs.readFile`,
-    // `fs.readTextFile` and `view.openFile` all arrive on the stream as a `read_file`
-    // call, with nothing saying which of them the program wrote. Handing each of them the
-    // gate's count would report three calls where one happened, and would leave two
-    // functions the model never wrote reading exactly like one it used — the false
-    // positive this whole file exists to rule out.
+  it("counts three functions over one core as three functions", () => {
+    // The catalogue really does bind three functions over one read: `fs.readFile`,
+    // `fs.readTextFile` and `view.openFile` all run a `read_file`. That is a fact about the
+    // core they share and not about what the model wrote, so each of them is recorded — and
+    // counted — as itself. Reporting the tool's figure against all three said three calls
+    // where one happened, and left two functions the model never wrote reading exactly like
+    // the one it used.
     renderMonitor([
       sessionStarted(["filesystem"]),
       gg({
@@ -1281,37 +1303,40 @@ describe("GgRunMonitorPage", () => {
             object: "fs",
             description: "Read and write the workspace.",
             functions: [
-              { name: "readFile", tool: "read_file" },
-              { name: "readTextFile", tool: "read_file" },
+              { name: "readFile", key: "read_file" },
+              { name: "readTextFile", key: "read_text_file" },
             ],
           },
           {
             object: "view",
             description: "Put material in front of the model.",
-            functions: [{ name: "openFile", tool: "read_file" }],
+            functions: [{ name: "openFile", key: "open_file" }],
           },
         ],
       ),
+      // One call, written as `view.openFile` — and the `read_file` it ran through, which
+      // belongs to the execution record and not to any of these rows.
+      apiCall("view", "open_file"),
       gg({ type: "tool_call", name: "read_file", args: {} }),
     ]);
     openTab("Instances");
     openFile("root apis");
 
-    for (const name of ["fs.readFile", "fs.readTextFile", "view.openFile"]) {
+    const called = surfaceRow("offered apis", "view.openFile");
+    expect(called).toHaveTextContent("1×");
+    expect(called).toHaveAttribute("title", "view.openFile was called 1 time.");
+    // The two the model did not write. Under the old tool-keyed join both read as called
+    // once, because the read they share a core with had run.
+    for (const name of ["fs.readFile", "fs.readTextFile"]) {
       const row = surfaceRow("offered apis", name);
-      // The count is named with the gate it belongs to, and the row says so in words.
-      expect(row).toHaveTextContent("read_file1×");
-      expect(row.getAttribute("title")).toMatch(
-        /^read_file — the tool behind fs\.readFile, fs\.readTextFile, view\.openFile — was called 1 time\./,
-      );
-      expect(row.getAttribute("title")).toMatch(/not the function/);
+      expect(row).toHaveAttribute("data-uncalled");
+      expect(row).toHaveTextContent("never called");
     }
   });
 
-  it("keeps a shared gate's never-called reading per function", () => {
-    // Nothing recorded under the gate means none of the functions behind it ran, which is
-    // true of each one on its own — so the half of the contrast an ablation is read for
-    // needs no attribution and must not acquire any.
+  it("says a function offered and never called was never called", () => {
+    // The never-called half of the contrast, which is the half an ablation is read for: it
+    // has to be a real finding about the model rather than an absence of measurement.
     renderMonitor([
       sessionStarted(["filesystem"]),
       gg({
@@ -1328,8 +1353,8 @@ describe("GgRunMonitorPage", () => {
             object: "fs",
             description: "Read and write the workspace.",
             functions: [
-              { name: "readFile", tool: "read_file" },
-              { name: "readTextFile", tool: "read_file" },
+              { name: "readFile", key: "read_file" },
+              { name: "readTextFile", key: "read_text_file" },
             ],
           },
         ],
@@ -1341,7 +1366,6 @@ describe("GgRunMonitorPage", () => {
     const row = surfaceRow("offered apis", "fs.readTextFile");
     expect(row).toHaveAttribute("data-uncalled");
     expect(row).toHaveTextContent("never called");
-    expect(row).not.toHaveTextContent("read_file1×");
     expect(row).toHaveAttribute(
       "title",
       "fs.readTextFile was offered and never called.",

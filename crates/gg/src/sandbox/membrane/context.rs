@@ -19,6 +19,9 @@ use super::test_cabinet::gg::context::{
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
 use crate::model::Role;
+use crate::sandbox::language::{
+    CONTEXT_ARCHIVE_THREAD, CONTEXT_COMPACT, CONTEXT_EVICT_FILE_VIEW, CONTEXT_SEARCH_ARCHIVE,
+};
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, COMPACT_TOOL, EVICT_FILE_VIEW_TOOL, ReclaimData, SEARCH_ARCHIVE_TOOL,
     ToolData,
@@ -26,24 +29,28 @@ use crate::tools::{
 
 impl<A: ToolApi> ContextHost for MembraneState<A> {
     fn evict_file_view(&mut self, path: Option<String>) -> Result<ReclaimReport, ToolError> {
-        let outcome = self.call(EVICT_FILE_VIEW_TOOL, |api| api.evict_file_view(path))?;
-        reclaim(self, EVICT_FILE_VIEW_TOOL, outcome.data)
+        self.recorded(CONTEXT_EVICT_FILE_VIEW, |state, rec| {
+            let outcome = state.call(rec, EVICT_FILE_VIEW_TOOL, |api| api.evict_file_view(path))?;
+            reclaim(state, EVICT_FILE_VIEW_TOOL, outcome.data)
+        })
     }
 
     fn archive_thread(&mut self, ranges: Vec<TurnRange>) -> Result<ReclaimReport, ToolError> {
-        // The membrane's `u32` turn bounds widen to the model's `u64` here rather than the other
-        // way around, so a range can never be narrowed on its way in.
-        let ranges: Vec<crate::context::TurnRange> = ranges
-            .into_iter()
-            .map(|range| crate::context::TurnRange {
-                from: u64::from(range.start),
-                to: u64::from(range.end),
-            })
-            .collect();
-        let outcome = self.call(ARCHIVE_THREAD_TOOL, |api| {
-            api.archive_thread(ranges.clone())
-        })?;
-        reclaim(self, ARCHIVE_THREAD_TOOL, outcome.data)
+        self.recorded(CONTEXT_ARCHIVE_THREAD, |state, rec| {
+            // The membrane's `u32` turn bounds widen to the model's `u64` here rather than the other
+            // way around, so a range can never be narrowed on its way in.
+            let ranges: Vec<crate::context::TurnRange> = ranges
+                .into_iter()
+                .map(|range| crate::context::TurnRange {
+                    from: u64::from(range.start),
+                    to: u64::from(range.end),
+                })
+                .collect();
+            let outcome = state.call(rec, ARCHIVE_THREAD_TOOL, |api| {
+                api.archive_thread(ranges.clone())
+            })?;
+            reclaim(state, ARCHIVE_THREAD_TOOL, outcome.data)
+        })
     }
 
     /// Register a compaction and return.
@@ -54,30 +61,35 @@ impl<A: ToolApi> ContextHost for MembraneState<A> {
     /// still running in it. Success carries no payload — what the compaction reclaimed is reported
     /// to the model on its next turn, in the window it wakes up in.
     fn compact(&mut self, summary: String, files: Vec<String>) -> Result<(), ToolError> {
-        self.call(COMPACT_TOOL, |api| api.compact(summary, files))?;
-        Ok(())
+        self.recorded(CONTEXT_COMPACT, |state, rec| {
+            state.call(rec, COMPACT_TOOL, |api| api.compact(summary, files))?;
+            Ok(())
+        })
     }
 
     fn search_archive(&mut self, query: String) -> Result<ArchiveSearch, ToolError> {
-        let outcome = self.call(SEARCH_ARCHIVE_TOOL, |api| api.search_archive(query))?;
-        match outcome.data {
-            Some(ToolData::ArchiveSearch(search)) => Ok(ArchiveSearch {
-                // "Nothing has been archived yet" and "the search ran and matched nothing" are
-                // different answers to the same call, and collapsing them into an empty list would
-                // make a program archive its thread a second time believing the first had failed.
-                archive_empty: search.archive_empty,
-                hits: search
-                    .hits
-                    .into_iter()
-                    .map(|hit| ArchiveHit {
-                        seq: hit.seq,
-                        role: role(hit.role),
-                        text: hit.text,
-                    })
-                    .collect(),
-            }),
-            other => Err(self.missing_data(SEARCH_ARCHIVE_TOOL, other.as_ref())),
-        }
+        self.recorded(CONTEXT_SEARCH_ARCHIVE, |state, rec| {
+            let outcome = state.call(rec, SEARCH_ARCHIVE_TOOL, |api| api.search_archive(query))?;
+            match outcome.data {
+                Some(ToolData::ArchiveSearch(search)) => Ok(ArchiveSearch {
+                    // "Nothing has been archived yet" and "the search ran and matched nothing" are
+                    // different answers to the same call, and collapsing them into an empty list
+                    // would make a program archive its thread a second time believing the first had
+                    // failed.
+                    archive_empty: search.archive_empty,
+                    hits: search
+                        .hits
+                        .into_iter()
+                        .map(|hit| ArchiveHit {
+                            seq: hit.seq,
+                            role: role(hit.role),
+                            text: hit.text,
+                        })
+                        .collect(),
+                }),
+                other => Err(state.missing_data(SEARCH_ARCHIVE_TOOL, other.as_ref())),
+            }
+        })
     }
 }
 

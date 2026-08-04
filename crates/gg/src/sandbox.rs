@@ -97,9 +97,10 @@ mod signatures;
 
 pub use invoker::ToolApi;
 pub use language::{
-    APPROVE, CLOSE_VIEW, FINISH, FileWindow, OPEN_TEXT, PROGRAM_GET, PROGRAM_RERUN, PrepareError,
-    PreparedModule, PreparedProgram, ProgramLanguage, REQUEST_CHANGES, SurfaceCall,
-    UnreachableTail, WasiSurface, all_languages, language, resolve_program_language, spell,
+    FileWindow, HARNESS_FINISH, PROGRAMS_GET, PROGRAMS_RERUN, PrepareError, PreparedModule,
+    PreparedProgram, ProgramLanguage, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES, SurfaceCall,
+    UnreachableTail, VIEW_CLOSE, VIEW_OPEN_TEXT, WasiSurface, all_languages, language,
+    resolve_program_language, spell,
 };
 
 // Named only in documentation and in the seam's own tests today, but exported all the same: they
@@ -115,10 +116,11 @@ pub use language::{HostRequirements, PromptDialect, ResolvedProgramLanguage};
 #[cfg(test)]
 pub(crate) use language::fixture_languages;
 
-// The enumeration of every call gg quotes, for the gate that resolves each one against every
-// registered language. A production reader wants one call by name, never the whole set.
+// The enumeration of gg's whole model-facing surface, for the gates that resolve each call against
+// every registered language and against what the membrane records. A production reader wants one
+// call by name, never the whole set.
 #[cfg(test)]
-pub(crate) use language::QUOTED_CALLS;
+pub(crate) use language::MODEL_FACING_CALLS;
 pub use limits::SandboxLimits;
 pub use outcome::{
     ProgramCompletion, ProgramError, ProgramErrorKind, ProgramResult, SandboxError, SandboxOutcome,
@@ -463,6 +465,7 @@ fn reclaim<A: ToolApi>(
         MembraneParts {
             calls,
             calls_suppressed,
+            api_calls,
             refusals,
             refusals_suppressed,
             logs,
@@ -485,6 +488,7 @@ fn reclaim<A: ToolApi>(
     let outcome = SandboxOutcome {
         tool_calls: calls,
         tool_calls_suppressed: calls_suppressed,
+        api_calls,
         refusals,
         refusals_suppressed,
         logs,

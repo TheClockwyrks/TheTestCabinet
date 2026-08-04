@@ -28,12 +28,7 @@ import {
   toolCallsPerResponse,
 } from "./useGgRunState";
 import { cx } from "./ggFsTree";
-import {
-  sharedSurfaceGates,
-  surfaceCallCount,
-  surfaceCallPhrase,
-  type SurfaceCallCount,
-} from "./ggSurfaceCalls";
+import { surfaceCallPhrase } from "./ggSurfaceCalls";
 import {
   FsExplorer,
   FsFileRow,
@@ -916,11 +911,7 @@ function OverviewFile({
   return (
     <div className={panels.panelBody}>
       <div className={panels.overview}>
-        <AgentIdentity
-          node={node}
-          turns={state.turnCount}
-          arrival={arrival}
-        />
+        <AgentIdentity node={node} turns={state.turnCount} arrival={arrival} />
         {/* The context-window gauges on their own row: how full the window is now,
             and its peak fullness at any point in the run, side by side. */}
         {(state.latestContext || peakContext) && (
@@ -1055,10 +1046,9 @@ function SurfaceFile({
   node: AgentNode;
   state: DerivedGgState;
 }) {
-  // This instance's own call counts — its partition of the stream, the same breakdown
-  // its Overview's Tool-calls panel itemizes. Keyed by gg tool name, which is what a
-  // code program's calls are recorded under too: a bound function joins to its count
-  // through the tool that gates it, never through its JavaScript name.
+  // This instance's own tool calls — its partition of the stream, the same breakdown its
+  // Overview's Tool-calls panel itemizes, keyed by gg tool name. This is the EXECUTION
+  // record and it is what a tool-calling instance's surface is read against.
   const calls = useMemo(() => {
     const counts = new Map<string, number>();
     for (const tool of ggToolBreakdown(state).tools)
@@ -1084,7 +1074,11 @@ function SurfaceFile({
   return (
     <div className={panels.surfaceFile}>
       {asCode ? (
-        <ApiSurface apis={surface.apis} calls={calls} />
+        // A code instance is read against what its programs CALLED — one figure per
+        // function, on the function's own identity — never against the tools those calls
+        // happened to run through. The two are different layers and only one of them is
+        // the model's own vocabulary.
+        <ApiSurface apis={surface.apis} calls={state.apiCalls} />
       ) : (
         <ToolSurface tools={surface.tools} calls={calls} />
       )}
@@ -1094,10 +1088,6 @@ function SurfaceFile({
     </div>
   );
 }
-
-// A tool-calling surface has no gate any two entries share — every tool IS its own gate — so
-// its rows join on an empty sharing map rather than on a computed one.
-const NO_SHARING: ReadonlyMap<string, readonly string[]> = new Map();
 
 // The flat offered set of a tool-calling instance, in the order the model was shown it —
 // the registry's own order, which is the order the tools appear in its system prompt, so
@@ -1129,13 +1119,7 @@ function ToolSurface({
       </div>
       <ul className={panels.toolList}>
         {tools.map((tool) => (
-          <SurfaceRow
-            key={tool}
-            name={tool}
-            // A tool is the only thing behind its own gate, so its count is its own and no
-            // sharing can arise: the empty map says exactly that rather than skipping a step.
-            calls={surfaceCallCount({ name: tool, tool }, calls, NO_SHARING)}
-          />
+          <SurfaceRow key={tool} name={tool} count={calls.get(tool) ?? 0} />
         ))}
       </ul>
     </section>
@@ -1158,22 +1142,6 @@ function ApiSurface({
     (total, api) => total + api.functions.length,
     0,
   );
-  // Which gates back more than one of the bound functions, taken across every object at once:
-  // `fs.readFile` and `view.openFile` sit on different objects and are the same `read_file`
-  // call on the stream, so an object-at-a-time pass would find no sharing and hand each of
-  // them the whole tool's figure as its own.
-  const shared = useMemo(
-    () =>
-      sharedSurfaceGates(
-        apis.flatMap((api) =>
-          api.functions.map((fn) => ({
-            name: `${api.object}.${fn.name}`,
-            tool: fn.tool ?? null,
-          })),
-        ),
-      ),
-    [apis],
-  );
   return (
     <section className={panels.agentSection} aria-label="offered apis">
       <div className={panels.toolsHead}>
@@ -1181,10 +1149,11 @@ function ApiSurface({
         <span
           className={panels.toolsRate}
           title={
-            "The objects this instance's programs are bound against. A function's calls are " +
-            "recorded under the gg tool behind it, so a function no tool backs — a view, an " +
-            "ending, a program-library call — carries no count rather than a zero, and a " +
-            "figure several functions share is shown named with the tool it belongs to."
+            "The objects this instance's programs are bound against. Every call a program " +
+            "makes is recorded under the function the model wrote, so each row carries its " +
+            "own figure — a view, an ending and a documentation lookup are counted exactly " +
+            "as a file read is — and a function offered and never called reads as a real " +
+            "zero rather than as an absence."
           }
         >
           {apis.length} object{apis.length === 1 ? "" : "s"} · {functions}{" "}
@@ -1206,14 +1175,12 @@ function ApiSurface({
                 <SurfaceRow
                   key={fn.name}
                   name={`${api.object}.${fn.name}`}
-                  // Through the gate, never the name — and the gate decides whose figure it
-                  // is. A function no tool backs is counted nowhere, and one whose tool backs
-                  // its neighbours too shows that tool's count as the tool's.
-                  calls={surfaceCallCount(
-                    { name: `${api.object}.${fn.name}`, tool: fn.tool ?? null },
-                    calls,
-                    shared,
-                  )}
+                  // On the function's OWN identity, which is what its calls are recorded
+                  // under. A record written before gg counted per function carries no key,
+                  // and says so rather than reporting a zero it cannot support.
+                  count={
+                    fn.key ? (calls.get(`${api.object}.${fn.key}`) ?? 0) : null
+                  }
                 />
               ))}
             </ul>
@@ -1256,40 +1223,26 @@ function WithheldTools({ tools }: { tools: readonly string[] }) {
   );
 }
 
-// One offered thing and what became of it. Four states, and keeping them visually distinct
-// is the feature: called (its count), offered and never called (dimmed, and said in words —
-// a bare "0×" reads as a measurement rather than as the finding it is), offered with nothing
-// to count, which is what an ungated call — a view, an ending, the program library —
-// honestly is, and called through a gate it shares with its neighbours, where the figure is
-// the gate's and is labelled with it rather than claimed for this row alone.
-function SurfaceRow({
-  name,
-  calls,
-}: {
-  name: string;
-  calls: SurfaceCallCount;
-}) {
-  const uncalled = calls.count === 0;
+// One offered thing and what became of it. Two states, and keeping them visually distinct
+// is the feature: called (its count), and offered and never called (dimmed, and said in
+// words — a bare "0×" reads as a measurement rather than as the finding it is).
+//
+// There is deliberately no third state for "nothing counts this". Every model-facing call
+// is recorded under its own identity, tool or no tool, so a view call and an ending call
+// have figures exactly as a file read does. The only null left is a RECORD too old to
+// carry a function's identity, which is a fact about the record rather than about the
+// agent — and is said as one, because a zero there would accuse a model of ignoring
+// everything it was given.
+function SurfaceRow({ name, count }: { name: string; count: number | null }) {
   return (
     <li
       className={panels.toolRow}
-      data-uncalled={uncalled ? "" : undefined}
-      title={surfaceCallPhrase(name, calls)}
+      data-uncalled={count === 0 ? "" : undefined}
+      title={surfaceCallPhrase(name, count)}
     >
       <span className={panels.toolName}>{name}</span>
       <span className={panels.toolCalls}>
-        {calls.count == null ? (
-          ""
-        ) : uncalled ? (
-          "never called"
-        ) : (
-          <>
-            {calls.sharedGate != null && (
-              <span className={panels.toolCallsGate}>{calls.sharedGate}</span>
-            )}
-            {calls.count}×
-          </>
-        )}
+        {count == null ? "" : count === 0 ? "never called" : `${count}×`}
       </span>
     </li>
   );

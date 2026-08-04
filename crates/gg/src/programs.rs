@@ -315,8 +315,8 @@ pub fn launch_summary(agents: &[GgAgentConfig]) -> Option<String> {
                 crate::sandbox::language(crate::sandbox::resolve_program_language(agent).language);
             format!(
                 "`{}`, `{}`",
-                crate::sandbox::spell(language, crate::sandbox::PROGRAM_GET),
-                crate::sandbox::spell(language, crate::sandbox::PROGRAM_RERUN)
+                crate::sandbox::spell(language, crate::sandbox::PROGRAMS_GET),
+                crate::sandbox::spell(language, crate::sandbox::PROGRAMS_RERUN)
             )
         })
         .collect();

@@ -11,11 +11,12 @@
 // exactly one name in `ALL_TOOL_NAMES` (crates/gg/src/tools/mod.rs); a test asserts the two sets are
 // equal, so a tool cannot be added, renamed, or removed without a typed signature following it.
 //
-// Five interfaces stand outside that correspondence, and each is separate for exactly that reason:
+// Six interfaces stand outside that correspondence, and each is separate for exactly that reason:
 // `feedback` is the shim's private channel back to gg and is never model-facing at all; `session`
 // carries the model-facing calls that end the run; `docs` is the always-bound documentation lookup;
-// `views` is how a program puts material into its own context window; and `programs` is the library
-// of programs this agent has already run. None of the four model-facing ones is a gg tool — no
+// `views` is how a program puts material into its own context window; `programs` is the library
+// of programs this agent has already run; and `helpers` holds the convenience wrappers built on a
+// tool without being one. None of the five model-facing ones has a name in `ALL_TOOL_NAMES` — no
 // capability offers them and nothing dispatches them by name — so keeping them out of the tool
 // interfaces is what lets the bijection above be checked mechanically rather than by reading.
 package test-cabinet:gg;
@@ -197,6 +198,33 @@ interface files {
     /// List a directory, sorted by name. `none` lists the workspace root. An empty
     /// directory is an empty list, not an error.
     list-dir: func(path: option<string>) -> result<list<dir-entry>, tool-error>;
+}
+
+/// The convenience wrappers bound alongside the tools — the sixth interface standing outside the
+/// tool bijection, and the only one whose functions do dispatch a gg tool.
+///
+/// A helper is not a tool: it has no name in `ALL_TOOL_NAMES`, no capability offers it, and it is
+/// bound exactly when the tool it is built on is. Filing one among the tool interfaces would break
+/// the one-to-one correspondence the committed component is checked against, which is why it lives
+/// here rather than on `files` beside the read it wraps.
+///
+/// It is an **import** rather than something the guest composes out of `read-file`, and that is the
+/// whole reason the interface exists. Composed in the guest, the host sees one `read-file` call and
+/// cannot tell which of two functions the model wrote — so `readTextFile` would be recorded as
+/// `readFile` and then report a zero of its own, telling a reader the model ignored the call it
+/// actually used. An API function is a function in its own right; that it shares a core with
+/// another is not a reason for the two to share one record.
+interface helpers {
+    use types.{tool-error};
+
+    /// Read a text file and return its contents directly — `read-file` without the variant
+    /// narrowing, for the common case.
+    ///
+    /// The same read, the same `read_file` tool, the same `offset`/`limit` window. A path naming a
+    /// picture is `invalid-argument`: the caller asked for text and there is none, and `read-file`
+    /// is the call that inspects one.
+    read-text-file: func(path: string, offset: option<u32>, limit: option<u32>)
+        -> result<string, tool-error>;
 }
 
 /// The authored skill library.
@@ -1015,6 +1043,7 @@ world sandbox {
     import types;
     import shell;
     import files;
+    import helpers;
     import skills;
     import memories;
     import tasks;

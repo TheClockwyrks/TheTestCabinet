@@ -11,25 +11,32 @@
 //! it costs the model nothing — and the compiler, not a test, is what guarantees a WIT function
 //! cannot exist without a host implementation.
 //!
-//! # One helper, so the guarantees exist once
+//! # Two helpers, so the guarantees exist once
 //!
-//! Every host function that dispatches anything funnels through [`MembraneState::call`] (or its one
-//! sibling [`call_raw`](MembraneState::call_raw)) — all 29 bound tools. That is where the run's
-//! wall-clock deadline is honoured, where a tool this run does not offer is refused, where the
-//! ordered call record is kept, where pictures are collected, and where a failed [`ToolOutcome`]
-//! becomes a typed `tool-error`. A host function itself is three lines: build the JSON its tool's
-//! schema already declares, call, and convert the [structured sidecar](crate::tools::ToolData) into
-//! its typed WIT result.
+//! **Every** host function on this membrane — all forty-eight of them, dispatching or not — opens
+//! an API-call bracket with [`MembraneState::recorded`], which is what records the call the *model
+//! wrote* under its own identity and is the only source of the [`Recording`](recording) token
+//! without which a host function can reach neither the [api](ToolApi) nor the dispatch path. See
+//! [`recording`] for why the API record and the tool record are separate things.
 //!
-//! A handful of functions dispatch nothing and therefore bypass it. The four
+//! Inside that bracket, every host function that dispatches anything funnels through
+//! [`MembraneState::call`] (or its one sibling [`call_raw`](MembraneState::call_raw)) — all 29 bound
+//! tools. That is where the run's wall-clock deadline is honoured, where a tool this run does not
+//! offer is refused, where the ordered call record is kept, where pictures are collected, and where
+//! a failed [`ToolOutcome`] becomes a typed `tool-error`. A host function itself is three lines:
+//! build the JSON its tool's schema already declares, call, and convert the
+//! [structured sidecar](crate::tools::ToolData) into its typed WIT result.
+//!
+//! A handful of functions dispatch nothing and so reach neither. The three
 //! [session-ending calls](session) — the model-facing functions on this membrane that are not gg
 //! tools — set this agent's ending flag through [`MembraneState::declare`], because ending a session
 //! is the one thing a program may ask for that no capability governs and no spent budget may
-//! withhold. The [documentation lookups](docs) and three of the four [view calls](views) go straight
-//! to the [api](ToolApi) for the same reason: both of `dispatch`'s guards are wrong for a call that
-//! is not a tool, and a program that cannot show itself what it computed has nothing to report at
-//! all. The fourth view call, `open-file-view`, **is** a bridged `read_file` and goes through
-//! `dispatch` like any other read.
+//! withhold. The [documentation directory](docs), the [program library](programs) and four of the
+//! five [view calls](views) go straight to the [api](ToolApi) for the same reason: both of
+//! `dispatch`'s guards are wrong for a call that is not a tool, and a program that cannot show
+//! itself what it computed has nothing to report at all. The fifth view call, `open-file-view`,
+//! **is** a bridged `read_file` and goes through `dispatch` like any other read — while still being
+//! recorded as `view.open_file`, because that is what the model wrote.
 //!
 //! # The state is the agent's, not the program's
 //!
@@ -69,9 +76,12 @@ mod delegation;
 mod docs;
 mod knowledge;
 mod programs;
+mod recording;
 mod session;
 mod views;
 mod workspace;
+
+use recording::{GuardedApi, Recording};
 
 wasmtime::component::bindgen!({ world: "sandbox", path: "wit" });
 
@@ -117,7 +127,13 @@ impl From<RunEnding> for EndingKind {
 pub(crate) struct MembraneState<A: ToolApi> {
     /// The native, typed tool surface a bridged call is aimed at: the loop's own state in
     /// production ([`LoopToolApi`](crate::agent)), an in-memory fake under test.
-    api: A,
+    ///
+    /// Behind a [guard](recording::GuardedApi) rather than in the open, so that no host function can
+    /// reach it without first opening the API-call bracket that records what the model called.
+    api: GuardedApi<A>,
+    /// How many model-facing API calls this program has made — every host function, dispatching or
+    /// not, refused or serviced. See [`recording`].
+    api_calls: u64,
     /// The gg tools this run offers. The guest binds only these into a program's scope, so this is
     /// a defensive backstop rather than the primary gate.
     enabled: BTreeSet<String>,
@@ -221,6 +237,10 @@ pub(crate) struct MembraneParts {
     pub calls: Vec<SandboxToolCall>,
     /// How many calls the roster cap discarded.
     pub calls_suppressed: u64,
+    /// How many **model-facing API calls** the program made — a superset of the dispatched ones by
+    /// the carve-outs (a view, an ending, a program-library call, an `object.list()`) and by the
+    /// calls the membrane refused. See [`recording`].
+    pub api_calls: u64,
     /// Every refused call the roster kept.
     pub refusals: Vec<SandboxRefusal>,
     /// How many refusals the cap discarded.
@@ -271,7 +291,8 @@ impl<A: ToolApi> MembraneState<A> {
         deadline: Option<Instant>,
     ) -> Self {
         Self {
-            api,
+            api: GuardedApi::new(api),
+            api_calls: 0,
             enabled: enabled.iter().cloned().collect(),
             limiter: MemoryLimiter::new(limits.max_memory_bytes),
             deadline,
@@ -349,6 +370,7 @@ impl<A: ToolApi> MembraneState<A> {
         let parts = MembraneParts {
             calls: self.calls,
             calls_suppressed: self.calls_suppressed,
+            api_calls: self.api_calls,
             refusals: self.refusals,
             refusals_suppressed: self.refusals_suppressed,
             logs: self.logs.into(),
@@ -366,7 +388,7 @@ impl<A: ToolApi> MembraneState<A> {
             rerun: self.rerun,
             revoked_rerun: self.revoked_rerun,
         };
-        (self.api, parts)
+        (self.api.into_inner(), parts)
     }
 
     /// Everything the program accumulated, discarding the reclaimed api — the shape the membrane's
@@ -403,15 +425,20 @@ impl<A: ToolApi> MembraneState<A> {
     /// error the program sees thrown.
     ///
     /// This is what twenty-eight of the twenty-nine bound tools call. The twenty-ninth is `shell`,
-    /// which needs a non-`ok` outcome as a value — see [`call_raw`](Self::call_raw). The three
-    /// turn-level transitions reach neither: they are refused without a dispatch.
+    /// which needs a non-`ok` outcome as a value — see [`call_raw`](Self::call_raw).
+    ///
+    /// The [`Recording`] is the caller's proof that the API call it is servicing has already been
+    /// recorded under its own identity — which is a different fact from the tool record this
+    /// dispatch keeps, and is why one host function can be `view.open_file` here and `read_file`
+    /// there.
     fn call(
         &mut self,
+        recording: Recording,
         tool: &'static str,
         run: impl FnOnce(&mut A) -> ToolOutcome,
     ) -> Result<ToolOutcome, ToolError> {
         // For every tool but `shell`, the tool's own verdict and the call's are the same thing.
-        let outcome = self.dispatch(tool, run, |outcome| outcome.ok)?;
+        let outcome = self.dispatch(recording, tool, run, |outcome| outcome.ok)?;
         if outcome.ok {
             Ok(outcome)
         } else {
@@ -431,10 +458,11 @@ impl<A: ToolApi> MembraneState<A> {
     /// failure carrying the command's whole output as its message.
     fn call_raw(
         &mut self,
+        recording: Recording,
         tool: &'static str,
         run: impl FnOnce(&mut A) -> ToolOutcome,
     ) -> Result<ToolOutcome, ToolError> {
-        self.dispatch(tool, run, |outcome| {
+        self.dispatch(recording, tool, run, |outcome| {
             matches!(outcome.data, Some(ToolData::Shell(_)))
         })
     }
@@ -463,6 +491,7 @@ impl<A: ToolApi> MembraneState<A> {
     /// guest, because these values become the agent's whole answer to whoever asked for the work.
     fn declare(
         &mut self,
+        _recording: Recording,
         ending: Result<Ending, String>,
         call: &'static str,
     ) -> Result<(), ToolError> {
@@ -499,6 +528,7 @@ impl<A: ToolApi> MembraneState<A> {
     /// instead.
     fn dispatch(
         &mut self,
+        recording: Recording,
         tool: &'static str,
         run: impl FnOnce(&mut A) -> ToolOutcome,
         completed: fn(&ToolOutcome) -> bool,
@@ -521,7 +551,7 @@ impl<A: ToolApi> MembraneState<A> {
         // Time spent inside the tool is the guest parked, not the guest running, so it is excluded
         // from the execution timeout: a program blocked on a long `shell` build is not a runaway.
         let started = Instant::now();
-        let mut outcome = run(&mut self.api);
+        let mut outcome = run(self.api(recording));
         self.charge_host_time(started.elapsed());
         // One channel: a picture enters the window through a view or not at all, so a bare read's
         // picture is dropped here and its description corrected to say so.

@@ -87,6 +87,17 @@ function turn(agentId: string): HarnessEvent {
   return gg(agentId, { type: "turn_started" } as GgTelemetryKind);
 }
 
+// One model-facing call, as a responses-as-code program's turn streams it. The opening half
+// is what a count reads: it is emitted before the call runs, so a program stopped mid-call
+// still shows the call it was making.
+function apiCall(agentId: string, object: string, fn: string): HarnessEvent {
+  return gg(agentId, {
+    type: "api_call",
+    object,
+    function: fn,
+  } as GgTelemetryKind);
+}
+
 function status(
   agentId: string,
   state: "running" | "blocked" | "done" | "failed",
@@ -688,9 +699,9 @@ describe("deriveGgAgentSummaries", () => {
     // Order is the order the model was shown them, with the entry only one instance saw
     // appended where it first appeared — never a frequency sort.
     expect(surface.tools).toEqual([
-      { name: "read_file", tool: "read_file", offeredBy: 2 },
-      { name: "exec", tool: "exec", offeredBy: 1 },
-      { name: "approve", tool: "approve", offeredBy: 2 },
+      { name: "read_file", key: "read_file", offeredBy: 2 },
+      { name: "exec", key: "exec", offeredBy: 1 },
+      { name: "approve", key: "approve", offeredBy: 2 },
     ]);
     expect(surface.apis).toEqual([]);
     expect(surface.withheld).toEqual([]);
@@ -731,22 +742,22 @@ describe("deriveGgAgentSummaries", () => {
       .toEqual(["write_file"]);
   });
 
-  it("unions a responses-as-code profile's api objects, keeping each function's gate", () => {
-    // The gate is the join key: a program's `readFile` is recorded as `read_file`, so a
-    // function's call count can only be found through it. A function with no tool behind it
-    // has no count to find, and must stay distinguishable from one that has a count of zero.
+  it("unions a responses-as-code profile's api objects, keeping each function's own key", () => {
+    // The key is the join key: a program's `readFile` is recorded as `fs.read_file` and its
+    // `openFile` as `view.open_file`, whether or not a gg tool runs underneath. Every bound
+    // function carries one, so every one of them has a figure of its own.
     const fs: GgAgentApi = {
       object: "fs",
       description: "Read and write the workspace.",
       functions: [
-        { name: "readFile", tool: "read_file" },
-        { name: "writeFile", tool: "write_file" },
+        { name: "readFile", key: "read_file" },
+        { name: "writeFile", key: "write_file" },
       ],
     };
     const view: GgAgentApi = {
       object: "view",
       description: "Show the model something.",
-      functions: [{ name: "openFile" }],
+      functions: [{ name: "openFile", key: "open_file" }],
     };
 
     const summaries = summarize(
@@ -776,17 +787,42 @@ describe("deriveGgAgentSummaries", () => {
         description: "Read and write the workspace.",
         offeredBy: 2,
         functions: [
-          { name: "readFile", tool: "read_file", offeredBy: 2 },
-          { name: "writeFile", tool: "write_file", offeredBy: 1 },
+          { name: "readFile", key: "read_file", offeredBy: 2 },
+          { name: "writeFile", key: "write_file", offeredBy: 1 },
         ],
       },
       {
         object: "view",
         description: "Show the model something.",
         offeredBy: 1,
-        functions: [{ name: "openFile", tool: null, offeredBy: 1 }],
+        functions: [{ name: "openFile", key: "open_file", offeredBy: 1 }],
       },
     ]);
+  });
+
+  it("sums a profile's api calls across its instances, tool or no tool", () => {
+    // The other half of the offered-versus-called contrast, and the half the old tool-keyed
+    // join could not produce: `view.openFile` runs a `read_file` and `context.list` runs
+    // nothing, and both are calls this profile's programs made.
+    const summaries = summarize(
+      [
+        spawn("root", "Root", "vendor/big"),
+        spawn("w1", "worker", "vendor/small", "root"),
+        apiCall("w1", "view", "open_file"),
+        apiCall("w1", "context", "list"),
+        spawn("w2", "worker", "vendor/small", "root"),
+        apiCall("w2", "view", "open_file"),
+      ],
+      set(
+        profile("Root", "vendor/big", ["subagents"]),
+        profile("worker", "vendor/small", ["responses-as-code"]),
+      ),
+    );
+
+    const worker = summaries.find((s) => s.name === "worker")!;
+    expect(worker.apiCalls.get("view.open_file")).toBe(2);
+    expect(worker.apiCalls.get("context.list")).toBe(1);
+    expect(summaries.find((s) => s.name === "Root")!.apiCalls.size).toBe(0);
   });
 
   it("leaves a run that never reported a surface with none, and nothing else changed", () => {
