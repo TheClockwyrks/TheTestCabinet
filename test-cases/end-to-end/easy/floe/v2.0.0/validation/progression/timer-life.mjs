@@ -24,6 +24,24 @@ const START_TIMER = 3;
 // build whose expiry resolves a beat later is not called a failure.
 const WAIT_TICKS = 480; // 4 s
 
+// The least of the drain that must have actually run before the life goes.
+//
+// A LIFE LOST IS NOT THE SAME FACT AS A TIMER EXPIRING. The sweep watches the life
+// count, which is the only thing specs/gameplay.md makes a death mean — but on this
+// posed board it is not the only thing that CAN spend one. A build that puts a hunter
+// on top of the critter the moment a crossing begins (one audited against this case
+// does exactly that) loses its life within a tick or two, and the item then reports
+// that the timer costs a life while the clock still reads nearly three seconds. The
+// posed clock is what tells the two apart: a death that is the timer's cannot land
+// before the timer has run, so the sweep must have spent most of the drain.
+const MIN_DRAIN_TICKS = 240; // 2 s of the posed 3 s
+
+// How long the clip keeps filming after the life goes. `act` IS the recording and the
+// sweep returns on the tick of the decrement, so without this the clip ended on the
+// frame the clock hit zero — the countdown was on camera and the thing it costs was
+// not.
+const TAIL_TICKS = 180; // 1.5 s
+
 export default function item() {
   // The sweep that waited for the timeout death.
   let r;
@@ -47,10 +65,19 @@ export default function item() {
     // The timer draining out into a death — what is checked, and the clip.
     async act(api) {
       r = await actUntilDeath(api, LIVES, { max: WAIT_TICKS });
+      await api.advance(TAIL_TICKS); // camera only: the life coming off, and the respawn
     },
 
     async assert(api, check) {
       check.expectOk("the timer running out costs a life", r.hit);
+      // A sweep that found no death spent its whole budget, which would sail over the
+      // floor below; read a missing death as no drain at all so this fails beside the
+      // assertion above rather than holding vacuously.
+      check.expectGe(
+        "the life goes when the clock runs out, not before it",
+        r.hit ? r.spent : 0,
+        MIN_DRAIN_TICKS,
+      );
       check.expectEq(
         "a life is lost when the timer expires",
         r.snap.lives,

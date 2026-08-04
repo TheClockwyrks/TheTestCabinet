@@ -10,7 +10,12 @@
 // generator (specs/gameplay.md), so a fixed fish-free total would fail a correct
 // build purely on where its RNG put the fish.
 
-import { startCrossing, poseClimb, actClimbByPress } from "../_helpers.mjs";
+import {
+  startCrossing,
+  poseClimb,
+  actClimbByPress,
+  BAY_COL,
+} from "../_helpers.mjs";
 
 // The bay this check fills to clear the level, and the fish's award.
 const BAY_INDEX = 4;
@@ -32,7 +37,7 @@ export default function item() {
       await startCrossing(api);
       await api.call("setScore", 0);
       await api.call("setBays", [true, true, true, true, false]);
-      await poseClimb(api, 35); // bay 4 column
+      await poseClimb(api, BAY_COL[BAY_INDEX]); // bay 4's column (see `BAY_COL`)
     },
 
     // The climb and the fill that clears the level — the crossing the bonus is for,

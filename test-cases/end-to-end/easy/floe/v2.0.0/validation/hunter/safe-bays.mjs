@@ -5,7 +5,7 @@
 // and a bear set below it on cleared water; over many steps the real pursuit never
 // reaches row 1 and never catches the critter. See validation/_helpers.mjs.
 
-import { startCrossing } from "../_helpers.mjs";
+import { startCrossing, BAY_COL, ROW_BAYS } from "../_helpers.mjs";
 
 // How far the bear must actually travel during the watch for "it never got in" to
 // mean anything, in px. THIS ITEM'S CLAIM IS NEGATIVE — the bear does not enter the
@@ -38,7 +38,7 @@ export default function item() {
       await api.call("setLives", 3);
       await api.call("setBays", [true, false, false, false, false]);
       for (const r of [2, 3]) await api.call("setLane", r, { cols: [] }); // open water below the bay
-      await api.call("placeCritter", 3, 1); // safe in the filled bay
+      await api.call("placeCritter", BAY_COL[0], ROW_BAYS); // safe in the filled bay
       await api.call("setBear", 0, { col: 3, row: 3 });
     },
 

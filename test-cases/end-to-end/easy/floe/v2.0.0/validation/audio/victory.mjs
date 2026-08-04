@@ -18,7 +18,7 @@ import {
   startCrossing,
   armAudio,
   audioCount,
-  BAYS,
+  BAY_COL,
   WATER_TOP,
 } from "../_helpers.mjs";
 
@@ -26,7 +26,7 @@ export default function item() {
   let before;
   let after;
   let won;
-  const col = BAYS[4][0];
+  const col = BAY_COL[4]; // see `BAY_COL`
 
   return {
     id: "audio.victory",
