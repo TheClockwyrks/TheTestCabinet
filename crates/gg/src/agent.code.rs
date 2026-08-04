@@ -1974,15 +1974,48 @@ impl LoopToolApi {
 ///
 /// Stated flatly, and deliberately so. The prose version of this — *"so there is nothing to show
 /// you"*, followed by advice — read as an explanation of gg's reasoning, which is not what a model
-/// correcting a lookup needs; what it needs is the name that failed, which is all this says. A
-/// guess about the *argument*
+/// correcting a lookup needs; what it needs is the name that failed and, when there is one, the name
+/// it meant. A guess about the *argument*
 /// never reaches here at all: `view.openDocsView(system.run)` is refused in the guest, by the one
 /// layer that can still see the value was `undefined` rather than a name.
-fn docs_not_found_refusal(name: &str) -> ViewRefusal {
+///
+/// # The hint
+///
+/// `suggestions` is what the [docs runtime](crate::docs::DocsRuntime::suggest) found bound and near
+/// the name that failed — the model asked for `write` and this agent has `writeFile` — and it is
+/// rendered the way a compiler renders one: its own line, indented under the error, naming the
+/// candidates and nothing else. That indentation is what keeps this within the rule the band is
+/// held to (*the error and nothing else*): the hint is not gg advice about the model's program, it
+/// is the rest of the diagnostic, in the shape every diagnostic a programmer has ever read puts it.
+///
+/// An empty `suggestions` renders nothing at all. A hint with no candidates in it would be gg
+/// filling the silence, and the message is one line shorter without it.
+fn docs_not_found_refusal(name: &str, suggestions: &[String]) -> ViewRefusal {
+    let mut message = format!("no documentation for `{name}`");
+    if let Some(hint) = did_you_mean(suggestions) {
+        message.push_str(&format!("\n  {hint}"));
+    }
     ViewRefusal {
         failure: ToolFailure::NotFound,
-        message: format!("no documentation for `{name}`"),
+        message,
     }
+}
+
+/// The *Did you mean …?* line for a set of candidate names, or `None` when there are none.
+///
+/// One candidate stands alone, two are joined with `or`, and three or more take an Oxford comma —
+/// a sentence rather than a delimited list, because the model is being asked to *pick* one and a
+/// list it has to parse first is a list it can misread. Each name is backquoted, so whichever it
+/// picks can be lifted straight out of the line and written into the next program.
+fn did_you_mean(names: &[String]) -> Option<String> {
+    let quoted: Vec<String> = names.iter().map(|name| format!("`{name}`")).collect();
+    let list = match quoted.as_slice() {
+        [] => return None,
+        [only] => only.clone(),
+        [first, second] => format!("{first} or {second}"),
+        [rest @ .., last] => format!("{}, or {last}", rest.join(", ")),
+    };
+    Some(format!("Did you mean {list}?"))
 }
 
 /// The refusal [`MAX_VIEW_OPS_PER_PROGRAM`] makes when a program has already spent its budget.
@@ -2660,7 +2693,7 @@ impl ToolApi for LoopToolApi {
     fn open_docs_view(&mut self, name: String) -> Result<SandboxViewOpened, ViewRefusal> {
         self.charge_view_op()?;
         let Some(read) = self.docs.read(&name) else {
-            return Err(docs_not_found_refusal(&name));
+            return Err(docs_not_found_refusal(&name, &self.docs.suggest(&name)));
         };
         let opened = self.context.open_docs_view(name.clone(), read);
         Ok(SandboxViewOpened {

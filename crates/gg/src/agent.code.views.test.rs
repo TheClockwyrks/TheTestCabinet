@@ -106,6 +106,58 @@ fn the_op_budget_refuses_only_when_spent() {
     assert!(refusal.message.contains("MAX_VIEW_OPS_PER_PROGRAM"));
 }
 
+/// **A failed documentation lookup names the miss, and then the fix.**
+///
+/// The hint is a second line, indented under the error the way a compiler indents one, so the first
+/// line still reads as the whole diagnostic for a model that needs nothing more.
+#[test]
+fn a_missed_lookup_names_the_name_and_the_one_it_meant() {
+    let refusal = docs_not_found_refusal("write", &["writeFile".to_string()]);
+    assert_eq!(refusal.failure, ToolFailure::NotFound);
+    assert_eq!(
+        refusal.message,
+        "no documentation for `write`\n  Did you mean `writeFile`?"
+    );
+}
+
+/// **A miss with no near name says nothing extra.** An empty hint would be gg filling a silence,
+/// and the sentence is complete without it.
+#[test]
+fn a_missed_lookup_with_nothing_near_it_carries_no_hint() {
+    let refusal = docs_not_found_refusal("compileTheProject", &[]);
+    assert_eq!(refusal.failure, ToolFailure::NotFound);
+    assert_eq!(refusal.message, "no documentation for `compileTheProject`");
+    assert!(!refusal.message.contains("Did you mean"));
+}
+
+/// Several candidates read as one English sentence — `or` between two, an Oxford comma among more —
+/// because the model is being asked to pick one, and a list it has to parse is a list it can
+/// misread.
+#[test]
+fn several_candidates_read_as_a_sentence() {
+    let two = docs_not_found_refusal(
+        "write",
+        &["writeFile".to_string(), "writeMemory".to_string()],
+    );
+    assert_eq!(
+        two.message,
+        "no documentation for `write`\n  Did you mean `writeFile` or `writeMemory`?"
+    );
+
+    let three = docs_not_found_refusal(
+        "read",
+        &[
+            "readFile".to_string(),
+            "readSkill".to_string(),
+            "readMemory".to_string(),
+        ],
+    );
+    assert_eq!(
+        three.message,
+        "no documentation for `read`\n  Did you mean `readFile`, `readSkill`, or `readMemory`?"
+    );
+}
+
 /// A blank selector is an argument error; anything else is left to close whatever it names —
 /// including nothing.
 #[test]

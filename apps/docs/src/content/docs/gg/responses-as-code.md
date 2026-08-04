@@ -304,6 +304,30 @@ occurred (*no documentation found*) and any other wrong type is named for what i
 (*expected a function or function name, got number*). A name that is merely unknown still
 throws `not-found`, because that one really is a name the model wrote.
 
+And because it is a name the model wrote, the `not-found` says which bound names it is
+*nearly*, on a second line indented under the error the way a compiler indents a hint:
+
+```text
+Runtime error
+----
+`openDocsView` failed (not-found): no documentation for `write`
+  Did you mean `writeFile` or `writeMemory`?
+```
+
+Watching real sessions, a missed lookup is almost never an invented name. It is the **gg tool
+name** where the program spelling belongs (`write_file` for `writeFile` — the tool name is what
+the model's own telemetry, its prompt and gg's sentences call the same function), a **stem**
+completed by guess (`write`, `read`, `open`), or a **typo** in a name it has already used. All
+three are answerable from the very set the lookup just failed against, so gg answers them: an
+object qualifier is seen through, so is the difference between `write_file` and `writeFile`, and
+a name within an edit or two is offered as the typo it is. At most three names, only ever the
+closest *kind* of near-miss — an exact name under another spelling is never padded out with
+typos beside it — and, when nothing is close, nothing at all, since a wrong suggestion sends the
+model to read documentation for a function it did not want. The candidates are the names **this
+agent binds**, never the whole catalogue: offering `editFile` to a run that withheld `edit_file`
+would trade a `not-found` for a `ReferenceError` a turn later. `<object>.list()` remains the
+directory; this is a nudge, not a substitute for it.
+
 That is a reversal, and the thing it replaced is worth stating because the replacement is a
 subtraction. gg used to hang a `.docs()` method off every bound function (and a
 `harness.readDocs(name)` beside it, for a model that had only a name). Calling it did two
@@ -825,7 +849,7 @@ its own set of open views; each view has a **kind**, a **selector** (its key), a
 | --- | --- |
 | `view.openFile(path, options?)` | Reads the file **and** opens a view of it. Returns exactly what `fs.readFile` returns, so a program that wants both the bytes and the view pays for one read. |
 | `view.openText(label, body)` | Opens — or replaces — the text view keyed by `label`. |
-| `view.openDocsView(fn \| "name")` | Opens — or replaces — the [documentation view](#reading-the-documentation-is-opening-a-view) for one bound function, keyed by its name. Returns `void`: the documentation is material for the window, not a value for the program. An argument that is neither a bound function nor a name is `invalid-argument` in the guest, before the lookup, so a name this run does not bind is never quoted back as `undefined`. |
+| `view.openDocsView(fn \| "name")` | Opens — or replaces — the [documentation view](#reading-the-documentation-is-opening-a-view) for one bound function, keyed by its name. Returns `void`: the documentation is material for the window, not a value for the program. An argument that is neither a bound function nor a name is `invalid-argument` in the guest, before the lookup, so a name this run does not bind is never quoted back as `undefined`. An unbound name is `not-found`, carrying the bound names nearest it (`Did you mean \`writeFile\`?`) when there are any. |
 | `view.close(selector)` | Closes every view carrying that selector (for a file, every page of that path) and returns how many it closed. Closing something that is not open is `0`, not a failure. |
 | `view.current()` | Lists what is open: each view's `kind`, `selector`, roughly what it costs in `tokens`, and a paged file view's `region`. |
 
@@ -1139,6 +1163,14 @@ answer is part of the diagnostic rather than commentary on it. A `ReferenceError
 otherwise have to spend a turn asking. That is composed **in the guest, at the call site**,
 by the code that knows what went wrong; it is not gg reading a finished error and deciding to
 be helpful about it a turn later, which is the thing this rule forbids.
+
+A failed [documentation lookup](#reading-the-documentation-is-opening-a-view) is the same
+carve-out on the host's side of the membrane. *No documentation for `write`* provokes *then what
+is it called?*, and the only layer that can answer is the one that just decided the name is
+unbound — it is holding this agent's scope, which is what the answer is made of. So the
+`not-found` carries the bound names nearest the miss, indented under it. It is still a fact the
+fault implies rather than advice about it: gg names names, and says nothing about what to do
+with them.
 
 The carve-out covers a *fact* the fault implies, never advice about what to do with it. Every
 message the guest raises is one clause and is made of facts — the offending value, the

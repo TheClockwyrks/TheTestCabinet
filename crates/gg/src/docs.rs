@@ -35,6 +35,13 @@
 //! that omitted a declaration on the grounds that some *other* block already carried it would be a
 //! block that stopped making sense the moment the model tidied up. A view has to read correctly on
 //! its own.
+//!
+//! # Why a miss answers with names
+//!
+//! A lookup that finds nothing is answered by [`suggest`](DocsRuntime::suggest) as well as by
+//! `None`: the same scope that decided the name is unbound is the only thing that knows which bound
+//! names it is nearly. See [`suggest`](self::suggest) for what "nearly" means and why the candidates
+//! are the bound ones alone.
 
 use std::collections::BTreeSet;
 
@@ -45,6 +52,9 @@ use crate::sandbox::{
     CatalogueFunction, FunctionSummary, ProgramLanguage, catalogue_functions, language,
     type_declaration,
 };
+
+#[path = "docs.suggest.rs"]
+mod suggest;
 
 /// The name the `list()` meta function is bound and looked up under. Named once here because it is
 /// not the catalogue's to name: the guest binds `list` on every object it creates, this runtime
@@ -136,6 +146,27 @@ impl DocsRuntime {
                 Some(assemble(&function, self.language))
             }
         }
+    }
+
+    /// The bound names nearest `name`, for the hint a failed lookup carries — empty when nothing is
+    /// close enough to be worth offering.
+    ///
+    /// It answers from the same three gates [`read`](Self::read) failed against, and that is the
+    /// whole reason it lives here rather than beside the refusal it feeds: a candidate list drawn
+    /// from the catalogue instead of from this agent's scope would offer names the program cannot
+    /// call. The `list` meta function is a candidate like any other, since it is bound on every
+    /// object and answerable by [`read`](Self::read).
+    ///
+    /// What counts as *near* is [`suggest`](self::suggest)'s to decide; what is *available* to be
+    /// near is this method's.
+    pub fn suggest(&self, name: &str) -> Vec<String> {
+        let bound: Vec<&'static str> = catalogue_functions(self.language)
+            .into_iter()
+            .filter(|function| self.bound(function))
+            .map(|function| function.name)
+            .chain(std::iter::once(LIST_FUNCTION))
+            .collect();
+        suggest::nearest(name, bound)
     }
 
     /// Whether a function is bound this run, by whichever of the three gates decides it: a

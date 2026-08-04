@@ -133,6 +133,64 @@ fn read_documents_the_list_meta_function() {
     assert!(docs.read("readDocs").is_none(), "`readDocs` is retired");
 }
 
+/// A missed lookup is answered with the bound names nearest it — the tool name the model wrote
+/// instead of the spelling, and the stem it completed by guess.
+#[test]
+fn a_miss_suggests_the_bound_names_nearest_it() {
+    let docs = DocsRuntime::new(
+        enabled(),
+        EndingRole::Standard,
+        false,
+        GgProgramLanguage::TypeScript,
+    );
+    assert_eq!(docs.suggest("write_file"), vec!["writeFile"]);
+    assert_eq!(docs.suggest("write"), vec!["writeFile"]);
+    // The meta function is a candidate like any other: it is bound on every object, and `read`
+    // answers it.
+    assert_eq!(docs.suggest("lists"), vec!["list"]);
+}
+
+/// **A suggestion is drawn from this agent's scope, never from the catalogue.**
+///
+/// The failure a whole-catalogue hint would cause is the worst kind: the model reads a plausible
+/// name gg itself offered, writes the call, and is answered with a `ReferenceError`. So a run that
+/// withheld `write_file` does not hear `writeFile` back — from the lookup or from the hint.
+#[test]
+fn a_suggestion_never_names_a_function_this_agent_lacks() {
+    let docs = DocsRuntime::new(
+        vec!["read_file".to_string()],
+        EndingRole::Standard,
+        false,
+        GgProgramLanguage::TypeScript,
+    );
+    assert!(docs.read("writeFile").is_none());
+    assert!(
+        docs.suggest("write_file").is_empty(),
+        "`writeFile` is not bound, so it is not offered: {:?}",
+        docs.suggest("write_file")
+    );
+    // What *is* bound is still offered, on the same query shape.
+    assert_eq!(docs.suggest("read_file"), vec!["readFile"]);
+
+    // The ending gate is a scope like any other: a reviewer's verdicts are not suggested to an
+    // agent doing work, and `finish` is not suggested to a reviewer.
+    let worker = DocsRuntime::new(
+        enabled(),
+        EndingRole::Standard,
+        false,
+        GgProgramLanguage::TypeScript,
+    );
+    assert!(worker.suggest("request_changes").is_empty());
+    let reviewer = DocsRuntime::new(
+        enabled(),
+        EndingRole::Review,
+        false,
+        GgProgramLanguage::TypeScript,
+    );
+    assert_eq!(reviewer.suggest("request_changes"), vec!["requestChanges"]);
+    assert!(reviewer.suggest("finsih").is_empty());
+}
+
 /// The **third gate**: the program library, which neither the enabled set nor the ending role can
 /// express.
 ///
