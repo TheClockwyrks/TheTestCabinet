@@ -15,12 +15,12 @@ renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-templa
 | Template                   | What it renders                                                                                                                                                                        |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `system-tools.hbs`         | The **tool-calling** system prompt: the base framing plus one section per enabled capability, each naming its free-standing tools (`add_task`, `create_epic`).                         |
-| `system-code.hbs`          | The **responses-as-code** system prompt: the same capability sections with their calls in grouped-method form (`tasks.addTask`, `project.createEpic`), plus the code-protocol framing. |
+| `system-code.<language>.hbs` | The **responses-as-code** system prompt, one file per [program language](/gg/program-languages/) (today `system-code.typescript.hbs`): the same capability sections with their calls in grouped-method form (`tasks.addTask`, `project.createEpic`), plus the code-protocol framing. |
 | `tasks.hbs`                | The pinned [task list](/gg/tasks/) block.                                                                                                                                              |
 | `board.hbs`                | The pinned [Project management](/gg/project-management/) board block.                                                                                                                  |
 | `memories.hbs`             | The pinned [memories](/gg/memories/) block.                                                                                                                                            |
 | `memory-notice.hbs`        | The per-turn notice a holder of a [linked memory instance](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote) is given when **another** holder wrote, revised or deleted one. |
-| `code-nothing-shown.hbs`   | The **`Notice`** a [program](/gg/responses-as-code/) that ran but put nothing in the window earns, checked against the assembled window rather than inferred from the outcome.         |
+| `code-nothing-shown.<language>.hbs` | The **`Notice`** a [program](/gg/responses-as-code/) that ran but put nothing in the window earns, checked against the assembled window rather than inferred from the outcome. Per language, because it names the calls that would have shown the model something. |
 
 ### One `code-*` template, where there were six
 
@@ -119,10 +119,19 @@ Rust change.
 it rewrites it. Every capability's calls change shape (there is no free-standing `add_task`
 in code mode, only `tasks.addTask`, a method on the `tasks` object), and the base framing's
 ending rule and tool listing are replaced wholesale. So the two arms are **separate files**,
-`system-tools.hbs` and `system-code.hbs`, and `prompts::render_system` selects between them
-on the run's execution mode. An operator's per-agent template override still renders against
-the same context in either mode; the console seeds its editor with whichever built-in default
-matches the agent's mode.
+`system-tools.hbs` and `system-code.<language>.hbs`, and `prompts::render_system` selects
+between them on the run's execution mode. An operator's per-agent template override still
+renders against the same context in either mode; the console seeds its editor with whichever
+built-in default matches the agent's mode.
+
+The code arm is per **program language**, not one file with language branches in it. The
+template quotes the SDK's own spellings at nearly every bullet — `skills.readSkill(name)`,
+`project.createIssue`, `view.openText`, `JSON.stringify` — and function spelling is exactly
+what a second language is free to change, so a merged file would need a branch almost
+everywhere and adding a language would mean editing the file every language shares. Each
+language's template is registered under `system-code.<language id>` by walking the language
+registry, so a new one arrives without a list anywhere being edited, and a test renders every
+registered language's prompt and asserts each required section survived the copy.
 
 The code arm teaches five things the tool-calling arm has no need of:
 

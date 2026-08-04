@@ -694,7 +694,7 @@ pub struct GgAgentApi {
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call, and what gates it.
 ///
 /// The load-bearing field is [`tool`](Self::tool): a code program's calls are recorded under the gg
-/// **tool** they run through, not under their JavaScript name, so it is the join key between a
+/// **tool** they run through, not under the name a program spells them with, so it is the join key between a
 /// bound function and how many times this agent actually called it. A function with no tool behind
 /// it — a view call, an ending call, a program-library call — has none, and a consumer reports it
 /// as bound rather than as bound-and-never-called.
@@ -1099,10 +1099,12 @@ pub const CAPABILITY_SPECULATIVE: &str = "speculative-execution";
 /// engine uses) rather than dispatching one discrete tool call at a time.
 ///
 /// When enabled, an agent's turn no longer offers the model native tool calls. The model's
-/// **whole reply is the program** — a TypeScript program, with no code fence, no extraction and no
-/// language tag — in which each of the run's [tools](CAPABILITY_SHELL) is a **typed function**
-/// (`readFile(path, { limit })`, not a generic call by name), executed in a wasmtime **component**
-/// sandbox. gg [heals](GgResponseHealing) the reply, strips its types, and runs it — bridging each
+/// **whole reply is the program** — with no code fence, no extraction and no language tag — in which
+/// each of the run's [tools](CAPABILITY_SHELL) is a **typed function** (`readFile(path, { limit })`,
+/// not a generic call by name), executed in a wasmtime **component** sandbox. Which
+/// [language](GgProgramLanguage) that program is written in is the capability's `language` param: a
+/// configuration knob a cross-language study slices its arms on, defaulting to TypeScript. gg
+/// [heals](GgResponseHealing) the reply, prepares it for that language's guest, and runs it — bridging each
 /// tool call the program makes to the real
 /// [`ToolRegistry`](https://docs.testcabinet.ai/gg/overview/) (so the tool runs in the container and
 /// its result flows back **into the program**) — and feeds the program's result (plus any error or
@@ -1119,7 +1121,8 @@ pub const CAPABILITY_SPECULATIVE: &str = "speculative-execution";
 ///
 /// Responses are **healed** before they run: a conservative, deletion-only text repair that unwraps
 /// a fence the model added, drops explanatory prose, removes imports of a surface already in scope,
-/// and unwraps an `async` wrapper. Every application is disclosed to the model in its turn feedback
+/// and unwraps an asynchronous wrapper. Which spellings each of those is written in belongs to the
+/// program language; the repairs themselves do not. Every application is disclosed to the model in its turn feedback
 /// and [counted on the run](GgHealingSummary), because a repair the model is not told about teaches
 /// it nothing and corrupts the ablation; each [strategy](GgHealingStrategy) is independently
 /// toggleable through the capability's `healing` param, and on unless turned off.
@@ -2615,8 +2618,12 @@ pub enum GgTurnErrorKind {
     /// budget. No turn happened at all. Also where a reply that
     /// [looped](GgLoopDetection) on every attempt lands.
     ModelApi,
-    /// The program did not type-strip — a syntax error, a module feature the sandbox has no
-    /// implementation of, or a program past the size/nesting guards. Nothing ran.
+    /// The program could not be prepared for its guest — a syntax error, a module feature the
+    /// sandbox has no implementation of, or a program past the size/nesting guards. Nothing ran.
+    ///
+    /// The variant keeps its name (and its wire value, `transpile`) from when every program was
+    /// TypeScript and preparing one meant stripping its types: the value is contract-visible, and
+    /// renaming it would break every reader of persisted run data to describe the same failure.
     Transpile,
     /// The program ran and threw an uncaught fault, so every statement after the throw never ran and
     /// the model must re-declare the remainder.
@@ -3554,6 +3561,130 @@ pub enum GgHealingStrategy {
     UnwrapAsync,
 }
 
+/// The language a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program is written in — the
+/// axis a cross-language study compares its arms on.
+///
+/// gg's sandbox is a **wasm component per language**: each language ships a hand-written, idiomatic
+/// SDK that binds the same typed WIT surface, so what differs between two arms of a study is the
+/// *spelling* of a call, never which calls exist. Which language an agent writes in is therefore a
+/// configuration knob like every other lever the harness measures, rather than a property of gg.
+///
+/// The wire values are the language ids, spelled exactly as the
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `language` param is written
+/// (`{"language": "typescript"}`), because the id is one thing: a config key, a telemetry value,
+/// and the stem of the language's committed guest artifacts. Lower-case rather than this module's
+/// usual camelCase for exactly that reason — camelCase of `TypeScript` is `typeScript`, which is
+/// not a spelling anybody would put in a configuration file. [`GgHealingStrategy`] departs from the
+/// module default on the same grounds.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgProgramLanguage {
+    /// TypeScript, type-stripped to JavaScript and evaluated in the committed `componentize-js`
+    /// guest. The default, and today the only registered language.
+    #[default]
+    TypeScript,
+}
+
+impl GgProgramLanguage {
+    /// Every language, in registration order — the list a study's arms are drawn from, and the list
+    /// gg's own language registry is derived from, so the two can never disagree.
+    ///
+    /// Hand-written, and **checked**: [`ordinal`](Self::ordinal) is an exhaustive `match`, so a new
+    /// variant does not compile until it is given a position here, and each arm's position is
+    /// verified against this list *at compile time* by the `const` block inside it. A variant added
+    /// to the enum and forgotten here is therefore a build failure rather than a language that
+    /// silently vanishes from [`from_id`](Self::from_id), from gg's registry, and from every gate
+    /// that iterates them.
+    pub const ALL: &'static [GgProgramLanguage] = &[Self::TypeScript];
+
+    /// How many languages there are: the length of [`ALL`](Self::ALL), and the size of every
+    /// per-language table gg indexes by [`ordinal`](Self::ordinal).
+    pub const COUNT: usize = Self::ALL.len();
+
+    /// `self`'s position in [`ALL`](Self::ALL) — the index of its slot in any per-language table.
+    ///
+    /// This is the forcing function behind [`ALL`](Self::ALL). The `match` is exhaustive, so a new
+    /// variant does not compile until it has an arm; and each arm's answer is checked against
+    /// [`ALL`](Self::ALL) in a `const` block, so an arm whose position is wrong — or whose variant
+    /// was never added to the list — fails to build rather than indexing past the end of a table at
+    /// run time.
+    pub const fn ordinal(self) -> usize {
+        match self {
+            Self::TypeScript => const { Self::listed_at(0, Self::TypeScript) },
+        }
+    }
+
+    /// `ordinal`, having checked that [`ALL`](Self::ALL) really holds `expected` there.
+    ///
+    /// Called only from `const` blocks in [`ordinal`](Self::ordinal), which is what turns "the list
+    /// and the enum agree" from a comment into a build error. Compares discriminants because a
+    /// `const fn` cannot call [`PartialEq`] on stable.
+    const fn listed_at(ordinal: usize, expected: Self) -> usize {
+        assert!(
+            ordinal < Self::COUNT,
+            "a GgProgramLanguage variant claims a position past the end of GgProgramLanguage::ALL"
+        );
+        assert!(
+            Self::ALL[ordinal] as u8 == expected as u8,
+            "a GgProgramLanguage variant is missing from GgProgramLanguage::ALL, or is listed at a \
+             different position than its `ordinal` arm claims"
+        );
+        ordinal
+    }
+
+    /// The stable id: the capability param's value, the telemetry value, and the stem of the
+    /// language's committed guest artifacts.
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::TypeScript => "typescript",
+        }
+    }
+
+    /// The language an [id](Self::id) names, or `None` for a spelling gg does not know.
+    ///
+    /// Written against [`ALL`](Self::ALL) rather than as a second `match`, so a language cannot be
+    /// added to one direction and forgotten in the other.
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|language| language.id() == id)
+    }
+
+    /// This language's name as a **human** reads it — what an operator sees in a launch warning or
+    /// a console label. What a model is shown is its own prompt, written in this language's syntax.
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            Self::TypeScript => "TypeScript",
+        }
+    }
+}
+
+/// The other half of the [`ALL`](GgProgramLanguage::ALL) check: every entry sits at the position its
+/// own [`ordinal`](GgProgramLanguage::ordinal) claims.
+///
+/// [`ordinal`](GgProgramLanguage::ordinal)'s own `const` blocks prove *variant → list*; this proves
+/// *list → variant*, so a list with a duplicate, a gap or a mis-ordered entry does not build either.
+const _: () = {
+    let mut index = 0;
+    while index < GgProgramLanguage::COUNT {
+        assert!(
+            GgProgramLanguage::ALL[index].ordinal() == index,
+            "GgProgramLanguage::ALL lists a language somewhere other than at its own ordinal"
+        );
+        index += 1;
+    }
+};
+
+impl std::fmt::Display for GgProgramLanguage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.id())
+    }
+}
+
 /// What gg had to do to a model's response before it could run it — the healing record of one
 /// code-shaped turn.
 ///
@@ -3855,6 +3986,17 @@ pub struct GgSessionSummary {
     /// not derived from the telemetry stream.
     #[serde(default = "tool_calling_mode")]
     pub execution_mode: String,
+    /// The [language](GgProgramLanguage) the run's root agent wrote its programs in — the slice-by
+    /// dimension a cross-language study compares its arms on, and the companion to
+    /// [`execution_mode`](Self::execution_mode): that field says *whether* the run answered in
+    /// programs, this one says what those programs were written in.
+    ///
+    /// `None` for a tool-calling run, which has no program language at all — as opposed to having
+    /// an unknown one. Recorded once off the run's configuration, like
+    /// [`effective_tools`](Self::effective_tools), rather than derived from the telemetry stream.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub program_language: Option<GgProgramLanguage>,
     /// How many **code-shaped turns** the run took — one per
     /// [`CodeExecution`](GgTelemetryKind::CodeExecution) event. `0` when the
     /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability was off (traditional tool
@@ -4845,6 +4987,15 @@ pub enum GgTelemetryKind {
         /// property, not a run-wide one — one run may drive a code-shaped root and a tool-calling
         /// reviewer — which is why it is reported here rather than read off the session summary.
         execution_mode: String,
+        /// The [language](GgProgramLanguage) this instance's programs are written in, or `None` for
+        /// a tool-calling instance, which writes none.
+        ///
+        /// Per-agent for exactly the reason [`execution_mode`](Self::AgentSurface::execution_mode)
+        /// is: responses-as-code is a per-agent capability, so one run may drive its root in one
+        /// language and (once a second language is registered) a reviewer in another.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "contract", ts(optional))]
+        program_language: Option<GgProgramLanguage>,
         /// Every gg tool name this instance is offered, in the order the model is shown them: the
         /// registry's tools in registration order, then the ending calls its dispatched role may
         /// end with (`finish`, or a reviewer's `approve`/`request_changes`, or a judge's
@@ -5155,7 +5306,7 @@ pub enum GgTelemetryKind {
     /// Emitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)
     /// once per code-shaped turn, on the agent that emitted the reply, so it rides on that agent's
     /// own [`agent_id`](GgTelemetryEvent::agent_id). That includes a turn whose reply was **not a
-    /// program at all** — prose, or an empty reply — which reaches the type-strip like anything
+    /// program at all** — prose, or an empty reply — which is prepared for the guest like anything
     /// else and is reported the same way a program that did not compile is: `ok: false` and an
     /// [`error`](Self::CodeExecution::error) carrying the compiler's diagnostic. One event per
     /// code-shaped turn is the invariant, and it is what makes
@@ -5187,11 +5338,12 @@ pub enum GgTelemetryKind {
         /// Reported on every path that reached the engine, including a fault, a trap, or an
         /// [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is
         /// the time burned up to the stop, not the ceiling); `Some(0)` when the program never
-        /// reached the engine (a type-strip failure, or a sandbox that could not be built).
+        /// reached the engine (a program that would not prepare, or a sandbox that could not be
+        /// built).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         duration_ms: Option<u64>,
         /// The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault
-        /// (a syntax error the type-strip rejected, or a value the program threw) or a sandbox
+        /// (a syntax error the language's prepare step rejected, or a value the program threw) or a sandbox
         /// failure (an execution timeout or memory exhaustion, a trap). Absent on a clean
         /// execution.
         #[serde(default, skip_serializing_if = "Option::is_none")]

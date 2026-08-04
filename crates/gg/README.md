@@ -114,5 +114,6 @@ page in [the docs section](../../apps/docs/src/content/docs/gg/), not this table
 | `context.rs` | The context window model: what the agent is holding, what is pinned, and what a reclaim frees. |
 | `prompts.rs` | Everything gg *says* to a model, rendered from the `templates/*.hbs` files. |
 | `tools/` | Tool dispatch, the offered toolset, and the typed `ToolData`/`ToolFailure` outcomes every tool emits. |
-| `sandbox.rs` + `sandbox/` | [Responses as code](../../apps/docs/src/content/docs/gg/responses-as-code.md): the wasmtime host, the WIT membrane, the `oxc` type-strip, and the committed interpreter component. |
+| `sandbox.rs` + `sandbox/` | [Responses as code](../../apps/docs/src/content/docs/gg/responses-as-code.md): the wasmtime host and the WIT membrane. |
+| `sandbox/language.rs` + `sandbox/language/` | [Program languages](../../apps/docs/src/content/docs/gg/program-languages.md): the seam a program's language is registered behind — preparing a reply for its guest, that guest's committed component and signature catalogue, what it needs from the host linker, and its healing/prompt dialects. `language/typescript.rs` is the one registered language. |
 | `replay.rs` / `replay_driver.rs` | Capturing a run's non-deterministic inputs, and reconstructing the run from that record. |

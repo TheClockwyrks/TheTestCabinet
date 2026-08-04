@@ -29,11 +29,11 @@ no note at the top of the turn, no mention anywhere in the prompt. See
 the model's reply, unmodified   ── streamed as its assistant_message, pushed to the context
         │
         ▼
-   heal(reply, config)
+   heal(reply, config, dialect)
         │            ═══════ THE SEAM ═══════
         │            above: text repair.  below: syntax.
         ▼
-  oxc type-strip ──▶ instantiate ──▶ run
+   prepare ──▶ instantiate ──▶ run
 ```
 
 Every reply travels the whole way. **gg never asks whether a reply "is a program"** —
@@ -54,6 +54,36 @@ lets every rule here be a microsecond-scale unit test with no wasm behind it. Th
 (`crates/gg/src/healing.rs`) does no I/O, reads no clock, is not `async`, and imports
 nothing from the sandbox; turning a strategy off changes only what one pure function
 returns, which is what makes the ablation honest.
+
+### The skeleton and the dialect
+
+Healing is split along the same line the rest of gg is: a **skeleton** that is true of
+every [program language](/gg/program-languages/), and a **dialect**
+that answers the questions only a language can. Markdown is not a program language, so
+the whole fence scanner, the candidacy ladder, the decline ladder and the prose-run scan
+are skeleton; what a dialect supplies is the *data and the predicates* they consult —
+which fence tags mean "this block is the program", whether a line is certainly code or
+certainly prose, which bytes of a source are code as against string or comment text, what
+a single-line module import looks like, which declarations the language refuses to see
+twice, and what an entire-program concurrency wrapper looks like. `drop-doubled-response`
+is the one strategy with no dialect hook at all: it is byte arithmetic over the reply.
+
+The dialect is a parameter of `heal`, and the language owns its implementation
+(`crates/gg/src/sandbox/language/typescript.healing.rs`), so `healing.rs` still imports
+nothing from the sandbox. Every language must **re-earn** the deletion-only invariant on
+its own replies rather than inherit it: a registered language contributes fixtures its own
+dialect has to survive, and gg asserts the healed program is a subsequence of the reply
+for each one.
+
+A dialect that answers "no" to everything is legal, and gg keeps one — an **inert
+dialect**, in the tests — to hold the split honest. Under it the two strategies that need
+no dialect go on working (an untagged fence is still unwrapped, a byte-exact doubled reply
+is still halved) and the four that need one quietly decline, leaving the reply exactly as
+the model sent it. So a language with no lexical rules written yet loses repairs rather
+than losing programs, and nothing in the skeleton is TypeScript's rules with the labels
+filed off. The same cases are run through a second, non-inert dialect, whose different
+fence tags and different import keyword pick a different block out of the same reply and
+drop a different line from it.
 
 Healing does not run on the [replay](/gg/replay/) path at all. The replay driver
 *reconstructs* a code turn from the record; it does not re-drive the text through the
@@ -131,8 +161,9 @@ Two relaxations come from measured real replies, and neither touches the length 
 | the **glued close** — a closing run with text after it (```` ```Consumed fuel: 24,000 … ````) | closes the block as `glued`; the trailing text becomes an outside line. CommonMark does *not* accept this as a close, which is exactly why the reply that contained it — seven times over — was read as one enormous program |
 | **end of input with a block open** | closes it as `unterminated` and runs what it holds |
 
-*Candidacy* is a three-tier ladder, first non-empty tier wins: blocks tagged `ts`,
-`typescript`, `tsx`, `js`, `javascript`, `mjs`, `node` (and the rest of that closed list);
+*Candidacy* is a three-tier ladder, first non-empty tier wins: blocks tagged with one of
+this [language](/gg/program-languages/)'s program tags — for
+TypeScript `ts`, `typescript`, `tsx`, `js`, `javascript`, `mjs`, `node` (and the rest of that closed list);
 otherwise blocks with **no** tag; otherwise blocks whose unrecognised tag is anything
 else **and** whose body looks like code. A closed list rather than a deny list, because a
 block tagged `json`, `text`, `bash` or `md` is context the model showed rather than the
@@ -288,18 +319,20 @@ diagnostic comes from a compiler reading the model's own text, which is a better
 than any count gg could infer from it.
 
 Two different drafts that declare *different* names are likewise left alone: that is a
-legal program with a dead tail, it runs, and the type-strip is what reports the half that
-could not run.
+legal program with a dead tail, it runs, and the language's own prepare step is what reports
+the half that could not run.
 
 ### `drop-imports`
 
-In **code** lexical context only, deletes whole lines that are a complete single-line
-`import`, a complete single-line `const`/`let`/`var … = require(…)`, or a bare
-`require("…");` statement. **Declines** on a multi-line import (deciding where it ends is
-a parse, and the type-strip already names `import` and says what to write instead); on an
-`import` that the lexical mask places inside a string, template literal or comment — a
-program *writing* a TypeScript file is ordinary gg work; and on everything when the mask
-does not lex cleanly.
+In **code** lexical context only, deletes whole lines the **dialect** calls a complete
+single-line import. What those look like is the language's answer, not the skeleton's; in
+TypeScript they are a complete single-line `import`, a complete single-line
+`const`/`let`/`var … = require(…)`, or a bare `require("…");` statement. The strategy
+**declines** on anything the dialect does not call a complete statement — a multi-line
+import among them, since deciding where it ends is a parse, and the language's own prepare
+step already names `import` and says what to write instead; on an import the lexical mask
+places inside a string, template literal or comment — a program *writing* a source file is
+ordinary gg work; and on everything when the mask does not lex cleanly.
 
 ### `unwrap-async`
 

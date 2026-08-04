@@ -1,4 +1,4 @@
-//! Tests for [`transpile_module`] — the pass that turns a code skill or memory into a function body
+//! Tests for [`prepare_module`] — the pass that turns a code skill or memory into a function body
 //! returning its namespace.
 
 use super::*;
@@ -14,7 +14,7 @@ fn epilogue(js: &str) -> String {
 
 #[test]
 fn exported_declarations_become_the_namespace() {
-    let module = transpile_module(
+    let module = prepare_module(
         "export function parse(text: string): string[] { return text.split(\",\"); }\n\
          export const VERSION = 2;\n\
          function helper() { return 1; }\n",
@@ -26,15 +26,15 @@ fn exported_declarations_become_the_namespace() {
         module.exports,
         vec!["parse".to_string(), "VERSION".to_string()]
     );
-    assert!(epilogue(&module.js).contains("parse"));
-    assert!(!epilogue(&module.js).contains("helper"));
+    assert!(epilogue(&module.source).contains("parse"));
+    assert!(!epilogue(&module.source).contains("helper"));
     // The `export` keyword is gone, so the body is legal inside a `new Function`.
-    assert!(!module.js.contains("export "));
+    assert!(!module.source.contains("export "));
 }
 
 #[test]
 fn a_module_with_no_exports_at_all_exports_everything_it_declares() {
-    let module = transpile_module("function a() {}\nconst b = 1;\nclass C {}\n")
+    let module = prepare_module("function a() {}\nconst b = 1;\nclass C {}\n")
         .expect("an export-free module transpiles");
     assert_eq!(
         module.exports,
@@ -44,23 +44,23 @@ fn a_module_with_no_exports_at_all_exports_everything_it_declares() {
 
 #[test]
 fn a_specifier_export_names_the_exported_half() {
-    let module = transpile_module("function rows() {}\nexport { rows as toRows };\n")
+    let module = prepare_module("function rows() {}\nexport { rows as toRows };\n")
         .expect("a specifier export transpiles");
     // The namespace offers `toRows`; the object literal maps it onto the local `rows`.
     assert_eq!(module.exports, vec!["toRows".to_string()]);
-    assert!(epilogue(&module.js).contains("toRows: rows"));
+    assert!(epilogue(&module.source).contains("toRows: rows"));
 }
 
 #[test]
 fn destructured_bindings_are_all_exported() {
-    let module = transpile_module("export const { a, b } = { a: 1, b: 2 };\n")
+    let module = prepare_module("export const { a, b } = { a: 1, b: 2 };\n")
         .expect("a destructuring export transpiles");
     assert_eq!(module.exports, vec!["a".to_string(), "b".to_string()]);
 }
 
 #[test]
 fn type_only_declarations_are_not_exported() {
-    let module = transpile_module(
+    let module = prepare_module(
         "export interface Row { a: string }\nexport type Rows = Row[];\nexport const n = 1;\n",
     )
     .expect("type exports transpile");
@@ -70,15 +70,15 @@ fn type_only_declarations_are_not_exported() {
 
 #[test]
 fn types_are_stripped_from_a_module_as_they_are_from_a_program() {
-    let module = transpile_module("export const n: number = 1;\n").expect("types strip");
-    assert!(!module.js.contains(": number"));
+    let module = prepare_module("export const n: number = 1;\n").expect("types strip");
+    assert!(!module.source.contains(": number"));
 }
 
 #[test]
 fn blanking_preserves_the_line_a_later_error_is_reported_on() {
     // The syntax error is on line 4; the `export` keywords above it are blanked in place, so the
     // diagnostic must still say 4 rather than a line in a re-printed file.
-    let error = transpile_module(
+    let error = prepare_module(
         "export function a() {}\n\
          export const b = 1;\n\
          export class C {}\n\
@@ -98,7 +98,7 @@ fn cross_file_module_syntax_is_refused_by_name() {
         ("export * from \"y\";\n", "export *"),
         ("export { x } from \"y\";\n", "export … from"),
     ] {
-        let error = transpile_module(source).expect_err("cross-file syntax is refused");
+        let error = prepare_module(source).expect_err("cross-file syntax is refused");
         let message = format!("{error}");
         assert!(
             message.contains(keyword),
@@ -111,20 +111,20 @@ fn cross_file_module_syntax_is_refused_by_name() {
 #[test]
 fn a_default_export_is_refused_because_a_namespace_is_made_of_names() {
     let error =
-        transpile_module("export default function () {}\n").expect_err("a default is refused");
+        prepare_module("export default function () {}\n").expect_err("a default is refused");
     assert!(format!("{error}").contains("export default"));
 }
 
 #[test]
 fn a_top_level_await_is_refused_with_the_synchronous_explanation() {
-    let error = transpile_module("export const x = await something();\n")
+    let error = prepare_module("export const x = await something();\n")
         .expect_err("top-level await is refused");
     assert!(format!("{error}").contains("synchronous"), "{error}");
 }
 
 #[test]
 fn a_dynamic_import_is_refused() {
-    let error = transpile_module("export const x = import(\"y\");\n")
+    let error = prepare_module("export const x = import(\"y\");\n")
         .expect_err("a dynamic import is refused");
     assert!(format!("{error}").contains("no loader"), "{error}");
 }
@@ -134,14 +134,14 @@ fn a_dynamic_import_is_refused() {
 #[test]
 fn a_very_large_module_transpiles() {
     let source = format!("export const x = \"{}\";\n", "a".repeat(256 * 1024));
-    let module = transpile_module(&source).expect("a very large module transpiles");
+    let module = prepare_module(&source).expect("a very large module is prepared");
     assert_eq!(module.exports, vec!["x".to_string()]);
 }
 
 #[test]
 fn an_empty_module_still_returns_an_object() {
-    let module = transpile_module("// nothing here\n").expect("an empty module transpiles");
+    let module = prepare_module("// nothing here\n").expect("an empty module is prepared");
     assert!(module.exports.is_empty());
     // An empty namespace is a truthful answer; `undefined` would look like a module that failed.
-    assert!(module.js.contains("return {  };"));
+    assert!(module.source.contains("return {  };"));
 }

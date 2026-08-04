@@ -2,7 +2,7 @@
 //! program composed.
 //!
 //! Everything above this file is typed all the way to the model: a WIT function per tool, a
-//! TypeScript function per tool, typed arguments and a typed result. [`ToolApi`] is the near side
+//! function per tool, typed arguments and a typed result. [`ToolApi`] is the near side
 //! of that surface *inside* the host — **one standard, typed method per API function**, so a
 //! program's `fs.readFile(path, { limit })` reaches [`ToolApi::read_file`] with its arguments still
 //! typed, never lowered into a bag of JSON to be re-parsed. That is the whole of the inversion:

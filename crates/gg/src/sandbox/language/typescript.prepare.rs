@@ -1,7 +1,8 @@
-//! TypeScript in, JavaScript out — in process, in microseconds.
+//! TypeScript in, JavaScript out — in process, in microseconds. TypeScript's answer to
+//! [`prepare_program`](super::ProgramLanguage::prepare_program).
 //!
 //! A model writes TypeScript because that is the language its tools are declared in and the
-//! language it writes best; the sandbox's guest evaluates JavaScript. Something has to erase the
+//! language it writes best; this language's guest evaluates JavaScript. Something has to erase the
 //! types, and the only acceptable something is a library call: a `tsc` or `esbuild` subprocess on
 //! the turn path would cost more than the whole rest of a program's execution and would drag Node
 //! into a run container that has no reason to contain one. `oxc` strips a representative program in
@@ -24,15 +25,37 @@
 //! concatenated drafts produced `SyntaxError: redeclaration of const root` with no file, no line and
 //! no excerpt, and only recovered because the message happened to name the identifier. Checking here
 //! costs one extra pass over a tree that is already built (the transformer needs the same scope
-//! analysis) and hands the model the same located diagnostic every other transpile failure carries.
+//! analysis) and hands the model the same located diagnostic every other failure here carries.
 //!
 //! # Statements that cannot run
 //!
 //! A program's top level is a function body, so a top-level `return` ends it: everything after it is
 //! dead. That is legal JavaScript, so nothing refuses it — but a model that pasted a second draft
 //! after the first one's `return` would otherwise be told "your program ran to completion" about a
-//! reply whose second half never executed. [`Transpiled::unreachable`] is what makes that visible,
-//! and disclosure is the whole of the fix: the program still runs exactly as written.
+//! reply whose second half never executed. [`PreparedProgram::unreachable`] is what makes that
+//! visible, and disclosure is the whole of the fix: the program still runs exactly as written.
+//!
+//! # How TypeScript's failures map onto [`PrepareError`]
+//!
+//! The seam's four kinds are not four names for "it did not compile" — they are four *causes*, and
+//! every one of them is produced here by a different pass:
+//!
+//! * [`Syntax`](PrepareError::Syntax) — the parser's own diagnostics, [located in the program's own
+//!   coordinates](located) and joined, so the model sees the same located list a compiler would show
+//!   it rather than only the first thing that went wrong.
+//! * [`Semantic`](PrepareError::Semantic) — ECMAScript's early errors, from the same scope analysis
+//!   the transformer needs anyway. Kept apart from a syntax error because it is a *different
+//!   mistake*: a syntax error is a typo, an early error is almost always two programs in one reply,
+//!   and telling the two apart in the telemetry is how the second shows up as a rate rather than as
+//!   anecdote.
+//! * [`Lowering`](PrepareError::Lowering) — the transform over a tree that parsed cleanly. Rare to
+//!   the point of never, and worth its own kind precisely so that "the model's syntax failed" and
+//!   "gg's pipeline failed" cannot be read as one number.
+//! * [`Unsupported`](PrepareError::Unsupported) — two families that share one shape. A **feature
+//!   with no implementation** (`import`, `export`, a dynamic `import()`, a top-level `await`), and a
+//!   program nested deeper than [`MAX_NESTING_DEPTH`], where refusing is what keeps an unguarded
+//!   recursive descent from overflowing the stack. Nothing is refused for its *length*. In both
+//!   cases the program is syntactically fine and the model is told precisely what to change.
 //!
 //! # Why some perfectly valid TypeScript is refused here
 //!
@@ -87,6 +110,8 @@ use oxc::parser::{ParseOptions, Parser, ParserReturn};
 use oxc::semantic::SemanticBuilder;
 use oxc::span::{GetSpan, SourceType};
 use oxc::transformer::{TransformOptions, Transformer};
+
+use crate::sandbox::language::{PrepareError, PreparedProgram, UnreachableTail};
 
 /// The virtual path diagnostics are labelled with. Never read from disk — a program has no file.
 const VIRTUAL_SOURCE_PATH: &str = "program.ts";
@@ -152,46 +177,7 @@ fn parser_stack_bytes(src_len: usize) -> usize {
     PARSER_STACK_FLOOR_BYTES.max(src_len.saturating_mul(PARSER_STACK_BYTES_PER_SOURCE_BYTE))
 }
 
-/// A program that type-stripped cleanly: the JavaScript to run, and what the strip observed about
-/// the program on the way past.
-///
-/// The observation rides with the JavaScript rather than being recovered later because it is a fact
-/// about the **model's source**, in the model's own coordinates, and the only place both the tree
-/// and that source exist together is inside the strip.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Transpiled {
-    /// The JavaScript the guest evaluates.
-    pub js: String,
-    /// Top-level statements the program wrote that cannot execute, when it wrote any. See
-    /// [`UnreachableTail`].
-    pub unreachable: Option<UnreachableTail>,
-}
-
-/// Top-level statements a program wrote **after** a statement that ends it — code that provably
-/// never runs.
-///
-/// This is not an error and nothing is refused: dead code after a `return` is legal JavaScript, and
-/// a program is entitled to it. It exists because of what it is a symptom of. A model that drafts
-/// two programs and pastes the second after the first produces exactly this shape, and without a
-/// word about it gg reports "your program ran to completion" over a reply whose second half — the
-/// half that wrote the deliverable and ended the run — never executed. Round 1 proved that silent
-/// discard is the one failure a model cannot recover from, so gg counts what did not run and says
-/// so.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnreachableTail {
-    /// How many top-level statements followed it that could have done something. Hoisted `function`
-    /// declarations and erased type-only declarations are excluded: the first are in scope before
-    /// the first statement runs, and the second do not exist at run time at all, so calling either
-    /// "did not run" would be false.
-    pub statements: usize,
-    /// The 1-based line of the first such statement, in the **program's** coordinates.
-    pub line: usize,
-    /// The first such statement's own source text, trimmed and capped at [`MAX_EXCERPT_CHARS`] —
-    /// what lets a model recognise the half of its reply that never ran without counting lines.
-    pub excerpt: String,
-}
-
-/// Type-strip `src` from TypeScript into the JavaScript the sandbox's guest evaluates.
+/// Type-strip `src` from TypeScript into the JavaScript this language's guest evaluates.
 ///
 /// Parsed with `allow_return_outside_function` because the guest evaluates a program as the BODY of
 /// `new Function(...names, source)`, whose body legally contains a top-level `return`. Parsed as an
@@ -207,10 +193,10 @@ pub struct UnreachableTail {
 /// is given, not whether it is accepted (see the [module docs](self)). The one guard that runs first
 /// costs a single pass over the text and refuses only degenerate bracket nesting, because the parser
 /// below it recurses without a depth guard.
-pub fn transpile_ts(src: &str) -> Result<Transpiled, TranspileError> {
+pub(super) fn prepare_program(src: &str) -> Result<PreparedProgram, PrepareError> {
     let deepest = nesting_depth(src);
     if deepest > MAX_NESTING_DEPTH {
-        return Err(TranspileError::Unsupported(over_nested_message(deepest)));
+        return Err(PrepareError::Unsupported(over_nested_message(deepest)));
     }
     strip_types_on_a_deep_stack(src)
 }
@@ -248,7 +234,7 @@ fn on_a_deep_stack<T: Send>(src: &str, work: impl FnOnce() -> T + Send) -> T {
 }
 
 /// [`strip_types`] on the deep stack — the program path's whole pipeline.
-fn strip_types_on_a_deep_stack(src: &str) -> Result<Transpiled, TranspileError> {
+fn strip_types_on_a_deep_stack(src: &str) -> Result<PreparedProgram, PrepareError> {
     on_a_deep_stack(src, || strip_types(src))
 }
 
@@ -256,7 +242,7 @@ fn strip_types_on_a_deep_stack(src: &str) -> Result<Transpiled, TranspileError> 
 ///
 /// Always called on the deep stack [`strip_types_on_a_deep_stack`] provides; it is a separate
 /// function only so the thread mechanics and the compiler pipeline are each readable on their own.
-fn strip_types(src: &str) -> Result<Transpiled, TranspileError> {
+pub(super) fn strip_types(src: &str) -> Result<PreparedProgram, PrepareError> {
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, src, SourceType::ts())
         .with_options(ParseOptions {
@@ -266,10 +252,10 @@ fn strip_types(src: &str) -> Result<Transpiled, TranspileError> {
         .parse();
 
     if !parsed.diagnostics.is_empty() {
-        return Err(TranspileError::Parse(located(src, &parsed.diagnostics)));
+        return Err(PrepareError::Syntax(located(src, &parsed.diagnostics)));
     }
     if let Some(unsupported) = unsupported_feature(&parsed) {
-        return Err(TranspileError::Unsupported(unsupported.to_string()));
+        return Err(PrepareError::Unsupported(unsupported.to_string()));
     }
 
     let mut program = parsed.program;
@@ -284,10 +270,7 @@ fn strip_types(src: &str) -> Result<Transpiled, TranspileError> {
         .with_check_syntax_error(true)
         .build(&program);
     if !analysed.diagnostics.is_empty() {
-        return Err(TranspileError::EarlyError(located(
-            src,
-            &analysed.diagnostics,
-        )));
+        return Err(PrepareError::Semantic(located(src, &analysed.diagnostics)));
     }
     let scoping = analysed.semantic.into_scoping();
     let transformed = Transformer::new(
@@ -297,14 +280,14 @@ fn strip_types(src: &str) -> Result<Transpiled, TranspileError> {
     )
     .build_with_scoping(scoping, &mut program);
     if !transformed.diagnostics.is_empty() {
-        return Err(TranspileError::Transform(located(
+        return Err(PrepareError::Lowering(located(
             src,
             &transformed.diagnostics,
         )));
     }
 
-    Ok(Transpiled {
-        js: Codegen::new().build(&program).code,
+    Ok(PreparedProgram {
+        source: Codegen::new().build(&program).code,
         unreachable,
     })
 }
@@ -361,50 +344,6 @@ fn would_have_run(statement: &Statement<'_>) -> bool {
             | Statement::TSInterfaceDeclaration(_)
             | Statement::TSTypeAliasDeclaration(_)
     )
-}
-
-/// Why a program could not be turned into runnable JavaScript.
-///
-/// Every variant is **recoverable and model-facing** — the model wrote something it can fix, is
-/// told exactly what, and writes another program next turn. None of them is a run-ending failure,
-/// and none of them costs any engine work: a program that does not compile never reaches the
-/// component at all.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum TranspileError {
-    /// The program is not valid TypeScript. Carries every parser diagnostic, [located in the
-    /// program's own coordinates](located) and joined, so the model sees the same located list a
-    /// compiler would show it rather than only the first thing that went wrong — and, critically,
-    /// sees *where*.
-    #[error("{0}")]
-    Parse(String),
-    /// The program parses, but breaks one of ECMAScript's **early errors**: a `const` declared
-    /// twice, a `let` shadowing a parameter, a duplicate name in a destructuring pattern. Carries
-    /// the same [located](located) rendering as a parse error.
-    ///
-    /// Its own variant rather than folded into [`Parse`](Self::Parse) because it is a different
-    /// mistake with a different cause: a parse error is a typo, an early error is almost always two
-    /// programs in one reply, and telling the two apart in the telemetry is how that shows up as a
-    /// rate rather than as anecdote. Left to the guest it would arrive at `new Function` with no
-    /// location at all (see the [module docs](self)), which is the failure this variant exists to
-    /// remove.
-    #[error("{0}")]
-    EarlyError(String),
-    /// The types could not be stripped. Distinct from [`Parse`](Self::Parse) because it is not the
-    /// model's syntax that failed but the transform over it — a distinction worth keeping when one
-    /// of the two starts happening and the other does not.
-    #[error("{0}")]
-    Transform(String),
-    /// The program asks for something the sandbox will not run it with, and is refused with an
-    /// explanation of what to write instead.
-    ///
-    /// Two families share this variant because they share that shape. One is a **feature with no
-    /// implementation** — `import`, `export`, a dynamic `import()`, a top-level `await`. The other
-    /// is a program nested deeper than [`MAX_NESTING_DEPTH`], where refusing it is what keeps an
-    /// unguarded recursive descent from overflowing the stack (see the [module docs](self)).
-    /// Nothing is refused for its *length*. In both cases the program is syntactically fine and the
-    /// model is told precisely what to change.
-    #[error("{0}")]
-    Unsupported(String),
 }
 
 /// The guidance for a program nested deeper than the parser is given room for.
@@ -655,11 +594,11 @@ fn excerpt(line: &str) -> String {
     format!("{kept}…")
 }
 
-#[path = "transpile.modules.rs"]
+#[path = "typescript.modules.rs"]
 mod modules;
 
-pub use modules::transpile_module;
+pub(super) use modules::prepare_module;
 
 #[cfg(test)]
-#[path = "transpile.test.rs"]
+#[path = "typescript.prepare.test.rs"]
 mod tests;

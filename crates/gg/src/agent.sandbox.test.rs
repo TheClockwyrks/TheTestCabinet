@@ -256,24 +256,43 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
     );
     let summary = session_summary(&events).expect("a session summary");
     assert_eq!(summary.execution_mode, "responses_as_code");
+    // The axis a cross-language study slices its arms on, asserted from a **real run** rather than
+    // from a hand-built struct: nothing else in the record says which language the programs above
+    // were written in, so a dropped `record_program_language` would be invisible.
+    assert_eq!(
+        summary.program_language,
+        Some(test_cabinet_core::gg::GgProgramLanguage::TypeScript)
+    );
     assert_eq!(summary.code_executions, 2);
 
     // (d) the instance's own surface says what it was offered, in the shape a code agent reaches it
     // through: objects with the functions bound on them, each naming the gg tool its calls are
     // recorded under — which is the join a reader needs to tell "never offered" from "never called".
-    let (mode, tools, apis) = events
+    let (mode, language, tools, apis) = events
         .iter()
         .find_map(|event| match &event.kind {
             GgTelemetryKind::AgentSurface {
                 execution_mode,
+                program_language,
                 tools,
                 apis,
                 ..
-            } => Some((execution_mode.clone(), tools.clone(), apis.clone())),
+            } => Some((
+                execution_mode.clone(),
+                *program_language,
+                tools.clone(),
+                apis.clone(),
+            )),
             _ => None,
         })
         .expect("an AgentSurface event");
     assert_eq!(mode, "responses_as_code");
+    // Per instance, because the capability is per agent: the surface is where a reader learns which
+    // arm *this* agent was in, and the spellings under `apis` are that language's.
+    assert_eq!(
+        language,
+        Some(test_cabinet_core::gg::GgProgramLanguage::TypeScript)
+    );
     assert!(
         tools.contains(&"write_file".to_string()),
         "a code agent still reports the tool names its calls are recorded under: {tools:?}"

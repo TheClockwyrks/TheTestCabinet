@@ -15,7 +15,10 @@ use std::time::Instant;
 
 use serde_json::{Value, json};
 
+use test_cabinet_core::gg::GgProgramLanguage;
+
 use super::invoker::{SandboxViewOpened, ViewOpenOutcome, ViewRefusal};
+use super::language::ProgramLanguage;
 use super::membrane::{MembraneState, RunEnding};
 use super::{FunctionSummary, SandboxLimits, ToolApi, WorkflowStageInput};
 use crate::board::IssueStatus;
@@ -31,6 +34,22 @@ use crate::tools::{
     SpeculationData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure, ToolOutcome,
     UsagePair, WorkflowData,
 };
+
+/// The [program language](ProgramLanguage) the sandbox's own tests drive: **TypeScript**.
+///
+/// Named for the language rather than for gg's default, because that is what these tests are about.
+/// Every program they run is TypeScript source, every spelling they assert on (`readFile`,
+/// `requestChanges`) is TypeScript's, and the artifact they compile is TypeScript's committed
+/// component — so a helper called "the default language" would make them read as though the same
+/// cases would hold for whatever gg defaulted to next, which is exactly what they do not claim.
+///
+/// It is still reached **through the registry** rather than by naming one language's module, so a
+/// test exercises the same lookup production does. A case that must cover *every* registered
+/// language iterates [`all_languages`](super::all_languages) instead; one that must cover more than
+/// one implementation of the seam uses the [fixture language](super::fixture) beside it.
+pub(crate) fn typescript() -> &'static dyn ProgramLanguage {
+    super::language(GgProgramLanguage::TypeScript)
+}
 
 /// Whether this test has a process to itself — the guarantee the process-global compile counter in
 /// [`engine`](super::engine) depends on.

@@ -27,7 +27,7 @@ use crate::tools::ALL_TOOL_NAMES;
 /// which asks the guest itself; nothing here can catch a stale `.wasm`.
 #[test]
 fn every_bound_tool_is_a_gg_tool_name() {
-    for entry in &crate::sandbox::signatures::catalogue().tools {
+    for entry in &crate::sandbox::fake::typescript().catalogue().tools {
         assert!(
             ALL_TOOL_NAMES.contains(&entry.tool.as_str()),
             "`{}` is in the sandbox catalogue but is not a gg tool",
@@ -40,7 +40,8 @@ fn every_bound_tool_is_a_gg_tool_name() {
 /// invisible in code mode, which is the drift this catches.
 #[test]
 fn every_gg_tool_name_is_bound() {
-    let catalogue: Vec<&str> = crate::sandbox::signatures::catalogue()
+    let catalogue: Vec<&str> = crate::sandbox::fake::typescript()
+        .catalogue()
         .tools
         .iter()
         .map(|entry| entry.tool.as_str())

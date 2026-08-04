@@ -575,7 +575,13 @@ export default defineConfig({
                 "gg/completion",
                 "gg/toolset-ablation",
                 "gg/responses-as-code",
-                // A property of the capability above it — the counted, disclosed
+                // The axis that capability is parameterised on: which language a
+                // program is written in, what a language has to supply to be
+                // registered, and what adding a second one costs. Directly after
+                // responses as code because it is the design of that capability's
+                // one pluggable seam, not a capability of its own.
+                "gg/program-languages",
+                // Also a property of responses as code — the counted, disclosed
                 // repairs gg makes to a reply before running it as a program — so it
                 // sits inside this group, unlike the run-level limits.
                 "gg/response-healing",

@@ -14,7 +14,7 @@
 //!
 //! The projection is built by `test-cabinet-gg`, which the **backend cannot depend on**: that
 //! crate pulls `wasmtime`, `oxc` and `tiktoken-rs`, and the backend is built portable and
-//! static under musl. So the flow is the one `crates/gg/src/sandbox/signatures.json` and
+//! static under musl. So the flow is the one `crates/gg/src/sandbox/guests/` and
 //! `packages/run-record/src/gg-system-prompt.ts` already use — generate, commit, serve, and
 //! gate the diff in CI:
 //!
@@ -38,6 +38,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::gg::GgProgramLanguage;
+
 /// The whole reference: the families the surface is grouped by, every tool, and every
 /// responses-as-code function.
 ///
@@ -56,6 +58,20 @@ pub struct GgReference {
     /// to. It is the committed artifact's version, not the running deployment's: they are the
     /// same whenever the artifact was regenerated, and CI's drift gate is what keeps that true.
     pub gg_version: String,
+    /// The [program language](GgProgramLanguage) the [functions](Self::functions) below are
+    /// spelled in.
+    ///
+    /// gg's responses-as-code surface is one set of capabilities that every registered language
+    /// offers under its own spellings — identical objects, identical gates, different function
+    /// names and signatures. So a page showing signatures has to say whose, and a reader comparing
+    /// two arms of a cross-language study has to be able to tell which one they are reading. The
+    /// [tools](Self::tools) are unaffected: a tool's name and JSON schema are the wire's, not any
+    /// language's.
+    ///
+    /// `#[serde(default)]` so an artifact generated before this field existed still decodes as the
+    /// default language, which is the one it was in fact projected from.
+    #[serde(default)]
+    pub language: GgProgramLanguage,
     /// The families the surface is grouped by, in gg's own order — the order the system
     /// prompt's API table and the built-in skills index list them in, which is roughly "the
     /// workspace, then the work, then yourself".

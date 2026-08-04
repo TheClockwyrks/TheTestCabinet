@@ -30,8 +30,8 @@ use std::io::Write;
 use std::sync::Arc;
 
 use test_cabinet_core::gg::{
-    GgHealingStrategy, GgLimitBreach, GgPromptRef, GgRunLimits, GgSessionSummary, GgTelemetryEvent,
-    GgTelemetryKind,
+    GgHealingStrategy, GgLimitBreach, GgProgramLanguage, GgPromptRef, GgRunLimits,
+    GgSessionSummary, GgTelemetryEvent, GgTelemetryKind,
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 use time::OffsetDateTime;
@@ -247,6 +247,17 @@ impl Emitter {
     /// before [finalizing](Self::finalize_summary).
     pub fn record_execution_mode(&self, mode: impl Into<String>) {
         self.summary.record_execution_mode(mode);
+    }
+
+    /// Record the run's [program language](GgSessionSummary::program_language) on the shared
+    /// [summary tracker](SessionSummaryTracker) — the language the root agent's programs were
+    /// written in, or `None` for a tool-calling run, which wrote none.
+    ///
+    /// Recorded beside [`record_execution_mode`](Self::record_execution_mode) and for the same
+    /// reason: no event carries it, and it is the dimension a cross-language study slices its arms
+    /// on.
+    pub fn record_program_language(&self, language: Option<GgProgramLanguage>) {
+        self.summary.record_program_language(language);
     }
 
     /// Record the [execution ceilings](GgRunLimits) in force for this run on the shared

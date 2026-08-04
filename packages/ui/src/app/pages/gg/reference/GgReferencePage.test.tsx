@@ -27,6 +27,7 @@ vi.mock("../../../components/PromptHeader", () => ({
 
 const REFERENCE: GgReference = {
   ggVersion: "9.9.9",
+  language: "typescript",
   categories: [
     {
       id: "gg-filesystem",

@@ -159,8 +159,8 @@ enum Command {
     /// depend on this crate (`wasmtime`, `oxc` and `tiktoken-rs` do not go where a static musl
     /// backend goes). `scripts/gen-contract.mjs` runs this and commits the output as
     /// `crates/backend/src/gg_reference.json`, and CI's contract-drift gate regenerates and diffs
-    /// it — the same generate-and-commit shape `crates/gg/src/sandbox/signatures.json` already
-    /// uses.
+    /// it — the same generate-and-commit shape each program language's committed
+    /// `crates/gg/src/sandbox/guests/<language>.signatures.json` already uses.
     Reference,
 }
 

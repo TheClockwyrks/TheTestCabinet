@@ -49,7 +49,7 @@
 //!
 //! [Responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) turns do not have the
 //! one-to-one shape those checks assume. A code turn's model response requests **no** tool calls at
-//! all — a model in code mode is offered no native tools, it writes a TypeScript program instead —
+//! all — a model in code mode is offered no native tools, it writes a program instead —
 //! yet the turn still dispatches every call that program composed, and the capture seam pins each of
 //! them as its own tool result. Matched against the response's (empty) call list, every single one
 //! would be reported as an [`ExtraToolResult`](ReplayError::ExtraToolResult), which is exactly what

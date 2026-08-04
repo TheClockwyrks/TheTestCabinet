@@ -274,7 +274,7 @@ fn main() -> Result<()> {
                 gg::GgSpeculationPhase,
                 gg::GgRunLimits, gg::GgLimitKind, gg::GgLimitBreach,
                 gg::GgTurnOutcome, gg::GgTurnErrorKind,
-                gg::GgHealingStrategy,
+                gg::GgHealingStrategy, gg::GgProgramLanguage,
                 gg::GgResponseHealing, gg::GgHealingSummary,
                 gg::GgErrorSummary,
                 gg::GgSlotCost, gg::GgSessionSummary,
@@ -601,6 +601,10 @@ fn main() -> Result<()> {
                 // there.
                 "GgResponseHealing",
                 "GgHealingStrategy",
+                // The program language an instance's surface reports. It is also the
+                // session summary's, but a telemetry reader must be able to resolve the
+                // reference without loading a second document.
+                "GgProgramLanguage",
             ],
             schema: root_schema::<gg::GgTelemetryEvent>(),
         },

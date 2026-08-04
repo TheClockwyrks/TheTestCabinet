@@ -212,9 +212,10 @@ pub enum TurnErrorKind {
     /// must stay the process's one non-zero exit. Making model-API errors survivable is a change to
     /// gg's model-error policy and would be designed as one.
     ModelApi,
-    /// The program did not type-strip — a syntax error, a module feature the
+    /// The program could not be prepared for its guest — a syntax error, a module feature the
     /// [sandbox](crate::sandbox) has no implementation of, or a program past the size/nesting
-    /// guards. Nothing ran.
+    /// guards. Nothing ran. Named for the type-strip it once was, because the wire value is
+    /// contract-visible; see [`GgTurnErrorKind::Transpile`].
     Transpile,
     /// The program ran and threw an uncaught fault, so every statement after the throw never ran
     /// and the model must re-declare the remainder.

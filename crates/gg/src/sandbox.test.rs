@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use super::*;
 use crate::context::ViewKind;
 use crate::ending::{Ending, EndingRole};
-use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome};
+use crate::sandbox::fake::{CallLog, FakeToolApi, all_tools, canned_outcome, typescript};
 use crate::tools::{ToolFailure, ToolOutcome};
 
 #[path = "sandbox.membrane.test.rs"]
@@ -46,6 +46,7 @@ fn run_with(
 ) -> (SandboxOutcome, CallLog) {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
+        typescript(),
         program,
         ProgramScope {
             enabled,
@@ -69,6 +70,7 @@ fn run_with_library(program: &str, held: &[(u64, &str)]) -> SandboxOutcome {
         api = api.with_program(*turn, source);
     }
     let (outcome, _api) = run_program(
+        typescript(),
         program,
         ProgramScope {
             enabled: &all_tools(),
@@ -88,6 +90,7 @@ fn run_with_library(program: &str, held: &[(u64, &str)]) -> SandboxOutcome {
 fn run_as(program: &str, role: EndingRole) -> SandboxOutcome {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
+        typescript(),
         program,
         ProgramScope {
             enabled: &[],
@@ -677,37 +680,6 @@ fn a_returned_value_is_discarded_and_the_model_is_told() {
     }
 }
 
-/// The committed artifact matches this build of gg.
-///
-/// Two gates in one process. Instantiating proves the artifact imports exactly what the membrane
-/// provides — a WIT change with no rebuild fails here. Asking the guest which tools it binds proves
-/// the artifact is not merely *loadable* but current: it is the only check that inspects the
-/// committed `.wasm` rather than a source file.
-///
-/// One blind spot, worth stating so nobody over-trusts the first gate: the guest imports the eight
-/// tool families, `session`, `docs`, `views` and `feedback`. It never imports `types` or `turns`, so
-/// instantiation cannot notice a change to those — only the tool-name check below, and the Rust
-/// compiler, can.
-#[test]
-fn the_committed_component_matches_this_build() {
-    let (outcome, _) = run("console.log(\"instantiated\");");
-    assert_eq!(logs(&outcome), ["instantiated"]);
-
-    let mut bound = crate::sandbox::component_bound_tools().expect("the guest reports its tools");
-    bound.sort();
-    let mut expected: Vec<String> = crate::sandbox::signatures::sandbox_tool_names()
-        .into_iter()
-        .map(str::to_string)
-        .collect();
-    expected.sort();
-
-    assert_eq!(
-        bound, expected,
-        "the committed component and gg's tool vocabulary have drifted apart — rebuild the guest \
-         with `packages/gg-sandbox/build.sh`"
-    );
-}
-
 /// **A role's ending calls are the only ones in its programs' scope.**
 ///
 /// Scope injection is the capability model, and the ending calls obey it exactly as the tools do: a
@@ -1034,13 +1006,14 @@ fn run_with_modules_logged(program: &str, modules: &[(&str, &str)]) -> (SandboxO
         .iter()
         .map(|(name, source)| CodeModule {
             name: (*name).to_string(),
-            source: crate::sandbox::transpile_module(source)
-                .expect("the test's module transpiles")
-                .js,
+            source: crate::sandbox::prepare_module(typescript(), source)
+                .expect("the test's module is prepared")
+                .source,
         })
         .collect();
     let log = CallLog::default();
     let (outcome, _api) = run_program(
+        typescript(),
         program,
         ProgramScope {
             enabled: &all_tools(),
@@ -1142,6 +1115,7 @@ fn a_program_with_no_modules_has_no_lib_in_scope() {
 fn an_on_use_script_has_no_ending_calls_in_scope() {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
+        typescript(),
         "harness.finish(\"done\");",
         ProgramScope {
             enabled: &all_tools(),

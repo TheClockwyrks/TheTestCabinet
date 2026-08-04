@@ -29,7 +29,7 @@ fn native(offered: &[&str], params: serde_json::Value) -> Vec<Skill> {
         &[read_file()],
         EndingRole::Standard,
         /* library */ false,
-        /* code_mode */ false,
+        /* program_language */ None,
         &params,
     )
 }
@@ -79,7 +79,7 @@ fn the_code_arm_carries_an_on_use_script_and_no_body() {
         &[read_file()],
         EndingRole::Standard,
         /* library */ false,
-        /* code_mode */ true,
+        /* program_language */ Some(GgProgramLanguage::TypeScript),
         &json!({}),
     );
     let fs = skills
@@ -103,7 +103,7 @@ fn the_code_arm_offers_the_carve_out_families_a_native_run_has_no_tools_for() {
         &[],
         EndingRole::Standard,
         /* library */ true,
-        /* code_mode */ true,
+        /* program_language */ Some(GgProgramLanguage::TypeScript),
         &json!({}),
     );
     let names: Vec<&str> = skills.iter().map(Skill::name).collect();
@@ -121,7 +121,7 @@ fn the_program_library_family_follows_the_library_flag() {
         &[],
         EndingRole::Standard,
         /* library */ false,
-        /* code_mode */ true,
+        /* program_language */ Some(GgProgramLanguage::TypeScript),
         &json!({}),
     );
     assert!(!without.iter().any(|skill| skill.name() == "gg-programs"));
@@ -129,7 +129,14 @@ fn the_program_library_family_follows_the_library_flag() {
 
 #[test]
 fn a_reviewers_session_skill_documents_the_reviewers_ending() {
-    let skills = builtin_skills(&[], &[], EndingRole::Review, false, true, &json!({}));
+    let skills = builtin_skills(
+        &[],
+        &[],
+        EndingRole::Review,
+        false,
+        Some(GgProgramLanguage::TypeScript),
+        &json!({}),
+    );
     let session = skills
         .iter()
         .find(|skill| skill.name() == "gg-session")

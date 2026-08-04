@@ -5,11 +5,34 @@
 //! from the guest does not fail loudly — it hands a model a signature that does not exist, and every
 //! program it writes against it is wrong in a way it cannot diagnose.
 
+use test_cabinet_core::gg::GgProgramLanguage;
+
 use super::*;
 use crate::sandbox::FINISH_FUNCTION;
+use crate::sandbox::language;
 use crate::tools::ALL_TOOL_NAMES;
 
-/// The committed catalogue parses, and is not empty.
+/// The language whose committed catalogue these cases read: **TypeScript's**, named explicitly.
+///
+/// Every expectation below is a spelling — `readFile`, `requestChanges`, `interface DirEntry` — and
+/// a spelling is exactly what the [seam](crate::sandbox::ProgramLanguage) declares free to differ
+/// between languages. So these are assertions about TypeScript's SDK, and they say so, rather than
+/// about whichever language happens to be gg's default.
+///
+/// What is *not* here is anything that must hold for **every** registered language, or that compares
+/// two languages: the tool bijection, the type closure, the ending vocabulary, the gates and the
+/// spelling-uniqueness rules all live in the [agreement gate](crate::sandbox::language) now, stated
+/// once and applied to every language there is.
+fn typescript() -> &'static dyn ProgramLanguage {
+    language(GgProgramLanguage::TypeScript)
+}
+
+/// TypeScript's committed catalogue.
+fn catalogue() -> &'static SignatureCatalogue {
+    typescript().catalogue()
+}
+
+/// The committed catalogue parses, is not empty, and says whose it is.
 #[test]
 fn the_committed_catalogue_parses() {
     let catalogue = catalogue();
@@ -19,84 +42,69 @@ fn the_committed_catalogue_parses() {
         !catalogue.generated_from.is_empty(),
         "the catalogue records where it was generated from"
     );
-}
-
-/// **G4: the catalogue covers exactly the tools the sandbox binds** — every gg tool, and nothing
-/// else.
-#[test]
-fn the_signature_catalogue_covers_every_tool() {
-    let mut catalogued: Vec<&str> = catalogue()
-        .tools
-        .iter()
-        .map(|entry| entry.tool.as_str())
-        .collect();
-    catalogued.sort_unstable();
-
-    let mut expected = sandbox_tool_names();
-    expected.sort_unstable();
-
     assert_eq!(
-        catalogued, expected,
-        "the committed catalogue and gg's tool vocabulary have drifted apart"
-    );
-    assert_eq!(
-        expected.len(),
-        ALL_TOOL_NAMES.len(),
-        "the sandbox binds every gg tool"
+        catalogue.language,
+        typescript().id(),
+        "a catalogue records the language it was generated for, and the language that embedded it \
+         checks it got its own"
     );
 }
 
-/// Every entry carries what the prompt renders. An entry with an empty signature or an empty doc
-/// would render as a bullet the model cannot use.
+/// **Every function that is not a gg tool carries a `key`.**
+///
+/// A tool's identity is its gg tool name; the carve-outs have none, so the key is the only thing
+/// that says a second language's `request_changes` and this one's `requestChanges` are one function.
+/// Without it the surfaces of two languages could only be compared by spelling, which is precisely
+/// the thing a cross-language study leaves free to differ.
 #[test]
-fn every_catalogue_entry_carries_a_signature_and_documentation() {
-    for entry in &catalogue().tools {
-        assert!(
-            !entry.signature.trim().is_empty(),
-            "`{}` has no signature",
-            entry.tool
-        );
-        assert!(!entry.doc.trim().is_empty(), "`{}` has no doc", entry.tool);
-        assert!(
-            entry.signature.starts_with(&entry.js),
-            "`{}`'s signature does not start with the name a program calls (`{}`): {}",
-            entry.tool,
-            entry.js,
-            entry.signature
-        );
-    }
-    for helper in &catalogue().helpers {
-        assert!(!helper.signature.trim().is_empty());
-        assert!(!helper.doc.trim().is_empty());
-    }
-}
-
-/// Every type a signature mentions is declared, so the prompt never shows a name it does not then
-/// define.
-#[test]
-fn every_referenced_type_is_declared() {
-    let declared: Vec<&str> = catalogue()
-        .types
+fn every_carve_out_entry_carries_an_identity() {
+    let catalogue = catalogue();
+    let keys = catalogue
+        .session
         .iter()
-        .map(|declaration| declaration.name.as_str())
-        .collect();
-    let referenced = catalogue()
-        .tools
-        .iter()
-        .flat_map(|entry| entry.types.iter())
+        .map(|entry| (entry.key.as_str(), entry.name.as_str()))
         .chain(
-            catalogue()
+            catalogue
+                .views
+                .iter()
+                .map(|entry| (entry.key.as_str(), entry.name.as_str())),
+        )
+        .chain(
+            catalogue
+                .programs
+                .iter()
+                .map(|entry| (entry.key.as_str(), entry.name.as_str())),
+        )
+        .chain(
+            catalogue
                 .helpers
                 .iter()
-                .flat_map(|entry| entry.types.iter()),
+                .map(|entry| (entry.key.as_str(), entry.name.as_str())),
         );
 
-    for name in referenced {
+    let mut seen: Vec<&str> = Vec::new();
+    for (key, name) in keys {
+        assert!(!key.is_empty(), "`{name}` has no identity of its own");
         assert!(
-            declared.contains(&name.as_str()),
-            "`{name}` is referenced by a signature but never declared"
+            !seen.contains(&key),
+            "two functions claim the identity `{key}`"
         );
+        seen.push(key);
     }
+
+    // The projection the docs runtime reads carries a tool's identity too — its own gg tool name,
+    // which is why a tool needs no separate key.
+    let functions = catalogue_functions(typescript());
+    let read = functions
+        .iter()
+        .find(|function| function.name == "readFile")
+        .expect("readFile is documented");
+    assert_eq!(read.key, "read_file");
+    let request_changes = functions
+        .iter()
+        .find(|function| function.name == "requestChanges")
+        .expect("requestChanges is documented");
+    assert_eq!(request_changes.key, "request_changes");
 }
 
 /// `readTextFile` is a **helper**, not a gg tool: it wraps `read_file` for the common case, and
@@ -107,13 +115,13 @@ fn read_text_file_is_a_helper_not_a_tool() {
         catalogue()
             .tools
             .iter()
-            .all(|entry| entry.js != "readTextFile"),
+            .all(|entry| entry.name != "readTextFile"),
         "the helper is listed as a tool"
     );
     let helper = catalogue()
         .helpers
         .iter()
-        .find(|helper| helper.js == "readTextFile")
+        .find(|helper| helper.name == "readTextFile")
         .expect("the helper is catalogued");
     assert_eq!(
         helper.requires, "read_file",
@@ -121,21 +129,25 @@ fn read_text_file_is_a_helper_not_a_tool() {
     );
 }
 
-/// The catalogue carries every model-facing function that is not a gg tool, each tagged with the
-/// [role](crate::ending::EndingRole) whose programs bind it and with the signature a doc lookup
-/// renders.
+/// **TypeScript spells its four ending calls the way its SDK declares them**, on the objects gg
+/// groups them under.
 ///
-/// The tags are what make one catalogue serve three scopes: the host filters by them to decide what a
-/// given agent's `object.list()` enumerates, so an untagged entry would be documented to every agent
-/// including the ones that cannot call it.
+/// That every language carries these four, tagged with the [role](crate::ending::EndingRole) whose
+/// programs bind it, is the [agreement gate](crate::sandbox::language)'s to assert — it is identity,
+/// and it holds for a language nobody has written yet. What is left here is the half that is
+/// TypeScript's alone: the exact signature a doc lookup renders, which is prompt text a model reads
+/// and acts on, and the object each call hangs off, which the console groups by.
+///
+/// The `void` in each signature is load-bearing: it tells a model at a glance that the call returns
+/// like any other, so what follows it still runs.
 #[test]
-fn the_catalogue_carries_every_ending_function() {
-    let by_name = |js: &str| {
+fn typescript_spells_its_ending_calls_as_its_sdk_declares_them() {
+    let by_name = |name: &str| {
         catalogue()
             .session
             .iter()
-            .find(|entry| entry.js == js)
-            .unwrap_or_else(|| panic!("`{js}` is catalogued"))
+            .find(|entry| entry.name == name)
+            .unwrap_or_else(|| panic!("`{name}` is catalogued"))
     };
 
     let finish = by_name(FINISH_FUNCTION);
@@ -169,28 +181,28 @@ fn the_catalogue_carries_every_ending_function() {
         assert!(
             entry.doc.contains("ends your session") || entry.doc.contains("End your session"),
             "`{}` does not say that it ends the session: {}",
-            entry.js,
+            entry.name,
             entry.doc
         );
     }
 }
 
-/// The catalogue carries the four `view` functions, each with the gate that decides whether a
-/// program binds it — and none of them as a gg tool.
+/// **TypeScript's `view` object is the five functions its SDK declares, spelled as it declares
+/// them.**
 ///
-/// The gate is the whole content of this entry type: `openFile` is a read and must close when
-/// `read_file` is withheld, while the other three are bound whatever a run enables, because a run
-/// that offers no tools at all must still be able to show its model something. A `requires` that
-/// slipped onto the wrong one would silently withhold the only channel into the context window, or
-/// silently open a side door into the workspace, and neither shows up as a compile error.
+/// Which functions the object carries and what gates them is identity — a file view is a read
+/// whatever language asks for it — and the [agreement gate](crate::sandbox::language) asserts that
+/// for every language, including the ones with no committed component yet. What stays here is
+/// TypeScript's own spelling of them, and the count, which is this SDK's surface rather than a rule
+/// about surfaces.
 #[test]
-fn the_catalogue_carries_every_view_function() {
-    let by_name = |js: &str| {
+fn typescript_spells_its_view_calls_as_its_sdk_declares_them() {
+    let by_name = |name: &str| {
         catalogue()
             .views
             .iter()
-            .find(|entry| entry.js == js)
-            .unwrap_or_else(|| panic!("`{js}` is catalogued"))
+            .find(|entry| entry.name == name)
+            .unwrap_or_else(|| panic!("`{name}` is catalogued"))
     };
 
     let open_file = by_name("openFile");
@@ -201,12 +213,12 @@ fn the_catalogue_carries_every_view_function() {
         "opening a file view is a read, and closes with reading"
     );
 
-    for js in ["openText", "openDocsView", "close", "current"] {
-        let entry = by_name(js);
+    for name in ["openText", "openDocsView", "close", "current"] {
+        let entry = by_name(name);
         assert_eq!(entry.object, "view");
         assert!(
             entry.requires.is_none(),
-            "`{js}` is bound whatever a run enables"
+            "`{name}` is bound whatever a run enables"
         );
     }
 
@@ -216,31 +228,9 @@ fn the_catalogue_carries_every_view_function() {
         "the view surface is the five functions and nothing else"
     );
 
-    // None of them is a gg tool, and none collides with one: two vocabularies share a program's
-    // scope, and a collision would be resolved by bind order rather than by anyone's decision.
-    for entry in &catalogue().views {
-        assert!(
-            !ALL_TOOL_NAMES.contains(&entry.js.as_str()),
-            "`{}` is not a gg tool name",
-            entry.js
-        );
-        assert!(
-            catalogue().tools.iter().all(|tool| tool.js != entry.js),
-            "the gg tool vocabulary binds the name `{}` the view surface needs",
-            entry.js
-        );
-        assert!(!entry.doc.trim().is_empty(), "`{}` has no doc", entry.js);
-        assert!(
-            entry.signature.starts_with(&entry.js),
-            "`{}`'s signature does not start with the name a program calls: {}",
-            entry.js,
-            entry.signature
-        );
-    }
-
     // The projection the docs runtime reads carries the same gates, which is what makes a withheld
     // `read_file` withhold `view.openFile`'s *documentation* as well as the function.
-    let functions = catalogue_functions();
+    let functions = catalogue_functions(typescript());
     let projected = |name: &str| {
         functions
             .iter()
@@ -268,14 +258,14 @@ fn no_gg_tool_binds_the_name_finish() {
     );
     for entry in &catalogue().tools {
         assert_ne!(
-            entry.js, FINISH_FUNCTION,
+            entry.name, FINISH_FUNCTION,
             "the gg tool `{}` binds the name the session function needs",
             entry.tool
         );
     }
     for helper in &catalogue().helpers {
         assert_ne!(
-            helper.js, FINISH_FUNCTION,
+            helper.name, FINISH_FUNCTION,
             "a helper binds the name the session function needs"
         );
     }
@@ -284,7 +274,7 @@ fn no_gg_tool_binds_the_name_finish() {
 /// the object it lives on and the gg tool that gates it — `None` for a carve-out always bound.
 #[test]
 fn catalogue_functions_carry_object_and_gate() {
-    let functions = catalogue_functions();
+    let functions = catalogue_functions(typescript());
 
     // `finish` is always bound (no gate) and lives on `harness`.
     let finish = functions
@@ -320,11 +310,11 @@ fn catalogue_functions_carry_object_and_gate() {
 #[test]
 fn type_declaration_returns_the_sdks_own_declaration() {
     assert!(
-        type_declaration("DirEntry")
+        type_declaration(typescript(), "DirEntry")
             .expect("DirEntry is declared")
             .contains("interface DirEntry"),
     );
-    assert!(type_declaration("NoSuchType").is_none());
+    assert!(type_declaration(typescript(), "NoSuchType").is_none());
 }
 
 /// **The picture channel the catalogue describes is the one gg implements.**
@@ -343,7 +333,7 @@ fn the_catalogue_tells_the_truth_about_pictures() {
     let read = catalogue()
         .tools
         .iter()
-        .find(|entry| entry.js == "readFile")
+        .find(|entry| entry.name == "readFile")
         .expect("readFile is catalogued");
     assert!(
         !read.doc.contains("pixels are shown to you"),
@@ -364,7 +354,7 @@ fn the_catalogue_tells_the_truth_about_pictures() {
     let open_file = catalogue()
         .views
         .iter()
-        .find(|entry| entry.js == "openFile")
+        .find(|entry| entry.name == "openFile")
         .expect("openFile is catalogued");
     assert!(
         open_file.doc.contains("imageViewCap"),

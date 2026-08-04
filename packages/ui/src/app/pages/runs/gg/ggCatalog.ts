@@ -16,6 +16,7 @@ import type {
   GgHealingStrategy,
   GgLoopDetection,
   GgModuleKind,
+  GgProgramLanguage,
   GgRunLimits,
   GgSubagentScope,
 } from "@test-cabinet/run-record/gg";
@@ -126,8 +127,8 @@ export const CAP_GROUPS: ReadonlyArray<{
 // --- Agent type -------------------------------------------------------------------
 //
 // How an agent is **implemented**, which is a different question from what it can do.
-// A *Tools* agent is driven by tool calls; a *RaC* agent's whole reply is a TypeScript
-// program over the same functions, run in a wasm sandbox; and an *FSM* agent is not a
+// A *Tools* agent is driven by tool calls; a *RaC* agent's whole reply is a program (in
+// its configured language) over the same functions, run in a wasm sandbox; and an *FSM* agent is not a
 // worker at all — it is a state machine over the configuration's other profiles, with
 // no turns, no model and no capabilities of its own.
 //
@@ -161,7 +162,7 @@ export const AGENT_MODES: ReadonlyArray<{
     value: "rac",
     label: "RaC",
     purpose:
-      "Responses as code: the model's whole reply is a TypeScript program over the same functions, run in a wasm sandbox — one turn can make dozens of calls, branch on their results, and loop.",
+      "Responses as code: the model's whole reply is a program over the same functions — TypeScript unless a study configures another language — run in a wasm sandbox. One turn can make dozens of calls, branch on their results, and loop.",
   },
   {
     value: "fsm",
@@ -488,6 +489,27 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
 // rewrites before running, so the transcript can store either what the model *sent* or
 // what gg actually *ran* — a lever a study slices on. The empty value is gg's default
 // (no post-processing), so leaving the field alone changes nothing.
+// --- Program language ---------------------------------------------------------------
+//
+// Which language an agent writes its programs in. Every language offers the *same*
+// capability surface under its own spellings, so this is the one axis a cross-language
+// study varies — and gg records it on the run and on each agent's surface so the arms can
+// be told apart afterwards. Empty is gg's default.
+//
+// One entry per registered `GgProgramLanguage`; the type is a union, so a language gg
+// added without a row here is a TypeScript error in this file rather than an option an
+// operator silently cannot pick.
+export const PROGRAM_LANGUAGE_OPTIONS: ReadonlyArray<{
+  value: "" | GgProgramLanguage;
+  label: string;
+}> = [
+  { value: "", label: "TypeScript (default)" },
+  { value: "typescript", label: "TypeScript" },
+];
+
+export const PROGRAM_LANGUAGE_HINT =
+  "The language this agent's programs are written in. Each language ships its own hand-written SDK over the same typed sandbox surface, so what differs between two arms of a study is the spelling of a call, never which calls exist. Empty is gg's default, TypeScript.";
+
 export const ASSISTANT_MESSAGE_OPTIONS = [
   { value: "", label: "No post-processing (default)" },
   { value: "response-healing", label: "Post-response healing" },
@@ -1079,8 +1101,15 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     // Never rendered as a capability row: this entry is the RaC [agent
     // type](GgAgentMode)'s settings panel, and the type selector is its switch.
     purpose:
-      "The agent's whole reply is a TypeScript program over the tools, run in a wasm sandbox.",
+      "The agent's whole reply is a program over the tools, run in a wasm sandbox.",
     params: [
+      {
+        key: "language",
+        label: "Program language",
+        kind: "select",
+        options: PROGRAM_LANGUAGE_OPTIONS,
+        hint: PROGRAM_LANGUAGE_HINT,
+      },
       {
         key: "timeoutSecs",
         label: "Execution timeout (seconds)",
@@ -1219,7 +1248,7 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     name: "Skills",
     group: "Knowledge",
     // Not "authored markdown" any more, and the change is bigger than the wording: a
-    // skill may be prose, an importable TypeScript module bound into every later
+    // skill may be prose, an importable code module bound at `lib.<key>` in every later
     // program's scope, a script that runs once when the skill is first read, or any
     // combination — and gg ships eleven of its own, so the capability is worth enabling
     // in a workspace that authored none.

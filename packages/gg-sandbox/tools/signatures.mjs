@@ -9,11 +9,20 @@
 //
 // The pipeline, all of which `packages/gg-sandbox/build.sh` runs in order:
 //
-//   src/**.ts  --tsc-->  dist/headers/**.d.ts  --this script-->  crates/gg/src/sandbox/signatures.json
+//   src/**.ts  --tsc-->  dist/headers/**.d.ts
+//              --this script-->  crates/gg/src/sandbox/guests/typescript.signatures.json
 //
-// and `crates/gg/src/sandbox/signatures.rs` embeds that JSON with `include_str!`. Because the same
-// `build.sh` invocation also rebuilds the component, the prompt can never be more current than the
-// component that implements it — the correct failure direction.
+// and `crates/gg/src/sandbox/language/typescript.rs` embeds that JSON with `include_str!`. Because
+// the same `build.sh` invocation also rebuilds the component, the prompt can never be more current
+// than the component that implements it — the correct failure direction.
+//
+// The catalogue is ONE LANGUAGE'S. gg's responses-as-code capability registers program languages,
+// each with its own guest, its own hand-written idiomatic SDK, and its own committed
+// `crates/gg/src/sandbox/guests/<language-id>.signatures.json` in this same shape. That is what the
+// `language` field records, and what every non-tool entry's `key` is for: two languages offer the
+// same surface and differ only in how a program spells it, so `key` is what their catalogues are
+// compared on. A guest built by another toolchain need not run this script at all — only the
+// emitted JSON is contractual.
 //
 // Two properties are enforced here rather than left to review:
 //
@@ -22,10 +31,11 @@
 //   * every catalogued export must carry a doc comment — an undocumented tool would reach a model as
 //     a bare signature with nothing after the dash.
 //
-// Beside its provenance line the catalogue has six parts — `session`, `views`, `programs`, `tools`,
-// `helpers`, `types` — and the three carve-outs come first because they are the parts that are not a
-// projection of the run's enabled set: an ending call is bound from the agent's *role*, three of the
-// four view functions are bound unconditionally, and the program library is bound from a capability.
+// Beside its language tag and its provenance line the catalogue has six parts — `session`, `views`,
+// `programs`, `tools`, `helpers`, `types` — and the three carve-outs come first because they are the
+// parts that are not a projection of the run's enabled set: an ending call is bound from the agent's
+// *role*, three of the four view functions are bound unconditionally, and the program library is
+// bound from a capability.
 // So a run that offers no tools at all is still told how to end and how to put something in front of
 // itself.
 //
@@ -51,6 +61,16 @@ const ts = require("typescript");
 const PACKAGE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SRC_DIR = path.join(PACKAGE_DIR, "src");
 const HEADERS_DIR = path.join(PACKAGE_DIR, "dist", "headers");
+
+/**
+ * The gg program language this guest implements: the `GgProgramLanguage` id it is registered under,
+ * and the stem its committed artifacts are filed at.
+ *
+ * Written into the catalogue so a committed artifact says whose spellings it carries, and asserted
+ * by the host against the language that embedded it — a catalogue filed under the wrong stem is then
+ * a load-time failure rather than a system prompt describing a sandbox nobody has.
+ */
+const LANGUAGE = "typescript";
 
 /**
  * The provenance string written into the catalogue, so a reader of the JSON knows it is generated
@@ -239,6 +259,7 @@ async function build() {
     VIEW_ENTRIES,
     VIEW_MODULE,
     PROGRAM_ENTRIES,
+    PROGRAM_KEYS,
     PROGRAM_MODULE,
     OBJECT_FOR_MODULE,
   } = await loadCatalogue();
@@ -259,8 +280,9 @@ async function build() {
   const sorted = (names) => [...names].sort((a, b) => order(a) - order(b));
 
   // Reflected exactly as a tool is, minus the `tool` field they have no value for: none is a gg tool,
-  // none has a name in `ALL_TOOL_NAMES`, and nothing dispatches them. `ending` names the role whose
-  // programs each one is bound for, which is what lets the prompt render one group.
+  // none has a name in `ALL_TOOL_NAMES`, and nothing dispatches them. `key` stands in for that
+  // missing identity, and `ending` names the role whose programs each one is bound for, which is what
+  // lets the prompt render one group.
   const session = SESSION_ENTRIES.map((entry) => {
     const { signature, doc, referenced } = reflect(
       entry.js,
@@ -269,7 +291,8 @@ async function build() {
     );
     for (const name of referenced) used.add(name);
     return {
-      js: entry.js,
+      key: entry.key,
+      name: entry.js,
       object: entry.object,
       ending: entry.ending,
       signature,
@@ -286,7 +309,8 @@ async function build() {
     const { signature, doc, referenced } = reflect(entry.js, `${VIEW_MODULE}.d.ts`, declarations);
     for (const name of referenced) used.add(name);
     return {
-      js: entry.js,
+      key: entry.key,
+      name: entry.js,
       object: objectForModule(VIEW_MODULE),
       requires: entry.requires ?? null,
       signature,
@@ -299,10 +323,18 @@ async function build() {
   // the whole object is bound or absent together and what decides that is a capability rather than a
   // tool name. The host reads the array's presence as the family and gates it on its own flag.
   const programs = PROGRAM_ENTRIES.map((js) => {
-    const { signature, doc, referenced } = reflect(js, `${PROGRAM_MODULE}.d.ts`, declarations);
+    const { signature, doc, referenced } = reflect(
+      js,
+      `${PROGRAM_MODULE}.d.ts`,
+      declarations,
+    );
     for (const name of referenced) used.add(name);
     return {
-      js,
+      // The one family whose key is a side table rather than a property on the entry: the shim
+      // iterates `PROGRAM_ENTRIES` and is compiled into the committed component, so its shape is
+      // deliberately left alone. See `PROGRAM_KEYS`.
+      key: PROGRAM_KEYS[js],
+      name: js,
       object: objectForModule(PROGRAM_MODULE),
       signature,
       doc,
@@ -317,9 +349,11 @@ async function build() {
       declarations,
     );
     for (const name of referenced) used.add(name);
+    // No `key`: a tool's gg tool name already IS its language-independent identity, and every
+    // language's guest catalogues the same `ALL_TOOL_NAMES`.
     return {
       tool: entry.tool,
-      js: entry.js,
+      name: entry.js,
       object: objectForModule(entry.module),
       signature,
       doc,
@@ -333,8 +367,9 @@ async function build() {
     const module = moduleForTool(entry.requires);
     if (!module) throw new Error(`helper \`${entry.js}\` requires unknown tool \`${entry.requires}\`.`);
     return {
+      key: entry.key,
       requires: entry.requires,
-      js: entry.js,
+      name: entry.js,
       object: objectForModule(module),
       signature,
       doc,
@@ -348,7 +383,16 @@ async function build() {
   }));
 
   return `${JSON.stringify(
-    { generatedFrom: GENERATED_FROM, session, views, programs, tools, helpers, types },
+    {
+      language: LANGUAGE,
+      generatedFrom: GENERATED_FROM,
+      session,
+      views,
+      programs,
+      tools,
+      helpers,
+      types,
+    },
     null,
     2,
   )}\n`;

@@ -116,6 +116,7 @@ fn gg_record(id: &str) -> RunRecord {
         issues_reopened: 1,
         speculations: 0,
         execution_mode: "tool_calling".to_string(),
+        program_language: None,
         code_executions: 0,
         healing: Default::default(),
         errors: Default::default(),

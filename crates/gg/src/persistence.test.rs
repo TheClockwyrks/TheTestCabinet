@@ -292,6 +292,7 @@ async fn restoring_re_reads_each_view_from_the_workspace_as_it_stands_now() {
         &[whole("a.rs")],
         ReadPolicy::Unlimited,
         &ctx,
+        GgProgramLanguage::TypeScript,
         &emitter,
     )
     .await;
@@ -344,6 +345,7 @@ async fn restoring_a_paged_view_re_reads_the_same_region() {
         std::slice::from_ref(&view),
         ReadPolicy::DefaultCap(100),
         &ctx,
+        GgProgramLanguage::TypeScript,
         &emitter,
     )
     .await;
@@ -390,8 +392,15 @@ async fn two_windows_of_one_file_both_come_back() {
             }),
         },
     ];
-    let restored =
-        restore_file_views(&mut window, &desk, ReadPolicy::Unlimited, &ctx, &emitter).await;
+    let restored = restore_file_views(
+        &mut window,
+        &desk,
+        ReadPolicy::Unlimited,
+        &ctx,
+        GgProgramLanguage::TypeScript,
+        &emitter,
+    )
+    .await;
     assert_eq!(restored, 2);
     assert_eq!(window.open_file_views(), desk);
 }
@@ -409,6 +418,7 @@ async fn a_view_whose_file_is_gone_is_skipped_with_a_warning() {
         &[whole("gone.rs"), whole("here.rs")],
         ReadPolicy::Unlimited,
         &ctx,
+        GgProgramLanguage::TypeScript,
         &emitter,
     )
     .await;
@@ -448,6 +458,7 @@ async fn a_view_already_open_is_not_re_opened() {
         &[whole("spec.md")],
         ReadPolicy::Unlimited,
         &ctx,
+        GgProgramLanguage::TypeScript,
         &emitter,
     )
     .await;
@@ -464,7 +475,15 @@ async fn an_empty_record_seeds_nothing() {
     window.set_system("system");
 
     assert_eq!(
-        restore_file_views(&mut window, &[], ReadPolicy::Unlimited, &ctx, &emitter).await,
+        restore_file_views(
+            &mut window,
+            &[],
+            ReadPolicy::Unlimited,
+            &ctx,
+            GgProgramLanguage::TypeScript,
+            &emitter,
+        )
+        .await,
         0
     );
     // Nothing was added to the thread; the system prompt is a slot, not an item.
@@ -642,6 +661,7 @@ async fn a_code_mode_window_records_and_restores_the_views_a_program_opened() {
         &recorded.files,
         ReadPolicy::Unlimited,
         &ctx,
+        GgProgramLanguage::TypeScript,
         &emitter,
     )
     .await;

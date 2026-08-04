@@ -8,7 +8,7 @@
 
 use super::*;
 use crate::ending::EndingRole;
-use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated};
+use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated, typescript};
 use crate::sandbox::{ProgramScope, RunEnding, SandboxLimits, run_program};
 
 /// **HR2: the component is compiled once per process, never per turn.**
@@ -36,8 +36,8 @@ fn the_component_compiles_once_per_process() {
     // Warming up is what moves the compile off the first code turn's critical path. On a one-core
     // container that compile is ~4.8 s, which is the difference between a first turn that feels
     // instant and one that does not.
-    let warmed =
-        crate::sandbox::precompile().expect("the warm-up compiles the committed component");
+    let warmed = crate::sandbox::precompile(typescript())
+        .expect("the warm-up compiles the committed component");
     assert_eq!(compiles(), 1, "the warm-up compiles it");
     // The warm-up is the caller that paid the compile, so it is the one that reports how long it
     // took — the figure the run logs, and the only measurement of this machine's compile cost that
@@ -47,14 +47,15 @@ fn the_component_compiles_once_per_process() {
         "the warm-up did not report how long the compile took: {warmed:?}"
     );
     assert_eq!(
-        crate::sandbox::precompile().expect("a second warm-up is free"),
+        crate::sandbox::precompile(typescript()).expect("a second warm-up is free"),
         None,
         "a warm-up that found the component already compiled waited for nothing"
     );
     assert_eq!(compiles(), 1, "the warm-up is idempotent");
 
-    let (first, first_wait) = component().expect("the committed component is ready");
-    let (second, second_wait) = component().expect("the second call is served from the cache");
+    let (first, first_wait) = component(typescript()).expect("the committed component is ready");
+    let (second, second_wait) =
+        component(typescript()).expect("the second call is served from the cache");
     assert_eq!(compiles(), 1, "asking for it must not recompile");
     // Neither call compiled anything, so neither waited: the compile-wait figure is `Some` only for
     // the caller that actually paid the compile, which here was the warm-up above.
@@ -69,6 +70,7 @@ fn the_component_compiles_once_per_process() {
 
     let log = CallLog::default();
     run_program(
+        typescript(),
         "return 1;",
         ProgramScope {
             enabled: &[],
@@ -83,6 +85,7 @@ fn the_component_compiles_once_per_process() {
     assert_eq!(compiles(), 1, "running a program must not recompile");
 
     run_program(
+        typescript(),
         "return 2;",
         ProgramScope {
             enabled: &[],
@@ -128,7 +131,7 @@ fn bad_component_bytes_are_a_compile_error() {
 /// nobody re-reads its size.
 #[test]
 fn the_committed_component_is_within_the_documented_size_band() {
-    let bytes = component_bytes().len();
+    let bytes = component_bytes(typescript()).len();
     assert!(
         (12 * 1024 * 1024..=15 * 1024 * 1024).contains(&bytes),
         "the committed component is {bytes} bytes, outside the documented 12–15 MiB band"
@@ -157,6 +160,7 @@ fn the_program_that_pays_the_compile_reports_what_it_cost() {
 
     let log = CallLog::default();
     let (cold, _api) = run_program(
+        typescript(),
         "return 1;",
         ProgramScope {
             enabled: &[],
@@ -177,6 +181,7 @@ fn the_program_that_pays_the_compile_reports_what_it_cost() {
     );
 
     let (warm, _api) = run_program(
+        typescript(),
         "return 2;",
         ProgramScope {
             enabled: &[],

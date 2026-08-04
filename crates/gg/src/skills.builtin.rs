@@ -36,6 +36,7 @@
 use std::collections::BTreeSet;
 
 use serde_json::Value;
+use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::{Skill, parse_skill};
 use crate::ending::EndingRole;
@@ -205,9 +206,14 @@ pub(crate) const FAMILIES: &[Family] = &[
 ///
 /// `offered` is the agent's own tool vocabulary (the registry's names, which is what
 /// [`scope_tools`](crate::sandbox::scope_tools) hands the sandbox); `definitions` is the same
-/// registry's live [`ToolDefinition`]s, which the native arm renders its bodies from; `code_mode`
-/// picks which of the two arms a family's skill is built in; `params` is the skills capability's
-/// params, read for the [`builtIns`](PARAM_BUILT_INS) toggles.
+/// registry's live [`ToolDefinition`]s, which the native arm renders its bodies from;
+/// `program_language` picks which of the two arms a family's skill is built in — `Some(l)` is the
+/// code arm, written in `l`'s spellings, and `None` is the native one; `params` is the skills
+/// capability's params, read for the [`builtIns`](PARAM_BUILT_INS) toggles.
+///
+/// The language and "is this the code arm?" are one parameter rather than two, because they are one
+/// fact: a family's skill is built from a [directory](crate::docs::DocsRuntime) exactly when the
+/// agent writes programs, and the language is only there to say how the entries in it are spelled.
 ///
 /// A family with nothing bound is not offered at all. In code mode the three carve-out families
 /// (`view`, `programs`, `harness`) are decided by [`DocsRuntime`](crate::docs::DocsRuntime) rather
@@ -218,23 +224,26 @@ pub fn builtin_skills(
     definitions: &[ToolDefinition],
     role: EndingRole,
     library: bool,
-    code_mode: bool,
+    program_language: Option<GgProgramLanguage>,
     params: &Value,
 ) -> Vec<Skill> {
     let off = switched_off(params);
     let offered: BTreeSet<&str> = offered.iter().map(String::as_str).collect();
-    let docs = crate::docs::DocsRuntime::new(
-        offered.iter().map(|name| (*name).to_string()).collect(),
-        role,
-        library,
-    );
+    let docs = program_language.map(|language| {
+        crate::docs::DocsRuntime::new(
+            offered.iter().map(|name| (*name).to_string()).collect(),
+            role,
+            library,
+            language,
+        )
+    });
 
     FAMILIES
         .iter()
         .filter(|family| !off.contains(family.id))
         .filter_map(|family| {
-            if code_mode {
-                built_in_code(family, &docs)
+            if let Some(docs) = &docs {
+                built_in_code(family, docs)
             } else {
                 built_in_native(family, &offered, definitions)
             }

@@ -22,16 +22,26 @@
 #     check is what makes it as trustworthy as one: reword a tool's description without
 #     regenerating and the console would keep showing prose no model was ever sent.
 #
-#  3. gg's sandbox signature catalogue. crates/gg/src/sandbox/signatures.json is
-#     emitted from the TypeScript declarations of @test-cabinet/gg-sandbox (the
-#     guest SDK) and embedded in the gg binary, which renders the responses-as-code
-#     system prompt from it. If an SDK signature or its JSDoc is edited without
-#     regenerating the catalogue, models get shown a surface the guest no longer
-#     exports — so the same regenerate-and-diff rule applies. Only the `signatures`
-#     half of the guest build is checked: rebuilding the component itself needs
-#     `componentize-js`, which is deliberately not an installed dependency (it is
-#     driven by packages/gg-sandbox/build.sh via `npx`), whereas `signatures` needs
-#     only the `typescript` the `npm ci` below already installs.
+#  3. gg's sandbox signature catalogues. gg's responses-as-code capability drives a
+#     model in one of its registered PROGRAM LANGUAGES, and each language commits a
+#     guest and a signature catalogue under crates/gg/src/sandbox/guests/, named for
+#     the language: <language-id>.component.wasm and <language-id>.signatures.json.
+#     Each catalogue is emitted from that language's guest SDK — for TypeScript, the
+#     declarations of @test-cabinet/gg-sandbox — and embedded in the gg binary, which
+#     renders the responses-as-code system prompt from it. If an SDK signature or its
+#     doc comment is edited without regenerating the catalogue, models get shown a
+#     surface the guest no longer exports, so the same regenerate-and-diff rule
+#     applies. The whole directory is diffed rather than one file, so a second
+#     language's catalogue is covered by this gate the day it lands.
+#
+#     Only the `signatures` half of each guest build is run here: rebuilding a
+#     component needs its own toolchain — `componentize-js` for TypeScript, which is
+#     deliberately not an installed dependency (it is driven by
+#     packages/gg-sandbox/build.sh via `npx`) — whereas `signatures` needs only the
+#     `typescript` the `npm ci` below already installs. The committed .wasm files
+#     therefore sit in the diffed directory untouched: nothing here regenerates one,
+#     so one cannot cause a false positive, and if one ever does diff then something
+#     rewrote a binary CI must not touch and failing is right.
 set -euo pipefail
 # shellcheck source=/dev/null
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -58,22 +68,50 @@ EOF
 	exit 1
 fi
 
-log "regenerate gg's sandbox signature catalogue (tsc + tools/signatures.mjs)"
+# One regeneration per registered program language. Each guest owns its own script,
+# because a guest need not even be an npm package — only the JSON it emits is
+# contractual — so a second language adds a line here rather than changing this one.
+#
+# The stems this script knows how to regenerate. The drift check below diffs *every*
+# committed catalogue, so one whose guest this script never re-runs would be green whatever
+# its sources did. That is the failure this list closes: an unregenerated stem is an error
+# rather than a silent pass, and the message says exactly what to add.
+regenerated="typescript"
+for catalogue in crates/gg/src/sandbox/guests/*.signatures.json; do
+	stem="$(basename "$catalogue" .signatures.json)"
+	case " $regenerated " in
+	*" $stem "*) ;;
+	*)
+		cat >&2 <<EOF
+
+error: $catalogue has no regeneration step in this script.
+Its guest's declarations could change without the drift check noticing, because the
+check below only diffs what has already been written. Add the regeneration command
+for the $stem guest here, and add "$stem" to \$regenerated.
+EOF
+		exit 1
+		;;
+	esac
+done
+
+log "regenerate gg's sandbox signature catalogues (tsc + tools/signatures.mjs)"
 npm run --workspace @test-cabinet/gg-sandbox signatures
 
 log "check for signature drift"
-if ! git diff --exit-code -- crates/gg/src/sandbox/signatures.json; then
+if ! git diff --exit-code -- crates/gg/src/sandbox/guests; then
 	cat >&2 <<'EOF'
 
-error: gg's committed sandbox signature catalogue is out of date.
-crates/gg/src/sandbox/signatures.json no longer matches the guest SDK's
-declarations, so the responses-as-code prompt would show models a surface the
-sandbox does not export.
-Run `npm run -w @test-cabinet/gg-sandbox signatures` and commit the result.
+error: a committed gg sandbox signature catalogue is out of date.
+crates/gg/src/sandbox/guests/<language>.signatures.json no longer matches that
+language's guest SDK declarations, so the responses-as-code prompt would show
+models a surface the sandbox does not export.
+Run the regeneration for the language that drifted and commit the result — for
+TypeScript, `npm run -w @test-cabinet/gg-sandbox signatures`.
 
-If the SDK's exported *surface* changed (a tool added, removed, or renamed) the
-committed component is stale too: rebuild it with packages/gg-sandbox/build.sh
-and commit crates/gg/src/sandbox/gg-sandbox.component.wasm alongside.
+If the SDK's exported *surface* changed (a tool added, removed, or renamed) that
+language's committed component is stale too: rebuild it with its own build script
+— for TypeScript, packages/gg-sandbox/build.sh — and commit
+crates/gg/src/sandbox/guests/<language>.component.wasm alongside.
 EOF
 	exit 1
 fi

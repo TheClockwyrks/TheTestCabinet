@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use super::*;
 use crate::model::{ImageContent, Role};
-use test_cabinet_core::gg::GgContextSource;
+use test_cabinet_core::gg::{GgContextSource, GgProgramLanguage};
 
 /// A model measuring with the deterministic heuristic estimator (chars/4 + framing), in
 /// [code mode](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) — the only mode that opens
@@ -964,7 +964,7 @@ fn the_context_usage_signal_names_the_text_view_band_and_the_call_that_closes_it
     ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
     ctx.refresh_context_usage_signal(UsageSignalOptions {
         can_evict: true,
-        can_close_views: true,
+        close_views: Some(GgProgramLanguage::TypeScript),
         can_archive: false,
         top_file_views: 3,
     });
@@ -998,7 +998,7 @@ fn a_tool_calling_agent_is_never_pointed_at_view_close() {
     ctx.open_text_view("summary".to_string(), "3 tests failed".to_string());
     ctx.refresh_context_usage_signal(UsageSignalOptions {
         can_evict: true,
-        can_close_views: false,
+        close_views: None,
         can_archive: false,
         top_file_views: 3,
     });

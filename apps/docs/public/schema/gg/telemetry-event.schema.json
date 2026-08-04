@@ -23,7 +23,7 @@
       "type": "object"
     },
     "GgAgentApiFunction": {
-      "description": "One function bound on a [`GgAgentApi`] — what a\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call, and what gates it.\n\nThe load-bearing field is [`tool`](Self::tool): a code program's calls are recorded under the gg\n**tool** they run through, not under their JavaScript name, so it is the join key between a\nbound function and how many times this agent actually called it. A function with no tool behind\nit — a view call, an ending call, a program-library call — has none, and a consumer reports it\nas bound rather than as bound-and-never-called.",
+      "description": "One function bound on a [`GgAgentApi`] — what a\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call, and what gates it.\n\nThe load-bearing field is [`tool`](Self::tool): a code program's calls are recorded under the gg\n**tool** they run through, not under the name a program spells them with, so it is the join key between a\nbound function and how many times this agent actually called it. A function with no tool behind\nit — a view call, an ending call, a program-library call — has none, and a consumer reports it\nas bound rather than as bound-and-never-called.",
       "properties": {
         "name": {
           "description": "The name a program calls it by — `readFile`, `openDocsView`, `finish`.",
@@ -865,6 +865,16 @@
         }
       ]
     },
+    "GgProgramLanguage": {
+      "description": "The language a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program is written in — the\naxis a cross-language study compares its arms on.\n\ngg's sandbox is a **wasm component per language**: each language ships a hand-written, idiomatic\nSDK that binds the same typed WIT surface, so what differs between two arms of a study is the\n*spelling* of a call, never which calls exist. Which language an agent writes in is therefore a\nconfiguration knob like every other lever the harness measures, rather than a property of gg.\n\nThe wire values are the language ids, spelled exactly as the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `language` param is written\n(`{\"language\": \"typescript\"}`), because the id is one thing: a config key, a telemetry value,\nand the stem of the language's committed guest artifacts. Lower-case rather than this module's\nusual camelCase for exactly that reason — camelCase of `TypeScript` is `typeScript`, which is\nnot a spelling anybody would put in a configuration file. [`GgHealingStrategy`] departs from the\nmodule default on the same grounds.",
+      "oneOf": [
+        {
+          "const": "typescript",
+          "description": "TypeScript, type-stripped to JavaScript and evaluated in the committed `componentize-js`\nguest. The default, and today the only registered language.",
+          "type": "string"
+        }
+      ]
+    },
     "GgPromptRef": {
       "description": "A pointer from one turn's [`Prompt`](GgTelemetryKind::Prompt) into the\n[message pool](GgTelemetryKind::ContextMessage) — one message in the request, in\nthe order it was sent.\n\nThe message's content is carried once, on its [`ContextMessage`](GgTelemetryKind::ContextMessage)\ndefinition; a prompt references it by [`id`](Self::id) so a message repeated across\nturns is never restreamed. [`source`](Self::source) is the [`GgContextSource`] band\nthe message occupies **this turn** — carried on the reference rather than the pooled\nmessage because a single message can change bands over its life (a mutable block\nsuperseded into [`History`](GgContextSource::History) keeps its content, and thus its\nid, but moves band). It is what lets a request's message list line up, message by\nmessage, with the per-source [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown).",
       "properties": {
@@ -1077,7 +1087,7 @@
         },
         {
           "const": "transpile",
-          "description": "The program did not type-strip — a syntax error, a module feature the sandbox has no\nimplementation of, or a program past the size/nesting guards. Nothing ran.",
+          "description": "The program could not be prepared for its guest — a syntax error, a module feature the\nsandbox has no implementation of, or a program past the size/nesting guards. Nothing ran.\n\nThe variant keeps its name (and its wire value, `transpile`) from when every program was\nTypeScript and preparing one meant stripping its types: the value is contract-visible, and\nrenaming it would break every reader of persisted run data to describe the same failure.",
           "type": "string"
         },
         {
@@ -1846,6 +1856,17 @@
           "description": "How this instance answers a turn: `tool_calling`, or `responses_as_code` when the\n[capability](CAPABILITY_RESPONSES_AS_CODE) is on for its profile. It is a per-agent\nproperty, not a run-wide one — one run may drive a code-shaped root and a tool-calling\nreviewer — which is why it is reported here rather than read off the session summary.",
           "type": "string"
         },
+        "programLanguage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GgProgramLanguage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The [language](GgProgramLanguage) this instance's programs are written in, or `None` for\na tool-calling instance, which writes none.\n\nPer-agent for exactly the reason [`execution_mode`](Self::AgentSurface::execution_mode)\nis: responses-as-code is a per-agent capability, so one run may drive its root in one\nlanguage and (once a second language is registered) a reviewer in another."
+        },
         "tools": {
           "description": "Every gg tool name this instance is offered, in the order the model is shown them: the\nregistry's tools in registration order, then the ending calls its dispatched role may\nend with (`finish`, or a reviewer's `approve`/`request_changes`, or a judge's\n`select_winner`).\n\nThe ending calls are appended by the loop rather than contributed by a capability, and\nare included here because the model is genuinely offered them every turn — a surface\nthat omitted them would answer *\"was `finish` offered?\"* with silence.\n\nPopulated in **both** execution modes: a responses-as-code agent reaches these same\ntools through its [`apis`](Self::AgentSurface::apis), and its calls are recorded under\nthese names.",
           "items": {
@@ -2138,7 +2159,7 @@
       "type": "object"
     },
     {
-      "description": "A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) **turn** — the\nevent that makes a code-shaped turn observable: what gg had to do to the model's reply\nbefore it could run it, what the program then did, and whether it ended the run.\n\nEmitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)\nonce per code-shaped turn, on the agent that emitted the reply, so it rides on that agent's\nown [`agent_id`](GgTelemetryEvent::agent_id). That includes a turn whose reply was **not a\nprogram at all** — prose, or an empty reply — which reaches the type-strip like anything\nelse and is reported the same way a program that did not compile is: `ok: false` and an\n[`error`](Self::CodeExecution::error) carrying the compiler's diagnostic. One event per\ncode-shaped turn is the invariant, and it is what makes\n[`code_executions`](GgSessionSummary::code_executions) the exact denominator for the run's\n[healing rollup](GgHealingSummary).\n\nThe individual tool calls the program made still stream as ordinary\n[`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the\nprogram composed them — this event carries the *turn* itself: whether the program returned\nnormally, how many tool calls it composed, how long its own execution took (the efficiency\nsignal that replaced the wasmtime fuel the sandbox used to meter), and — when it did not\nreturn normally — the fault. A run with the capability off emits none.",
+      "description": "A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) **turn** — the\nevent that makes a code-shaped turn observable: what gg had to do to the model's reply\nbefore it could run it, what the program then did, and whether it ended the run.\n\nEmitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)\nonce per code-shaped turn, on the agent that emitted the reply, so it rides on that agent's\nown [`agent_id`](GgTelemetryEvent::agent_id). That includes a turn whose reply was **not a\nprogram at all** — prose, or an empty reply — which is prepared for the guest like anything\nelse and is reported the same way a program that did not compile is: `ok: false` and an\n[`error`](Self::CodeExecution::error) carrying the compiler's diagnostic. One event per\ncode-shaped turn is the invariant, and it is what makes\n[`code_executions`](GgSessionSummary::code_executions) the exact denominator for the run's\n[healing rollup](GgHealingSummary).\n\nThe individual tool calls the program made still stream as ordinary\n[`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the\nprogram composed them — this event carries the *turn* itself: whether the program returned\nnormally, how many tool calls it composed, how long its own execution took (the efficiency\nsignal that replaced the wasmtime fuel the sandbox used to meter), and — when it did not\nreturn normally — the fault. A run with the capability off emits none.",
       "properties": {
         "compileWaitMs": {
           "description": "How long **this** program spent obtaining the sandbox's compiled interpreter component,\nin milliseconds — absent (the ordinary case) when the component was already compiled and\nnothing here was on the turn's critical path.\n\nThe component is compiled once per process, and a run that enables the capability starts\nthat compile before its first model request. But starting it early only **overlaps** it\nwith the request rather than eliminating it: on a run container with one or two cores the\ncompile takes seconds, so a model that answers quickly gets its first program back before\nthe warm-up has finished, and that program compiles the component itself. This is the\nfigure that says so — without it, \"did this program wait on the one shared compile or is\nit genuinely slow?\" is only answerable by comparing timestamps across sibling runs.",
@@ -2147,13 +2168,13 @@
           "type": ["integer", "null"]
         },
         "durationMs": {
-          "description": "How long the program's **own execution** took, in milliseconds — the wall-clock time it\nspent running, excluding time parked in a bridged tool call, which is the per-program\nefficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.\nReported on every path that reached the engine, including a fault, a trap, or an\n[execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is\nthe time burned up to the stop, not the ceiling); `Some(0)` when the program never\nreached the engine (a type-strip failure, or a sandbox that could not be built).",
+          "description": "How long the program's **own execution** took, in milliseconds — the wall-clock time it\nspent running, excluding time parked in a bridged tool call, which is the per-program\nefficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.\nReported on every path that reached the engine, including a fault, a trap, or an\n[execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is\nthe time burned up to the stop, not the ceiling); `Some(0)` when the program never\nreached the engine (a program that would not prepare, or a sandbox that could not be\nbuilt).",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
         },
         "error": {
-          "description": "The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault\n(a syntax error the type-strip rejected, or a value the program threw) or a sandbox\nfailure (an execution timeout or memory exhaustion, a trap). Absent on a clean\nexecution.",
+          "description": "The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault\n(a syntax error the language's prepare step rejected, or a value the program threw) or a sandbox\nfailure (an execution timeout or memory exhaustion, a trap). Absent on a clean\nexecution.",
           "type": ["string", "null"]
         },
         "finished": {

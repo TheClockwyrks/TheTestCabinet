@@ -298,6 +298,9 @@ saved, launched, and analyzed in the console is
   experimental variable.
 - [Responses as code](/gg/responses-as-code/) — agents emit code run in a wasmtime
   sandbox instead of discrete tool calls.
+- [Program languages](/gg/program-languages/) — which language a program is written in,
+  treated as an axis: the rules an agent-facing surface obeys in any language, what a
+  language supplies to be registered, and what adding a second one costs.
 - [Response healing](/gg/response-healing/) — the counted, disclosed repairs gg makes
   to a reply before running it as a program.
 - [Program library](/gg/program-library/) — keep every program an agent runs, so it can

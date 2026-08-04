@@ -6,18 +6,18 @@
 
 use std::time::Duration;
 
-use super::transpile::TranspileError;
 use super::*;
 use crate::ending::EndingRole;
-use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated};
+use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated, typescript};
 
 /// **A program that does not compile never touches the engine.** It is the only failure that costs
 /// nothing at all — no store, no instantiate, no fuel — so the fact that it short-circuits before the
 /// component is a property worth asserting rather than assuming.
 #[test]
-fn a_transpile_error_never_touches_the_engine() {
+fn a_prepare_error_never_touches_the_engine() {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
+        typescript(),
         "const x: = ;",
         ProgramScope {
             enabled: &[],
@@ -31,7 +31,7 @@ fn a_transpile_error_never_touches_the_engine() {
     );
 
     let error = outcome.result.expect_err("invalid TypeScript cannot run");
-    assert!(matches!(error, SandboxError::Transpile(_)), "{error:?}");
+    assert!(matches!(error, SandboxError::Prepare(_)), "{error:?}");
     assert!(
         !error.is_artifact_defect() && !error.is_host_fault(),
         "a program that did not compile is the model's to fix, not gg's: {error:?}"
@@ -57,9 +57,10 @@ fn a_transpile_error_never_touches_the_engine() {
 
 /// A module-syntax refusal is the same shape of failure, carrying the guidance the model acts on.
 #[test]
-fn an_unsupported_feature_is_a_transpile_error_with_guidance() {
+fn an_unsupported_feature_is_a_prepare_error_with_guidance() {
     let log = CallLog::default();
     let (outcome, _api) = run_program(
+        typescript(),
         "import fs from 'node:fs';\nreturn 1;",
         ProgramScope {
             enabled: &[],
@@ -73,7 +74,7 @@ fn an_unsupported_feature_is_a_transpile_error_with_guidance() {
     );
 
     let error = outcome.result.expect_err("an import cannot run");
-    assert!(matches!(error, SandboxError::Transpile(_)), "{error:?}");
+    assert!(matches!(error, SandboxError::Prepare(_)), "{error:?}");
     assert!(error.to_string().contains("`import`"), "{error}");
     // Exact only under process isolation; see [`process_isolated`].
     if process_isolated() {
@@ -92,8 +93,8 @@ enum Disposition {
     GgsFault,
     /// The committed artifact is broken. The session ends; the model's error budget is untouched.
     ArtifactDefect,
-    /// The reply was not runnable TypeScript. An error turn; nothing ran.
-    ModelsTranspileError,
+    /// The reply was not runnable source in the run's program language. An error turn; nothing ran.
+    ModelsPrepareError,
     /// The sandbox stopped a program that *did* run. An error turn; the calls it landed stand.
     ModelsSandboxLimit,
 }
@@ -109,8 +110,8 @@ fn derived_disposition(error: &SandboxError) -> Disposition {
         Disposition::ArtifactDefect
     } else if error.is_host_fault() {
         Disposition::GgsFault
-    } else if matches!(error, SandboxError::Transpile(_)) {
-        Disposition::ModelsTranspileError
+    } else if matches!(error, SandboxError::Prepare(_)) {
+        Disposition::ModelsPrepareError
     } else {
         Disposition::ModelsSandboxLimit
     }
@@ -124,7 +125,7 @@ fn derived_disposition(error: &SandboxError) -> Disposition {
 /// fix) is the one that charges gg's defects to the model.
 fn declared_disposition(error: &SandboxError) -> Disposition {
     match error {
-        SandboxError::Transpile(_) => Disposition::ModelsTranspileError,
+        SandboxError::Prepare(_) => Disposition::ModelsPrepareError,
         SandboxError::Engine(_) => Disposition::GgsFault,
         SandboxError::Host(_) => Disposition::GgsFault,
         SandboxError::Compile(_) => Disposition::ArtifactDefect,
@@ -144,7 +145,7 @@ const SANDBOX_ERROR_VARIANTS: usize = 8;
 /// One of every [`SandboxError`], for the totality assertions below.
 fn every_sandbox_error() -> Vec<SandboxError> {
     vec![
-        SandboxError::Transpile(TranspileError::Parse("bad".into())),
+        SandboxError::Prepare(PrepareError::Syntax("bad".into())),
         SandboxError::Engine("no fuel metering".into()),
         SandboxError::Host("the blocking task panicked".into()),
         SandboxError::Compile("not a component".into()),
@@ -233,7 +234,7 @@ fn only_the_engine_and_host_failures_are_ggs_own_fault() {
 #[test]
 fn every_sandbox_error_renders_something_actionable() {
     assert_eq!(
-        SandboxError::Transpile(TranspileError::Unsupported("no imports".into())).to_string(),
+        SandboxError::Prepare(PrepareError::Unsupported("no imports".into())).to_string(),
         "the program did not compile: no imports"
     );
     assert_eq!(

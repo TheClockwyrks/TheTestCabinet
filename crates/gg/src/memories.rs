@@ -434,7 +434,8 @@ impl ResolveLimit for Option<usize> {
 /// [`MAX_MEMORY_CODE_CHARS`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MemoryCode {
-    /// A TypeScript module whose exports the agent's later programs reach at `lib.<key>`.
+    /// A module, in the agent's own program language, whose exports its later programs reach at
+    /// `lib.<key>`.
     pub code: Option<String>,
     /// A script gg runs once, when the memory first comes into use.
     pub on_use: Option<String>,

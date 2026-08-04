@@ -1,4 +1,4 @@
-// The membrane between gg (the host) and the sandbox that runs an agent's TypeScript program. It
+// The membrane between gg (the host) and the sandbox that runs an agent's program. It
 // is the whole trust boundary: a program can reach exactly what is declared here and nothing else,
 // because the guest component imports nothing else and is built with every WASI capability
 // disabled.
@@ -67,8 +67,9 @@ interface types {
     /// A three-way edit of an optional text field: leave it, empty it, or replace it.
     ///
     /// It replaces gg's stringly sentinel (today an empty string clears a description), so "clear
-    /// it" and "set it to the empty string" stop being the same request. The TypeScript surface
-    /// presents this as `undefined` / `null` / a string, so a model never writes a tagged union.
+    /// it" and "set it to the empty string" stop being the same request. Each language's SDK
+    /// presents this in its own idiom for "absent, empty, or a value", so a model never writes a
+    /// tagged union.
     variant text-edit {
         /// Leave the field as it is.
         keep,
@@ -231,8 +232,9 @@ interface memories {
         description: string,
         /// The memory body.
         body: string,
-        /// Reusable code, as a TypeScript module: whatever it exports is bound at `lib.<name>` in
-        /// every later program of yours, so a helper you write once you never write again.
+        /// Reusable code, as a module in the agent's own program language: whatever it exports
+        /// is bound at `lib.<name>` in every later program of yours, so a helper you write once
+        /// you never write again.
         ///
         /// It is NOT context — it costs you no window and is never shown back to you — so it is
         /// bounded on its own and counts against no body limit. `export` what you want to reach;
@@ -317,8 +319,8 @@ interface tasks {
     use types.{tool-error, text-edit};
 
     /// Where a task stands. WIT identifiers cannot contain `_`, so `in-progress` is mapped to the
-    /// store's `in_progress` by the host — the TypeScript surface uses gg's spelling, so a model
-    /// sees one vocabulary in both execution modes.
+    /// store's `in_progress` by the host — an SDK uses gg's spelling, so a model sees one
+    /// vocabulary in both execution modes.
     enum task-status { pending, in-progress, done }
 
     /// A task to add.
@@ -1071,7 +1073,7 @@ world sandbox {
         /// already unique across this list; the host deduplicated it and told the model which key it
         /// really got.
         name: string,
-        /// The module's JavaScript.
+        /// The module's source, in whatever this guest evaluates.
         source: string,
     }
 
@@ -1092,7 +1094,7 @@ world sandbox {
 
     /// Evaluate one program.
     ///
-    /// `program` is TypeScript the host has already type-stripped to JavaScript. `tools` is the
+    /// `program` is source the host has already prepared for this guest. `tools` is the
     /// run's enabled gg tool names (`read_file`, `shell`, …); ONLY those are bound into the
     /// program's scope, so a withheld tool is an undefined identifier rather than a call that
     /// travels to the host to be refused. `ending` selects which group of `session` functions is

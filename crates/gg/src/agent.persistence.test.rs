@@ -14,7 +14,9 @@
 
 use super::*;
 use crate::context::{FileRegion, OpenFileView, OpenTextView};
-use test_cabinet_core::gg::{CAPABILITY_AGENT_PERSISTENCE, CAPABILITY_RESPONSES_AS_CODE};
+use test_cabinet_core::gg::{
+    CAPABILITY_AGENT_PERSISTENCE, CAPABILITY_RESPONSES_AS_CODE, GgProgramLanguage,
+};
 
 /// The line cap [`paging_profile`] reads under — small enough that the 300-line fixture below is read
 /// in pages rather than whole.
@@ -438,6 +440,7 @@ fn persistent_code_profile() -> GgAgentConfig {
 fn code_on() -> CodeSetup {
     CodeSetup {
         enabled: true,
+        language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::default(),
         healing: HealingConfig::default(),
         assistant_messages: AssistantMessageMode::None,

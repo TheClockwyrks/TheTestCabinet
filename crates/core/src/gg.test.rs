@@ -1348,6 +1348,45 @@ fn healing_strategy_ids_are_the_kebab_case_config_keys() {
     }
 }
 
+/// A program-language id is one string doing three jobs — the `language` param's value, the
+/// telemetry value, and the stem of the language's committed guest artifacts — so the lower-case
+/// spelling is pinned here rather than left to the derive. `typeScript`, which is what this
+/// module's usual camelCase would produce, is not a spelling anybody would write in a config file.
+#[test]
+fn program_language_ids_are_the_lowercase_config_keys() {
+    assert_eq!(
+        serde_json::to_value(GgProgramLanguage::TypeScript).unwrap(),
+        json!("typescript")
+    );
+    assert_eq!(
+        serde_json::from_value::<GgProgramLanguage>(json!("typescript")).unwrap(),
+        GgProgramLanguage::TypeScript,
+        "a stored telemetry value must read back as the language that wrote it"
+    );
+}
+
+/// `id` and `from_id` are one bijection over [`GgProgramLanguage::ALL`], which is what lets gg's
+/// language registry be *derived* from the enum rather than kept as a second list. Asserted over
+/// `ALL` rather than over a written-out table so a language added to the enum is covered here the
+/// moment it exists.
+#[test]
+fn every_program_language_round_trips_through_its_id() {
+    for &language in GgProgramLanguage::ALL {
+        assert_eq!(GgProgramLanguage::from_id(language.id()), Some(language));
+        assert_eq!(language.to_string(), language.id());
+        assert!(
+            !language.display_name().is_empty(),
+            "a language the model is told it writes in has to have a name to be told"
+        );
+    }
+    assert_eq!(GgProgramLanguage::from_id("brainfuck"), None);
+    assert_eq!(
+        GgProgramLanguage::default(),
+        GgProgramLanguage::TypeScript,
+        "the default is the language every run that names none is driven in"
+    );
+}
+
 /// The coarse whole-reply repair is a **new** wire value on a type stored runs already carry, so
 /// both directions have to hold at once: a run recorded before it existed must still read (its
 /// healing rollup simply reports zero applications of it), and a run that arms it must round-trip
@@ -1599,11 +1638,17 @@ fn a_session_summary_recorded_before_healing_and_limits_still_deserializes() {
     assert_eq!(summary.healing, GgHealingSummary::default());
     assert_eq!(summary.limits, GgRunLimits::default());
     assert_eq!(summary.limit_hit, None);
+    // A run recorded before the program language was on the wire was a TypeScript run — but gg
+    // reads it as *unknown* rather than assuming so, because the whole point of the field is to
+    // slice a study by it, and a value nobody recorded must not arrive looking like one somebody
+    // did.
+    assert_eq!(summary.program_language, None);
 
     // Re-serializing keeps `limitHit` off the wire, while the two rollups are always present so a
     // query never has to distinguish "zero" from "absent".
     let value = serde_json::to_value(&summary).expect("serialize");
     assert!(value.get("limitHit").is_none());
+    assert!(value.get("programLanguage").is_none());
     assert_eq!(value["healing"]["healed"], json!(0));
     assert_eq!(value["limits"], json!({}));
 }
@@ -2061,6 +2106,7 @@ fn agent_modules_serializes_a_roster_with_ids_ownership_and_origin() {
 fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
     let kind = GgTelemetryKind::AgentSurface {
         execution_mode: "responses_as_code".to_string(),
+        program_language: Some(GgProgramLanguage::TypeScript),
         tools: vec!["read_file".to_string(), "finish".to_string()],
         apis: vec![
             GgAgentApi {
@@ -2090,6 +2136,7 @@ fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
     let value = serde_json::to_value(&kind).expect("serialize");
     assert_eq!(value["type"], json!("agent_surface"));
     assert_eq!(value["executionMode"], json!("responses_as_code"));
+    assert_eq!(value["programLanguage"], json!("typescript"));
     assert_eq!(value["tools"], json!(["read_file", "finish"]));
     assert_eq!(value["withheld"], json!(["write_file"]));
     assert_eq!(value["apis"][0]["functions"][0]["tool"], json!("read_file"));
@@ -2098,9 +2145,12 @@ fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
     assert_eq!(back, kind);
 
     // A tool-calling agent's surface omits `apis` entirely, and an agent that ablates nothing omits
-    // `withheld` — both absences rather than empty arrays a consumer would have to interpret.
+    // `withheld` — both absences rather than empty arrays a consumer would have to interpret. Its
+    // `programLanguage` is absent on the same terms: it writes no programs, so naming a language
+    // would be reporting a fact about a surface it does not have.
     let tool_calling = GgTelemetryKind::AgentSurface {
         execution_mode: "tool_calling".to_string(),
+        program_language: None,
         tools: vec!["shell".to_string()],
         apis: Vec::new(),
         withheld: Vec::new(),
@@ -2108,6 +2158,7 @@ fn agent_surface_serializes_the_offered_tools_and_the_bound_api_functions() {
     let value = serde_json::to_value(&tool_calling).expect("serialize");
     assert!(value.get("apis").is_none());
     assert!(value.get("withheld").is_none());
+    assert!(value.get("programLanguage").is_none());
     let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
     assert_eq!(back, tool_calling);
 }

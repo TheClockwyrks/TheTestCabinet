@@ -363,6 +363,17 @@
       "minimum": 0,
       "type": "integer"
     },
+    "programLanguage": {
+      "anyOf": [
+        {
+          "$ref": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json#/$defs/GgProgramLanguage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The [language](GgProgramLanguage) the run's root agent wrote its programs in — the slice-by\ndimension a cross-language study compares its arms on, and the companion to\n[`execution_mode`](Self::execution_mode): that field says *whether* the run answered in\nprograms, this one says what those programs were written in.\n\n`None` for a tool-calling run, which has no program language at all — as opposed to having\nan unknown one. Recorded once off the run's configuration, like\n[`effective_tools`](Self::effective_tools), rather than derived from the telemetry stream."
+    },
     "ranOutOfContext": {
       "description": "Whether the run ever **ran out of context** — its window fullness reached the ceiling\n(`>= 1.0`) at least once. The headline flag behind \"with compaction off, how often did the\nmodel run out of context?\".",
       "type": "boolean"

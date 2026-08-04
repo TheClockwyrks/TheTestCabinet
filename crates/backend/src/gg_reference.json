@@ -1,5 +1,6 @@
 {
   "ggVersion": "0.7.0",
+  "language": "typescript",
   "categories": [
     {
       "id": "gg-filesystem",

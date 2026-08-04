@@ -20,7 +20,7 @@
 use super::*;
 use crate::limits::DEFAULT_MAX_CONSECUTIVE_ERRORS;
 use crate::subagents::DEFAULT_MAX_PARALLEL;
-use test_cabinet_core::gg::{GgLoopDetection, GgTurnErrorKind, GgTurnOutcome};
+use test_cabinet_core::gg::{GgLoopDetection, GgProgramLanguage, GgTurnErrorKind, GgTurnOutcome};
 
 /// A reply that is not a program — the shape a model sends when it narrates a finished task instead
 /// of ending the run, and therefore an error turn under this protocol.
@@ -31,6 +31,7 @@ const PROSE: &str = "The scaffold is already complete; nothing left to do.";
 fn code_on() -> CodeSetup {
     CodeSetup {
         enabled: true,
+        language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::default(),
         healing: HealingConfig::default(),
         assistant_messages: AssistantMessageMode::None,

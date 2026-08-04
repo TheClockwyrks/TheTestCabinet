@@ -17,7 +17,7 @@
 //!
 //! # It is not a [module](crate::modules) in gg's sense
 //!
-//! Nothing here occupies a token. A loaded module is transpiled JavaScript the host holds and hands
+//! Nothing here occupies a token. A loaded module is prepared source the host holds and hands
 //! to the guest; it is never a context item, never summarized, never evicted, and a
 //! [compaction](crate::compaction) boundary does not touch it. That is deliberate and it is the
 //! answer to the obvious question — *does a compaction make me re-read my skills to get my helpers
@@ -41,7 +41,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::sandbox::{CodeModule, TranspileError, transpile_module, transpile_program};
+use crate::sandbox::{CodeModule, PrepareError, ProgramLanguage, prepare_module, prepare_program};
 
 /// Where a piece of loaded code came from — what a failure names, and what the reply to the read
 /// that loaded it calls the thing.
@@ -76,8 +76,8 @@ pub struct PendingOnUse {
     pub origin: KnowledgeOrigin,
     /// The skill's name or the memory's slug, for the sentence a failure produces.
     pub name: String,
-    /// The transpiled script.
-    pub js: String,
+    /// The prepared script, as its guest evaluates it.
+    pub source: String,
     /// The one module bound into its scope: the same thing's own code, if it carries any. An on-use
     /// script sees its own module and no other — it runs at a moment the agent did not choose, so
     /// letting it reach whatever else happened to be loaded would make its behaviour depend on the
@@ -186,15 +186,32 @@ impl KnowledgeModules {
 
     /// Load the code halves of a skill or a memory that has just come into use.
     ///
-    /// Both halves are transpiled **here**, at the read, and a failure in either is returned rather
-    /// than stored: whoever wrote the thing gets a located diagnostic on the call that tried to use
-    /// it, instead of a silent empty `lib` entry and a `TypeError` two turns later.
+    /// Both halves are prepared **here**, at the read, in the agent's own
+    /// [program language](ProgramLanguage) — and a failure in either is returned rather than
+    /// stored: whoever wrote the thing gets a located diagnostic on the call that tried to use it,
+    /// instead of a silent empty `lib` entry and a `TypeError` two turns later.
     ///
     /// Loading the same thing twice is idempotent — the key is re-used, the source replaced (a
     /// memory can be updated), and the on-use script is **not** queued again. "Once" means once per
     /// agent, not once per read.
+    ///
+    /// # A code half is prepared in the **reader's** language
+    ///
+    /// `language` is the language of the agent doing the reading, because that is the language the
+    /// module has to be evaluable in: `lib.<key>` is bound into *its* programs. Nothing records the
+    /// language the code was written in — a skill is a workspace file and a memory is authored by
+    /// whichever agent held it, and neither carries a language today.
+    ///
+    /// That is exactly right while a run is single-language, and it is a known gap the day one is
+    /// not: a reviewer in one language reading a code memory a root wrote in another gets that
+    /// language's syntax diagnostic appended to the read, and `lib.<key>` binds nothing. The failure
+    /// is loud (the model is told, in the reply that names the key) rather than silent, which is why
+    /// it is a gap rather than a defect — but closing it means recording the authoring language on
+    /// the memory and on the skill and deciding what a cross-language read *should* do, which is a
+    /// contract change rather than a rename.
     pub fn load(
         &mut self,
+        language: &'static dyn ProgramLanguage,
         origin: KnowledgeOrigin,
         name: &str,
         code: Option<&str>,
@@ -205,7 +222,7 @@ impl KnowledgeModules {
         let first_use = !self.used.contains(&identity);
 
         if let Some(source) = code {
-            let transpiled = transpile_module(source).map_err(|error| KnowledgeError {
+            let prepared = prepare_module(language, source).map_err(|error| KnowledgeError {
                 origin,
                 name: name.to_string(),
                 half: "code",
@@ -214,21 +231,21 @@ impl KnowledgeModules {
             let key = match self.keys.get(&identity) {
                 Some(key) => key.clone(),
                 None => {
-                    let key = self.mint_key(name);
+                    let key = self.mint_key(language, name);
                     self.keys.insert(identity.clone(), key.clone());
                     key
                 }
             };
-            self.loaded.insert(key.clone(), transpiled.js);
-            loaded.exports = transpiled.exports;
+            self.loaded.insert(key.clone(), prepared.source);
+            loaded.exports = prepared.exports;
             loaded.key = Some(key);
         }
 
         if let Some(source) = on_use
             && first_use
         {
-            let js = transpile_program(source)
-                .map(|transpiled| transpiled.js)
+            let script = prepare_program(language, source)
+                .map(|prepared| prepared.source)
                 .map_err(|error| KnowledgeError {
                     origin,
                     name: name.to_string(),
@@ -244,7 +261,7 @@ impl KnowledgeModules {
             self.pending.push(PendingOnUse {
                 origin,
                 name: name.to_string(),
-                js,
+                source: script,
                 module,
             });
             loaded.on_use = true;
@@ -262,9 +279,10 @@ impl KnowledgeModules {
         std::mem::take(&mut self.pending)
     }
 
-    /// A `lib` key for `name` that nothing else has taken.
-    fn mint_key(&self, name: &str) -> String {
-        let base = camel_case(name);
+    /// A `lib` key for `name` that nothing else has taken, spelled the way `language` spells an
+    /// identifier.
+    fn mint_key(&self, language: &'static dyn ProgramLanguage, name: &str) -> String {
+        let base = language.binding_name(name);
         if !self.loaded.contains_key(&base) {
             return base;
         }
@@ -277,7 +295,7 @@ impl KnowledgeModules {
     }
 }
 
-/// A code half that would not transpile, named so the model can tell which of the two failed.
+/// A code half that would not prepare, named so the model can tell which of the two failed.
 #[derive(Debug, Clone)]
 pub struct KnowledgeError {
     /// Whether it was a skill's or a memory's.
@@ -286,8 +304,8 @@ pub struct KnowledgeError {
     pub name: String,
     /// Which half — `code` or `onUse`, spelled as the model writes it.
     pub half: &'static str,
-    /// What the transpiler said, already located in the author's own coordinates.
-    pub error: TranspileError,
+    /// What the language's prepare step said, already located in the author's own coordinates.
+    pub error: PrepareError,
 }
 
 impl std::fmt::Display for KnowledgeError {
@@ -301,36 +319,6 @@ impl std::fmt::Display for KnowledgeError {
             self.error
         )
     }
-}
-
-/// `csv-tools` → `csvTools`, `my_helpers.v2` → `myHelpersV2`, `9lives` → `_9lives`.
-///
-/// The result is always a valid JavaScript identifier, because it is a property a program spells out
-/// (`lib.csvTools.parse`) rather than one it looks up with a string.
-fn camel_case(name: &str) -> String {
-    let mut out = String::new();
-    let mut capitalize = false;
-    for ch in name.chars() {
-        if ch.is_ascii_alphanumeric() {
-            if capitalize {
-                out.extend(ch.to_uppercase());
-                capitalize = false;
-            } else {
-                out.push(ch);
-            }
-        } else {
-            // Any separator — `-`, `_`, `.`, or anything a name should not have had — joins the next
-            // word rather than surviving into an identifier that would not parse.
-            capitalize = !out.is_empty();
-        }
-    }
-    if out.is_empty() {
-        return "module".to_string();
-    }
-    if out.starts_with(|ch: char| ch.is_ascii_digit()) {
-        out.insert(0, '_');
-    }
-    out
 }
 
 #[cfg(test)]

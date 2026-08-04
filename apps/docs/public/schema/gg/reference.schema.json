@@ -178,6 +178,11 @@
       "description": "The version of the `test-cabinet-gg` crate this reference was projected from — its\n`CARGO_PKG_VERSION`, which is `core`'s own, since the two crates are versioned in\nlockstep.\n\nStamped on the page so a reader can tell *which* gg the prose in front of them belongs\nto. It is the committed artifact's version, not the running deployment's: they are the\nsame whenever the artifact was regenerated, and CI's drift gate is what keeps that true.",
       "type": "string"
     },
+    "language": {
+      "$ref": "https://docs.testcabinet.ai/schema/gg/telemetry-event.schema.json#/$defs/GgProgramLanguage",
+      "default": "typescript",
+      "description": "The [program language](GgProgramLanguage) the [functions](Self::functions) below are\nspelled in.\n\ngg's responses-as-code surface is one set of capabilities that every registered language\noffers under its own spellings — identical objects, identical gates, different function\nnames and signatures. So a page showing signatures has to say whose, and a reader comparing\ntwo arms of a cross-language study has to be able to tell which one they are reading. The\n[tools](Self::tools) are unaffected: a tool's name and JSON schema are the wire's, not any\nlanguage's.\n\n`#[serde(default)]` so an artifact generated before this field existed still decodes as the\ndefault language, which is the one it was in fact projected from."
+    },
     "tools": {
       "description": "Every tool gg can offer, in the canonical tool-vocabulary order.",
       "items": {

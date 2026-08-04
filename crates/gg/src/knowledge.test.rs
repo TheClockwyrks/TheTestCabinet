@@ -1,13 +1,23 @@
 //! Tests for [`KnowledgeModules`] — the per-agent registry of loaded code and queued on-use
 //! scripts.
 
+use test_cabinet_core::gg::GgProgramLanguage;
+
 use super::*;
+
+/// The [program language](ProgramLanguage) these tests load code in: **TypeScript**, named
+/// explicitly because every module they load is TypeScript source and every export list they assert
+/// on is what TypeScript's own module preparation reads out of it.
+fn ts() -> &'static dyn ProgramLanguage {
+    crate::sandbox::language(GgProgramLanguage::TypeScript)
+}
 
 /// A registry with `csv-tools` loaded, as most of these start.
 fn with_csv_tools() -> (KnowledgeModules, Loaded) {
     let mut modules = KnowledgeModules::new();
     let loaded = modules
         .load(
+            ts(),
             KnowledgeOrigin::Skill,
             "csv-tools",
             Some("export function parse(text: string) { return text.split(\",\"); }\n"),
@@ -44,7 +54,7 @@ fn the_note_states_the_binding_path_and_what_it_exports() {
 fn a_prose_skill_produces_no_note_at_all() {
     let mut modules = KnowledgeModules::new();
     let loaded = modules
-        .load(KnowledgeOrigin::Skill, "prose", None, None)
+        .load(ts(), KnowledgeOrigin::Skill, "prose", None, None)
         .expect("a skill with no code loads");
     assert!(loaded.is_empty());
     assert_eq!(loaded.note(KnowledgeOrigin::Skill), None);
@@ -56,6 +66,7 @@ fn two_names_that_camel_case_alike_both_keep_their_code() {
     let (mut modules, first) = with_csv_tools();
     let second = modules
         .load(
+            ts(),
             KnowledgeOrigin::Memory,
             "csv_tools",
             Some("export const n = 1;\n"),
@@ -72,6 +83,7 @@ fn reloading_the_same_thing_reuses_its_key_and_replaces_its_source() {
     let (mut modules, first) = with_csv_tools();
     let again = modules
         .load(
+            ts(),
             KnowledgeOrigin::Skill,
             "csv-tools",
             Some("export function parse() { return []; }\nexport const VERSION = 2;\n"),
@@ -88,6 +100,7 @@ fn an_on_use_script_is_queued_once_per_agent() {
     let mut modules = KnowledgeModules::new();
     let first = modules
         .load(
+            ts(),
             KnowledgeOrigin::Skill,
             "guide",
             None,
@@ -100,6 +113,7 @@ fn an_on_use_script_is_queued_once_per_agent() {
     // Read again: the script has already run for this agent, so nothing is queued.
     let again = modules
         .load(
+            ts(),
             KnowledgeOrigin::Skill,
             "guide",
             None,
@@ -116,10 +130,11 @@ fn a_thing_used_without_a_script_does_not_run_one_added_later() {
     // would be running it at a moment the "once, when it first comes into use" rule does not name.
     let mut modules = KnowledgeModules::new();
     modules
-        .load(KnowledgeOrigin::Memory, "notes", None, None)
+        .load(ts(), KnowledgeOrigin::Memory, "notes", None, None)
         .expect("a plain memory loads");
     let later = modules
         .load(
+            ts(),
             KnowledgeOrigin::Memory,
             "notes",
             None,
@@ -135,6 +150,7 @@ fn an_on_use_script_is_given_its_own_module_and_nothing_else() {
     let (mut modules, _) = with_csv_tools();
     modules
         .load(
+            ts(),
             KnowledgeOrigin::Skill,
             "guide",
             Some("export const n = 1;\n"),
@@ -154,7 +170,7 @@ fn an_on_use_script_is_given_its_own_module_and_nothing_else() {
 fn taking_the_pending_queue_empties_it() {
     let mut modules = KnowledgeModules::new();
     modules
-        .load(KnowledgeOrigin::Skill, "guide", None, Some("1;\n"))
+        .load(ts(), KnowledgeOrigin::Skill, "guide", None, Some("1;\n"))
         .expect("loads");
     assert_eq!(modules.take_pending().len(), 1);
     assert!(modules.take_pending().is_empty());
@@ -165,6 +181,7 @@ fn uncompilable_code_is_refused_and_names_the_half_that_failed() {
     let mut modules = KnowledgeModules::new();
     let error = modules
         .load(
+            ts(),
             KnowledgeOrigin::Memory,
             "broken",
             Some("export const x = ;\n"),
@@ -183,6 +200,7 @@ fn an_uncompilable_on_use_script_is_refused_by_its_own_name() {
     let mut modules = KnowledgeModules::new();
     let error = modules
         .load(
+            ts(),
             KnowledgeOrigin::Skill,
             "broken",
             None,
@@ -203,6 +221,7 @@ fn keys_are_always_valid_identifiers() {
         let mut modules = KnowledgeModules::new();
         let loaded = modules
             .load(
+                ts(),
                 KnowledgeOrigin::Skill,
                 name,
                 Some("export const n = 1;\n"),
@@ -219,6 +238,7 @@ fn modules_are_handed_over_in_a_stable_order() {
     for name in ["zeta", "alpha", "mid"] {
         modules
             .load(
+                ts(),
                 KnowledgeOrigin::Skill,
                 name,
                 Some("export const n = 1;\n"),

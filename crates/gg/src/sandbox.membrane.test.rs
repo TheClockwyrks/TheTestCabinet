@@ -313,18 +313,18 @@ fn every_tool_crosses_the_membrane_with_its_typed_arguments() {
     // Every enabled name is bound as a **function** — the capability model in one assertion. A name
     // that is merely defined, or defined as something other than a function, would fail a model in a
     // way no error message could explain.
-    let catalogue = crate::sandbox::signatures::catalogue();
+    let catalogue = crate::sandbox::fake::typescript().catalogue();
     // Each tool is bound as `object.js` now, not as a bare identifier — so the check references the
     // functions the way a program actually reaches them.
     let names: Vec<String> = catalogue
         .tools
         .iter()
-        .map(|entry| format!("{}.{}", entry.object, entry.js))
+        .map(|entry| format!("{}.{}", entry.object, entry.name))
         .chain(
             catalogue
                 .helpers
                 .iter()
-                .map(|helper| format!("{}.{}", helper.object, helper.js)),
+                .map(|helper| format!("{}.{}", helper.object, helper.name)),
         )
         .collect();
 

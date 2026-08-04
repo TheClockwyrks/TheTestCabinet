@@ -207,7 +207,14 @@ fn each_kind_of_message_goes_in_its_own_band() {
 #[test]
 fn a_turn_with_no_hand_over_gets_no_notice() {
     let outcome = quiet_outcome();
-    assert!(handover_notice(&ProgramChain::first("p"), &outcome).is_none());
+    assert!(
+        handover_notice(
+            GgProgramLanguage::TypeScript,
+            &ProgramChain::first("p"),
+            &outcome
+        )
+        .is_none()
+    );
 }
 
 /// A hand-over gg **ran** is likewise silent: the program that ran is the turn's, and saying so
@@ -216,7 +223,7 @@ fn a_turn_with_no_hand_over_gets_no_notice() {
 fn an_honoured_hand_over_gets_no_notice() {
     let mut chain = ProgramChain::first("the trampoline");
     chain.advance("the replacement");
-    assert!(handover_notice(&chain, &quiet_outcome()).is_none());
+    assert!(handover_notice(GgProgramLanguage::TypeScript, &chain, &quiet_outcome()).is_none());
 }
 
 /// Each of the three ways a hand-over goes unhonoured gets its own sentence, because each has a
@@ -225,17 +232,24 @@ fn an_honoured_hand_over_gets_no_notice() {
 fn every_unhonoured_hand_over_says_which_way_it_failed() {
     let mut revoked = quiet_outcome();
     revoked.revoked_rerun = true;
-    let notice = handover_notice(&ProgramChain::first("p"), &revoked).expect("a revocation speaks");
+    let notice = handover_notice(
+        GgProgramLanguage::TypeScript,
+        &ProgramChain::first("p"),
+        &revoked,
+    )
+    .expect("a revocation speaks");
     assert!(notice.contains("failed after handing it over"), "{notice}");
 
     let mut ended = ProgramChain::first("p");
     ended.refused = Some(ChainRefusal::Ended);
-    let notice = handover_notice(&ended, &quiet_outcome()).expect("an ending speaks");
+    let notice = handover_notice(GgProgramLanguage::TypeScript, &ended, &quiet_outcome())
+        .expect("an ending speaks");
     assert!(notice.contains("ended your session"), "{notice}");
 
     let mut exhausted = ProgramChain::first("p");
     exhausted.refused = Some(ChainRefusal::Exhausted);
-    let notice = handover_notice(&exhausted, &quiet_outcome()).expect("a spent chain speaks");
+    let notice = handover_notice(GgProgramLanguage::TypeScript, &exhausted, &quiet_outcome())
+        .expect("a spent chain speaks");
     assert!(
         notice.contains(&MAX_PROGRAM_CHAIN.to_string()),
         "the ceiling names its own number: {notice}"

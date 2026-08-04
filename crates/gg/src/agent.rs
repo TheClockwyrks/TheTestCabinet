@@ -97,8 +97,8 @@ use test_cabinet_core::gg::{
     CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS,
     GgAgentApi, GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind,
     GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy, GgIssueReviewPhase,
-    GgLimitBreach, GgLimitKind, GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding,
-    GgSpeculationPhase, GgSubagentScope, GgTelemetryKind, GgWorkflowPhase,
+    GgLimitBreach, GgLimitKind, GgProgramLanguage, GgResponseHealing, GgReviewer, GgRunLimits,
+    GgSlotBinding, GgSpeculationPhase, GgSubagentScope, GgTelemetryKind, GgWorkflowPhase,
     PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
 };
 use test_cabinet_core::gg_replay::{
@@ -935,16 +935,32 @@ pub(crate) async fn run_with_seams(
         }
     }
 
-    // Warm the code sandbox, once per run and never from a subagent. The committed interpreter
+    // Warm the code sandbox, once per run and never from a subagent. A committed interpreter
     // component takes ~0.7 s to compile on a many-core machine and several seconds on one core, and
-    // that compile is paid exactly once per process — so starting it *here*, concurrently with the
-    // first model request (which takes far longer), takes it off the first code turn's critical
-    // path entirely. Off when the capability is off: a tool-calling run must not pay for a sandbox
-    // it will never enter.
-    let warming = orch
-        .code
-        .enabled
-        .then(|| tokio::task::spawn_blocking(sandbox::precompile));
+    // that compile is paid exactly once per process *per language* — so starting it *here*,
+    // concurrently with the first model request (which takes far longer), takes it off the first
+    // code turn's critical path entirely. Off when the capability is off: a tool-calling run must
+    // not pay for a sandbox it will never enter.
+    //
+    // One warm-up per **distinct language the configuration will actually drive**, not one for the
+    // root's: the component cache is per language, so a subagent configured to a second language
+    // would otherwise pay its whole cold compile inline on its first code turn — inside the turn
+    // duration a cross-language study is comparing, which is the one place that cost must not land.
+    let configured = if orch.code.enabled {
+        program_languages(&orch.caps.agents)
+    } else {
+        BTreeSet::new()
+    };
+    let warming: Vec<_> = configured
+        .into_iter()
+        .map(|id| {
+            let language = sandbox::language(id);
+            (
+                id,
+                tokio::task::spawn_blocking(move || sandbox::precompile(language)),
+            )
+        })
+        .collect();
 
     // Drive the root agent. Its inbox is unused (nothing spawns the root), but every agent owns
     // one for uniformity.
@@ -972,31 +988,36 @@ pub(crate) async fn run_with_seams(
     // and it is core-count sensitive by a factor of seven — which is exactly the fact needed to
     // interpret a first program that took seconds. `None` means a code turn got there first and
     // paid the compile itself; that turn's own `CodeExecution` carries the figure instead.
-    let warmed = match warming {
-        Some(warming) => Some(warming.await),
-        None => None,
-    };
-    match warmed {
-        Some(Ok(Ok(Some(took)))) => root_emitter.emit(log(
-            "info",
-            format!(
-                "the code sandbox's interpreter component compiled in {} ms, off the first turn's \
-                 critical path.",
-                took.as_millis()
-            ),
-        )),
-        Some(Ok(Ok(None))) => root_emitter.emit(log(
-            "info",
-            "a code turn compiled the sandbox's interpreter component before the warm-up reached \
-             it, so that turn paid the compile itself; its `CodeExecution` carries what it cost.",
-        )),
-        Some(Ok(Err(err))) => root_emitter.emit(log(
-            "warn",
-            format!("the code sandbox could not be warmed up ahead of the first turn: {err}"),
-        )),
-        // The blocking task itself failed to join, which only happens if the host panicked. There
-        // is nothing to say about a compile that never reported either way.
-        Some(Err(_)) | None => {}
+    for (id, warming) in warming {
+        let name = sandbox::language(id).display_name();
+        match warming.await {
+            Ok(Ok(Some(took))) => root_emitter.emit(log(
+                "info",
+                format!(
+                    "the code sandbox's {name} interpreter component compiled in {} ms, off the \
+                     first turn's critical path.",
+                    took.as_millis()
+                ),
+            )),
+            Ok(Ok(None)) => root_emitter.emit(log(
+                "info",
+                format!(
+                    "a code turn compiled the sandbox's {name} interpreter component before the \
+                     warm-up reached it, so that turn paid the compile itself; its \
+                     `CodeExecution` carries what it cost."
+                ),
+            )),
+            Ok(Err(err)) => root_emitter.emit(log(
+                "warn",
+                format!(
+                    "the code sandbox's {name} interpreter component could not be warmed up ahead \
+                     of the first turn: {err}"
+                ),
+            )),
+            // The blocking task itself failed to join, which only happens if the host panicked.
+            // There is nothing to say about a compile that never reported either way.
+            Err(_) => {}
+        }
     }
 
     // Join every subagent the run spawned (transitively). The root released its slot inside
@@ -1699,6 +1720,27 @@ impl Orchestrator {
                 agent.name,
             ));
         }
+        // A `language` gg cannot read is reported on exactly the terms the healing keys are, and
+        // for a sharper version of the same reason: reading `pythn` as Python would be bad, but
+        // reading it as TypeScript *without saying so* would record the run under a language nobody
+        // chose — and the language is the very axis a cross-language study slices on. The set it
+        // names is read off the registry rather than off the enum, so an operator is told the
+        // languages gg can actually drive rather than the ones it merely knows the names of.
+        let registered = sandbox::all_languages()
+            .map(|language| language.id().id())
+            .collect::<Vec<_>>()
+            .join(", ");
+        for agent in &set.agents {
+            for unknown in &sandbox::resolve_program_language(agent).unknown_params {
+                warnings.push(format!(
+                    "agent `{}`: the `{CAPABILITY_RESPONSES_AS_CODE}` capability declares \
+                     `{unknown}`, which gg could not read as a program language; it changes \
+                     nothing and the agent writes {}. The languages are {registered}.",
+                    agent.name,
+                    sandbox::language(GgProgramLanguage::default()).display_name(),
+                ));
+            }
+        }
         // The `assistantMessages` mode is read literally and reported on mismatch for the same reason
         // healing keys are: a typo would otherwise pick a mode the study did not ask for, silently.
         for unknown in &healing::resolve_assistant_messages(set.root()).unknown_params {
@@ -1763,6 +1805,7 @@ impl Orchestrator {
             speculative_enabled: set.is_enabled(CAPABILITY_SPECULATIVE),
             code: CodeSetup {
                 enabled: set.root().is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+                language: sandbox::resolve_program_language(set.root()).language,
                 limits: sandbox::resolve_sandbox_limits(set.root()),
                 healing: healing.config,
                 assistant_messages: healing::resolve_assistant_messages(set.root()).mode,
@@ -1987,6 +2030,7 @@ impl Orchestrator {
     fn code_setup(&self, profile: &GgAgentConfig) -> CodeSetup {
         CodeSetup {
             enabled: profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+            language: sandbox::resolve_program_language(profile).language,
             limits: sandbox::resolve_sandbox_limits(profile),
             healing: healing::resolve_healing(profile).config,
             assistant_messages: healing::resolve_assistant_messages(profile).mode,
@@ -3026,7 +3070,7 @@ async fn run_agent(
             &registry.definitions(),
             ending_role,
             program_library,
-            code.enabled,
+            code.enabled.then_some(code.language),
             profile
                 .capability(CAPABILITY_SKILLS)
                 .map(|capability| &capability.params)
@@ -3061,13 +3105,14 @@ async fn run_agent(
         let unrecognized_ablations = unknown_disabled_tools(&profile);
         emitter.emit(GgTelemetryKind::AgentSurface {
             execution_mode: execution_mode(code.enabled).to_string(),
+            program_language: code.enabled.then_some(code.language),
             tools: registry
                 .tool_names()
                 .into_iter()
                 .chain(ending_role.tools().iter().map(|name| name.to_string()))
                 .collect(),
             apis: if code.enabled {
-                api_surface(&registry, ending_role, program_library)
+                api_surface(&registry, ending_role, program_library, code.language)
             } else {
                 Vec::new()
             },
@@ -3114,7 +3159,7 @@ async fn run_agent(
                 &registry,
                 modules.caps(),
                 orch.speculative_active(),
-                code.enabled,
+                code.enabled.then_some(code.language),
                 &completion,
             );
             // Record the run's effective toolset on the session summary — the exact set of tool
@@ -3127,6 +3172,11 @@ async fn run_agent(
             // the "does responses-as-code help?" study is a durable, sliceable outcome dimension
             // alongside the capabilityEnabled facet.
             emitter.record_execution_mode(execution_mode(code.enabled));
+            // …and, beside it, which language a code run wrote in. `None` for a tool-calling run,
+            // which is a different answer from "TypeScript": the first arm has no program language
+            // at all, and a study comparing languages must be able to tell them apart without
+            // re-deriving the capability set.
+            emitter.record_program_language(code.enabled.then_some(code.language));
             // The same set the surface above kept out of its `withheld` list, so the warning and the
             // console panel cannot disagree about which of an ablation's names applied.
             for unknown in &unrecognized_ablations {
@@ -3215,7 +3265,13 @@ async fn run_agent(
                 )),
             }
         }
-        let amc = AmcSetup::resolve(&profile, &registry, archive_store, archive_id);
+        let amc = AmcSetup::resolve(
+            &profile,
+            &registry,
+            archive_store,
+            archive_id,
+            code.enabled.then_some(code.language),
+        );
         let autoload = AutoloadSetup::resolve(&profile);
         // This agent's persistence: whether its instances are serialized and carry their open file
         // views, bound to the run-global record every instance of its profile shares.
@@ -3577,6 +3633,24 @@ async fn run_agent(
     end
 }
 
+/// Every distinct [program language](GgProgramLanguage) `agents` will actually drive, in
+/// registration order.
+///
+/// Responses-as-code is a **per-agent** capability, so one run may write its root's programs in one
+/// language and a reviewer's in another. Anything that must be ready before a turn — the compiled
+/// interpreter component above all — therefore has to be prepared for the whole set rather than for
+/// the root's, and a set is derived from the configuration rather than assumed to be a singleton.
+///
+/// A [`BTreeSet`] rather than a `Vec`: forty agents on one language is one warm-up, and the order is
+/// the enum's own, which is registration order.
+fn program_languages(agents: &[GgAgentConfig]) -> BTreeSet<GgProgramLanguage> {
+    agents
+        .iter()
+        .filter(|agent| agent.is_enabled(CAPABILITY_RESPONSES_AS_CODE))
+        .map(|agent| sandbox::resolve_program_language(agent).language)
+        .collect()
+}
+
 /// Announce the run's enabled capabilities once (on the root's stream) so the console shows the
 /// configuration from the start — the offered toolset and the initial (empty) skills/memory/task/
 /// board state — mirroring the per-capability announcements a single-agent run emitted.
@@ -3585,7 +3659,7 @@ fn announce_configuration(
     registry: &ToolRegistry,
     modules: &CapabilityModules,
     speculative: bool,
-    responses_as_code: bool,
+    program_language: Option<GgProgramLanguage>,
     completion: &CompletionSetup,
 ) {
     if registry.is_empty() {
@@ -3679,13 +3753,17 @@ fn announce_configuration(
              isolate the attempts).",
         ));
     }
-    if responses_as_code {
+    if let Some(language) = program_language {
         emitter.emit(log(
             "info",
-            "responses-as-code enabled; instead of calling tools one at a time, each turn the model \
-             emits a TypeScript program over the available tools (loops, conditionals, composed \
-             tool calls) that gg runs in a wasmtime sandbox — the tool calls the program makes still \
-             stream as ToolCall/ToolResult, and the execution is streamed as a CodeExecution event.",
+            format!(
+                "responses-as-code enabled; instead of calling tools one at a time, each turn the \
+                 model emits a {} program over the available tools (loops, conditionals, composed \
+                 tool calls) that gg runs in a wasmtime sandbox — the tool calls the program makes \
+                 still stream as ToolCall/ToolResult, and the execution is streamed as a \
+                 CodeExecution event.",
+                sandbox::language(language).display_name()
+            ),
         ));
     }
 
@@ -6053,7 +6131,7 @@ struct LoopEnd {
     /// For an agent that ended cleanly it is its [`ending`](Self::ending)'s
     /// [text](Ending::final_text); for one a ceiling stopped it is a [status line](stopped_text) gg
     /// wrote itself. It is never the last assistant message: in code mode every assistant message is
-    /// a page of TypeScript, so a spawner and a run record would each be handed program source where
+    /// a page of program source, so a spawner and a run record would each be handed a program where
     /// an answer belongs.
     final_text: Option<String>,
     /// What the agent **declared**, when it ended by declaring something.
@@ -6202,6 +6280,7 @@ impl Agent {
             scope_tools(registry),
             ending_role,
             programs.is_enabled(),
+            code.language,
         );
         // The code this agent has loaded by reading a code skill or memory, and the on-use scripts a
         // read owes. Per agent instance and per session, beside the docs runtime and the program
@@ -6244,7 +6323,7 @@ impl Agent {
             shell_offload: &shell_offload,
             vision: &tool_ctx.vision,
             speculative: speculative_active,
-            responses_as_code: code.enabled,
+            program_language: code.enabled.then_some(code.language),
             program_library: programs.is_enabled(),
             // Whether this agent's opening context is pre-seeded with the test case's specs and
             // reference images, so the prompt can tell the model they are already loaded (and,
@@ -6300,8 +6379,15 @@ impl Agent {
         // though the model had already `read_file`d each — before the first turn, so the model
         // starts with the whole brief in the window. Locked pins them across compaction.
         if autoload.enabled && !carried {
-            autoload_specifications(context, provided_files, tool_ctx, autoload.locked, emitter)
-                .await;
+            autoload_specifications(
+                context,
+                provided_files,
+                tool_ctx,
+                code.language,
+                autoload.locked,
+                emitter,
+            )
+            .await;
         }
 
         // Re-open the views this agent's profile had open when one of its instances last finished —
@@ -6321,6 +6407,7 @@ impl Agent {
                 &desk.files,
                 read_policy,
                 tool_ctx,
+                code.language,
                 emitter,
             )
             .await;
@@ -6362,7 +6449,7 @@ impl Agent {
         // never reads it — see [`LoopEnd::final_text`].
         let mut last_text: Option<String> = None;
         // What this agent's last code turn produced, in gg's own words — the one line a stopped
-        // code-mode agent returns to its spawner in place of a page of TypeScript. `None` until it
+        // code-mode agent returns to its spawner in place of a page of program source. `None` until it
         // has taken a code turn, which is also the honest answer for an agent stopped before it
         // could take one.
         let mut last_report: Option<String> = None;
@@ -6787,7 +6874,11 @@ impl Agent {
             // On the tool-calling path there is no program and no healing; the reply is recorded as
             // sent.
             let healed = code.enabled.then(|| {
-                healing::heal(response.text.as_deref().unwrap_or_default(), &code.healing)
+                healing::heal(
+                    response.text.as_deref().unwrap_or_default(),
+                    &code.healing,
+                    sandbox::language(code.language).healing(),
+                )
             });
             // The text the assistant turn is recorded with. Under post-response healing it is the
             // healed program gg actually ran — but only when healing changed anything
@@ -6904,7 +6995,7 @@ impl Agent {
             }
 
             // Responses-as-code turn: the model was offered no native tools, so its **whole reply**
-            // is a TypeScript program. Run the healed program in the wasmtime sandbox — bridging every
+            // is a program. Run the healed program in the wasmtime sandbox — bridging every
             // typed call to the real toolset (and, for a delegation tool, the scheduler) — and act
             // on what the turn asks for. There is no implicit ending here: a session under this
             // capability ends only when a program calls `finish`, or when a ceiling stops the run.
@@ -7264,7 +7355,7 @@ impl Agent {
                             context.push(
                                 GgContextSource::System,
                                 Retention::Ephemeral,
-                                Message::user(prompts::render_code_nothing_shown()),
+                                Message::user(prompts::render_code_nothing_shown(code.language)),
                             );
                         }
                         continue;
@@ -7961,7 +8052,7 @@ fn breach_message(breach: &GgLimitBreach) -> String {
 /// The two execution modes answer it differently, and the difference is the whole of
 /// [`stopped_text`]'s reason for existing. In tool calling the last assistant message is a sentence,
 /// and it has always been what a stopped agent hands back. Under
-/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) it is a page of TypeScript.
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) it is a page of program source.
 fn ended_text(
     code_mode: bool,
     status: &str,
@@ -7978,7 +8069,7 @@ fn ended_text(
 /// This agent's return value when it was **stopped** rather than finished, under
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE).
 ///
-/// Every assistant message on that path is a TypeScript program, so the loop's `last_text` would
+/// Every assistant message on that path is a program, so the loop's `last_text` would
 /// hand a subagent's spawner — and the run record, and a speculation judge's brief — a page of
 /// source instead of an answer. This is the answer gg can honestly give instead: how the agent
 /// ended, and what its last turn actually produced.
@@ -8056,10 +8147,11 @@ struct AmcSetup {
     /// Whether this agent actually has `evict_file_view` — read off the registry rather than assumed
     /// from the capability, so the per-file breakdown appears exactly when a call could act on it.
     can_evict: bool,
-    /// Whether this agent is in [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode and so has
-    /// `view.close`. Read off the capability rather than the registry because `view` is not a tool:
-    /// it is bound into every program's scope unconditionally, so code mode *is* the condition.
-    can_close_views: bool,
+    /// The [program language](GgProgramLanguage) whose view-closing call this agent has, or `None`
+    /// when it is not in [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) mode at all. Read off the
+    /// capability rather than the registry because `view` is not a tool: it is bound into every
+    /// program's scope unconditionally, so code mode *is* the condition.
+    close_views: Option<GgProgramLanguage>,
     /// Whether this agent actually has `archive_thread`. This is also what arms the per-result
     /// [turn headers](ContextModel::turn_header): the header exists to give an archival its turn
     /// numbers, so an agent that cannot archive should not be paying for one on every result.
@@ -8072,18 +8164,23 @@ struct AmcSetup {
 impl AmcSetup {
     /// Resolve the capability for `profile` against the toolset it was actually given, binding the
     /// shared `archive`.
+    /// `code_language` is the agent's already-resolved [program language](CodeSetup::language),
+    /// threaded in rather than resolved a second time from the same profile: the language is the
+    /// axis a cross-language study slices on, so every consumer must read the one value the run
+    /// recorded, not its own re-derivation of it.
     fn resolve(
         profile: &GgAgentConfig,
         registry: &ToolRegistry,
         archive: Arc<Mutex<ArchiveStore>>,
         archive_id: String,
+        code_language: Option<GgProgramLanguage>,
     ) -> Self {
         Self {
             enabled: profile.is_enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
             archive,
             archive_id,
             can_evict: registry.offers(EVICT_FILE_VIEW_TOOL),
-            can_close_views: profile.is_enabled(CAPABILITY_RESPONSES_AS_CODE),
+            close_views: code_language,
             can_archive: registry.offers(ARCHIVE_THREAD_TOOL),
             top_file_views: profile
                 .capability(CAPABILITY_AGENT_MANAGED_CONTEXT)
@@ -8097,7 +8194,7 @@ impl AmcSetup {
     fn signal_options(&self) -> UsageSignalOptions {
         UsageSignalOptions {
             can_evict: self.can_evict,
-            can_close_views: self.can_close_views,
+            close_views: self.close_views,
             can_archive: self.can_archive,
             top_file_views: self.top_file_views,
         }
@@ -8151,6 +8248,14 @@ struct CodeSetup {
     /// Whether the capability is on. When off, nothing in [`crate::sandbox`] or
     /// [`crate::healing`] is reachable at all and the loop drives ordinary tool calling.
     enabled: bool,
+    /// The [language](GgProgramLanguage) this agent writes its programs in — which decides how a
+    /// reply is prepared, which committed guest evaluates it, and how the SDK the prompt describes
+    /// spells its functions.
+    ///
+    /// Per-agent, like everything else here: responses-as-code is a per-agent capability, so one
+    /// run may drive its root in one language and a reviewer in another. Meaningless — and never
+    /// read — when [`enabled`](Self::enabled) is false.
+    language: GgProgramLanguage,
     /// The execution timeout and linear-memory cap one program runs under, resolved from the
     /// capability's `timeoutSecs` / `maxMemoryBytes` params with their defaults.
     limits: SandboxLimits,
@@ -8821,8 +8926,14 @@ struct PromptInputs<'a> {
     vision: &'a VisionContext,
     /// Whether `speculate` is available this run.
     speculative: bool,
-    /// Whether the run responds with programs rather than native tool calls.
-    responses_as_code: bool,
+    /// The [language](GgProgramLanguage) this agent writes its programs in, or `None` when it
+    /// answers with native tool calls instead.
+    ///
+    /// One field rather than a flag beside a language, because the prompt needs both facts and they
+    /// are the same fact: an agent writes programs exactly when it has a program language, and the
+    /// language decides *which* responses-as-code template renders and how the calls in it are
+    /// spelled.
+    program_language: Option<GgProgramLanguage>,
     /// Whether this agent keeps a [program library](crate::programs) — the `programs` object, and
     /// the section that teaches a model to fetch a program it already ran instead of writing it
     /// again. Read from the same value that binds the object, so the prompt cannot describe a
@@ -8890,10 +9001,15 @@ struct PromptInputs<'a> {
 /// the guest actually binds.
 ///
 /// Each function carries the gg tool that gates it — `None` for the calls no tool backs — because
-/// that name, not the JavaScript one, is what a program's calls are recorded under. Every object
+/// that name, not the language's spelling of it, is what a program's calls are recorded under. Every object
 /// ends with [`list`](crate::docs::LIST_FUNCTION), which is bound but not catalogued — see the note
 /// at the tail of the function.
-fn api_surface(registry: &ToolRegistry, role: EndingRole, library: bool) -> Vec<GgAgentApi> {
+fn api_surface(
+    registry: &ToolRegistry,
+    role: EndingRole,
+    library: bool,
+    program_language: GgProgramLanguage,
+) -> Vec<GgAgentApi> {
     const OBJECTS: &[(&str, &str)] = &[
         ("fs", "read, write, and edit workspace files"),
         ("system", "run shell commands in the workspace"),
@@ -8931,7 +9047,8 @@ fn api_surface(registry: &ToolRegistry, role: EndingRole, library: bool) -> Vec<
     // Grouped by object rather than filtered per object, so the catalogue is walked once and the
     // gating predicate is written once.
     let mut bound: BTreeMap<&'static str, Vec<GgAgentApiFunction>> = BTreeMap::new();
-    for function in crate::sandbox::catalogue_functions() {
+    for function in crate::sandbox::catalogue_functions(crate::sandbox::language(program_language))
+    {
         let is_bound = if function.library {
             library
         } else {
@@ -8981,8 +9098,13 @@ fn api_surface(registry: &ToolRegistry, role: EndingRole, library: bool) -> Vec<
 /// with `object.list()` and `view.openDocsView()`.
 ///
 /// A projection of [`api_surface`], which owns the objects, the prose and the binding rule.
-fn api_views(registry: &ToolRegistry, role: EndingRole, library: bool) -> Vec<ApiView> {
-    api_surface(registry, role, library)
+fn api_views(
+    registry: &ToolRegistry,
+    role: EndingRole,
+    library: bool,
+    program_language: GgProgramLanguage,
+) -> Vec<ApiView> {
+    api_surface(registry, role, library, program_language)
         .into_iter()
         .map(|api| ApiView {
             object: api.object,
@@ -9016,11 +9138,22 @@ fn execution_mode(code_enabled: bool) -> &'static str {
 /// the *gating*. A gate that is off drops its heading entirely — the model is never told about a
 /// message kind this run cannot produce, matching every other section's ablation behaviour.
 fn code_heading_views(
+    language: GgProgramLanguage,
     memories: bool,
     tasks: bool,
     board: bool,
     files: bool,
 ) -> Vec<CodeHeadingView> {
+    // The one call these descriptions quote, spelled the way *this* run's language spells it. Read
+    // from the language's catalogue rather than written into the sentence below, because a
+    // description authored here is rendered into every language's template — the `.hbs` files carry
+    // the `{{#each codeHeadings}}` loop, not the words — so a spelling frozen here would reach a
+    // model that does not bind it.
+    let text_view = format!(
+        "a value you showed yourself with `{}`; the view's label follows the heading, as \
+         `View: changed-files`",
+        crate::sandbox::spell(crate::sandbox::language(language), sandbox::OPEN_TEXT)
+    );
     // (source, one-line description, whether this run can produce it). The heading word itself comes
     // from `code_heading(source)`, the single source of truth both this list and the prefix share.
     let rows: &[(GgContextSource, &str, bool)] = &[
@@ -9079,8 +9212,7 @@ fn code_heading_views(
         ),
         (
             GgContextSource::TextView,
-            "a value you showed yourself with `view.openText`; the view's label follows the \
-             heading, as `View: changed-files`",
+            &text_view,
             // Ungated, unlike every other row: the `view` object is bound whatever the capability
             // set says, so any code run can produce this message kind.
             true,
@@ -9134,7 +9266,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         shell_offload,
         vision,
         speculative,
-        responses_as_code,
+        program_language,
         program_library,
         autoload_specs,
         persistence,
@@ -9143,6 +9275,10 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         assigned_issue,
         fences_are_stripped,
     } = inputs;
+    // Every section below asks only "is this the code arm?"; exactly one place — the template
+    // choice, and the spellings inside it — needs to know which language, so the flag is derived
+    // here rather than carried alongside the language it would have to agree with.
+    let responses_as_code = program_language.is_some();
 
     // This agent's roster, split by what each entry may be used **for**. The three lists are
     // independent of one another and of the delegation capability: an agent with no `spawn_subagent`
@@ -9196,8 +9332,9 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
     // protocol; each remaining heading is listed exactly when the capability that produces its message
     // kind is on, so the prompt describes only what this run can actually show — the same ablation
     // discipline every other section follows.
-    let code_headings = if responses_as_code {
+    let code_headings = if let Some(language) = program_language {
         code_heading_views(
+            language,
             describes(memories),
             describes(tasks),
             // Gated on this agent's own capability, exactly as the board section below is: an agent
@@ -9215,12 +9352,14 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
     prompts::render_system(
         &SystemContext {
             responses_as_code,
+            // Which language's responses-as-code template renders, and therefore which spellings
+            // every quoted call in it carries. `None` selects the tool-calling arm.
+            language: program_language,
             // The API objects the model can inspect — only under responses-as-code, where a program
             // reaches them by name; the tool-calling path puts the tools in the request instead.
-            apis: if responses_as_code {
-                api_views(registry, ending_role, program_library)
-            } else {
-                Vec::new()
+            apis: match program_language {
+                Some(language) => api_views(registry, ending_role, program_library, language),
+                None => Vec::new(),
             },
             // On → the section that teaches a model to fetch a program it already ran and hand back
             // a patched copy instead of writing the whole thing again. Gated on the capability alone
@@ -9300,7 +9439,7 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             persistence,
             // How this agent ends its session — its role's calls, named the way this execution mode
             // writes them.
-            ending: ending_view(ending_role, responses_as_code),
+            ending: ending_view(ending_role, program_language),
         },
         // A profile may override the whole prompt template; `None` uses the built-in one.
         profile.system_prompt_template.as_deref(),
@@ -9308,29 +9447,30 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
 }
 
 /// How this agent's ending section reads: which [role](EndingRole) it was dispatched in, and that
-/// role's calls named the way `responses_as_code` writes them.
+/// role's calls named the way this agent's protocol writes them.
 ///
 /// All four names are filled whatever the role. The templates render in strict mode, where a missing
 /// variable is a render error, and three unread strings cost nothing against a prompt that fails.
-fn ending_view(role: EndingRole, responses_as_code: bool) -> EndingView {
-    // The grouped, object-qualified form a program writes, or the bare tool name a tool-calling
-    // model requests. Taken from the signature catalogue's own object names, so the prompt and the
-    // scope the guest builds cannot disagree about what a call is spelled.
-    let call = |object: &str, code_name: &str, tool_name: &str| {
-        if responses_as_code {
-            format!("{object}.{code_name}")
-        } else {
-            tool_name.to_string()
-        }
+///
+/// The **grouped, object-qualified** spellings a program writes are resolved from the run's
+/// [program language](crate::sandbox::spell)'s own catalogue rather than written here: how a
+/// language's SDK spells `requestChanges` is that language's business, and gg quoting a spelling of
+/// its own would be gg telling a model to make a call the language does not bind. The bare tool
+/// names on the tool-calling path are gg's own, in every language, because there is no language.
+fn ending_view(role: EndingRole, program_language: Option<GgProgramLanguage>) -> EndingView {
+    let language = program_language.map(crate::sandbox::language);
+    let call = |surface: sandbox::SurfaceCall, tool_name: &str| match language {
+        Some(language) => crate::sandbox::spell(language, surface),
+        None => tool_name.to_string(),
     };
     EndingView {
         standard: matches!(role, EndingRole::Standard),
         review: matches!(role, EndingRole::Review),
         judge: matches!(role, EndingRole::Judge { .. }),
-        finish: call("harness", "finish", completion::FINISH_TOOL),
-        approve: call("review", "approve", completion::APPROVE_TOOL),
-        request_changes: call("review", "requestChanges", completion::REQUEST_CHANGES_TOOL),
-        select_winner: call("judge", "selectWinner", completion::SELECT_WINNER_TOOL),
+        finish: call(sandbox::FINISH, completion::FINISH_TOOL),
+        approve: call(sandbox::APPROVE, completion::APPROVE_TOOL),
+        request_changes: call(sandbox::REQUEST_CHANGES, completion::REQUEST_CHANGES_TOOL),
+        select_winner: call(sandbox::SELECT_WINNER, completion::SELECT_WINNER_TOOL),
     }
 }
 
@@ -9350,9 +9490,9 @@ fn ending_view(role: EndingRole, responses_as_code: bool) -> EndingView {
 ///   the file's contents as a [`FileView`](GgContextSource::FileView) `tool` result. The
 ///   [call id](READ_FILE_TOOL) pairs them, so the opening conversation is well-formed exactly as a
 ///   real read would be.
-/// - **Responses as code**: one synthesized **program** that calls `view.openFile` once per file,
+/// - **Responses as code**: one synthesized **program** that opens a file view once per file,
 ///   followed by the file views it opened. There are no tools on this path — a program is the only
-///   shape an assistant turn takes, `view.openFile` is the only way a file enters the window, and
+///   shape an assistant turn takes, a file view is the only way a file enters the window, and
 ///   a synthesized `tool_use` naming `read_file` would be a call to a function the model cannot
 ///   make, quoting an id its own assistant messages never carry. The reads still go through the
 ///   real [`ReadFileTool`], so what the model sees under the synthesized call is what that call
@@ -9375,6 +9515,7 @@ async fn autoload_specifications(
     context: &mut ContextModel,
     provided_files: &[PathBuf],
     tool_ctx: &ToolContext,
+    language: GgProgramLanguage,
     locked: bool,
     emitter: &Emitter,
 ) {
@@ -9411,7 +9552,10 @@ async fn autoload_specifications(
 
     if context.code_mode() {
         context.push_assistant(
-            Some(open_file_program(seeded.iter().map(|(rel, _)| rel))),
+            Some(open_file_program(
+                language,
+                seeded.iter().map(|(rel, _)| rel),
+            )),
             Vec::new(),
         );
         for (rel, outcome) in seeded {
@@ -9444,15 +9588,20 @@ async fn autoload_specifications(
 }
 
 /// The program gg synthesizes to open `paths` on a [code-mode](ContextModel::code_mode) agent's
-/// behalf — one `view.openFile` per path, in seeding order, and nothing else.
+/// behalf — one file-view statement per path, in seeding order, and nothing else.
 ///
-/// It is deliberately the plainest program that does the job: no `const`, no loop, no logging. It
-/// is read by the model as an example of its own output, so anything clever in it is a style the
-/// run did not intend to teach. Paths are rendered through [`serde_json`] so a quote or a backslash
-/// in one cannot produce a program that would not parse.
-fn open_file_program<'a>(paths: impl Iterator<Item = &'a String>) -> String {
+/// Every statement is written by the agent's own
+/// [program language](crate::sandbox::ProgramLanguage::open_file_statement) rather than spelled out
+/// here: this program is pushed into the transcript as an assistant turn, and the model reads its own
+/// transcript as the example of what a well-formed turn looks like, so a statement in some other
+/// language's syntax would teach it the wrong protocol on turn one.
+fn open_file_program<'a>(
+    language: GgProgramLanguage,
+    paths: impl Iterator<Item = &'a String>,
+) -> String {
+    let language = crate::sandbox::language(language);
     paths
-        .map(|path| format!("view.openFile({});", Value::String(path.clone())))
+        .map(|path| language.open_file_statement(path, None))
         .collect::<Vec<_>>()
         .join("\n")
 }

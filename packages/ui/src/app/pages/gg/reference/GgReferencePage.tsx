@@ -1,3 +1,4 @@
+import type { GgProgramLanguage } from "@test-cabinet/run-record/gg";
 import { NavLink } from "react-router";
 import { PageLayout } from "../../../components/PageLayout";
 import { PromptHeader } from "../../../components/PromptHeader";
@@ -8,6 +9,16 @@ import { GgReferenceApiTab } from "./GgReferenceApiTab";
 import { GgReferenceToolsTab } from "./GgReferenceToolsTab";
 import styles from "./GgReference.module.scss";
 import exec from "../../runs/RunExec.module.scss";
+
+/**
+ * How each [program language](GgProgramLanguage) is named to a reader.
+ *
+ * A `Record` over the union rather than a lookup with a fallback, so a language gg registers
+ * without naming it here is a TypeScript error rather than a page that shows a wire id.
+ */
+const PROGRAM_LANGUAGE_NAMES: Record<GgProgramLanguage, string> = {
+  typescript: "TypeScript",
+};
 
 // The Reference surface: the header, the sentence saying where the document came from, the
 // tab bar, the three states that are not a document, and whichever tab's body is asked for.
@@ -61,7 +72,14 @@ export function GgReferencePage({ tab }: GgReferencePageProps) {
           <>
             {" "}
             Projected from gg{" "}
-            <span className={styles.version}>{data.ggVersion}</span>.
+            <span className={styles.version}>{data.ggVersion}</span>, with the
+            API signatures spelled in{" "}
+            <span className={styles.version}>
+              {PROGRAM_LANGUAGE_NAMES[data.language] ?? data.language}
+            </span>{" "}
+            — gg&apos;s default program language. A run configured to another
+            language offers the same functions under that language&apos;s own
+            spellings.
           </>
         )}
       </p>

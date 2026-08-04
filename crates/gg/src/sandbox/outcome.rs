@@ -15,7 +15,7 @@
 use std::time::Duration;
 
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened};
-use super::transpile::{TranspileError, UnreachableTail};
+use super::language::{PrepareError, UnreachableTail};
 use crate::ending::Ending;
 
 /// Everything one program produced — its effects, its exhaust, and how it ended.
@@ -128,7 +128,7 @@ pub struct SandboxOutcome {
     /// keeps a reply whose second half never executed from being reported as an unqualified
     /// success. See [`UnreachableTail`].
     ///
-    /// `None` for a program that never reached the type-strip, because a program that did not
+    /// `None` for a program its language could not prepare, because a program that did not
     /// compile has no statements at all.
     pub unreachable: Option<UnreachableTail>,
     /// How long this program spent obtaining the compiled interpreter component, when it was the
@@ -239,11 +239,12 @@ pub enum ProgramErrorKind {
 /// can write its way out of.
 #[derive(Debug, thiserror::Error)]
 pub enum SandboxError {
-    /// The program is not valid TypeScript, or used a module feature the sandbox has no
-    /// implementation of. **The model's to fix**, and the only variant that costs no engine work at
-    /// all: it is detected before the component is touched, so nothing ran and no call landed.
+    /// The program is not valid source in the run's [program language](super::ProgramLanguage), or
+    /// used a feature the sandbox has no implementation of. **The model's to fix**, and the only
+    /// variant that costs no engine work at all: it is detected before the component is touched, so
+    /// nothing ran and no call landed.
     #[error("the program did not compile: {0}")]
-    Transpile(#[from] TranspileError),
+    Prepare(#[from] PrepareError),
     /// The wasm engine could not be configured or linked.
     ///
     /// Its one producer is unreachable in this build and is kept because the failure it reports is a

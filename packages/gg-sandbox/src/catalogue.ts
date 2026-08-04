@@ -10,8 +10,8 @@
  *    *committed artifact* still covers every tool gg offers. That is the one drift check that
  *    catches a stale `.wasm` rather than a stale source file.
  * 3. **`tools/signatures.mjs`**, which reflects each entry's declaration and JSDoc out of the
- *    emitted `.d.ts` into `crates/gg/src/sandbox/signatures.json` — the catalogue gg renders the
- *    system prompt from.
+ *    emitted `.d.ts` into `crates/gg/src/sandbox/guests/typescript.signatures.json` — the catalogue
+ *    gg renders the system prompt from for *this* language.
  *
  * It holds one entry per name in `ALL_TOOL_NAMES` (`crates/gg/src/tools/mod.rs`) — there is no
  * class of gg tool a program is denied — and gg asserts exactly that:
@@ -24,7 +24,20 @@
  * material into the agent's own **context window** ({@link VIEW_ENTRIES}) and the ones that reach
  * back into the **program library** ({@link PROGRAM_ENTRIES}) are deliberately in none of these
  * arrays. None of them is a gg tool, and cataloguing them as ones would break the very bijection
- * consumer 2 exists to check.
+ * consumer 2 exists to check. What they carry instead is a `key`.
+ *
+ * ## `key`: identity, as against spelling
+ *
+ * A gg tool carries its own identity — `tool` is its name in `ALL_TOOL_NAMES`, and every language's
+ * guest catalogues the same set of them. The model-facing functions that are **not** gg tools have
+ * no such name, so each of them carries a `key` instead: a stable, language-independent identity
+ * that a sibling guest for another language uses for the same function, however that language
+ * spells it. `requestChanges` and `request_changes` are one function under two spellings, and `key`
+ * is what says so — which is what lets gg assert that two registered languages offer the *same*
+ * surface and differ only in how a program writes it.
+ *
+ * The keys are `snake_case` because they are gg's own vocabulary, the casing its tool names, its
+ * capability ids and its telemetry values already use — deliberately not any one SDK's spelling.
  */
 
 /** One tool: gg's name for it, this SDK's function name, and the module that exports it. */
@@ -81,6 +94,8 @@ export const OBJECT_FOR_MODULE: Readonly<Record<string, string>> = {
  * it is built on is enabled.
  */
 export interface HelperEntry {
+  /** This helper's language-independent identity, as every guest catalogues it. */
+  key: string;
   /** The exported function name a program calls. */
   js: string;
   /** The gg tool it is built on; the helper is bound only when that tool is enabled. */
@@ -136,7 +151,7 @@ export const TOOL_CATALOGUE: readonly CatalogueEntry[] = [
  * library" might add is another name in the prompt and another thing for a model to get wrong.
  */
 export const HELPER_CATALOGUE: readonly HelperEntry[] = [
-  { js: "readTextFile", requires: "read_file" },
+  { key: "read_text_file", js: "readTextFile", requires: "read_file" },
 ];
 
 /**
@@ -151,6 +166,8 @@ export type EndingKind = "standard" | "review" | "judge" | "none";
 
 /** One model-facing ending function: what it is called, where it is grouped, and which role has it. */
 export interface SessionEntry {
+  /** This ending's language-independent identity, as every guest catalogues it. */
+  key: string;
   /** The exported function name a program calls. */
   js: string;
   /** The API object it is grouped under in a program's scope. */
@@ -177,10 +194,10 @@ export interface SessionEntry {
  * so the prompt can teach a model the ending it is actually held to.
  */
 export const SESSION_ENTRIES: readonly SessionEntry[] = [
-  { js: "finish", object: "harness", ending: "standard" },
-  { js: "approve", object: "review", ending: "review" },
-  { js: "requestChanges", object: "review", ending: "review" },
-  { js: "selectWinner", object: "judge", ending: "judge" },
+  { key: "finish", js: "finish", object: "harness", ending: "standard" },
+  { key: "approve", js: "approve", object: "review", ending: "review" },
+  { key: "request_changes", js: "requestChanges", object: "review", ending: "review" },
+  { key: "select_winner", js: "selectWinner", object: "judge", ending: "judge" },
 ];
 
 /** The module every {@link SESSION_ENTRIES} function is exported by. */
@@ -188,6 +205,8 @@ export const SESSION_MODULE = "session";
 
 /** One model-facing view function: what it is called, and the gg tool (if any) that gates it. */
 export interface ViewEntry {
+  /** This view function's language-independent identity, as every guest catalogues it. */
+  key: string;
   /** The exported function name a program calls. */
   js: string;
   /**
@@ -220,11 +239,11 @@ export interface ViewEntry {
  * the prompt and `fn.docs()` describe the surface the component really exports.
  */
 export const VIEW_ENTRIES: readonly ViewEntry[] = [
-  { js: "openFile", requires: "read_file" },
-  { js: "openText" },
-  { js: "openDocsView" },
-  { js: "close" },
-  { js: "current" },
+  { key: "open_file", js: "openFile", requires: "read_file" },
+  { key: "open_text", js: "openText" },
+  { key: "open_docs_view", js: "openDocsView" },
+  { key: "close", js: "close" },
+  { key: "current", js: "current" },
 ];
 
 /** The module every {@link VIEW_ENTRIES} function is exported by. */
@@ -238,7 +257,7 @@ export const VIEW_MODULE = "views";
  * {@link VIEW_ENTRIES} are: they have no gg tool names, so cataloguing them as tools would break the
  * `boundTools() == ALL_TOOL_NAMES` bijection the committed component is checked against.
  *
- * They are a plain list of names rather than gated entries because the whole object is bound or
+ * They carry no gate at all, unlike {@link VIEW_ENTRIES}, because the whole object is bound or
  * absent together, from the `library` flag the host passes to {@link "./shim.js".run}: a *capability*
  * decides this family, and no tool name stands for it.
  */
@@ -246,6 +265,25 @@ export const PROGRAM_ENTRIES: readonly string[] = ["history", "get", "rerun"];
 
 /** The module every {@link PROGRAM_ENTRIES} function is exported by. */
 export const PROGRAM_MODULE = "programs";
+
+/**
+ * Each {@link PROGRAM_ENTRIES} function's language-independent `key`, by the name this SDK calls it.
+ *
+ * A **side table** rather than a property on the entries, unlike {@link SESSION_ENTRIES},
+ * {@link VIEW_ENTRIES} and {@link HELPER_CATALOGUE}, and the reason is mechanical rather than
+ * aesthetic. {@link "./shim.js".run} iterates `PROGRAM_ENTRIES` to bind the object, and the shim is
+ * compiled into the **committed** `typescript.component.wasm`. Adding a property to entries the shim
+ * only reads by name costs nothing; changing the *shape* of what it iterates would leave the
+ * committed binary unreproducible from its own sources until someone hand-ran `build.sh`. Nothing
+ * gates that, so the catalogue's own metadata stays out of the shim's way.
+ *
+ * Read only by `tools/signatures.mjs`.
+ */
+export const PROGRAM_KEYS: Readonly<Record<string, string>> = {
+  history: "history",
+  get: "get",
+  rerun: "rerun",
+};
 
 /**
  * The scope object a program reaches its loaded **code modules** through: the code of a skill or a

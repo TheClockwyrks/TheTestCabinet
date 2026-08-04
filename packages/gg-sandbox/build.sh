@@ -2,8 +2,13 @@
 #
 # Refresh the two COMMITTED artifacts this package produces:
 #
-#   crates/gg/src/sandbox/gg-sandbox.component.wasm   the baked interpreter component
-#   crates/gg/src/sandbox/signatures.json             the signature catalogue the prompt is built from
+#   crates/gg/src/sandbox/guests/typescript.component.wasm   the baked interpreter component
+#   crates/gg/src/sandbox/guests/typescript.signatures.json  the catalogue the prompt is built from
+#
+# They are named for the PROGRAM LANGUAGE this guest implements, not for this package. gg's
+# responses-as-code capability registers a language per guest, and each one commits its pair under
+# `crates/gg/src/sandbox/guests/<language-id>.*` — so a second guest, for a second language, is a
+# sibling directory with its own build script writing its own pair, and touches nothing here.
 #
 # Both are checked in, exactly as the `foray-ref-*` guests are, so no build or CI step ever needs
 # `componentize-js`: the Rust host `include_bytes!`s the component and `include_str!`s the catalogue.
@@ -31,8 +36,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 PACKAGE="packages/gg-sandbox"
-DEST_DIR="crates/gg/src/sandbox"
-COMPONENT="$DEST_DIR/gg-sandbox.component.wasm"
+DEST_DIR="crates/gg/src/sandbox/guests"
+COMPONENT="$DEST_DIR/typescript.component.wasm"
 
 # The `componentize-js` release the committed artifact is built with. Pinned rather than floating:
 # the component is a binary in the repository, so a silent toolchain bump would land as an
@@ -69,7 +74,9 @@ npx --yes "@bytecodealliance/componentize-js@$COMPONENTIZE_VERSION" \
 	-o "$ROOT/$COMPONENT"
 
 # 3. Reflect the signature catalogue out of the SDK's own emitted declarations, so the system prompt
-#    quotes the signatures the component actually exports.
+#    quotes the signatures the component actually exports. It writes
+#    `$DEST_DIR/typescript.signatures.json`; the path lives in this package's `signatures` npm
+#    script, because CI runs that script on its own as the catalogue's drift gate.
 echo "Reflecting the signature catalogue ..."
 npm run --workspace @test-cabinet/gg-sandbox signatures
 

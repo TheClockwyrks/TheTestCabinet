@@ -8,9 +8,9 @@
 //!
 //! # The rewrite, and why it is textual
 //!
-//! [`transpile_module`] parses the source **as a module** (so `export` is legal), collects the names
+//! [`prepare_module`] parses the source **as a module** (so `export` is legal), collects the names
 //! it exports, blanks the `export` keywords **with spaces**, and hands the result to the ordinary
-//! [program pipeline](super::transpile_ts). Then it appends one generated line:
+//! [program pipeline](super::prepare_program). Then it appends one generated line:
 //!
 //! ```js
 //! return { parseCsv, toRows };
@@ -47,9 +47,10 @@ use oxc::ast::ast::{
 use oxc::parser::{Parser, ParserReturn};
 use oxc::span::{GetSpan, SourceType};
 
+use crate::sandbox::language::{PrepareError, PreparedModule};
+
 use super::{
-    MAX_NESTING_DEPTH, TranspileError, located, nesting_depth, on_a_deep_stack,
-    over_nested_message, strip_types,
+    MAX_NESTING_DEPTH, located, nesting_depth, on_a_deep_stack, over_nested_message, strip_types,
 };
 
 /// The guidance for module syntax a code module cannot use either — `import`, `export … from`,
@@ -74,32 +75,17 @@ const DYNAMIC_IMPORT_MESSAGE: &str = "This code module used a dynamic `import()`
 const TOP_LEVEL_AWAIT_MESSAGE: &str = "This code module used top-level `await`. The sandbox is synchronous: every gg function returns \
      its value directly. Remove `await` (and any `async`).";
 
-/// A transpiled code module: the JavaScript the guest evaluates, and the names its generated
-/// epilogue hands back.
-///
-/// The names travel beside the source rather than being read back out of it, because they are what
-/// the model is *told* it can call — and a second reading of the same fact is a second chance for
-/// the two to disagree.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TranspiledModule {
-    /// The function body, ending in `return { … };`.
-    pub js: String,
-    /// The exported names, in source order, as the namespace lists them. A renaming export
-    /// (`export { rows as toRows }`) is listed under the name the namespace gives it.
-    pub exports: Vec<String>,
-}
-
-/// Transpile a code module into the function body the guest evaluates: type-stripped JavaScript
+/// Prepare a code module into the function body the guest evaluates: type-stripped JavaScript
 /// ending in the `return { … }` that makes its exports the value of evaluating it.
 ///
 /// The nesting guard runs first and on the **original** source, exactly as it does for a program: a
 /// module is untrusted input whoever wrote it, and the parser below it recurses without a depth
-/// guard. Length is not guarded, here either — a module of any size is transpiled, on a stack sized
+/// guard. Length is not guarded, here either — a module of any size is prepared, on a stack sized
 /// for it.
-pub fn transpile_module(src: &str) -> Result<TranspiledModule, TranspileError> {
+pub fn prepare_module(src: &str) -> Result<PreparedModule, PrepareError> {
     let deepest = nesting_depth(src);
     if deepest > MAX_NESTING_DEPTH {
-        return Err(TranspileError::Unsupported(over_nested_message(deepest)));
+        return Err(PrepareError::Unsupported(over_nested_message(deepest)));
     }
 
     // One trip to the deep stack for both parses: the plan's and the strip's. They recurse to the
@@ -109,10 +95,11 @@ pub fn transpile_module(src: &str) -> Result<TranspiledModule, TranspileError> {
     on_a_deep_stack(src, || {
         let plan = plan_module(src)?;
         let stripped = strip_types(&plan.blanked)?;
-        // The generated `return` is gg's, not the author's, so `Transpiled::unreachable` — which is
-        // about a model pasting a second draft after its own `return` — is simply dropped here.
-        Ok(TranspiledModule {
-            js: format!("{}{}", stripped.js, plan.epilogue()),
+        // The generated `return` is gg's, not the author's, so `PreparedProgram::unreachable` —
+        // which is about a model pasting a second draft after its own `return` — is simply dropped
+        // here.
+        Ok(PreparedModule {
+            source: format!("{}{}", stripped.source, plan.epilogue()),
             exports: plan.names(),
         })
     })
@@ -144,7 +131,7 @@ impl ModulePlan {
             .collect()
     }
 
-    /// The generated `return { … };` appended to the transpiled body.
+    /// The generated `return { … };` appended to the type-stripped body.
     ///
     /// A module that exports nothing at all still returns an object rather than `undefined`: the
     /// guest binds whatever comes back, and an empty namespace is a truthful answer where `undefined`
@@ -155,17 +142,17 @@ impl ModulePlan {
 }
 
 /// Parse `src` as a module, refuse what a module may not do, and work out both halves of the plan.
-fn plan_module(src: &str) -> Result<ModulePlan, TranspileError> {
+fn plan_module(src: &str) -> Result<ModulePlan, PrepareError> {
     let allocator = Allocator::default();
     // Parsed as a module — no `allow_return_outside_function` — because `export` is the whole point
     // and a top-level `return` in a file that is about to be given a generated one is a mistake
     // worth the parser's own "Illegal return statement".
     let parsed = Parser::new(&allocator, src, SourceType::ts()).parse();
     if !parsed.diagnostics.is_empty() {
-        return Err(TranspileError::Parse(located(src, &parsed.diagnostics)));
+        return Err(PrepareError::Syntax(located(src, &parsed.diagnostics)));
     }
     if let Some(unsupported) = unsupported_in_module(&parsed) {
-        return Err(TranspileError::Unsupported(unsupported));
+        return Err(PrepareError::Unsupported(unsupported));
     }
 
     let mut blanks: Vec<(usize, usize)> = Vec::new();
@@ -366,5 +353,5 @@ fn statement_awaits(statement: &Statement<'_>) -> bool {
 }
 
 #[cfg(test)]
-#[path = "transpile.modules.test.rs"]
+#[path = "typescript.modules.test.rs"]
 mod tests;

@@ -23,7 +23,13 @@ tool that is renamed is renamed in the one place its name appears.
 
 ## Reading it in the console
 
-The console serves it at **gg → Reference**, in two tabs — **Tools** and **API**. Both are
+The console serves it at **gg → Reference**, in two tabs — **Tools** and **API**. The page's
+intro names the [program language](/gg/program-languages/) the API signatures are spelled in,
+beside the gg version they were projected from — gg's **default** language, which is the arm a
+run that configures none is held to. It says so because a signature *is* a spelling: a run
+configured to another language offers exactly these functions, on exactly these objects, under
+that language's own names, and a reader comparing two arms of a cross-language study has to be
+able to tell which surface is on screen. Both tabs are
 ordered by the eleven families gg divides its surface into (`Filesystem`, `Shell`,
 `Project management`, `Tasks`, `Memories`, `Skills`, `Context`, `Delegation`, `Views`,
 `Program library`, `Ending the session`), in the order the system prompt's own API table
@@ -101,8 +107,8 @@ is either compiled into the binary or a committed artifact beside it.
 It exists as a subcommand rather than as something the backend computes because the
 backend **cannot depend on the gg crate** — that crate pulls `wasmtime`, `oxc` and
 `tiktoken-rs`, and the backend is built portable and static under musl. So the reference
-takes the generate-and-commit path `crates/gg/src/sandbox/signatures.json` and the
-run-record contract already take:
+takes the generate-and-commit path `crates/gg/src/sandbox/guests/typescript.signatures.json`
+and the run-record contract already take:
 
 ```text
 gg reference                    → the contract, as JSON

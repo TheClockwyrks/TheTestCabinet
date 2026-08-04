@@ -570,7 +570,7 @@ export type GgAgentApi = {
  * [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call, and what gates it.
  *
  * The load-bearing field is [`tool`](Self::tool): a code program's calls are recorded under the gg
- * **tool** they run through, not under their JavaScript name, so it is the join key between a
+ * **tool** they run through, not under the name a program spells them with, so it is the join key between a
  * bound function and how many times this agent actually called it. A function with no tool behind
  * it — a view call, an ending call, a program-library call — has none, and a consumer reports it
  * as bound rather than as bound-and-never-called.
@@ -1624,6 +1624,25 @@ export type GgHealingStrategy =
   | "unwrap-async";
 
 /**
+ * The language a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program is written in — the
+ * axis a cross-language study compares its arms on.
+ *
+ * gg's sandbox is a **wasm component per language**: each language ships a hand-written, idiomatic
+ * SDK that binds the same typed WIT surface, so what differs between two arms of a study is the
+ * *spelling* of a call, never which calls exist. Which language an agent writes in is therefore a
+ * configuration knob like every other lever the harness measures, rather than a property of gg.
+ *
+ * The wire values are the language ids, spelled exactly as the
+ * [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `language` param is written
+ * (`{"language": "typescript"}`), because the id is one thing: a config key, a telemetry value,
+ * and the stem of the language's committed guest artifacts. Lower-case rather than this module's
+ * usual camelCase for exactly that reason — camelCase of `TypeScript` is `typeScript`, which is
+ * not a spelling anybody would put in a configuration file. [`GgHealingStrategy`] departs from the
+ * module default on the same grounds.
+ */
+export type GgProgramLanguage = "typescript";
+
+/**
  * What gg had to do to a model's response before it could run it — the healing record of one
  * code-shaped turn.
  *
@@ -1971,6 +1990,17 @@ export type GgSessionSummary = {
    * not derived from the telemetry stream.
    */
   executionMode: string;
+  /**
+   * The [language](GgProgramLanguage) the run's root agent wrote its programs in — the slice-by
+   * dimension a cross-language study compares its arms on, and the companion to
+   * [`execution_mode`](Self::execution_mode): that field says *whether* the run answered in
+   * programs, this one says what those programs were written in.
+   *
+   * `None` for a tool-calling run, which has no program language at all — as opposed to having
+   * an unknown one. Recorded once off the run's configuration, like
+   * [`effective_tools`](Self::effective_tools), rather than derived from the telemetry stream.
+   */
+  programLanguage?: GgProgramLanguage;
   /**
    * How many **code-shaped turns** the run took — one per
    * [`CodeExecution`](GgTelemetryKind::CodeExecution) event. `0` when the
@@ -2586,6 +2616,15 @@ export type GgTelemetryKind =
        */
       executionMode: string;
       /**
+       * The [language](GgProgramLanguage) this instance's programs are written in, or `None` for
+       * a tool-calling instance, which writes none.
+       *
+       * Per-agent for exactly the reason [`execution_mode`](Self::AgentSurface::execution_mode)
+       * is: responses-as-code is a per-agent capability, so one run may drive its root in one
+       * language and (once a second language is registered) a reviewer in another.
+       */
+      programLanguage?: GgProgramLanguage;
+      /**
        * Every gg tool name this instance is offered, in the order the model is shown them: the
        * registry's tools in registration order, then the ending calls its dispatched role may
        * end with (`finish`, or a reviewer's `approve`/`request_changes`, or a judge's
@@ -2863,12 +2902,13 @@ export type GgTelemetryKind =
        * Reported on every path that reached the engine, including a fault, a trap, or an
        * [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is
        * the time burned up to the stop, not the ceiling); `Some(0)` when the program never
-       * reached the engine (a type-strip failure, or a sandbox that could not be built).
+       * reached the engine (a program that would not prepare, or a sandbox that could not be
+       * built).
        */
       durationMs?: number;
       /**
        * The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault
-       * (a syntax error the type-strip rejected, or a value the program threw) or a sandbox
+       * (a syntax error the language's prepare step rejected, or a value the program threw) or a sandbox
        * failure (an execution timeout or memory exhaustion, a trap). Absent on a clean
        * execution.
        */
@@ -3579,6 +3619,15 @@ export type GgTelemetryEvent = {
        */
       executionMode: string;
       /**
+       * The [language](GgProgramLanguage) this instance's programs are written in, or `None` for
+       * a tool-calling instance, which writes none.
+       *
+       * Per-agent for exactly the reason [`execution_mode`](Self::AgentSurface::execution_mode)
+       * is: responses-as-code is a per-agent capability, so one run may drive its root in one
+       * language and (once a second language is registered) a reviewer in another.
+       */
+      programLanguage?: GgProgramLanguage;
+      /**
        * Every gg tool name this instance is offered, in the order the model is shown them: the
        * registry's tools in registration order, then the ending calls its dispatched role may
        * end with (`finish`, or a reviewer's `approve`/`request_changes`, or a judge's
@@ -3856,12 +3905,13 @@ export type GgTelemetryEvent = {
        * Reported on every path that reached the engine, including a fault, a trap, or an
        * [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is
        * the time burned up to the stop, not the ceiling); `Some(0)` when the program never
-       * reached the engine (a type-strip failure, or a sandbox that could not be built).
+       * reached the engine (a program that would not prepare, or a sandbox that could not be
+       * built).
        */
       durationMs?: number;
       /**
        * The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault
-       * (a syntax error the type-strip rejected, or a value the program threw) or a sandbox
+       * (a syntax error the language's prepare step rejected, or a value the program threw) or a sandbox
        * failure (an execution timeout or memory exhaustion, a trap). Absent on a clean
        * execution.
        */

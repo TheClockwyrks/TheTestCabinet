@@ -33,6 +33,7 @@ const READ_FILE_DESCRIPTION =
 
 const REFERENCE: GgReference = {
   ggVersion: "9.9.9",
+  language: "typescript",
   categories: [
     {
       id: "gg-filesystem",

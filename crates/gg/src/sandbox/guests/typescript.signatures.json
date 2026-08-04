@@ -1,8 +1,10 @@
 {
+  "language": "typescript",
   "generatedFrom": "packages/gg-sandbox/src",
   "session": [
     {
-      "js": "finish",
+      "key": "finish",
+      "name": "finish",
       "object": "harness",
       "ending": "standard",
       "signature": "finish(summary: string): void",
@@ -10,7 +12,8 @@
       "types": []
     },
     {
-      "js": "approve",
+      "key": "approve",
+      "name": "approve",
       "object": "review",
       "ending": "review",
       "signature": "approve(): void",
@@ -18,7 +21,8 @@
       "types": []
     },
     {
-      "js": "requestChanges",
+      "key": "request_changes",
+      "name": "requestChanges",
       "object": "review",
       "ending": "review",
       "signature": "requestChanges(items: string[]): void",
@@ -26,7 +30,8 @@
       "types": []
     },
     {
-      "js": "selectWinner",
+      "key": "select_winner",
+      "name": "selectWinner",
       "object": "judge",
       "ending": "judge",
       "signature": "selectWinner(attempt: number, rationale: string): void",
@@ -36,7 +41,8 @@
   ],
   "views": [
     {
-      "js": "openFile",
+      "key": "open_file",
+      "name": "openFile",
       "object": "view",
       "requires": "read_file",
       "signature": "openFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
@@ -46,7 +52,8 @@
       ]
     },
     {
-      "js": "openText",
+      "key": "open_text",
+      "name": "openText",
       "object": "view",
       "requires": null,
       "signature": "openText(label: string, body: string): void",
@@ -54,7 +61,8 @@
       "types": []
     },
     {
-      "js": "openDocsView",
+      "key": "open_docs_view",
+      "name": "openDocsView",
       "object": "view",
       "requires": null,
       "signature": "openDocsView(target: Function | string): void",
@@ -62,7 +70,8 @@
       "types": []
     },
     {
-      "js": "close",
+      "key": "close",
+      "name": "close",
       "object": "view",
       "requires": null,
       "signature": "close(selector: string): number",
@@ -70,7 +79,8 @@
       "types": []
     },
     {
-      "js": "current",
+      "key": "current",
+      "name": "current",
       "object": "view",
       "requires": null,
       "signature": "current(): OpenView[]",
@@ -84,7 +94,8 @@
   ],
   "programs": [
     {
-      "js": "history",
+      "key": "history",
+      "name": "history",
       "object": "programs",
       "signature": "history(): ProgramSummary[]",
       "doc": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end. It lists shapes, not sources: fetch the one you want with `programs.get(turn)`. The list survives a compaction, so it is also how you find a program whose text has left your context window.",
@@ -93,14 +104,16 @@
       ]
     },
     {
-      "js": "get",
+      "key": "get",
+      "name": "get",
       "object": "programs",
       "signature": "get(turn?: number): string",
       "doc": "The exact source of one program you ran, as a string. With no argument, your most recent one. This is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work (`replace`, `replaceAll`, a template literal), and hand the result to `programs.rerun`. What comes back is the program that **executed** — so when a turn's program was itself handed over by `programs.rerun`, you get the program that ran, not the few lines that asked for it, and fetch-patch-run composes turn after turn. A turn that ran no program, or one old enough that the library has dropped it, throws `not-found` naming the turns that are held; `programs.history()` lists them.",
       "types": []
     },
     {
-      "js": "rerun",
+      "key": "rerun",
+      "name": "rerun",
       "object": "programs",
       "signature": "rerun(source: string): void",
       "doc": "Hand gg a program to run in place of this one. Your program finishes, then gg compiles and runs `source` as this turn's program. Use it with `programs.get` to fix a program without re-emitting it. Nothing is undone: every call your program already made stands, and the program that runs next sees the world your program left behind — so hand over BEFORE doing work you do not want done twice. The first call stands; a second throws `refused`, because a silently replaced program is a change you cannot see. A blank source is `invalid-argument`. If your program then throws, the hand-over is cancelled along with everything else the failed program decided, and you get an ordinary error turn instead. Chains are bounded: hand over once per turn, and write the fixed program to do the work.",
@@ -110,7 +123,7 @@
   "tools": [
     {
       "tool": "shell",
-      "js": "shell",
+      "name": "shell",
       "object": "system",
       "signature": "shell(command: string, options?: { timeoutSecs?: number; }): ShellOutput",
       "doc": "Run a command with `sh -c` in the workspace directory and return its merged stdout and stderr. A non-zero exit is NOT a failure — check `exitCode` on the result; only a process that could not be launched, or one the timeout killed, throws. `timeoutSecs` defaults to 120 and is clamped to whatever is left of the run's wall-clock budget. This run may **offload** shell output — the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive` (the default), a command that **succeeded** returns no output at all, only that note; one that **failed** returns the tail. Grep the named files instead of re-running the command.",
@@ -120,7 +133,7 @@
     },
     {
       "tool": "read_file",
-      "js": "readFile",
+      "name": "readFile",
       "object": "fs",
       "signature": "readFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
       "doc": "Read a file, returning either `{ kind: \"text\", ... }` or `{ kind: \"image\", ... }` — the format is detected from the file's bytes, never its extension. `offset` and `limit` select a window of lines and are honoured only under a capped read policy. This gets bytes for your program and puts NOTHING in your context window; `view.openFile` is the call that shows the file to you. A relative path resolves against your workspace; an absolute one is read as given, so anything in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. Throws `not-found` for a missing path. Reading an IMAGE describes it to your program — label, media type, byte size — and does not show it to YOU: the pixels reach neither your program nor your context window, so a file you only `readFile` is a file you have not looked at. `view.openFile` is the one way to actually see a picture.",
@@ -130,7 +143,7 @@
     },
     {
       "tool": "write_file",
-      "js": "writeFile",
+      "name": "writeFile",
       "object": "fs",
       "signature": "writeFile(path: string, contents: string): number",
       "doc": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and return the number of bytes written. Writing is the expensive direction of the sandbox — rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a large rewrite across several turns.",
@@ -138,7 +151,7 @@
     },
     {
       "tool": "edit_file",
-      "js": "editFile",
+      "name": "editFile",
       "object": "fs",
       "signature": "editFile(path: string, oldString: string, newString: string): void",
       "doc": "Replace the one exact occurrence of `oldString` in a file with `newString`. Throws `not-found` when the text does not appear and `conflict` — with the number of matches — when it appears more than once; widen the surrounding context until the match is unique.",
@@ -146,7 +159,7 @@
     },
     {
       "tool": "list_dir",
-      "js": "listDir",
+      "name": "listDir",
       "object": "fs",
       "signature": "listDir(path?: string): DirEntry[]",
       "doc": "List a directory, sorted by name; defaults to your workspace. Each entry carries a bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an empty array, not a failure.",
@@ -156,7 +169,7 @@
     },
     {
       "tool": "read_skill",
-      "js": "readSkill",
+      "name": "readSkill",
       "object": "skills",
       "signature": "readSkill(name: string): string",
       "doc": "Read a skill by name and return its body with the front matter stripped; reading it also pins that body permanently into your context, so a skill you have read stays read. A skill may be **code** rather than prose, or as well as it. If it carries code, reading it binds that code at `lib.<key>` for the rest of your session and the reply names the key and what it exports. If it carries an on-use script, gg runs it once your program has ended, and whatever it shows you arrives on your next turn. Throws `not-found` — listing the skills that do exist — when the name is unknown.",
@@ -164,7 +177,7 @@
     },
     {
       "tool": "write_memory",
-      "js": "writeMemory",
+      "name": "writeMemory",
       "object": "memory",
       "signature": "writeMemory(memory: MemoryWrite): MemoryUsage",
       "doc": "Record a durable memory that survives context compaction, and return how much of the memory budget is now used. Throws `conflict` on a duplicate name and `limit-exceeded` when the body would breach the run's caps — revise or delete a memory rather than accruing more. A memory may also carry **code**. `code` is a TypeScript module whose exports are bound at `lib.<name>` in every later program you write, so a helper you get right once you never write again; `onUse` is a script gg runs the first time the memory comes into use, whose views reach you on your next turn. Neither is context — they cost you no window, are never shown back to you, and count against no body limit — and both are bounded on their own.",
@@ -175,7 +188,7 @@
     },
     {
       "tool": "update_memory",
-      "js": "updateMemory",
+      "name": "updateMemory",
       "object": "memory",
       "signature": "updateMemory(memory: MemoryWrite): MemoryUsage",
       "doc": "Replace an existing memory's description and body, keyed on its `name`, and return the memory budget. Its `code` and `onUse` are replaced too — omitting them clears them. Throws `not-found` when no memory has that name.",
@@ -186,7 +199,7 @@
     },
     {
       "tool": "create_memory",
-      "js": "createMemory",
+      "name": "createMemory",
       "object": "memory",
       "signature": "createMemory(memory: MemoryWrite): MemoryUsage",
       "doc": "Record a new memory whose contents are kept OUT of your context window until you read them, and return the memory budget. Give it a slug (letters, digits, `-`, `_`, `.`), a one-line description — required where the run keeps an index, since that is the memory's line in it — and the initial contents. It may also carry `code` (a module bound at `lib.<name>` once you read the memory) and `onUse` (a script run on that first read). Throws `conflict` on a duplicate slug and `limit-exceeded` when the contents, or the index entry, would breach a limit.",
@@ -197,7 +210,7 @@
     },
     {
       "tool": "read_memory",
-      "js": "readMemory",
+      "name": "readMemory",
       "object": "memory",
       "signature": "readMemory(name: string): string",
       "doc": "Read one memory's full contents, by slug — the only thing that brings them into your context. If the memory carries code, reading it also loads that code: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of your session. Throws `not-found` when no memory has that slug.",
@@ -205,7 +218,7 @@
     },
     {
       "tool": "edit_memory",
-      "js": "editMemory",
+      "name": "editMemory",
       "object": "memory",
       "signature": "editMemory(edit: { name: string; search: string; replace: string; }): MemoryUsage",
       "doc": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and return the memory budget. Append by quoting the last line and replacing it with itself plus what you are adding. Throws `not-found` when the text does not appear, `conflict` when it appears more than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when the edit would leave the memory empty — delete it instead.",
@@ -215,7 +228,7 @@
     },
     {
       "tool": "search_memories",
-      "js": "searchMemories",
+      "name": "searchMemories",
       "object": "memory",
       "signature": "searchMemories(keywords: string[]): MemoryHit[]",
       "doc": "Find the memories mentioning any of `keywords`, best first: plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often. Pass several specific words rather than one sentence, then `readMemory` the hits worth having in full. Throws `invalid-argument` when every keyword is empty; a search that matches nothing is an empty array.",
@@ -225,7 +238,7 @@
     },
     {
       "tool": "delete_memory",
-      "js": "deleteMemory",
+      "name": "deleteMemory",
       "object": "memory",
       "signature": "deleteMemory(name: string): MemoryUsage",
       "doc": "Evict a memory by name, freeing room in the budget, and return what is left in use. Throws `not-found` when no memory has that name.",
@@ -235,7 +248,7 @@
     },
     {
       "tool": "add_task",
-      "js": "addTask",
+      "name": "addTask",
       "object": "tasks",
       "signature": "addTask(task: { id: string; title: string; description?: string; blockedBy?: string[]; }): TaskUsage",
       "doc": "Add a task to the task DAG and return the task budget. `blockedBy` names the tasks that must finish before this one and defaults to none. Throws `conflict` on a duplicate id or on an edge that would close a cycle.",
@@ -245,7 +258,7 @@
     },
     {
       "tool": "update_task",
-      "js": "updateTask",
+      "name": "updateTask",
       "object": "tasks",
       "signature": "updateTask(id: string, patch: { title?: string; description?: string | null; status?: TaskStatus; }): void",
       "doc": "Revise a task's title, description and/or status; supply at least one. An omitted `description` leaves it alone, `null` clears it, and a string replaces it. Throws `not-found` for an unknown id.",
@@ -255,7 +268,7 @@
     },
     {
       "tool": "set_blocked_by",
-      "js": "setBlockedBy",
+      "name": "setBlockedBy",
       "object": "tasks",
       "signature": "setBlockedBy(id: string, blockedBy: string[]): void",
       "doc": "Replace a task's whole blocker set; an empty array clears every blocker. Throws `not-found` for an unknown id and `conflict` when an edge would close a cycle.",
@@ -263,7 +276,7 @@
     },
     {
       "tool": "complete_task",
-      "js": "completeTask",
+      "name": "completeTask",
       "object": "tasks",
       "signature": "completeTask(id: string): void",
       "doc": "Mark a task done. Tasks it was blocking become actionable once every one of their blockers is done. Throws `not-found` for an unknown id.",
@@ -271,7 +284,7 @@
     },
     {
       "tool": "remove_task",
-      "js": "removeTask",
+      "name": "removeTask",
       "object": "tasks",
       "signature": "removeTask(id: string): TaskUsage",
       "doc": "Remove a task and every blocker edge pointing at it, and return the task budget. Throws `not-found` for an unknown id.",
@@ -281,7 +294,7 @@
     },
     {
       "tool": "create_epic",
-      "js": "createEpic",
+      "name": "createEpic",
       "object": "project",
       "signature": "createEpic(epic: { prefix: string; title: string; description: string; }): EpicCreated",
       "doc": "Create an epic to group related issues. `prefix` is 3-6 letters naming the epic; it is upper-cased and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on. Returns that id and the board budget. Throws `invalid-argument` when the prefix is not 3-6 letters, and `conflict` when another epic already holds it.",
@@ -292,7 +305,7 @@
     },
     {
       "tool": "create_issue",
-      "js": "createIssue",
+      "name": "createIssue",
       "object": "project",
       "signature": "createIssue(issue: { title: string; description?: string; inScope: string; outOfScope: string; completionCriteria: string; blockedBy?: string[]; epicId?: string; agent: string; reviewers?: string[]; }): IssueCreated",
       "doc": "Create a self-contained, dispatchable issue. Returns the id the board **assigned** it — numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic — together with the board budget; you do not choose the id, so keep the returned one to block a later issue on this one or to wait for it. `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so write them for a reader with no other context. `agent` names the agent the issue is dispatched to and must be one you may spawn; `reviewers` names the agents that must approve the work, from that same set, and is required when this run's reviewers feature is on. `blockedBy` defaults to none; `epicId` groups the issue under an existing epic. Throws `invalid-argument` when `agent` or a reviewer is not yours to assign, and `conflict` on a blocker edge that would close a cycle.",
@@ -303,7 +316,7 @@
     },
     {
       "tool": "update_issue",
-      "js": "updateIssue",
+      "name": "updateIssue",
       "object": "project",
       "signature": "updateIssue(id: string, patch: { title?: string; description?: string | null; inScope?: string; outOfScope?: string; completionCriteria?: string; status?: IssueStatus; epicId?: string | null; }): void",
       "doc": "Revise an issue; supply at least one field. An omitted field is left alone, `description: null` clears the description, and `epicId: null` detaches the issue from its epic. Throws `not-found` for an unknown id.",
@@ -313,7 +326,7 @@
     },
     {
       "tool": "set_issue_blocked_by",
-      "js": "setIssueBlockedBy",
+      "name": "setIssueBlockedBy",
       "object": "project",
       "signature": "setIssueBlockedBy(id: string, blockedBy: string[]): void",
       "doc": "Replace an issue's whole blocker set; an empty array clears every blocker. Throws `not-found` for an unknown id and `conflict` when an edge would close a cycle.",
@@ -321,7 +334,7 @@
     },
     {
       "tool": "remove_epic",
-      "js": "removeEpic",
+      "name": "removeEpic",
       "object": "project",
       "signature": "removeEpic(id: string): BoardUsage",
       "doc": "Remove an epic, keeping its issues and ungrouping them, and return the board budget. Throws `not-found` for an unknown id.",
@@ -331,7 +344,7 @@
     },
     {
       "tool": "remove_issue",
-      "js": "removeIssue",
+      "name": "removeIssue",
       "object": "project",
       "signature": "removeIssue(id: string): BoardUsage",
       "doc": "Remove an issue and every blocker edge pointing at it, and return the board budget. Throws `not-found` for an unknown id.",
@@ -341,7 +354,7 @@
     },
     {
       "tool": "wait_for_issue",
-      "js": "waitForIssue",
+      "name": "waitForIssue",
       "object": "project",
       "signature": "waitForIssue(id: string): string",
       "doc": "Register a wait on an issue and return an acknowledgement. It does not block inside your program — it records the wait and returns at once, so the rest of your program still runs; the suspension happens after the program ends, between turns. Once the program finishes the run suspends, freeing this agent's slot for others, until the issue is terminal (done, or failed if its assigned agent could not complete it), then resumes on the next turn. Use it to sequence your next turn's work behind an issue you depend on. You cannot wait on the issue you were assigned to implement. Throws `not-found` for an unknown id.",
@@ -349,7 +362,7 @@
     },
     {
       "tool": "evict_file_view",
-      "js": "evictFileView",
+      "name": "evictFileView",
       "object": "context",
       "signature": "evictFileView(path?: string): ReclaimReport",
       "doc": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed; omit `path` to drop every file view. The files on disk are untouched — this forgets what you read, not what exists.",
@@ -359,7 +372,7 @@
     },
     {
       "tool": "archive_thread",
-      "js": "archiveThread",
+      "name": "archiveThread",
       "object": "context",
       "signature": "archiveThread(ranges: TurnRange[]): ReclaimReport",
       "doc": "Move whole turns out of your context window and report what that reclaimed. Every result you are given carries a header with its turn number and roughly what holding it costs, so name the turns worth dropping: `ranges` is a list of inclusive spans, and `archiveThread([{ from: 4, to: 19 }])` archives turns 4 through 19. Your own messages in an archived turn are dropped; the results are kept and stay searchable with `searchArchive`.",
@@ -370,7 +383,7 @@
     },
     {
       "tool": "search_archive",
-      "js": "searchArchive",
+      "name": "searchArchive",
       "object": "context",
       "signature": "searchArchive(query: string): ArchiveSearch",
       "doc": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits. Check `archiveEmpty` before reading `hits`: it distinguishes \"nothing has been archived yet\" from \"the search ran and matched nothing\", so you do not archive again believing the first archive failed.",
@@ -381,7 +394,7 @@
     },
     {
       "tool": "compact",
-      "js": "compact",
+      "name": "compact",
       "object": "context",
       "signature": "compact(summary: string, files?: string[]): void",
       "doc": "Compact your context window: the detailed thread is dropped and restarted from `summary`, plus a fresh read of each path in `files`. Your skills, memories and task list are kept as they are. You are asked to call this when your window is full, and every other call is refused until you do. It does NOT stop your program: it registers the request and returns, and the rewrite happens once your program has ended. Everything not in your summary and not in `files` is gone, so write the summary for your future self and name the files you will actually need in hand.",
@@ -389,7 +402,7 @@
     },
     {
       "tool": "spawn_subagent",
-      "js": "spawnSubagent",
+      "name": "spawnSubagent",
       "object": "agents",
       "signature": "spawnSubagent(request: { agent: string; } & ({ prompt: string; } | { issueId: string; })): SubagentHandle",
       "doc": "Delegate scoped work to a child agent and return its handle immediately — the child runs in parallel while your program continues. Name the `agent` to run it as (one of the agents you may spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and brief it with exactly one of `prompt` (self-contained instructions) or `issueId` (a board issue). The child shares your workspace. Throws `refused` at the delegation depth cap, and `invalid-argument` if `agent` is not one you may spawn.",
@@ -399,7 +412,7 @@
     },
     {
       "tool": "wait_for_subagents",
-      "js": "waitForSubagents",
+      "name": "waitForSubagents",
       "object": "agents",
       "signature": "waitForSubagents(ids?: string[]): SubagentResult[]",
       "doc": "Block until the named children have finished — or, with no argument, until every outstanding child has — and collect their results in dispatch order. The run's wall-clock budget keeps running while you wait, so wait once for many children rather than once per child. Throws `not-found` for an unknown id.",
@@ -410,7 +423,7 @@
     },
     {
       "tool": "send_message",
-      "js": "sendMessage",
+      "name": "sendMessage",
       "object": "agents",
       "signature": "sendMessage(agentId: string, message: string): void",
       "doc": "Deliver a message to a running child agent's inbox; it reads the message at its next turn. Throws `not-found` for an unknown agent id and `conflict` when that child has already returned.",
@@ -418,7 +431,7 @@
     },
     {
       "tool": "run_workflow",
-      "js": "runWorkflow",
+      "name": "runWorkflow",
       "object": "agents",
       "signature": "runWorkflow(stages: { name?: string; prompt: string; items?: string[]; agent: string; }[]): WorkflowReport",
       "doc": "Run a declared multi-stage fan-out as one unit and return the final stage's results. Each stage names the `agent` to run its children as (one of the agents you may spawn), and its `prompt` is a template in which `{{item}}` is the item being worked and `{{prior}}` is the previous stage's collected results; the first stage must supply `items`, and a later stage that omits them fans out over the previous stage's results instead. Blocks until every stage is done.",
@@ -428,7 +441,7 @@
     },
     {
       "tool": "speculate",
-      "js": "speculate",
+      "name": "speculate",
       "object": "agents",
       "signature": "speculate(request: { agent: string; } & ({ prompt: string; } | { issueId: string; }) & { attempts?: number; approaches?: string[]; }): SpeculationReport",
       "doc": "Attempt the same task K times in parallel isolated worktrees, judge the attempts, then merge the winner and discard the losers. Name the `agent` to run every attempt as (one of the agents you may spawn). `attempts` is clamped to 2–6 and defaults to 2; `approaches` are positional per-attempt hints, and attempts past the end of the list get none. Blocks until the winner is merged.",
@@ -438,7 +451,7 @@
     },
     {
       "tool": "transition_state",
-      "js": "transitionState",
+      "name": "transitionState",
       "object": "agents",
       "signature": "transitionState(state: string, note?: string): void",
       "doc": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn; `note` is the opening message the next state's agent sees. Bound only when a state machine is driving you and the state you are in has somewhere to go. Like `compact` it is registered rather than performed: the call validates the target, returns, and your program runs on to its end — the transition happens after that, because replacing your agent (and your window) mid-program would pull every remaining call out from under it. The FIRST declaration stands, and a second throws `refused`. Throws `invalid-argument` for a state you may not move to.",
@@ -446,7 +459,7 @@
     },
     {
       "tool": "exec",
-      "js": "exec",
+      "name": "exec",
       "object": "agents",
       "signature": "exec(agent: string, prompt?: string): void",
       "doc": "Continue this session as a different agent: the named agent takes over from your next turn with its own model, tools and instructions, keeping every capability the two of you both have — your whole conversation above all, so it needs no catching up. `prompt` is its opening message. Registered rather than performed, exactly as `transitionState` is and for the same reason: your window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn, so an `exec` after a `transitionState` — or a second `exec` — throws `refused`. Bound only when your agent may make agent transitions and has agents it may become, and never while a state machine is driving you. Throws `invalid-argument` for an agent you may not become.",
@@ -454,7 +467,7 @@
     },
     {
       "tool": "fork",
-      "js": "fork",
+      "name": "fork",
       "object": "agents",
       "signature": "fork(prompt: string): SubagentHandle",
       "doc": "Run a copy of yourself, in parallel, on something you will not do yourself. The copy has your model, your tools and a private copy of your whole conversation, so `prompt` is the *difference* rather than a briefing — everything you have worked out is already there. Its handle comes back immediately, but the copy itself starts once this turn's tool results are recorded (the conversation it inherits has to be a complete one), so `waitForSubagents` can only collect it on a later turn — do not wait on it in the program that made it. Throws `limit-exceeded` at the delegation depth cap.",
@@ -465,8 +478,9 @@
   ],
   "helpers": [
     {
+      "key": "read_text_file",
       "requires": "read_file",
-      "js": "readTextFile",
+      "name": "readTextFile",
       "object": "fs",
       "signature": "readTextFile(path: string, options?: { offset?: number; limit?: number; }): string",
       "doc": "Read a text file and return its contents directly — `readFile` without the variant narrowing, for the common case. Takes the same `offset`/`limit` window options. Throws `invalid-argument` when the path names a picture; use `readFile` to inspect those.",

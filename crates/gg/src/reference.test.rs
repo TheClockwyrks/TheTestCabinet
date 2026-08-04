@@ -2,6 +2,26 @@ use std::collections::BTreeSet;
 
 use super::*;
 
+/// The language whose spellings [`reference`] projects, read from the module's own answer rather
+/// than restated — so a test cannot go on passing against a language the page stopped being built
+/// from.
+fn projected_language() -> &'static dyn crate::sandbox::ProgramLanguage {
+    crate::sandbox::language(super::reference_language())
+}
+
+/// **The page says which language's spellings it is showing, and it is the one the functions came
+/// from.**
+///
+/// The signatures below are one language's rendering of a surface every language offers, so a reader
+/// comparing two arms of a cross-language study has to be able to tell which they are looking at —
+/// and a stamp that disagreed with the entries under it would be worse than no stamp at all.
+#[test]
+fn the_reference_is_stamped_with_the_language_it_projects() {
+    let reference = reference();
+    assert_eq!(reference.language, super::reference_language());
+    assert_eq!(projected_language().id(), reference.language);
+}
+
 /// Every tool gg can offer appears **exactly once**, with the prose and schema a model would
 /// really be sent.
 ///
@@ -159,7 +179,7 @@ fn every_catalogued_function_appears() {
         .map(|f| (f.object.clone(), f.name.clone()))
         .collect();
 
-    let catalogued = crate::sandbox::catalogue_functions();
+    let catalogued = crate::sandbox::catalogue_functions(projected_language());
     assert_eq!(
         emitted.len(),
         catalogued.len(),
@@ -211,7 +231,7 @@ fn every_referenced_type_resolves_to_a_declaration() {
         .map(|f| ((f.object.clone(), f.name.clone()), f.types.len()))
         .collect();
 
-    for function in crate::sandbox::catalogue_functions() {
+    for function in crate::sandbox::catalogue_functions(projected_language()) {
         let key = (function.object.to_string(), function.name.to_string());
         assert_eq!(
             by_name.get(&key).copied(),

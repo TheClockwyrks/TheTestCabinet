@@ -2941,12 +2941,17 @@ impl MockClient {
         Self::new(model_id, vec![write, finish])
     }
 
-    /// The **responses-as-code** script: a run driven by emitting a TypeScript program instead of
-    /// discrete tool calls, exercising the code path end to end offline.
+    /// The **responses-as-code** script: a run driven by emitting a program instead of discrete tool
+    /// calls, exercising the code path end to end offline.
+    ///
+    /// The programs below are **TypeScript** — the default [program
+    /// language](test_cabinet_core::gg::GgProgramLanguage), and the one this mock is written
+    /// against. A second language's offline script would be a second set of programs beside these,
+    /// which is what makes the language the axis rather than a fact of the mock.
     ///
     /// 1. a first turn whose **whole reply** is a program — it calls `listDir`, then **loops** over
     ///    a list of names and, for each that ends in `.txt` (a **conditional**), calls `writeFile` —
-    ///    so gg heals it (there is nothing to heal), type-strips it, runs it in the wasmtime
+    ///    so gg heals it (there is nothing to heal), prepares it for the guest, runs it in the wasmtime
     ///    sandbox, and bridges its composed `list_dir`/`write_file` calls to the real toolset (the
     ///    [`MOCK_CODE_LEVEL_FILES`] appear in the workspace, the `.md` name is skipped); the program
     ///    returns the list of files it wrote;
@@ -3042,11 +3047,11 @@ impl MockClient {
         Self::new(model_id, vec![runaway, finish])
     }
 
-    /// The **responses-as-code parent** side of the code-mode delegation e2e: a program that spawns a
-    /// subagent and waits for it, proving a program's delegation tool still goes through the
-    /// scheduler.
+    /// The **responses-as-code parent** side of the code-mode delegation e2e: a TypeScript program
+    /// that spawns a subagent and waits for it, proving a program's delegation tool still goes
+    /// through the scheduler.
     ///
-    /// 1. a first turn emitting a TypeScript program that calls `agents.spawnSubagent({ prompt, slot })`
+    /// 1. a first turn emitting a program that calls `agents.spawnSubagent({ prompt, slot })`
     ///    then `agents.waitForSubagents()` (composed in one program) and returns the collected summaries;
     /// 2. a second program that calls `finish`, ending the session.
     ///
@@ -3085,10 +3090,11 @@ impl MockClient {
         Self::new(model_id, vec![program, finish])
     }
 
-    /// The **responses-as-code child** side of the code-mode delegation e2e: a program that writes
-    /// [`MOCK_SUBAGENT_FILE`] (its observable work) then returns a distinctive value.
+    /// The **responses-as-code child** side of the code-mode delegation e2e: a TypeScript program
+    /// that writes [`MOCK_SUBAGENT_FILE`] (its observable work) then returns a distinctive
+    /// value.
     ///
-    /// 1. a first turn emitting a TypeScript program that calls `fs.writeFile(..)` and returns;
+    /// 1. a first turn emitting a program that calls `fs.writeFile(..)` and returns;
     /// 2. a second program that calls `finish` with [`MOCK_SUBAGENT_RETURN`] — the summary that ends
     ///    its session and is the value its spawner collects.
     pub fn with_responses_as_code_child_script(model_id: impl Into<String>) -> Self {

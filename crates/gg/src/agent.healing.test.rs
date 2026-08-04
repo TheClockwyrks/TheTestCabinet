@@ -10,6 +10,8 @@
 //! answer different questions about them: there, "what does the algorithm do with this?"; here,
 //! "what does the model see, and what does the run record, when a real model sends it?".
 
+use test_cabinet_core::gg::GgProgramLanguage;
+
 use super::*;
 
 /// The modal round-1 terminal reply: prose that healing leaves alone (its `strip-prose` predicate
@@ -33,6 +35,7 @@ fn healing_set(params: serde_json::Value) -> GgCapabilitySet {
 fn code_with(healing: HealingConfig) -> CodeSetup {
     CodeSetup {
         enabled: true,
+        language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::default(),
         healing,
         assistant_messages: AssistantMessageMode::None,

@@ -370,9 +370,9 @@ tracing-opentelemetry = "0.33"
 # workspace's minimal-host stance. Only `crates/gg` pulls it in.
 tiktoken-rs = "0.7"
 
-# In-process TypeScript type-stripping for the gg sandbox
-# (`crates/gg/src/sandbox/transpile.rs`): a model's program is TypeScript, the
-# sandbox's guest runs JavaScript, and the strip measures in microseconds — so no
+# In-process TypeScript type-stripping for the gg sandbox's TypeScript program
+# language (`crates/gg/src/sandbox/language/typescript.prepare.rs`): a TypeScript
+# program's guest runs JavaScript, and the strip measures in microseconds — so no
 # Node, no `tsc`, and no `componentize-js` is ever on a turn's critical path.
 # Pinned to the 0.141 line the host is written against: oxc's parser/transformer
 # API moves between minor releases, and a silent bump would change how a model's

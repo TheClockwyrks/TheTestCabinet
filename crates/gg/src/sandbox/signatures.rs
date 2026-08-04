@@ -2,11 +2,11 @@
 //! the guest actually exports.
 //!
 //! When a model asks for a function's documentation — `view.openDocsView(fs.readFile)`, serviced by the
-//! [docs carve-out](crate::docs) — gg answers with a TypeScript signature, a sentence of
-//! documentation, and the declarations of the types the signature references. Hand-writing that
-//! would guarantee it drifts — a renamed parameter, an options object that became positional, a tool
-//! whose behaviour changed — and documentation that describes a signature the sandbox does not have
-//! is worse than none, because the model has no way to discover the lie.
+//! [docs carve-out](crate::docs) — gg answers with a signature in the run's own program language, a
+//! sentence of documentation, and the declarations of the types the signature references.
+//! Hand-writing that would guarantee it drifts — a renamed parameter, an options object that became
+//! positional, a tool whose behaviour changed — and documentation that describes a signature the
+//! sandbox does not have is worse than none, because the model has no way to discover the lie.
 //!
 //! So the catalogue is generated from the guest SDK's own emitted `.d.ts` and its JSDoc, committed
 //! beside the component **by the same build**, and read from here through
@@ -14,28 +14,43 @@
 //! current than the component that implements it, which is the correct failure direction: a stale
 //! catalogue describes a sandbox that once existed, while a hand-written one describes a sandbox that
 //! never did.
-
-use std::sync::OnceLock;
+//!
+//! # One schema, one catalogue per language
+//!
+//! What lives here is the catalogue's **schema**, its parsing and the [`CatalogueFunction`]
+//! projection — all of which are language-independent, because every language's SDK offers the same
+//! surface under its own spellings. That is what each non-tool entry's
+//! [`key`](CatalogueFunction::key) is for: `requestChanges` and `request_changes` are one function
+//! under two spellings, and the key is what says so.
+//!
+//! What does *not* live here is the data: each registered [language](super::language) owns its own
+//! committed JSON and its own parsed copy, reached through
+//! [`ProgramLanguage::catalogue`](super::ProgramLanguage::catalogue). A reader that wants "the
+//! catalogue" therefore has to say whose, which is exactly the question a cross-language study makes
+//! unavoidable.
 
 use serde::Deserialize;
+use test_cabinet_core::gg::GgProgramLanguage;
+
+use super::language::{ProgramLanguage, SurfaceCall};
 
 // The whole vocabulary backs [`sandbox_tool_names`], which is a drift gate rather than a
 // run-time need — so, like it, the names it is built from are only reachable under test.
 #[cfg(test)]
 use crate::tools::ALL_TOOL_NAMES;
 
-/// The committed catalogue, emitted by the guest package's `signatures` script alongside the
-/// component itself.
-const SIGNATURES_JSON: &str = include_str!("signatures.json");
-
-/// The parsed catalogue, parsed once per process.
-static CATALOGUE: OnceLock<SignatureCatalogue> = OnceLock::new();
-
 /// The whole catalogue: one entry per bound tool, one per helper, and the type declarations they
 /// reference.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SignatureCatalogue {
+    /// The [program language](GgProgramLanguage) whose spellings this catalogue carries.
+    ///
+    /// Every language's guest emits one of these, in this shape, under its own stem in
+    /// `crates/gg/src/sandbox/guests/`. The field is what lets the language that embedded a
+    /// catalogue check it got its own: a file committed under the wrong stem would otherwise reach a
+    /// model as a system prompt describing a sandbox nobody has.
+    pub language: GgProgramLanguage,
     /// Where the catalogue was reflected from, recorded so a reader of the committed JSON knows
     /// which sources to regenerate it from.
     #[allow(
@@ -79,13 +94,17 @@ pub(crate) struct SignatureCatalogue {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ToolSignature {
     /// The gg tool name (`read_file`), which is what the run's enabled set is expressed in.
+    ///
+    /// It is also this entry's language-independent identity, which is why a tool — alone among the
+    /// catalogue's five sections — carries no separate `key`: every language's guest catalogues the
+    /// same [`ALL_TOOL_NAMES`], under its own spellings.
     pub tool: String,
-    /// The function name a program calls (`readFile`).
-    pub js: String,
+    /// The name a program calls it by, in this catalogue's language (`readFile`).
+    pub name: String,
     /// The API object this function is grouped under in a program's scope (`fs`) — what
     /// `object.list()` enumerates and what `view.openDocsView` routes by.
     pub object: String,
-    /// The full TypeScript signature, as the SDK declares it.
+    /// The full signature, as this language's SDK declares it.
     pub signature: String,
     /// The SDK's own one-paragraph documentation for the function.
     pub doc: String,
@@ -104,13 +123,15 @@ pub(crate) struct ToolSignature {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SessionSignature {
-    /// The function name a program calls (`finish`).
-    pub js: String,
+    /// This ending's language-independent identity (`request_changes`).
+    pub key: String,
+    /// The name a program calls it by, in this catalogue's language (`requestChanges`).
+    pub name: String,
     /// The API object this function is grouped under (`harness`, `review`, `judge`).
     pub object: String,
     /// The [role](crate::ending::EndingRole) whose programs bind it: `standard`, `review`, `judge`.
     pub ending: String,
-    /// The full TypeScript signature, as the SDK declares it — `finish(summary: string): void`.
+    /// The full signature, as this language's SDK declares it — `finish(summary: string): void`.
     /// The `void` is load-bearing prompt text: it tells a model at a glance that the call returns
     /// like any other, so what follows it still runs.
     pub signature: String,
@@ -133,13 +154,15 @@ pub(crate) struct SessionSignature {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ViewSignature {
+    /// This view function's language-independent identity (`open_text`).
+    pub key: String,
     /// The gg tool whose being enabled binds this function, or `None` when nothing gates it.
     pub requires: Option<String>,
-    /// The function name a program calls (`openText`).
-    pub js: String,
+    /// The name a program calls it by, in this catalogue's language (`openText`).
+    pub name: String,
     /// The API object it is grouped under — `view`, for all four.
     pub object: String,
-    /// The full TypeScript signature, as the SDK declares it.
+    /// The full signature, as this language's SDK declares it.
     pub signature: String,
     /// The SDK's own documentation for it, which is what a doc lookup renders.
     pub doc: String,
@@ -156,11 +179,13 @@ pub(crate) struct ViewSignature {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProgramSignature {
-    /// The function name a program calls (`get`).
-    pub js: String,
+    /// This function's language-independent identity (`get`).
+    pub key: String,
+    /// The name a program calls it by, in this catalogue's language (`get`).
+    pub name: String,
     /// The API object it is grouped under — `programs`, for all three.
     pub object: String,
-    /// The full TypeScript signature, as the SDK declares it.
+    /// The full signature, as this language's SDK declares it.
     pub signature: String,
     /// The SDK's own documentation for it, which is what a doc lookup renders.
     pub doc: String,
@@ -173,13 +198,15 @@ pub(crate) struct ProgramSignature {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct HelperSignature {
+    /// This helper's language-independent identity (`read_text_file`).
+    pub key: String,
     /// The gg tool this helper wraps. When that tool is withheld, so is the helper.
     pub requires: String,
-    /// The function name a program calls (`readTextFile`).
-    pub js: String,
+    /// The name a program calls it by, in this catalogue's language (`readTextFile`).
+    pub name: String,
     /// The API object this helper is grouped under — the same object as the tool it wraps (`fs`).
     pub object: String,
-    /// The full TypeScript signature.
+    /// The full signature, as this language's SDK declares it.
     pub signature: String,
     /// The SDK's own documentation.
     pub doc: String,
@@ -197,15 +224,16 @@ pub(crate) struct TypeDeclaration {
     pub declaration: String,
 }
 
-/// The parsed catalogue.
-///
-/// A parse failure is a corrupt committed artifact — the file is generated, committed, and asserted
-/// parseable by this module's tests — so it panics rather than degrading the prompt into silence.
-pub(crate) fn catalogue() -> &'static SignatureCatalogue {
-    CATALOGUE.get_or_init(|| {
-        serde_json::from_str(SIGNATURES_JSON)
-            .expect("the committed signature catalogue is valid JSON of the expected shape")
-    })
+impl SignatureCatalogue {
+    /// Parse one language's committed catalogue.
+    ///
+    /// Each language caches its own result behind its own `OnceLock` and panics on failure: the file
+    /// is generated, committed, and asserted parseable by that language's own gate, so a parse
+    /// failure is a corrupt committed artifact rather than a runtime condition — and degrading a
+    /// prompt into silence over one would describe a sandbox nobody has.
+    pub(crate) fn parse(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
 }
 
 /// The gg tool names the sandbox binds into a program's scope: **all** of [`ALL_TOOL_NAMES`].
@@ -233,7 +261,16 @@ pub(crate) fn sandbox_tool_names() -> Vec<&'static str> {
 pub struct CatalogueFunction {
     /// The API object it is grouped under (`fs`).
     pub object: &'static str,
-    /// The name a program calls it by (`readFile`) — what `view.openDocsView` is keyed on.
+    /// This function's language-independent identity: a gg tool's own name (`read_file`) when it has
+    /// one, and the catalogue entry's `key` (`request_changes`, `open_text`) when it does not.
+    ///
+    /// It is what two languages' catalogues are compared *by*, since the surface they offer is the
+    /// same and only [`name`](Self::name) differs — and it is how gg names a function in its **own**
+    /// sentences, through [`spelling`] and the [`SurfaceCall`] constants, so a prompt quoting
+    /// `review.requestChanges` is quoting the catalogue rather than a second copy of it.
+    pub key: &'static str,
+    /// The name a program calls it by, in this language (`readFile`) — what `view.openDocsView` is
+    /// keyed on.
     pub name: &'static str,
     /// The gg tool whose being enabled gates this function; `None` for a carve-out the enabled set
     /// does not decide — an ending call, which the agent's [role](Self::ending) decides, or a view
@@ -248,7 +285,7 @@ pub struct CatalogueFunction {
     pub library: bool,
     /// The one-line summary `object.list()` shows — the first sentence of the documentation.
     pub summary: &'static str,
-    /// The full TypeScript signature.
+    /// The full signature, as this language's SDK declares it.
     pub signature: &'static str,
     /// The SDK's own paragraph of documentation.
     pub doc: &'static str,
@@ -270,14 +307,18 @@ fn first_sentence(doc: &'static str) -> &'static str {
     doc
 }
 
-/// Every function the committed catalogue documents — the ending calls, the view calls, the
+/// Every function `language`'s committed catalogue documents — the ending calls, the view calls, the
 /// program-library calls, the tools, and the one helper — each projected as a
-/// [`CatalogueFunction`]. The docs runtime filters these by the run's enabled set, the agent's role
+/// [`CatalogueFunction`].
+///
+/// It takes a language because the *spellings* are one language's: two registered languages offer
+/// the same functions on the same objects under the same gates, and differ in what a program calls
+/// them. The docs runtime filters these by the run's enabled set, the agent's role
 /// and whether it keeps a program library, and adds the `list` meta function itself, since it is the
 /// carve-out's own and has no catalogue entry. Every other reader of this catalogue that reports what
 /// an object binds — the agent-surface telemetry — has to add it back for the same reason.
-pub fn catalogue_functions() -> Vec<CatalogueFunction> {
-    let catalogue = catalogue();
+pub fn catalogue_functions(language: &'static dyn ProgramLanguage) -> Vec<CatalogueFunction> {
+    let catalogue = language.catalogue();
     let mut functions = Vec::with_capacity(
         catalogue.session.len()
             + catalogue.views.len()
@@ -288,7 +329,8 @@ pub fn catalogue_functions() -> Vec<CatalogueFunction> {
     for session in &catalogue.session {
         functions.push(CatalogueFunction {
             object: session.object.as_str(),
-            name: session.js.as_str(),
+            key: session.key.as_str(),
+            name: session.name.as_str(),
             gate: None,
             ending: Some(session.ending.as_str()),
             library: false,
@@ -304,7 +346,8 @@ pub fn catalogue_functions() -> Vec<CatalogueFunction> {
     for view in &catalogue.views {
         functions.push(CatalogueFunction {
             object: view.object.as_str(),
-            name: view.js.as_str(),
+            key: view.key.as_str(),
+            name: view.name.as_str(),
             gate: view.requires.as_deref(),
             ending: None,
             library: false,
@@ -319,7 +362,8 @@ pub fn catalogue_functions() -> Vec<CatalogueFunction> {
     for program in &catalogue.programs {
         functions.push(CatalogueFunction {
             object: program.object.as_str(),
-            name: program.js.as_str(),
+            key: program.key.as_str(),
+            name: program.name.as_str(),
             gate: None,
             ending: None,
             library: true,
@@ -332,7 +376,8 @@ pub fn catalogue_functions() -> Vec<CatalogueFunction> {
     for tool in &catalogue.tools {
         functions.push(CatalogueFunction {
             object: tool.object.as_str(),
-            name: tool.js.as_str(),
+            key: tool.tool.as_str(),
+            name: tool.name.as_str(),
             gate: Some(tool.tool.as_str()),
             ending: None,
             library: false,
@@ -345,7 +390,8 @@ pub fn catalogue_functions() -> Vec<CatalogueFunction> {
     for helper in &catalogue.helpers {
         functions.push(CatalogueFunction {
             object: helper.object.as_str(),
-            name: helper.js.as_str(),
+            key: helper.key.as_str(),
+            name: helper.name.as_str(),
             gate: Some(helper.requires.as_str()),
             ending: None,
             library: false,
@@ -358,10 +404,32 @@ pub fn catalogue_functions() -> Vec<CatalogueFunction> {
     functions
 }
 
-/// The declaration of one catalogued type, by name — what a doc lookup appends for a referenced type
-/// the session has not already been shown.
-pub fn type_declaration(name: &str) -> Option<&'static str> {
-    catalogue()
+/// The name `language`'s SDK gives the function `call` identifies, or `None` when its catalogue
+/// carries no such function.
+///
+/// The lookup is by [`key`](CatalogueFunction::key) and object — identity — never by name, because
+/// the name is exactly the thing that differs between two languages and is therefore the one thing
+/// gg may not assume. [`spell`](super::spell) is the caller; nothing else should need this, since
+/// every other consumer of the catalogue is rendering *its whole* surface rather than picking one
+/// function out of it.
+pub(crate) fn spelling(
+    language: &'static dyn ProgramLanguage,
+    call: SurfaceCall,
+) -> Option<&'static str> {
+    catalogue_functions(language)
+        .into_iter()
+        .find(|function| function.object == call.object && function.key == call.key)
+        .map(|function| function.name)
+}
+
+/// The declaration of one catalogued type, by name, as `language`'s SDK writes it — what a doc
+/// lookup appends for a referenced type the session has not already been shown.
+pub fn type_declaration(
+    language: &'static dyn ProgramLanguage,
+    name: &str,
+) -> Option<&'static str> {
+    language
+        .catalogue()
         .types
         .iter()
         .find(|declaration| declaration.name == name)

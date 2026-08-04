@@ -17,6 +17,15 @@
 //! [ending role](EndingRole) this agent has. A directory baked into the guest would list functions
 //! the scope did not bind, which is the one thing a directory must never do.
 //!
+//! # Whose spellings it answers in
+//!
+//! Which functions exist, and which of them this agent binds, are the same in every
+//! [program language](test_cabinet_core::gg::GgProgramLanguage) — that is what makes a
+//! cross-language study a measurement of the language rather than of the surface. What differs is
+//! how each is **spelled**, and a signature is nothing but a spelling. So a runtime is built for one
+//! language and reads its catalogue and its `list` documentation from that language alone: a
+//! directory answering in a language the model is not writing would be naming calls it cannot make.
+//!
 //! # Why a lookup is self-contained
 //!
 //! [`read`](DocsRuntime::read) returns the signature, the description, **and** every type
@@ -29,8 +38,13 @@
 
 use std::collections::BTreeSet;
 
+use test_cabinet_core::gg::GgProgramLanguage;
+
 use crate::ending::EndingRole;
-use crate::sandbox::{CatalogueFunction, FunctionSummary, catalogue_functions, type_declaration};
+use crate::sandbox::{
+    CatalogueFunction, FunctionSummary, ProgramLanguage, catalogue_functions, language,
+    type_declaration,
+};
 
 /// The name the `list()` meta function is bound and looked up under. Named once here because it is
 /// not the catalogue's to name: the guest binds `list` on every object it creates, this runtime
@@ -38,14 +52,11 @@ use crate::sandbox::{CatalogueFunction, FunctionSummary, catalogue_functions, ty
 /// reports it as bound — three places that must agree on one string.
 pub const LIST_FUNCTION: &str = "list";
 
-/// The `list()` meta function's one-line summary — it is added to **every** object's directory.
-const LIST_SUMMARY: &str = "List this object's functions, each with a one-line summary.";
-
-/// The `list()` meta function's signature and documentation, rendered by a `view.openDocsView("list")` lookup.
-const LIST_SIGNATURE: &str = "list(): FunctionSummary[]";
-const LIST_DOC: &str = "List the functions available on this API object, each as `{ name, summary }`. Only the \
-     functions this run actually bound are returned. Call `view.openDocsView(name)` to see a \
-     function's full signature and documentation.";
+// `list`'s summary, signature and documentation are **not** here. They are prose written in one
+// program language's syntax — a signature is a spelling — so they live on that language's
+// [prompt dialect](crate::sandbox::PromptDialect) beside its system prompt, and this module reads
+// them from whichever language the agent writes in. Only the *name* stays here, above, because the
+// name is the carve-out's identity rather than a spelling of it.
 
 /// The per-agent state behind `object.list()` and `view.openDocsView()`: the run's enabled tools and
 /// this agent's ending role, which together decide which functions exist to be documented.
@@ -61,12 +72,24 @@ pub struct DocsRuntime {
     /// neither of the others can express: the `programs` object is bound or absent as a whole, from
     /// a capability rather than from a tool or a role.
     library: bool,
+    /// The [program language](test_cabinet_core::gg::GgProgramLanguage) this agent writes in.
+    ///
+    /// It is not a gate — every language offers the same functions under the same gates — but it
+    /// decides how each of them is **spelled**, and a directory or a lookup that answered in a
+    /// language the model is not writing would be describing calls it cannot make.
+    language: &'static dyn ProgramLanguage,
 }
 
 impl DocsRuntime {
     /// A fresh runtime for an agent whose scope binds `enabled`'s tools and `role`'s ending calls,
-    /// and — when `library` — the [program library](crate::programs)'s three.
-    pub fn new(enabled: Vec<String>, role: EndingRole, library: bool) -> Self {
+    /// and — when `library` — the [program library](crate::programs)'s three, answering in
+    /// `program_language`'s spellings.
+    pub fn new(
+        enabled: Vec<String>,
+        role: EndingRole,
+        library: bool,
+        program_language: GgProgramLanguage,
+    ) -> Self {
         Self {
             enabled: enabled.into_iter().collect(),
             role: match role {
@@ -75,13 +98,14 @@ impl DocsRuntime {
                 EndingRole::Judge { .. } => "judge",
             },
             library,
+            language: language(program_language),
         }
     }
 
     /// The directory for one API object: its bound functions with one-line summaries, plus the
     /// `list` meta function every object carries. An unknown object lists `list` alone.
     pub fn list(&self, object: &str) -> Vec<FunctionSummary> {
-        let mut out: Vec<FunctionSummary> = catalogue_functions()
+        let mut out: Vec<FunctionSummary> = catalogue_functions(self.language)
             .into_iter()
             .filter(|function| function.object == object && self.bound(function))
             .map(|function| FunctionSummary {
@@ -91,7 +115,7 @@ impl DocsRuntime {
             .collect();
         out.push(FunctionSummary {
             name: LIST_FUNCTION.to_string(),
-            summary: LIST_SUMMARY.to_string(),
+            summary: self.language.prompt().list_summary.to_string(),
         });
         out
     }
@@ -103,13 +127,14 @@ impl DocsRuntime {
     /// Takes `&self`: a lookup is a pure projection of the catalogue through this agent's scope, and
     /// nothing about having read one changes what the next one says.
     pub fn read(&self, name: &str) -> Option<String> {
+        let prompt = self.language.prompt();
         match name {
-            LIST_FUNCTION => Some(format!("{LIST_SIGNATURE}\n\n{LIST_DOC}")),
+            LIST_FUNCTION => Some(format!("{}\n\n{}", prompt.list_signature, prompt.list_doc)),
             _ => {
-                let function = catalogue_functions()
+                let function = catalogue_functions(self.language)
                     .into_iter()
                     .find(|function| function.name == name && self.bound(function))?;
-                Some(assemble(&function))
+                Some(assemble(&function, self.language))
             }
         }
     }
@@ -141,12 +166,12 @@ impl DocsRuntime {
 /// declarations of every type it refers to.
 ///
 /// Every type, every time — see the module's *Why a lookup is self-contained*.
-fn assemble(function: &CatalogueFunction) -> String {
+fn assemble(function: &CatalogueFunction, language: &'static dyn ProgramLanguage) -> String {
     let mut text = format!("{}\n\n{}", function.signature, function.doc);
     let types: Vec<&'static str> = function
         .types
         .iter()
-        .filter_map(|name| type_declaration(name))
+        .filter_map(|name| type_declaration(language, name))
         .collect();
     if !types.is_empty() {
         text.push_str("\n\n");

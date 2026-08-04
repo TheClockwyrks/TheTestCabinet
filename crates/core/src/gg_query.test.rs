@@ -379,6 +379,7 @@ fn session_summary() -> GgSessionSummary {
         issues_reopened: 0,
         speculations: 0,
         execution_mode: "tool_calling".to_string(),
+        program_language: None,
         code_executions: 0,
         healing: GgHealingSummary::default(),
         errors: GgErrorSummary {

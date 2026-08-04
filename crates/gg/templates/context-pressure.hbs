@@ -13,7 +13,7 @@ Context Usage:
 Use `evict_file_view` to drop file views you no longer need; you can always read the file again.
 {{/if}}
 {{#if canCloseViews}}
-Use `view.close` to close views you no longer need, naming a file view's path or a text view's label. A file view you can always open again; a text view holds the only copy of what you composed, so write anything you still need to a file before closing it.
+Use `{{closeView}}` to close views you no longer need, naming a file view's path or a text view's label. A file view you can always open again; a text view holds the only copy of what you composed, so write anything you still need to a file before closing it.
 {{/if}}
 {{#if canArchive}}
 Use `archive_thread` to move whole turns into the searchable archive, naming them by the turn numbers on your results.

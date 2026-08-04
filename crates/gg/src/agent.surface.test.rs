@@ -19,7 +19,9 @@ use tempfile::TempDir;
 use super::*;
 use crate::client::MockClient;
 use crate::telemetry::{CollectingSink, Emitter};
-use test_cabinet_core::gg::{GgAgentApi, GgCapabilitySet, GgTelemetryEvent, ROOT_AGENT};
+use test_cabinet_core::gg::{
+    GgAgentApi, GgCapabilitySet, GgProgramLanguage, GgTelemetryEvent, ROOT_AGENT,
+};
 
 use super::{ScriptedFactory, invocation, subagent_set};
 
@@ -34,6 +36,7 @@ fn surfaces(events: &[GgTelemetryEvent]) -> Vec<Surface> {
         .filter_map(|event| match &event.kind {
             GgTelemetryKind::AgentSurface {
                 execution_mode,
+                program_language: _,
                 tools,
                 apis,
                 withheld,
@@ -143,7 +146,12 @@ async fn a_withheld_tool_is_absent_from_the_surface_and_from_its_api_object() {
     // The same registry drives a program's scope, so the withheld tool's function is unbound too —
     // `fs` survives on its other three calls rather than disappearing.
     let registry = ToolRegistry::from_capabilities(set.root());
-    let apis = api_surface(&registry, EndingRole::Standard, false);
+    let apis = api_surface(
+        &registry,
+        EndingRole::Standard,
+        false,
+        GgProgramLanguage::TypeScript,
+    );
     let names: Vec<String> = functions_on(&apis, "fs")
         .into_iter()
         .map(|(name, _)| name)
@@ -210,7 +218,12 @@ async fn a_subagent_reports_its_own_surface() {
 fn the_api_surface_carries_each_objects_functions_and_the_tool_that_gates_them() {
     let set = GgCapabilitySet::minimal("mock/echo");
     let registry = ToolRegistry::from_capabilities(set.root());
-    let apis = api_surface(&registry, EndingRole::Standard, false);
+    let apis = api_surface(
+        &registry,
+        EndingRole::Standard,
+        false,
+        GgProgramLanguage::TypeScript,
+    );
 
     assert_eq!(
         functions_on(&apis, "fs"),
@@ -258,7 +271,12 @@ fn the_api_surface_carries_each_objects_functions_and_the_tool_that_gates_them()
     );
 
     // The reviewer's arm of the same rule: a dispatched role decides which verdict object exists.
-    let reviewer = api_surface(&registry, EndingRole::Review, false);
+    let reviewer = api_surface(
+        &registry,
+        EndingRole::Review,
+        false,
+        GgProgramLanguage::TypeScript,
+    );
     assert_eq!(
         functions_on(&reviewer, "review"),
         vec![
@@ -283,8 +301,18 @@ fn the_prompt_projection_is_the_surface_without_its_functions() {
         .push(GgCapabilityConfig::enabled(CAPABILITY_PROGRAM_LIBRARY));
     let registry = ToolRegistry::from_capabilities(set.root());
 
-    let surface = api_surface(&registry, EndingRole::Standard, true);
-    let views = api_views(&registry, EndingRole::Standard, true);
+    let surface = api_surface(
+        &registry,
+        EndingRole::Standard,
+        true,
+        GgProgramLanguage::TypeScript,
+    );
+    let views = api_views(
+        &registry,
+        EndingRole::Standard,
+        true,
+        GgProgramLanguage::TypeScript,
+    );
     assert_eq!(
         views
             .iter()
@@ -302,9 +330,14 @@ fn the_prompt_projection_is_the_surface_without_its_functions() {
         "an enabled program library binds its object"
     );
     assert!(
-        api_surface(&registry, EndingRole::Standard, false)
-            .iter()
-            .all(|api| api.object != "programs"),
+        api_surface(
+            &registry,
+            EndingRole::Standard,
+            false,
+            GgProgramLanguage::TypeScript
+        )
+        .iter()
+        .all(|api| api.object != "programs"),
         "and a run without one does not"
     );
 }
@@ -359,8 +392,18 @@ fn every_object_reports_the_list_meta_function_last_and_ungated() {
     let registry = ToolRegistry::from_capabilities(set.root());
     // The reviewer's role, so the object a dispatched role binds is covered alongside the tool-gated
     // and capability-gated ones.
-    let apis = api_surface(&registry, EndingRole::Review, true);
-    let docs = crate::docs::DocsRuntime::new(scope_tools(&registry), EndingRole::Review, true);
+    let apis = api_surface(
+        &registry,
+        EndingRole::Review,
+        true,
+        GgProgramLanguage::TypeScript,
+    );
+    let docs = crate::docs::DocsRuntime::new(
+        scope_tools(&registry),
+        EndingRole::Review,
+        true,
+        GgProgramLanguage::TypeScript,
+    );
 
     assert!(!apis.is_empty(), "the fixture binds objects to check");
     for api in &apis {

@@ -37,8 +37,9 @@ use test_cabinet_core::gg::{
     CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
     CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, FSM_PARAM_STATES, GgAgentConfig,
     GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource,
-    GgIssueReviewPhase, GgIssueStatus, GgPromptCacheTtl, GgSessionSummary, GgSlotBinding,
-    GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind, GgWorkflowPhase, ROOT_AGENT,
+    GgIssueReviewPhase, GgIssueStatus, GgProgramLanguage, GgPromptCacheTtl, GgSessionSummary,
+    GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind,
+    GgWorkflowPhase, ROOT_AGENT,
 };
 use test_cabinet_core::gg_replay::{
     GG_REPLAY_BLOB_REF_KEY, GgClientRole, GgReplayAgent, GgReplayAgentOrigin, GgReplayEntry,
@@ -162,6 +163,7 @@ fn no_limits_until(max_turns: usize, deadline: Instant) -> LimitsSetup {
 fn no_code() -> CodeSetup {
     CodeSetup {
         enabled: false,
+        language: GgProgramLanguage::TypeScript,
         limits: SandboxLimits::default(),
         healing: HealingConfig::default(),
         assistant_messages: AssistantMessageMode::None,
@@ -474,7 +476,7 @@ fn no_amc() -> AmcSetup {
         archive: Arc::new(Mutex::new(ArchiveStore::new())),
         archive_id: "archive-0".to_string(),
         can_evict: false,
-        can_close_views: false,
+        close_views: None,
         can_archive: false,
         top_file_views: 0,
     }
@@ -504,7 +506,7 @@ fn amc_with(archive: Arc<Mutex<ArchiveStore>>) -> AmcSetup {
         archive_id: "archive-0".to_string(),
         can_evict: true,
         // These `drive` e2es are tool-calling agents, so there is no `view` object to point at.
-        can_close_views: false,
+        close_views: None,
         can_archive: true,
         top_file_views: 5,
     }
@@ -1629,7 +1631,7 @@ fn system_prompt_names_the_api_objects_in_code_mode() {
     let runtimes = DisabledRuntimes::new();
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
     let full = system_prompt(PromptInputs {
-        responses_as_code: true,
+        program_language: Some(GgProgramLanguage::TypeScript),
         ..runtimes.inputs(&registry)
     });
     // The file and shell objects are present (the minimal set binds their tools); the harness object
@@ -1650,7 +1652,7 @@ fn system_prompt_names_the_api_objects_in_code_mode() {
     };
     let empty_registry = ToolRegistry::from_capabilities(&empty_set);
     let empty = system_prompt(PromptInputs {
-        responses_as_code: true,
+        program_language: Some(GgProgramLanguage::TypeScript),
         ..runtimes.inputs(&empty_registry)
     });
     assert!(empty.contains("`harness`"), "{empty}");
@@ -1757,7 +1759,15 @@ async fn autoload_seeds_the_provided_files_as_read_pairs() {
         PathBuf::from("SPEC.md"),
         PathBuf::from("reference/title.png"),
     ];
-    autoload_specifications(&mut context, &provided, &ctx, false, &emitter).await;
+    autoload_specifications(
+        &mut context,
+        &provided,
+        &ctx,
+        GgProgramLanguage::TypeScript,
+        false,
+        &emitter,
+    )
+    .await;
 
     // Two file views, in the order provided, tagged with their paths — ephemeral (not locked).
     let views: Vec<_> = context
@@ -1821,7 +1831,15 @@ async fn autoload_seeds_a_code_agent_with_a_program_not_a_tool_call() {
         PathBuf::from("SPEC.md"),
         PathBuf::from("reference/title.png"),
     ];
-    autoload_specifications(&mut context, &provided, &ctx, false, &emitter).await;
+    autoload_specifications(
+        &mut context,
+        &provided,
+        &ctx,
+        GgProgramLanguage::TypeScript,
+        false,
+        &emitter,
+    )
+    .await;
 
     // One assistant turn, and it is a program naming both files in seeding order.
     let assistant: Vec<String> = context
@@ -1905,6 +1923,7 @@ async fn a_locked_code_mode_seed_is_pinned() {
         &mut context,
         &[PathBuf::from("SPEC.md")],
         &ctx,
+        GgProgramLanguage::TypeScript,
         true,
         &emitter,
     )
@@ -1938,7 +1957,15 @@ async fn locked_autoload_survives_compaction() {
     );
     unlocked.set_system("system");
     unlocked.push_user_prompt("build");
-    autoload_specifications(&mut unlocked, &provided, &ctx, false, &emitter).await;
+    autoload_specifications(
+        &mut unlocked,
+        &provided,
+        &ctx,
+        GgProgramLanguage::TypeScript,
+        false,
+        &emitter,
+    )
+    .await;
     unlocked.clear_ephemeral();
     assert!(
         !unlocked
@@ -1956,7 +1983,15 @@ async fn locked_autoload_survives_compaction() {
     );
     locked.set_system("system");
     locked.push_user_prompt("build");
-    autoload_specifications(&mut locked, &provided, &ctx, true, &emitter).await;
+    autoload_specifications(
+        &mut locked,
+        &provided,
+        &ctx,
+        GgProgramLanguage::TypeScript,
+        true,
+        &emitter,
+    )
+    .await;
     assert!(
         context_has_pinned_file_view(&locked),
         "a locked spec is pinned before compaction"
@@ -2177,7 +2212,7 @@ impl DisabledRuntimes {
             shell_offload: &self.shell_offload,
             vision: &self.vision,
             speculative: false,
-            responses_as_code: false,
+            program_language: None,
             program_library: false,
             autoload_specs: None,
             persistence: false,
@@ -4132,6 +4167,11 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
             &registry,
             Arc::clone(&archive),
             "archive-0".to_string(),
+            // The run's own resolution, threaded in exactly as the loop threads it: the language is
+            // resolved once per agent and read from there, never re-derived per consumer.
+            profile
+                .is_enabled(CAPABILITY_RESPONSES_AS_CODE)
+                .then(|| crate::sandbox::resolve_program_language(profile).language),
         )
     };
 
@@ -4153,7 +4193,7 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
         UsageSignalOptions {
             can_evict: true,
             // A tool-calling agent has no `view` object, so the block must not point at `view.close`.
-            can_close_views: false,
+            close_views: None,
             can_archive: true,
             top_file_views: DEFAULT_TOP_FILE_VIEWS,
         }
@@ -4183,7 +4223,7 @@ fn amc_setup_reads_the_agents_own_toolset_and_configuration() {
     let mut code = on.clone();
     code.capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
-    assert!(resolve(&code).can_close_views);
+    assert!(resolve(&code).close_views.is_some());
 }
 
 /// The FileView token band of every emitted `ContextBreakdown`, in order.
@@ -9351,7 +9391,7 @@ impl ModelClient for SharedClient {
 /// would be reading an unexplained block in its own window.
 #[test]
 fn the_view_heading_is_documented_for_every_code_run() {
-    let ablated = code_heading_views(false, false, false, false);
+    let ablated = code_heading_views(GgProgramLanguage::TypeScript, false, false, false, false);
     let heading = code_heading(GgContextSource::TextView).expect("a text view carries a heading");
     let row = ablated
         .iter()
@@ -9360,14 +9400,23 @@ fn the_view_heading_is_documented_for_every_code_run() {
     // The heading a text view actually carries is `View: {label}`, so the description has to say
     // where the label goes or the model cannot match a block to its own `view.openText` call.
     assert!(row.description.contains("label"), "{row:#?}");
-    assert!(row.description.contains("view.openText"), "{row:#?}");
+    // Spelled the way the run's own language spells it, read from that language's catalogue rather
+    // than from this assertion: the description is authored in Rust and rendered into *every*
+    // language's template, so a spelling frozen here would reach a model that does not bind it.
+    assert!(
+        row.description.contains(&crate::sandbox::spell(
+            crate::sandbox::language(GgProgramLanguage::TypeScript),
+            crate::sandbox::OPEN_TEXT
+        )),
+        "{row:#?}"
+    );
 
     // The `File` heading, by contrast, is gated: a run that neither reads, autoloads nor persists
     // can never show one, and naming it would describe a message kind that cannot arrive.
     let file = code_heading(GgContextSource::FileView).expect("a file view carries a heading");
     assert!(!ablated.iter().any(|view| view.heading == file));
     assert!(
-        code_heading_views(false, false, false, true)
+        code_heading_views(GgProgramLanguage::TypeScript, false, false, false, true)
             .iter()
             .any(|view| view.heading == file)
     );

@@ -1,17 +1,18 @@
-//! Tests for the TypeScript type-strip.
+//! Tests for the TypeScript type-strip — this language's answer to
+//! [`prepare_program`](crate::sandbox::ProgramLanguage::prepare_program).
 //!
-//! None of these touches wasm: the transpile is a pure function over a string, which is why it is
-//! also the one failure a program can hit that costs no engine work at all.
+//! None of these touches wasm: preparing a program is a pure function over a string, which is why
+//! it is also the one failure a program can hit that costs no engine work at all.
 
 use super::*;
 
 /// The type-stripped JavaScript alone, for the many cases that only care what the strip emitted.
 ///
-/// [`transpile_ts`] returns the JavaScript **and** what it observed about the program on the way
+/// [`prepare_program`] returns the JavaScript **and** what it observed about the program on the way
 /// past; the observation has its own tests below, and a helper keeps every other case reading as
 /// what it is about.
-fn js_of(src: &str) -> Result<String, TranspileError> {
-    transpile_ts(src).map(|transpiled| transpiled.js)
+fn js_of(src: &str) -> Result<String, PrepareError> {
+    prepare_program(src).map(|prepared| prepared.source)
 }
 
 /// The types are erased and the runnable JavaScript survives.
@@ -42,15 +43,15 @@ fn a_top_level_return_of_a_value_is_allowed() {
 /// The same for a bare `return`, which a program that only performs effects will write.
 #[test]
 fn a_bare_top_level_return_is_allowed() {
-    transpile_ts("writeFile(\"a.txt\", \"hi\");\nreturn;").expect("a bare return is allowed");
+    prepare_program("writeFile(\"a.txt\", \"hi\");\nreturn;").expect("a bare return is allowed");
 }
 
 /// A syntax error is a recoverable, model-facing diagnostic — never a panic.
 #[test]
 fn a_syntax_error_is_a_parse_error_with_a_message() {
-    let error = transpile_ts("const x: = ;").expect_err("invalid TypeScript is refused");
+    let error = prepare_program("const x: = ;").expect_err("invalid TypeScript is refused");
     assert!(
-        matches!(error, TranspileError::Parse(_)),
+        matches!(error, PrepareError::Syntax(_)),
         "expected a parse error, got {error:?}"
     );
     assert!(
@@ -63,9 +64,9 @@ fn a_syntax_error_is_a_parse_error_with_a_message() {
 /// panicking somewhere inside the parser.
 #[test]
 fn an_unterminated_construct_is_a_parse_error_not_a_panic() {
-    let error =
-        transpile_ts("const entries = listDir(\"src\";").expect_err("an unterminated call fails");
-    assert!(matches!(error, TranspileError::Parse(_)), "{error:?}");
+    let error = prepare_program("const entries = listDir(\"src\";")
+        .expect_err("an unterminated call fails");
+    assert!(matches!(error, PrepareError::Syntax(_)), "{error:?}");
 }
 
 /// Every diagnostic reaches the message, not just the first: a model that fixes one error and is
@@ -77,7 +78,7 @@ fn an_unterminated_construct_is_a_parse_error_not_a_panic() {
 #[test]
 fn every_diagnostic_reaches_the_message() {
     let error =
-        transpile_ts("class A { public public x = 1; }\nclass B { private private y = 2; }")
+        prepare_program("class A { public public x = 1; }\nclass B { private private y = 2; }")
             .expect_err("two errors are refused");
     let message = error.to_string();
     assert_eq!(
@@ -105,7 +106,7 @@ fn every_diagnostic_reaches_the_message() {
 fn a_parse_diagnostic_carries_its_line_column_and_source_line() {
     let program = "const files = listDir(\"src\");\nconsole.log(files.length);\nreturn \
                    files.length;\n```Consumed fuel: 24,000 / 1,000,000 budget.";
-    let message = transpile_ts(program)
+    let message = prepare_program(program)
         .expect_err("a closing fence read as program text does not compile")
         .to_string();
     assert!(
@@ -124,7 +125,7 @@ fn a_parse_diagnostic_carries_its_line_column_and_source_line() {
 #[test]
 fn a_long_source_line_is_quoted_only_up_to_the_excerpt_cap() {
     let program = format!("const x = {}; const y: = ;", "1 + ".repeat(400) + "1");
-    let message = transpile_ts(&program)
+    let message = prepare_program(&program)
         .expect_err("invalid TypeScript is refused")
         .to_string();
     let quoted = message
@@ -157,9 +158,9 @@ fn a_diagnostic_without_a_span_renders_as_its_bare_message() {
 #[test]
 fn an_import_statement_is_refused_with_guidance() {
     let error =
-        transpile_ts("import fs from 'node:fs';\nreturn 1;").expect_err("an import is refused");
+        prepare_program("import fs from 'node:fs';\nreturn 1;").expect_err("an import is refused");
     let message = error.to_string();
-    assert!(matches!(error, TranspileError::Unsupported(_)), "{error:?}");
+    assert!(matches!(error, PrepareError::Unsupported(_)), "{error:?}");
     assert!(message.contains("`import`"), "{message}");
     assert!(message.contains("already in scope"), "{message}");
 }
@@ -167,7 +168,7 @@ fn an_import_statement_is_refused_with_guidance() {
 /// `export` is the same mistake with a different keyword, and the message names the right one.
 #[test]
 fn an_export_statement_is_refused_with_guidance() {
-    let error = transpile_ts("export const a = 1;").expect_err("an export is refused");
+    let error = prepare_program("export const a = 1;").expect_err("an export is refused");
     assert!(
         error.to_string().contains("`export`"),
         "{}",
@@ -178,7 +179,7 @@ fn an_export_statement_is_refused_with_guidance() {
 /// `export default` is a different AST node and must be caught by the same scan.
 #[test]
 fn an_export_default_is_refused_with_guidance() {
-    let error = transpile_ts("export default 1;").expect_err("an export default is refused");
+    let error = prepare_program("export default 1;").expect_err("an export default is refused");
     assert!(
         error.to_string().contains("`export`"),
         "{}",
@@ -191,9 +192,10 @@ fn an_export_default_is_refused_with_guidance() {
 /// at `path_filestat_get`, which is the worst possible way for a model to learn there is no loader.
 #[test]
 fn a_dynamic_import_is_refused_with_guidance() {
-    let error = transpile_ts("return import('node:fs');").expect_err("a dynamic import is refused");
+    let error =
+        prepare_program("return import('node:fs');").expect_err("a dynamic import is refused");
     let message = error.to_string();
-    assert!(matches!(error, TranspileError::Unsupported(_)), "{error:?}");
+    assert!(matches!(error, PrepareError::Unsupported(_)), "{error:?}");
     assert!(message.contains("dynamic `import()`"), "{message}");
 }
 
@@ -202,9 +204,9 @@ fn a_dynamic_import_is_refused_with_guidance() {
 #[test]
 fn a_top_level_await_is_refused_with_guidance() {
     let error =
-        transpile_ts("const p = await shell('ls');\nreturn p;").expect_err("await is refused");
+        prepare_program("const p = await shell('ls');\nreturn p;").expect_err("await is refused");
     let message = error.to_string();
-    assert!(matches!(error, TranspileError::Unsupported(_)), "{error:?}");
+    assert!(matches!(error, PrepareError::Unsupported(_)), "{error:?}");
     assert!(message.contains("top-level `await`"), "{message}");
     assert!(message.contains("synchronous"), "{message}");
 }
@@ -221,9 +223,10 @@ fn a_deeply_nested_program_is_refused_rather_than_crashing_the_process() {
     let depth = usize::try_from(MAX_NESTING_DEPTH).expect("the cap fits a usize") + 1;
     for (open, close) in [("(", ")"), ("[", "]"), ("{a:", "}")] {
         let program = format!("return {}1{};", open.repeat(depth), close.repeat(depth));
-        let error = transpile_ts(&program).expect_err("a program past the nesting cap is refused");
+        let error =
+            prepare_program(&program).expect_err("a program past the nesting cap is refused");
         let message = error.to_string();
-        assert!(matches!(error, TranspileError::Unsupported(_)), "{error:?}");
+        assert!(matches!(error, PrepareError::Unsupported(_)), "{error:?}");
         assert!(
             message.contains(&format!("{depth} levels deep")),
             "the message must name the depth the program reached: {message}"
@@ -238,8 +241,8 @@ fn a_deeply_nested_program_is_refused_rather_than_crashing_the_process() {
     // refusal and not a crash — which is the whole point of the guard.
     let runaway = format!("return {}1{};", "(".repeat(20_000), ")".repeat(20_000));
     assert!(matches!(
-        transpile_ts(&runaway),
-        Err(TranspileError::Unsupported(_))
+        prepare_program(&runaway),
+        Err(PrepareError::Unsupported(_))
     ));
 }
 
@@ -249,7 +252,7 @@ fn a_deeply_nested_program_is_refused_rather_than_crashing_the_process() {
 fn nesting_within_the_cap_is_accepted() {
     let depth = usize::try_from(MAX_NESTING_DEPTH).expect("the cap fits a usize");
     let program = format!("return {}1{};", "(".repeat(depth), ")".repeat(depth));
-    transpile_ts(&program).expect("nesting at the cap is still accepted");
+    prepare_program(&program).expect("nesting at the cap is still accepted");
 }
 
 /// Closing brackets with nothing open cannot push the depth below zero, because a source that
@@ -265,8 +268,8 @@ fn unbalanced_closers_do_not_mask_later_nesting() {
         ")".repeat(depth),
     );
     assert!(matches!(
-        transpile_ts(&program),
-        Err(TranspileError::Unsupported(_))
+        prepare_program(&program),
+        Err(PrepareError::Unsupported(_))
     ));
 }
 
@@ -275,8 +278,8 @@ fn unbalanced_closers_do_not_mask_later_nesting() {
 #[test]
 fn a_program_far_past_any_plausible_response_transpiles() {
     let program = format!("return \"{}\";", "x".repeat(4 * HUNGRY_PROGRAM_BYTES));
-    let transpiled = transpile_ts(&program).expect("a very long program transpiles");
-    assert!(transpiled.js.contains("xxx"), "the literal was lost");
+    let prepared = prepare_program(&program).expect("a very long program is prepared");
+    assert!(prepared.source.contains("xxx"), "the literal was lost");
 }
 
 /// The size each worst-case shape below is built at — 256 KiB, four times the cap that used to
@@ -299,20 +302,20 @@ fn the_hungriest_programs_transpile_at_any_size() {
     // ~262,100 postfix non-null assertions: one byte per level, and the hungriest measured at
     // ~1.2 KiB of stack for each of them — ~315 MiB of stack for this one program alone.
     let assertions = "!".repeat(HUNGRY_PROGRAM_BYTES - "const a = 1;\nreturn a;".len());
-    transpile_ts(&format!("const a = 1;\nreturn a{assertions};"))
+    prepare_program(&format!("const a = 1;\nreturn a{assertions};"))
         .expect("a deep non-null chain transpiles");
 
     // The same length again as prefix `!`, which recurses through a different production.
     let bangs = "!".repeat(HUNGRY_PROGRAM_BYTES - "return 1;".len());
-    transpile_ts(&format!("return {bangs}1;")).expect("a deep unary chain transpiles");
+    prepare_program(&format!("return {bangs}1;")).expect("a deep unary chain transpiles");
 
     // ~65,500 nested conditionals, four bytes per level.
     let ternaries = "1?1:".repeat((HUNGRY_PROGRAM_BYTES - "return 1;".len()) / 4);
-    transpile_ts(&format!("return {ternaries}1;")).expect("a deep conditional chain transpiles");
+    prepare_program(&format!("return {ternaries}1;")).expect("a deep conditional chain transpiles");
 
     // ~131,000 links of member access, which recurses once per `.b`.
     let members = ".b".repeat((HUNGRY_PROGRAM_BYTES - "const a = {};\nreturn a;".len()) / 2);
-    transpile_ts(&format!("const a = {{}};\nreturn a{members};"))
+    prepare_program(&format!("const a = {{}};\nreturn a{members};"))
         .expect("a deep member chain transpiles");
 }
 
@@ -343,9 +346,9 @@ fn a_redeclared_const_is_a_located_early_error() {
                    writeFile(\"a.md\", \"x\");\n\
                    const root = listDir(\".\");\n\
                    return root.length;";
-    let error = transpile_ts(program).expect_err("a redeclared const is refused");
+    let error = prepare_program(program).expect_err("a redeclared const is refused");
     assert!(
-        matches!(error, TranspileError::EarlyError(_)),
+        matches!(error, PrepareError::Semantic(_)),
         "expected an early error, got {error:?}"
     );
     let message = error.to_string();
@@ -366,9 +369,9 @@ fn a_redeclared_const_is_a_located_early_error() {
 /// A `let` redeclared by a `const` is the same class of mistake and gets the same treatment.
 #[test]
 fn a_binding_redeclared_by_another_keyword_is_an_early_error() {
-    let error = transpile_ts("let files = 1;\nconst files = 2;\nreturn files;")
+    let error = prepare_program("let files = 1;\nconst files = 2;\nreturn files;")
         .expect_err("a redeclaration across keywords is refused");
-    assert!(matches!(error, TranspileError::EarlyError(_)), "{error:?}");
+    assert!(matches!(error, PrepareError::Semantic(_)), "{error:?}");
 }
 
 /// The early-error check must not refuse the programs the sandbox actually runs. Every shape here
@@ -388,7 +391,7 @@ fn the_early_error_check_accepts_every_shape_a_real_program_has() {
         "try { shell(\"ls\"); } catch (e) { console.log(e); }\nreturn 1;",
         "const { a, b } = { a: 1, b: 2 };\nreturn a + b;",
     ] {
-        transpile_ts(program).unwrap_or_else(|error| {
+        prepare_program(program).unwrap_or_else(|error| {
             panic!("a legal program was refused: {error}\n{program}");
         });
     }
@@ -408,8 +411,8 @@ fn statements_after_a_top_level_return_are_counted_and_quoted() {
                    return { exitCode: tree.exitCode };\n\
                    writeFile(\"MANIFEST.md\", \"- a.ts\");\n\
                    finish(\"wrote the manifest\");";
-    let transpiled = transpile_ts(program).expect("dead code after a return is still a program");
-    let tail = transpiled
+    let prepared = prepare_program(program).expect("dead code after a return is still a program");
+    let tail = prepared
         .unreachable
         .expect("the statements after the return must be reported");
     assert_eq!(tail.statements, 2);
@@ -426,7 +429,7 @@ fn statements_after_a_top_level_return_are_counted_and_quoted() {
 fn statements_after_a_top_level_finish_are_not_dead() {
     let program = "finish(\"all done\");\nwriteFile(\"MANIFEST.md\", \"- a.ts\");";
     assert_eq!(
-        transpile_ts(program)
+        prepare_program(program)
             .expect("a program that finishes and carries on still transpiles")
             .unreachable,
         None,
@@ -454,7 +457,7 @@ fn hoisted_and_erased_declarations_after_a_return_are_not_reported() {
         "function f() { return 1; }\nreturn f();",
     ] {
         assert_eq!(
-            transpile_ts(program)
+            prepare_program(program)
                 .unwrap_or_else(|error| panic!("{error}\n{program}"))
                 .unreachable,
             None,
@@ -469,7 +472,7 @@ fn hoisted_and_erased_declarations_after_a_return_are_not_reported() {
 #[test]
 fn the_unreachable_excerpt_is_capped() {
     let long = "x".repeat(MAX_EXCERPT_CHARS * 2);
-    let tail = transpile_ts(&format!("return 1;\nconsole.log(\"{long}\");"))
+    let tail = prepare_program(&format!("return 1;\nconsole.log(\"{long}\");"))
         .expect("transpiles")
         .unreachable
         .expect("reported");
@@ -492,18 +495,18 @@ fn the_captured_two_draft_replies_report_their_dead_halves() {
     for (name, reply, statements, expected_first) in [
         (
             "round2-terra-two-drafts",
-            include_str!("../testdata/round2-terra-two-drafts.txt"),
+            include_str!("../../testdata/round2-terra-two-drafts.txt"),
             7,
             "const build = shell(",
         ),
         (
             "round2-sol-two-drafts",
-            include_str!("../testdata/round2-sol-two-drafts.txt"),
+            include_str!("../../testdata/round2-sol-two-drafts.txt"),
             12,
             "const files = shell(",
         ),
     ] {
-        let tail = transpile_ts(reply.trim())
+        let tail = prepare_program(reply.trim())
             .unwrap_or_else(|error| panic!("{name} must still transpile: {error}"))
             .unreachable
             .unwrap_or_else(|| panic!("{name}'s second draft was not reported as dead"));
@@ -524,16 +527,16 @@ fn the_captured_duplicate_replies_are_located_early_errors_when_healing_is_off()
     for (name, reply, identifier) in [
         (
             "round2-sol-duplicate-program",
-            include_str!("../testdata/round2-sol-duplicate-program.txt"),
+            include_str!("../../testdata/round2-sol-duplicate-program.txt"),
             "root",
         ),
         (
             "round2-terra-duplicate-program",
-            include_str!("../testdata/round2-terra-duplicate-program.txt"),
+            include_str!("../../testdata/round2-terra-duplicate-program.txt"),
             "files",
         ),
     ] {
-        let error = transpile_ts(reply.trim())
+        let error = prepare_program(reply.trim())
             .expect_err(&format!("{name} declares {identifier} twice"))
             .to_string();
         assert!(error.contains(identifier), "{name}: {error}");

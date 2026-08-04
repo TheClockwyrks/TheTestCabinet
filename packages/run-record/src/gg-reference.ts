@@ -7,6 +7,8 @@
 // JSON Schemas under `apps/docs/public/schema/` are generated from the same types
 // in the same pass.
 
+import type { GgProgramLanguage } from "./gg";
+
 /**
  * One family of gg's surface: a group of tools and the API object(s) their
  * responses-as-code counterparts hang off.
@@ -215,6 +217,21 @@ export type GgReference = {
    * same whenever the artifact was regenerated, and CI's drift gate is what keeps that true.
    */
   ggVersion: string;
+  /**
+   * The [program language](GgProgramLanguage) the [functions](Self::functions) below are
+   * spelled in.
+   *
+   * gg's responses-as-code surface is one set of capabilities that every registered language
+   * offers under its own spellings — identical objects, identical gates, different function
+   * names and signatures. So a page showing signatures has to say whose, and a reader comparing
+   * two arms of a cross-language study has to be able to tell which one they are reading. The
+   * [tools](Self::tools) are unaffected: a tool's name and JSON schema are the wire's, not any
+   * language's.
+   *
+   * `#[serde(default)]` so an artifact generated before this field existed still decodes as the
+   * default language, which is the one it was in fact projected from.
+   */
+  language: GgProgramLanguage;
   /**
    * The families the surface is grouped by, in gg's own order — the order the system
    * prompt's API table and the built-in skills index list them in, which is roughly "the

@@ -1,39 +1,46 @@
-//! The process-wide wasm engine and the one compiled copy of the interpreter component — the two
-//! statics that make a code turn cost microseconds instead of a second.
+//! The process-wide wasm engine and one compiled copy of each registered
+//! [language](super::language)'s interpreter component — the statics that make a code turn cost
+//! microseconds instead of a second.
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use test_cabinet_core::gg::GgProgramLanguage;
 use wasmtime::component::Component;
 use wasmtime::{Config, Engine, OptLevel, Store};
 
 use super::SandboxError;
 use super::invoker::ToolApi;
+use super::language::ProgramLanguage;
 use super::limits::SandboxLimits;
 use super::membrane::MembraneState;
-
-/// The committed interpreter component: the TypeScript guest in `packages/gg-sandbox`, built by its
-/// `build.sh` with `componentize-js` and committed here, exactly as gg's other wasm guests are
-/// committed alongside their sources.
-///
-/// It is ~13.4 MB because it embeds a JavaScript engine, and it is **embedded in the binary**
-/// rather than read from disk because gg is copied as a single file into an ephemeral run
-/// container and must carry everything it needs with it. Committing it zstd-compressed (~4 MB) was
-/// considered and rejected: it would drag a C toolchain onto a binary that is release-built for
-/// Linux, Windows and macOS and statically linked against musl, in order to shrink a developer/CI
-/// artifact nobody downloads on a budget.
-const SANDBOX_COMPONENT: &[u8] = include_bytes!("gg-sandbox.component.wasm");
 
 /// The process-wide wasm engine.
 static ENGINE: OnceLock<Engine> = OnceLock::new();
 
-/// The compiled component, compiled at most once per process.
+/// The compiled component for each registered language, compiled at most once per process each.
 ///
-/// gg has exactly one guest, embedded in the binary, so this is a `OnceLock` rather than a
-/// bytes-keyed cache — the same "compiled once" property with the hashing, the mutex and the
-/// eviction policy removed.
-static COMPONENT: OnceLock<Component> = OnceLock::new();
+/// A fixed-size array indexed by the language enum's discriminant, not a bytes- or id-keyed cache
+/// behind a `Mutex`: the set of languages is closed and known at compile time, so this keeps the
+/// race-idempotent [`OnceLock`] semantics below — and with them the "no lock held across a
+/// multi-second compile" property — while the hashing and the eviction policy stay absent.
+///
+/// A run compiles exactly one of these, because an agent writes in one language all session. The
+/// array exists so that a run whose *subagents* are configured differently pays one compile per
+/// language it actually drives, rather than recompiling on every alternation.
+static COMPONENTS: [OnceLock<Component>; GgProgramLanguage::COUNT] =
+    [const { OnceLock::new() }; GgProgramLanguage::COUNT];
+
+/// The cache slot one language's compiled component lives in.
+///
+/// Indexed by [`GgProgramLanguage::ordinal`], which is the language's own position in
+/// [`GgProgramLanguage::ALL`] and is checked against that list at compile time. That is what makes
+/// this array impossible to get out of step with the enum: a variant that is not in `ALL` does not
+/// compile, so there is no index here that can be out of bounds.
+fn slot(id: GgProgramLanguage) -> &'static OnceLock<Component> {
+    &COMPONENTS[id.ordinal()]
+}
 
 /// How many times this process compiled the component. Read only by tests, which is how the "never
 /// recompiled per program" property is asserted **without timing anything**.
@@ -58,7 +65,7 @@ static COMPILES: AtomicU64 = AtomicU64::new(0);
 /// seem to want it. It is not enabled, and the `cache` feature is deliberately left off gg's
 /// wasmtime dependency: gg runs **one process per run, inside an ephemeral container**, so a disk
 /// cache would be written once and thrown away with the container. The process-wide
-/// [`COMPONENT`] already delivers the only property that matters — the second program of a run
+/// [`COMPONENTS`] already delivers the only property that matters — the second program of a run
 /// pays nothing — and the feature would pull `zstd`'s C compile into a musl-static release binary
 /// to buy nothing.
 ///
@@ -135,8 +142,8 @@ pub(crate) fn shared_engine() -> &'static Engine {
     engine()
 }
 
-/// The compiled interpreter component, compiling it on first use — and how long the caller spent
-/// getting it.
+/// `language`'s compiled interpreter component, compiling it on first use — and how long the caller
+/// spent getting it.
 ///
 /// Race-idempotent rather than locked: two threads arriving together may both compile, the first
 /// [`OnceLock::set`] wins and the loser's [`Component`] is dropped. That costs one wasted compile
@@ -152,16 +159,18 @@ pub(crate) fn shared_engine() -> &'static Engine {
 /// the whole compile inside its own span. Without this figure the only way to tell that apart from
 /// a slow program is forensic timestamp analysis — which is exactly what it cost the last time the
 /// question was asked.
-pub(crate) fn component() -> Result<(&'static Component, Option<Duration>), SandboxError> {
-    if let Some(component) = COMPONENT.get() {
+pub(crate) fn component(
+    language: &'static dyn ProgramLanguage,
+) -> Result<(&'static Component, Option<Duration>), SandboxError> {
+    let slot = slot(language.id());
+    if let Some(component) = slot.get() {
         return Ok((component, None));
     }
     let started = Instant::now();
-    let compiled = compile_bytes(SANDBOX_COMPONENT)?;
-    let _ = COMPONENT.set(compiled);
+    let compiled = compile_bytes(language.guest_component())?;
+    let _ = slot.set(compiled);
     Ok((
-        COMPONENT
-            .get()
+        slot.get()
             .expect("the component was just set, and a `OnceLock` never unsets"),
         Some(started.elapsed()),
     ))
@@ -181,22 +190,23 @@ pub(crate) fn compiles() -> u64 {
 
 /// Compile component bytes against the shared engine, counting the compile.
 ///
-/// Called with [`SANDBOX_COMPONENT`] in production; the tests additionally call it with bytes that
-/// are not a component at all, which is the only way to see the failure path of an artifact that —
-/// by construction, because the test suite compiles it — is always valid in a real build.
+/// Called with a language's own [`guest_component`](ProgramLanguage::guest_component) in production;
+/// the tests additionally call it with bytes that are not a component at all, which is the only way
+/// to see the failure path of an artifact that — by construction, because the test suite compiles it
+/// — is always valid in a real build.
 pub(crate) fn compile_bytes(bytes: &[u8]) -> Result<Component, SandboxError> {
     COMPILES.fetch_add(1, Ordering::Relaxed);
     Component::new(engine(), bytes).map_err(|err| SandboxError::Compile(err.to_string()))
 }
 
-/// The committed component's bytes, for the test that guards its size band.
+/// One language's committed component bytes, for the test that guards its size band.
 ///
 /// `#[cfg(test)]` because production never wants the bytes, only the compiled
 /// [`Component`](component) — an ungated accessor with one test caller is dead code in a released
 /// build.
 #[cfg(test)]
-pub(crate) fn component_bytes() -> &'static [u8] {
-    SANDBOX_COMPONENT
+pub(crate) fn component_bytes(language: &'static dyn ProgramLanguage) -> &'static [u8] {
+    language.guest_component()
 }
 
 /// Map a wasmtime error onto the right [`SandboxError`].

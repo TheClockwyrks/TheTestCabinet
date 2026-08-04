@@ -15,6 +15,18 @@ use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgCapab
 
 use super::*;
 
+/// The [dialect](Dialect) every case in this file heals through: **TypeScript's**.
+///
+/// Named for the language rather than for gg's default, because that is what these cases are about:
+/// the corpus is a set of replies real models sent to a TypeScript run, and every expectation in it
+/// — which fence tags are the program's, which lines are prose, what an import looks like — is that
+/// language's answer. A case that means to assert something about **every** registered language
+/// iterates [`all_languages`](crate::sandbox::all_languages) instead, and one that means to assert
+/// something about the skeleton alone uses the inert dialect in `healing.programs.test.rs`.
+pub(crate) fn dialect() -> &'static dyn Dialect {
+    crate::sandbox::language(test_cabinet_core::gg::GgProgramLanguage::TypeScript).healing()
+}
+
 // ---------------------------------------------------------------------------------------------
 // The committed round-1 corpus
 // ---------------------------------------------------------------------------------------------
@@ -22,38 +34,38 @@ use super::*;
 /// The minimal malformed close: one `ts` block whose closing fence carries a sentence on the same
 /// line. The first six lines of the reply below, and the shape that made a round-1 session
 /// unrecoverable.
-pub(super) const GEMINI_GLUED_CLOSE: &str = include_str!("testdata/round1-gemini-glued-close.txt");
+pub(crate) const GEMINI_GLUED_CLOSE: &str = include_str!("testdata/round1-gemini-glued-close.txt");
 
 /// 9,800 bytes: **seven** `ts` candidates (two of them opened by prose glued to the fence), every
 /// one of them closed with prose glued on, beside seven fabricated `json` blocks and seven `text`
 /// blocks of invented output. The flagship of the round-1 failures.
-pub(super) const GEMINI_TURN_01: &str = include_str!("testdata/round1-gemini-turn-01.txt");
+pub(crate) const GEMINI_TURN_01: &str = include_str!("testdata/round1-gemini-turn-01.txt");
 
 /// **Five** cleanly-fenced `ts` blocks in one reply, then a paragraph narrating the whole task as
 /// finished. The model whose deliverable was in a discarded block.
-pub(super) const GPT_TURN_01: &str = include_str!("testdata/round1-gpt-turn-01.txt");
+pub(crate) const GPT_TURN_01: &str = include_str!("testdata/round1-gpt-turn-01.txt");
 
 /// Prose, **two** `ts` blocks, prose.
-pub(super) const HAIKU_TURN_01: &str = include_str!("testdata/round1-haiku-turn-01.txt");
+pub(crate) const HAIKU_TURN_01: &str = include_str!("testdata/round1-haiku-turn-01.txt");
 
 /// The glued **open**: a sentence and the next block's opening fence on one line, making **two**
 /// candidates out of what reads as one program and one follow-up.
-pub(super) const DEEPSEEK_TURN_01: &str = include_str!("testdata/round1-deepseek-turn-01.txt");
+pub(crate) const DEEPSEEK_TURN_01: &str = include_str!("testdata/round1-deepseek-turn-01.txt");
 
 /// The positive case: prose, one `ts` block, prose — the single most common real shape.
-pub(super) const HAIKU_TURN_03: &str = include_str!("testdata/round1-haiku-turn-03.txt");
+pub(crate) const HAIKU_TURN_03: &str = include_str!("testdata/round1-haiku-turn-03.txt");
 
 /// The modal terminal reply: four lines of prose declaring the task complete.
-pub(super) const HAIKU_TURN_04: &str = include_str!("testdata/round1-haiku-turn-04.txt");
+pub(crate) const HAIKU_TURN_04: &str = include_str!("testdata/round1-haiku-turn-04.txt");
 
 /// A one-line terminal prose reply.
-pub(super) const DEEPSEEK_TURN_04: &str = include_str!("testdata/round1-deepseek-turn-04.txt");
+pub(crate) const DEEPSEEK_TURN_04: &str = include_str!("testdata/round1-deepseek-turn-04.txt");
 
 /// A one-line terminal prose reply.
-pub(super) const GEMINI_TURN_03: &str = include_str!("testdata/round1-gemini-turn-03.txt");
+pub(crate) const GEMINI_TURN_03: &str = include_str!("testdata/round1-gemini-turn-03.txt");
 
 /// A one-line terminal prose reply.
-pub(super) const GPT_TURN_02: &str = include_str!("testdata/round1-gpt-turn-02.txt");
+pub(crate) const GPT_TURN_02: &str = include_str!("testdata/round1-gpt-turn-02.txt");
 
 // ---------------------------------------------------------------------------------------------
 // The committed round-2 corpus — the fence-free shapes
@@ -63,11 +75,11 @@ pub(super) const GPT_TURN_02: &str = include_str!("testdata/round1-gpt-turn-02.t
 /// twice**, with no fence anywhere. It redeclares `const root`, so as sent it could not execute a
 /// single statement — the guest answered it with `SyntaxError: redeclaration of const root` and the
 /// turn was lost.
-pub(super) const SOL_DUPLICATE_PROGRAM: &str =
+pub(crate) const SOL_DUPLICATE_PROGRAM: &str =
     include_str!("testdata/round2-sol-duplicate-program.txt");
 
 /// The same shape from the other model, two lines long: `const files` declared twice.
-pub(super) const TERRA_DUPLICATE_PROGRAM: &str =
+pub(crate) const TERRA_DUPLICATE_PROGRAM: &str =
     include_str!("testdata/round2-terra-duplicate-program.txt");
 
 /// Round 2's other fence-free shape: **two different drafts**, the first ending in a top-level
@@ -75,30 +87,30 @@ pub(super) const TERRA_DUPLICATE_PROGRAM: &str =
 /// of the deliverable and the `finish` that would have ended the run, is dead code. Healing must
 /// leave it alone (there is nothing here it could delete without changing what runs); the
 /// [type-strip](crate::sandbox) is what reports the dead half.
-pub(super) const TERRA_TWO_DRAFTS: &str = include_str!("testdata/round2-terra-two-drafts.txt");
+pub(crate) const TERRA_TWO_DRAFTS: &str = include_str!("testdata/round2-terra-two-drafts.txt");
 
 /// The same two-draft shape from the other model, and the one whose discarded half held the whole
 /// deliverable.
-pub(super) const SOL_TWO_DRAFTS: &str = include_str!("testdata/round2-sol-two-drafts.txt");
+pub(crate) const SOL_TWO_DRAFTS: &str = include_str!("testdata/round2-sol-two-drafts.txt");
 
 /// Round 2's largest fence-free shape: **five** programs in one reply, each followed by the output
 /// the model invented for it — a whole session narrated in a single turn. Only one name (`const
 /// srcEntries`) is declared by two of the five, so it is the fixture that pins what the candidate
 /// count means when the redeclaration evidence proves fewer programs than the reply holds.
-pub(super) const GEMINI_FIVE_PROGRAMS: &str =
+pub(crate) const GEMINI_FIVE_PROGRAMS: &str =
     include_str!("testdata/round2-gemini-five-programs.txt");
 
 /// One reply in the corpus, named so a failure says which one.
-pub(super) struct Fixture {
+pub(crate) struct Fixture {
     /// The fixture's file stem, or a description for the synthetic shapes.
-    pub(super) name: &'static str,
+    pub(crate) name: &'static str,
     /// The reply, verbatim.
-    pub(super) reply: &'static str,
+    pub(crate) reply: &'static str,
 }
 
 /// The four terminal prose replies real models ended their sessions with — the failure Decision B
 /// exists to break, and the evidence that `strip-prose` cannot be the thing that catches it.
-pub(super) const TERMINAL_PROSE: [Fixture; 4] = [
+pub(crate) const TERMINAL_PROSE: [Fixture; 4] = [
     Fixture {
         name: "round1-haiku-turn-04",
         reply: HAIKU_TURN_04,
@@ -119,7 +131,7 @@ pub(super) const TERMINAL_PROSE: [Fixture; 4] = [
 
 /// Every reply that carried at least one program, so a test can walk the programs real models
 /// actually emitted.
-pub(super) const CAPTURED_PROGRAM_REPLIES: [Fixture; 6] = [
+pub(crate) const CAPTURED_PROGRAM_REPLIES: [Fixture; 6] = [
     Fixture {
         name: "round1-gemini-glued-close",
         reply: GEMINI_GLUED_CLOSE,
@@ -181,7 +193,7 @@ const x = 1;
 /// Synthetic entries are here rather than in the per-strategy files because the properties are
 /// properties of *every* input, and a property test that only sees the shapes that happened to occur
 /// in one round of measurement is a property test with a blind spot.
-pub(super) const CORPUS: &[Fixture] = &[
+pub(crate) const CORPUS: &[Fixture] = &[
     Fixture {
         name: "round1-gemini-glued-close",
         reply: GEMINI_GLUED_CLOSE,
@@ -278,7 +290,7 @@ pub(super) const CORPUS: &[Fixture] = &[
 /// Written against [`HealingStrategy::ALL`] rather than against a hard-coded arity so that adding a
 /// strategy widens the property tests by itself: six strategies is 64 configurations, and the day
 /// there are seven it is 128 with no edit here.
-pub(super) fn every_configuration() -> Vec<HealingConfig> {
+pub(crate) fn every_configuration() -> Vec<HealingConfig> {
     (0..(1u32 << HealingStrategy::ALL.len()))
         .map(|bits| {
             let mut config = HealingConfig::default();
@@ -295,16 +307,16 @@ pub(super) fn every_configuration() -> Vec<HealingConfig> {
 /// That is deliberately not the same as "every strategy armed": `drop-doubled-response` is
 /// [armed only when a configuration asks for it](HealingStrategy::default_armed), so a case that
 /// exercises it goes through [`healed_with`] instead.
-pub(super) fn healed(reply: &str) -> Healed {
-    heal(reply, &HealingConfig::default())
+pub(crate) fn healed(reply: &str) -> Healed {
+    heal(reply, &HealingConfig::default(), dialect())
 }
 
 /// Heal with `strategy` armed on top of the defaults — the way the one default-off strategy is
 /// exercised, and the way an operator arms it for a real run.
-pub(super) fn healed_with(strategy: HealingStrategy, reply: &str) -> Healed {
+pub(crate) fn healed_with(strategy: HealingStrategy, reply: &str) -> Healed {
     let mut config = HealingConfig::default();
     config.set(strategy, true);
-    heal(reply, &config)
+    heal(reply, &config, dialect())
 }
 
 /// An agent profile carrying `responses-as-code` with the given params.
@@ -318,8 +330,32 @@ fn set_with(params: serde_json::Value) -> GgAgentConfig {
     }
 }
 
+/// **The delete-only harness**: healing `corpus` through `dialect`, under every configuration, only
+/// ever deletes.
+///
+/// Written once and applied to every dialect there is — each registered language's, the seam's
+/// [fixture](crate::sandbox::fixture_languages) one, and the inert one — because the invariant is
+/// not TypeScript's. It is the property that makes healing safe to run at all, and a dialect that
+/// answered one predicate too generously would delete a line of a model's program with nothing else
+/// in the tree noticing.
+///
+/// `whose` names the dialect in the failure, since the corpus alone rarely says which one was asked.
+pub(crate) fn assert_delete_only(dialect: &dyn Dialect, corpus: &[&str], whose: &str) {
+    for reply in corpus {
+        for config in every_configuration() {
+            let result = heal(reply, &config, dialect);
+            assert!(
+                is_subsequence(&result.program, reply),
+                "{whose}: healing invented or reordered text\n--- reply ---\n{reply}\n--- program \
+                 ---\n{}",
+                result.program
+            );
+        }
+    }
+}
+
 /// Whether `needle`'s non-whitespace characters appear, in order, among `haystack`'s.
-fn is_subsequence(needle: &str, haystack: &str) -> bool {
+pub(crate) fn is_subsequence(needle: &str, haystack: &str) -> bool {
     let mut haystack = haystack.chars().filter(|c| !c.is_whitespace());
     needle
         .chars()
@@ -342,7 +378,7 @@ fn is_subsequence(needle: &str, haystack: &str) -> bool {
 fn every_healed_program_is_a_subsequence_of_the_response() {
     for fixture in CORPUS {
         for config in every_configuration() {
-            let result = heal(fixture.reply, &config);
+            let result = heal(fixture.reply, &config, dialect());
             assert!(
                 is_subsequence(&result.program, fixture.reply),
                 "{}: healing invented or reordered text\n--- program ---\n{}",
@@ -350,6 +386,35 @@ fn every_healed_program_is_a_subsequence_of_the_response() {
                 result.program
             );
         }
+    }
+}
+
+/// **The same invariant, re-earned per registered [program language](crate::sandbox::language) —
+/// over that language's own fixtures *and* over the shared corpus.**
+///
+/// Two corpora, because each catches what the other cannot.
+///
+/// Every language contributes [fixtures](Dialect::fixtures) of its own: replies whose repair is its
+/// dialect's rather than the skeleton's. A language cannot be registered without them, because
+/// `fixtures` is a trait method rather than a list beside these tests — a dialect that answered one
+/// predicate too generously would delete a line of a model's program, and nothing in the skeleton
+/// would notice.
+///
+/// But a dialect's own fixtures are chosen by the person who wrote it, and the replies most likely
+/// to break a predicate are the ones nobody thought of. So every dialect also faces [`CORPUS`]: real
+/// replies real models sent. Their *expectations* are TypeScript's and are asserted elsewhere; what
+/// is asserted here is only that healing them **deleted**, which has to hold for any dialect over
+/// any text and is exactly the property whose violation is unrecoverable.
+#[test]
+fn every_language_heals_by_deletion_alone() {
+    let shared: Vec<&'static str> = CORPUS.iter().map(|fixture| fixture.reply).collect();
+    for language in crate::sandbox::all_languages() {
+        assert_delete_only(
+            language.healing(),
+            language.healing_fixtures(),
+            language.display_name(),
+        );
+        assert_delete_only(language.healing(), &shared, language.display_name());
     }
 }
 
@@ -362,8 +427,8 @@ fn every_healed_program_is_a_subsequence_of_the_response() {
 fn healing_is_idempotent() {
     for fixture in CORPUS {
         for config in every_configuration() {
-            let once = heal(fixture.reply, &config);
-            let twice = heal(&once.program, &config);
+            let once = heal(fixture.reply, &config, dialect());
+            let twice = heal(&once.program, &config, dialect());
             assert_eq!(
                 twice.program, once.program,
                 "{}: healing a healed response changed it again",
@@ -397,7 +462,7 @@ fn the_repairs_reach_the_same_program_in_any_order() {
         for strategy in &armed {
             config.set(*strategy, true);
         }
-        let partial = heal(EVERY_STRATEGY, &config);
+        let partial = heal(EVERY_STRATEGY, &config, dialect());
         assert_eq!(
             healed(&partial.program).program,
             target,
@@ -424,7 +489,13 @@ fn no_case_in_the_corpus_needs_more_than_two_passes() {
         let mut text = fixture.reply.trim().to_string();
         let mut applied = Vec::new();
         let converged = !matches!(
-            to_fixpoint(&mut text, &HealingConfig::default(), &mut applied, 3),
+            to_fixpoint(
+                &mut text,
+                &HealingConfig::default(),
+                &mut applied,
+                3,
+                dialect()
+            ),
             Fixpoint::Exhausted
         );
         assert!(converged, "{}: needed more than two passes", fixture.name);
@@ -520,7 +591,7 @@ fn dropping_an_import_is_what_lets_the_async_wrapper_unwrap() {
 
     let mut without_imports = HealingConfig::default();
     without_imports.set(HealingStrategy::DropImports, false);
-    let unhelped = heal(reply, &without_imports);
+    let unhelped = heal(reply, &without_imports, dialect());
     assert!(
         unhelped.applied.is_empty(),
         "the wrapper unwrapped with the import still above it: {:?}",
@@ -649,7 +720,7 @@ fn the_committed_round_one_replies_all_reach_the_type_strip() {
 /// With everything disarmed, healing changes nothing at all — the ablation's off arm.
 #[test]
 fn healing_off_is_a_no_op() {
-    let result = heal(EVERY_STRATEGY, &HealingConfig::OFF);
+    let result = heal(EVERY_STRATEGY, &HealingConfig::OFF, dialect());
     assert_eq!(result.program, EVERY_STRATEGY.trim());
     assert!(result.applied.is_empty());
 }
@@ -683,7 +754,7 @@ fn each_strategy_can_be_disabled_on_its_own() {
 
         let mut config = HealingConfig::default();
         config.set(strategy, false);
-        let disarmed = heal(reply, &config);
+        let disarmed = heal(reply, &config, dialect());
         assert!(
             !disarmed.strategies().contains(&strategy),
             "{}: fired while disarmed",

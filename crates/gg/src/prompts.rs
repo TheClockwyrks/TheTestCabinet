@@ -85,21 +85,44 @@ use std::sync::OnceLock;
 use handlebars::{Handlebars, RenderError};
 use serde::Serialize;
 use serde_json::json;
+use test_cabinet_core::gg::GgProgramLanguage;
+
+use crate::sandbox::{all_languages, language};
 
 /// The **tool-calling** system prompt: the base framing plus one conditional section per enabled
 /// capability, with each capability's tools named as the free-standing calls a tool-calling run
 /// makes (`add_task`, `spawn_subagent`, `create_epic`).
 const SYSTEM_TOOLS_TEMPLATE: &str = include_str!("../templates/system-tools.hbs");
 
-/// The **responses-as-code** system prompt: the same capability sections, plus the code-protocol
-/// framing (the reply *is* a program, discovery through `object.list()`/`view.openDocsView()`, the message
-/// headings), with each capability's calls named in their grouped form — methods on an API object
-/// (`tasks.addTask`, `agents.spawnSubagent`, `project.createEpic`) rather than free-standing tools.
-///
-/// The two templates are selected between by [`render_system`] on the run's execution mode; they are
-/// separate files rather than one branching template because the code arm rewrites every section's
-/// calls into their grouped form, so almost nothing between the arms is shared prose.
-const SYSTEM_CODE_TEMPLATE: &str = include_str!("../templates/system-code.hbs");
+// The **responses-as-code** system prompt is not one file but one **per
+// [program language](GgProgramLanguage)**, embedded by that language's own
+// [prompt dialect](crate::sandbox::PromptDialect) and registered here under
+// `system-code.<language id>` by [`engine`].
+//
+// It carries the same capability sections as the tool-calling arm plus the code-protocol framing
+// (the reply *is* a program, discovery through `object.list()`/`view.openDocsView()`, the message
+// headings), with each capability's calls named in their grouped form — methods on an API object
+// (`tasks.addTask`, `agents.spawnSubagent`, `project.createEpic`) rather than free-standing tools.
+//
+// # Why per language, rather than one template with a language block
+//
+// Because the "shared" tail is not shared. It quotes the SDK's own spellings at nearly every
+// bullet — `skills.readSkill(name)`, `tasks.setBlockedBy`, `project.waitForIssue`,
+// `memory.searchMemories`, `lib.<key>`, `view.openText`, `JSON.stringify`, `programs.rerun(source)`
+// — and function spelling is exactly what the [language seam](crate::sandbox::language) declares
+// free to differ. A single template would therefore need a branch at almost every line, and adding
+// a language would mean editing the one file every language shares: the opposite of additive.
+//
+// Two further reasons. The template is **operator-facing product surface** —
+// [`default_system_prompt_template_code`] seeds the console's override editor — and an operator
+// overriding the prompt overrides it for the language they are running, not for a merged document
+// full of branches for languages they do not. And Handlebars **partials are unavailable** here by
+// design: the system templates are self-contained so the console can render one standalone, so
+// "share the tail via a partial" is not on the table.
+//
+// The residual risk — a language whose copy silently drops a section — is closed by this module's
+// own gate, which renders every registered language's template and asserts every required heading
+// survives.
 
 /// The pinned [task list](crate::tasks) block.
 const TASKS_TEMPLATE: &str = include_str!("../templates/tasks.hbs");
@@ -116,14 +139,6 @@ const MEMORY_INDEX_TEMPLATE: &str = include_str!("../templates/memory-index.hbs"
 /// The [linked-memory notice](crate::memories::MemoriesRuntime::notice) — what another holder of a
 /// shared memory instance did since this agent was last told.
 const MEMORY_NOTICE_TEMPLATE: &str = include_str!("../templates/memory-notice.hbs");
-
-/// The notice a [code program](crate::sandbox) that ran cleanly and put **nothing** in its own
-/// window earns — the one message a successful program can produce, and only because a request has
-/// to end on something for the model to answer.
-///
-/// There is deliberately no template for a program that *did* show itself something: the views are
-/// the report, and a covering note over them would be gg narrating what the model can already read.
-const CODE_NOTHING_SHOWN_TEMPLATE: &str = include_str!("../templates/code-nothing-shown.hbs");
 
 /// The dispatch brief an [issue](crate::board) is handed to the agent that implements it.
 const ISSUE_BRIEF_TEMPLATE: &str = include_str!("../templates/issue-brief.hbs");
@@ -195,15 +210,19 @@ const CONTEXT_PRESSURE_TEMPLATE: &str = include_str!("../templates/context-press
 
 /// The template names registered with the [engine], in the order they are registered. Each name
 /// is what [`render`] looks up. The tests iterate this list to assert every template parses.
+///
+/// The **language-dependent** templates are not in this list: the responses-as-code system prompt
+/// and the "nothing shown" notice exist once per registered
+/// [program language](GgProgramLanguage), and [`engine`] registers those by walking the
+/// [language registry](crate::sandbox::all_languages) so a new language's templates arrive without
+/// anyone editing a list here.
 const TEMPLATES: &[(&str, &str)] = &[
     ("system-tools", SYSTEM_TOOLS_TEMPLATE),
-    ("system-code", SYSTEM_CODE_TEMPLATE),
     ("tasks", TASKS_TEMPLATE),
     ("board", BOARD_TEMPLATE),
     ("memories", MEMORIES_TEMPLATE),
     ("memory-index", MEMORY_INDEX_TEMPLATE),
     ("memory-notice", MEMORY_NOTICE_TEMPLATE),
-    ("code-nothing-shown", CODE_NOTHING_SHOWN_TEMPLATE),
     ("issue-brief", ISSUE_BRIEF_TEMPLATE),
     ("review-brief", REVIEW_BRIEF_TEMPLATE),
     ("fix-brief", FIX_BRIEF_TEMPLATE),
@@ -256,6 +275,31 @@ fn engine() -> &'static Handlebars<'static> {
             engine
                 .register_template_string(name, source)
                 .unwrap_or_else(|err| panic!("gg template `{name}` does not parse: {err}"));
+        }
+        // The per-language pair, registered by walking the registry rather than by naming each
+        // language here: adding one to `GgProgramLanguage` is then a new module and nothing else,
+        // and there is no second list that could fall behind the first.
+        // Under test, the seam's fixture language registers its pair alongside them. It is the only
+        // way to assert that the *selection* is per language rather than that the one template
+        // happens to render: a language whose template nobody registered can only be rendered
+        // through the override path, which is not the path a run takes.
+        #[cfg(test)]
+        let languages = all_languages().chain(crate::sandbox::fixture_languages());
+        #[cfg(not(test))]
+        let languages = all_languages();
+        for language in languages {
+            let dialect = language.prompt();
+            for (name, source) in [
+                (dialect.system_template_name, dialect.system_template),
+                (
+                    dialect.nothing_shown_template_name,
+                    dialect.nothing_shown_template,
+                ),
+            ] {
+                engine
+                    .register_template_string(name, source)
+                    .unwrap_or_else(|err| panic!("gg template `{name}` does not parse: {err}"));
+            }
         }
         engine
     })
@@ -329,6 +373,15 @@ pub struct SystemContext {
     /// Whether the run is in [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/)
     /// mode, where the tools are described as functions a program calls rather than as tool calls.
     pub responses_as_code: bool,
+    /// The [language](GgProgramLanguage) this agent writes its programs in, which decides **which**
+    /// responses-as-code template renders. `None` on the tool-calling path, which has no program
+    /// language at all.
+    ///
+    /// `#[serde(skip)]`: it selects a template rather than filling a variable in one, and the
+    /// templates render in strict mode — so exposing it would oblige every template to reference it
+    /// or ignore it deliberately, for a value none of them has anything to say about.
+    #[serde(skip)]
+    pub language: Option<GgProgramLanguage>,
     /// The API objects a code program has this run, each with a one-line description — the section
     /// the prompt names so a model knows which objects to inspect with `object.list()`. Empty on the
     /// tool-calling path (where tools are in the request); on the code path it always carries at
@@ -666,15 +719,21 @@ pub struct AssignedIssueView {
     pub id: String,
 }
 
-/// The built-in template name for a run's execution mode: the code arm under
-/// [responses-as-code](SystemContext::responses_as_code), the tool-calling arm otherwise. The two
-/// are registered separately (see [`TEMPLATES`]) and this is the only place that decides between
-/// them, so a run is rendered against exactly the arm whose contract it will actually be held to.
-fn system_template_name(responses_as_code: bool) -> &'static str {
-    if responses_as_code {
-        "system-code"
-    } else {
-        "system-tools"
+/// The built-in template name for a run's execution mode and, on the code path, its
+/// [program language](GgProgramLanguage): `None` is the tool-calling arm, `Some(l)` is `l`'s own
+/// responses-as-code arm.
+///
+/// This is the only place that decides between them, so a run is rendered against exactly the arm
+/// whose contract it will actually be held to — the right protocol *and* the right language's
+/// spellings.
+fn system_template_name(language: Option<GgProgramLanguage>) -> &'static str {
+    match language {
+        Some(language) => {
+            crate::sandbox::language(language)
+                .prompt()
+                .system_template_name
+        }
+        None => "system-tools",
     }
 }
 
@@ -691,7 +750,21 @@ fn system_template_name(responses_as_code: bool) -> &'static str {
 /// carry — falls back to the built-in template for the run's mode rather than aborting the run,
 /// since it is operator-authored input, not an embedded artifact the tests pin.
 pub fn render_system(context: &SystemContext, template_override: Option<&str>) -> String {
-    let builtin = system_template_name(context.responses_as_code);
+    // A tool-calling run has no program language, and a code run whose context did not name one
+    // gets the default rather than a panic: the field is `#[serde(skip)]` decoration on a struct
+    // several call sites build literally, and rendering the wrong *language* is a far smaller
+    // failure than rendering nothing at all. The `debug_assert` is what keeps that leniency from
+    // hiding a construction site that forgot the field: a silent default is exactly how a second
+    // language would come to behave like TypeScript, so it fails a test build rather than a run.
+    debug_assert!(
+        !context.responses_as_code || context.language.is_some(),
+        "a responses-as-code SystemContext must name its program language"
+    );
+    let builtin = system_template_name(
+        context
+            .responses_as_code
+            .then(|| context.language.unwrap_or_default()),
+    );
     let rendered = match template_override.map(str::trim).filter(|t| !t.is_empty()) {
         Some(template) => engine()
             .render_template(template, context)
@@ -699,6 +772,34 @@ pub fn render_system(context: &SystemContext, template_override: Option<&str>) -
         None => render(builtin, context),
     };
     tidy(&rendered)
+}
+
+/// Render the responses-as-code system prompt for one [language](crate::sandbox::ProgramLanguage)
+/// directly, rather than by way of the wire id [`render_system`] looks it up from.
+///
+/// `#[cfg(test)]`, and it exists for exactly one reason: the seam's
+/// [fixture language](crate::sandbox::fixture_languages) has no wire id, so the production path
+/// cannot reach it — and without a way to render a *second* language's prompt through the registered
+/// name, "the prompt is selected per language" is a claim no test can distinguish from "there is one
+/// prompt".
+#[cfg(test)]
+pub(crate) fn render_system_for(
+    language: &'static dyn crate::sandbox::ProgramLanguage,
+    context: &SystemContext,
+) -> String {
+    tidy(&render(language.prompt().system_template_name, context))
+}
+
+/// The "your program showed you nothing" notice for one
+/// [language](crate::sandbox::ProgramLanguage) directly, for the same reason
+/// [`render_system_for`] exists.
+#[cfg(test)]
+pub(crate) fn render_code_nothing_shown_for(
+    language: &'static dyn crate::sandbox::ProgramLanguage,
+) -> String {
+    let dialect = language.prompt();
+    try_render(dialect.nothing_shown_template_name, &json!({}))
+        .unwrap_or_else(|_| dialect.nothing_shown_fallback.to_string())
 }
 
 /// The built-in **tool-calling** system-prompt template, verbatim — the default an operator's
@@ -715,28 +816,32 @@ pub fn default_system_prompt_template() -> &'static str {
     SYSTEM_TOOLS_TEMPLATE
 }
 
-/// The built-in **responses-as-code** system-prompt template, verbatim — the default an operator's
-/// override starts from for a code-mode agent, and what the console seeds its editor with for one.
-/// Like its tool-calling sibling it is self-contained Handlebars (no partials).
+/// The built-in **responses-as-code** system-prompt template for one
+/// [program language](GgProgramLanguage), verbatim — the default an operator's override starts from
+/// for a code-mode agent in that language, and what the console seeds its editor with for one. Like
+/// its tool-calling sibling it is self-contained Handlebars (no partials).
+///
+/// It takes a language because there is no such thing as *the* code template any more: an operator
+/// overriding the prompt is overriding it for the arm their run is in.
 #[allow(dead_code)]
-pub fn default_system_prompt_template_code() -> &'static str {
-    SYSTEM_CODE_TEMPLATE
+pub fn default_system_prompt_template_code(program_language: GgProgramLanguage) -> &'static str {
+    language(program_language).prompt().system_template
 }
 
 // ---------------------------------------------------------------------------
 // The code-turn feedback
 // ---------------------------------------------------------------------------
 
-/// The notice a program that ran cleanly and showed itself nothing earns.
+/// The notice a program that ran cleanly and showed itself nothing earns, in the run's own
+/// [program language](GgProgramLanguage) — the notice names the calls that would have shown the
+/// model something, so it is the language's to word.
 ///
-/// Falls back to a plain sentence rather than panicking, as every model-facing render here does: a
-/// turn with degraded wording is recoverable where a panicked run is not.
-pub fn render_code_nothing_shown() -> String {
-    try_render("code-nothing-shown", &json!({})).unwrap_or_else(|_| {
-        "Your program ran and put nothing in your context. Open a view to see something: \
-         `view.openText(label, body)` for a value you computed, `view.openFile(path)` for a file."
-            .to_string()
-    })
+/// Falls back to that language's own plain sentence rather than panicking, as every model-facing
+/// render here does: a turn with degraded wording is recoverable where a panicked run is not.
+pub fn render_code_nothing_shown(program_language: GgProgramLanguage) -> String {
+    let dialect = language(program_language).prompt();
+    try_render(dialect.nothing_shown_template_name, &json!({}))
+        .unwrap_or_else(|_| dialect.nothing_shown_fallback.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -1283,12 +1388,20 @@ pub struct ContextPressureContext {
     pub categories: Vec<UsageCategoryView>,
     /// Whether to point the agent at `evict_file_view`.
     pub can_evict: bool,
-    /// Whether to point the agent at `view.close`, which is the reclaim call under
+    /// Whether to point the agent at the view-closing call, which is the reclaim call under
     /// [responses-as-code](crate::agent) and the only one that can close a **text view**. Without
     /// this the block can report a `Text Views` band whose tokens the agent is told no way to get
     /// back — the exact defect the per-file breakdown's `can_evict` gate exists to prevent, one
     /// level up.
     pub can_close_views: bool,
+    /// How that call is spelled in this run's [program language](GgProgramLanguage) — read off the
+    /// language's own [prompt dialect](crate::sandbox::PromptDialect::close_view) rather than
+    /// written into the template, which is what keeps this one shared block shared: everything else
+    /// in it is either a tool name (identical in every language) or a number.
+    ///
+    /// Meaningless, and unreferenced by the template, when
+    /// [`can_close_views`](Self::can_close_views) is false.
+    pub close_view: String,
     /// Whether to point the agent at `archive_thread`.
     pub can_archive: bool,
 }

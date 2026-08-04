@@ -69,9 +69,10 @@ wasmtime = { workspace = true, features = [
 	"component-model",
 	"parallel-compilation",
 ] }
-# In-process TypeScript type-stripping for the sandbox (`src/sandbox/transpile.rs`): a
-# model writes TypeScript, the guest evaluates JavaScript, and oxc strips the types in
-# microseconds without a Node process anywhere near the turn path. It strips types; it
+# In-process TypeScript type-stripping for the sandbox's TypeScript program language
+# (`src/sandbox/language/typescript.prepare.rs`): the model writes TypeScript, the guest
+# evaluates JavaScript, and oxc strips the types in microseconds without a Node process
+# anywhere near the turn path. It strips types; it
 # does not check them — see the workspace pin for why the minor version is fixed.
 oxc = { workspace = true }
 # BPE tokenizer backing the default context-window token estimator (`src/context.rs`).

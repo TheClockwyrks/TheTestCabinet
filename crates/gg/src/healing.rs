@@ -1,6 +1,6 @@
 //! **Response healing** — the pass that sits between a model's raw reply and the
-//! [type-strip](crate::sandbox), repairing the contract violations models actually commit and
-//! saying so.
+//! [preparation](crate::sandbox::ProgramLanguage::prepare_program) that turns it into source a guest
+//! can evaluate, repairing the contract violations models actually commit and saying so.
 //!
 //! Under [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) the model's whole
 //! reply *is* the program: there is no fenced block to extract, no language tag, and no
@@ -32,10 +32,11 @@
 //! # A top-level module, not part of the sandbox
 //!
 //! This runs *before* the sandbox, and only ever hands it text. It never decides whether a reply
-//! "is a program" — that question belongs to the type-strip, which answers it with a located
+//! "is a program" — that question belongs to the run's program language, which answers it with a located
 //! compiler diagnostic rather than with gg's opinion of the model's prose. So the tree reads as the
-//! pipeline does — `healing.rs` (text) → `sandbox/transpile.rs` (syntax) → `sandbox/engine.rs`
-//! (execution), with every reply travelling the whole way.
+//! pipeline does — `healing.rs` (text) → the run's program language's own prepare step
+//! (`sandbox/language/<language>.prepare.rs`, syntax) → `sandbox/engine.rs` (execution), with every
+//! reply travelling the whole way.
 //!
 //! Nothing here does I/O, reads a clock, allocates a `Store`, or is `async`; its only imports are
 //! `serde_json::Value` and the two capability types the resolver reads. Two things follow. Every
@@ -43,9 +44,179 @@
 //! and the ablation is honest: turning a strategy off changes only what [`heal`] returns. (Replay is
 //! unaffected either way — the [replay driver](crate::replay_driver) reconstructs a code turn from
 //! the captured record and never re-runs healing.)
+//!
+//! # The skeleton and the [dialect](Dialect)
+//!
+//! Which repairs exist, in which order they run, what makes each of them *decline*, and what the
+//! model is told about the ones that fired are all facts about **gg's contract**, not about any one
+//! program language: a model that fences its program, explains it, doubles it or wraps it does so in
+//! whatever language it was asked to write. Those facts are this module — the skeleton.
+//!
+//! What a language *does* own is the handful of lexical questions the skeleton asks along the way:
+//! which fence tags mean "this block is the program", whether a line is certainly code or certainly
+//! prose, which bytes of a source are code rather than string or comment text, whether a line is a
+//! complete module import, whether a repeated tail redeclares a binding the language refuses twice,
+//! and how a whole-program concurrency wrapper comes off. Each is a method on [`Dialect`], and each
+//! language's implementation lives with the rest of that language under `sandbox/language/`.
+//!
+//! The trait is declared **here**, and [`heal`] takes it as a parameter, so the dependency arrow
+//! points `sandbox::language` → `healing` and this module keeps the property above: it still imports
+//! nothing from [`crate::sandbox`], still does no I/O, and is still exercisable against a dialect
+//! that answers "no" to everything. One strategy —
+//! [`drop-doubled-response`](HealingStrategy::DropDoubledResponse) — asks the dialect nothing at
+//! all, deliberately; see its own documentation for why it has no hook.
 
 use serde_json::Value;
 use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig};
+
+// ---------------------------------------------------------------------------------------------
+// The language dialect
+// ---------------------------------------------------------------------------------------------
+
+/// The lexical questions [healing](self) asks about one **program language**.
+///
+/// Every method is a question the skeleton needs answered before it can decide that a deletion is
+/// safe, and every one of them has a different answer per language while the decision built on it
+/// does not. A dialect is therefore small, total and side-effect-free: it looks at text and says
+/// yes, no, or "I could not tell", and it rewrites nothing except in
+/// [`unwrap_async`](Self::unwrap_async), whose rewrite is a deletion the invariant below still
+/// binds.
+///
+/// # The rule every implementation inherits
+///
+/// > **Healing only ever deletes.** Whatever a dialect answers, the healed program with its
+/// > whitespace removed must remain a subsequence of the response with its whitespace removed.
+///
+/// That is the property the whole subsystem rests on, and it has to be re-earned per language rather
+/// than inherited: a dialect whose [`is_prose_line`](Self::is_prose_line) were too generous would
+/// delete a line of a model's program, and no amount of correctness in the skeleton would notice. So
+/// the trait carries [`fixtures`](Self::fixtures) — replies in this language that the delete-only
+/// harness runs the whole pipeline over, under every configuration — and a language cannot be
+/// registered without contributing them.
+///
+/// # Answering "no" is always safe
+///
+/// A dialect that declines every question leaves the four dialect-driven strategies inert while the
+/// two that are pure skeleton — `strip-fences` over an untagged block, and `drop-doubled-response` —
+/// go on working exactly as they do now. That is what makes a language's dialect something it can
+/// grow into rather than a prerequisite for running at all, and it is what the tests' inert dialect
+/// asserts, so the skeleton is demonstrably not one language's rules with the labels filed off.
+///
+/// Object-safe, for the reason [`ProgramLanguage`](crate::sandbox::ProgramLanguage) is: the registry
+/// hands out `&'static dyn Dialect`, and nothing that consults one is generic over it.
+pub trait Dialect: Send + Sync + 'static {
+    /// The Markdown info-string tags that mean "this fenced block is the program", lower-cased.
+    ///
+    /// A **closed, recognised** list rather than a deny list: a block tagged `json`, `text`, `bash`
+    /// or `md` is context the model showed, not the program, and round 1 measured models emitting
+    /// exactly those beside their program. Tier 3 of [`strip_fences`]'s candidacy ladder is what
+    /// stops the closed list from being a trap, and it needs no tags at all — so an empty list is
+    /// legal, and simply gives up the first tier.
+    fn program_fence_tags(&self) -> &'static [&'static str];
+
+    /// Whether `line` is **certainly** a line of code in this language.
+    ///
+    /// Its errors must be asymmetric. A false positive costs a fence that could have been unwrapped
+    /// — one turn, one located diagnostic — while a false negative deletes a line of the model's
+    /// program. So every clause of an implementation must be a shape only code has.
+    fn looks_like_code(&self, line: &str) -> bool;
+
+    /// Whether `line` is **certainly** prose rather than this language's code.
+    ///
+    /// The mirror image of [`looks_like_code`](Self::looks_like_code), with the asymmetry the other
+    /// way round: here a false positive *deletes* the line, so every clause must be a shape only
+    /// English has. The two are deliberately **not** complements and not disjoint — a line may
+    /// satisfy both, or neither — and the pipeline's fixpoint loop is what resolves the overlap.
+    fn is_prose_line(&self, line: &str) -> bool;
+
+    /// Which bytes of `src` are **code**, as opposed to string, interpolation or comment text.
+    ///
+    /// `None` means the source did not lex cleanly, and every strategy that needs the mask declines
+    /// on it. That is the correct failure mode for a lexer that has lost its place: the alternative
+    /// is deleting text on the strength of a reading already known to be wrong.
+    fn code_mask(&self, src: &str) -> Option<CodeMask>;
+
+    /// Whether the trimmed `line` is a **complete single-line** module import.
+    ///
+    /// "Complete" is load-bearing: a statement whose end is somewhere below is one only a parser can
+    /// delete correctly, and healing is not a parser.
+    fn is_import_statement(&self, line: &str) -> bool;
+
+    /// Whether `text` makes, at its top level, a binding this language refuses to see **twice**.
+    ///
+    /// This is the proof that deleting a repeated tail removes text that could never have run: if
+    /// the reply as sent redeclares such a binding, the language refuses it before a statement
+    /// executes, so the deletion changes no behaviour because there was none to change. A language
+    /// with no such rule answers `false` and thereby gives up
+    /// [`drop-duplicate-program`](HealingStrategy::DropDuplicateProgram) — which is right, because
+    /// without the proof that strategy would be deleting work the model asked to have done twice.
+    ///
+    /// `base` is where `text` starts inside the source `mask` was built over, so a caller may ask
+    /// about a slice of it.
+    fn declares_a_redeclarable_binding(&self, text: &str, mask: &CodeMask, base: usize) -> bool;
+
+    /// Unwrap a concurrency wrapper around the **whole** program, if this language has one and
+    /// `text` is entirely made of it.
+    ///
+    /// Answers with the wrapper shape, the program that was inside it, and how many suspension
+    /// tokens went with it. A language with no such construct — or one whose guest could honour it —
+    /// answers `None`, and so does one that recognises a wrapper it must not remove.
+    fn unwrap_async(&self, text: &str, mask: &CodeMask) -> Option<Unwrapped>;
+
+    /// Replies in this language that the delete-only invariant is re-asserted over.
+    ///
+    /// `#[cfg(test)]`, and deliberately part of the trait rather than a free list beside the tests:
+    /// a language cannot be registered without contributing the replies its own dialect must
+    /// survive, which is what keeps the invariant a per-language property rather than an inherited
+    /// claim.
+    #[cfg(test)]
+    fn fixtures(&self) -> &'static [&'static str];
+}
+
+/// Which bytes of a source are **code** — as opposed to string, interpolation or comment text.
+///
+/// The question [`drop_imports`], [`unwrap_async`] and [`drop_duplicate_program`] each ask of it is
+/// the same one: is this byte code? — so that an import inside a string, a suspension keyword inside
+/// a comment, or a declaration inside a template literal is left alone.
+///
+/// The type lives here with a per-language *filler*, because the shape of the answer is the same in
+/// every language — one flag per byte, out of range is not code — and only the lexer that produces
+/// it differs. That is what lets a skeleton strategy index a mask without knowing whose it is.
+pub struct CodeMask {
+    /// Per byte: not string, interpolation, or comment text. An interpolation's own delimiters are
+    /// code, because they are what a brace count has to see in order to come back out again.
+    code: Vec<bool>,
+}
+
+impl CodeMask {
+    /// A mask from one flag per byte of the source it was lexed from — the constructor a
+    /// [`Dialect`]'s own lexer returns through.
+    ///
+    /// The flags are taken by value rather than the field being public, so a mask is immutable once
+    /// built: every strategy that reads one is deciding whether to delete text, and a mask that
+    /// could be edited afterwards is a decision that could be revised behind the decider's back.
+    pub fn from_flags(code: Vec<bool>) -> Self {
+        Self { code }
+    }
+
+    /// Whether the byte at `index` is code. Out-of-range indices are not, so a caller that has
+    /// already rewritten its text cannot silently read past the end of the mask.
+    pub fn is_code(&self, index: usize) -> bool {
+        self.code.get(index) == Some(&true)
+    }
+}
+
+/// What a dialect's [unwrap](Dialect::unwrap_async) produced: the wrapper it recognised, the program
+/// that was inside it, and how many suspension tokens it deleted on the way out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unwrapped {
+    /// Which wrapper shape it was — what the model is told came off.
+    pub wrapper: AsyncWrapper,
+    /// The unwrapped program: the body, dedented, with its suspension tokens gone.
+    pub text: String,
+    /// How many of those tokens were deleted, which is the count the model's note carries.
+    pub awaits: usize,
+}
 
 // ---------------------------------------------------------------------------------------------
 // The public API
@@ -106,10 +277,11 @@ impl HealingStrategy {
     ///
     /// **The rule: a strategy is armed by default when repairing is strictly safer than not
     /// repairing.** For five of the six it is, and the warrant is the same in each case — the reply
-    /// the strategy deletes from *could not have run as sent*. A fenced reply is not JavaScript; a
-    /// reply with prose around it is not JavaScript; a reply that redeclares a top-level `const` is
-    /// refused before a statement of it executes; an `import` has no module loader to resolve it; a
-    /// called `async` wrapper cannot resolve its own `await`s in a synchronous sandbox. Declining to
+    /// the strategy deletes from *could not have run as sent*. A fenced reply is not a program in
+    /// any language; nor is one with prose around it; a reply that redeclares a top-level binding
+    /// the language refuses twice is refused before a statement of it executes; an import has no
+    /// module loader to resolve it; a called concurrency wrapper cannot resolve its own suspensions
+    /// in a synchronous sandbox. Declining to
     /// repair any of those costs the turn outright, so the default that loses least is *on*.
     ///
     /// [`DropDoubledResponse`](Self::DropDoubledResponse) is the exception, and the asymmetry is
@@ -180,7 +352,7 @@ impl HealingConfig {
     /// Every strategy off — the master switch's arm, and the ablation's floor.
     ///
     /// [`heal`] still runs under it and still canonicalises; it simply repairs nothing, so the reply
-    /// reaches the type-strip exactly as the model sent it.
+    /// reaches its language's prepare step exactly as the model sent it.
     pub const OFF: Self = Self {
         strip_fences: false,
         strip_prose: false,
@@ -552,13 +724,21 @@ pub enum FenceClose {
     Unterminated,
 }
 
-/// Which `async` wrapper shape was unwrapped.
+/// Which asynchronous wrapper shape was unwrapped.
+///
+/// Two shapes, named for the *structure* rather than for one language's word for it, because this
+/// enum sits on the [dialect](Dialect) seam: every language's `unwrap_async` labels its own wrapper
+/// with one of these, and a language whose grammar has no "IIFE" must still be able to say which of
+/// the two it found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsyncWrapper {
-    /// `async function main() { … }`, with or without a trailing call.
-    Function,
-    /// `(async () => { … })();` or `(async function () { … })();`.
-    Iife,
+    /// A **declared** asynchronous function whose body is the program — declared under a name, with
+    /// or without a trailing call to it. TypeScript's `async function main() { … }`.
+    Declared,
+    /// An asynchronous callable **invoked where it is written**, so the wrapper is one expression
+    /// and there is no name. TypeScript's `(async () => { … })();` and
+    /// `(async function () { … })();`.
+    Immediate,
 }
 
 /// Heal one model response into the program gg will run.
@@ -567,7 +747,7 @@ pub enum AsyncWrapper {
 /// every input including the empty string.
 ///
 /// It asks **no** question about whether the reply is a program. Every reply that comes in goes
-/// back out as text for the [type-strip](crate::sandbox) to compile: an empty reply becomes an
+/// back out as text for the run's language to prepare and the guest to evaluate: an empty reply becomes an
 /// empty program that runs and does nothing, a reply of comments becomes a program that runs and
 /// does nothing, and a reply that is two programs pasted together fails to compile with the
 /// redeclaration error the compiler itself reports. That feedback comes from a compiler rather than
@@ -598,7 +778,12 @@ pub enum AsyncWrapper {
 /// is returned as it was sent, and [`did_not_converge`](Healed::did_not_converge) says so. That
 /// keeps idempotence unconditional and keeps the honesty invariant intact: gg either produces a
 /// fixpoint it can explain, or it changes nothing and reports that it could not.
-pub fn heal(reply: &str, config: &HealingConfig) -> Healed {
+///
+/// `dialect` is the run's [program language](crate::sandbox::ProgramLanguage)'s answer to the
+/// lexical questions this module asks — passed in rather than looked up, so healing stays
+/// independent of the sandbox and a test can drive the whole pipeline with a dialect that answers
+/// nothing at all.
+pub fn heal(reply: &str, config: &HealingConfig, dialect: &dyn Dialect) -> Healed {
     // Canonicalisation, not repair: a byte-order mark, blank lines around the reply and trailing
     // whitespace do not change what a program is, so there is no contract violation here to
     // disclose and nothing to count. It is therefore deliberately NOT an application, which is what
@@ -608,7 +793,7 @@ pub fn heal(reply: &str, config: &HealingConfig) -> Healed {
     let mut text = original.to_string();
     let mut applied = Vec::new();
 
-    match to_fixpoint(&mut text, config, &mut applied, MAX_PASSES) {
+    match to_fixpoint(&mut text, config, &mut applied, MAX_PASSES, dialect) {
         Fixpoint::Converged => Healed {
             program: text,
             applied,
@@ -631,7 +816,7 @@ pub fn heal(reply: &str, config: &HealingConfig) -> Healed {
 /// away would answer the question before the scanner could ask it: an indented ```` ```ts ```` would
 /// become a fence, gg would report unwrapping a wrapper that was never there, and the closing run —
 /// still indented, and now not a close — would be left in the program. Indentation is meaningless to
-/// JavaScript and meaningful to Markdown, so it is kept and the scanner decides.
+/// a program and meaningful to Markdown, so it is kept and the scanner decides.
 ///
 /// A byte-order mark is stripped only where one is defined to appear, at the very start.
 fn trim_reply(reply: &str) -> &str {
@@ -647,8 +832,8 @@ fn trim_reply(reply: &str) -> &str {
 /// Used by [`strip_fences`] alone, for two decisions that are both about *deleting*: whether a lone
 /// block with an unrecognised tag is nonetheless the program, and whether a line outside the fences
 /// is code an unwrap would throw away.
-fn contains_code(source: &str) -> bool {
-    source.lines().any(looks_like_code)
+fn contains_code(source: &str, dialect: &dyn Dialect) -> bool {
+    source.lines().any(|line| dialect.looks_like_code(line))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -659,7 +844,8 @@ fn contains_code(source: &str) -> bool {
 ///
 /// Two outcomes and nothing else: a strategy either deletes something it can prove is safe to
 /// delete, or it leaves the text exactly as it was. There is no third answer, because "this is not
-/// a program" is not healing's question to answer — the type-strip answers it, with a diagnostic.
+/// a program" is not healing's question to answer — the language's prepare step answers it, with a
+/// diagnostic.
 enum StrategyOutcome {
     /// The strategy does not apply — the text is untouched and nothing is recorded.
     Declined,
@@ -696,6 +882,7 @@ fn to_fixpoint(
     config: &HealingConfig,
     applied: &mut Vec<HealingApplication>,
     budget: usize,
+    dialect: &dyn Dialect,
 ) -> Fixpoint {
     for _ in 0..budget {
         let mut changed = false;
@@ -703,7 +890,7 @@ fn to_fixpoint(
             if !config.enabled(strategy) {
                 continue;
             }
-            match apply(strategy, text) {
+            match apply(strategy, text, dialect) {
                 StrategyOutcome::Declined => {}
                 StrategyOutcome::Rewrote {
                     text: healed,
@@ -726,45 +913,20 @@ fn to_fixpoint(
 ///
 /// One total `match` so that adding a strategy fails to compile until it has an implementation —
 /// the same reason [`HealingConfig::enabled`] is a `match` rather than a lookup.
-fn apply(strategy: HealingStrategy, text: &str) -> StrategyOutcome {
+fn apply(strategy: HealingStrategy, text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
     match strategy {
-        HealingStrategy::StripFences => strip_fences(text),
-        HealingStrategy::StripProse => strip_prose(text),
+        HealingStrategy::StripFences => strip_fences(text, dialect),
+        HealingStrategy::StripProse => strip_prose(text, dialect),
         HealingStrategy::DropDoubledResponse => drop_doubled_response(text),
-        HealingStrategy::DropDuplicateProgram => drop_duplicate_program(text),
-        HealingStrategy::DropImports => drop_imports(text),
-        HealingStrategy::UnwrapAsync => unwrap_async(text),
+        HealingStrategy::DropDuplicateProgram => drop_duplicate_program(text, dialect),
+        HealingStrategy::DropImports => drop_imports(text, dialect),
+        HealingStrategy::UnwrapAsync => unwrap_async(text, dialect),
     }
 }
 
 // ---------------------------------------------------------------------------------------------
 // strip-fences
 // ---------------------------------------------------------------------------------------------
-
-/// The info-string tags gg reads as "this block is the program", lower-cased.
-///
-/// A closed, recognised list rather than a deny list: a block tagged `json`, `text`, `bash` or `md`
-/// is context the model showed, not the program, and round 1 measured models emitting exactly those
-/// alongside a `ts` block. Tier 3 of the candidacy ladder is what stops the closed list from being a
-/// trap — a reply that is one block tagged something gg has never heard of, whose body is plainly
-/// code, is still run.
-const PROGRAM_TAGS: &[&str] = &[
-    "ts",
-    "typescript",
-    "tsx",
-    "mts",
-    "cts",
-    "typescriptreact",
-    "js",
-    "javascript",
-    "jsx",
-    "mjs",
-    "cjs",
-    "javascriptreact",
-    "node",
-    "es",
-    "es6",
-];
 
 /// The fewest backticks that open a fence, and the most leading spaces one may carry — CommonMark's
 /// rules, which are the ones the models were trained on and therefore the ones they follow.
@@ -803,10 +965,15 @@ struct FenceScan<'a> {
 ///
 /// # Candidacy — a three-tier ladder, first non-empty tier wins
 ///
-/// 1. blocks whose tag is in [`PROGRAM_TAGS`];
+/// 1. blocks whose tag is one of this language's own
+///    [program fence tags](Dialect::program_fence_tags);
 /// 2. otherwise, blocks with **no** tag;
 /// 3. otherwise, blocks whose (unrecognised) tag is anything else **and** whose body satisfies
 ///    [`contains_code`].
+///
+/// Only the first tier consults the dialect. Markdown is not a program language, so the scanner, the
+/// ladder and every decline below read the same in every language; the *tag list* is the one datum
+/// that does not.
 ///
 /// # The decline ladder
 ///
@@ -834,18 +1001,18 @@ struct FenceScan<'a> {
 /// code silently is the one outcome healing may not produce, so the question is asked over the whole
 /// reply.
 ///
-/// The narrowness lives in the predicate instead, where it costs nothing: [`looks_like_code`] is
-/// true only of shapes English does not have, so a lead-in sentence with a semicolon in it does not
-/// block the unwrap, and across every round-1 reply this strategy accepted as a single candidate
-/// **no** line outside the fences is code-shaped.
-fn strip_fences(text: &str) -> StrategyOutcome {
-    let scan = scan_fences(text);
+/// The narrowness lives in the predicate instead, where it costs nothing:
+/// [`looks_like_code`](Dialect::looks_like_code) is true only of shapes English does not have, so a
+/// lead-in sentence with a semicolon in it does not block the unwrap, and across every round-1 reply
+/// this strategy accepted as a single candidate **no** line outside the fences is code-shaped.
+fn strip_fences(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
+    let scan = scan_fences(text, dialect);
     // D1.
     if scan.blocks.is_empty() {
         return StrategyOutcome::Declined;
     }
 
-    let candidates = candidate_blocks(&scan.blocks);
+    let candidates = candidate_blocks(&scan.blocks, dialect);
     // D2.
     if candidates.len() >= 2 {
         return StrategyOutcome::Declined;
@@ -854,7 +1021,11 @@ fn strip_fences(text: &str) -> StrategyOutcome {
     // D3: is there code the unwrap would throw away? Above the fences it is a program that contains
     // one; below them it is a program the model continued past one. Both are code, and both are
     // deleted by an unwrap that reports only which wrapper it removed.
-    if scan.outside.iter().copied().any(looks_like_code) {
+    if scan
+        .outside
+        .iter()
+        .any(|line| dialect.looks_like_code(line))
+    {
         return StrategyOutcome::Declined;
     }
 
@@ -868,7 +1039,7 @@ fn strip_fences(text: &str) -> StrategyOutcome {
         .blocks
         .iter()
         .enumerate()
-        .filter(|(index, block)| *index != chosen && contains_code(&block.body))
+        .filter(|(index, block)| *index != chosen && contains_code(&block.body, dialect))
         .count();
     StrategyOutcome::Rewrote {
         text: scan.blocks[chosen].body.clone(),
@@ -882,7 +1053,7 @@ fn strip_fences(text: &str) -> StrategyOutcome {
 
 /// The indices of the blocks that could each have been the program, per the three-tier ladder in
 /// [`strip_fences`].
-fn candidate_blocks(blocks: &[FencedBlock]) -> Vec<usize> {
+fn candidate_blocks(blocks: &[FencedBlock], dialect: &dyn Dialect) -> Vec<usize> {
     let tier = |predicate: &dyn Fn(&FencedBlock) -> bool| -> Vec<usize> {
         blocks
             .iter()
@@ -892,7 +1063,8 @@ fn candidate_blocks(blocks: &[FencedBlock]) -> Vec<usize> {
             .collect()
     };
 
-    let recognised = tier(&|block| PROGRAM_TAGS.contains(&block.tag.as_str()));
+    let tags = dialect.program_fence_tags();
+    let recognised = tier(&|block| tags.contains(&block.tag.as_str()));
     if !recognised.is_empty() {
         return recognised;
     }
@@ -900,7 +1072,7 @@ fn candidate_blocks(blocks: &[FencedBlock]) -> Vec<usize> {
     if !untagged.is_empty() {
         return untagged;
     }
-    tier(&|block| !block.tag.is_empty() && contains_code(&block.body))
+    tier(&|block| !block.tag.is_empty() && contains_code(&block.body, dialect))
 }
 
 /// Every non-empty fenced block in `text`, and every line outside one.
@@ -910,8 +1082,8 @@ fn candidate_blocks(blocks: &[FencedBlock]) -> Vec<usize> {
 /// A program routinely *contains* a fenced block — writing a README, a docs page or a spec snippet
 /// is ordinary gg work — and a model that does so opens its program with a **longer** fence, which
 /// is exactly what CommonMark asks of it. Scanning for the first bare ```` ``` ```` would cut such a
-/// program at the fence inside its own template literal and hand the type-strip an unterminated
-/// literal: a parse diagnostic about code the model never wrote, with no way for it to see the
+/// program at the fence inside its own string literal and hand the parser an unterminated
+/// literal: a diagnostic about code the model never wrote, with no way for it to see the
 /// truncation. So the opening fence's **length** is recorded, both fences must start their own line,
 /// and the closing fence must be at least as long as the opening one.
 ///
@@ -932,7 +1104,7 @@ fn candidate_blocks(blocks: &[FencedBlock]) -> Vec<usize> {
 /// End of input with a block still open closes it as [`Unterminated`](FenceClose::Unterminated) and
 /// runs what it holds, rather than abandoning the scan: half a fenced block is still the model's
 /// whole program, and refusing it teaches nothing that running it does not.
-fn scan_fences(text: &str) -> FenceScan<'_> {
+fn scan_fences<'a>(text: &'a str, dialect: &dyn Dialect) -> FenceScan<'a> {
     let lines: Vec<(usize, &str)> = lines_with_offsets(text).collect();
     let mut blocks = Vec::new();
     let mut outside = Vec::new();
@@ -942,7 +1114,7 @@ fn scan_fences(text: &str) -> FenceScan<'_> {
         let (_, line) = lines[index];
         let opened = match opening_fence(line) {
             Some((length, info)) => Some((length, fence_tag(info))),
-            None => glued_open(line).map(|(before, length, tag)| {
+            None => glued_open(line, dialect).map(|(before, length, tag)| {
                 outside.push(before);
                 (length, tag)
             }),
@@ -1010,7 +1182,7 @@ fn opening_fence(line: &str) -> Option<(usize, &str)> {
 /// that text is certainly code (a program writing a fence into a file), and when what follows the
 /// run is anything but end-of-line or one bare word (an info string gg cannot read is not one it
 /// should guess at).
-fn glued_open(line: &str) -> Option<(&str, usize, String)> {
+fn glued_open<'a>(line: &'a str, dialect: &dyn Dialect) -> Option<(&'a str, usize, String)> {
     let mut offset = 0;
     while let Some(found) = line[offset..].find('`') {
         let start = offset + found;
@@ -1020,7 +1192,7 @@ fn glued_open(line: &str) -> Option<(&str, usize, String)> {
             continue;
         }
         let before = &line[..start];
-        if before.trim().is_empty() || looks_like_code(before) {
+        if before.trim().is_empty() || dialect.looks_like_code(before) {
             return None;
         }
         let after = line[start + length..].trim_end_matches('\r');
@@ -1074,8 +1246,8 @@ fn backticks(line: &str) -> usize {
 ///
 /// **Matches** contiguous runs of certainly-prose lines at the **start** and **end** of the text,
 /// and nowhere else: the longest leading run in which every non-blank line satisfies
-/// [`is_prose_line`] and at least one does, and symmetrically at the end. Nothing in the middle is
-/// ever touched.
+/// [`is_prose_line`](Dialect::is_prose_line) and at least one does, and symmetrically at the end.
+/// Nothing in the middle is ever touched.
 ///
 /// **Declines** at the first line that is not certainly prose — no scanning past it, no paragraph
 /// heuristics — and **while the text still contains an opening fence**, because its precondition is
@@ -1083,14 +1255,14 @@ fn backticks(line: &str) -> usize {
 /// decline is what stops it chewing Markdown [`strip_fences`] deliberately declined to unwrap and
 /// then reporting a repair that repaired nothing. It also declines when removal would leave nothing
 /// at all: a reply that is prose from end to end has no program under the explanation, so there is
-/// nothing to strip *to* — it goes to the type-strip as the model wrote it, and the diagnostic the
-/// model gets is the compiler's.
+/// nothing to strip *to* — it goes on to be prepared as the model wrote it, and the diagnostic the
+/// model gets is the parser's.
 ///
 /// It is deliberately severe. Round 1 produced *no* bare-program-with-prose responses — every model
 /// fenced — so a strategy with no evidence behind it gets the setting where a false positive costs
 /// one turn with a located diagnostic and a false negative deletes the model's code.
-fn strip_prose(text: &str) -> StrategyOutcome {
-    if !scan_fences(text).blocks.is_empty() {
+fn strip_prose(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
+    if !scan_fences(text, dialect).blocks.is_empty() {
         return StrategyOutcome::Declined;
     }
 
@@ -1101,7 +1273,7 @@ fn strip_prose(text: &str) -> StrategyOutcome {
     while let Some((_, line)) = lines.get(leading_end) {
         if line.trim().is_empty() {
             leading_end += 1;
-        } else if is_prose_line(line) {
+        } else if dialect.is_prose_line(line) {
             leading += 1;
             leading_end += 1;
         } else {
@@ -1124,7 +1296,7 @@ fn strip_prose(text: &str) -> StrategyOutcome {
         let (_, line) = lines[trailing_start - 1];
         if line.trim().is_empty() {
             trailing_start -= 1;
-        } else if is_prose_line(line) {
+        } else if dialect.is_prose_line(line) {
             trailing += 1;
             trailing_start -= 1;
         } else {
@@ -1161,8 +1333,9 @@ fn strip_prose(text: &str) -> StrategyOutcome {
 /// where the model produced `"foo();\nbar();"`. Nothing separates the halves: no blank line, no
 /// fence, not so much as a space. It is a **transport** fault rather than a model one, and
 /// [`drop-duplicate-program`](drop_duplicate_program) cannot catch it, because that strategy insists
-/// the repeated tail declare a [lexical binding](LEXICAL_KEYWORDS) at its top level before it will
-/// delete anything — a doubled body of bare statements offers no such proof.
+/// the repeated tail declare a
+/// [binding the language refuses twice](Dialect::declares_a_redeclarable_binding) at its top level
+/// before it will delete anything — a doubled body of bare statements offers no such proof.
 ///
 /// # The match rule
 ///
@@ -1210,6 +1383,14 @@ fn strip_prose(text: &str) -> StrategyOutcome {
 /// * **No newline requirement and no minimum statement count.** A single-line reply that is an exact
 ///   doubling is the defect and not the model's intent, for the separator reason above.
 ///
+/// # The one strategy with no dialect hook
+///
+/// Every other repair asks the run's language something. This one asks nothing, and should not: it
+/// is byte arithmetic over the reply, and the defect it repairs — a transport that recorded one
+/// completion twice — belongs to the transport rather than to anything the model wrote. A later
+/// reader looking for the hook it does not have should stop looking; adding one would be adding a
+/// way for a language to get this wrong.
+///
 /// It applies **once** per pass. A quadrupled reply is therefore halved twice by the
 /// [fixpoint loop](to_fixpoint), one halving per pass, which is the same shape
 /// [`drop-duplicate-program`](without_repeated_tail) converges in.
@@ -1242,15 +1423,6 @@ fn drop_doubled_response(text: &str) -> StrategyOutcome {
 // drop-duplicate-program
 // ---------------------------------------------------------------------------------------------
 
-/// The lexical declarations a program cannot make twice at its top level.
-///
-/// `const`, `let` and `class` bindings are the ones ECMAScript makes an **early error** to
-/// redeclare, so a reply containing two of the same is refused at construction before a statement of
-/// it runs. `var` and `function` are deliberately absent: both may legally be redeclared in the
-/// sloppy function body a program is evaluated as, so a repetition of either says nothing about
-/// whether the reply is one program or two.
-const LEXICAL_KEYWORDS: [&str; 3] = ["const", "let", "class"];
-
 /// Repair — or refuse — the reply that is two programs, with no fence anywhere to tell gg so.
 ///
 /// This is the fence-free counterpart of [`strip_fences`]'s D2. With fences gone from the contract,
@@ -1264,27 +1436,29 @@ const LEXICAL_KEYWORDS: [&str; 3] = ["const", "let", "class"];
 ///
 /// **Matches** a reply that ends with a byte-identical repetition of the text immediately before it
 /// (`A A` → `A`; `A A A` converges to `A` over two passes of the [fixpoint](to_fixpoint)), when the
-/// repeated text declares something in [`LEXICAL_KEYWORDS`] at its top level.
+/// repeated text [declares a binding the language refuses
+/// twice](Dialect::declares_a_redeclarable_binding) at its top level.
 ///
 /// That guard is what makes the deletion **provably semantics-preserving**, which is otherwise not
 /// obvious: deleting the second of two identical copies of `writeFile("a.md", "x");` really would
-/// change what a run does. It cannot here, because a repeated `const` is an early error — the reply
-/// as sent could not execute a single statement — so the deletion removes text that had no
-/// behaviour at all and turns a reply that could never run into the program the model wrote once.
+/// change what a run does. It cannot here, because a repeated declaration of that kind is refused
+/// before a statement runs — the reply as sent could not execute anything at all — so the deletion
+/// removes text that had no behaviour and turns a reply that could never run into the program the
+/// model wrote once.
 ///
 /// **Declines** on everything else — including two programs that are *not* identical, where there
-/// is nothing safe to delete: the reply goes to the type-strip, which refuses it with the
+/// is nothing safe to delete: the reply goes on to be prepared, which refuses it with the
 /// redeclaration error it really is, naming the identifier, its line and its column. That is the
 /// compiler's diagnostic over the model's own text, which is a better answer than any count gg
 /// could infer. It also declines on a repeated tail with no lexical declaration in it (which really
 /// would run twice) and on a name declared twice in different scopes (ordinary shadowing, and
 /// legal).
-fn drop_duplicate_program(text: &str) -> StrategyOutcome {
-    let Some(mask) = code_mask(text) else {
+fn drop_duplicate_program(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
+    let Some(mask) = dialect.code_mask(text) else {
         return StrategyOutcome::Declined;
     };
 
-    if let Some(kept) = without_repeated_tail(text, &mask) {
+    if let Some(kept) = without_repeated_tail(text, &mask, dialect) {
         return StrategyOutcome::Rewrote {
             text: kept.to_string(),
             detail: HealingDetail::DuplicateProgram,
@@ -1304,7 +1478,11 @@ fn drop_duplicate_program(text: &str) -> StrategyOutcome {
 ///
 /// The **last** viable offset wins, which is what makes `A A A` shrink one copy per pass instead of
 /// declining: the tail is compared with the text immediately preceding it, not with the whole head.
-fn without_repeated_tail<'a>(text: &'a str, mask: &CodeMask) -> Option<&'a str> {
+fn without_repeated_tail<'a>(
+    text: &'a str,
+    mask: &CodeMask,
+    dialect: &dyn Dialect,
+) -> Option<&'a str> {
     let first_line = text.lines().next()?.trim_end();
     let mut best = None;
     for (offset, line) in lines_with_offsets(text) {
@@ -1319,61 +1497,32 @@ fn without_repeated_tail<'a>(text: &'a str, mask: &CodeMask) -> Option<&'a str> 
     }
     let (offset, tail) = best?;
     // The guard that keeps this a deletion of text that could never have run. See the strategy's
-    // documentation: without it, `A A` over a program with no lexical declaration is a program the
-    // model asked to run twice.
-    declares_lexically(tail, mask, offset).next()?;
+    // documentation: without it, `A A` over a program that declares nothing the language refuses
+    // twice is a program the model asked to run twice.
+    dialect
+        .declares_a_redeclarable_binding(tail, mask, offset)
+        .then_some(())?;
     Some(text[..offset].trim_end())
 }
-
-/// Every name `text` binds with a [lexical keyword](LEXICAL_KEYWORDS) at its **top level**, in
-/// source order.
-///
-/// "Top level" is read as *unindented*, which is what a top-level statement is in every program a
-/// model writes and what keeps this from mistaking a `const` inside a function body — legal, and
-/// legal twice — for a redeclaration. `base` is where `text` starts inside the source `mask` was
-/// built over, so a caller may ask about a slice of it.
-///
-/// Only plain identifiers are collected: `const { a, b } = …` binds two names, and reconstructing
-/// which would be a parse. A destructuring declaration repeated verbatim is caught by the repeated
-/// tail's own guard finding the other, plainer declarations beside it — and where there are none,
-/// declining is the correct outcome for a strategy that may only delete what it is certain of.
-fn declares_lexically<'a>(
-    text: &'a str,
-    mask: &'a CodeMask,
-    base: usize,
-) -> impl Iterator<Item = &'a str> {
-    lines_with_offsets(text).filter_map(move |(offset, line)| {
-        if !mask.is_code(base + offset) || line.starts_with([' ', '\t']) {
-            return None;
-        }
-        let rest = LEXICAL_KEYWORDS
-            .iter()
-            .find_map(|keyword| line.strip_prefix(keyword))?;
-        let rest = rest.strip_prefix(' ')?.trim_start();
-        let name = rest
-            .split(|c: char| !(c.is_alphanumeric() || c == '_' || c == '$'))
-            .next()
-            .filter(|name| !name.is_empty())?;
-        name.starts_with(|c: char| c.is_alphabetic() || c == '_' || c == '$')
-            .then_some(name)
-    })
-}
-
 // ---------------------------------------------------------------------------------------------
 // drop-imports
 // ---------------------------------------------------------------------------------------------
 
-/// Remove `import`/`require` statements for a surface that is already in scope.
+/// Remove module-import statements for a surface that is already in scope.
 ///
-/// In **code** lexical context only, deletes whole lines that are a complete single-line `import`, a
-/// complete single-line `const`/`let`/`var … = require(…)`, or a bare `require("…");` statement.
+/// In **code** lexical context only, deletes whole lines the language calls
+/// [a complete single-line import](Dialect::is_import_statement). Which spellings those are is the
+/// dialect's business; the per-line loop, the mask gate on the first non-space byte, and the
+/// preservation of every surviving line's own terminator are this function's.
 ///
-/// **Declines** on a multi-line import (deciding where it ends is a parse, and the type-strip
-/// already names `import` and says what to write instead); on an `import` the
-/// [mask](code_mask) places inside a string, template literal or comment — a program *writing* a
-/// TypeScript file is ordinary gg work; and on anything at all when the mask does not lex cleanly.
-fn drop_imports(text: &str) -> StrategyOutcome {
-    let Some(mask) = code_mask(text) else {
+/// **Declines** on anything the dialect does not call a complete statement — a multi-line import
+/// among them, since deciding where such a statement ends is a parse, and the language's own prepare
+/// step already names the import and says what to write instead; on an import the
+/// [mask](Dialect::code_mask) places inside a string, template literal or comment — a program
+/// *writing* a source file is ordinary gg work; and on anything at all when the mask does not lex
+/// cleanly.
+fn drop_imports(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
+    let Some(mask) = dialect.code_mask(text) else {
         return StrategyOutcome::Declined;
     };
 
@@ -1384,7 +1533,7 @@ fn drop_imports(text: &str) -> StrategyOutcome {
         let line = raw.strip_suffix('\n').unwrap_or(raw);
         let keyword_at = offset + (line.len() - line.trim_start().len());
         offset += raw.len();
-        if mask.is_code(keyword_at) && is_import_statement(line) {
+        if mask.is_code(keyword_at) && dialect.is_import_statement(line) {
             removed += 1;
             continue;
         }
@@ -1402,752 +1551,53 @@ fn drop_imports(text: &str) -> StrategyOutcome {
     }
 }
 
-/// Whether the trimmed `line` is a complete single-line module import.
-///
-/// Every arm insists the statement *finishes* on this line — an `import` that closes its module
-/// specifier, a `require(…)` call that closes its parentheses — because a statement whose end is
-/// somewhere below is one only a parser can delete correctly, and this is not a parser.
-fn is_import_statement(line: &str) -> bool {
-    let line = line.trim();
-    if let Some(rest) = line.strip_prefix("import") {
-        let introduced = rest.starts_with(|c: char| c.is_whitespace())
-            || rest.starts_with(['{', '*', '"', '\'']);
-        return introduced && closes_a_string(rest);
-    }
-    if !line.ends_with(')') && !line.ends_with(';') {
-        return false;
-    }
-    // `const fs = require("fs");` and its `let`/`var` spellings. The call has to be the **whole**
-    // right-hand side: `const x = wrap(require("y"));` is a program doing something with a module
-    // system it brought itself, and deleting that line would delete a binding the rest of the
-    // program uses.
-    for keyword in ["const", "let", "var"] {
-        if let Some(rest) = line.strip_prefix(keyword)
-            && rest.starts_with(|c: char| c.is_whitespace())
-            && let Some((_, value)) = rest.split_once('=')
-            && opens_with_require(value.trim_start())
-        {
-            return closes_a_string(value);
-        }
-    }
-    // A bare `require("./setup");` statement, whose value nothing binds.
-    opens_with_require(line) && closes_a_string(line)
-}
-
-/// Whether `text` **opens** with a `require(…)` call.
-///
-/// The identifier boundary falls out of the prefix test: `requireHelper(` leaves `Helper(`, which
-/// does not open with the parenthesis.
-fn opens_with_require(text: &str) -> bool {
-    text.strip_prefix("require")
-        .is_some_and(|rest| rest.trim_start().starts_with('('))
-}
-
-/// Whether `text` opens **and closes** a quoted string, honouring backslash escapes — the test for
-/// "the module specifier ends on this line".
-fn closes_a_string(text: &str) -> bool {
-    let mut chars = text.chars();
-    while let Some(c) = chars.next() {
-        if c != '\'' && c != '"' {
-            continue;
-        }
-        let mut escaped = false;
-        for inner in chars.by_ref() {
-            if escaped {
-                escaped = false;
-            } else if inner == '\\' {
-                escaped = true;
-            } else if inner == c {
-                return true;
-            }
-        }
-        return false;
-    }
-    false
-}
-
 // ---------------------------------------------------------------------------------------------
 // unwrap-async
 // ---------------------------------------------------------------------------------------------
 
-/// Unwrap an `async` wrapper around the whole program and delete the `await`s it implied.
+/// Unwrap a concurrency wrapper around the whole program and delete the suspension tokens it
+/// implied.
 ///
-/// Matches a program whose **entire** top level is one wrapper *that the program calls*:
+/// The **shape** of the repair is this function's and the **recognition** is the
+/// [dialect](Dialect::unwrap_async)'s: which wrappers exist, how a body is delimited, how it is
+/// dedented and which token means "suspend here" are facts about one language, while "a wrapper came
+/// off, and here is what the model is told about it" is the same in every language.
 ///
-/// * [`Function`](AsyncWrapper::Function) — `async function <ident>(…) { … }` followed by exactly
-///   `<ident>();`, `await <ident>();` or `void <ident>();`;
-/// * [`Iife`](AsyncWrapper::Iife) — `(async () => { … })();` or `(async function (…) { … })();`.
-///
-/// It deletes the header, the closing brace and the trailing invocation; **dedents** the body by the
-/// common leading whitespace of its non-blank lines; and deletes every `await` **token** in code
-/// context, replaced by nothing with the surrounding whitespace untouched — `const x = await foo();`
-/// becomes `const x =  foo();`, which is the same program.
-///
-/// **Declines** on an unclean [mask](code_mask); on a wrapper `{` with no matching `}` in code
-/// context; on anything at the top level besides the wrapper and its invocation; on a wrapper the
-/// program never **calls**, because its body then never ran and unwrapping would execute statements
-/// the response did not ask to execute; on a `main().then(…)` invocation, because dropping the call
-/// would delete the callback's code; and on a **non-`async`** wrapper — `function main(){…}
-/// main();` already runs, so unwrapping it would change what the program evaluates to for no
+/// **Declines** on an unclean [mask](Dialect::code_mask), and on any `None` from the dialect — which
+/// is where every language-shaped decline lives: a wrapper the program never **calls** (its body
+/// then never ran, so unwrapping would execute statements the response never asked to execute),
+/// anything at the top level besides the wrapper and its invocation, an invocation carrying a
+/// callback whose code dropping the call would delete, and a wrapper that was never asynchronous at
+/// all — one that already runs, so unwrapping it would change what the program evaluates to for no
 /// reason.
 ///
 /// # The honest caveat
 ///
 /// This is the one strategy that rewrites *structure*, and it does change what the program evaluates
-/// to. That is defensible only because a **called** `async` wrapper cannot run in this sandbox at
-/// all — `await` throws and a returned promise is rejected by the shim — so there is no working
-/// behaviour to preserve; the repair turns a program that could not run into the straight-line
-/// program the model meant. Both halves of that warrant are load-bearing, which is why the strategy
-/// declines unless the wrapper is the entire program *and* the program invokes it: a wrapper that is
-/// only declared has no `await` to throw and no promise to reject, so there is nothing to repair and
-/// running its body would be a rewrite made against a program that worked.
+/// to. That is defensible only because a **called** concurrency wrapper cannot run in this sandbox
+/// at all — there is no event loop, so a suspension throws and a returned promise is rejected — and
+/// there is therefore no working behaviour to preserve; the repair turns a program that could not
+/// run into the straight-line program the model meant. Both halves of that warrant are
+/// load-bearing, which is why a dialect must decline unless the wrapper is the entire program *and*
+/// the program invokes it.
 ///
-/// The dedent skips any line that begins **inside** a template literal, because the leading
-/// whitespace of such a line is the model's data rather than its indentation, and silently reflowing
-/// a file the program was about to write is exactly the class of quiet corruption this module exists
-/// to eliminate.
-fn unwrap_async(text: &str) -> StrategyOutcome {
-    let Some(mask) = code_mask(text) else {
+/// The deletion invariant still binds across the seam: whatever a dialect hands back must be the
+/// body with text removed and leading whitespace stripped, never text of its own.
+fn unwrap_async(text: &str, dialect: &dyn Dialect) -> StrategyOutcome {
+    let Some(mask) = dialect.code_mask(text) else {
         return StrategyOutcome::Declined;
     };
-    let Some((wrapper, body)) = match_async_wrapper(text, &mask) else {
+    let Some(unwrapped) = dialect.unwrap_async(text, &mask) else {
         return StrategyOutcome::Declined;
     };
 
-    let (unwrapped, awaits) = unwrap_body(text, &mask, body.clone());
     StrategyOutcome::Rewrote {
-        text: unwrapped,
-        detail: HealingDetail::Async { wrapper, awaits },
+        text: unwrapped.text,
+        detail: HealingDetail::Async {
+            wrapper: unwrapped.wrapper,
+            awaits: unwrapped.awaits,
+        },
     }
-}
-
-/// The wrapper `text` is entirely made of, and the byte range of its body between the braces.
-fn match_async_wrapper(
-    text: &str,
-    mask: &CodeMask,
-) -> Option<(AsyncWrapper, std::ops::Range<usize>)> {
-    if let Some(matched) = match_async_function(text, mask) {
-        return Some(matched);
-    }
-    match_async_iife(text, mask)
-}
-
-/// `async function main() { … }` followed by exactly one call to it.
-///
-/// The call is **required**. A wrapper that is only declared runs perfectly well in this sandbox —
-/// as a program that does nothing — so unwrapping it would not repair a broken program, it would
-/// execute statements the response never asked to execute. That is the one rewrite the
-/// [caveat](unwrap_async) cannot cover, and its absence is what keeps this strategy consistent with
-/// the synchronous wrapper it deliberately declines.
-fn match_async_function(
-    text: &str,
-    mask: &CodeMask,
-) -> Option<(AsyncWrapper, std::ops::Range<usize>)> {
-    let after_async = keyword(text, 0, "async")?;
-    let after_function = keyword(text, after_async, "function")?;
-    let (name, after_name) = identifier(text, after_function)?;
-    let open = body_brace(text, mask, after_name)?;
-    let close = matching_brace(text, mask, open)?;
-
-    let tail = text[close + 1..].trim();
-    if !is_invocation_of(tail, &name) {
-        return None;
-    }
-    Some((AsyncWrapper::Function, open + 1..close))
-}
-
-/// `(async () => { … })();` or `(async function (…) { … })();` as the whole program.
-fn match_async_iife(text: &str, mask: &CodeMask) -> Option<(AsyncWrapper, std::ops::Range<usize>)> {
-    // The leading whitespace of the first line is the model's indentation, kept by `trim_reply` so
-    // the fence scanner can read it — so the match skips it here rather than assuming a `(` at zero.
-    let rest = text.trim_start().strip_prefix('(')?;
-    let start = text.len() - rest.len();
-    let after_async = keyword(text, start, "async")?;
-
-    let open = match keyword(text, after_async, "function") {
-        // `(async function () { … })();` — an optionally named function expression.
-        Some(after_function) => {
-            let after_name = identifier(text, after_function)
-                .map_or(after_function, |(_, after_name)| after_name);
-            body_brace(text, mask, after_name)?
-        }
-        // `(async () => { … })();` — parameters, the fat arrow, then the body directly. An arrow
-        // function has no name and no return-type position to skip, so it does not go through
-        // `body_brace`.
-        None => {
-            let after_params = parameter_list(text, mask, after_async)?;
-            let arrow = text.get(after_params..)?.trim_start();
-            let arrow_at = text.len() - arrow.len();
-            arrow.strip_prefix("=>")?;
-            let body = text.get(arrow_at + 2..)?.trim_start();
-            let open = text.len() - body.len();
-            body.starts_with('{').then_some(open)?
-        }
-    };
-    let close = matching_brace(text, mask, open)?;
-    let tail = text[close + 1..].trim();
-    // The wrapper's own closing paren, then the call that runs it, and nothing else.
-    let tail = tail.strip_prefix(')')?.trim_start();
-    let tail = tail.strip_prefix('(')?.trim_start();
-    let tail = tail.strip_prefix(')')?.trim_start();
-    let tail = tail.strip_prefix(';').unwrap_or(tail);
-    tail.trim()
-        .is_empty()
-        .then_some((AsyncWrapper::Iife, open + 1..close))
-}
-
-/// The offset just past `word` when it appears at `from` (skipping leading whitespace) at an
-/// identifier boundary, or `None`.
-fn keyword(text: &str, from: usize, word: &str) -> Option<usize> {
-    let rest = text.get(from..)?;
-    let trimmed = rest.trim_start();
-    let at = text.len() - trimmed.len();
-    let after = trimmed.strip_prefix(word)?;
-    after
-        .chars()
-        .next()
-        .is_none_or(|c| !is_ident_char(c))
-        .then_some(at + word.len())
-}
-
-/// The identifier at `from` (skipping leading whitespace) and the offset just past it.
-fn identifier(text: &str, from: usize) -> Option<(String, usize)> {
-    let rest = text.get(from..)?;
-    let trimmed = rest.trim_start();
-    let at = text.len() - trimmed.len();
-    let mut end = 0;
-    for (index, c) in trimmed.char_indices() {
-        let acceptable = if index == 0 {
-            is_ident_start(c)
-        } else {
-            is_ident_char(c)
-        };
-        if !acceptable {
-            break;
-        }
-        end = index + c.len_utf8();
-    }
-    (end > 0).then(|| (trimmed[..end].to_string(), at + end))
-}
-
-/// The offset just past a balanced `( … )` parameter list starting at `from`.
-fn parameter_list(text: &str, mask: &CodeMask, from: usize) -> Option<usize> {
-    let rest = text.get(from..)?;
-    let trimmed = rest.trim_start();
-    let open = text.len() - trimmed.len();
-    if !trimmed.starts_with('(') {
-        return None;
-    }
-    let mut depth = 0usize;
-    for (index, byte) in text.bytes().enumerate().skip(open) {
-        if !mask.is_code(index) {
-            continue;
-        }
-        match byte {
-            b'(' => depth += 1,
-            b')' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(index + 1);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-/// The offset of the wrapper's body `{`, given the offset just past its name.
-///
-/// Between the two lie the parameter list and — for a model that writes TypeScript, which is what
-/// this run asks of it — an optional return-type annotation. The annotation is accepted only when
-/// its angle brackets balance, which is what stops `: Promise<{ ok: boolean }>` from being mistaken
-/// for the body and unwrapping half a type as if it were code.
-fn body_brace(text: &str, mask: &CodeMask, after_name: usize) -> Option<usize> {
-    let after_params = parameter_list(text, mask, after_name)?;
-    let open = (after_params..text.len())
-        .find(|index| text.as_bytes()[*index] == b'{' && mask.is_code(*index))?;
-    let annotation = text[after_params..open].trim();
-    let balanced = annotation.matches('<').count() == annotation.matches('>').count();
-    (annotation.is_empty() || (annotation.starts_with(':') && balanced)).then_some(open)
-}
-
-/// The offset of the `}` that closes the `{` at `open`, counting braces in code context only.
-fn matching_brace(text: &str, mask: &CodeMask, open: usize) -> Option<usize> {
-    let mut depth = 0usize;
-    for (index, byte) in text.bytes().enumerate().skip(open) {
-        if !mask.is_code(index) {
-            continue;
-        }
-        match byte {
-            b'{' => depth += 1,
-            b'}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(index);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-/// Whether `tail` is exactly one call of `name` — `main();`, `await main();` or `void main();`.
-///
-/// A `main().then(…)` tail fails here, which is the point: dropping that call would delete the
-/// callback's code with it.
-fn is_invocation_of(tail: &str, name: &str) -> bool {
-    let tail = tail
-        .strip_prefix("await")
-        .or_else(|| tail.strip_prefix("void"))
-        .filter(|rest| rest.starts_with(|c: char| c.is_whitespace()))
-        .unwrap_or(tail)
-        .trim_start();
-    let Some(rest) = tail.strip_prefix(name) else {
-        return false;
-    };
-    let rest = rest.trim_start();
-    let Some(rest) = rest.strip_prefix('(') else {
-        return false;
-    };
-    let rest = rest.trim_start();
-    let Some(rest) = rest.strip_prefix(')') else {
-        return false;
-    };
-    rest.trim_start().trim_start_matches(';').trim().is_empty()
-}
-
-/// The wrapper's body, dedented and with its `await` tokens removed, and how many went.
-fn unwrap_body(text: &str, mask: &CodeMask, body: std::ops::Range<usize>) -> (String, usize) {
-    let inner = &text[body.clone()];
-    let base = body.start;
-
-    // The common indentation, measured only over lines that begin in code context: a line that
-    // begins inside a template literal carries data, not indentation.
-    let indent = lines_with_offsets(inner)
-        .filter(|(offset, line)| !line.trim().is_empty() && mask.is_code(base + offset))
-        .map(|(_, line)| &line[..line.len() - line.trim_start().len()])
-        .reduce(common_prefix)
-        .unwrap_or_default()
-        .to_string();
-
-    let mut out = String::with_capacity(inner.len());
-    let mut awaits = 0;
-    let mut offset = 0;
-    for raw in inner.split_inclusive('\n') {
-        let start = offset;
-        offset += raw.len();
-        let dedented = if mask.is_code(base + start) {
-            raw.strip_prefix(indent.as_str()).unwrap_or(raw)
-        } else {
-            raw
-        };
-        let shift = base + start + (raw.len() - dedented.len());
-        awaits += strip_awaits(dedented, mask, shift, &mut out);
-    }
-    (out.trim().to_string(), awaits)
-}
-
-/// Append `line` to `out` with its code-context `await` tokens removed, returning how many went.
-///
-/// `base` is the offset of `line`'s first byte within the source the `mask` was built from.
-fn strip_awaits(line: &str, mask: &CodeMask, base: usize, out: &mut String) -> usize {
-    let mut removed = 0;
-    let mut cursor = 0;
-    while let Some(found) = line[cursor..].find("await") {
-        let at = cursor + found;
-        let end = at + "await".len();
-        let bounded = line[..at]
-            .chars()
-            .next_back()
-            .is_none_or(|c| !is_ident_char(c))
-            && line[end..].chars().next().is_none_or(|c| !is_ident_char(c));
-        let in_code = (at..end).all(|index| mask.is_code(base + index));
-        if bounded && in_code {
-            out.push_str(&line[cursor..at]);
-            removed += 1;
-        } else {
-            out.push_str(&line[cursor..end]);
-        }
-        cursor = end;
-    }
-    out.push_str(&line[cursor..]);
-    removed
-}
-
-/// The longer common prefix of two strings, in whole characters.
-fn common_prefix<'a>(left: &'a str, right: &'a str) -> &'a str {
-    let end = left
-        .char_indices()
-        .zip(right.char_indices())
-        .take_while(|((_, a), (_, b))| a == b)
-        .map(|((index, c), _)| index + c.len_utf8())
-        .last()
-        .unwrap_or(0);
-    &left[..end]
-}
-
-// ---------------------------------------------------------------------------------------------
-// The predicates and the lexical mask
-// ---------------------------------------------------------------------------------------------
-
-/// The JavaScript statement keywords a line of code may open with.
-///
-/// Matched **case-sensitively** at an identifier boundary, which is the difference between the `let`
-/// that opens a declaration and the `Let's` that opens a sentence — a distinction a real reply
-/// turned on.
-const STATEMENT_KEYWORDS: [&str; 26] = [
-    "const", "let", "var", "function", "return", "if", "for", "while", "switch", "case", "try",
-    "catch", "finally", "throw", "class", "new", "do", "else", "import", "export", "async",
-    "await", "yield", "delete", "typeof", "void",
-];
-
-/// The tokens a line of code may end with.
-const CODE_ENDINGS: [&str; 11] = [";", "{", "}", ",", "(", "[", "=>", "&&", "||", "+", "="];
-
-/// Characters no line of English prose contains.
-const NON_PROSE_CHARS: [char; 15] = [
-    '`', ';', '{', '}', '(', ')', '[', ']', '=', '<', '>', '|', '&', '$', '\\',
-];
-
-/// Whether `line` is **certainly** a line of code — the test [`strip_fences`] uses to refuse to
-/// unwrap a fence that is inside a program rather than around one, and the test the loop uses to
-/// tell a reply that failed to compile from a reply that was never a program.
-///
-/// Its errors are asymmetric on purpose. A false positive costs a fence that could have been
-/// unwrapped (one turn, one located diagnostic); a false negative deletes a line of the model's
-/// program. So every clause below is a shape that only code has.
-///
-/// # Three shapes deliberately absent, each because a real reply contains it
-///
-/// * **ending with `)` or `]`** — a real trailing-prose line is `- a.ts (6 lines)`, and treating a
-///   trailing paren as code would make the single most common real shape (prose, one fenced program,
-///   prose) decline;
-/// * **starting with a backtick** — models write prose lines that open with an inline code span
-///   (`` `index.ts`: ``), and a template-literal continuation line that genuinely is code is already
-///   caught by clause 1;
-/// * **containing `;` anywhere** — English uses semicolons (`Here is the plan; I will list the
-///   files.`), while clause 5 keeps every code shape that needs one (`x.y = 1; // note`). Without
-///   that narrowing, one semicolon in a model's lead-in sentence disables fence stripping for the
-///   whole reply.
-fn looks_like_code(line: &str) -> bool {
-    let line = line.trim();
-    if line.is_empty() {
-        return false;
-    }
-    // 1. It ends the way a statement or an open block ends.
-    if CODE_ENDINGS.iter().any(|ending| line.ends_with(ending)) {
-        return true;
-    }
-    // 2. It opens with a statement keyword.
-    if starts_with_keyword(line) {
-        return true;
-    }
-    // 3. It opens with a closer or a comment.
-    if ["}", ")", "]", "//", "/*"]
-        .iter()
-        .any(|prefix| line.starts_with(prefix))
-    {
-        return true;
-    }
-    // 4. It contains a fat arrow anywhere.
-    if line.contains("=>") {
-        return true;
-    }
-    // 5. It contains a `;` that terminates a statement — nothing after it but a comment.
-    if line.match_indices(';').any(|(at, _)| {
-        let rest = line[at + 1..].trim_start();
-        rest.is_empty() || rest.starts_with("//") || rest.starts_with("/*")
-    }) {
-        return true;
-    }
-    // 6. It opens with a call: an identifier or dotted chain immediately followed by `(`.
-    opens_with_call(line)
-}
-
-/// Whether `line` opens with a JavaScript statement keyword at an identifier boundary.
-fn starts_with_keyword(line: &str) -> bool {
-    STATEMENT_KEYWORDS.iter().any(|keyword| {
-        line.strip_prefix(keyword)
-            .is_some_and(|rest| rest.chars().next().is_none_or(|c| !is_ident_char(c)))
-    })
-}
-
-/// Whether `line` opens with `identifier(`, `a.b(` or `a.b.c(` — `writeFile(`, `console.log(`,
-/// `entries.filter(`.
-fn opens_with_call(line: &str) -> bool {
-    let mut chars = line.char_indices().peekable();
-    let Some((_, first)) = chars.peek().copied() else {
-        return false;
-    };
-    if !is_ident_start(first) {
-        return false;
-    }
-    let mut end = 0;
-    while let Some((index, c)) = chars.peek().copied() {
-        if is_ident_char(c) {
-            end = index + c.len_utf8();
-            chars.next();
-            continue;
-        }
-        // A dot continues the chain only when a further identifier follows it; otherwise the chain
-        // ended at the previous character, which is what keeps `Done. Created …` prose.
-        if c == '.' {
-            let mut lookahead = chars.clone();
-            lookahead.next();
-            if lookahead
-                .peek()
-                .is_some_and(|(_, next)| is_ident_start(*next))
-            {
-                chars.next();
-                continue;
-            }
-        }
-        break;
-    }
-    line[end..].starts_with('(')
-}
-
-/// Whether `line` is **certainly** prose — the test [`strip_prose`] uses to delete it.
-///
-/// The mirror image of [`looks_like_code`]: here a false positive deletes the model's code, so every
-/// clause is a shape that only English has. The two predicates are **not** complements and are not
-/// disjoint — a line may satisfy both, or neither — and the pipeline's fixpoint loop is what
-/// resolves the overlap.
-fn is_prose_line(line: &str) -> bool {
-    let line = line.trim();
-    if line.is_empty() {
-        return false;
-    }
-    // 1. No punctuation that only code uses, and no comment opener.
-    if line.contains(NON_PROSE_CHARS) || line.contains("//") || line.contains("/*") {
-        return false;
-    }
-    // 2. Not a statement.
-    if starts_with_keyword(line) {
-        return false;
-    }
-    // 3. A sentence, or a single terminated word.
-    let mut tokens = line.split_whitespace();
-    let (Some(first), second) = (tokens.next(), tokens.next()) else {
-        return false;
-    };
-    if second.is_some() {
-        return [first]
-            .into_iter()
-            .chain(second)
-            .chain(tokens)
-            .any(has_letter_run);
-    }
-    first
-        .strip_suffix(['.', '!', '?'])
-        .is_some_and(|word| word.chars().count() >= 2 && word.chars().all(char::is_alphabetic))
-}
-
-/// Whether `token` contains a run of three or more letters — what tells a word of English from a
-/// path, a number or an identifier fragment.
-fn has_letter_run(token: &str) -> bool {
-    let mut run = 0;
-    for c in token.chars() {
-        run = if c.is_alphabetic() { run + 1 } else { 0 };
-        if run >= 3 {
-            return true;
-        }
-    }
-    false
-}
-
-/// Whether `c` may open a JavaScript identifier.
-fn is_ident_start(c: char) -> bool {
-    c.is_alphabetic() || c == '_' || c == '$'
-}
-
-/// Whether `c` may continue a JavaScript identifier.
-fn is_ident_char(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '$'
-}
-
-/// Which bytes of a source are **code** — as opposed to string, template-literal or comment text.
-///
-/// The question [`drop_imports`], [`unwrap_async`] and [`drop_duplicate_program`] each ask of it is
-/// the same one: is this byte code? — so that an `import` inside a string, an `await` inside a
-/// comment, or a `const` inside a template literal is left alone.
-struct CodeMask {
-    /// Per byte: not string, template-literal, or comment text. A substitution's `${` and `}`
-    /// delimiters are code, because they are what a brace count has to see to come back out again.
-    code: Vec<bool>,
-}
-
-impl CodeMask {
-    /// Whether the byte at `index` is code. Out-of-range indices are not, so a caller that has
-    /// already rewritten its text cannot silently read past the end of the mask.
-    fn is_code(&self, index: usize) -> bool {
-        self.code.get(index) == Some(&true)
-    }
-}
-
-/// Lex `src` into its [code mask](CodeMask).
-///
-/// `None` means the source did not lex cleanly, and every strategy that needs the mask declines on
-/// it. Three states end a scan uncleanly: an unterminated block comment, an unterminated template
-/// literal, and — decisively — a single- or double-quoted string still open at a newline, which
-/// JavaScript forbids.
-///
-/// Handles `'…'`, `"…"`, `` `…` `` with `${ … }` substitutions re-entering code (nesting tracked),
-/// `//…\n`, `/*…*/`, and backslash escapes. Used by [`drop_imports`], [`unwrap_async`] and
-/// [`drop_duplicate_program`]; deliberately **not** used by [`strip_fences`] or [`strip_prose`],
-/// whose input is not JavaScript yet.
-///
-/// # The one thing it does not lex
-///
-/// Regular-expression literals. Telling `/` as division from `/` as the start of a regex needs
-/// parser context, which is the very thing this function exists to avoid. A regex containing a quote
-/// (`str.replace(/don't/g, "")`) therefore desynchronises the scan — and because that leaves a
-/// quoted string open at the next newline, the scan returns `None` and every strategy declines. The
-/// failure mode of the one shape it cannot lex is *no healing*, which is the correct one.
-fn code_mask(src: &str) -> Option<CodeMask> {
-    /// Where the scan currently is.
-    enum Mode {
-        Code,
-        Single,
-        Double,
-        Template,
-        LineComment,
-        BlockComment,
-    }
-
-    let bytes = src.as_bytes();
-    let mut code = vec![true; bytes.len()];
-    let mut mode = Mode::Code;
-    // The brace depth each open `${ … }` substitution returns to Template at. Its length is how
-    // many template literals the scan is currently inside.
-    let mut substitutions: Vec<usize> = Vec::new();
-    let mut depth = 0usize;
-    let mut index = 0;
-
-    while index < bytes.len() {
-        let byte = bytes[index];
-        let next = bytes.get(index + 1).copied();
-        match mode {
-            Mode::Code => match byte {
-                b'/' if next == Some(b'/') => {
-                    mark_comment(&mut code, index);
-                    mark_comment(&mut code, index + 1);
-                    mode = Mode::LineComment;
-                    index += 2;
-                }
-                b'/' if next == Some(b'*') => {
-                    mark_comment(&mut code, index);
-                    mark_comment(&mut code, index + 1);
-                    mode = Mode::BlockComment;
-                    index += 2;
-                }
-                b'\'' | b'"' | b'`' => {
-                    code[index] = false;
-                    mode = match byte {
-                        b'\'' => Mode::Single,
-                        b'"' => Mode::Double,
-                        _ => Mode::Template,
-                    };
-                    index += 1;
-                }
-                b'{' => {
-                    depth += 1;
-                    index += 1;
-                }
-                b'}' => {
-                    if substitutions.last() == Some(&depth) {
-                        substitutions.pop();
-                        mode = Mode::Template;
-                    } else {
-                        depth = depth.saturating_sub(1);
-                    }
-                    index += 1;
-                }
-                _ => index += 1,
-            },
-            Mode::Single | Mode::Double => {
-                let quote = if matches!(mode, Mode::Single) {
-                    b'\''
-                } else {
-                    b'"'
-                };
-                code[index] = false;
-                match byte {
-                    // A string that is still open at a newline is not a string JavaScript accepts,
-                    // and is the signature of a scan that has lost its place.
-                    b'\n' => return None,
-                    b'\\' => {
-                        if index + 1 >= bytes.len() {
-                            return None;
-                        }
-                        code[index + 1] = false;
-                        index += 2;
-                    }
-                    _ if byte == quote => {
-                        mode = Mode::Code;
-                        index += 1;
-                    }
-                    _ => index += 1,
-                }
-            }
-            Mode::Template => {
-                code[index] = false;
-                match byte {
-                    b'\\' => {
-                        if index + 1 >= bytes.len() {
-                            return None;
-                        }
-                        code[index + 1] = false;
-                        index += 2;
-                    }
-                    b'`' => {
-                        mode = Mode::Code;
-                        index += 1;
-                    }
-                    b'$' if next == Some(b'{') => {
-                        // The substitution's own delimiters are code: they are what a brace count
-                        // has to see in order to come back out again.
-                        code[index] = true;
-                        code[index + 1] = true;
-                        substitutions.push(depth);
-                        mode = Mode::Code;
-                        index += 2;
-                    }
-                    _ => index += 1,
-                }
-            }
-            Mode::LineComment => {
-                if byte == b'\n' {
-                    mode = Mode::Code;
-                } else {
-                    mark_comment(&mut code, index);
-                }
-                index += 1;
-            }
-            Mode::BlockComment => {
-                mark_comment(&mut code, index);
-                if byte == b'*' && next == Some(b'/') {
-                    mark_comment(&mut code, index + 1);
-                    mode = Mode::Code;
-                    index += 2;
-                } else {
-                    index += 1;
-                }
-            }
-        }
-    }
-
-    // A line comment is closed by end of input; a string, a template literal, a block comment and an
-    // open `${` substitution are not, and each one means the scan lost its place.
-    (matches!(mode, Mode::Code | Mode::LineComment) && substitutions.is_empty())
-        .then_some(CodeMask { code })
-}
-
-/// Mark one byte as comment text, which is not code.
-fn mark_comment(code: &mut [bool], index: usize) {
-    code[index] = false;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2159,7 +1609,11 @@ fn mark_comment(code: &mut [bool], index: usize) {
 /// Offsets rather than an iterator of `&str` because two strategies rebuild the text by *slicing*
 /// the original — the only way to delete lines without also rewriting the line endings of the ones
 /// that survive.
-fn lines_with_offsets(src: &str) -> impl Iterator<Item = (usize, &str)> {
+///
+/// `pub(crate)` because both halves of the split need it: the skeleton's fence and prose scans, and
+/// every [dialect](Dialect) whose lexer walks the same lines. Two spellings of "where does line *n*
+/// begin" is exactly the drift one shared helper removes.
+pub(crate) fn lines_with_offsets(src: &str) -> impl Iterator<Item = (usize, &str)> {
     let mut offset = 0;
     src.split_inclusive('\n').map(move |raw| {
         let start = offset;
@@ -2182,9 +1636,12 @@ pub(crate) fn plural(count: usize, noun: &str) -> String {
     }
 }
 
+// `pub(crate)`: the corpus, the configuration enumerator and the `healed` helpers are shared with
+// each language's own dialect tests, which live beside that language rather than here. One corpus,
+// read from both halves of the split.
 #[cfg(test)]
 #[path = "healing.test.rs"]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 #[path = "healing.fences.test.rs"]

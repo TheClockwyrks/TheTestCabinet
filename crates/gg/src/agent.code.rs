@@ -47,8 +47,8 @@ use crate::knowledge::{KnowledgeModules, KnowledgeOrigin, PendingOnUse};
 use crate::memories::MemoryCode;
 use crate::programs::{ProgramLibrary, ProgramRefusal, ProgramSummary};
 use crate::sandbox::{
-    ProgramError, ProgramScope, RunEnding, SandboxViewOpened, ToolApi, UnreachableTail,
-    ViewOpenOutcome, ViewRefusal, WorkflowStageInput,
+    ProgramError, ProgramLanguage, ProgramScope, RunEnding, SandboxViewOpened, ToolApi,
+    UnreachableTail, ViewOpenOutcome, ViewRefusal, WorkflowStageInput,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -100,7 +100,7 @@ pub(super) enum CodeTurnOutcome {
         /// One line describing what this turn produced, in gg's own words.
         ///
         /// It is what an agent **stopped** before it could `finish` returns to its spawner. Under
-        /// this protocol every assistant message is a TypeScript program, so the loop's `last_text`
+        /// this protocol every assistant message is a program, so the loop's `last_text`
         /// would hand a spawner a page of source instead of an answer; this is the answer.
         report: String,
     },
@@ -272,6 +272,7 @@ pub(super) async fn run_code_turn(
 
     let (outcome, chain, mut state) = run_code_program(
         &healed.program,
+        crate::sandbox::language(code.language),
         code.limits,
         deadline,
         turn,
@@ -403,7 +404,7 @@ pub(super) async fn run_code_turn(
         // notice exists for: nothing the program can observe reveals it — no call failed, nothing
         // threw — and a model that believes its replacement ran would spend its next turn reasoning
         // about work that never happened.
-        .chain(handover_notice(&chain, &outcome).map(CodeFeedback::notice))
+        .chain(handover_notice(code.language, &chain, &outcome).map(CodeFeedback::notice))
         .collect();
 
     let decision = match &outcome.result {
@@ -425,11 +426,11 @@ pub(super) async fn run_code_turn(
                  identically."
             ),
         },
-        // The compiler's own diagnostic, with nothing wrapped around it. `SandboxError::Transpile`'s
+        // The language's own diagnostic, with nothing wrapped around it. `SandboxError::Prepare`'s
         // `Display` prefixes it ("the program did not compile: …"), which the `Compiler error`
         // heading already says, so the inner error is what goes out.
-        Err(SandboxError::Transpile(transpile)) => CodeTurnOutcome::Continue {
-            feedback: vec![CodeFeedback::compiler(transpile.to_string())],
+        Err(SandboxError::Prepare(prepare)) => CodeTurnOutcome::Continue {
+            feedback: vec![CodeFeedback::compiler(prepare.to_string())],
             error: Some(TurnErrorKind::Transpile),
             report: "its last program did not compile".to_string(),
         },
@@ -715,25 +716,31 @@ fn program_verdict(outcome: &SandboxOutcome) -> (bool, Option<String>) {
 /// has a different remedy: the program failed afterwards (fix the fault), the program also ended the
 /// session (nothing to do — the session is over), or the turn had already run as many programs as it
 /// may (do the work in the program rather than handing over again).
-fn handover_notice(chain: &ProgramChain, outcome: &SandboxOutcome) -> Option<String> {
+fn handover_notice(
+    language: GgProgramLanguage,
+    chain: &ProgramChain,
+    outcome: &SandboxOutcome,
+) -> Option<String> {
+    // The one call these sentences quote, spelled the way *this* agent's language spells it. These
+    // are model-facing notices about the model's own surface, so a spelling frozen here would tell
+    // an agent to look at a call its scope does not bind.
+    let rerun = crate::sandbox::spell(crate::sandbox::language(language), sandbox::PROGRAM_RERUN);
     if outcome.revoked_rerun {
-        return Some(
-            "the program you handed to `programs.rerun` was NOT run: your program failed after \
-             handing it over, and a program that did not run to its end did not decide what should \
-             run next either. Fix the fault and hand it over again."
-                .to_string(),
-        );
+        return Some(format!(
+            "the program you handed to `{rerun}` was NOT run: your program failed after handing it \
+             over, and a program that did not run to its end did not decide what should run next \
+             either. Fix the fault and hand it over again."
+        ));
     }
     match chain.refused? {
         // The session is ending, so there is no next turn to read a notice — but the turn is only
         // `Finished` if the ending survived, and this arm is reached on the path where it did not.
-        ChainRefusal::Ended => Some(
-            "the program you handed to `programs.rerun` was NOT run: the same program ended your \
-             session, and an ending outranks a hand-over."
-                .to_string(),
-        ),
+        ChainRefusal::Ended => Some(format!(
+            "the program you handed to `{rerun}` was NOT run: the same program ended your session, \
+             and an ending outranks a hand-over."
+        )),
         ChainRefusal::Exhausted => Some(format!(
-            "the program you handed to `programs.rerun` was NOT run: this turn had already run \
+            "the program you handed to `{rerun}` was NOT run: this turn had already run \
              {MAX_PROGRAM_CHAIN} programs, which is the most one turn may. The last of them is the \
              turn's program. Hand over once, to a program that does the work."
         )),
@@ -953,6 +960,7 @@ pub(super) struct CodeTurnState {
 #[allow(clippy::too_many_arguments)]
 async fn run_code_program(
     source: &str,
+    language: &'static dyn ProgramLanguage,
     limits: SandboxLimits,
     deadline: Option<Instant>,
     turn: &CodeTurn<'_>,
@@ -980,6 +988,7 @@ async fn run_code_program(
     // Arc-backed, so cheap) or captured fresh (`Handle::current()` bridges the delegation family
     // back onto this runtime from the blocking thread).
     let api = LoopToolApi {
+        language,
         context,
         skills,
         docs,
@@ -1028,6 +1037,7 @@ async fn run_code_program(
         let (mut merged, chain, mut api) = loop {
             let modules = api.knowledge.code_modules();
             let (mut outcome, returned) = run_program(
+                language,
                 &source,
                 ProgramScope {
                     enabled: &enabled,
@@ -1069,7 +1079,7 @@ async fn run_code_program(
         // program has ended. Deferring is not a convenience: a read reaches gg from inside a
         // membrane call that already holds the api, so there is no api to run a second program
         // against until this point — and the views these open belong in the *next* prompt anyway.
-        api = run_on_use_scripts(&mut merged, &enabled, limits, deadline, api);
+        api = run_on_use_scripts(language, &mut merged, &enabled, limits, deadline, api);
         (merged, chain, api)
     });
 
@@ -1345,6 +1355,7 @@ fn pin_read_skill(
 /// or memory. `outcome.result` is untouched: the turn succeeded or failed on the model's own
 /// program, whatever a skill's script then did.
 fn run_on_use_scripts(
+    language: &'static dyn ProgramLanguage,
     outcome: &mut SandboxOutcome,
     enabled: &[String],
     limits: SandboxLimits,
@@ -1358,13 +1369,14 @@ fn run_on_use_scripts(
     for PendingOnUse {
         origin,
         name,
-        js,
+        source,
         module,
     } in pending
     {
         let modules: Vec<_> = module.into_iter().collect();
         let (script, returned) = run_program(
-            &js,
+            language,
+            &source,
             ProgramScope {
                 enabled,
                 modules: &modules,
@@ -1466,6 +1478,13 @@ const MAX_VIEW_OPS_PER_PROGRAM: u32 = 100;
 /// delegation family to the subagent scheduler via `block_on` (the sandbox runs on a blocking
 /// thread).
 pub(super) struct LoopToolApi {
+    /// The [program language](ProgramLanguage) this agent writes in.
+    ///
+    /// It is on the api rather than only on the turn because one of the api's own calls needs it: a
+    /// read that brings a code [skill](crate::skills) or [memory](crate::memories) into use prepares
+    /// that thing's code, and the code the agent's `lib` binds has to be prepared for the same guest
+    /// its programs run in.
+    pub(super) language: &'static dyn ProgramLanguage,
     // moved-in, mutable, reclaimed after the turn:
     pub(super) context: ContextModel,
     pub(super) skills: SkillsRuntime,
@@ -1573,7 +1592,10 @@ impl LoopToolApi {
         if code.is_none() && on_use.is_none() {
             return outcome;
         }
-        match self.knowledge.load(origin, name, code, on_use) {
+        match self
+            .knowledge
+            .load(self.language, origin, name, code, on_use)
+        {
             Ok(loaded) => {
                 if let Some(note) = loaded.note(origin) {
                     outcome.output.push_str(&note);
@@ -1620,6 +1642,7 @@ impl LoopToolApi {
             return outcome;
         }
         match self.knowledge.load(
+            self.language,
             KnowledgeOrigin::Memory,
             name,
             code.code.as_deref(),

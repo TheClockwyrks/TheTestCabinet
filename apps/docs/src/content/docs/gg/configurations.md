@@ -133,8 +133,10 @@ decides which capabilities the form offers at all:
 - **Tools** — tool calling: gg offers each capability's functions as tools and the model
   calls them one at a time, a turn per round trip.
 - **RaC** — [responses as code](/gg/responses-as-code/): the model's whole reply is a
-  TypeScript program over the same functions, run in a wasm sandbox, so one turn can make
-  dozens of calls, branch on their results, and loop.
+  program over the same functions — in the capability's
+  [program language](/gg/program-languages/), TypeScript unless a
+  study says otherwise — run in a wasm sandbox, so one turn can make dozens of calls,
+  branch on their results, and loop.
 - **FSM** — a [state machine](/gg/fsms/) over the configuration's _other_ profiles. Not a
   worker at all: it takes no turns, so it is given no model, no prompt, no roster and no
   capabilities — each state runs the profile it names, with that profile's configuration.

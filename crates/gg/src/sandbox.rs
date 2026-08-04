@@ -2,37 +2,34 @@
 //! *program over the tools*.
 //!
 //! Under the [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) capability a
-//! model writes **TypeScript**, and every gg tool is a distinct, typed function in that program's
-//! scope. This module is the host: it type-strips the program with [`transpile`], evaluates it
-//! inside a committed [interpreter component](engine) under an execution-timeout and linear-memory
-//! ceiling, and bridges each typed call across the [membrane] to gg's real toolset.
+//! model answers a turn by writing a whole **program**, and every gg tool is a distinct, typed
+//! function in that program's scope. This module is the host: it prepares the program for its
+//! guest through the run's [program language](language), evaluates it inside that language's
+//! committed [interpreter component](engine) under an execution-timeout and linear-memory ceiling,
+//! and bridges each typed call across the [membrane] to gg's real toolset.
 //!
-//! ## Why a componentized JavaScript guest (and not an interpreter we wrote)
+//! ## Which language, and what that means here
 //!
-//! A model cannot emit wasm, so something must interpret its program. Writing that interpreter — a
-//! language, a parser, a tree-walker — makes gg's surface a dialect nothing was trained on and
-//! forces every tool through one untyped door. Componentizing a real JavaScript engine instead
-//! means the model writes the language it already knows, and the trust boundary becomes a **WIT
-//! interface** in which each tool is its own typed function with its own typed result and its own
-//! typed failure. Nothing the interface does not declare is reachable: the component is built with
-//! every WASI capability disabled, so inside the guest there is no filesystem, no clock, no
-//! randomness, no network and no module system — only the membrane.
+//! The language is a per-agent configuration knob rather than a fact about gg — the axis a
+//! cross-language study compares its arms on. [`language`] is the seam: it owns how a reply becomes
+//! evaluable source, which committed component evaluates it, what that component needs from the
+//! linker, and how its SDK spells the surface. Everything in *this* module is written against that
+//! seam, so nothing here knows which language is running.
 //!
-//! ## Stripped, not checked
-//!
-//! The program is TypeScript, but nothing type-*checks* it: [`transpile`] erases the types and
-//! hands the JavaScript to the guest. The signatures the system prompt shows are therefore a
-//! contract the SDK enforces at run time (an options object that arrived as a bare number, a
-//! negative `offset`) rather than one a compiler enforced beforehand.
+//! What does not vary is the surface itself. The trust boundary is a **WIT interface** in which each
+//! tool is its own typed function with its own typed result and its own typed failure, and every
+//! language's hand-written SDK binds that same interface: what differs between two arms is the
+//! spelling of a call, never which calls exist. Nothing the interface does not declare is reachable.
 //!
 //! ## The latency property
 //!
 //! The interpreter component embeds a JavaScript engine, is ~13.4 MB, and takes ~660 ms to compile
-//! on a many-core machine (~4.8 s on one core). That compile happens **once per process**: the
-//! [`Engine`](wasmtime::Engine) and the compiled [`Component`](wasmtime::component::Component) both
-//! live behind a `OnceLock`, and every program pays only instantiate (24–124 µs) and invoke
-//! (0.7–3 ms). [`precompile`] moves even that one compile off the first turn's critical path.
-//! Nothing on the hot path shells out — the TypeScript type-strip is `oxc`, in-process, at ~0.2 ms.
+//! on a many-core machine (~4.8 s on one core). That compile happens **once per process and
+//! language**: the [`Engine`](wasmtime::Engine) and each compiled
+//! [`Component`](wasmtime::component::Component) live behind a `OnceLock`, and every program pays
+//! only instantiate (24–124 µs) and invoke (0.7–3 ms). [`precompile`] moves even that one compile
+//! off the first turn's critical path. Nothing on the hot path shells out — TypeScript's type-strip
+//! is `oxc`, in-process, at ~0.2 ms.
 //!
 //! ## What a program costs, and what bounds it
 //!
@@ -92,13 +89,36 @@ use wasmtime::{Store, UpdateDeadline};
 
 mod engine;
 mod invoker;
+mod language;
 mod limits;
 mod membrane;
 mod outcome;
 mod signatures;
-mod transpile;
 
 pub use invoker::{ToolApi, WorkflowStageInput};
+pub use language::{
+    APPROVE, CLOSE_VIEW, FINISH, FileWindow, OPEN_TEXT, PROGRAM_GET, PROGRAM_RERUN, PrepareError,
+    PreparedModule, PreparedProgram, ProgramLanguage, REQUEST_CHANGES, SELECT_WINNER, SurfaceCall,
+    UnreachableTail, WasiSurface, all_languages, language, resolve_program_language, spell,
+};
+
+// Named only in documentation and in the seam's own tests today, but exported all the same: they
+// are half the contract a second language implements, and a type a reader has to reach into a
+// private module to read is a type nobody reads. `#[allow(unused_imports)]` because the crate
+// denies warnings and neither is *called* from outside `sandbox` yet.
+#[allow(unused_imports)]
+pub use language::{HostRequirements, PromptDialect, ResolvedProgramLanguage};
+
+// The seam's second implementation, which exists only under test. Re-exported for the one consumer
+// outside `sandbox` that has to know about it: the prompt engine cannot render a template it never
+// registered, so its registration walks the fixtures as well as the registry.
+#[cfg(test)]
+pub(crate) use language::fixture_languages;
+
+// The enumeration of every call gg quotes, for the gate that resolves each one against every
+// registered language. A production reader wants one call by name, never the whole set.
+#[cfg(test)]
+pub(crate) use language::QUOTED_CALLS;
 pub use limits::SandboxLimits;
 pub use outcome::{
     ProgramCompletion, ProgramError, ProgramErrorKind, ProgramResult, SandboxError, SandboxOutcome,
@@ -110,12 +130,11 @@ pub use {
     invoker::FunctionSummary, invoker::PROGRAM_CALL_ID_PREFIX, invoker::SandboxViewOpened,
     invoker::ViewOpenOutcome, invoker::ViewRefusal, limits::resolve_sandbox_limits,
     membrane::RunEnding, signatures::CatalogueFunction, signatures::catalogue_functions,
-    signatures::type_declaration, transpile::TranspileError, transpile::UnreachableTail,
-    transpile::transpile_module, transpile::transpile_ts as transpile_program,
+    signatures::type_declaration,
 };
 
-/// One code module as the guest binds it: the key it is reached at under `lib`, and the JavaScript
-/// whose evaluation produces its exports.
+/// One code module as the guest binds it: the key it is reached at under `lib`, and the source
+/// whose evaluation — in whatever that guest evaluates — produces its exports.
 ///
 /// It is the world's own `code-module` record, re-exported so the [knowledge
 /// registry](crate::knowledge) that produces these builds the type the membrane takes rather than
@@ -131,8 +150,8 @@ pub use invoker::{SandboxRefusal, SandboxToolCall};
 use crate::tools::ToolRegistry;
 use membrane::{MembraneParts, MembraneState, Sandbox};
 
-/// Run one program end to end: type-strip it, instantiate the interpreter component, evaluate it
-/// against exactly `enabled`'s tools, and report everything that happened.
+/// Run one program end to end: prepare it for its guest, instantiate that guest's interpreter
+/// component, evaluate it against exactly `enabled`'s tools, and report everything that happened.
 ///
 /// Everything a program's scope is built from, as one value.
 ///
@@ -143,7 +162,7 @@ use membrane::{MembraneParts, MembraneState, Sandbox};
 pub struct ProgramScope<'a> {
     /// The run's scope-bound gg tool names ([`scope_tools`]). Only these are bound.
     pub enabled: &'a [String],
-    /// The already-transpiled code the agent has loaded by reading a code [skill](crate::skills) or
+    /// The already-prepared code the agent has loaded by reading a code [skill](crate::skills) or
     /// [memory](crate::memories). The guest evaluates each one before the program and binds its
     /// exports at `lib.<name>`; an empty list binds no `lib` at all.
     pub modules: &'a [CodeModule],
@@ -156,12 +175,14 @@ pub struct ProgramScope<'a> {
     pub library: bool,
 }
 
-/// `program` is the **TypeScript** the model emitted, `scope` is everything the evaluated function's
-/// parameters are built from, and `deadline` is the run's wall-clock budget, consulted before every
-/// bridged call so a program cannot outlive the run it belongs to. Synchronous and CPU-bound, so the
-/// [loop](crate::agent) runs it on `spawn_blocking`; it performs no I/O of its own — every effect
-/// goes through `invoker`.
+/// `language` is the [program language](ProgramLanguage) this agent writes in — which decides how
+/// `program` is prepared and which committed component evaluates it — `program` is the source the
+/// model emitted, `scope` is everything the evaluated function's parameters are built from, and
+/// `deadline` is the run's wall-clock budget, consulted before every bridged call so a program
+/// cannot outlive the run it belongs to. Synchronous and CPU-bound, so the [loop](crate::agent) runs
+/// it on `spawn_blocking`; it performs no I/O of its own — every effect goes through `invoker`.
 pub fn run_program<A: ToolApi>(
+    language: &'static dyn ProgramLanguage,
     program: &str,
     scope: ProgramScope<'_>,
     limits: SandboxLimits,
@@ -182,23 +203,23 @@ pub fn run_program<A: ToolApi>(
         return (SandboxOutcome::before_start(error), api);
     }
 
-    // A program that does not compile never touches the engine: no store, no instantiate, no timer.
-    let transpiled = match transpile::transpile_ts(program) {
-        Ok(transpiled) => transpiled,
+    // A program that does not prepare never touches the engine: no store, no instantiate, no timer.
+    let prepared = match language.prepare_program(program) {
+        Ok(prepared) => prepared,
         Err(error) => {
             return (
-                SandboxOutcome::before_start(SandboxError::Transpile(error)),
+                SandboxOutcome::before_start(SandboxError::Prepare(error)),
                 api,
             );
         }
     };
-    let unreachable = transpiled.unreachable;
-    let (component, compile_wait) = match engine::component() {
+    let unreachable = prepared.unreachable;
+    let (component, compile_wait) = match engine::component(language) {
         Ok(component) => component,
         Err(error) => return (SandboxOutcome::before_start(error), api),
     };
 
-    let linker = match linker() {
+    let linker = match linker::<A>(language) {
         Ok(linker) => linker,
         Err(error) => return (SandboxOutcome::before_start(error), api),
     };
@@ -221,7 +242,7 @@ pub fn run_program<A: ToolApi>(
     let returned = bound
         .call_run(
             &mut store,
-            &transpiled.js,
+            &prepared.source,
             modules,
             enabled,
             ending.into(),
@@ -248,10 +269,32 @@ pub fn run_program<A: ToolApi>(
 /// and the expensive artifact (the compiled [`Component`](wasmtime::component::Component)) is the
 /// one that is cached. Sharing a linker would buy microseconds and cost the guarantee that a run's
 /// imports are assembled from nothing but its own state.
-fn linker<A: ToolApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
+///
+/// # Why the language arrives as a requirement rather than as a method call
+///
+/// A guest is not obliged to be as frugal as this one. TypeScript's component is baked with every
+/// WASI capability disabled — which is what makes a code turn reproducible for
+/// [replay](crate::replay) — but a guest produced by another toolchain imports the whole WASI p2
+/// surface whether or not a program touches it, and a linker that provided none of it could not
+/// instantiate one. So *what a guest needs from the host* is part of what a language is, and it
+/// travels here as [`HostRequirements`].
+///
+/// It arrives as **data** rather than as a trait method because this function is generic over the
+/// tool API and an object-safe trait cannot have a generic method. The `match` below is exhaustive,
+/// so the seam is enforced by the compiler: a new [`WasiSurface`] variant does not compile until
+/// this function decides what to do about it.
+fn linker<A: ToolApi>(
+    language: &'static dyn ProgramLanguage,
+) -> Result<Linker<MembraneState<A>>, SandboxError> {
     let mut linker = Linker::new(engine::shared_engine());
     Sandbox::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
         .map_err(|error| SandboxError::Engine(error.to_string()))?;
+    match language.host_requirements().wasi {
+        // Nothing beyond the membrane above. There is no `wasmtime-wasi` dependency to add one
+        // with, which is deliberate: an ambient host is exactly what a reproducible code turn
+        // cannot have.
+        WasiSurface::SandboxOnly => {}
+    }
     Ok(linker)
 }
 
@@ -305,8 +348,8 @@ fn bounded_store<A: ToolApi>(
     store
 }
 
-/// Compile the interpreter component into the process-wide cache without running anything, so the
-/// first code turn does not pay the cold compile on its critical path.
+/// Compile `language`'s interpreter component into the process-wide cache without running anything,
+/// so the first code turn does not pay the cold compile on its critical path.
 ///
 /// Best-effort and idempotent (the `OnceLock` makes a second call free): fired once when
 /// [responses-as-code](test_cabinet_core::gg::CAPABILITY_RESPONSES_AS_CODE) is enabled, never by a
@@ -318,8 +361,33 @@ fn bounded_store<A: ToolApi>(
 /// warm-up arrived second, which only happens when a code turn beat it. The run logs the figure,
 /// because "how long is the one compile on *this* machine?" is what makes a slow first turn
 /// interpretable, and it is core-count sensitive by a factor of seven (see [`engine`]).
-pub fn precompile() -> Result<Option<Duration>, SandboxError> {
-    engine::component().map(|(_, compiled_in)| compiled_in)
+pub fn precompile(
+    language: &'static dyn ProgramLanguage,
+) -> Result<Option<Duration>, SandboxError> {
+    engine::component(language).map(|(_, compiled_in)| compiled_in)
+}
+
+/// Prepare a model's reply for `language`'s guest — the source it evaluates as a program, plus what
+/// preparing it observed about the model's own text.
+///
+/// A free function dispatching through the trait, rather than a method callers reach for directly,
+/// so that "prepare a program" reads the same at every call site whatever the run is configured
+/// with.
+pub fn prepare_program(
+    language: &'static dyn ProgramLanguage,
+    source: &str,
+) -> Result<PreparedProgram, PrepareError> {
+    language.prepare_program(source)
+}
+
+/// Prepare a code [skill](crate::skills)'s or [memory](crate::memories)'s source for `language`'s
+/// guest — the source whose evaluation produces the namespace bound at `lib.<key>`, and the names
+/// that namespace offers.
+pub fn prepare_module(
+    language: &'static dyn ProgramLanguage,
+    source: &str,
+) -> Result<PreparedModule, PrepareError> {
+    language.prepare_module(source)
 }
 
 /// The gg tool names to bind into a program's scope for `registry`: **every** tool the run offers.
@@ -349,16 +417,18 @@ pub fn scope_tools(registry: &ToolRegistry) -> Vec<String> {
 /// toolset.
 pub const FINISH_FUNCTION: &str = "finish";
 
-/// The gg tool names the **committed component itself** says it can bind.
+/// The gg tool names `language`'s **committed component itself** says it can bind.
 ///
 /// This asks the artifact rather than a source file, which is the one drift no compiler and no
 /// source-level test can catch: a tool added, renamed or removed in gg with a stale `.wasm` still
 /// checked in. It exists only for that test — a run never needs to ask, because the run's own
 /// enabled set is what it passes in.
 #[cfg(test)]
-pub(crate) fn component_bound_tools() -> Result<Vec<String>, SandboxError> {
-    let (component, _) = engine::component()?;
-    let linker = linker()?;
+pub(crate) fn component_bound_tools(
+    language: &'static dyn ProgramLanguage,
+) -> Result<Vec<String>, SandboxError> {
+    let (component, _) = engine::component(language)?;
+    let linker = linker::<fake::FakeToolApi>(language)?;
     let limits = SandboxLimits::default();
     let log = fake::CallLog::default();
     // No tools are bound: the guest reports what it *can* bind, which does not depend on what this

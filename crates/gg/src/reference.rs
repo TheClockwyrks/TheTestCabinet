@@ -8,7 +8,8 @@
 //! Not a word of the model-facing prose here is authored: the tool entries are the live
 //! [`ToolDefinition`]s a real [`ToolRegistry`] hands the provider, and the function entries are the
 //! committed [signature catalogue](crate::sandbox::catalogue_functions) reflected out of the guest
-//! SDK's own emitted `.d.ts`. A second copy of a tool's description — however faithful the day it
+//! SDK's own declarations — one language's, [named on the page](GgReference::language) so a reader
+//! knows whose spellings they are looking at. A second copy of a tool's description — however faithful the day it
 //! was written — is a copy that drifts, and documentation that describes a tool gg does not have is
 //! worse than none, because a reader has no way to discover the lie.
 //!
@@ -61,8 +62,8 @@ use test_cabinet_core::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
     CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
     CAPABILITY_WRITE_FILE, COMPACTION_STRATEGY_SELF_COMPACTION, FSM_PARAM_STATES, GgAgentConfig,
-    GgCapabilityConfig, GgSubagentRef, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE,
-    SHELL_OUTPUT_OFFLOAD,
+    GgCapabilityConfig, GgProgramLanguage, GgSubagentRef, SHELL_OUTPUT_ADAPTIVE,
+    SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD,
 };
 use test_cabinet_core::gg_reference::{
     GgApiFunction, GgApiType, GgReference, GgReferenceCategory, GgToolReference, GgToolVariant,
@@ -112,10 +113,24 @@ pub fn reference() -> GgReference {
         // released in lockstep — so this stamps the reference with the build it came out of
         // without gg having to ask anything else for it.
         gg_version: env!("CARGO_PKG_VERSION").to_string(),
+        // The page shows one language's spellings, so it says which. The default is the right one
+        // to project: it is the arm a run gets when it configures nothing, and the reference is
+        // documentation of gg as configured by nobody.
+        language: reference_language(),
         categories: categories(),
         tools: tools(),
         functions: functions(),
     }
+}
+
+/// The [program language](GgProgramLanguage) the reference's API entries are spelled in.
+///
+/// [`GgProgramLanguage::default`] — the arm a run gets when it configures nothing — read through the
+/// trait rather than named as a variant, so moving the default moves the reference with it. Stated
+/// once here rather than at each of the two places below that need it, so the page's stamp and the
+/// signatures under it cannot disagree about whose surface is on screen.
+fn reference_language() -> GgProgramLanguage {
+    GgProgramLanguage::default()
 }
 
 /// The [families](FAMILIES) as reference categories, in gg's own order.
@@ -500,7 +515,8 @@ fn placeholder_position() -> FsmPosition {
 /// to) and the type declarations, which the catalogue carries by name so that a run's prompt can
 /// declare only the types its own tools use.
 fn functions() -> Vec<GgApiFunction> {
-    crate::sandbox::catalogue_functions()
+    let language = crate::sandbox::language(reference_language());
+    crate::sandbox::catalogue_functions(language)
         .into_iter()
         .map(|function| GgApiFunction {
             object: function.object.to_string(),
@@ -519,7 +535,7 @@ fn functions() -> Vec<GgApiFunction> {
                 .types
                 .iter()
                 .filter_map(|name| {
-                    crate::sandbox::type_declaration(name).map(|declaration| GgApiType {
+                    crate::sandbox::type_declaration(language, name).map(|declaration| GgApiType {
                         name: name.clone(),
                         declaration: declaration.to_string(),
                     })

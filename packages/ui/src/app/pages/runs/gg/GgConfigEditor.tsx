@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE,
   DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE,
+  DEFAULT_GG_SYSTEM_PROMPT_TEMPLATES_CODE,
 } from "@test-cabinet/run-record/gg-system-prompt";
 import type { GgSubagentScope } from "@test-cabinet/run-record/gg";
 import { SegmentedControl } from "@test-cabinet/ui";
@@ -16,6 +17,7 @@ import {
   LOOP_DETECTION_HINT,
   LOOP_DETECTION_SPECS,
   RESPONSES_AS_CODE_CAP,
+  RESPONSES_AS_CODE_CAP_ID,
   RUN_LIMIT_SPECS,
   SUBAGENT_SCOPES,
   capabilitiesForMode,
@@ -586,9 +588,18 @@ export function GgConfigEditor({
   // protocol; the tool-calling arm names the free-standing tools. The editor seeds (and
   // resets to) whichever default this agent will actually run against, so an operator
   // starts from the prompt gg would have used.
+  //
+  // The code arm is additionally per **program language** — the prompt quotes the SDK
+  // throughout, and a function's spelling is exactly what differs between languages — so
+  // the agent's own `language` param picks the template. Seeding another language's
+  // prompt here would persist an override in the wrong syntax the moment an operator
+  // edited a line of it. An unset (or unrecognised) language is gg's own default, which
+  // is what the run would resolve it to.
   const defaultPrompt =
     agent.mode === "rac"
-      ? DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE
+      ? (DEFAULT_GG_SYSTEM_PROMPT_TEMPLATES_CODE[
+          agent.capabilities[RESPONSES_AS_CODE_CAP_ID]?.params?.language ?? ""
+        ] ?? DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE)
       : DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE;
 
   // The full system prompt shown in the (collapsed-by-default) editor: this agent's

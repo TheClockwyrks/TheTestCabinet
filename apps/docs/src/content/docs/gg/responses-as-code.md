@@ -2,8 +2,8 @@
 title: "Responses as code"
 ---
 
-An alternative to traditional tool calling: an agent answers a turn by **writing a
-TypeScript program** over its tools, which gg executes in a
+An alternative to traditional tool calling: an agent answers a turn by **writing a whole
+program** over its tools, which gg executes in a
 [wasmtime](https://wasmtime.dev/) sandbox — instead of emitting one tool call, waiting
 for its result, and emitting the next. Loops, conditionals, filtering, intermediate
 values and a dozen composed calls all happen inside a single turn. What comes back is the
@@ -24,6 +24,13 @@ tool calling. Freeze the model, the test case and the rest of the
 difference is attributable to the shape of the response. That A/B — do code-shaped
 responses help a model tackle the large [Hard](/testing/end-to-end/) cases? — is what
 the capability exists to measure.
+
+Which **language** that program is written in is a second axis of the same kind, and it is
+[first-class](#the-program-language): gg registers a *set* of program languages and a run
+picks one per agent. TypeScript is the default and, today, the only registered one, so
+every example on this page is TypeScript — and where a passage below quotes a spelling, a
+type-strip or a fence tag, it is TypeScript's answer to a question **every** language
+answers. [Program languages](/gg/program-languages/) is the design of that seam.
 
 ## The contract a model sees
 
@@ -78,7 +85,9 @@ itself can render is not a counter-example — it illustrates a message the mode
   function, not a rule about text: it **sets a flag** in the agent's host-side context and
   returns, the program runs on, and the loop reads the flag once the program has ended.
 - **Every reply is compiled, and gg judges none of them.** After
-  [healing](/gg/response-healing/) the reply goes straight to the type-strip. Prose does
+  [healing](/gg/response-healing/) the reply goes straight to the run's
+  [program language](#the-program-language), to be prepared for its guest — for TypeScript,
+  the type-strip. Prose does
   not compile and earns a `Compiler error`; two programs pasted together do not compile
   and earn the redeclaration error that is what is actually wrong with them; a reply of
   comments, or an empty reply, is a program that compiles, runs and does nothing. gg
@@ -205,11 +214,14 @@ pasted second draft looks like. A notice is the only channel that fact has.
 
 ### Malformed replies are healed, and the repair is counted
 
-Between the raw reply and the type-strip sits a **deletion-only healing pass**: it
+Between the raw reply and the preparation step sits a **deletion-only healing pass**: it
 unwraps a Markdown fence a model wrapped its program in, drops explanatory lines around
 it, removes `import` lines for a surface that is already in scope, and unwraps an
 `async` wrapper whose continuation this sandbox would have run only after the program
-had already returned. Every repair is counted on the run and disclosed to the run's
+had already returned. The pass itself is language-independent — what an import looks
+like, and what a whole-program concurrency wrapper looks like, are asked of the run's
+language's [dialect](/gg/response-healing/#the-skeleton-and-the-dialect).
+Every repair is counted on the run and disclosed to the run's
 operator, so a healed response is a measurement rather than a rescue — but nothing about it
 is said to the model, for the same reason nothing else about a working program is. The
 strategies, their decline rules,
@@ -222,8 +234,11 @@ it, patch it as a string, and hand it back to be run. Opt-in, and off by default
 
 ## The typed tool surface
 
-Every gg tool is a **distinct, typed TypeScript function** already in the program's
-scope. There is no dispatcher to name a tool through and no JSON to hand-assemble:
+Every gg tool is a **distinct, typed function** in the run's
+[program language](#the-program-language), already in the program's scope. There is no
+dispatcher to name a tool through and no JSON to hand-assemble — that holds in every
+language, and is [the first of the rules](/gg/program-languages/#the-rules-an-agent-facing-surface-obeys-in-every-language)
+an SDK has to keep. The spellings below are TypeScript's:
 
 | Function | Returns |
 | --- | --- |
@@ -243,8 +258,8 @@ of wanting a file's text rather than its metadata, and the
 not tools: no capability offers them, they dispatch nothing, and each is declared in its
 **own** WIT interface precisely so the one-to-one correspondence between the tool
 interfaces and gg's tool vocabulary is not perturbed by them. A signature and a sentence of
-documentation exist for every function **the run actually offers**, reflected out of the
-sandbox SDK's own emitted declarations by the same build that produces the component; the
+documentation exist for every function **the run actually offers**, reflected out of that
+language's SDK's own emitted declarations by the same build that produces its component; the
 prompt names the objects — plus the argument shape of the two or three calls a program
 cannot bootstrap without, `view.openText`, `view.openFile` and `system.shell`, each named
 only when this run binds it — and the model reads the rest of the functions on demand with
@@ -349,7 +364,18 @@ routing through the subagent scheduler, `ToolCall`/`ToolResult` telemetry and
 [replay](/gg/replay/) capture completely untouched while the model-facing surface
 becomes typed functions.
 
-### Type-stripped, not type-checked
+None of this is TypeScript's to give up. The WIT is a language-neutral IDL — other guest
+toolchains bind this exact world — so a second language binds the same typed membrane, and
+its SDK is [hand-written and idiomatic](/gg/program-languages/#the-sdk-is-hand-written-and-native)
+on top of it. A generic dispatcher would not be a shortcut for a new language; it would be
+the one thing that makes it a different capability.
+
+### Type-stripped, not type-checked — TypeScript's preparation step
+
+Every language answers the same question — *how does a model's reply become source this
+guest can evaluate?* — and this is TypeScript's answer. It is where a language spends
+whatever it must to make untrusted text safe to hand to a parser, and where it refuses,
+with a sentence the model can act on, anything the sandbox has no implementation of.
 
 The program is TypeScript, but nothing type-*checks* it. gg erases the types with
 [`oxc`](https://oxc.rs/) in-process — around 0.2 ms — and hands the JavaScript to the
@@ -384,7 +410,7 @@ time, before a statement runs — a throw with no stack frame inside the program
 shim's line recovery finds nothing and the model gets `SyntaxError: redeclaration of
 const root` with no file, no line and no excerpt. gg checks them during the type-strip
 instead, where the scope analysis the transformer needs is already being done, and hands
-back the same located diagnostic every other transpile failure carries — pointing at both
+back the same located diagnostic every other preparation failure carries — pointing at both
 the first binding and the second, since a redeclaration is only fixable from the half that
 came later.
 
@@ -393,7 +419,10 @@ It is worth knowing what produces one. Nearly always: two programs in one reply.
 ### Statements that cannot run
 
 A program's top level is a function body, so a top-level `return` ends it and everything
-after it is dead. That is legal JavaScript and nothing refuses it — but a model that
+after it is dead. That is legal JavaScript and nothing refuses it — a language whose
+program body may end early is entitled to dead code after the statement that ends it, and
+gg's preparation step reports the fact rather than judging it, in whatever language. But a
+model that
 pasted a second draft after the first one's `return` would otherwise be told *"your
 program ran to completion"* about a reply whose second half, the half that wrote the
 deliverable and called `finish`, never executed. So gg counts what could not run and says
@@ -444,7 +473,7 @@ functions, and it has no `list()` to call. The hint an unknown name earns keeps 
 apart, listing the API objects a program may reach and then naming `lib` separately, because
 a list that lumped them together would be false about one of them.
 
-Loaded code is **not context**. It is transpiled once and held by the host, so it costs no
+Loaded code is **not context**. It is prepared once and held by the host, so it costs no
 tokens, is never summarized, and a [compaction](/gg/compaction/) does not sweep it — an
 agent never has to re-read a skill to get its helpers back. A
 [`fork`](/gg/fork-and-exec/) or a succession is the other way round: a new instance starts
@@ -452,11 +481,13 @@ with nothing bound, and re-reading is the whole of the recovery.
 
 ### What a module may be
 
-A module is an ordinary TypeScript file. gg parses it as a module (so `export` is legal),
-blanks the `export` keywords, type-strips it exactly as it type-strips a program, and
-appends the `return { … }` that makes its exports the value of evaluating it. The blanking
-is textual and byte-for-byte, so **every diagnostic still points at the line the author
-wrote**.
+A module is an ordinary file in the run's [program language](#the-program-language), and
+each language prepares one its own way — a module is a second preparation step beside the
+one for programs, not a variation on it. TypeScript's: gg parses the file as a module (so
+`export` is legal), blanks the `export` keywords, type-strips it exactly as it type-strips
+a program, and appends the `return { … }` that makes its exports the value of evaluating
+it. The blanking is textual and byte-for-byte, so **every diagnostic still points at the
+line the author wrote**.
 
 **What it exports** is whatever it says it exports — and, if it says nothing, everything it
 declares:
@@ -481,7 +512,9 @@ export (`export { rows as toRows }`) is offered under the name it was exported a
 
 **What is refused**, with a located diagnostic in the same voice a program's errors use:
 `import` in any form, `export … from`, `export *`, `export default`, a dynamic `import()`,
-and top-level `await`. There is no module loader to resolve a specifier against and no event
+and top-level `await`. That is TypeScript's list, and the two facts behind it are the
+sandbox's rather than the language's, so they hold in any of them: there is no module loader
+to resolve a specifier against and no event
 loop to await on — a module is `lib.<key>`, not a package — and `export default` has no name
 for a namespace to offer it under. The size and nesting ceilings that
 [bound a program](#the-limits) bound a module identically: the source is untrusted whoever
@@ -517,8 +550,9 @@ own outcome untouched.
 ```text
 the model's whole reply
    └─ heal it (deletion only; it never refuses a reply)
-        └─ oxc type-strip, in process    (~0.2 ms; size and nesting bounded first)
-             └─ instantiate the process-wide compiled component  (24–124 µs)
+        └─ prepare it for this language's guest, in process
+             (TypeScript: the oxc type-strip, ~0.2 ms; size and nesting bounded first)
+             └─ instantiate this language's compiled component  (24–124 µs)
                   └─ run the program against exactly this run's tools
                        │  fs.readFile("a.ts", { limit: 200 })
                        └─ typed WIT call → host → gg's tool registry → the agent loop
@@ -543,7 +577,11 @@ applied against the live window and told what it really freed. The
 tool at all: they are applied to the agent's **own** window, and applied *immediately*,
 so a program that opens a view and later closes it in the same turn leaves nothing behind.
 
-### Why a componentized JavaScript engine
+### Why TypeScript's guest is a componentized JavaScript engine
+
+Every language faces this question, and it is the language's to answer — what evaluates the
+prepared source is one of the things [a language supplies](/gg/program-languages/#what-a-language-supplies).
+This is TypeScript's answer.
 
 A model cannot emit wasm, so something has to interpret its program. The cheap answer is
 to write that interpreter — a small language, a lexer, a parser, a tree-walker, compiled
@@ -558,16 +596,17 @@ hand-rolled ABI. The cost is a **~13 MB component** — it embeds a whole JavaSc
 
 ### The latency design
 
-The non-negotiable property is that a turn never pays for a compile. The wasm `Engine`
-and the compiled `Component` both live behind a process-wide `OnceLock`, so the artifact
-is compiled **at most once per process** and every program thereafter pays instantiate
-plus invoke and nothing else. There is no `componentize-js`, no Node, no `tsc`, and no
-disk cache anywhere on the turn path.
+The non-negotiable property is that a turn never pays for a compile. The wasm `Engine` is
+process-wide, and each registered language's compiled `Component` lives behind a `OnceLock`
+of its own, so a language's artifact is compiled **at most once per process** and every
+program thereafter pays instantiate plus invoke and nothing else. A run that never drives an
+agent in a given language never compiles that language's component at all. There is no
+`componentize-js`, no Node, no `tsc`, and no disk cache anywhere on the turn path.
 
 | Stage | Measured |
 | --- | --- |
-| Type-strip the program (`oxc`, in process) | ~0.2 ms |
-| Compile the component — **once per process** | 658 ms (18 cores), 1.29 s (4), 2.36 s (2), 4.84 s (1) |
+| Prepare the program (TypeScript's `oxc` type-strip, in process) | ~0.2 ms |
+| Compile the component — **once per process, per language** | 658 ms (18 cores), 1.29 s (4), 2.36 s (2), 4.84 s (1) |
 | Instantiate a store from the compiled component | 24–124 µs |
 | Evaluate an ordinary program (excluding its tool calls) | 0.7–3 ms |
 
@@ -629,7 +668,9 @@ genuinely spent.
 Two further bounds are not configurable, because each protects gg itself rather than
 rationing a run:
 
-- **A program nests brackets at most 200 deep.** The TypeScript parser is recursive
+- **A TypeScript program nests brackets at most 200 deep.** This one belongs to the
+  language rather than to the sandbox — it is what TypeScript's preparation step has to
+  spend to make untrusted text safe to parse. The parser is recursive
   descent with no depth guard, and a stack overflow is not a catchable panic — it would
   take the whole gg process down over one degenerate response. A model that repeats a
   bracket in a generation loop produces exactly that shape, so that one shape is bounded
@@ -1215,7 +1256,7 @@ was dispatched.
 
 ## Determinism
 
-The component is built with clocks and randomness disabled, so inside a program:
+The TypeScript component is built with clocks and randomness disabled, so inside a program:
 
 - `Date.now()` and `new Date()` are **frozen** at a fixed instant (the component's own
   build instant), and return the same value on every run of every study;
@@ -1235,6 +1276,15 @@ outcomes, it takes the same path and composes the same calls in the same order, 
 difference between two arms of a study is a difference in the model, not in the sandbox.
 It is *not* what makes replay exact — see [replay](#replay) below, which reconstructs a
 recorded turn rather than re-running it.
+
+It is also why a language has to declare
+[what its guest needs from the host linker](/gg/program-languages/#the-linker-requirement).
+This one needs nothing: gg's linker provides no WASI at all, and the capabilities above are
+absent by construction rather than by policy. A guest built from a general-purpose runtime
+imports a great deal more, and every one of those imports is a clock, a source of
+randomness or an ambient resource somebody then has to pin — so the requirement travels
+with the language, and a language that needs WASI has to say how each nondeterministic
+capability is nailed down before this section could be written about it.
 
 Disabling a WASI capability removes the underlying import but leaves the JavaScript
 builtin defined, so an unshadowed `setTimeout` would reach a missing import and **trap
@@ -1258,12 +1308,12 @@ record.
 
 | What went wrong | Caught by | What the model is told |
 | --- | --- | --- |
-| The reply is prose, or several code blocks, or anything else that is not TypeScript | the type-strip — gg itself judges nothing | a `Compiler error` carrying the parser's diagnostics over the reply exactly as sent |
-| The program is not valid TypeScript | the type-strip, before any engine work | a `Compiler error` carrying every parser diagnostic — each with its line, its column and the offending source line quoted — and nothing else; that none of it ran is what the heading means |
-| The program breaks an **early error** — most often a `const` declared twice, i.e. two programs in one reply | the type-strip's scope analysis, before any engine work | a `Compiler error`: the identifier, and **both** places it was bound, each with a line, a column and the source line quoted |
-| The reply carried statements after a top-level `return` | the type-strip, from the tree it already built | a `Notice`: how many did not run, which one was first, and that a top-level `return` ends the program — the program itself still runs |
-| `import`, `export`, a dynamic `import()`, or a top-level `await` | the type-strip | a `Compiler error` saying the sandbox has no module system and is synchronous, and what to write instead |
-| The program nests brackets past 200 deep | the nesting guard, before the parse | a `Compiler error`: its depth, the cap, that the parse runs on a bounded stack, and that this is almost always a repeated bracket |
+| The reply is prose, or several code blocks, or anything else that is not valid source in the run's language | preparation — TypeScript's type-strip here; gg itself judges nothing | a `Compiler error` carrying the parser's diagnostics over the reply exactly as sent |
+| The program does not parse | preparation, before any engine work | a `Compiler error` carrying every parser diagnostic — each with its line, its column and the offending source line quoted — and nothing else; that none of it ran is what the heading means |
+| The program breaks a rule enforced before any statement runs — for TypeScript an **early error**, most often a `const` declared twice, i.e. two programs in one reply | preparation's scope analysis, before any engine work | a `Compiler error`: the identifier, and **both** places it was bound, each with a line, a column and the source line quoted |
+| The reply carried statements after a top-level `return` | preparation, from the tree it already built | a `Notice`: how many did not run, which one was first, and that a top-level `return` ends the program — the program itself still runs |
+| `import`, `export`, a dynamic `import()`, or a top-level `await` — TypeScript's spelling of "something this sandbox has no implementation of" | preparation, which refuses it | a `Compiler error` saying the sandbox has no module system and is synchronous, and what to write instead |
+| A TypeScript program nests brackets past 200 deep | that language's nesting guard, before the parse | a `Compiler error`: its depth, the cap, that the parse runs on a bounded stack, and that this is almost always a repeated bracket |
 | An unknown identifier (usually a withheld tool) | the guest | a `Runtime error`: the name, the program line — **and the API objects this run binds**, because the question a `ReferenceError` provokes is *what do I have?*, and the guest composes that into the error rather than gg wrapping prose around it |
 | An argument of the wrong shape — a record missing a required field, a number where a string goes | the SDK's validators, or the generated bindings one layer below them | a catchable `invalid-argument` `ToolError` thrown at the call site and, uncaught, a `Runtime error`: **which function** the argument was wrong for, what the bindings said was wrong with it, and the line of the program that made the call. It used to be caught by nothing at all — the bindings' `TypeError` is an `Error` from [another realm](#a-tool-failure-throws), so it fell through to the value branch and arrived as the literal string `{}` |
 | A tool threw and was not caught | the guest's single `catch` | a `Runtime error`: which tool failed, its code and message, and the one line of *its own* program it threw on. Not the calls that already landed — those stand, which the [system prompt](/gg/prompts/) says once |
@@ -1295,14 +1345,15 @@ making progress.
 
 ## How the sandbox is built and shipped
 
-The guest lives at `packages/gg-sandbox/` — the typed SDK, the interpreter shim, and the
-build that bakes them into a component with a pinned `componentize-js`. Two of its
-outputs are **committed** into the Rust crate:
+The TypeScript guest lives at `packages/gg-sandbox/` — the typed SDK, the interpreter
+shim, and the build that bakes them into a component with a pinned `componentize-js`. Two
+of its outputs are **committed** into the Rust crate, named for the **language** rather
+than for the package, because every registered language commits a pair:
 
 | Artifact | What it is |
 | --- | --- |
-| `crates/gg/src/sandbox/gg-sandbox.component.wasm` | The baked component, embedded in the binary (13,941,785 bytes as committed). |
-| `crates/gg/src/sandbox/signatures.json` | The signature catalogue the model reads through `object.list()` and `view.openDocsView()`. |
+| `crates/gg/src/sandbox/guests/typescript.component.wasm` | The baked component, embedded in the binary (13,941,785 bytes as committed). |
+| `crates/gg/src/sandbox/guests/typescript.signatures.json` | The signature catalogue the model reads through `object.list()` and `view.openDocsView()`. |
 
 Committing them follows the precedent the `foray-ref-*` guests already set, and it is
 what means **no build or CI step ever needs `componentize-js`**: the host
@@ -1318,20 +1369,98 @@ musl-static release binary to shrink an artifact nobody downloads on a budget.
 The component is embedded rather than read from disk because gg is copied as a single
 file into an ephemeral run container and has to carry everything it needs with it.
 
-Four gates stop the committed artifacts drifting from the code around them: the
+Five gates stop the committed artifacts drifting from the code around them: the
 `componentize-js` link fails if the guest and the membrane disagree; gg's instantiation
 test fails if the committed component's imports no longer match the host's linker; gg's
 `bound-tools` test asks the **artifact** which tools it can bind and compares that against
-gg's own tool vocabulary, which is the one drift no source-level test can catch; and CI
-regenerates the signature catalogue and fails on a diff.
+gg's own tool vocabulary, which is the one drift no source-level test can catch; CI
+regenerates the signature catalogue and fails on a diff; and the
+[agreement gate](#the-agreement-gate) checks the catalogue against every other registered
+language's, which is the one drift the first four cannot see because each of them only ever
+compares a language to itself.
+
+## The program language
+
+The language a program is written in is not baked into the sandbox. It is a **registered
+axis**: gg holds a set of program languages, each of which answers the same questions —
+how to prepare a model's reply into something its guest evaluates, which committed guest
+and signature catalogue are its own, what its guest needs from the host linker, which
+[healing](/gg/response-healing/) questions have language-shaped answers, and which system
+prompt teaches it. TypeScript is the default and today the only registered one. This
+section is the capability's view of that seam; the design of it — the rules every
+language's surface obeys, why each SDK is hand-written, and what adding one costs — is
+[its own page](/gg/program-languages/).
+
+This exists so a study can compare **arms that differ only in the language**. The run
+record carries the answer as a scalar in two places — `summary.programLanguage` and each
+`agent_surface` event's `programLanguage` — so a query slices on it with no new
+vocabulary. Both are absent for a tool-calling agent, which has no program language at
+all, as against an unknown one.
+
+What a second language may and may not change is the point of the seam. Free to differ:
+how a function is spelled (`requestChanges` against `request_changes`), how optional
+arguments are passed, how the prompt teaches the language. Not free to differ: **which**
+functions exist, which object each is grouped under, and what gates it. Each catalogue
+entry that is not a gg tool therefore carries a language-independent `key`; a tool needs
+none, because its gg tool name already is one.
+
+### The agreement gate
+
+That rule is not a convention anyone is asked to remember — it is asserted. gg builds, for
+every registered language, the **identity** of each function its catalogue describes: the
+section it sits in, the object it hangs off, its `key`, the gg tool that gates it, the
+ending role that binds it, and whether it belongs to the program library. Every language's
+set must be identical, and each language's own must line up with gg's vocabularies: the
+tools in exact bijection with the tool registry's, the ending calls exactly the four the
+tool-calling arm dispatches, each bound to the role `EndingRole` gives it, every gate a
+real tool name, `view.openFile` gated on `read_file` and the rest of the view surface
+gated on nothing. Names, signatures and documentation are compared for nothing except
+being present, unique within their object, and consistent with each other.
+
+It is load-bearing because its absence is silent. Each language's own drift gates compare
+it to gg's tool vocabulary and to its own committed component — never to another language
+— so two internally consistent surfaces that disagree with *each other* are two green test
+suites, and an A/B across them measures the difference in the surface rather than the
+difference in the language, with nothing anywhere to say so.
+
+With one registered language the comparative half is dormant and the anchored half is not,
+which is why the gate earns its place today. The comparative half is nonetheless exercised
+on every test run, against a **fixture language** that exists only under `#[cfg(test)]`: a
+second implementation of the seam whose catalogue is TypeScript's re-spelled in
+snake_case, with its own healing dialect, its own prompt and its own preparation step. It
+has no wire id, so it can never be configured, recorded or run. It is what turns the
+seam's claims into observations — that the healing skeleton asks the dialect rather than
+knowing TypeScript's answers, that a prompt is selected per language, that no language
+serves another's artifacts — and, by being handed to the gate with a dozen deliberately
+damaged catalogues, what proves the gate catches a disagreement rather than merely
+reporting agreement.
+
+A language also declares **what its guest needs from the host linker**, because that is
+not a property of the host. This component is baked with every WASI capability disabled,
+which is what makes a code turn reproducible for [replay](/gg/replay/), and gg's linker
+accordingly provides no WASI at all. A guest built by another toolchain need not be so
+frugal, so the requirement travels with the language; a language that needs WASI must
+also say how each nondeterministic capability is pinned, or replay stops being exact.
+TypeScript's answer is "nothing beyond the sandbox world".
+
+Adding one is additive: a sibling guest directory — not necessarily an npm package —
+that binds the same `crates/gg/wit/gg-sandbox.wit`, commits
+`crates/gg/src/sandbox/guests/<language>.{component.wasm,signatures.json}`, and
+hand-writes an SDK that is **idiomatic for that language** while obeying the same rules
+this one does: namespaced typed bindings rather than a generic dispatcher, every call
+synchronous, no strings-as-enums, no model-authored JSON in or out, required arguments
+positional. [Program languages](/gg/program-languages/#adding-a-language-worked-python)
+walks the whole of it through, with what a Python guest was measured to cost;
+`packages/gg-sandbox/README.md` states the artifact contract in full.
 
 ## Configuring it
 
 The capability is `responses-as-code`, under **Models & tools** in the
-[configuration](/gg/configurations/) editor, with four parameters:
+[configuration](/gg/configurations/) editor, with five parameters:
 
 | Param | Default | Notes |
 | --- | --- | --- |
+| `language` | `typescript` | The [program language](#the-program-language) this agent writes in. A value gg cannot read as a registered language changes nothing and is reported at launch, on the same terms every unreadable param is. |
 | `timeoutSecs` | `30` | The per-program guest-execution timeout, in seconds. |
 | `maxMemoryBytes` | `268435456` | The per-program linear-memory cap. |
 | `imageViewCap` | unset — no ceiling | How many [image-carrying views](#the-caps-and-why-none-of-them-truncates) this agent may hold open at once. Labelled **Max open image views** in the editor. |
@@ -1346,9 +1475,10 @@ None of them is clamped — a study may starve the sandbox on purpose to measure
 does — so what protects an operator from a mystifying failure is the error message, which
 names the configured limit.
 
-All four are resolved **per agent**, from the profile that agent runs under, so a root that
+All five are resolved **per agent**, from the profile that agent runs under, so a root that
 may look at four mockups and a reviewer subagent that may look at one are one
-configuration. `imageViewCap` lives here and not on `read-file` because it bounds only the
+configuration — and, in principle, so are a root and a reviewer writing different
+languages. `imageViewCap` lives here and not on `read-file` because it bounds only the
 code arm; hanging it off the read tool would imply it governs native reads, which it
 deliberately does not.
 
@@ -1367,7 +1497,7 @@ distinct. The replay driver recognises the prefix and attributes such a result t
 open turn's program rather than to a native tool call the model never made.
 
 Replaying a code turn is exact because the driver **reconstructs** it: it walks the record
-and re-emits the recorded call/outcome pairs in recorded order. No program is transpiled,
+and re-emits the recorded call/outcome pairs in recorded order. No program is prepared,
 no reply is healed and no sandbox is instantiated, so the record — not the guest's
 determinism — is what makes the reconstruction faithful. The attribution rule is scoped
 to a run the record's own

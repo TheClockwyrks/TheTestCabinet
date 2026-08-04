@@ -17,7 +17,7 @@
 //! [`include_str!`]. `scripts/ci/contract-drift.sh` regenerates and diffs it, so a
 //! reworded tool description that was not regenerated turns CI red instead of leaving
 //! the console showing prose no model was ever sent — the same regenerate-commit-gate
-//! shape gg's own `sandbox/signatures.json` already uses.
+//! shape gg's own committed `sandbox/guests/` catalogues already use.
 //!
 //! # Why it is ungated
 //!

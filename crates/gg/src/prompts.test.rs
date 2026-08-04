@@ -1,3 +1,5 @@
+use test_cabinet_core::gg::GgProgramLanguage;
+
 use super::*;
 use crate::ending::EndingRole;
 
@@ -31,6 +33,7 @@ fn full_system() -> SystemContext {
             },
         ],
         responses_as_code: false,
+        language: None,
         program_library: false,
         code_headings: Vec::new(),
         custom_instructions: None,
@@ -180,6 +183,7 @@ fn a_bare_run_renders_almost_nothing() {
 fn code_mode_names_objects_and_teaches_discovery() {
     let context = SystemContext {
         responses_as_code: true,
+        language: Some(GgProgramLanguage::TypeScript),
         apis: vec![
             ApiView {
                 object: "fs".to_string(),
@@ -241,6 +245,7 @@ fn code_mode_teaches_views_rather_than_logging() {
     let with_reads = render_system(
         &SystemContext {
             responses_as_code: true,
+            language: Some(GgProgramLanguage::TypeScript),
             apis: vec![ApiView {
                 object: "view".to_string(),
                 description: "show yourself a file or a value — the only way material enters your \
@@ -295,6 +300,7 @@ fn code_mode_teaches_views_rather_than_logging() {
     let no_reads = render_system(
         &SystemContext {
             responses_as_code: true,
+            language: Some(GgProgramLanguage::TypeScript),
             apis: vec![ApiView {
                 object: "view".to_string(),
                 description: "show yourself a file or a value".to_string(),
@@ -328,6 +334,7 @@ fn code_mode_names_the_argument_shapes_a_program_starts_from() {
         render_system(
             &SystemContext {
                 responses_as_code: true,
+                language: Some(GgProgramLanguage::TypeScript),
                 apis: vec![ApiView {
                     object: "view".to_string(),
                     description: "show yourself a file or a value".to_string(),
@@ -417,6 +424,7 @@ fn code_mode_distinguishes_a_returned_directory_from_an_opened_view() {
     let prompt = render_system(
         &SystemContext {
             responses_as_code: true,
+            language: Some(GgProgramLanguage::TypeScript),
             apis: vec![ApiView {
                 object: "fs".to_string(),
                 description: "read, write, and edit workspace files".to_string(),
@@ -484,6 +492,7 @@ fn no_run_describes_shell_offloading() {
         for shell in [full_system().shell, ShellView::default()] {
             let context = SystemContext {
                 responses_as_code,
+                language: responses_as_code.then_some(GgProgramLanguage::TypeScript),
                 shell,
                 ..full_system()
             };
@@ -542,6 +551,7 @@ fn no_run_describes_compaction() {
         let prompt = render_system(
             &SystemContext {
                 responses_as_code,
+                language: responses_as_code.then_some(GgProgramLanguage::TypeScript),
                 apis,
                 ending: ending_view(EndingRole::Standard, responses_as_code),
                 ..SystemContext::default()
@@ -610,6 +620,7 @@ fn code_mode_names_the_grouped_ending_calls() {
         let prompt = render_system(
             &SystemContext {
                 responses_as_code: true,
+                language: Some(GgProgramLanguage::TypeScript),
                 apis: vec![ApiView {
                     object: "harness".to_string(),
                     description: "read documentation".to_string(),
@@ -654,6 +665,7 @@ fn the_two_modes_name_calls_in_their_own_form() {
     fn every_section_on(responses_as_code: bool) -> SystemContext {
         SystemContext {
             responses_as_code,
+            language: responses_as_code.then_some(GgProgramLanguage::TypeScript),
             apis: vec![ApiView {
                 object: "harness".to_string(),
                 description: "the run itself".to_string(),
@@ -863,6 +875,7 @@ fn the_read_cap_is_stated_only_when_one_is_in_force() {
 fn code_mode_with_no_workspace_tools_still_names_harness() {
     let context = SystemContext {
         responses_as_code: true,
+        language: Some(GgProgramLanguage::TypeScript),
         apis: vec![ApiView {
             object: "harness".to_string(),
             description: "read documentation".to_string(),
@@ -932,7 +945,7 @@ fn the_code_turn_has_no_result_template_to_render() {
 /// naming the two calls that would have put something there.
 #[test]
 fn the_nothing_shown_notice_names_the_calls_that_would_have_shown_something() {
-    let rendered = render_code_nothing_shown();
+    let rendered = render_code_nothing_shown(GgProgramLanguage::TypeScript);
     assert!(rendered.contains("view.openText"), "{rendered}");
     assert!(rendered.contains("view.openFile"), "{rendered}");
     assert!(
@@ -1049,6 +1062,7 @@ fn the_board_block_renders_epics_issues_and_briefs() {
 fn an_assigned_issue_names_the_issue_and_its_worktree() {
     let implementer = |responses_as_code: bool| SystemContext {
         responses_as_code,
+        language: responses_as_code.then_some(GgProgramLanguage::TypeScript),
         // The code arm lists the objects a program reaches; the tool-calling arm ignores them.
         apis: vec![ApiView {
             object: "fs".to_string(),
@@ -1577,6 +1591,7 @@ fn the_context_usage_signal_renders() {
         ],
         can_evict: true,
         can_close_views: true,
+        close_view: "view.close".to_string(),
         can_archive: true,
     });
     assert!(
@@ -1603,6 +1618,7 @@ fn the_context_usage_signal_renders() {
         }],
         can_evict: false,
         can_close_views: false,
+        close_view: String::new(),
         can_archive: false,
     });
     assert!(
@@ -1613,4 +1629,210 @@ fn the_context_usage_signal_renders() {
     assert!(!bare.contains("evict_file_view"), "{bare}");
     assert!(!bare.contains("view.close"), "{bare}");
     assert!(!bare.contains("archive_thread"), "{bare}");
+}
+
+// ---------------------------------------------------------------------------
+// The per-language gate
+// ---------------------------------------------------------------------------
+
+/// The headings every registered [program language](GgProgramLanguage)'s responses-as-code prompt
+/// must carry, paired with nothing: each is rendered under a context that turns its section **on**,
+/// so a template that dropped one fails here rather than shipping a model a prompt with a hole in
+/// it.
+///
+/// This list is what pays for the decision to give each language its own template file rather than
+/// branching one shared file at every bullet. A copied template can silently lose a section — that
+/// is the one real cost of the split — and it is a cost a list of required headings buys off
+/// entirely, more cheaply and more honestly than a merged file with a branch at every line would
+/// have.
+const REQUIRED_SECTIONS: &[&str] = &[
+    "## Responses as Code",
+    "### Ending your session",
+    "### Your APIs",
+    "### Messages you receive",
+    "## Skills",
+    "## Memory",
+    "## Tasks",
+    "## Subagents",
+    "## Project management",
+    "## Your assigned issue",
+];
+
+/// A context with **every** section a responses-as-code prompt can render turned on, in `language`.
+fn every_code_section_on(language: GgProgramLanguage) -> SystemContext {
+    SystemContext {
+        responses_as_code: true,
+        language: Some(language),
+        apis: vec![ApiView {
+            object: "harness".to_string(),
+            description: "the run itself".to_string(),
+        }],
+        code_headings: vec![CodeHeadingView {
+            heading: "Task".to_string(),
+            description: "the task you are working on".to_string(),
+        }],
+        program_library: true,
+        skills: vec![SkillView {
+            name: "gg-filesystem".to_string(),
+            description: "reading and writing files".to_string(),
+        }],
+        memories: Some(MemoriesView {
+            scratchpad: true,
+            markdown: false,
+            keyword_search: false,
+            max_count: Some(10),
+            max_len_per_memory: Some(1000),
+            max_total_len: Some(10_000),
+            max_len_index: None,
+            max_len_description: Some(120),
+            max_results: None,
+            read_only: false,
+            linked: true,
+            scope: "run".to_string(),
+        }),
+        tasks: Some(TasksView { max_tasks: 100 }),
+        subagents: true,
+        spawnable_agents: vec![SpawnableAgentView {
+            name: "helper".to_string(),
+            description: "does scoped work".to_string(),
+        }],
+        board: Some(BoardView {
+            max_epics: 50,
+            max_issues: 2000,
+            max_retries: 1,
+            reviewers_required: true,
+            issue_agents: vec![SpawnableAgentView {
+                name: "builder".to_string(),
+                description: "implements issues".to_string(),
+            }],
+            reviewer_agents: vec![SpawnableAgentView {
+                name: "critic".to_string(),
+                description: "reviews finished work".to_string(),
+            }],
+        }),
+        assigned_issue: Some(AssignedIssueView {
+            id: "issue-1".to_string(),
+        }),
+        ending: EndingView {
+            standard: true,
+            finish: "harness.finish".to_string(),
+            ..EndingView::default()
+        },
+        ..SystemContext::default()
+    }
+}
+
+/// **Every registered language's responses-as-code prompt renders, and carries every section.**
+///
+/// Three failures at once, and each of them is one a single-language tree could not have had. A
+/// template that does not *parse* panics in [`engine`]. One that references a variable
+/// [`SystemContext`] does not carry fails strict-mode rendering here rather than in a run. And one
+/// that was copied from another language and lost a heading on the way is caught by
+/// [`REQUIRED_SECTIONS`], which is the failure the per-language split makes possible and this gate
+/// exists to close.
+#[test]
+fn every_language_renders_a_complete_system_prompt() {
+    for &language in GgProgramLanguage::ALL {
+        let rendered = render_system(&every_code_section_on(language), None);
+        for section in REQUIRED_SECTIONS {
+            assert!(
+                rendered.contains(section),
+                "{language}: the responses-as-code prompt is missing `{section}`:\n{rendered}"
+            );
+        }
+    }
+}
+
+/// **Every registered language's "nothing shown" notice renders, and is not the fallback.**
+///
+/// The fallback exists so a broken template costs a turn its wording rather than the run its
+/// process, which means a template that stopped rendering would be invisible in production. So it is
+/// made visible here: the rendered notice must differ from the sentence that stands in for it.
+#[test]
+fn every_language_renders_its_nothing_shown_notice() {
+    for &language in GgProgramLanguage::ALL {
+        let rendered = render_code_nothing_shown(language);
+        assert!(!rendered.trim().is_empty(), "{language}: an empty notice");
+        assert_ne!(
+            rendered,
+            crate::sandbox::language(language)
+                .prompt()
+                .nothing_shown_fallback,
+            "{language}: the notice fell back, so its template did not render"
+        );
+    }
+}
+
+/// **A language's prompt is its own**: the same context, rendered for two languages, produces two
+/// documents written in two sets of spellings.
+///
+/// This is the assertion the per-language split exists for, and it is the one a tree with a single
+/// registered language cannot make: with one template, "the prompt is selected per language" and
+/// "there is one prompt" are the same observation. So it is made against the seam's
+/// [fixture language](crate::sandbox::fixture_languages), through the **registered** template name
+/// rather than through the override path — because the registered name is the path a run takes.
+///
+/// Three things are asserted, and the third is the one that would catch a regression: each document
+/// carries its own language's spellings; neither carries the other's marker; and both are rendered
+/// from *one* [`SystemContext`], so the shared machinery — the sections, the API list, the ending
+/// block — is genuinely shared and only the wording is per language.
+#[test]
+fn each_language_renders_its_own_prompt_and_not_another_languages() {
+    let context = every_code_section_on(GgProgramLanguage::TypeScript);
+    let fixture = crate::sandbox::fixture_languages()
+        .next()
+        .expect("the seam registers a fixture language under test");
+
+    let typescript = render_system_for(
+        crate::sandbox::language(GgProgramLanguage::TypeScript),
+        &context,
+    );
+    let rendered = render_system_for(fixture, &context);
+
+    assert!(
+        typescript.contains("TypeScript program"),
+        "TypeScript's prompt names the language it is written in:\n{typescript}"
+    );
+    assert!(
+        rendered.contains("program in the fixture language"),
+        "the fixture's prompt names its own language:\n{rendered}"
+    );
+    assert!(
+        !typescript.contains("fixture language"),
+        "one language's prompt leaked into the other's:\n{typescript}"
+    );
+
+    assert!(
+        rendered.contains("fs.read_file(path)") && rendered.contains("view.open_text(label, body)"),
+        "the fixture's prompt quotes the fixture's spellings:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("readFile") && !rendered.contains("openText"),
+        "the fixture's prompt quotes no other language's spellings:\n{rendered}"
+    );
+
+    // One context, two documents: the API list the run built is in both.
+    for document in [&typescript, &rendered] {
+        assert!(
+            document.contains("`harness`"),
+            "the shared context did not reach this language's template:\n{document}"
+        );
+    }
+}
+
+/// **The "nothing shown" notice is per language too**, for the same reason the prompt is: it names
+/// the calls that would have shown the model something, and those are spellings.
+#[test]
+fn each_language_words_its_own_nothing_shown_notice() {
+    let fixture = crate::sandbox::fixture_languages()
+        .next()
+        .expect("the seam registers a fixture language under test");
+    let rendered = render_code_nothing_shown_for(fixture);
+    assert!(rendered.contains("view.open_text"), "{rendered}");
+    assert!(!rendered.contains("view.openText"), "{rendered}");
+    assert_ne!(
+        rendered,
+        fixture.prompt().nothing_shown_fallback,
+        "the notice fell back, so its template did not render"
+    );
 }

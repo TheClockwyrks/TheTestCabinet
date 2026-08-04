@@ -8,7 +8,7 @@
 
 use super::tests::{
     DEEPSEEK_TURN_01, GEMINI_GLUED_CLOSE, GEMINI_TURN_01, GPT_TURN_01, HAIKU_TURN_01,
-    HAIKU_TURN_03, healed,
+    HAIKU_TURN_03, dialect, healed,
 };
 use super::*;
 
@@ -207,7 +207,7 @@ fn the_round_one_glued_opening_fence_is_recognised() {
         "a two-candidate reply was unwrapped to one of them"
     );
     assert!(result.applied.is_empty(), "{:?}", result.applied);
-    let scan = scan_fences(DEEPSEEK_TURN_01.trim());
+    let scan = scan_fences(DEEPSEEK_TURN_01.trim(), dialect());
     assert_eq!(scan.blocks.len(), 2, "the glued opener was swallowed");
     assert!(
         scan.outside
@@ -232,7 +232,7 @@ fn several_program_blocks_are_neither_guessed_at_nor_refused() {
     ];
     for (name, reply, blocks) in cases {
         assert_eq!(
-            candidate_blocks(&scan_fences(reply.trim()).blocks).len(),
+            candidate_blocks(&scan_fences(reply.trim(), dialect()).blocks, dialect()).len(),
             blocks,
             "{name}: the fixture no longer offers this many candidates"
         );
@@ -254,10 +254,10 @@ fn several_candidates_with_outside_code_still_decline() {
                 ```ts\nwriteFile(\"a.txt\", \"a\");\n```\n\n\
                 ```ts\nwriteFile(\"b.txt\", \"b\");\n```";
     assert!(
-        scan_fences(both)
+        scan_fences(both, dialect())
             .outside
             .iter()
-            .any(|line| looks_like_code(line)),
+            .any(|line| dialect().looks_like_code(line)),
         "the fixture no longer satisfies decline 3"
     );
     let result = healed(both);
@@ -270,7 +270,7 @@ fn several_candidates_with_outside_code_still_decline() {
 #[test]
 fn a_real_single_block_response_heals_to_exactly_its_program() {
     let result = healed(HAIKU_TURN_03);
-    let block = &scan_fences(HAIKU_TURN_03.trim()).blocks[0];
+    let block = &scan_fences(HAIKU_TURN_03.trim(), dialect()).blocks[0];
     assert_eq!(result.program, block.body);
     assert!(
         result
@@ -412,7 +412,7 @@ fn escaped_backticks_in_a_template_literal_are_not_a_fence() {
                  `;\n\
                  writeFile(\"doc.md\", doc);";
     assert!(
-        scan_fences(reply).blocks.is_empty(),
+        scan_fences(reply, dialect()).blocks.is_empty(),
         "an escaped backtick run was read as a fence"
     );
     let result = healed(reply);
@@ -437,7 +437,7 @@ fn a_fence_indented_four_spaces_is_not_a_fence() {
     ] {
         let canonical = trim_reply(reply);
         assert!(
-            scan_fences(canonical).blocks.is_empty(),
+            scan_fences(canonical, dialect()).blocks.is_empty(),
             "an indented fence was scanned as a fence: {reply:?}"
         );
         let result = healed(reply);
@@ -456,7 +456,10 @@ fn a_fence_indented_four_spaces_is_not_a_fence() {
 #[test]
 fn prose_containing_a_semicolon_does_not_block_the_unwrap() {
     let lead = "Here is the plan; I will list the files.";
-    assert!(!looks_like_code(lead), "an English semicolon read as code");
+    assert!(
+        !dialect().looks_like_code(lead),
+        "an English semicolon read as code"
+    );
     let result = healed(&format!(
         "{lead}\n\n```ts\nconst files = listDir(\"src\");\nreturn files;\n```"
     ));
@@ -472,7 +475,10 @@ fn prose_containing_a_semicolon_does_not_block_the_unwrap() {
 #[test]
 fn prose_starting_with_an_inline_code_span_does_not_block_the_unwrap() {
     let lead = "`index.ts`: I will rewrite it.";
-    assert!(!looks_like_code(lead), "an inline code span read as code");
+    assert!(
+        !dialect().looks_like_code(lead),
+        "an inline code span read as code"
+    );
     let result = healed(&format!(
         "{lead}\n\n```ts\nwriteFile(\"index.ts\", \"ok\");\n```"
     ));

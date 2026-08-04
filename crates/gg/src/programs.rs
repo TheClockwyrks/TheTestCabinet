@@ -28,6 +28,8 @@
 //! wrote before it, and an agent whose window holds its last program still pays nothing extra to
 //! reach for one, because the library is never rendered into a prompt. The model reads it by asking.
 
+use std::collections::BTreeSet;
+
 use serde_json::Value;
 use test_cabinet_core::gg::{CAPABILITY_PROGRAM_LIBRARY, GgAgentConfig};
 
@@ -289,22 +291,38 @@ pub fn resolve_program_library(profile: &GgAgentConfig) -> ResolvedProgramLibrar
 /// a run may keep programs for its implementer and not for its reviewer, and a single number would
 /// describe neither.
 pub fn launch_summary(agents: &[GgAgentConfig]) -> Option<String> {
-    let clauses: Vec<String> = agents
+    let keeping: Vec<&GgAgentConfig> = agents
         .iter()
-        .filter_map(|agent| {
-            let library = resolve_program_library(agent).library;
-            library.is_enabled().then(|| match library.keep {
-                Some(keep) => format!("`{}` keeps its {keep} most recent", agent.name),
-                None => format!("`{}` keeps every one", agent.name),
-            })
-        })
+        .filter(|agent| resolve_program_library(agent).library.is_enabled())
         .collect();
-    if clauses.is_empty() {
+    if keeping.is_empty() {
         return None;
     }
+    let clauses: Vec<String> = keeping
+        .iter()
+        .map(|agent| match resolve_program_library(agent).library.keep {
+            Some(keep) => format!("`{}` keeps its {keep} most recent", agent.name),
+            None => format!("`{}` keeps every one", agent.name),
+        })
+        .collect();
+    // The two calls, spelled by the languages the agents this line is *about* actually write in —
+    // deduplicated, so the ordinary single-language run reads as one pair and a mixed-language run
+    // names both rather than quietly picking one.
+    let calls: BTreeSet<String> = keeping
+        .iter()
+        .map(|agent| {
+            let language =
+                crate::sandbox::language(crate::sandbox::resolve_program_language(agent).language);
+            format!(
+                "`{}`, `{}`",
+                crate::sandbox::spell(language, crate::sandbox::PROGRAM_GET),
+                crate::sandbox::spell(language, crate::sandbox::PROGRAM_RERUN)
+            )
+        })
+        .collect();
     Some(format!(
-        "program library: a program can fetch and re-run a program this agent already ran \
-         (`programs.get`, `programs.rerun`) — {}",
+        "program library: a program can fetch and re-run a program this agent already ran ({}) — {}",
+        calls.into_iter().collect::<Vec<_>>().join(" or "),
         clauses.join("; ")
     ))
 }

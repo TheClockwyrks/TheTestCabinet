@@ -1,20 +1,29 @@
-# `@test-cabinet/gg-sandbox` — the guest for gg's responses-as-code sandbox
+# `@test-cabinet/gg-sandbox` — gg's TypeScript guest
 
-The TypeScript half of gg's
+The **TypeScript** guest for gg's
 [responses-as-code](../../apps/docs/src/content/docs/gg/responses-as-code.md)
-capability. Under that capability a model answers a turn with a **TypeScript
-program** instead of a batch of tool calls; gg type-strips the program in-process
-and evaluates it inside a wasm component. This package is that component's source:
-the typed tool surface a program calls, the interpreter shim that evaluates it, and
-the build that bakes both into the artifacts the Rust host embeds.
+capability. Under that capability a model answers a turn by writing a whole
+**program** instead of a batch of tool calls; gg prepares that program in-process
+and evaluates it inside a wasm component. This package is one such component's
+source: the typed tool surface a program calls, the interpreter shim that evaluates
+it, and the build that bakes both into the artifacts the Rust host embeds.
+
+**One guest, not the guest.** The language a program is written in is a first-class
+axis of gg — it is what a cross-language A/B study compares arms on — so gg
+registers a *set* of program languages and each one has a guest of its own.
+TypeScript is the first, the default, and today the only registered one; a second
+is a **sibling directory**, not a change here. What every guest shares, and what a
+new one has to satisfy, is in [Another language](#another-language) below and in
+[Program languages](../../apps/docs/src/content/docs/gg/program-languages.md).
 
 It is not published and has no runtime dependents. Its output is two **committed
-binary/generated artifacts** in the Rust crate:
+binary/generated artifacts** in the Rust crate, named for the language rather than
+for this package:
 
 | Artifact | What it is |
 | --- | --- |
-| [`crates/gg/src/sandbox/gg-sandbox.component.wasm`](../../crates/gg/src/sandbox/) | The baked component, `include_bytes!`d by the host. **13,941,785 bytes** (13.3 MiB) as committed. |
-| [`crates/gg/src/sandbox/signatures.json`](../../crates/gg/src/sandbox/) | The signature catalogue, `include_str!`d and rendered into the system prompt. |
+| [`crates/gg/src/sandbox/guests/typescript.component.wasm`](../../crates/gg/src/sandbox/guests/) | The baked component, `include_bytes!`d by the host. **13,941,785 bytes** (13.3 MiB) as committed. |
+| [`crates/gg/src/sandbox/guests/typescript.signatures.json`](../../crates/gg/src/sandbox/guests/) | The signature catalogue, `include_str!`d and rendered into the system prompt. |
 
 ## Layout
 
@@ -23,8 +32,8 @@ binary/generated artifacts** in the Rust crate:
 | `src/membrane.d.ts` | The hand-maintained TypeScript mirror of `crates/gg/wit/gg-sandbox.wit`. Emits no code; `componentize-js` injects the real bindings. |
 | `src/types.ts` | The **model-facing** record and enum types — gg's vocabulary, not the WIT's. |
 | `src/errors.ts` | `ToolError`, and the argument validators every wrapper runs first. |
-| `src/catalogue.ts` | Pure data: gg tool name ↔ SDK function ↔ module, plus `SESSION_ENTRIES` and `VIEW_ENTRIES`. |
-| `src/tools/*.ts` | The 37 typed wrappers — one per gg tool, grouped one module per capability family — plus the two on-demand documentation functions (`listFunctions`, `readDoc`) and the four `view` functions. |
+| `src/catalogue.ts` | Pure data: gg tool name ↔ SDK function ↔ module, plus `SESSION_ENTRIES`, `VIEW_ENTRIES` and `PROGRAM_ENTRIES` — each carrying the `key` that identifies it across languages. |
+| `src/tools/*.ts` | The 37 typed wrappers — one per gg tool, grouped one module per capability family — plus the on-demand directory call (`listFunctions`, which is every object's `list()`) and the five `view` functions. |
 | `src/helpers.ts` | The one helper, `readTextFile`. |
 | `src/session.ts` | `finish(summary)` and the two verdict endings — model-facing functions that are not gg tools. |
 | `src/shim.ts` | The component's entry point: `run(program, tools)` and `boundTools()`. |
@@ -45,23 +54,25 @@ array in the catalogue, and its own top-level `session` object in
 `boundTools() == ALL_TOOL_NAMES` — is not perturbed by it.
 
 `src/tools/views.ts` is the same carve-out, one level further out. The `view`
-object — `openFile`, `openText`, `close`, `current` — is how a program puts
+object — `openFile`, `openText`, `openDocsView`, `close`, `current` — is how a program puts
 material into its own **context window**, which is the only channel material has
 into the model: `console.*` reaches the run's operator, a view reaches the model
-on its next turn. None of the four is a gg tool either, so they get their own
+on its next turn. None of the five is a gg tool either, so they get their own
 `interface views` in the WIT, their own `VIEW_ENTRIES` array, and their own
-top-level `views` array in `signatures.json`. Three of them are bound whatever a
+top-level `views` array in `signatures.json`. Four of them are bound whatever a
 run enables, for the same reason `finish` is; `openFile` carries
 `requires: "read_file"`, because it is a read and a run with reading withheld must
 not get one through a side door.
 
-That makes **four** of the WIT's interfaces non-tool ones — `feedback` (the shim's
-private channel back to gg, never model-facing), `session`, `docs` and `views` —
+That makes **five** of the WIT's interfaces non-tool ones — `feedback` (the shim's
+private channel back to gg, never model-facing), `session`, `docs`, `views` and
+`programs` (the [program library](../../apps/docs/src/content/docs/gg/program-library.md),
+which a capability rather than a tool decides) —
 against **eight** tool interfaces whose functions stand in exact one-to-one
-correspondence with `ALL_TOOL_NAMES`. Adding a fifth `view` function means editing
+correspondence with `ALL_TOOL_NAMES`. Adding a sixth `view` function means editing
 four places (`crates/gg/wit/gg-sandbox.wit`, `src/membrane.d.ts`,
 `src/tools/views.ts`, `VIEW_ENTRIES` in `src/catalogue.ts`) and then rebuilding both
-artifacts; a gg test asserts the catalogue carries exactly the four, so the SDK and
+artifacts; a gg test asserts the catalogue carries exactly the five, so the SDK and
 the catalogue cannot disagree quietly.
 
 ## Refreshing the artifacts
@@ -101,7 +112,7 @@ gate for the catalogue.
 | `componentize-js` fails to link | `src/membrane.d.ts` disagreeing with the WIT, at refresh time |
 | gg's instantiation test | a WIT change with no artifact refresh — the committed component's imports no longer match the host's linker |
 | gg's `bound-tools` test | a tool added, renamed or removed in gg with a **stale committed `.wasm`** |
-| `npm run -w @test-cabinet/gg-sandbox signatures` + `git diff --exit-code` in CI | an SDK signature or JSDoc edited without regenerating `signatures.json` |
+| `npm run -w @test-cabinet/gg-sandbox signatures` + `git diff --exit-code` in CI | an SDK signature or JSDoc edited without regenerating `typescript.signatures.json` |
 | `tools/signatures.mjs` exiting non-zero | a catalogued export that does not exist, lives in the wrong module, or has no doc comment |
 
 The JSDoc on each wrapper is not decoration: it is the sentence a model reads in
@@ -126,4 +137,65 @@ downloads on a budget.
 
 `.gitignore` has an unanchored `dist` rule, so this package's `dist/` — the
 intermediate JavaScript and declarations — is ignored for free. That is precisely
-why both committed outputs live under `crates/gg/src/sandbox/` instead.
+why both committed outputs live under `crates/gg/src/sandbox/guests/` instead.
+
+## Another language
+
+The design of the seam — why the language is an axis, the rules every language's SDK
+obeys, and a worked walkthrough of adding Python — is
+[Program languages](../../apps/docs/src/content/docs/gg/program-languages.md). What
+follows is this package's own side of it.
+
+A second program language is a **sibling directory** — say `packages/gg-sandbox-python/`,
+with a `pyproject.toml` and its own build script driving `componentize-py` — that
+is *not* an npm workspace and shares no code with this package. It is additive:
+nothing here changes when it lands. What it does share is three things, and only
+three.
+
+**1. The WIT.** `crates/gg/wit/gg-sandbox.wit` is the wire, and there is exactly one
+copy of it: ~14 interfaces of typed functions with real records, enums and variants,
+one per gg tool. WIT is a language-neutral IDL, and other guest toolchains bind this
+world directly — `componentize-py` generates clean Python bindings for it. A guest
+binds the WIT itself; it does not go through this package.
+
+**2. The catalogue schema.** It emits
+`crates/gg/src/sandbox/guests/<language-id>.signatures.json` in the same shape, with
+`language: "<language-id>"` and the same `key`s. It need not use
+`tools/signatures.mjs` — only the emitted JSON is contractual, and a Python guest
+would reflect its own docstrings and type hints with its own script. The `key` is
+what makes two catalogues comparable: gg asserts that every registered language
+offers the same functions, on the same objects, under the same gates, and that the
+only thing free to differ between them is **spelling**. If one language were missing
+`edit_file`, or gated a view function on nothing, an A/B between the two would be
+measuring the surfaces rather than the languages.
+
+**3. The artifact convention.**
+`crates/gg/src/sandbox/guests/<language-id>.{component.wasm,signatures.json}`, both
+committed, both embedded by that language's module in `crates/gg/src/sandbox/language/`.
+
+Everything else is that language's own. In particular its **SDK is hand-written and
+idiomatic for it** — `snake_case` names, keyword arguments where TypeScript takes a
+trailing options object, typed dataclass-style results — and the SDK, never the
+model, bridges that shape onto the WIT. The rules it has to keep obeying are the
+ones this SDK obeys, and they are about what reaches the model:
+
+- capabilities arrive as **typed, standalone, namespaced bindings**
+  (`fs.readFile(...)`, `system.shell(...)`), never a generic dispatcher taking the
+  capability name as data;
+- **every call is synchronous** — nothing returns a promise, future or coroutine;
+- **no strings-as-enums** where a fixed choice exists, **no model-authored JSON as an
+  argument**, and **no JSON document as a result**: a result is a typed value whose
+  fields the program reads directly;
+- **optional arguments use the language's own idiom**; **required arguments are
+  positional**.
+
+One more thing travels with a language, and it is easy to miss: **what its component
+needs from the host linker**. This component is baked with *every* WASI capability
+disabled, which is what makes a code turn reproducible for gg's replay capability,
+and gg's linker accordingly provides no WASI at all. A `componentize-py` guest is not
+so frugal — it imports the full WASI p2 surface (`wasi:cli`, `wasi:filesystem`,
+`wasi:sockets`, `wasi:clocks`, `wasi:random`, `wasi:io`) — so a language declares its
+requirement to the host as data (`HostRequirements` in
+`crates/gg/src/sandbox/language.rs`), and a language that needs WASI must also say
+how each nondeterministic capability is pinned. TypeScript's answer is "nothing
+beyond the sandbox world".

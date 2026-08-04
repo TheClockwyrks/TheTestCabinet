@@ -43,7 +43,7 @@ use std::sync::Mutex;
 
 use test_cabinet_core::gg::{
     GgErrorSummary, GgHealingStrategy, GgHealingSummary, GgIssueReviewPhase, GgIssueStatus,
-    GgLimitBreach, GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost,
+    GgLimitBreach, GgProgramLanguage, GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost,
     GgSpeculationPhase, GgTelemetryKind, GgTurnErrorKind,
 };
 
@@ -119,6 +119,10 @@ struct SummaryState {
     /// [`record_execution_mode`](SessionSummaryTracker::record_execution_mode). Defaults to
     /// tool-calling until set.
     execution_mode: Option<String>,
+    /// The run's [program language](GgSessionSummary::program_language), recorded on exactly the
+    /// terms [`execution_mode`](Self::execution_mode) is: no event carries it, so the binary sets it
+    /// once off the run's configuration. `None` for a tool-calling run, which writes no programs.
+    program_language: Option<GgProgramLanguage>,
     /// Every distinct issue id observed on the board.
     issues_created: BTreeSet<String>,
     /// Every distinct issue id observed at [`Done`](GgIssueStatus::Done) on the board.
@@ -279,6 +283,24 @@ impl SessionSummaryTracker {
     pub fn record_execution_mode(&self, mode: impl Into<String>) {
         let mut state = self.inner.lock().expect("summary tracker lock");
         state.execution_mode = Some(mode.into());
+    }
+
+    /// Record the [program language](GgSessionSummary::program_language) the run's root agent wrote
+    /// its programs in — or `None` for a tool-calling run, which wrote none.
+    ///
+    /// The fourth configuration fact no event carries, recorded on exactly the terms
+    /// [`record_execution_mode`](Self::record_execution_mode) is and immediately beside it. It is
+    /// the axis a cross-language study slices its arms on, and it is a **scalar**, which is what
+    /// makes it queryable for free: the summary is flattened as `summary.*`, so it arrives as
+    /// `summary.programLanguage` with no change to the query vocabulary at all.
+    ///
+    /// `None` and "TypeScript" are genuinely different answers here — the first is a run with no
+    /// program language, the second is a run with that one — so it is recorded rather than left to
+    /// default, and a reader can tell a tool-calling arm from a code arm without re-deriving the
+    /// capability set.
+    pub fn record_program_language(&self, language: Option<GgProgramLanguage>) {
+        let mut state = self.inner.lock().expect("summary tracker lock");
+        state.program_language = language;
     }
 
     /// Record the [execution ceilings](GgRunLimits) that were actually **in force** for this run —
@@ -446,6 +468,7 @@ impl SessionSummaryTracker {
                 .execution_mode
                 .clone()
                 .unwrap_or_else(|| "tool_calling".to_string()),
+            program_language: state.program_language,
             code_executions: state.code_executions,
             healing: GgHealingSummary {
                 enabled: state.healing_enabled.clone(),
