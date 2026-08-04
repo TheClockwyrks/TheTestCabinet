@@ -7,6 +7,7 @@ import type { Model } from "../../../client/types";
 import { BackChevron } from "../../components/BackChevron";
 import { LoadingState } from "../../components/LoadingState";
 import { PageLayout } from "../../components/PageLayout";
+import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
 import { routes } from "../../routes";
 import { GgConfigEditor } from "../runs/gg/GgConfigEditor";
 import {
@@ -18,7 +19,6 @@ import {
   resetAgentForMode,
   type GgConfigDraft,
 } from "../runs/gg/ggConfigDraft";
-import { builtInDraft } from "../runs/gg/useGgConfigs";
 import exec from "../runs/RunExec.module.scss";
 import styles from "./Coverage.module.scss";
 
@@ -59,8 +59,8 @@ export function GgConfigEditPage() {
   const { configId } = useParams();
   const editing = Boolean(configId);
   const [params] = useSearchParams();
-  // `?from=builtin:<name>` / `?from=saved:<id>` seeds a new configuration from an
-  // existing one — how the list page's Duplicate action works.
+  // `?from=saved:<id>` seeds a new configuration from an existing one — how the list
+  // page's Duplicate action works.
   const from = params.get("from");
   const { token } = useAuth();
   const { client: backend } = useBackend();
@@ -84,6 +84,9 @@ export function GgConfigEditPage() {
   const [agentSnapshot, setAgentSnapshot] = useState<GgConfigDraft | null>(
     null,
   );
+  // Whether the "you have unsaved changes" prompt is up, having intercepted the back
+  // control on an edited agent.
+  const [leavingAgent, setLeavingAgent] = useState(false);
 
   useEffect(() => {
     if (!backend || !token) {
@@ -105,15 +108,9 @@ export function GgConfigEditPage() {
       setDraft(nextDraft);
       setSaved(snapshotOf(nextName, nextDescription, nextDraft));
     };
-    // A built-in seed needs no round-trip; everything else reads the account's
+    // A blank configuration needs no round-trip; everything else reads the account's
     // stored configurations (to load the one being edited, or the one duplicated).
-    const seedBuiltIn = from?.startsWith("builtin:")
-      ? builtInDraft(from.slice("builtin:".length))
-      : null;
-    if (seedBuiltIn) {
-      seed(`${from!.slice("builtin:".length)} (copy)`, "", seedBuiltIn);
-      setLoading(false);
-    } else if (!editing && !from) {
+    if (!editing && !from) {
       seed("", "", emptyDraft());
       setLoading(false);
     } else {
@@ -184,6 +181,17 @@ export function GgConfigEditPage() {
     [dirty],
   );
 
+  // Whether the open agent has been edited since it was opened. Measured against the
+  // banked draft rather than against the saved configuration, because this is the
+  // question the agent's own Cancel and back control ask: "would leaving now throw
+  // anything away?" — not "does this configuration differ from the stored one?".
+  const agentDirty = useMemo(
+    () =>
+      agentSnapshot !== null &&
+      JSON.stringify(agentSnapshot) !== JSON.stringify(draft),
+    [agentSnapshot, draft],
+  );
+
   // Opening an agent banks the draft so Cancel has something to restore; saving the agent
   // simply keeps the edits already applied and returns to the configuration.
   function onEditingAgentChange(agentId: string | null) {
@@ -194,6 +202,7 @@ export function GgConfigEditPage() {
     if (agentSnapshot) setDraft(agentSnapshot);
     setAgentSnapshot(null);
     setEditingAgentId(null);
+    setLeavingAgent(false);
   }
   // Saving an agent keeps the edits already applied and returns to the configuration —
   // and commits its **type**: what the other types were configured with was scratch
@@ -212,6 +221,20 @@ export function GgConfigEditPage() {
     }));
     setAgentSnapshot(null);
     setEditingAgentId(null);
+    setLeavingAgent(false);
+  }
+
+  // The back control beside the title, while an agent is open. Its parent is the
+  // configuration the agent belongs to — the step the operator actually took to get here
+  // — not the list of configurations, which is two steps up and would throw the whole
+  // configuration away rather than just this agent's edits.
+  //
+  // It behaves like Cancel, except that it asks first when there is something to lose.
+  // Cancel itself does not ask: it says what it does, and an operator who presses it has
+  // already made the decision this dialog exists to collect.
+  function backFromAgent() {
+    if (agentDirty) setLeavingAgent(true);
+    else cancelAgent();
   }
 
   async function onSave() {
@@ -242,11 +265,22 @@ export function GgConfigEditPage() {
   const header = (
     <header className={styles.detailHeader}>
       <div className={styles.detailTitleRow}>
-        <BackChevron
-          to={routes.accountGgConfigs()}
-          label="All gg configurations"
-          guard={confirmLeave}
-        />
+        {/* Back goes up exactly one step, which is a different place depending on what
+            is open: an agent's parent is the configuration it belongs to (an in-page
+            view), and the configuration's parent is the list of them (a route). */}
+        {openAgent ? (
+          <BackChevron
+            to={routes.accountGgConfigs()}
+            label={`Back to ${name.trim() || "the configuration"}`}
+            onBack={backFromAgent}
+          />
+        ) : (
+          <BackChevron
+            to={routes.accountGgConfigs()}
+            label="All gg configurations"
+            guard={confirmLeave}
+          />
+        )}
         <h1 className={styles.detailTitle}>
           {openAgent
             ? `${openAgent.name.trim() || "Agent"} — agent`
@@ -279,40 +313,37 @@ export function GgConfigEditPage() {
         <LoadingState label="Loading…" />
       ) : (
         <>
-          {/* The configuration's identity belongs to the configuration: while an agent
-              is open these are not what is being edited, so they are not shown. */}
-          {!editingAgentId && (
-            <div className={exec.fields}>
-              <label className={exec.field}>
-                <span className={exec.fieldLabel}>Configuration name</span>
-                <input
-                  className={exec.input}
-                  type="text"
-                  value={name}
-                  placeholder="e.g. no-compaction"
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </label>
-              <label className={exec.field}>
-                <span className={exec.fieldLabel}>Description (optional)</span>
-                <input
-                  className={exec.input}
-                  type="text"
-                  value={description}
-                  placeholder="what this arm is for"
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-              </label>
-            </div>
-          )}
-
+          {/* The configuration's identity now lives on the editor's Configuration tab,
+              beside the ceilings and the session hooks — the whole of what a
+              configuration is, in one section. */}
           <GgConfigEditor
             value={draft}
             onChange={setDraft}
+            name={name}
+            onNameChange={setName}
+            description={description}
+            onDescriptionChange={setDescription}
             editingAgentId={editingAgentId}
             onEditingAgentChange={onEditingAgentChange}
             models={models}
           />
+
+          {/* Raised by the back control on an edited agent. Saving from here is exactly
+              what the Save agent button does — including its refusal to commit an agent
+              that is not well-formed, which is why the reason is repeated in the dialog
+              rather than left on a button the operator can no longer see. */}
+          {leavingAgent && openAgent && (
+            <UnsavedChangesDialog
+              title={`Unsaved changes to ${openAgent.name.trim() || "this agent"}`}
+              body="Going back to the configuration will leave this agent as it was when you opened it."
+              saveLabel="Save agent"
+              saveDisabled={agentError !== null}
+              saveBlockedReason={agentError}
+              onSave={saveAgent}
+              onDiscard={cancelAgent}
+              onCancel={() => setLeavingAgent(false)}
+            />
+          )}
 
           <div className={exec.actions}>
             <div className={exec.actionsEnd}>

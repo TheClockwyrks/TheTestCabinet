@@ -395,7 +395,7 @@ async fn responses_as_code_completion_is_gated_by_an_agent_stop_hook() {
     // Gate the ending on a file the program must create before its `finish` is accepted — the same
     // gate the `completion` capability used to provide, now an agent-stop hook, and asserted on the
     // code path because that path applies it at a different point from the tool-calling one.
-    set.hooks.push(test_cabinet_core::gg::GgHook {
+    set.agents[0].hooks.push(test_cabinet_core::gg::GgHook {
         event: test_cabinet_core::gg::GgHookEvent::AgentStop,
         action: test_cabinet_core::gg::GgHookAction::Command {
             command: "test -f ready.txt".to_string(),

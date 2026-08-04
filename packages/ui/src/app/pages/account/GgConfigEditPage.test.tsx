@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -52,10 +58,28 @@ function renderPage(path = "/account/gg/new") {
   );
 }
 
-// Open the (first) agent's per-agent view — where its capabilities, model, prompt,
-// and subagent allowlist live.
+// Open one of the form's tabs by its label. Matched on the label element rather than the
+// tab's accessible name, because a tab with something wrong on it also announces the
+// count ("Agents, 1 problem").
+function openTab(name: string) {
+  const tab = screen
+    .getAllByRole("tab")
+    .find((entry) => entry.firstElementChild?.textContent?.trim() === name);
+  if (!tab) throw new Error(`no "${name}" tab`);
+  fireEvent.click(tab);
+}
+
+// Open the (first) agent's per-agent view — where its capabilities, model, prompt, hooks
+// and roster live. The agent list is the configuration's Agents tab.
 function openFirstAgent() {
+  openTab("Agents");
   fireEvent.click(screen.getAllByRole("button", { name: "Edit" })[0]!);
+}
+
+// Open the first agent and go straight to the tab its capabilities are on.
+function openFirstAgentTools() {
+  openFirstAgent();
+  openTab("Tools");
 }
 
 // Return to the configuration keeping the agent's edits — the only way back other than
@@ -69,68 +93,85 @@ describe("GgConfigEditPage", () => {
   // cleared — every "called once" assertion counts from a fresh slate.
   beforeEach(() => createGgConfig.mockClear());
 
-  it("renders the top-level configuration surface, capabilities behind an agent", async () => {
+  it("renders the configuration's three sections, capabilities behind an agent", async () => {
     renderPage();
-    // The top level is limits + model slots + the agent list — capabilities are now
-    // per agent, not a run-global list.
+    // The configuration is its identity + the ceilings + the session hooks; the slots
+    // and the agent list are the other two sections.
     expect(await screen.findByText("Run limits")).toBeInTheDocument();
-    expect(screen.getByText("Model slots")).toBeInTheDocument();
-    expect(screen.getByText("Agents")).toBeInTheDocument();
-    // The unremovable Root agent is listed, and capabilities are not on this view.
-    expect(screen.getByText("Root")).toBeInTheDocument();
-    expect(screen.queryByText("Capabilities")).not.toBeInTheDocument();
+    expect(screen.getByText("Session hooks")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("e.g. no-compaction")).toBeVisible();
 
-    // Opening the Root reveals its capability catalog and per-agent sections.
+    openTab("Slots");
+    expect(screen.getByText("Model slots")).toBeInTheDocument();
+
+    // The unremovable Root agent is listed, and capabilities are not on this view.
+    openTab("Agents");
+    expect(screen.getByText("Root")).toBeInTheDocument();
+    expect(screen.queryByText("Shell")).not.toBeInTheDocument();
+
+    // Opening the Root reveals its own sections; its capabilities are one tab in.
     openFirstAgent();
-    expect(screen.getByText("Capabilities")).toBeInTheDocument();
+    expect(screen.getByText("Custom instructions")).toBeInTheDocument();
+    expect(screen.getByText("System Prompt")).toBeInTheDocument();
+    openTab("Tools");
     expect(screen.getByText("Models & tools")).toBeInTheDocument();
     expect(screen.getByText("Shell")).toBeInTheDocument();
     expect(screen.getByText("Filesystem")).toBeInTheDocument();
-    expect(screen.getByText("Roster")).toBeInTheDocument();
-    expect(screen.getByText("Custom instructions")).toBeInTheDocument();
-    expect(screen.getByText("System Prompt")).toBeInTheDocument();
+    // The tab and the section it opens share a name, so both match — which is the point.
+    openTab("Roster");
+    expect(screen.getAllByText("Roster").length).toBeGreaterThan(1);
     // Multi-model is gone (each agent carries its own model).
     expect(screen.queryByText("Multi-model")).not.toBeInTheDocument();
   });
 
   it("navigates into an agent and back, hiding the configuration's own controls", async () => {
     renderPage();
-    await screen.findByText("Agents");
+    await screen.findByText("Run limits");
     openFirstAgent();
-    expect(screen.getByText("Capabilities")).toBeInTheDocument();
     // An agent is not the configuration: its identity fields and its save go away, and
     // the agent's own pair takes their place.
+    expect(screen.getByPlaceholderText("e.g. reviewer")).toBeVisible();
     expect(
       screen.queryByPlaceholderText("e.g. no-compaction"),
     ).not.toBeInTheDocument();
+    // The configuration's own save is gone; the back control that returns to it is not
+    // (it is how an operator gets there).
     expect(
-      screen.queryByRole("button", { name: /configuration/i }),
+      screen.queryByRole("button", { name: /^Create configuration$/ }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^Back to / }),
+    ).toBeInTheDocument();
 
     saveAgent();
-    // Back on the top-level form.
-    expect(screen.getByText("Model slots")).toBeInTheDocument();
-    expect(screen.queryByText("Capabilities")).not.toBeInTheDocument();
+    // Back on the configuration — on the Agents tab the operator left from, not reset to
+    // the first one, so the list they opened the agent out of is what they come back to.
+    expect(screen.getByText("Root")).toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("e.g. reviewer"),
+    ).not.toBeInTheDocument();
+    openTab("Configuration");
     expect(screen.getByPlaceholderText("e.g. no-compaction")).toBeVisible();
   });
 
   it("discards an agent's edits when its editing is cancelled", async () => {
     renderPage();
-    await screen.findByText("Agents");
+    await screen.findByText("Run limits");
     openFirstAgent();
     fireEvent.change(screen.getByPlaceholderText("e.g. reviewer"), {
       target: { value: "conductor" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     // The rename never reached the configuration.
+    openTab("Agents");
     expect(screen.getByText("Root")).toBeInTheDocument();
     expect(screen.queryByText("conductor")).not.toBeInTheDocument();
   });
 
   it("reveals a collapsed group's capabilities when expanded", async () => {
     renderPage();
-    await screen.findByText("Agents");
-    openFirstAgent();
+    await screen.findByText("Run limits");
+    openFirstAgentTools();
     // "Fork" lives in the Delegation group, which starts collapsed.
     expect(screen.queryByText("Fork")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Delegation/i }));
@@ -147,7 +188,7 @@ describe("GgConfigEditPage", () => {
       target: { value: "shell-heavy" },
     });
     // Turn a capability on, on the root agent, so the saved set is distinguishable.
-    openFirstAgent();
+    openFirstAgentTools();
     fireEvent.click(screen.getAllByRole("checkbox", { name: /Shell/i })[0]!);
     saveAgent();
 
@@ -179,7 +220,7 @@ describe("GgConfigEditPage", () => {
     fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
       target: { value: "no-revise" },
     });
-    openFirstAgent();
+    openFirstAgentTools();
     // Turning Memories on expands its config, where its "Revise memories" slider lives.
     fireEvent.click(screen.getByRole("checkbox", { name: /^Memories/i }));
     const revise = screen.getByRole("checkbox", { name: /Revise memories/i });
@@ -209,11 +250,13 @@ describe("GgConfigEditPage", () => {
     });
     // Add a second agent, then in the Root's view enable it as a subagent with a
     // caller-scoped description.
+    openTab("Agents");
     fireEvent.click(screen.getByRole("button", { name: /Add agent/i }));
     openFirstAgent();
     // The roster lists both Root (self) and the new agent-2, each with one toggle per
     // scope. Grant agent-2 the Reviewer scope alone: the scopes are independent, so a
     // reviewer need not also be spawnable.
+    openTab("Roster");
     const reviewerToggles = screen.getAllByRole("checkbox", {
       name: /Reviewer/i,
     });
@@ -266,6 +309,7 @@ describe("GgConfigEditPage", () => {
     fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
       target: { value: "second-root" },
     });
+    openTab("Agents");
     fireEvent.click(screen.getByRole("button", { name: /Add agent/i }));
     fireEvent.click(screen.getByRole("button", { name: "Make root" }));
 
@@ -287,6 +331,7 @@ describe("GgConfigEditPage", () => {
     fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
       target: { value: "shrinking" },
     });
+    openTab("Agents");
     fireEvent.click(screen.getByRole("button", { name: /Add agent/i }));
     fireEvent.click(
       screen.getByRole("button", { name: "Remove the Root agent" }),
@@ -316,9 +361,11 @@ describe("GgConfigEditPage", () => {
     fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
       target: { value: "renaming" },
     });
+    openTab("Agents");
     fireEvent.click(screen.getByRole("button", { name: /Add agent/i }));
     // Put agent-2 on the root's roster …
     openFirstAgent();
+    openTab("Roster");
     const reviewerToggles = screen.getAllByRole("checkbox", {
       name: /Reviewer/i,
     });
@@ -347,6 +394,7 @@ describe("GgConfigEditPage", () => {
     fireEvent.change(await screen.findByPlaceholderText("e.g. no-compaction"), {
       target: { value: "renamed-slot" },
     });
+    openTab("Slots");
     fireEvent.change(screen.getByPlaceholderText("e.g. primary"), {
       target: { value: "critic" },
     });
@@ -367,7 +415,7 @@ describe("GgConfigEditPage", () => {
   it("offers the compaction model only under a handoff strategy", async () => {
     renderPage();
     await screen.findByText("Agents");
-    openFirstAgent();
+    openFirstAgentTools();
     fireEvent.click(screen.getByRole("checkbox", { name: /^Compaction/i }));
     expect(
       screen.queryByPlaceholderText("e.g. openai/gpt-4.1-mini"),
@@ -389,6 +437,7 @@ describe("GgConfigEditPage", () => {
     });
     openFirstAgent();
     // Completion lives in Process & quality, which starts collapsed.
+    openTab("Tools");
     fireEvent.click(screen.getByRole("button", { name: /Process & quality/i }));
     fireEvent.click(screen.getByRole("checkbox", { name: /^Completion/i }));
 
@@ -428,6 +477,7 @@ describe("GgConfigEditPage", () => {
       target: { value: "delegating" },
     });
     // A second agent, so the choice is visibly per agent rather than run-wide.
+    openTab("Agents");
     fireEvent.click(screen.getByRole("button", { name: "+ Add agent" }));
     openFirstAgent();
     fireEvent.change(screen.getByLabelText(/Prompt cache/i), {
@@ -461,5 +511,117 @@ describe("GgConfigEditPage", () => {
       createGgConfig.mock.calls[0]![0].capabilitySet.agents[0]
         .systemPromptTemplate,
     ).toBeUndefined();
+  });
+});
+
+// The back chevron beside the title goes up exactly one step. While an agent is open that
+// step is the **configuration**, not the list of configurations — the list is two steps up
+// and leaving for it would throw away the whole configuration rather than this agent's
+// edits. It behaves like Cancel, except that it asks first when there is something to lose.
+describe("going back from an open agent", () => {
+  beforeEach(() => createGgConfig.mockClear());
+
+  // The back control, which is a button (not a link) while an agent is open.
+  function backControl() {
+    return screen.getByRole("button", { name: /^Back to / });
+  }
+
+  it("returns to the configuration without asking when nothing was edited", async () => {
+    renderPage();
+    await screen.findByText("Run limits");
+    openFirstAgent();
+    expect(screen.getByPlaceholderText("e.g. reviewer")).toBeVisible();
+
+    fireEvent.click(backControl());
+    // Straight back — an unedited agent has nothing to decide about.
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByText("Root")).toBeInTheDocument();
+  });
+
+  it("asks before discarding an edited agent, and keeps editing if told to", async () => {
+    renderPage();
+    await screen.findByText("Run limits");
+    openFirstAgent();
+    fireEvent.change(screen.getByPlaceholderText("e.g. reviewer"), {
+      target: { value: "conductor" },
+    });
+
+    fireEvent.click(backControl());
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog).toBeInTheDocument();
+
+    // "Keep editing" is the safe way out: it leaves the agent open, edits intact.
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Keep editing" }),
+    );
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("e.g. reviewer")).toHaveValue(
+      "conductor",
+    );
+  });
+
+  it("discards the agent's edits when told to", async () => {
+    renderPage();
+    await screen.findByText("Run limits");
+    openFirstAgent();
+    fireEvent.change(screen.getByPlaceholderText("e.g. reviewer"), {
+      target: { value: "conductor" },
+    });
+
+    fireEvent.click(backControl());
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Discard changes",
+      }),
+    );
+    // Back on the configuration, and the rename never reached it.
+    openTab("Agents");
+    expect(screen.getByText("Root")).toBeInTheDocument();
+    expect(screen.queryByText("conductor")).not.toBeInTheDocument();
+  });
+
+  it("saves the agent when told to, keeping the edits on the configuration", async () => {
+    renderPage();
+    await screen.findByText("Run limits");
+    openFirstAgent();
+    fireEvent.change(screen.getByPlaceholderText("e.g. reviewer"), {
+      target: { value: "conductor" },
+    });
+
+    fireEvent.click(backControl());
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Save agent",
+      }),
+    );
+    // Back on the configuration with the rename kept — the dialog's Save is the same
+    // commit the Save agent button performs.
+    openTab("Agents");
+    expect(screen.getByText("conductor")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("refuses to save an agent that is not well-formed, and says why", async () => {
+    renderPage();
+    await screen.findByText("Run limits");
+    openFirstAgent();
+    // An agent with no name cannot be committed; the dialog must not offer a Save that
+    // silently does nothing.
+    fireEvent.change(screen.getByPlaceholderText("e.g. reviewer"), {
+      target: { value: "" },
+    });
+
+    fireEvent.click(backControl());
+    const dialog = screen.getByRole("alertdialog");
+    expect(
+      within(dialog).getByRole("button", { name: "Save agent" }),
+    ).toBeDisabled();
+    expect(within(dialog).getByText(/needs a name/i)).toBeInTheDocument();
+    // Discarding is still open to them, and puts the agent back as it was.
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Discard changes" }),
+    );
+    openTab("Agents");
+    expect(screen.getByText("Root")).toBeInTheDocument();
   });
 });

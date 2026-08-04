@@ -2313,3 +2313,94 @@ fn state_events_without_a_module_id_still_deserialize() {
         );
     }
 }
+
+// --- Where a hook is declared -------------------------------------------------
+
+/// A set stored before the session/agent split reads back with its agent-scoped hooks on **every**
+/// agent, which is what those hooks did when they were the run's.
+///
+/// This is the one migration the split needs, and it has to be a copy rather than a move: the old
+/// list fired for every agent, so a configuration whose `pre-write` gate guarded four profiles
+/// still guards four. Reading it onto only the root would silently disarm the other three.
+#[test]
+fn a_stored_run_level_agent_hook_lands_on_every_agent() {
+    let set: GgCapabilitySet = serde_json::from_value(json!({
+        "agents": [
+            { "name": "Root", "capabilities": [] },
+            { "name": "reviewer", "capabilities": [] },
+        ],
+        "hooks": [
+            { "event": "pre-write", "action": { "type": "command", "command": "guard" } },
+            { "event": "session-end", "action": { "type": "command", "command": "report" } },
+        ],
+    }))
+    .expect("a pre-split capability set still parses");
+
+    // The session half stays on the run…
+    assert_eq!(set.hooks.len(), 1);
+    assert_eq!(set.hooks[0].event, GgHookEvent::SessionEnd);
+    // …and the agent half is now every agent's own.
+    for agent in &set.agents {
+        assert_eq!(agent.hooks.len(), 1, "on `{}`", agent.name);
+        assert_eq!(
+            agent.hooks[0].event,
+            GgHookEvent::PreWrite,
+            "on `{}`",
+            agent.name
+        );
+    }
+}
+
+/// An inherited hook runs **before** one the profile declares itself, because that is the order it
+/// ran in before the split: the run's hooks were the only hooks, so they went first.
+#[test]
+fn an_inherited_hook_keeps_its_place_ahead_of_the_agents_own() {
+    let set: GgCapabilitySet = serde_json::from_value(json!({
+        "agents": [{
+            "name": "Root",
+            "capabilities": [],
+            "hooks": [
+                { "event": "pre-shell", "action": { "type": "command", "command": "mine" } },
+            ],
+        }],
+        "hooks": [
+            { "event": "pre-shell", "action": { "type": "command", "command": "inherited" } },
+        ],
+    }))
+    .expect("a set with both kinds of declaration still parses");
+
+    let commands: Vec<&str> = set.agents[0]
+        .hooks
+        .iter()
+        .map(|hook| match &hook.action {
+            GgHookAction::Command { command, .. } => command.as_str(),
+            _ => unreachable!("both hooks are command hooks"),
+        })
+        .collect();
+    assert_eq!(commands, ["inherited", "mine"]);
+}
+
+/// Every event belongs to exactly one of the two declaration sites — the invariant the whole split
+/// rests on, asserted over the catalogue rather than over a sample so a new event cannot be added
+/// to neither list.
+#[test]
+fn every_event_belongs_to_exactly_one_declaration_site() {
+    for event in ALL_HOOK_EVENTS {
+        assert_eq!(
+            event.is_session(),
+            SESSION_HOOK_EVENTS.contains(&event),
+            "`{}` disagrees with SESSION_HOOK_EVENTS",
+            event.as_str(),
+        );
+        assert_eq!(
+            !event.is_session(),
+            AGENT_HOOK_EVENTS.contains(&event),
+            "`{}` disagrees with AGENT_HOOK_EVENTS",
+            event.as_str(),
+        );
+    }
+    assert_eq!(
+        SESSION_HOOK_EVENTS.len() + AGENT_HOOK_EVENTS.len(),
+        ALL_HOOK_EVENTS.len()
+    );
+}

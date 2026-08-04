@@ -1,0 +1,64 @@
+@use "../../styles/tokens" as t;
+@use "../../styles/breakpoints" as bp;
+
+// The unsaved-changes prompt. Modal, because the question it asks decides what
+// happens to work the operator has already done — there is nothing useful to do
+// on the page behind it until it is answered.
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  // Above the notifications sidebar (50) and every in-page popover (20), below
+  // the fullscreen playable embed (100), which is the only thing that outranks a
+  // question about unsaved work.
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: t.$space-md;
+  background: color-mix(in srgb, t.$color-bg 82%, transparent);
+}
+
+.panel {
+  width: min(32rem, 100%);
+  padding: t.$space-lg;
+  border: t.$border-hairline solid t.$color-border;
+  border-radius: t.$radius-md;
+  background: t.$color-surface;
+  box-shadow: 0 1rem 3rem color-mix(in srgb, t.$color-bg 70%, transparent);
+}
+
+.title {
+  margin: 0 0 t.$space-sm;
+  font-size: t.$font-lg;
+  color: t.$color-text;
+}
+
+.body {
+  margin: 0;
+  color: t.$color-text-muted;
+}
+
+// Why the Save button is refused — sat above the actions so the disabled button
+// is never unexplained.
+.blocked {
+  margin: t.$space-sm 0 0;
+  color: t.$color-negative;
+  font-size: t.$font-sm;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: t.$space-sm;
+  margin-top: t.$space-lg;
+
+  // Stacked on a narrow screen, safest choice first — the same order the row
+  // reads in, so the button under a thumb is never the destructive one by
+  // accident.
+  @include bp.below(t.$bp-sm) {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

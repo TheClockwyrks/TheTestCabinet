@@ -11,6 +11,10 @@ import {
 } from "../../../client/context";
 import type { WorkerClient } from "../../../client/clients";
 import { ComparisonDetailPage } from "./ComparisonDetailPage";
+import {
+  capabilitySetFromDraft,
+  emptyDraft,
+} from "../runs/gg/ggConfigDraft";
 
 // The page's app chrome reads contexts (gallery data, backdrop settings) that have
 // nothing to do with the trigger path under test.
@@ -68,7 +72,7 @@ const COMPARISON = {
       {
         id: "arm-1",
         label: "gg minimal",
-        ggConfigId: "builtin:minimal",
+        ggConfigId: "saved:cfg-minimal",
         ggSlotModels: { primary: "openai/gpt-5.6-sol" },
         runIds: [],
       },
@@ -77,7 +81,7 @@ const COMPARISON = {
   },
   arms: [
     {
-      arm: { id: "arm-1", label: "gg minimal", ggConfigId: "builtin:minimal" },
+      arm: { id: "arm-1", label: "gg minimal", ggConfigId: "saved:cfg-minimal" },
       nDesired: 1,
       nObserved: 0,
       diagnostics: { tokens: NO_TOKENS },
@@ -85,12 +89,21 @@ const COMPARISON = {
   ],
 } as unknown as Comparison;
 
+// The account's one saved gg configuration — what the arm above points at, now that
+// there are no shared built-ins for it to name instead.
+const SAVED_GG_CONFIG = {
+  id: "cfg-minimal",
+  name: "minimal",
+  description: "the launchable baseline",
+  capabilitySet: capabilitySetFromDraft(emptyDraft(), "minimal"),
+};
+
 function backendValue(): BackendContextValue {
   return {
     client: {
       getComparison: vi.fn().mockResolvedValue(COMPARISON),
       updateComparison: vi.fn().mockResolvedValue(COMPARISON),
-      listGgConfigs: vi.fn().mockResolvedValue([]),
+      listGgConfigs: vi.fn().mockResolvedValue([SAVED_GG_CONFIG]),
     },
     identity: null,
     status: "ready",

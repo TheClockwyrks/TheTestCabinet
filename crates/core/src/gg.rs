@@ -1293,17 +1293,18 @@ pub struct GgCapabilitySet {
     /// before ceilings existed round-trips unchanged.
     #[serde(default, skip_serializing_if = "GgRunLimits::is_empty")]
     pub limits: GgRunLimits,
-    /// The **hooks** this run is scripted with — the operator-authored commands and scripts gg
-    /// runs at the ten [points](GgHookEvent) of a run's lifecycle, each able to block the operation
-    /// it precedes and to put text in front of the model.
+    /// The **session hooks** this run is scripted with — the operator-authored commands and
+    /// scripts gg runs at the run's two [ends](SESSION_HOOK_EVENTS), before the root agent's first
+    /// turn and after its last.
     ///
-    /// Run-level rather than per-agent, and deliberately not a [capability](GgCapabilityConfig),
-    /// for the same reason the [ceilings](Self::limits) are neither: a capability is a feature the
-    /// *model* is given and a study ablates, while a hook is the operator reaching into the run
-    /// from outside it. Several of the events are not an agent's at all — a session starting, a
-    /// compaction — and the ones that are fire for **every** agent, so hanging them off one
-    /// profile's capability list would have made "run this before every write" a thing an operator
-    /// had to remember to repeat.
+    /// Only the session events live here. The other eight ([`AGENT_HOOK_EVENTS`]) fire because a
+    /// particular agent did something and are declared on that agent
+    /// ([`GgAgentConfig::hooks`]) — see [`GgHook`] for why the split falls where it does. A
+    /// non-session event in this list is a configuration error, not a run-wide shorthand.
+    ///
+    /// Deliberately not a [capability](GgCapabilityConfig), for the same reason the
+    /// [ceilings](Self::limits) are not: a capability is a feature the *model* is given and a study
+    /// ablates, while a hook is the operator reaching into the run from outside it.
     ///
     /// A set that declares none omits the key entirely, so every configuration stored before hooks
     /// existed round-trips unchanged.
@@ -1526,7 +1527,7 @@ impl<'de> Deserialize<'de> for GgCapabilitySet {
 
 impl From<GgCapabilitySetRaw> for GgCapabilitySet {
     fn from(raw: GgCapabilitySetRaw) -> Self {
-        let agents = match raw.agents {
+        let mut agents = match raw.agents {
             Some(agents) if !agents.is_empty() => agents,
             _ => vec![GgAgentConfig::from_legacy(
                 raw.capabilities.unwrap_or_else(default_capabilities),
@@ -1534,12 +1535,28 @@ impl From<GgCapabilitySetRaw> for GgCapabilitySet {
                 raw.disabled_tools.unwrap_or_default(),
             )],
         };
+        // Hooks were once declared for the whole run whatever their event, and an agent-scoped one
+        // fired for **every** agent. Reading such a set back onto every profile is what keeps that
+        // promise: a stored configuration whose `pre-write` hook guarded all four of its agents
+        // still guards all four. Prepended rather than appended so a set that has *both* — a
+        // migrated hook and one an operator has since written on the profile — still runs the
+        // inherited gate first, which is the order it ran in before the split.
+        let (session, inherited): (Vec<GgHook>, Vec<GgHook>) = raw
+            .hooks
+            .into_iter()
+            .partition(|hook| hook.event.is_session());
+        if !inherited.is_empty() {
+            for agent in &mut agents {
+                let own = std::mem::replace(&mut agent.hooks, inherited.clone());
+                agent.hooks.extend(own);
+            }
+        }
         GgCapabilitySet {
             preset: raw.preset,
             agents,
             model_slots: raw.model_slots,
             limits: raw.limits,
-            hooks: raw.hooks,
+            hooks: session,
         }
     }
 }
@@ -1628,6 +1645,23 @@ pub struct GgAgentConfig {
     /// profiles are namable, the capability says whether this agent may spawn at all.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subagents: Vec<GgSubagentRef>,
+    /// The **hooks** this agent is held to — the operator-authored commands and scripts gg runs
+    /// around what *this* agent does: its writes, its shell commands, its compactions, and its own
+    /// start and stop ([`AGENT_HOOK_EVENTS`]).
+    ///
+    /// Per agent because the agents of a run are not interchangeable, and the gates they should be
+    /// held to are the clearest case of it: "the build must pass before you may stop" is right for
+    /// an implementer, pointless for a planner, and actively wrong for a reviewer whose whole job
+    /// is to report that the build does *not* pass. See [`GgHook`] for the full rule.
+    ///
+    /// The run's own two ends are not here — they belong to the run
+    /// ([`GgCapabilitySet::hooks`]). A [session event](SESSION_HOOK_EVENTS) in this list is a
+    /// configuration error: it would have to fire either once from a profile picked arbitrarily or
+    /// once per profile, and neither is "once per run".
+    ///
+    /// An agent that declares none omits the key entirely.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hooks: Vec<GgHook>,
 }
 
 impl GgAgentConfig {
@@ -1645,6 +1679,7 @@ impl GgAgentConfig {
             prompt_cache_ttl: GgPromptCacheTtl::default(),
             loop_detection: GgLoopDetection::default(),
             subagents: Vec::new(),
+            hooks: Vec::new(),
         }
     }
 
@@ -1675,6 +1710,7 @@ impl GgAgentConfig {
             prompt_cache_ttl: GgPromptCacheTtl::default(),
             loop_detection: GgLoopDetection::default(),
             subagents: Vec::new(),
+            hooks: Vec::new(),
         }
     }
 
@@ -2321,9 +2357,21 @@ pub struct GgModelSlot {
 ///
 /// A hook is the operator reaching into a run from outside it, which is exactly what makes it not a
 /// [capability](GgCapabilityConfig): the model is never told a hook exists, is offered no tool for
-/// it, and cannot decline one. It is also why hooks are declared once for the whole run
-/// ([`GgCapabilitySet::hooks`]) rather than per profile — "check every file before it is written"
-/// is a property of the run, and repeating it on each profile would be a way to get it wrong.
+/// it, and cannot decline one.
+///
+/// **Where a hook is declared follows from its [event](Self::event)**, and from nothing else. The
+/// two [session events](SESSION_HOOK_EVENTS) fire once per run and are declared on the run
+/// ([`GgCapabilitySet::hooks`]); the other eight ([`AGENT_HOOK_EVENTS`]) fire because some agent
+/// wrote, ran, compacted, started or stopped, and are declared on that agent
+/// ([`GgAgentConfig::hooks`]). Declaring one in the other's place is a configuration error rather
+/// than a shorthand, because the two lists answer different questions: "what does this run do
+/// around itself" and "what is this agent held to".
+///
+/// Per agent rather than once for the whole run because the agents of a run are not
+/// interchangeable. A reviewer that must not write to the tree, an implementer that must pass the
+/// build before it may stop, and a planner that does neither are three different sets of gates;
+/// hanging them all off the run would mean every hook firing for every agent and each one working
+/// out from the agent identity in its payload whether it was meant to have fired at all.
 ///
 /// Every hook fires on exactly one [event](Self::event) and runs exactly one [action](Self::action).
 /// Several hooks may name the same event; they run **in declaration order**, and the first one to
@@ -2421,6 +2469,33 @@ pub const ALL_HOOK_EVENTS: [GgHookEvent; 10] = [
     GgHookEvent::SessionEnd,
 ];
 
+/// The events that belong to the **run** rather than to any one agent, and so are declared on
+/// [`GgCapabilitySet::hooks`].
+///
+/// Both fire exactly once per run, around the root agent's session as a whole. Neither has an
+/// agent it could sensibly be declared on: the first fires before any agent has taken a turn, and
+/// the second after the last one has finished.
+pub const SESSION_HOOK_EVENTS: [GgHookEvent; 2] =
+    [GgHookEvent::SessionStart, GgHookEvent::SessionEnd];
+
+/// The events that belong to an **agent**, and so are declared on [`GgAgentConfig::hooks`].
+///
+/// Every one of these fires *because a particular agent did something* — wrote a file, ran a
+/// command, filled its window, started, tried to stop — which is what makes them the agent's to
+/// declare. A run whose reviewer must pass the build and whose implementer need not is then a
+/// configuration rather than something a run-level hook has to work out for itself from the
+/// agent identity it is handed.
+pub const AGENT_HOOK_EVENTS: [GgHookEvent; 8] = [
+    GgHookEvent::PreWrite,
+    GgHookEvent::PostWrite,
+    GgHookEvent::PreShell,
+    GgHookEvent::PostShell,
+    GgHookEvent::PreCompact,
+    GgHookEvent::PostCompact,
+    GgHookEvent::AgentStart,
+    GgHookEvent::AgentStop,
+];
+
 impl GgHookEvent {
     /// The event's wire name — the string a configuration spells it with.
     pub fn as_str(self) -> &'static str {
@@ -2436,6 +2511,17 @@ impl GgHookEvent {
             Self::SessionStart => "session-start",
             Self::SessionEnd => "session-end",
         }
+    }
+
+    /// Whether this event belongs to the **run** ([`GgCapabilitySet::hooks`]) rather than to an
+    /// agent ([`GgAgentConfig::hooks`]).
+    ///
+    /// This is the whole of the rule that decides where a hook is declared, and it is a property
+    /// of the event rather than a choice an operator makes: a run has exactly one session, so a
+    /// session hook declared per agent would either fire once from an arbitrary profile or fire
+    /// once per profile, and neither is what "once per run" means.
+    pub fn is_session(self) -> bool {
+        matches!(self, Self::SessionStart | Self::SessionEnd)
     }
 
     /// Whether a hook on this event can **stop** the operation it fires around.

@@ -12,15 +12,36 @@
 //! ablates. A hook is the opposite end of the telescope — the operator reaching in from outside the
 //! run. The model is never told a hook exists, is offered no tool for one, and cannot decline one;
 //! a blocked write comes back looking like a refusal from the harness, because that is what it is.
-//! So hooks are declared once for the whole run ([`GgCapabilitySet::hooks`]) rather than per
-//! profile, and they never appear in the `cap.*` query namespace.
+//! They never appear in the `cap.*` query namespace.
+//!
+//! # Where a hook is declared
+//!
+//! A hook's [event](GgHookEvent) decides which of two lists it belongs to, and nothing else does:
+//!
+//!  * The two [session events](test_cabinet_core::gg::SESSION_HOOK_EVENTS) fire once per run,
+//!    around the root's session as a whole, and are declared on the run
+//!    ([`GgCapabilitySet::hooks`]).
+//!  * The other eight ([`AGENT_HOOK_EVENTS`](test_cabinet_core::gg::AGENT_HOOK_EVENTS)) fire
+//!    because a *particular agent* wrote a file, ran a command, filled its window, started or
+//!    tried to stop — and are declared on that
+//!    [agent](test_cabinet_core::gg::GgAgentConfig::hooks).
+//!
+//! The agent half is per profile because the agents of a run are not interchangeable. "The build
+//! must pass before you may stop" is right for an implementer, pointless for a planner, and wrong
+//! for a reviewer whose job is to report that the build does not pass. Declared once for the run,
+//! every such gate would fire for every agent and each one would have to decide from the agent
+//! identity in its payload whether it had been meant to fire at all — which is a filter an operator
+//! writes in a script instead of writing in the configuration.
+//!
+//! A hook declared in the other list's place [fails the launch](HookRuntime::resolve) rather than
+//! being hoisted or pushed down: both guesses silently change which agents a gate holds.
 //!
 //! This module is also where the old `completion` capability went. Its validation commands were a
-//! gate on one event (an agent ending) expressed as a capability, which meant they applied to
-//! whichever profiles remembered to enable it and could express nothing but "run this, non-zero is
-//! a failure". As an [agent-stop](GgHookEvent::AgentStop) [command hook](GgHookAction::Command)
-//! they are the same gate, spelled once, for every agent — and a run that wants more than an exit
-//! code can now reach for a script instead.
+//! gate on one event (an agent ending) expressed as a capability, which meant they could express
+//! nothing but "run this, non-zero is a failure". As an
+//! [agent-stop](GgHookEvent::AgentStop) [command hook](GgHookAction::Command) they are the same
+//! gate, on whichever profiles should be held to it — and a run that wants more than an exit code
+//! can now reach for a script instead.
 //!
 //! # The two shapes of hook
 //!
@@ -54,8 +75,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{
-    GG_BUILTIN_HOOKS, GgCapabilitySet, GgHook, GgHookAction, GgHookAgentKind, GgHookEvent,
-    GgHookOutcomeKind, GgTelemetryKind,
+    GG_BUILTIN_HOOKS, GgAgentConfig, GgCapabilitySet, GgHook, GgHookAction, GgHookAgentKind,
+    GgHookEvent, GgHookOutcomeKind, GgTelemetryKind,
 };
 use test_cabinet_core::gg_replay::GgShellOrigin;
 
@@ -150,10 +171,11 @@ impl HookRun {
 /// Who a hook is firing for — the facts every event's payload carries regardless of what the event
 /// itself is about.
 ///
-/// Every payload carries these because a hook is a *run-level* declaration firing on a
-/// *per-agent* event: a script asked to decide about a write has no other way to know which of a
-/// dozen concurrent agents is writing, or whether that agent is working in an isolated worktree
-/// where the path it is being shown means something different from the same path in the main tree.
+/// Every payload carries these even now that an agent event's hooks are the agent's own, because
+/// knowing the *profile* is not knowing the *instance*: a profile can be running a dozen times at
+/// once, and a script asked to decide about a write has no other way to tell which of them is
+/// writing, or whether that instance is working in an isolated worktree where the path it is being
+/// shown means something different from the same path in the main tree.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct HookAgent {
     /// The agent instance's id — its handle in the tree and in the telemetry.
@@ -213,35 +235,117 @@ impl HookAgent {
     }
 }
 
-/// The run's hooks, grouped by the event they fire on.
+/// Which of a configuration's two declaration sites a [`HookRuntime`] is being built from.
 ///
-/// Built once at launch and shared by every agent, because the declaration is the run's. Grouping
-/// by event is what makes the common case — an event with no hooks on it, which is most events of
-/// most runs — a map lookup that finds nothing, rather than a walk of every hook per file write.
+/// It carries the two things resolution needs of a site and nothing else: which half of the event
+/// space belongs there, and how to name the site in an error an operator has to act on.
+#[derive(Debug, Clone, Copy)]
+enum HookOwner<'a> {
+    /// The run itself — [`GgCapabilitySet::hooks`].
+    Session,
+    /// One agent profile, by name — [`GgAgentConfig::hooks`].
+    Agent(&'a str),
+}
+
+impl HookOwner<'_> {
+    /// Whether this site is the one [session events](GgHookEvent::is_session) belong to.
+    fn wants_session(self) -> bool {
+        matches!(self, Self::Session)
+    }
+
+    /// The subdirectory of [`HOOK_SCRIPT_DIR`] this site's scripts are materialized into.
+    ///
+    /// Sanitized rather than used raw because a profile name is operator-chosen text and this is a
+    /// path component; `Session` cannot collide with a profile because the slug of a profile named
+    /// "session" is `agent-session`.
+    fn dir_slug(self) -> String {
+        match self {
+            Self::Session => "session".to_string(),
+            Self::Agent(name) => {
+                let slug: String = name
+                    .chars()
+                    .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+                    .collect();
+                format!("agent-{}", slug.trim_matches('-'))
+            }
+        }
+    }
+
+    /// The error for a hook declared here whose event belongs to the other site — phrased as the
+    /// move that fixes it, since "wrong place" is only useful beside the right one.
+    fn misplaced(self, label: &str, event: GgHookEvent) -> String {
+        match self {
+            Self::Session => format!(
+                "hook `{label}`: `{}` fires for a particular agent, so it is declared on an agent \
+                 rather than on the run. Move it to the agent (or agents) it should hold.",
+                event.as_str(),
+            ),
+            Self::Agent(name) => format!(
+                "agent `{name}`: hook `{label}` fires on `{}`, which happens once per run rather \
+                 than for any one agent. Move it to the configuration's own hooks.",
+                event.as_str(),
+            ),
+        }
+    }
+}
+
+/// One declaration site's hooks, grouped by the event they fire on.
+///
+/// A run resolves several of these: one for [the session](GgCapabilitySet::hooks) and one per
+/// [agent profile](GgAgentConfig::hooks). Grouping by event is what makes the common case — an
+/// event with no hooks on it, which is most events of most runs — a map lookup that finds nothing,
+/// rather than a walk of every hook per file write.
 #[derive(Debug, Default)]
 pub(crate) struct HookRuntime {
     /// The hooks on each event, in declaration order.
     by_event: BTreeMap<GgHookEvent, Vec<ResolvedHook>>,
-    /// Where a script hook's source is written before it is run — under the run's workspace.
+    /// Where a script hook's source is written before it is run — under the run's workspace, in a
+    /// subdirectory of this declaration site's own.
     scripts_dir: PathBuf,
 }
 
 impl HookRuntime {
-    /// Resolve `set`'s hooks against `workspace_dir`, or report the configuration errors that stop
-    /// the run.
-    ///
-    /// The only resolution that can fail is a [built-in](GgHookAction::BuiltIn) naming a script gg
-    /// does not ship. It fails the launch rather than skipping the hook, on the rule a gate has to
-    /// follow: a hook that silently does not run is worse than no hook, because an operator
-    /// believes they have one.
-    pub(crate) fn resolve(
+    /// Resolve the run's [session hooks](GgCapabilitySet::hooks) against `workspace_dir`.
+    pub(crate) fn resolve_session(
         set: &GgCapabilitySet,
+        workspace_dir: &Path,
+    ) -> Result<Self, Vec<String>> {
+        Self::resolve(&set.hooks, HookOwner::Session, workspace_dir)
+    }
+
+    /// Resolve one profile's [agent hooks](GgAgentConfig::hooks) against `workspace_dir`.
+    pub(crate) fn resolve_agent(
+        agent: &GgAgentConfig,
+        workspace_dir: &Path,
+    ) -> Result<Self, Vec<String>> {
+        Self::resolve(&agent.hooks, HookOwner::Agent(&agent.name), workspace_dir)
+    }
+
+    /// Resolve one declaration site's hooks, or report the configuration errors that stop the run.
+    ///
+    /// Two things can fail here, and both fail the launch rather than being skipped, on the rule a
+    /// gate has to follow: a hook that silently does not run is worse than no hook, because an
+    /// operator believes they have one.
+    ///
+    ///  * A [built-in](GgHookAction::BuiltIn) naming a script gg does not ship.
+    ///  * A hook declared in the wrong place for its event — a session event on an agent, or an
+    ///    agent event on the run. gg could guess what was meant in either direction, and both
+    ///    guesses are wrong often enough to be worse than the error: a `pre-write` hook hoisted to
+    ///    the run would gate agents its author never named, and a `session-end` hook pushed down to
+    ///    an agent would fire once per profile, or not at all.
+    fn resolve(
+        hooks: &[GgHook],
+        owner: HookOwner<'_>,
         workspace_dir: &Path,
     ) -> Result<Self, Vec<String>> {
         let mut by_event: BTreeMap<GgHookEvent, Vec<ResolvedHook>> = BTreeMap::new();
         let mut errors = Vec::new();
-        for (index, hook) in set.hooks.iter().enumerate() {
+        for (index, hook) in hooks.iter().enumerate() {
             let label = hook_label(hook, index);
+            if hook.event.is_session() != owner.wants_session() {
+                errors.push(owner.misplaced(&label, hook.event));
+                continue;
+            }
             if let GgHookAction::BuiltIn { script } = &hook.action
                 && builtin_source(script).is_none()
             {
@@ -262,7 +366,11 @@ impl HookRuntime {
         }
         Ok(Self {
             by_event,
-            scripts_dir: workspace_dir.join(HOOK_SCRIPT_DIR),
+            // Each declaration site materializes into its own directory. Two profiles may name a
+            // hook the same thing and mean different scripts, and [script_filename] is derived from
+            // the label — so without this they would write the same path and each firing would run
+            // whichever agent wrote it last.
+            scripts_dir: workspace_dir.join(HOOK_SCRIPT_DIR).join(owner.dir_slug()),
         })
     }
 

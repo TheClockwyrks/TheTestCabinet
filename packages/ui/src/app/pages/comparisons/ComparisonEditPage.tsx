@@ -530,7 +530,6 @@ export function ComparisonEditPage() {
                             title={o.description}
                           >
                             {o.name}
-                            {o.builtIn ? " (built-in)" : ""}
                           </option>
                         ))}
                       </select>

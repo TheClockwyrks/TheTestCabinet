@@ -12,6 +12,7 @@ export function BackChevron({
   label = "Back",
   section,
   guard,
+  onBack,
 }: {
   /**
    * The parent list route to return to. When `section` is given and the user
@@ -33,8 +34,33 @@ export function BackChevron({
    * instead of discarding it silently. Omit on a read-only detail.
    */
   guard?: () => boolean;
+  /**
+   * Go back **within** the page instead of navigating: when set, the control is
+   * a button that calls this, and `to` is ignored.
+   *
+   * For a page whose "parent" is a view of itself rather than another route —
+   * the gg configuration editor, where an open agent's parent is the
+   * configuration it belongs to. Such a page must not link to its own list,
+   * because the step an operator wants back is the one they actually took.
+   * A page that also has a route-level parent renders this only while an
+   * in-page child is open.
+   */
+  onBack?: () => void;
 }) {
   const target = sectionReturnTo(section, to);
+  if (onBack) {
+    return (
+      <button
+        type="button"
+        className={styles.back}
+        aria-label={label}
+        title={label}
+        onClick={onBack}
+      >
+        <span aria-hidden>&lsaquo;</span>
+      </button>
+    );
+  }
   return (
     <Link
       className={styles.back}

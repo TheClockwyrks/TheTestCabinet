@@ -11,6 +11,12 @@ import {
 import type { WorkerClient } from "../../../client/clients";
 import type { Model } from "../../../client/types";
 import { NewRunPage } from "./NewRunPage";
+import {
+  blankAgentDraft,
+  capabilitySetFromDraft,
+  emptyDraft,
+} from "./gg/ggConfigDraft";
+import { DEFAULT_CAP_IDS } from "./gg/ggCatalog";
 
 // The page's app chrome reads contexts (gallery data, backdrop settings) that are
 // irrelevant to the configure/launch logic under test. Stub it so the test
@@ -114,10 +120,37 @@ const SAVED_CONFIG = {
   },
 };
 
-// A backend serving the dual-family catalog and, by default, no saved gg
-// configurations — so the gg picker offers exactly the read-only built-ins.
+// The account's one saved gg configuration: a single Root agent with the default
+// capabilities, deferring to a declared `primary` model slot. There are no shared
+// built-ins any more, so a picker has something to offer only because an account saved
+// something — which is what these tests set up.
+const MINIMAL_DRAFT = (() => {
+  const base = emptyDraft();
+  const root = blankAgentDraft("Root", DEFAULT_CAP_IDS);
+  return {
+    ...base,
+    agents: [
+      {
+        ...root,
+        id: base.agents[0]!.id,
+        modelSource: "model-slot" as const,
+        modelSlotId: base.modelSlots[0]!.id,
+      },
+    ],
+  };
+})();
+
+const SAVED_GG_CONFIG = {
+  id: "cfg-minimal",
+  name: "minimal",
+  description: "the launchable baseline",
+  capabilitySet: capabilitySetFromDraft(MINIMAL_DRAFT, "minimal"),
+};
+
+// A backend serving the dual-family catalog and, by default, the account's one saved gg
+// configuration — the only kind a picker has to offer.
 function backendValue(
-  ggConfigs: ReadonlyArray<unknown> = [],
+  ggConfigs: ReadonlyArray<unknown> = [SAVED_GG_CONFIG],
 ): BackendContextValue {
   return {
     client: {
@@ -192,13 +225,13 @@ describe("NewRunPage", () => {
 
     chooseGg();
 
-    // The harness column becomes the gg configuration column, offering the shared
-    // read-only built-ins (this account has saved none).
+    // The harness column becomes the gg configuration column, offering what the account
+    // has saved — there are no shared built-ins beside them.
     expect(screen.queryByLabelText("Harness")).not.toBeInTheDocument();
     const configs = await screen.findByLabelText("gg configuration");
     expect(configs).toBeInTheDocument();
     expect(
-      screen.getByRole("option", { name: /minimal \(built-in\)/ }),
+      screen.getByRole("option", { name: "minimal" }),
     ).toBeInTheDocument();
   });
 
@@ -228,7 +261,7 @@ describe("NewRunPage", () => {
       name: "Root",
       modelId: "openai/gpt-5.6-sol",
     });
-    // The built-in the picker opened on drove the capability set, and records
+    // The configuration the picker opened on drove the capability set, and records
     // itself as the run's `preset` facet.
     expect(request.capabilitySet.preset).toBe("minimal");
     const ids = request.capabilitySet.agents[0].capabilities.map(

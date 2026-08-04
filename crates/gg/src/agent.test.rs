@@ -174,6 +174,7 @@ fn no_code() -> CodeSetup {
 fn no_hooks() -> HooksSetup {
     HooksSetup {
         runtime: Arc::new(HookRuntime::default()),
+        session: Arc::new(HookRuntime::default()),
         agent: HookAgent::new(ROOT_AGENT_ID, ROOT_AGENT),
     }
 }
@@ -182,21 +183,22 @@ fn no_hooks() -> HooksSetup {
 /// [agent-stop](GgHookEvent::AgentStop) gate the `completion` capability's validation commands
 /// became.
 fn stop_hook(command: &str) -> HooksSetup {
-    let set = GgCapabilitySet {
-        hooks: vec![GgHook {
-            event: GgHookEvent::AgentStop,
-            action: GgHookAction::Command {
-                command: command.to_string(),
-                cwd: None,
-                timeout_secs: None,
-                output: None,
-            },
-            name: "the gate".to_string(),
-        }],
-        ..GgCapabilitySet::minimal("mock/x")
-    };
+    // On the agent, not on the run: `agent-stop` is one of the eight events that fire because a
+    // particular agent did something, so an agent is the only place it can be declared.
+    let mut profile = GgAgentConfig::root();
+    profile.hooks = vec![GgHook {
+        event: GgHookEvent::AgentStop,
+        action: GgHookAction::Command {
+            command: command.to_string(),
+            cwd: None,
+            timeout_secs: None,
+            output: None,
+        },
+        name: "the gate".to_string(),
+    }];
     HooksSetup {
-        runtime: Arc::new(HookRuntime::resolve(&set, Path::new(".")).unwrap()),
+        runtime: Arc::new(HookRuntime::resolve_agent(&profile, Path::new(".")).unwrap()),
+        session: Arc::new(HookRuntime::default()),
         agent: HookAgent::new(ROOT_AGENT_ID, ROOT_AGENT),
     }
 }

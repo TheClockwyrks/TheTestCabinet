@@ -37,18 +37,26 @@ roster, in every scope, because that is the only profile it can name: without it
 `spawn_subagent` and `exec` would be offered nothing to target, and an agent that may file
 issues with no implementer to assign them to is refused at launch.
 
-Creating or editing one opens the capability-set editor. At the top sit the two
-run-level fieldsets — the **Run limits** (below) and the **model slots** (below) —
-followed by the **Agents** section (below), where the capabilities themselves are
-configured, since in gg they are **per agent**. **Duplicate** seeds a new
-configuration from an existing one — the usual way to build an ablation arm is to
-duplicate the arm beside it and change the one thing under test.
+Creating or editing one opens the capability-set editor, which is organized into three
+tabs:
 
-Above the capability groups sits the **Run limits** fieldset — the
+- **Configuration** — the configuration's name and one-line purpose, the
+  [**Run limits**](#run-limits) every agent runs under, and the run's own
+  [**session hooks**](/gg/hooks/).
+- **Slots** — the [**model slots**](#model-slots) it asks for at launch.
+- **Agents** — its [agent profiles](#agents). The capabilities themselves live in here,
+  since in gg they are **per agent**.
+
+**Duplicate** seeds a new configuration from an existing one — the usual way to build an
+ablation arm is to duplicate the arm beside it and change the one thing under test. Every
+configuration listed is your own; there are no shared read-only built-ins.
+
+On the Configuration tab sits the **Run limits** fieldset — the
 [execution ceilings](/gg/execution-limits/) the whole run is bounded by: turns per agent,
 wall-clock seconds, consecutive errors, error rate and its window, and cost. They are not
 capabilities (they apply to every capability and to both execution modes at once), so
-they sit above the catalogue rather than inside a group of it. **Leaving a field empty
+they sit beside the configuration's identity rather than inside a capability group.
+**Leaving a field empty
 leaves that ceiling off**, and an untouched fieldset writes no `limits` key at all, so
 every configuration saved before limits existed round-trips unchanged. The one field with
 a default is turns per agent, which is 50 when empty.
@@ -85,18 +93,20 @@ judge agent, an agent's model-slot binding — is held by identity rather than b
 name shown in the form, so **renaming an agent or a model slot moves every reference
 to it** instead of leaving one spelling the old name.
 
-Opening an agent switches the editor into that profile's own view. That view is
-saved (or discarded) on its own: **Save agent** returns to the configuration keeping
-the edits, **Cancel** returns discarding them, and the configuration itself is only
-written to your account by the Save button on the configuration view. Each profile
-carries:
+Opening an agent switches the editor into that profile's own view, itself organized into
+tabs — **Agent**, then whichever of **Tools** / **APIs**, **Roster**, **Hooks** and
+**States** the profile's type has. That view is saved (or discarded) on its own: **Save
+agent** returns to the configuration keeping the edits, **Cancel** returns discarding
+them, and the back chevron beside the title does the same as Cancel but asks first if
+there is anything to lose. The configuration itself is only written to your account by
+the Save button on the configuration view. Each profile carries:
 
 - an **agent type** (below), chosen above everything else because it decides what the
   rest of the form even offers — everything after this point describes a *worker*, and
   an **FSM** profile is offered none of it;
 - its own enabled **capabilities**, their implementations and params, and per-tool
   [ablation](/gg/toolset-ablation/) overrides;
-- **one model**, either pinned outright or deferred to a run-level [model
+- **one model**, either pinned outright or deferred to a declared [model
   slot](#model-slots) (below), and the
   [prompt-cache lifetime](#prompt-cache-lifetime) its requests ask for;
 - optional **custom instructions** — operator prose inserted into the agent's
@@ -115,6 +125,12 @@ carries:
   the right scope; a profile may list itself, allowing recursion. The `subagent` scope
   does double duty: it is also the allowlist [`exec`](/gg/fork-and-exec/) is checked
   against, since becoming a profile and briefing one are both putting it to work.
+- its own [**hooks**](/gg/hooks/) — the gates gg runs around what *this* agent does: its
+  file writes, its shell commands, its compactions, and its own start and stop. Per agent
+  because the agents of a run are not interchangeable: "the build must pass before you may
+  stop" is right for an implementer, pointless for a planner, and wrong for a reviewer
+  whose job is to report that the build does not pass. The run's own two ends — session
+  start and session end — are the *configuration's*, not any agent's.
 
 One more thing is worth knowing before reading the rest of this page: two capabilities
 backed by a [module](/gg/modules/) — project management and agent-managed context — carry

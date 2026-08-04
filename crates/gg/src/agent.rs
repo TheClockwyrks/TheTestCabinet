@@ -1080,12 +1080,12 @@ pub(crate) async fn run_with_seams(
     // notification, an upload, a teardown. Its own failure is logged and otherwise ignored, which
     // is the one place gg forgives a broken hook: stopping a run that has already finished would
     // change a completed run's recorded status over a check that was only ever going to observe it.
-    if orch.hooks.has(GgHookEvent::SessionEnd) {
+    if orch.session_hooks.has(GgHookEvent::SessionEnd) {
         let session_ctx = ToolContext::new(invocation.workspace_dir.clone())
             .with_agent(ROOT_AGENT_ID)
             .with_shell(orch.shell_for(&invocation.workspace_dir));
         if let Err(failure) = orch
-            .hooks
+            .session_hooks
             .fire(
                 GgHookEvent::SessionEnd,
                 &HookAgent::new(ROOT_AGENT_ID, set.root_name()).of_kind(GgHookAgentKind::Root),
@@ -1553,8 +1553,19 @@ struct Orchestrator {
     tasks: Mutex<Vec<JoinHandle<()>>>,
     /// A monotonic counter minting unique subagent ids.
     next_seq: AtomicU64,
-    /// The run's [hooks](crate::hooks), resolved once at launch and shared by every agent.
-    hooks: Arc<HookRuntime>,
+    /// The run's own [session hooks](crate::hooks), resolved once at launch. Fired by the root
+    /// agent around the session as a whole, never by anybody else.
+    session_hooks: Arc<HookRuntime>,
+    /// Each agent profile's own [hooks](crate::hooks), by profile name, resolved once at launch.
+    ///
+    /// Keyed by name rather than carried on the profile because an agent instance is dispatched
+    /// with its profile and needs its runtime *shared*, not cloned: a profile running a dozen times
+    /// at once materializes its scripts to one directory and answers `has(event)` off one map.
+    ///
+    /// Ordered, like every other map gg holds: an unordered one would make the launch
+    /// announcement's line order a function of hash seed, and a run's log is compared against
+    /// another run's.
+    agent_hooks: BTreeMap<String, Arc<HookRuntime>>,
     /// The per-key ordinals a [replay agent origin](GgReplayAgentOrigin) is keyed by: a spawn's
     /// position within its parent, a review round within its issue, a merge within its issue.
     ///
@@ -1678,19 +1689,41 @@ impl Orchestrator {
         // misconfiguration a model can never report — it simply never makes the call, and the run
         // reads as one where the agent chose not to.
         warnings.extend(transitions::launch_warnings(set));
-        // The run's hooks, resolved once. A built-in id gg does not ship is the only way this
-        // fails, and it is reported as a warning with the hooks dropped rather than refusing the
-        // launch: a run that cannot start says nothing about the model, and an operator reading
-        // "gg ships: trace, refuse-empty-write, …" on the first line of the log has what they need
-        // to fix it. Every other hook misconfiguration is the script's own to report, at the
-        // firing.
-        let hooks = Arc::new(match HookRuntime::resolve(set, &invocation.workspace_dir) {
-            Ok(runtime) => runtime,
-            Err(errors) => {
-                warnings.extend(errors);
-                HookRuntime::default()
-            }
-        });
+        // The run's hooks, resolved once per declaration site: the session's, and each profile's
+        // own. A resolution error — a built-in id gg does not ship, or a hook declared on the wrong
+        // side of the session/agent split — is reported as a warning with *that site's* hooks
+        // dropped rather than refusing the launch: a run that cannot start says nothing about the
+        // model, and an operator reading "gg ships: trace, refuse-empty-write, …" on the first line
+        // of the log has what they need to fix it. Every other hook misconfiguration is the
+        // script's own to report, at the firing.
+        //
+        // Dropping only the offending site is what keeps the report honest: a typo in the
+        // reviewer's hooks must not quietly disarm the implementer's.
+        let resolve_hooks = |result: Result<HookRuntime, Vec<String>>,
+                             warnings: &mut Vec<String>| {
+            Arc::new(match result {
+                Ok(runtime) => runtime,
+                Err(errors) => {
+                    warnings.extend(errors);
+                    HookRuntime::default()
+                }
+            })
+        };
+        let session_hooks = resolve_hooks(
+            HookRuntime::resolve_session(set, &invocation.workspace_dir),
+            warnings,
+        );
+        let agent_hooks: BTreeMap<String, Arc<HookRuntime>> = set
+            .agents
+            .iter()
+            .map(|profile| {
+                let runtime = resolve_hooks(
+                    HookRuntime::resolve_agent(profile, &invocation.workspace_dir),
+                    warnings,
+                );
+                (profile.name.clone(), runtime)
+            })
+            .collect();
         let deadline = limits.max_runtime.map(|budget| Instant::now() + budget);
         // The Root agent's code setup: responses-as-code is per-agent, but the Root's is what the
         // run-level launch log and the sandbox warm-up decision key on.
@@ -1868,7 +1901,8 @@ impl Orchestrator {
             },
             tasks: Mutex::new(Vec::new()),
             next_seq: AtomicU64::new(0),
-            hooks,
+            session_hooks,
+            agent_hooks,
             ordinals: Mutex::new(BTreeMap::new()),
             // Capture is always on. `None` here means the journal could not be opened, never that
             // the run declined to be recorded.
@@ -3131,7 +3165,7 @@ async fn run_agent(
                 &registry,
                 modules.caps(),
                 code.enabled.then_some(code.language),
-                &orch.hooks,
+                &hook_sites(&orch),
             );
             // Record the run's effective toolset on the session summary — the exact set of tool
             // names offered to the root agent after capability gating and per-tool overrides — so
@@ -3374,7 +3408,16 @@ async fn run_agent(
                     shell_offload: shell_offload(&profile),
                     code,
                     hooks: HooksSetup {
-                        runtime: Arc::clone(&orch.hooks),
+                        // A profile with no runtime is one the set does not declare, which the
+                        // dispatcher has already refused — so an empty runtime here is the
+                        // unreachable case, and it declares no hooks rather than guessing at
+                        // another profile's.
+                        runtime: orch
+                            .agent_hooks
+                            .get(&profile.name)
+                            .map(Arc::clone)
+                            .unwrap_or_default(),
+                        session: Arc::clone(&orch.session_hooks),
                         agent: hook_agent,
                     },
                     ending_role,
@@ -3623,6 +3666,24 @@ fn program_languages(agents: &[GgAgentConfig]) -> BTreeSet<GgProgramLanguage> {
         .collect()
 }
 
+/// Every hook declaration site of a run, in announcement order: the session's, then each profile's
+/// own by name.
+///
+/// The name is pre-phrased for the sentence it lands in ("… bound to `pre-write` **on agent
+/// `reviewer`**"), because the alternative is a format string that has to special-case the session
+/// — the one site that is not an agent.
+///
+/// Profiles are visited in the set's own order rather than the map's, so the announcement reads in
+/// the order the configuration is written rather than in hash order.
+fn hook_sites(orch: &Orchestrator) -> Vec<(String, Arc<HookRuntime>)> {
+    let mut sites = vec![("on the run".to_string(), Arc::clone(&orch.session_hooks))];
+    sites.extend(orch.caps.agents.iter().filter_map(|profile| {
+        let runtime = orch.agent_hooks.get(&profile.name)?;
+        Some((format!("on agent `{}`", profile.name), Arc::clone(runtime)))
+    }));
+    sites
+}
+
 /// Announce the run's enabled capabilities once (on the root's stream) so the console shows the
 /// configuration from the start — the offered toolset and the initial (empty) skills/memory/task/
 /// board state — mirroring the per-capability announcements a single-agent run emitted.
@@ -3631,7 +3692,10 @@ fn announce_configuration(
     registry: &ToolRegistry,
     modules: &CapabilityModules,
     program_language: Option<GgProgramLanguage>,
-    hooks: &HookRuntime,
+    // Each declaration site as `(how to say where it is, its hooks)` — the run's session hooks and
+    // every profile's own, so the announcement covers gates on profiles this run has not dispatched
+    // yet.
+    hooks: &[(String, Arc<HookRuntime>)],
 ) {
     if registry.is_empty() {
         emitter.emit(log(
@@ -3729,21 +3793,28 @@ fn announce_configuration(
         ));
     }
 
-    for event in ALL_HOOK_EVENTS {
-        let count = hooks.count(event);
-        if count > 0 {
-            emitter.emit(log(
-                "info",
-                format!(
-                    "{count} hook(s) bound to `{}`; they run in declaration order{}.",
-                    event.as_str(),
-                    if event.can_block() {
-                        " and the first to block stops the operation"
-                    } else {
-                        ""
-                    },
-                ),
-            ));
+    // Every gate the run is configured with, named before the first one fires — including the ones
+    // belonging to profiles that have not been dispatched yet. Announced here in full rather than
+    // by each agent as it starts, because the point of the announcement is that an operator reading
+    // the top of the log knows what is armed; a reviewer's `agent-stop` gate discovered two hours
+    // in, on the line where it blocked, is the thing this is for.
+    for (site, runtime) in hooks {
+        for event in ALL_HOOK_EVENTS {
+            let count = runtime.count(event);
+            if count > 0 {
+                emitter.emit(log(
+                    "info",
+                    format!(
+                        "{count} hook(s) bound to `{}` {site}; they run in declaration order{}.",
+                        event.as_str(),
+                        if event.can_block() {
+                            " and the first to block stops the operation"
+                        } else {
+                            ""
+                        },
+                    ),
+                ));
+            }
         }
     }
 }
@@ -5383,9 +5454,9 @@ impl Agent {
             // successor of the root is the same session continuing and does not fire it again.
             let opens_session =
                 matches!(hooks.agent.kind, Some(GgHookAgentKind::Root)) && turn_base == 0;
-            if opens_session && hooks.runtime.has(GgHookEvent::SessionStart) {
+            if opens_session && hooks.session.has(GgHookEvent::SessionStart) {
                 match hooks
-                    .runtime
+                    .session
                     .fire(
                         GgHookEvent::SessionStart,
                         &hooks.agent,
@@ -7735,16 +7806,20 @@ fn absolute_workspace_path(ctx: &ToolContext, path: &str) -> String {
     }
 }
 
-/// The run's [hooks](crate::hooks) as one agent sees them: the shared runtime, and this
-/// instance's identity within it.
+/// The [hooks](crate::hooks) as one agent instance sees them: the two runtimes that can fire on its
+/// behalf, and its own identity within them.
 ///
-/// Two fields rather than a bare runtime because a hook's payload is half run-level (which hooks
-/// are declared) and half instance-level (who is writing the file). Pairing them here is what makes
-/// every firing site a two-argument call that cannot be given a mismatched pair.
+/// The identity travels with the runtimes because a hook's payload is half declaration (which hooks
+/// exist) and half instance (who is writing the file). Pairing them here is what makes every firing
+/// site a call that cannot be given a mismatched pair.
 struct HooksSetup {
-    /// The run's declared hooks, grouped by event. Shared by every agent — the declaration is the
-    /// run's, not a profile's.
+    /// This agent's **profile's** own hooks — the eight [agent events](crate::hooks). Shared by
+    /// every instance of the profile, and different from the next profile's.
     runtime: Arc<HookRuntime>,
+    /// The **run's** session hooks. Carried by every instance but fired by only one — the root, on
+    /// its first incarnation — because the alternative is passing the orchestrator down to the one
+    /// firing site that needs it.
+    session: Arc<HookRuntime>,
     /// Who this instance is: its id, its profile, the role it was dispatched in, and its worktree.
     agent: HookAgent,
 }

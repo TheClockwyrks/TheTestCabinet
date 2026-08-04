@@ -108,12 +108,13 @@ feature under ablation while a ceiling is an operator's guardrail over all of th
 because the set is what a run _records_, so a run stopped by a ceiling carries both the
 breach and the ceiling that produced it.
 
-The second is the run's [**hooks**](/gg/hooks/) — the commands and scripts gg runs at ten
-points of a run's lifecycle, each able to block the operation it precedes and to put text
-in front of the model. They are the operator reaching into the run from *outside* it: the
-model is never told a hook exists, is offered no tool for one, and cannot decline one. So
-they are declared once for the whole run rather than per agent, and several of their
-events — a session starting, a compaction — belong to no agent at all.
+The second is [**hooks**](/gg/hooks/) — the commands and scripts gg runs at ten points of
+a run's lifecycle, each able to block the operation it precedes and to put text in front
+of the model. They are the operator reaching into the run from *outside* it: the model is
+never told a hook exists, is offered no tool for one, and cannot decline one. A hook's
+event decides where it is declared: the run's two **session** events belong to the
+capability set, and the other eight — which fire because a particular agent wrote, ran,
+compacted, started or stopped — belong to that agent.
 
 The individual **agent profiles** carry two more settings that are not capabilities
 either, for the same reason and at a finer grain — they are properties of the *model* a

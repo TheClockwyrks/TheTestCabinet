@@ -1,6 +1,7 @@
 @use "../../../styles/tokens" as t;
 @use "../../../styles/surfaces" as s;
 @use "../../../styles/halo" as h;
+@use "../../../styles/breakpoints" as bp;
 
 // gg-specific bits of the capability-set editor. Everything else reuses the
 // shared run-execution styles (`../RunExec.module.scss`): the field grid,
@@ -596,9 +597,13 @@
   margin-top: t.$space-xs;
   padding: t.$space-sm;
   border-radius: t.$radius-sm;
-  background: t.$surface-sunken;
-  font-family: t.$font-mono;
-  font-size: t.$text-xs;
+  // The token names here are the ones the scale actually defines: there is no
+  // `$surface-sunken`/`$font-mono`/`$text-xs`, and naming one compiles nowhere —
+  // Sass fails the whole stylesheet on an undefined variable, so this block took
+  // the site and console builds down with it.
+  background: t.$color-surface-2;
+  font-family: var(--ttc-font-mono, monospace);
+  font-size: t.$font-sm;
   line-height: 1.6;
 }
 
@@ -896,4 +901,105 @@
   font-size: t.$font-sm;
   white-space: pre;
   overflow-wrap: normal;
+}
+
+// --- The editor's tab strip --------------------------------------------------
+//
+// The configuration editor and the per-agent editor are both tabbed, and both
+// read as the same strip the test-case detail pages use — deliberately, because
+// that is the tab strip this console has already taught. It is rendered from
+// buttons rather than links: the editor holds an unsaved draft, so switching
+// section must not be a navigation that could unmount it or leave a URL an
+// operator could bookmark into a form that no longer holds their edits.
+.tabsBar {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: t.$space-md;
+  margin-bottom: t.$space-xl;
+  border-bottom: t.$border-hairline solid t.$color-border;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-sm;
+
+  // On narrow screens the tabs read as a single swipeable strip rather than
+  // wrapping, matching the detail pages.
+  @include bp.below(t.$bp-md) {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    margin-inline: calc(-1 * t.$space-md);
+    padding-inline: t.$space-md;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+
+    @include s.swipe-fade;
+  }
+}
+
+// Each tab reads as an underlined pill; the active tab glows in the accent and
+// carries a solid underline that meets the strip's baseline border.
+.tab {
+  padding: t.$space-sm t.$space-md;
+  font-size: t.$font-md;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: t.$color-text-muted;
+  background: none;
+  border: 0;
+  border-bottom: 0.2rem solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+  @include h.halo;
+
+  &:hover {
+    text-decoration: none;
+    color: t.$color-text;
+  }
+
+  @include bp.below(t.$bp-md) {
+    flex: none;
+    white-space: nowrap;
+    padding: t.$space-sm t.$space-sm;
+    font-size: t.$font-sm;
+  }
+}
+
+.tabActive {
+  color: t.$color-accent;
+  // Keep the inherited readability halo and back the accent glow with it —
+  // `var(--ttc-glow)` alone has no contrast where an active label lands over the
+  // backdrop's warm sun. One declaration, because a bare `text-shadow` would
+  // override the halo `.tab` set.
+  text-shadow:
+    0 0 0.5rem t.$color-bg,
+    0 0 0.4rem t.$color-bg,
+    0 0 0.25rem t.$color-bg,
+    var(--ttc-glow);
+  border-bottom-color: t.$color-accent;
+}
+
+// The tab's own label, kept a separate element from the problem badge so the
+// badge's count never reads as part of the section's name.
+.tabLabel {
+  white-space: nowrap;
+}
+
+// A tab whose section is incomplete or contradictory — the count of what is
+// wrong, carried on the tab so an operator who is three tabs away still knows
+// where the problem is. Without it, a save gate that names a field could be
+// naming one on a tab nobody is looking at.
+.tabProblem {
+  margin-left: t.$space-xs;
+  padding: 0 t.$space-xs;
+  border-radius: t.$radius-sm;
+  background: t.$color-negative;
+  color: t.$color-bg;
+  font-size: t.$font-sm;
 }

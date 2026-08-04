@@ -36,11 +36,55 @@ function Harness({ initial }: { initial: GgConfigDraft }) {
     <GgConfigEditor
       value={draft}
       onChange={setDraft}
+      name="under test"
+      onNameChange={() => {}}
+      description=""
+      onDescriptionChange={() => {}}
       editingAgentId={draft.agents[0]!.id}
       onEditingAgentChange={() => {}}
       models={[]}
     />
   );
+}
+
+// The same host, opened on the **configuration** rather than on an agent — which is what
+// the page shows until an agent is opened.
+function ConfigHarness({ initial }: { initial: GgConfigDraft }) {
+  const [draft, setDraft] = useState(initial);
+  return (
+    <GgConfigEditor
+      value={draft}
+      onChange={setDraft}
+      name="under test"
+      onNameChange={() => {}}
+      description=""
+      onDescriptionChange={() => {}}
+      editingAgentId={null}
+      onEditingAgentChange={() => {}}
+      models={[]}
+    />
+  );
+}
+
+// Open one of the form's tabs by its label. Matched on the label element rather than the
+// tab's accessible name, because a tab with something wrong on it also announces the
+// count ("States, 1 problem") — which is the point of the badge, and would make an exact
+// name match here depend on whether the section under test happens to be complete.
+function openTab(name: string) {
+  const tab = screen
+    .getAllByRole("tab")
+    .find((entry) => entry.firstElementChild?.textContent?.trim() === name);
+  if (!tab) throw new Error(`no "${name}" tab`);
+  fireEvent.click(tab);
+}
+
+// Render the agent form and open the tab its capabilities are on — "Tools" under a
+// tool-calling agent, "APIs" under a code one. Most of this file is about a capability's
+// controls, and the capabilities are one tab in from where the form opens.
+function renderCaps(initial: GgConfigDraft) {
+  const rendered = render(<Harness initial={initial} />);
+  openTab(initial.agents[0]!.mode === "rac" ? "APIs" : "Tools");
+  return rendered;
 }
 
 // A draft with one agent, opened on that agent's form, of the given type (Tools unless
@@ -92,7 +136,7 @@ function capabilityRow(capId: string): HTMLElement {
 
 describe("a param the selected strategy does not read", () => {
   it("is hidden under the shell capability's inline mode and shown under the others", () => {
-    render(<Harness initial={draftWith("shell", "")} />);
+    renderCaps(draftWith("shell", ""));
     const row = capabilityRow("shell");
 
     // The default mode truncates, so both ceilings are live controls.
@@ -108,7 +152,7 @@ describe("a param the selected strategy does not read", () => {
   });
 
   it("is hidden while read-file is unlimited, which reads no line cap at all", () => {
-    render(<Harness initial={draftWith("read-file", "")} />);
+    renderCaps(draftWith("read-file", ""));
     const row = capabilityRow("read-file");
 
     expect(within(row).queryByLabelText(/Line cap/)).toBeNull();
@@ -117,7 +161,7 @@ describe("a param the selected strategy does not read", () => {
   });
 
   it("follows the memory strategy, which reads a different subset of the limits", () => {
-    render(<Harness initial={draftWith("memories", "")} />);
+    renderCaps(draftWith("memories", ""));
     const row = capabilityRow("memories");
 
     // Scratchpad: the window carries the notes, so the total-length budget is the live one
@@ -139,9 +183,7 @@ describe("a param the selected strategy does not read", () => {
   });
 
   it("keeps what a hidden control held, so switching strategy loses nothing", () => {
-    render(
-      <Harness initial={draftWith("shell", "offload", { maxLines: "40" })} />,
-    );
+    renderCaps(draftWith("shell", "offload", { maxLines: "40" }));
     const row = capabilityRow("shell");
     expect(
       (within(row).getByLabelText(/Max lines/) as HTMLInputElement).value,
@@ -156,28 +198,42 @@ describe("a param the selected strategy does not read", () => {
 });
 
 // An agent's **type** is not a capability, and the whole point of the selector is that
-// the form below it changes: responses-as-code and the state machine are the type's own
-// settings rather than rows in the capability list, and a capability only one type reads
-// is listed only there. None of that is visible without rendering the form and driving
-// the selector.
+// the rest of the form changes with it: the type decides which **tabs** the agent even
+// has (a machine's States, a code agent's APIs against a tool agent's Tools), and
+// responses-as-code and the state machine are the type's own settings rather than rows in
+// a capability list. None of that is visible without rendering the form and driving the
+// selector.
 describe("an agent's type", () => {
-  it("is chosen above the capabilities, and says what the choice means", () => {
+  // The tabs an agent currently offers, by their labels.
+  function tabNames(): string[] {
+    return screen
+      .getAllByRole("tab")
+      .map((tab) => tab.firstElementChild?.textContent?.trim() ?? "");
+  }
+
+  it("is chosen on the Agent tab, and says what the choice means", () => {
     render(<Harness initial={emptyDraft()} />);
     expect(typeSegment("Tools")).toHaveAttribute("aria-checked", "true");
     expect(screen.getByText(/Tool calling: gg offers/)).toBeInTheDocument();
-    // Its own row *above* Capabilities, because the capabilities below are a
-    // consequence of the choice rather than one of them.
-    expect(
-      screen
-        .getByText("Agent type")
-        .compareDocumentPosition(screen.getByText("Capabilities")),
-    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 
     fireEvent.click(typeSegment("RaC"));
     expect(typeSegment("RaC")).toHaveAttribute("aria-checked", "true");
     expect(
       screen.getByText(/One turn can make dozens of calls/),
     ).toBeInTheDocument();
+  });
+
+  // The tab set is the clearest statement of what a type *is*: the same capabilities met
+  // as tools or as APIs, and a machine that has neither because it takes no turns.
+  it("decides which sections the agent has at all", () => {
+    render(<Harness initial={emptyDraft()} />);
+    expect(tabNames()).toEqual(["Agent", "Tools", "Roster", "Hooks"]);
+
+    fireEvent.click(typeSegment("RaC"));
+    expect(tabNames()).toEqual(["Agent", "APIs", "Roster", "Hooks"]);
+
+    fireEvent.click(typeSegment("FSM"));
+    expect(tabNames()).toEqual(["Agent", "States"]);
   });
 
   it("offers responses-as-code as the type's settings, not as a capability", () => {
@@ -188,6 +244,7 @@ describe("an agent's type", () => {
     ).toBeNull();
 
     fireEvent.click(typeSegment("RaC"));
+    openTab("APIs");
     const panel = screen.getByRole("group", { name: "Responses as code" });
     // Its params are the same controls a capability's are…
     expect(within(panel).getByLabelText(/Max open image views/)).toBeDefined();
@@ -199,12 +256,15 @@ describe("an agent's type", () => {
 
   it("lists a capability only the code type reads only under it", () => {
     render(<Harness initial={emptyDraft()} />);
+    openTab("Tools");
     // There are no programs in a tool-calling session to keep.
     expect(
       screen.queryByText("program-library", { selector: "span" }),
     ).toBeNull();
 
+    openTab("Agent");
     fireEvent.click(typeSegment("RaC"));
+    openTab("APIs");
     expect(
       screen.getByText("program-library", { selector: "span" }),
     ).toBeInTheDocument();
@@ -212,12 +272,19 @@ describe("an agent's type", () => {
 
   it("offers a machine no capabilities at all — its configuration is the machine", () => {
     render(<Harness initial={emptyDraft()} />);
-    expect(screen.getByText("Capabilities")).toBeInTheDocument();
+    openTab("Tools");
+    expect(screen.getByText("shell", { selector: "span" })).toBeInTheDocument();
 
+    openTab("Agent");
     fireEvent.click(typeSegment("FSM"));
-    expect(screen.queryByText("Capabilities")).toBeNull();
+    // Neither section exists to open, so there is nowhere a capability could be listed.
+    expect(tabNames()).not.toContain("Tools");
+    expect(tabNames()).not.toContain("APIs");
     expect(screen.queryByText("shell", { selector: "span" })).toBeNull();
-    expect(screen.getByRole("group", { name: "Process" })).toBeInTheDocument();
+    openTab("States");
+    expect(
+      screen.getByRole("group", { name: "State machine" }),
+    ).toBeInTheDocument();
   });
 
   // A machine takes no turns, so it runs no model, keeps no cache, renders no prompt and
@@ -232,14 +299,16 @@ describe("an agent's type", () => {
     for (const label of ["Model from", "Model slot", "Prompt cache"]) {
       expect(screen.queryByLabelText(label)).toBeNull();
     }
-    expect(screen.queryByText("Roster")).toBeNull();
     expect(screen.queryByText("Custom instructions")).toBeNull();
     expect(screen.queryByText("System Prompt")).toBeNull();
+    // Nobody to spawn, and no lifecycle of its own to gate.
+    expect(tabNames()).not.toContain("Roster");
+    expect(tabNames()).not.toContain("Hooks");
 
     // …and they are all back the moment it is a worker again.
     fireEvent.click(typeSegment("Tools"));
     expect(screen.getByLabelText("Model from")).toBeInTheDocument();
-    expect(screen.getByText("Roster")).toBeInTheDocument();
+    expect(tabNames()).toContain("Roster");
   });
 
   // Switching type is a look, not an edit: an operator comparing the two arms of a study
@@ -247,17 +316,21 @@ describe("an agent's type", () => {
   // they flipped away from was set to. (The wind-back to a type's defaults happens when
   // the agent is *committed*, which is the page's job and is covered in the draft tests.)
   it("keeps what another type was configured with while the agent is open", () => {
-    render(<Harness initial={draftWith("shell", "")} />);
+    renderCaps(draftWith("shell", ""));
     const shell = capabilityRow("shell");
     select(within(shell).getByLabelText(/Output mode/), "inline");
 
+    openTab("Agent");
     fireEvent.click(typeSegment("RaC"));
+    openTab("APIs");
     const panel = screen.getByRole("group", { name: "Responses as code" });
     fireEvent.change(within(panel).getByLabelText(/Max open image views/), {
       target: { value: "3" },
     });
 
+    openTab("Agent");
     fireEvent.click(typeSegment("Tools"));
+    openTab("Tools");
     expect(
       (
         within(capabilityRow("shell")).getByLabelText(
@@ -266,7 +339,9 @@ describe("an agent's type", () => {
       ).value,
     ).toBe("inline");
 
+    openTab("Agent");
     fireEvent.click(typeSegment("RaC"));
+    openTab("APIs");
     expect(
       (
         within(
@@ -284,16 +359,7 @@ describe("an agent's type", () => {
 // cap an operator can only reach by hand-editing the configuration's JSON.
 describe("the responses-as-code image-view cap", () => {
   it("is offered whenever the agent is a code agent, and holds what is typed into it", () => {
-    render(
-      <Harness
-        initial={draftWith(
-          "responses-as-code",
-          "",
-          { imageViewCap: "4" },
-          "rac",
-        )}
-      />,
-    );
+    renderCaps(draftWith( "responses-as-code", "", { imageViewCap: "4" }, "rac", ));
     const panel = screen.getByRole("group", { name: "Responses as code" });
 
     const field = within(panel).getByLabelText(
@@ -322,7 +388,7 @@ describe("a capability param that names a model", () => {
   }
 
   it("offers a model slot beside a pinned model, and swaps the field with it", () => {
-    render(<Harness initial={withSlot(handoff())} />);
+    renderCaps(withSlot(handoff()));
     const row = capabilityRow("compaction");
 
     // A param carrying no slot key is a pinned model, so the model field is showing.
@@ -341,7 +407,7 @@ describe("a capability param that names a model", () => {
 
   it("says so when it defers to no slot, which a run could never fill in", () => {
     // A configuration with no slots declared at all: deferring cannot pick one.
-    render(<Harness initial={{ ...handoff(), modelSlots: [] }} />);
+    renderCaps({ ...handoff(), modelSlots: [] });
     const row = capabilityRow("compaction");
 
     select(within(row).getByLabelText(/Model from/), "model-slot");
@@ -349,7 +415,7 @@ describe("a capability param that names a model", () => {
   });
 
   it("is not offered at all under a strategy that condenses on the agent's own model", () => {
-    render(<Harness initial={withSlot(handoff())} />);
+    renderCaps(withSlot(handoff()));
     const row = capabilityRow("compaction");
     expect(within(row).getByLabelText(/Model from/)).toBeDefined();
 
@@ -405,11 +471,12 @@ describe("authoring a state machine", () => {
     return { ...base, agents: [shell, explorer, builder] };
   }
 
-  // A machine is the FSM type's whole configuration, so it is on the page the moment the
-  // agent opens — there is no capability group to expand first.
+  // A machine is the FSM type's whole configuration, and it has a tab to itself — there
+  // is no capability group to expand first, only the section to open.
   function openMachine(draft: GgConfigDraft) {
     render(<Harness initial={draft} />);
-    return screen.getByRole("group", { name: "Process" });
+    openTab("States");
+    return screen.getByRole("group", { name: "State machine" });
   }
 
   const LINEAR = (workers: [string, string]) => [
@@ -550,7 +617,7 @@ describe("authoring a state machine", () => {
 // writes a key nothing reads.
 describe("module ownership", () => {
   it("is offered on a module-backed capability and defaults to owned", () => {
-    render(<Harness initial={draftWith("project-management", "")} />);
+    renderCaps(draftWith("project-management", ""));
     const row = capabilityRow("project-management");
     const ownership = within(row).getByLabelText(
       /Ownership/,
@@ -563,7 +630,7 @@ describe("module ownership", () => {
 
   it("is not offered on the two capabilities that no longer have one", () => {
     for (const capId of ["memories", "skills"]) {
-      const { unmount } = render(<Harness initial={draftWith(capId, "")} />);
+      const { unmount } = renderCaps(draftWith(capId, ""));
       expect(
         within(capabilityRow(capId)).queryByLabelText(/Ownership/),
       ).toBeNull();
@@ -578,7 +645,7 @@ describe("module ownership", () => {
 // only visible by rendering the control and clicking it.
 describe("the skills capability's built-in skills", () => {
   it("starts every built-in on and clears exactly the one switched off", () => {
-    render(<Harness initial={draftWith("skills", "")} />);
+    renderCaps(draftWith("skills", ""));
     const group = within(capabilityRow("skills")).getByRole("group", {
       name: "Built-in skills",
     });
@@ -610,7 +677,7 @@ describe("the responses-as-code agent's healing strategies", () => {
   }
 
   it("opens with the one default-off repair off and every other one on", () => {
-    render(<Harness initial={draftWith("responses-as-code", "", {}, "rac")} />);
+    renderCaps(draftWith("responses-as-code", "", {}, "rac"));
     const boxes = healingBoxes();
     const doubled = boxes.find((box) =>
       box.parentElement?.textContent?.includes("drop-doubled-response"),
@@ -620,7 +687,7 @@ describe("the responses-as-code agent's healing strategies", () => {
   });
 
   it("arms the default-off repair, and says on the control that it is one", () => {
-    render(<Harness initial={draftWith("responses-as-code", "", {}, "rac")} />);
+    renderCaps(draftWith("responses-as-code", "", {}, "rac"));
     const doubled = healingBoxes().find((box) =>
       box.parentElement?.textContent?.includes("drop-doubled-response"),
     )!;
@@ -702,5 +769,55 @@ describe("an agent's loop detection", () => {
       />,
     );
     expect(screen.queryByText("Loop detection")).toBeNull();
+  });
+});
+
+// Where a hook is authored follows from its event, and the editor is what enforces it: an
+// agent is offered only the eight events that fire because of something it did, and the
+// configuration only the run's own two. An operator who can pick a session event on an
+// agent has authored a configuration gg refuses at launch, so the pickers are the gate.
+describe("the two hook lists", () => {
+  // The events one hook row's Event picker offers.
+  function eventOptions(): string[] {
+    return Array.from(
+      screen.getByLabelText(/^Event/).querySelectorAll("option"),
+    ).map((option) => (option as HTMLOptionElement).value);
+  }
+
+  it("offers an agent its own eight events and none of the run's", () => {
+    render(<Harness initial={emptyDraft()} />);
+    openTab("Hooks");
+    fireEvent.click(screen.getByRole("button", { name: "Add hook" }));
+
+    const events = eventOptions();
+    expect(events).toEqual([
+      "pre-write",
+      "post-write",
+      "pre-shell",
+      "post-shell",
+      "pre-compact",
+      "post-compact",
+      "agent-start",
+      "agent-stop",
+    ]);
+    // A new hook opens on one of them, so it is never born in the wrong list.
+    expect(events).toContain("agent-stop");
+  });
+
+  it("offers the configuration only the run's two session events", () => {
+    render(<ConfigHarness initial={emptyDraft()} />);
+    // The session hooks sit on the Configuration tab, beside the run's ceilings.
+    fireEvent.click(screen.getByRole("button", { name: "Add hook" }));
+    expect(eventOptions()).toEqual(["session-start", "session-end"]);
+  });
+
+  it("has no Hooks section under a machine, which provokes none of the events", () => {
+    render(<Harness initial={emptyDraft()} />);
+    fireEvent.click(typeSegment("FSM"));
+    expect(
+      screen
+        .getAllByRole("tab")
+        .map((tab) => tab.firstElementChild?.textContent?.trim()),
+    ).not.toContain("Hooks");
   });
 });

@@ -9,7 +9,17 @@
 use super::*;
 use test_cabinet_core::gg::{ALL_HOOK_EVENTS, GgAgentConfig, GgCapabilitySet};
 
-/// A capability set carrying `hooks` and nothing else that matters here.
+/// An agent profile carrying `hooks` and nothing else that matters here — the declaration site for
+/// the eight [agent events](test_cabinet_core::gg::AGENT_HOOK_EVENTS), which is what nearly every
+/// test in this file is about.
+fn agent_with(hooks: Vec<GgHook>) -> GgAgentConfig {
+    GgAgentConfig {
+        hooks,
+        ..GgAgentConfig::root()
+    }
+}
+
+/// A capability set carrying `hooks` as its **session** hooks.
 fn set_with(hooks: Vec<GgHook>) -> GgCapabilitySet {
     GgCapabilitySet {
         agents: vec![GgAgentConfig::root()],
@@ -90,14 +100,14 @@ fn unreadable_output_is_an_error_rather_than_a_default() {
 /// the fix.
 #[test]
 fn refuses_a_built_in_gg_does_not_ship() {
-    let set = set_with(vec![GgHook {
+    let agent = agent_with(vec![GgHook {
         event: GgHookEvent::PreWrite,
         action: GgHookAction::BuiltIn {
             script: "refuse-empty-writes".to_string(),
         },
         name: String::new(),
     }]);
-    let errors = HookRuntime::resolve(&set, Path::new("/tmp")).unwrap_err();
+    let errors = HookRuntime::resolve_agent(&agent, Path::new("/tmp")).unwrap_err();
     assert_eq!(errors.len(), 1);
     assert!(errors[0].contains("refuse-empty-writes"), "{}", errors[0]);
     assert!(errors[0].contains("refuse-empty-write"), "{}", errors[0]);
@@ -116,16 +126,87 @@ fn every_advertised_built_in_has_a_source() {
 /// the contract: an operator who puts the cheap check first expects it to run first.
 #[test]
 fn groups_by_event_and_keeps_declaration_order() {
-    let set = set_with(vec![
+    let agent = agent_with(vec![
         script_hook(GgHookEvent::PreWrite, "#!/bin/sh\ntrue"),
         script_hook(GgHookEvent::PreShell, "#!/bin/sh\ntrue"),
         script_hook(GgHookEvent::PreWrite, "#!/bin/sh\nfalse"),
     ]);
-    let runtime = HookRuntime::resolve(&set, Path::new("/tmp")).unwrap();
+    let runtime = HookRuntime::resolve_agent(&agent, Path::new("/tmp")).unwrap();
     assert_eq!(runtime.count(GgHookEvent::PreWrite), 2);
     assert_eq!(runtime.count(GgHookEvent::PreShell), 1);
     assert_eq!(runtime.count(GgHookEvent::PostWrite), 0);
     assert!(!runtime.has(GgHookEvent::AgentStop));
+}
+
+// --- Which of the two lists a hook belongs in --------------------------------
+
+/// The run's list takes the session events and only those. This is the half of the split an
+/// operator meets first — a `session-start` hook is what the configuration page offers — so it is
+/// asserted directly rather than implied by the refusals below.
+#[test]
+fn the_run_declares_the_session_events() {
+    let set = set_with(vec![
+        script_hook(GgHookEvent::SessionStart, "#!/bin/sh\ntrue"),
+        script_hook(GgHookEvent::SessionEnd, "#!/bin/sh\ntrue"),
+    ]);
+    let runtime = HookRuntime::resolve_session(&set, Path::new("/tmp")).unwrap();
+    assert!(runtime.has(GgHookEvent::SessionStart));
+    assert!(runtime.has(GgHookEvent::SessionEnd));
+}
+
+/// An agent event declared on the **run** is refused rather than quietly applied to every agent.
+///
+/// Applying it is exactly what gg used to do, and it is the behavior this split exists to end: a
+/// gate written for one profile silently held every profile, and the only way to tell was to read
+/// the agent identity out of the payload inside the script. Refusing names the fix instead.
+#[test]
+fn refuses_an_agent_event_declared_on_the_run() {
+    let set = set_with(vec![script_hook(GgHookEvent::PreWrite, "#!/bin/sh\ntrue")]);
+    let errors = HookRuntime::resolve_session(&set, Path::new("/tmp")).unwrap_err();
+    assert_eq!(errors.len(), 1);
+    assert!(errors[0].contains("pre-write"), "{}", errors[0]);
+    assert!(errors[0].contains("declared on an agent"), "{}", errors[0]);
+}
+
+/// A session event declared on an **agent** is refused too, and the error names the profile.
+///
+/// The symmetric case, and the one an operator is likelier to reach for: "run this when the session
+/// ends" is a natural thing to want on the root. gg could honor it there, but it would then fire
+/// once per profile in a run whose other profiles declared it too, and "once per run" is the whole
+/// meaning of the event.
+#[test]
+fn refuses_a_session_event_declared_on_an_agent() {
+    let mut agent = agent_with(vec![script_hook(
+        GgHookEvent::SessionEnd,
+        "#!/bin/sh\ntrue",
+    )]);
+    agent.name = "reviewer".to_string();
+    let errors = HookRuntime::resolve_agent(&agent, Path::new("/tmp")).unwrap_err();
+    assert_eq!(errors.len(), 1);
+    assert!(errors[0].contains("session-end"), "{}", errors[0]);
+    assert!(errors[0].contains("reviewer"), "{}", errors[0]);
+}
+
+/// Two profiles that name a hook the same thing materialize their scripts to **different files**.
+///
+/// [script_filename] is derived from the label, so before the per-site directory these two wrote
+/// the same path — and since a script is rewritten at every firing, each agent would have run
+/// whichever source the other wrote last. The failure mode is a hook that works until a second
+/// agent starts, which is the kind that reaches production.
+#[test]
+fn two_profiles_naming_a_hook_alike_do_not_share_a_script_file() {
+    let mut implementer = agent_with(vec![script_hook(GgHookEvent::PreShell, "#!/bin/sh\ntrue")]);
+    implementer.name = "implementer".to_string();
+    let mut reviewer = agent_with(vec![script_hook(GgHookEvent::PreShell, "#!/bin/sh\nfalse")]);
+    reviewer.name = "reviewer".to_string();
+
+    let one = HookRuntime::resolve_agent(&implementer, Path::new("/tmp")).unwrap();
+    let two = HookRuntime::resolve_agent(&reviewer, Path::new("/tmp")).unwrap();
+    assert_ne!(one.scripts_dir, two.scripts_dir);
+    // And neither collides with the run's own.
+    let session = HookRuntime::resolve_session(&set_with(Vec::new()), Path::new("/tmp")).unwrap();
+    assert_ne!(one.scripts_dir, session.scripts_dir);
+    assert_ne!(two.scripts_dir, session.scripts_dir);
 }
 
 // --- What each event is allowed to do ----------------------------------------

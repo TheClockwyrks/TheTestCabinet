@@ -709,7 +709,6 @@ export function NewRunPage() {
                       {ggOptions.map((o) => (
                         <option key={o.key} value={o.key} title={o.description}>
                           {o.name}
-                          {o.builtIn ? " (built-in)" : ""}
                         </option>
                       ))}
                     </select>

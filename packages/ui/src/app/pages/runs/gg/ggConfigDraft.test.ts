@@ -7,7 +7,6 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import { DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE } from "@test-cabinet/run-record/gg-system-prompt";
 import {
-  BUILT_IN_GG_CONFIGS,
   agentStates,
   bindModelSlots,
   blankAgentDraft,
@@ -1699,28 +1698,119 @@ describe("an agent's type", () => {
   });
 });
 
-describe("the built-in configurations", () => {
-  // A preset is offered as a ready-to-run configuration: pick it, bind a model, launch. So
-  // every one of them has to survive the editor's own save gate — which is also gg's launch
-  // validation, restated. The "everything on" presets used to be built from *every* catalogue
-  // capability, which quietly enabled `fsm` with no `states`: gg refuses that outright (an FSM
-  // agent has no turns of its own), so both presets failed to launch before their first turn,
-  // in a shape the editor would have refused an operator for authoring by hand.
-  it("are all launchable as offered", () => {
-    for (const config of BUILT_IN_GG_CONFIGS) {
-      expect(draftSaveError(config.draft), config.name).toBeNull();
-    }
+
+
+// A hook's event decides which of a configuration's two lists it belongs to: the run's
+// own (the two session events) or the agent's (the other eight). The draft holds both,
+// and both round-trips have to put every hook back where it came from — a hook that
+// migrated between lists on a save/load cycle would silently change which agents a gate
+// holds, which is exactly what the split exists to make explicit.
+describe("a configuration's two hook lists", () => {
+  const SESSION_HOOK = {
+    event: "session-end" as const,
+    action: { type: "command" as const, command: "./notify.sh" },
+    name: "report",
+  };
+  const AGENT_HOOK = {
+    event: "agent-stop" as const,
+    action: { type: "command" as const, command: "npm run build" },
+    name: "the build must pass",
+  };
+
+  it("saves the session events on the run and the rest on the agent", () => {
+    const base = emptyDraft();
+    const draft: GgConfigDraft = {
+      ...base,
+      hooks: [
+        {
+          id: "h-session",
+          event: "session-end",
+          kind: "command",
+          name: "report",
+          command: "./notify.sh",
+          cwd: "",
+          timeoutSecs: "",
+          output: "",
+          script: "",
+          source: "",
+        },
+      ],
+      agents: [
+        {
+          ...base.agents[0]!,
+          hooks: [
+            {
+              id: "h-agent",
+              event: "agent-stop",
+              kind: "command",
+              name: "the build must pass",
+              command: "npm run build",
+              cwd: "",
+              timeoutSecs: "",
+              output: "",
+              script: "",
+              source: "",
+            },
+          ],
+        },
+      ],
+    };
+
+    const set = capabilitySetFromDraft(draft, null);
+    expect(set.hooks).toEqual([SESSION_HOOK]);
+    expect(set.agents[0]!.hooks).toEqual([AGENT_HOOK]);
   });
 
-  it("do not enable a capability that needs authoring beside it", () => {
-    for (const config of BUILT_IN_GG_CONFIGS) {
-      const set = capabilitySetFromDraft(config.draft, null);
-      for (const agent of set.agents) {
-        expect(
-          agent.capabilities.some((cap) => cap.id === "fsm" && cap.enabled),
-          `${config.name} enables a machine it does not declare`,
-        ).toBe(false);
-      }
-    }
+  it("loads each list back into the place it was stored", () => {
+    const stored: GgCapabilitySet = {
+      agents: [
+        {
+          name: "Root",
+          capabilities: [],
+          modelId: "",
+          hooks: [AGENT_HOOK],
+        } as unknown as GgAgentConfig,
+      ],
+      hooks: [SESSION_HOOK],
+    } as unknown as GgCapabilitySet;
+
+    const draft = draftFromCapabilitySet(stored);
+    expect(draft.hooks.map((hook) => hook.event)).toEqual(["session-end"]);
+    expect(draft.agents[0]!.hooks.map((hook) => hook.event)).toEqual([
+      "agent-stop",
+    ]);
+    // Every hook's row id is unique across the whole draft: the two lists are rendered in
+    // one form, and a shared key would let React reuse a row between them.
+    const ids = [
+      ...draft.hooks.map((hook) => hook.id),
+      ...draft.agents.flatMap((agent) => agent.hooks.map((hook) => hook.id)),
+    ];
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("drops an agent's hooks when it is committed as a machine", () => {
+    const base = emptyDraft();
+    const machine: GgAgentDraft = {
+      ...base.agents[0]!,
+      mode: "fsm",
+      hooks: [
+        {
+          id: "h-agent",
+          event: "pre-write",
+          kind: "command",
+          name: "",
+          command: "true",
+          cwd: "",
+          timeoutSecs: "",
+          output: "",
+          script: "",
+          source: "",
+        },
+      ],
+    };
+    // A machine takes no turns: it never writes a file, so there is nothing for a
+    // pre-write gate to fire around. Committing is where the earlier type's hooks stop
+    // being held, exactly as its roster and prompt do.
+    expect(resetAgentForMode(machine).hooks).toEqual([]);
   });
 });

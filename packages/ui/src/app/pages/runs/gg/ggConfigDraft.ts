@@ -44,13 +44,13 @@ import {
   CAPABILITIES,
   GG_BUILTIN_HOOK_IDS,
   DEFAULT_CAP_IDS,
+  type GgHookScope,
   FILESYSTEM_CAP_IDS,
   FSM_CAP_ID,
   FSM_STATES_PARAM,
   LEGACY_FILESYSTEM_CAP_ID,
   LOOP_DETECTION_SPECS,
   MODULE_KINDS,
-  PRESET_CAP_IDS,
   PRIMARY_SLOT,
   RESPONSES_AS_CODE_CAP_ID,
   ROOT_AGENT,
@@ -58,6 +58,7 @@ import {
   SUBAGENT_SCOPES,
   capabilityAppliesToMode,
   capabilitySpec,
+  hookScopeOf,
   isModeCapability,
   type CapSpec,
   type GgAgentMode,
@@ -172,6 +173,11 @@ export interface GgAgentDraft {
   // Whether gg watches this agent's replies for a generation loop, and with what knobs.
   loopDetection: GgLoopDetectionDraft;
   subagents: GgSubagentDraft[];
+  // This agent's own [hooks](GgHook) — the eight events that fire because *this* agent
+  // wrote a file, ran a command, compacted, started or stopped. The run's own two
+  // (session start/end) are not here; they are the configuration's ([GgConfigDraft.hooks]),
+  // because they happen once per run rather than for any one agent.
+  hooks: GgHookDraft[];
 }
 
 // One agent's loop detection as the editor holds it: the switch as a boolean, and one
@@ -223,10 +229,13 @@ export interface GgConfigDraft {
   rootAgentId: string;
   modelSlots: GgModelSlotDraft[];
   limits: GgRunLimitsDraft;
-  // The run's [hooks](GgHook) — the commands and scripts gg runs at the ten points of a
-  // run's lifecycle. Run-level like the ceilings and for the same reason: a hook is the
-  // operator reaching into the run from outside it, not a feature the model is offered,
-  // so it is declared once rather than per profile.
+  // The run's own **session** hooks — the two events that fire once per run, before the
+  // root's first turn and after its last. Run-level like the ceilings, because there is
+  // no agent they could belong to: the run has not started when the first fires and has
+  // finished when the second does.
+  //
+  // The other eight events belong to the agent whose write, command, compaction, start
+  // or stop provoked them, and are held on that agent ([GgAgentDraft.hooks]).
   hooks: GgHookDraft[];
 }
 
@@ -425,9 +434,10 @@ export function resetAgentForMode(agent: GgAgentDraft): GgAgentDraft {
     if (capabilityAppliesToMode(cap, agent.mode)) continue;
     capabilities[cap.id] = defaultCapabilityDraft(cap);
   }
-  // A machine takes no turns, so it has no model to run, no prompt to render and no
-  // roster to spawn from. The form offers none of them under this type; committing is
-  // where what an earlier type held stops being held.
+  // A machine takes no turns, so it has no model to run, no prompt to render, no roster
+  // to spawn from and no lifecycle of its own to gate — it never writes a file, runs a
+  // command, compacts, or ends a session anybody hooked. The form offers none of them
+  // under this type; committing is where what an earlier type held stops being held.
   const worker = isFsmShell(agent)
     ? {
         modelSource: "model-slot" as const,
@@ -439,6 +449,7 @@ export function resetAgentForMode(agent: GgAgentDraft): GgAgentDraft {
         customInstructions: "",
         systemPromptTemplate: "",
         subagents: [],
+        hooks: [],
       }
     : {};
   return { ...agent, ...worker, capabilities };
@@ -506,6 +517,7 @@ export function blankAgentDraft(
     promptCacheTtl: "standard",
     loopDetection: blankLoopDetection(),
     subagents: [],
+    hooks: [],
   };
 }
 
@@ -550,46 +562,12 @@ export function unusedAgentName(agents: ReadonlyArray<GgAgentDraft>): string {
   return name;
 }
 
-// --- Built-in configurations ----------------------------------------------------
+// --- The starting configuration --------------------------------------------------
 //
-// Every operator starts with these, and they are read-only: a study is a sweep over
-// configurations, so the built-ins cover the useful arms — "full" (everything on),
-// "minimal" (the default set), "no-compaction" (full minus the compaction backstop),
-// and "shell-only" (an ablation extreme). None pins a model; the new-run form binds
-// the `primary` model slot per run.
-
-const FULL_PARAM_DEFAULTS: Record<string, Record<string, string>> = {
-  subagents: { maxParallel: "4", maxDepth: "3" },
-};
-
-/** A built-in configuration: a name, a one-line purpose, and its draft. */
-export interface BuiltInGgConfig {
-  name: string;
-  description: string;
-  draft: GgConfigDraft;
-}
-
-function builtIn(
-  name: string,
-  description: string,
-  enabledIds: ReadonlyArray<string>,
-  paramDefaults: Record<string, Record<string, string>> = {},
-): BuiltInGgConfig {
-  return {
-    name,
-    description,
-    // A built-in is a single root agent bound to a single `primary` slot — the starting
-    // point an operator duplicates and then grows extra agents onto.
-    //
-    // Every built-in seeds gg's own default ceilings (the two error ones; turns
-    // unbounded, runtime and cost off) and nothing more: the runtime and cost ceilings
-    // are the arms of an ablation, and a shared read-only configuration that quietly
-    // capped them would change what every study measured without saying so.
-    draft: singleAgentDraft(
-      blankAgentDraft(ROOT_AGENT, enabledIds, paramDefaults),
-    ),
-  };
-}
+// What a new configuration opens on. There is deliberately no catalogue of read-only
+// built-ins beside it: a shared configuration nobody can edit is one every operator's
+// first act is to duplicate, and the copies then drift from a "standard arm" that was
+// never standard for anyone. Every configuration on the list is the operator's own.
 
 // The capabilities that read the agent's **roster** — delegation, board dispatch and
 // succession. A profile enabling any of them and listing nobody is at best inert (no
@@ -640,30 +618,6 @@ function singleAgentDraft(agent: GgAgentDraft): GgConfigDraft {
   };
 }
 
-/** The read-only configurations shared by every operator, in offer order. */
-export const BUILT_IN_GG_CONFIGS: ReadonlyArray<BuiltInGgConfig> = [
-  builtIn(
-    "minimal",
-    "The default capability set — the launchable baseline.",
-    DEFAULT_CAP_IDS,
-  ),
-  builtIn(
-    "full",
-    "Every capability a single agent can run on its own, with the standard subagent params.",
-    PRESET_CAP_IDS,
-    FULL_PARAM_DEFAULTS,
-  ),
-  builtIn(
-    "no-compaction",
-    "Everything on except the compaction backstop — the context-overflow arm.",
-    PRESET_CAP_IDS.filter((id) => id !== "compaction"),
-    FULL_PARAM_DEFAULTS,
-  ),
-  builtIn("shell-only", "Shell and nothing else — the ablation extreme.", [
-    "shell",
-  ]),
-];
-
 /** A deep copy of an agent draft. */
 function cloneAgentDraft(agent: GgAgentDraft): GgAgentDraft {
   return {
@@ -680,13 +634,14 @@ function cloneAgentDraft(agent: GgAgentDraft): GgAgentDraft {
     ),
     disabledTools: [...agent.disabledTools],
     subagents: agent.subagents.map((s) => ({ ...s })),
+    hooks: agent.hooks.map((h) => ({ ...h })),
   };
 }
 
 /**
- * A deep copy of a draft, so applying a built-in never aliases its constant. Local ids
- * are copied as they are: a duplicate is the same configuration in a new editing
- * session, and the two are never live at once.
+ * A deep copy of a draft, so duplicating a configuration never aliases the one it came
+ * from. Local ids are copied as they are: a duplicate is the same configuration in a new
+ * editing session, and the two are never live at once.
  */
 export function cloneDraft(draft: GgConfigDraft): GgConfigDraft {
   return {
@@ -1358,6 +1313,9 @@ function agentDraftFromConfig(
     // as the standard one — the same reading gg gives it.
     promptCacheTtl: agent.promptCacheTtl ?? "standard",
     loopDetection: loopDetectionDraft(agent.loopDetection),
+    hooks: (agent.hooks ?? []).map((hook, index) =>
+      hookDraft(hook, `${agent.name}-${index}`),
+    ),
     // Filled in by [resolveAgentReferences], which needs every profile's id.
     subagents: [],
   });
@@ -1504,10 +1462,12 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
  * A stored hook as the editor holds it — every kind's fields present, with the ones this
  * hook's kind does not use left blank.
  */
-function hookDraft(hook: GgHook, index: number): GgHookDraft {
+function hookDraft(hook: GgHook, key: string | number): GgHookDraft {
   const action = hook.action;
   return {
-    id: `hook-${index}`,
+    // Unique across the whole draft, not just within one list: an agent's hooks and the
+    // run's are two lists in one form, and React would happily reuse a row between them.
+    id: `hook-${key}`,
     event: hook.event,
     kind: action.type,
     name: hook.name ?? "",
@@ -1523,11 +1483,18 @@ function hookDraft(hook: GgHook, index: number): GgHookDraft {
   };
 }
 
-/** A fresh hook: a command on the event an operator reaches for most. */
-export function blankHookDraft(): GgHookDraft {
+/**
+ * A fresh hook: a command on the event an operator reaches for most, within the scope it
+ * is being added to.
+ *
+ * The scope decides the default event because the two lists offer disjoint events: a hook
+ * added to an agent must open on one of that agent's, and one added to the run on one of
+ * the run's. Opening on the wrong half would make every new hook start life invalid.
+ */
+export function blankHookDraft(scope: GgHookScope = "agent"): GgHookDraft {
   return {
     id: localId("hook"),
-    event: "agent-stop",
+    event: scope === "session" ? "session-start" : "agent-stop",
     kind: "command",
     name: "",
     command: "",
@@ -2152,6 +2119,12 @@ function agentConfigFromDraft(
     }));
   const custom = agent.customInstructions.trim();
   const template = agent.systemPromptTemplate;
+  // Only this agent's own events. A session hook cannot reach here — the editor offers an
+  // agent only the eight agent events — but the filter is the contract's own rule rather
+  // than a trust in the form, and gg refuses a set that breaks it.
+  const agentHooks = hooksFromDraft(
+    agent.hooks.filter((hook) => hookScopeOf(hook.event) === "agent"),
+  );
   return {
     name: agent.name.trim(),
     capabilities,
@@ -2171,6 +2144,7 @@ function agentConfigFromDraft(
       : {}),
     ...loopDetectionKey(agent.loopDetection),
     ...(subagents.length ? { subagents } : {}),
+    ...(agentHooks.length ? { hooks: agentHooks } : {}),
   };
 }
 
@@ -2203,7 +2177,12 @@ export function capabilitySetFromDraft(
   const agentName = (agentId: string) => nameById.get(agentId) ?? agentId;
   const slotName = (slotId: string) => slotNameById.get(slotId) ?? slotId;
   const limits = runLimitsFromDraft(draft.limits);
-  const hooks = hooksFromDraft(draft.hooks);
+  // The run's half only — the two session events. Symmetric with the filter in
+  // [agentConfigFromDraft]: between them, every hook lands in exactly one of the two
+  // lists, whichever list the editor happened to hold it in.
+  const hooks = hooksFromDraft(
+    draft.hooks.filter((hook) => hookScopeOf(hook.event) === "session"),
+  );
   return {
     ...(preset ? { preset } : {}),
     agents: agentsInWireOrder(draft).map((agent) =>

@@ -14,6 +14,10 @@ import {
 } from "../../../client/context";
 import type { Model } from "../../../client/types";
 import { ComparisonEditPage } from "./ComparisonEditPage";
+import {
+  capabilitySetFromDraft,
+  emptyDraft,
+} from "../runs/gg/ggConfigDraft";
 
 // The page's app chrome reads contexts (gallery data, backdrop settings) that are
 // irrelevant to the form logic under test.
@@ -70,13 +74,22 @@ const MODEL = {
   releasedAt: null,
 } as unknown as Model;
 
+// The account's one saved gg configuration. There are no shared built-ins, so a gg arm
+// has something to point at only because an account saved something.
+const SAVED_GG_CONFIG = {
+  id: "cfg-minimal",
+  name: "minimal",
+  description: "the launchable baseline",
+  capabilitySet: capabilitySetFromDraft(emptyDraft(), "minimal"),
+};
+
 function backendValue(
   createComparison: ReturnType<typeof vi.fn>,
 ): BackendContextValue {
   return {
     client: {
       listModels: vi.fn().mockResolvedValue([MODEL]),
-      listGgConfigs: vi.fn().mockResolvedValue([]),
+      listGgConfigs: vi.fn().mockResolvedValue([SAVED_GG_CONFIG]),
       createComparison,
     },
     identity: null,
@@ -148,10 +161,10 @@ describe("ComparisonEditPage", () => {
   it("opens on one harness arm against one gg arm, each with its own model", async () => {
     renderPage();
     await settle();
-    // Row one is a harness; row two is a gg configuration, seeded with a built-in.
+    // Row one is a harness; row two is a gg configuration, seeded with the account's.
     expect(screen.getByLabelText("Harness")).toBeInTheDocument();
     const ggPicker = await screen.findByLabelText("gg configuration");
-    expect(ggPicker).toHaveValue("builtin:minimal");
+    expect(ggPicker).toHaveValue("saved:cfg-minimal");
   });
 
   it("saves a mixed comparison with a per-arm model and no global controls", async () => {
@@ -188,7 +201,7 @@ describe("ComparisonEditPage", () => {
     expect(harnessArm.modelId).toBeTruthy();
     expect(harnessArm.ggConfigId).toBeUndefined();
     // The gg arm carries the configuration key plus a model per declared slot.
-    expect(ggArm.ggConfigId).toBe("builtin:minimal");
+    expect(ggArm.ggConfigId).toBe("saved:cfg-minimal");
     expect(Object.values(ggArm.ggSlotModels)).toContain("openai/gpt-5.6-sol");
     expect(ggArm.harnessSlug).toBeUndefined();
     // Each arm's label distinguishes it by what it runs, model included.

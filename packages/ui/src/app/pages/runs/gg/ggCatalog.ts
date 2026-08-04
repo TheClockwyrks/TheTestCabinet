@@ -352,9 +352,9 @@ export interface CapSpec {
     hint?: string;
   }>;
   // The capability cannot be turned on by itself: it is inert — or, as with `fsm`,
-  // refused at launch — until a param nobody can guess is authored beside it. Such a
-  // capability is excluded from the everything-on presets (see `PRESET_CAP_IDS`),
-  // which exist to be launchable without further editing.
+  // refused at launch — until a param nobody can guess is authored beside it. The save
+  // gate names such a capability rather than letting a configuration be stored in a
+  // shape gg would refuse.
   requiresAuthoring?: boolean;
 }
 
@@ -464,6 +464,32 @@ export const HOOK_EVENTS: ReadonlyArray<{
     hint: "Once per run, after the root agent has finished. Cannot block and cannot insert — there is no session left to affect. This is where a run reports on itself.",
   },
 ];
+
+/**
+ * Which of a configuration's two hook lists an event belongs to.
+ *
+ * `"session"` is the run's own — the two events that happen once per run, declared on the
+ * configuration. `"agent"` is the other eight, which fire because a particular agent
+ * wrote, ran, compacted, started or stopped, and are declared on that agent.
+ *
+ * Mirrors `GgHookEvent::is_session` in `crates/core/src/gg.rs`; gg refuses a hook declared
+ * on the wrong side, so the editor must never offer one there.
+ */
+export type GgHookScope = "session" | "agent";
+
+/** The scope a hook event belongs to. */
+export function hookScopeOf(event: GgHookEvent): GgHookScope {
+  return event === "session-start" || event === "session-end"
+    ? "session"
+    : "agent";
+}
+
+/** The events a given scope may declare, in the order the editor lists them. */
+export function hookEventsForScope(
+  scope: GgHookScope,
+): ReadonlyArray<(typeof HOOK_EVENTS)[number]> {
+  return HOOK_EVENTS.filter((event) => hookScopeOf(event.value) === scope);
+}
 
 // The events a hook can actually stop, read off a table rather than off the `pre-`
 // prefix: `pre-compact` is a `pre-` event that deliberately cannot block, so the rule has
@@ -1725,15 +1751,6 @@ export const FSM_CAP: CapSpec = CAPABILITIES.find((c) => c.id === FSM_CAP_ID)!;
 export const DEFAULT_CAP_IDS = CAPABILITIES.filter((c) => c.defaultOn).map(
   (c) => c.id,
 );
-// Every capability an "everything on" preset may enable: all of them, minus the ones
-// that need something authored beside them to mean anything. A preset is offered as a
-// ready-to-run configuration, so it must not contain a capability whose bare form gg
-// refuses to launch — `fsm` with no `states` is exactly that, and a single-agent
-// preset has no other profiles for a machine's states to run anyway.
-export const PRESET_CAP_IDS = CAPABILITIES.filter(
-  (c) => !c.requiresAuthoring,
-).map((c) => c.id);
-
 // The module kinds whose capability still offers an [ownership](ownershipParam) control,
 // derived from the catalog rather than listed a second time — so a capability that gains
 // or loses the param carries this along with it instead of leaving a reader of a module

@@ -10,17 +10,40 @@ things everywhere:
 - **Block** the operation it precedes, and
 - **put text in front of the model**.
 
+A hook's **event** decides where it is declared. The two session events belong to the run;
+the other eight belong to the agent whose write, command, compaction, start or stop
+provoked them:
+
 ```jsonc
 {
+  // The run's own two ends.
   "hooks": [
     {
-      "event": "agent-stop",
-      "name": "the build must pass",
-      "action": { "type": "command", "command": "npm run build" }
+      "event": "session-end",
+      "name": "report",
+      "action": { "type": "command", "command": "./notify.sh" }
+    }
+  ],
+  "agents": [
+    {
+      "name": "Implementer",
+      "hooks": [
+        {
+          "event": "agent-stop",
+          "name": "the build must pass",
+          "action": { "type": "command", "command": "npm run build" }
+        },
+        {
+          "event": "pre-write",
+          "action": { "type": "built-in", "script": "refuse-empty-write" }
+        }
+      ]
     },
     {
-      "event": "pre-write",
-      "action": { "type": "built-in", "script": "refuse-empty-write" }
+      // A reviewer is held to different gates — its job is to *report* that the build
+      // does not pass, so the implementer's ending gate would be exactly wrong on it.
+      "name": "Reviewer",
+      "hooks": []
     }
   ]
 }
@@ -34,19 +57,36 @@ offered, an arm a study ablates. A hook is the opposite end of the telescope —
 is offered no tool for one, and cannot decline one; a blocked write comes back looking
 like a refusal from the harness, because that is what it is.
 
-So hooks are declared **once for the whole run**, beside the
-[execution ceilings](/gg/execution-limits/) rather than on an agent, and they never appear
-in the `cap.*` [query](/gg/analysis/query-language/) namespace. Several of the events are
-not an agent's at all — a session starting, a compaction — and the ones that are fire for
-*every* agent, so hanging them off one profile's capability list would have made "run this
-before every write" a thing an operator had to remember to repeat.
+They never appear in the `cap.*` [query](/gg/analysis/query-language/) namespace.
+
+## Where a hook is declared
+
+A hook's event decides which of two lists it belongs to, and nothing else does:
+
+- The two **session events** (`session-start`, `session-end`) fire once per run, around the
+  root's session as a whole. They are declared on the capability set itself, beside the
+  [execution ceilings](/gg/execution-limits/). Neither has an agent it could belong to: the
+  run has not started when the first fires, and has finished when the second does.
+- The other **eight** fire because a *particular agent* wrote a file, ran a command, filled
+  its window, started or tried to stop. They are declared on that agent.
+
+The agent half is per profile because the agents of a run are not interchangeable. "The
+build must pass before you may stop" is right for an implementer, pointless for a planner,
+and actively wrong for a reviewer whose whole job is to report that the build does *not*
+pass. Declared once for the run, every such gate would fire for every agent, and each
+script would have to work out from the agent identity in its payload whether it had been
+meant to fire at all — a filter you would write in a script instead of writing in the
+configuration.
+
+A hook declared in the other list's place **fails the launch** rather than being hoisted or
+pushed down. Both guesses silently change which agents a gate holds, and a gate that holds
+something other than what its author wrote is worse than no gate.
 
 This is also where the old `completion` capability went. Its validation commands were a
-gate on one event (an agent ending) expressed as a capability, which meant they applied to
-whichever profiles remembered to enable it and could express nothing but "run this,
-non-zero is a failure". As an [`agent-stop`](#agent-stop) command hook they are the same
-gate, spelled once, for every agent — and a run that wants more than an exit code can now
-reach for a script instead.
+gate on one event (an agent ending) expressed as a capability, which could express nothing
+but "run this, non-zero is a failure". As an [`agent-stop`](#agent-stop) command hook they
+are the same gate, on whichever profiles should be held to it — and a run that wants more
+than an exit code can now reach for a script instead.
 
 ## The events
 
@@ -99,11 +139,12 @@ Whatever the event, the JSON a script is handed carries who it is firing for:
 }
 ```
 
-A hook is a run-level declaration firing on per-agent events, so a script asked to decide
-about a write has no other way to know which of a dozen concurrent agents is writing — or
-whether that agent is working in an [isolated worktree](/gg/project-management/), where
-the path it is being shown means something different from the same path in the main tree.
-That is also why `path` is **absolute**.
+Knowing the *profile* is not knowing the *instance*: a profile can be running a dozen
+times at once, so a script asked to decide about a write has no other way to tell which of
+them is writing — or whether that instance is working in an
+[isolated worktree](/gg/project-management/), where the path it is being shown means
+something different from the same path in the main tree. That is also why `path` is
+**absolute**.
 
 `agentKind` is the **role the instance was dispatched in**, not its profile: the same
 profile implements an issue in one dispatch and reviews one in the next, and "block a
