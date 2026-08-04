@@ -28,6 +28,21 @@
   min-width: 0;
 }
 
+// The header's trailing controls, for a detail page whose action is more than a
+// single link — the gg configuration editor's Save (and, while an agent is open,
+// its Cancel / Save agent) plus the note saying why saving is refused. The auto
+// left margin keeps them at the right edge even once `.detailHeader` has wrapped
+// them onto their own line, where space-between has nothing left to push against.
+.detailActions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: t.$space-sm t.$space-md;
+  margin-left: auto;
+  min-width: 0;
+}
+
 // The plan/group name, styled like the other detail-page titles: accent with the
 // neon glow. Truncates rather than wrapping the header onto a second line.
 .detailTitle {

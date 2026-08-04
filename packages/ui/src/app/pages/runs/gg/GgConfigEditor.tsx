@@ -333,126 +333,101 @@ export function GgConfigEditor({
               Session hooks
               <HelpTip text="Commands and scripts gg runs at the run's two ends: before the root agent's first turn, and after its last. Session start may put text in front of the root; session end can neither block nor insert — it is where a run reports on itself. The model is never told a hook exists." />
             </p>
-            <p className={runExec.muted}>
-              These fire <strong>once per run</strong>. The hooks that fire
-              around a file write, a shell command, a compaction, or an
-              agent&rsquo;s own start and stop belong to the agent that provoked
-              them — configure those on the agent, under its Hooks tab.
-            </p>
             <GgHookList
               hooks={value.hooks}
               scope="session"
               readOnly={readOnly}
               onChange={(hooks: GgHookDraft[]) => onChange({ ...value, hooks })}
-              emptyNote="No session hooks. A run without them behaves exactly as it always has — this is the control arm every scripted run is read against."
+              emptyNote="No session hooks."
             />
           </section>
         </>
       )}
 
+      {/* The tab strip already names this section, so the slot list is the whole of
+          it — a heading repeating the tab's own word would only push the first slot
+          further down the form. */}
       {tab === "slots" && (
-        <>
-          <p
-            className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
-          >
-            Model slots
-          </p>
-          <p className={`${runExec.muted} ${gg.backdropNote}`}>
-            The models this configuration asks for at launch. Give each a name
-            the launch form can label, and an optional default. Agents bind to
-            these by name, which is what keeps one configuration reusable across
-            models.
-          </p>
-          <div className={gg.slotList}>
-            {value.modelSlots.map((modelSlot) => {
-              const unused = !referenced.has(modelSlot.id);
-              return (
-                <div key={modelSlot.id} className={gg.slotBlock}>
-                  <div className={gg.slotFields}>
-                    <label className={`${runExec.field} ${gg.slotNameField}`}>
-                      <span className={runExec.fieldLabel}>Slot name</span>
-                      <input
-                        className={runExec.input}
-                        type="text"
-                        value={modelSlot.name}
-                        disabled={readOnly}
-                        onChange={(e) =>
-                          updateModelSlot(modelSlot.id, {
-                            name: e.target.value,
-                          })
-                        }
-                        placeholder="e.g. primary"
-                      />
-                    </label>
-                    <label className={`${runExec.field} ${gg.slotModelField}`}>
-                      <span className={runExec.fieldLabel}>
-                        Default model (optional)
-                      </span>
-                      <ModelCombobox
-                        value={modelSlot.defaultModelId}
-                        onChange={(v) =>
-                          updateModelSlot(modelSlot.id, { defaultModelId: v })
-                        }
-                        models={models}
-                        harnessFamily={GG_MODEL_FAMILY}
-                        inputClassName={runExec.input}
-                        disabled={readOnly}
-                        placeholder="left to the launcher"
-                      />
-                    </label>
-                    {!readOnly && (
-                      <button
-                        type="button"
-                        className={gg.slotRemove}
-                        onClick={() => removeModelSlot(modelSlot.id)}
-                        aria-label={`Remove the ${modelSlot.name || "unnamed"} model slot`}
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-                  {unused && (
-                    <p className={gg.fieldError}>
-                      No agent binds this slot, so launching will never ask for
-                      it.
-                    </p>
+        <div className={gg.slotList}>
+          {value.modelSlots.map((modelSlot) => {
+            const unused = !referenced.has(modelSlot.id);
+            return (
+              <div key={modelSlot.id} className={gg.slotBlock}>
+                <div className={gg.slotFields}>
+                  <label className={`${runExec.field} ${gg.slotNameField}`}>
+                    <span className={runExec.fieldLabel}>Slot name</span>
+                    <input
+                      className={runExec.input}
+                      type="text"
+                      value={modelSlot.name}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        updateModelSlot(modelSlot.id, {
+                          name: e.target.value,
+                        })
+                      }
+                      placeholder="e.g. primary"
+                    />
+                  </label>
+                  <label className={`${runExec.field} ${gg.slotModelField}`}>
+                    <span className={runExec.fieldLabel}>
+                      Default model (optional)
+                    </span>
+                    <ModelCombobox
+                      value={modelSlot.defaultModelId}
+                      onChange={(v) =>
+                        updateModelSlot(modelSlot.id, { defaultModelId: v })
+                      }
+                      models={models}
+                      harnessFamily={GG_MODEL_FAMILY}
+                      inputClassName={runExec.input}
+                      disabled={readOnly}
+                      placeholder="left to the launcher"
+                    />
+                  </label>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      className={gg.slotRemove}
+                      onClick={() => removeModelSlot(modelSlot.id)}
+                      aria-label={`Remove the ${modelSlot.name || "unnamed"} model slot`}
+                    >
+                      ✕
+                    </button>
                   )}
                 </div>
-              );
-            })}
-            {value.modelSlots.length === 0 && (
-              <p className={`${runExec.muted} ${gg.backdropNote}`}>
-                No model slots. Every agent must then pin its own model here,
-                rather than being handed one at launch.
-              </p>
-            )}
-            {!readOnly && (
-              <button
-                type="button"
-                className={runExec.secondary}
-                onClick={addModelSlot}
-              >
-                + Add model slot
-              </button>
-            )}
-          </div>
-        </>
+                {unused && (
+                  <p className={gg.fieldError}>
+                    No agent binds this slot, so launching will never ask for
+                    it.
+                  </p>
+                )}
+              </div>
+            );
+          })}
+          {value.modelSlots.length === 0 && (
+            <p className={`${runExec.muted} ${gg.backdropNote}`}>
+              No model slots. Every agent must then pin its own model here,
+              rather than being handed one at launch.
+            </p>
+          )}
+          {!readOnly && (
+            <button
+              type="button"
+              className={runExec.secondary}
+              onClick={addModelSlot}
+            >
+              + Add model slot
+            </button>
+          )}
+        </div>
       )}
 
+      {/* As with the slots, the tab strip names this section; what an agent is and
+          what the root does are said by the per-agent view and the `root` badge on
+          the row that carries it, not by a paragraph above the list. */}
       {tab === "agents" && (
         <>
-          <p
-            className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
-          >
-            Agents
-          </p>
-          <p className={`${runExec.muted} ${gg.backdropNote}`}>
-            Each agent has its own type and — where its type is a worker&rsquo;s
-            — its capabilities, model, custom prompt, hooks, and the set of
-            agents it may spawn. Open one to configure it. The{" "}
-            <strong>root</strong> agent drives the run&rsquo;s top-level
-            session; make another one the root at any time.
-          </p>
           <div className={gg.slotList}>
             {value.agents.map((agent) => {
               const slotName = value.modelSlots.find(

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import type { GgConfigInput } from "@test-cabinet/run-record/gg";
 import { useAuth } from "../../../client/auth";
@@ -35,21 +35,16 @@ function snapshotOf(name: string, description: string, draft: GgConfigDraft) {
   });
 }
 
-// What the operator is told they would lose. Kept out of the handler so the confirm text
-// is one thing, said the same way wherever navigation is intercepted.
-const UNSAVED_CHANGES =
-  "This gg configuration has unsaved changes. Leave without saving them?";
-
 // The gg configuration editor (`/account/gg/new` and `/account/gg/:configId/edit`):
 // a configuration's name, its one-line purpose, and the capability set itself.
 // Save creates or updates and returns to the gg tab.
 //
-// The page has two modes, because the editor does: on the **configuration** it shows the
-// identity fields and the Save button, and while an **agent** is open it shows neither —
-// an agent is saved (or cancelled) back onto the configuration first, and only the
-// configuration itself is written to the account. That is also what keeps a
-// configuration-level complaint ("the `reviewer` agent defers to no declared slot") off
-// the screen while a different agent is being edited.
+// The page has two modes, because the editor does: on the **configuration** the header
+// carries Save configuration, and while an **agent** is open it carries that agent's own
+// Cancel / Save agent instead — an agent is saved (or cancelled) back onto the
+// configuration first, and only the configuration itself is written to the account. That
+// is also what keeps a configuration-level complaint ("the `reviewer` agent defers to no
+// declared slot") off the screen while a different agent is being edited.
 //
 // A configuration is deliberately test-case-free and need not bind a model: the New
 // run page supplies the case and binds the primary slot from its own model picker,
@@ -84,9 +79,10 @@ export function GgConfigEditPage() {
   const [agentSnapshot, setAgentSnapshot] = useState<GgConfigDraft | null>(
     null,
   );
-  // Whether the "you have unsaved changes" prompt is up, having intercepted the back
-  // control on an edited agent.
-  const [leavingAgent, setLeavingAgent] = useState(false);
+  // Which back control the "you have unsaved changes" prompt intercepted, or `null` when
+  // it is not up. One piece of state rather than one per control, because the two are
+  // mutually exclusive: the prompt asks about exactly the step being taken.
+  const [leaving, setLeaving] = useState<"agent" | "config" | null>(null);
 
   useEffect(() => {
     if (!backend || !token) {
@@ -168,18 +164,14 @@ export function GgConfigEditPage() {
   // the page's own back control (below) and a full-page navigation (here). A React Router
   // navigation triggered outside this page cannot be intercepted under a `BrowserRouter`
   // — there is no data router to block on — so the back control is deliberately the one
-  // in-app exit and is guarded directly.
+  // in-app exit, and it raises the same dialog an open agent's does. The browser's own
+  // prompt is only for the case no component can cover: the tab going away.
   useEffect(() => {
     if (!dirty) return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
-
-  const confirmLeave = useCallback(
-    () => !dirty || window.confirm(UNSAVED_CHANGES),
-    [dirty],
-  );
 
   // Whether the open agent has been edited since it was opened. Measured against the
   // banked draft rather than against the saved configuration, because this is the
@@ -202,7 +194,7 @@ export function GgConfigEditPage() {
     if (agentSnapshot) setDraft(agentSnapshot);
     setAgentSnapshot(null);
     setEditingAgentId(null);
-    setLeavingAgent(false);
+    setLeaving(null);
   }
   // Saving an agent keeps the edits already applied and returns to the configuration —
   // and commits its **type**: what the other types were configured with was scratch
@@ -221,7 +213,7 @@ export function GgConfigEditPage() {
     }));
     setAgentSnapshot(null);
     setEditingAgentId(null);
-    setLeavingAgent(false);
+    setLeaving(null);
   }
 
   // The back control beside the title, while an agent is open. Its parent is the
@@ -233,8 +225,16 @@ export function GgConfigEditPage() {
   // Cancel itself does not ask: it says what it does, and an operator who presses it has
   // already made the decision this dialog exists to collect.
   function backFromAgent() {
-    if (agentDirty) setLeavingAgent(true);
+    if (agentDirty) setLeaving("agent");
     else cancelAgent();
+  }
+
+  // The back control beside the title on the configuration itself, one step up to the
+  // list of configurations. It asks the same question the agent's does, through the same
+  // dialog: two different prompts for one question made the form read as two forms.
+  function backFromConfig() {
+    if (dirty) setLeaving("config");
+    else navigate(routes.accountGgConfigs());
   }
 
   async function onSave() {
@@ -262,25 +262,67 @@ export function GgConfigEditPage() {
   }
 
   const openAgent = draft.agents.find((a) => a.id === editingAgentId);
+
+  // The open view's commit controls, sat opposite the title. They belong in the header
+  // rather than under the form because the form is tabbed: an action parked below the
+  // last tab's content moves as the operator changes tab, and on a long tab it is off
+  // screen entirely. In the header it is in one place on every tab, and the view that
+  // owns it — the configuration, or the agent open on top of it — is named right beside
+  // it. Nothing is offered before the form exists: signed out or still loading, the
+  // header is the title alone.
+  const headerActions =
+    !token || loading ? null : openAgent ? (
+      <div className={styles.detailActions}>
+        {agentError && <span className={exec.muted}>{agentError}</span>}
+        <button type="button" className={exec.secondary} onClick={cancelAgent}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          className={exec.primary}
+          onClick={saveAgent}
+          disabled={agentError !== null}
+        >
+          Save agent
+        </button>
+      </div>
+    ) : (
+      <div className={styles.detailActions}>
+        {structuralError && (
+          <span className={exec.muted}>{structuralError}</span>
+        )}
+        <button
+          type="button"
+          className={exec.primary}
+          onClick={onSave}
+          disabled={!savable}
+        >
+          {busy
+            ? "Saving…"
+            : editing
+              ? "Save configuration"
+              : "Create configuration"}
+        </button>
+      </div>
+    );
+
   const header = (
     <header className={styles.detailHeader}>
       <div className={styles.detailTitleRow}>
         {/* Back goes up exactly one step, which is a different place depending on what
             is open: an agent's parent is the configuration it belongs to (an in-page
-            view), and the configuration's parent is the list of them (a route). */}
-        {openAgent ? (
-          <BackChevron
-            to={routes.accountGgConfigs()}
-            label={`Back to ${name.trim() || "the configuration"}`}
-            onBack={backFromAgent}
-          />
-        ) : (
-          <BackChevron
-            to={routes.accountGgConfigs()}
-            label="All gg configurations"
-            guard={confirmLeave}
-          />
-        )}
+            view), and the configuration's parent is the list of them (a route). Both
+            take that step through `onBack` rather than as a link, because both must ask
+            first when there is work to lose, and the dialog that asks answers long after
+            the click a link would have to allow or cancel on the spot. */}
+        <BackChevron
+          label={
+            openAgent
+              ? `Back to ${name.trim() || "the configuration"}`
+              : "All gg configurations"
+          }
+          onBack={openAgent ? backFromAgent : backFromConfig}
+        />
         <h1 className={styles.detailTitle}>
           {openAgent
             ? `${openAgent.name.trim() || "Agent"} — agent`
@@ -289,6 +331,7 @@ export function GgConfigEditPage() {
               : "New gg configuration"}
         </h1>
       </div>
+      {headerActions}
     </header>
   );
 
@@ -328,11 +371,12 @@ export function GgConfigEditPage() {
             models={models}
           />
 
-          {/* Raised by the back control on an edited agent. Saving from here is exactly
-              what the Save agent button does — including its refusal to commit an agent
-              that is not well-formed, which is why the reason is repeated in the dialog
-              rather than left on a button the operator can no longer see. */}
-          {leavingAgent && openAgent && (
+          {/* Raised by whichever back control was pressed with work to lose. One
+              component asks the question in both places: saving from here is exactly
+              what the header's own button does — including its refusal to commit
+              something that is not well-formed, which is why the reason is repeated in
+              the dialog rather than left on a button the operator can no longer see. */}
+          {leaving === "agent" && openAgent && (
             <UnsavedChangesDialog
               title={`Unsaved changes to ${openAgent.name.trim() || "this agent"}`}
               body="Going back to the configuration will leave this agent as it was when you opened it."
@@ -341,54 +385,29 @@ export function GgConfigEditPage() {
               saveBlockedReason={agentError}
               onSave={saveAgent}
               onDiscard={cancelAgent}
-              onCancel={() => setLeavingAgent(false)}
+              onCancel={() => setLeaving(null)}
             />
           )}
-
-          <div className={exec.actions}>
-            <div className={exec.actionsEnd}>
-              {editingAgentId ? (
-                <>
-                  {agentError && (
-                    <span className={exec.muted}>{agentError}</span>
-                  )}
-                  <button
-                    type="button"
-                    className={exec.secondary}
-                    onClick={cancelAgent}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className={exec.primary}
-                    onClick={saveAgent}
-                    disabled={agentError !== null}
-                  >
-                    Save agent
-                  </button>
-                </>
-              ) : (
-                <>
-                  {structuralError && (
-                    <span className={exec.muted}>{structuralError}</span>
-                  )}
-                  <button
-                    type="button"
-                    className={exec.primary}
-                    onClick={onSave}
-                    disabled={!savable}
-                  >
-                    {busy
-                      ? "Saving…"
-                      : editing
-                        ? "Save configuration"
-                        : "Create configuration"}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
+          {leaving === "config" && (
+            <UnsavedChangesDialog
+              title="Unsaved changes to this configuration"
+              body="Going back to the list of configurations will leave it as it was last saved."
+              saveLabel={
+                editing ? "Save configuration" : "Create configuration"
+              }
+              saveDisabled={!savable}
+              saveBlockedReason={structuralError}
+              // The dialog closes on the decision, not on the outcome: saving navigates
+              // to the list itself when it succeeds, and when it fails the page is left
+              // showing the error it reports rather than a modal sat on top of it.
+              onSave={() => {
+                setLeaving(null);
+                void onSave();
+              }}
+              onDiscard={() => navigate(routes.accountGgConfigs())}
+              onCancel={() => setLeaving(null)}
+            />
+          )}
         </>
       )}
     </PageLayout>

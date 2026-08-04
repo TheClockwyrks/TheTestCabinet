@@ -46,12 +46,17 @@ function backendValue(): BackendContextValue {
   } as unknown as BackendContextValue;
 }
 
+// Standing in for the list of configurations, so a test can tell that leaving the
+// editor actually left it rather than merely closing a dialog.
+const CONFIG_LIST = "the gg configurations list";
+
 function renderPage(path = "/account/gg/new") {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <BackendProvider value={backendValue()}>
         <Routes>
           <Route path="/account/gg/new" element={<GgConfigEditPage />} />
+          <Route path="/account/gg" element={<div>{CONFIG_LIST}</div>} />
         </Routes>
       </BackendProvider>
     </MemoryRouter>,
@@ -101,8 +106,13 @@ describe("GgConfigEditPage", () => {
     expect(screen.getByText("Session hooks")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("e.g. no-compaction")).toBeVisible();
 
+    // The Slots tab is the slot list itself — the tab strip names the section, so
+    // nothing repeats it above the first slot.
     openTab("Slots");
-    expect(screen.getByText("Model slots")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "+ Add model slot" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Model slots")).not.toBeInTheDocument();
 
     // The unremovable Root agent is listed, and capabilities are not on this view.
     openTab("Agents");
@@ -582,5 +592,105 @@ describe("going back from an open agent", () => {
     );
     openTab("Agents");
     expect(screen.getByText("Root")).toBeInTheDocument();
+  });
+});
+
+// The configuration's own back control leaves for the list of configurations, and asks
+// the same question an open agent's does — through the same dialog. Two prompts for one
+// question (a browser `confirm` here, a component dialog one step in) made a single form
+// read as two, and only one of them could offer "save and go" at all.
+describe("going back from the configuration", () => {
+  beforeEach(() => createGgConfig.mockClear());
+
+  // The back control on the configuration itself, which is a button rather than a link
+  // because leaving has to wait for the dialog's answer.
+  function backControl() {
+    return screen.getByRole("button", { name: "All gg configurations" });
+  }
+
+  it("leaves without asking when nothing was edited", async () => {
+    renderPage();
+    await screen.findByText("Run limits");
+
+    fireEvent.click(backControl());
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByText(CONFIG_LIST)).toBeInTheDocument();
+  });
+
+  it("asks before discarding an edited configuration, and keeps editing if told to", async () => {
+    renderPage();
+    await screen.findByText("Run limits");
+    fireEvent.change(screen.getByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "no-shell" },
+    });
+
+    fireEvent.click(backControl());
+    const dialog = screen.getByRole("alertdialog");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Keep editing" }),
+    );
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("e.g. no-compaction")).toHaveValue(
+      "no-shell",
+    );
+  });
+
+  it("discards the configuration when told to", async () => {
+    renderPage();
+    await screen.findByText("Run limits");
+    fireEvent.change(screen.getByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "no-shell" },
+    });
+
+    fireEvent.click(backControl());
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Discard changes",
+      }),
+    );
+    expect(screen.getByText(CONFIG_LIST)).toBeInTheDocument();
+    expect(createGgConfig).not.toHaveBeenCalled();
+  });
+
+  // The third way out the browser's own prompt could never offer: commit the work and
+  // leave, in one press.
+  it("saves and leaves when told to", async () => {
+    renderPage();
+    await screen.findByText("Run limits");
+    fireEvent.change(screen.getByPlaceholderText("e.g. no-compaction"), {
+      target: { value: "no-shell" },
+    });
+
+    fireEvent.click(backControl());
+    fireEvent.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", {
+        name: "Create configuration",
+      }),
+    );
+    await waitFor(() => expect(createGgConfig).toHaveBeenCalledTimes(1));
+    expect(createGgConfig.mock.calls[0]![0].name).toBe("no-shell");
+    expect(await screen.findByText(CONFIG_LIST)).toBeInTheDocument();
+  });
+
+  // A configuration that cannot be saved must not offer a Save that silently does
+  // nothing — the same refusal the agent dialog makes, said in the same place.
+  it("refuses to save a configuration that is not well-formed, and says why", async () => {
+    renderPage();
+    await screen.findByText("Run limits");
+    // A name is what makes a configuration savable; typing one and taking it away
+    // again leaves the form dirty *and* unsavable.
+    const nameField = screen.getByPlaceholderText("e.g. no-compaction");
+    fireEvent.change(nameField, { target: { value: "no-shell" } });
+    openTab("Agents");
+    fireEvent.click(
+      screen.getByRole("button", { name: /^Remove the .* agent$/ }),
+    );
+
+    fireEvent.click(backControl());
+    const dialog = screen.getByRole("alertdialog");
+    expect(
+      within(dialog).getByRole("button", { name: "Create configuration" }),
+    ).toBeDisabled();
+    expect(within(dialog).getByText(/at least one agent/i)).toBeInTheDocument();
   });
 });
