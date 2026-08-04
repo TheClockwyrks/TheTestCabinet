@@ -91,11 +91,6 @@ const SUMMARY_FIELD_ALIASES: Record<string, string> = {
   healing_drop_duplicate_program: "summary.healing.dropDuplicateProgram",
   healing_drop_imports: "summary.healing.dropImports",
   healing_unwrap_async: "summary.healing.unwrapAsync",
-  healing_strip_comment_only: "summary.healing.stripCommentOnly",
-  responses_not_a_program: "summary.healing.notAProgram",
-  responses_several_blocks: "summary.healing.severalBlocks",
-  responses_several_blocks_fenced: "summary.healing.severalBlocksFenced",
-  responses_several_blocks_bare: "summary.healing.severalBlocksBare",
 };
 
 /**

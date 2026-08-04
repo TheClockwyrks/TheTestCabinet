@@ -228,18 +228,14 @@ fn succession_gates(
     if declared_ending.is_some() {
         return Some(ToolOutcome::failed(
             ToolFailure::Refused,
-            format!(
-                "you already ended your session this turn, so there is nothing left to hand to \
-                 `{target}`; the ending stands."
-            ),
+            format!("this session already ended this turn; `{target}` was not handed anything"),
         ));
     }
     if let Some(taken) = declared.as_ref() {
         return Some(ToolOutcome::failed(
             ToolFailure::Refused,
             format!(
-                "you already handed this session to `{}` this turn; a turn makes one succession, \
-                 and the first one stands.",
+                "this session was already handed to `{}` this turn",
                 taken.profile_state(),
             ),
         ));
@@ -269,8 +265,8 @@ pub(super) fn handle_transition(
             return ToolOutcome::failed(
                 ToolFailure::InvalidArgument,
                 format!(
-                    "`{TRANSITION_STATE_TOOL}`: missing required argument `state`. The states you \
-                     may move to: {}.",
+                    "`{TRANSITION_STATE_TOOL}`: missing required argument `state`; expected one \
+                     of: {}",
                     position.legal_targets()
                 ),
             );
@@ -328,15 +324,14 @@ pub(super) fn handle_exec(
         return ToolOutcome::failed(
             ToolFailure::Unavailable,
             format!(
-                "`{EXEC_TOOL}` is not available inside a process: you are running the `{state}` \
-                 state of the `{fsm}` process, and where it goes next is the process's decision. \
-                 Use `{TRANSITION_STATE_TOOL}` to move it on.",
+                "`{EXEC_TOOL}` is not available inside a process (the `{state}` state of \
+                 `{fsm}`); use `{TRANSITION_STATE_TOOL}`",
                 state = position.state(),
                 fsm = position.fsm(),
             ),
         );
     }
-    let target = match resolve_roster_target(roster, &call.arguments, "continue as") {
+    let target = match resolve_roster_target(roster, &call.arguments) {
         Ok(target) => target,
         Err(refusal) => return refusal,
     };
@@ -381,11 +376,7 @@ pub(super) fn handle_fork(
         _ => {
             return ToolOutcome::failed(
                 ToolFailure::InvalidArgument,
-                format!(
-                    "`{FORK_TOOL}` needs a non-empty `prompt` — what the copy of you should do that \
-                     you will not. It inherits your whole conversation, so this is the difference \
-                     rather than a briefing."
-                ),
+                format!("`{FORK_TOOL}`: missing required argument `prompt`"),
             );
         }
     };
@@ -397,8 +388,7 @@ pub(super) fn handle_fork(
         return ToolOutcome::failed(
             ToolFailure::LimitExceeded,
             format!(
-                "cannot fork: you are at the maximum delegation depth ({}), so this work has to be \
-                 done in this session rather than in a copy of it.",
+                "at the maximum delegation depth ({})",
                 orch.config.max_depth
             ),
         );
@@ -426,7 +416,7 @@ pub(super) fn handle_fork(
         Err(err) => {
             return ToolOutcome::failed(
                 ToolFailure::IoError,
-                format!("cannot fork: your own agent profile could not be resolved again ({err})."),
+                format!("this agent's own profile could not be resolved ({err})"),
             );
         }
     };
@@ -539,16 +529,12 @@ pub(super) fn dispatch_forks(
 
 /// Resolve and validate the target agent of a succession call against `roster`, returning the
 /// profile name or the model-facing refusal that names the agents this one may reach.
-///
-/// `verb` is how the refusal describes the act ("continue as", "spawn"), so one resolver serves the
-/// delegation family and the succession family without either borrowing the other's vocabulary.
 // The `Err` is a `ToolOutcome` — the model-facing refusal — which is deliberately the same large
 // enum every tool returns; boxing it here alone would just add an unwrap at each call site.
 #[allow(clippy::result_large_err)]
 pub(super) fn resolve_roster_target(
     roster: &[GgSubagentRef],
     args: &Value,
-    verb: &str,
 ) -> Result<String, ToolOutcome> {
     let allowed = || {
         let names: Vec<String> = roster
@@ -578,14 +564,14 @@ pub(super) fn resolve_roster_target(
         Some(agent) => Err(ToolOutcome::failed(
             ToolFailure::InvalidArgument,
             format!(
-                "cannot {verb} `{agent}`: it is not one of the agents you may use. Pass one of: {}.",
+                "`agent`: unknown agent `{agent}`; expected one of: {}",
                 allowed()
             ),
         )),
         None => Err(ToolOutcome::failed(
             ToolFailure::InvalidArgument,
             format!(
-                "this call needs an `agent` — the name of the agent to {verb}. You may use: {}.",
+                "missing required argument `agent`; expected one of: {}",
                 allowed()
             ),
         )),

@@ -1497,14 +1497,15 @@ async fn a_program_that_finishes_ends_the_session_as_completed() {
     );
 }
 
-/// **A reply that is not a program is a failed turn, never a completion.**
+/// **Nothing but a program calling `finish` ends the session.**
 ///
 /// This is the round-1 failure inverted. Three of four real models narrated a finished task in prose
 /// and gg read that as "done", reporting a completed run over a workspace with no deliverable in it.
-/// Now prose is an error turn whose feedback tells the model exactly what to do instead, the run
-/// carries on, and the model's *next* program is what ends it.
+/// Now a reply of prose is compiled like any other — it fails, with the compiler's own diagnostic —
+/// an empty reply is an empty program that runs and does nothing, the run carries on through both,
+/// and the model's *next* program is what ends it.
 #[tokio::test]
-async fn a_reply_that_is_not_a_program_does_not_end_the_session() {
+async fn only_a_program_that_calls_finish_ends_the_session() {
     let dir = TempDir::new().unwrap();
     let (outcome, events, requests) = drive_recorded_code_run(
         &dir,
@@ -1530,7 +1531,7 @@ async fn a_reply_that_is_not_a_program_does_not_end_the_session() {
     assert_eq!(
         ended_with(&events),
         "completed",
-        "the session ended on the finishing program, not on either non-program reply"
+        "the session ended on the finishing program, not on either of the two before it"
     );
     assert_valid_conversations(&requests);
 
@@ -1538,55 +1539,44 @@ async fn a_reply_that_is_not_a_program_does_not_end_the_session() {
     assert_eq!(
         executions.len(),
         3,
-        "a turn with no program is still a code-shaped turn, and is still measured"
+        "every code-shaped turn is measured, including the two that produced nothing"
     );
-    for (ok, tool_calls, duration_ms, error) in &executions[..2] {
-        assert!(!ok, "a reply that was not a program is not a clean turn");
-        assert_eq!(*tool_calls, 0);
-        assert!(
-            duration_ms.is_none(),
-            "nothing ran, so there is no duration to report: {duration_ms:?}"
-        );
-        assert!(error.is_some(), "the shape is named");
-    }
+
+    // The prose reply reached the type-strip and did not survive it — and what the turn carries is
+    // the compiler's error, not a sentence of gg's about whether the text was "really" a program.
+    let (ok, tool_calls, duration_ms, error) = &executions[0];
+    assert!(!ok, "prose does not compile");
+    assert_eq!(*tool_calls, 0);
+    assert_eq!(
+        *duration_ms,
+        Some(0),
+        "the reply reached the transpile: {duration_ms:?}"
+    );
+    let error = error.as_deref().unwrap_or_default();
     assert!(
-        executions[0]
-            .3
-            .as_deref()
-            .is_some_and(|e| e.contains("prose")),
-        "the prose reply is reported as prose: {:?}",
-        executions[0].3
+        !error.contains("was prose"),
+        "the turn carried gg's verdict rather than the compiler's: {error}"
     );
-    assert!(
-        executions[1]
-            .3
-            .as_deref()
-            .is_some_and(|e| e.contains("empty")),
-        "the empty reply is reported as empty: {:?}",
-        executions[1].3
-    );
+
+    // The empty reply is an empty program: it compiles, it runs, and it does nothing.
+    let (ok, tool_calls, _, error) = &executions[1];
+    assert!(ok, "an empty program runs: {error:?}");
+    assert_eq!(*tool_calls, 0);
+
     assert_eq!(
         code_completions(&events),
         vec![None, None, Some(FINISHING_SUMMARY.to_string())],
         "only the program that called `finish` finished anything"
     );
 
-    // The feedback really reached the model: its second and third requests carry the instruction.
-    for (turn, messages) in requests.iter().enumerate().skip(1) {
-        assert!(
-            messages.iter().any(|message| message
-                .content
-                .as_deref()
-                .is_some_and(|text| text.contains("Your whole response must be TypeScript"))),
-            "turn {turn} was not told what a turn is supposed to look like"
-        );
-    }
+    // A program that put nothing in its own context earns the one notice a clean turn can produce,
+    // which is what keeps a model that has stopped writing programs from looping in silence.
     assert!(
-        requests[1].iter().any(|message| message
+        requests[2].iter().any(|message| message
             .content
             .as_deref()
-            .is_some_and(|text| text.contains("Call `harness.finish`."))),
-        "and it was pointed at its own ending call"
+            .is_some_and(|text| text.contains("put nothing in your context"))),
+        "the empty program's turn said nothing at all back"
     );
 }
 
@@ -2213,9 +2203,7 @@ async fn the_armed_healing_strategies_are_logged_and_recorded() {
         .find(|message| message.starts_with("response healing:"))
         .unwrap_or_else(|| panic!("no healing line on the launch log: {logs:?}"));
     assert_eq!(
-        line,
-        "response healing: strip-fences, drop-duplicate-program, drop-imports, unwrap-async, \
-         strip-comment-only",
+        line, "response healing: strip-fences, drop-duplicate-program, drop-imports, unwrap-async",
         "the log must name the armed set, and only the armed set"
     );
 
@@ -2227,7 +2215,6 @@ async fn the_armed_healing_strategies_are_logged_and_recorded() {
             GgHealingStrategy::DropDuplicateProgram,
             GgHealingStrategy::DropImports,
             GgHealingStrategy::UnwrapAsync,
-            GgHealingStrategy::StripCommentOnly,
         ],
         "the summary must carry the same resolved set the log named"
     );

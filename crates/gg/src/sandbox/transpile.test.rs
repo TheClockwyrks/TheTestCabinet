@@ -270,64 +270,48 @@ fn unbalanced_closers_do_not_mask_later_nesting() {
     ));
 }
 
-/// A program larger than one turn's worth of text is refused before it is parsed.
-///
-/// The size cap is the other half of the stack bound: the parser recurses at most once per token
-/// and a token is at least one byte, so capping the bytes is what caps the levels the bracket-free
-/// shapes (`!`, `.b`, `?:`) can ask for.
+/// **Length is never a refusal.** A program four times the size the sandbox used to cap at
+/// transpiles like any other, because a model's response is processed in full whatever it wrote.
 #[test]
-fn an_oversized_program_is_refused() {
-    let program = format!("return \"{}\";", "x".repeat(MAX_PROGRAM_BYTES));
-    let error = transpile_ts(&program).expect_err("an oversized program is refused");
-    let message = error.to_string();
-    assert!(matches!(error, TranspileError::Unsupported(_)), "{error:?}");
-    assert!(
-        message.contains(&format!("{} bytes long", program.len())),
-        "the message must name the size: {message}"
-    );
-    assert!(
-        message.contains(&MAX_PROGRAM_BYTES.to_string()),
-        "and the cap it exceeded: {message}"
-    );
+fn a_program_far_past_any_plausible_response_transpiles() {
+    let program = format!("return \"{}\";", "x".repeat(4 * HUNGRY_PROGRAM_BYTES));
+    let transpiled = transpile_ts(&program).expect("a very long program transpiles");
+    assert!(transpiled.js.contains("xxx"), "the literal was lost");
 }
 
-/// A program right at the size cap still transpiles, so the cap is a bound and not an off-by-one
-/// that rejects the largest legitimate program.
-#[test]
-fn a_program_at_the_size_cap_is_accepted() {
-    let padding = "x".repeat(MAX_PROGRAM_BYTES - "return \"\";".len());
-    let program = format!("return \"{padding}\";");
-    assert_eq!(program.len(), MAX_PROGRAM_BYTES);
-    transpile_ts(&program).expect("a program exactly at the cap transpiles");
-}
+/// The size each worst-case shape below is built at — 256 KiB, four times the cap that used to
+/// refuse a program outright, and far past what any provider's output ceiling admits in one reply.
+const HUNGRY_PROGRAM_BYTES: usize = 256 * 1024;
 
-/// **The deep stack is real**: the hungriest programs the two caps still admit are parsed rather
-/// than aborting the process.
+/// **The stack really does grow with the source**: the hungriest shapes there are, at a size the
+/// old fixed stack could not have survived, are parsed rather than aborting the process.
 ///
-/// The caps bound the *bracket* shapes; what they leave are the bracket-free recursions, which the
-/// nesting scan cannot see at all. Each of these is at the size cap and would abort on the 2 MiB
-/// stack the sandbox's blocking thread has — measured, prefix `!` aborts there at 18,803 levels and
-/// `1?1:` at 3,450 — so a green run of this test is the evidence that [`PARSER_STACK_BYTES`] is
-/// sized right for the caps *in this profile*. If it ever fails as an abort rather than as an
-/// assertion, the stack and the caps have drifted apart and one of them has to move.
+/// The nesting cap bounds the *bracket* shapes; what it leaves are the bracket-free recursions,
+/// which the nesting scan cannot see at all. Each of these would abort on the 2 MiB stack the
+/// sandbox's blocking thread has — measured, prefix `!` aborts there at 18,803 levels and `1?1:` at
+/// 3,450 — and each is four times the length the old 64 KiB cap allowed, so at the old *fixed*
+/// 256 MiB stack every one of them would have overflowed. A green run is therefore the evidence
+/// that [`parser_stack_bytes`]'s ratio is sized right *in this profile*, at a length nothing bounds.
+/// If it ever fails as an abort rather than as an assertion, the ratio and the parser's real
+/// appetite have drifted apart and the ratio has to move.
 #[test]
-fn the_hungriest_programs_the_caps_admit_still_transpile() {
-    // ~65,500 postfix non-null assertions: one byte per level, and the hungriest measured at
-    // ~1.2 KiB of stack for each of them.
-    let assertions = "!".repeat(MAX_PROGRAM_BYTES - "const a = 1;\nreturn a;".len());
+fn the_hungriest_programs_transpile_at_any_size() {
+    // ~262,100 postfix non-null assertions: one byte per level, and the hungriest measured at
+    // ~1.2 KiB of stack for each of them — ~315 MiB of stack for this one program alone.
+    let assertions = "!".repeat(HUNGRY_PROGRAM_BYTES - "const a = 1;\nreturn a;".len());
     transpile_ts(&format!("const a = 1;\nreturn a{assertions};"))
         .expect("a deep non-null chain transpiles");
 
     // The same length again as prefix `!`, which recurses through a different production.
-    let bangs = "!".repeat(MAX_PROGRAM_BYTES - "return 1;".len());
+    let bangs = "!".repeat(HUNGRY_PROGRAM_BYTES - "return 1;".len());
     transpile_ts(&format!("return {bangs}1;")).expect("a deep unary chain transpiles");
 
-    // ~16,300 nested conditionals, four bytes per level.
-    let ternaries = "1?1:".repeat((MAX_PROGRAM_BYTES - "return 1;".len()) / 4);
+    // ~65,500 nested conditionals, four bytes per level.
+    let ternaries = "1?1:".repeat((HUNGRY_PROGRAM_BYTES - "return 1;".len()) / 4);
     transpile_ts(&format!("return {ternaries}1;")).expect("a deep conditional chain transpiles");
 
-    // ~32,700 links of member access, which recurses once per `.b`.
-    let members = ".b".repeat((MAX_PROGRAM_BYTES - "const a = {};\nreturn a;".len()) / 2);
+    // ~131,000 links of member access, which recurses once per `.b`.
+    let members = ".b".repeat((HUNGRY_PROGRAM_BYTES - "const a = {};\nreturn a;".len()) / 2);
     transpile_ts(&format!("const a = {{}};\nreturn a{members};"))
         .expect("a deep member chain transpiles");
 }
@@ -480,7 +464,8 @@ fn hoisted_and_erased_declarations_after_a_return_are_not_reported() {
 }
 
 /// A long first dead statement is quoted at the same cap every other excerpt is, so a minified
-/// program cannot paste 64 KiB back into the model's context window.
+/// program — which nothing bounds the length of — cannot paste itself back into the model's context
+/// window.
 #[test]
 fn the_unreachable_excerpt_is_capped() {
     let long = "x".repeat(MAX_EXCERPT_CHARS * 2);

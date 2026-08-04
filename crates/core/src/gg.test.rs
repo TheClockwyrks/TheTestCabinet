@@ -1109,95 +1109,34 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
         finished
     );
 
-    // A reply that was several candidate programs: `durationMs` is absent (there is nothing to
-    // average into the run's efficiency), and the candidate count rides along with the shape it was
-    // counted in, as the instruction-following signal itself.
-    let not_a_program = GgTelemetryKind::CodeExecution {
+    // A reply that did not compile: `durationMs` is `0` because it reached the transpile and no
+    // further, and the error is the compiler's own.
+    let uncompiled = GgTelemetryKind::CodeExecution {
         ok: false,
         tool_calls: 0,
-        duration_ms: None,
-        error: Some("Your reply contained 7 separate code blocks.".to_string()),
+        duration_ms: Some(0),
+        error: Some("SyntaxError: redeclaration of const files".to_string()),
         finished: None,
         logs: Vec::new(),
         logs_suppressed: 0,
         compile_wait_ms: None,
-        healing: GgResponseHealing {
-            not_a_program: Some(GgNotAProgram::SeveralBlocks),
-            blocks: Some(7),
-            candidate_shape: Some(GgCandidateShape::Fenced),
-            ..GgResponseHealing::default()
-        },
+        healing: GgResponseHealing::default(),
     };
-    let value = serde_json::to_value(&not_a_program).expect("serialize");
+    let value = serde_json::to_value(&uncompiled).expect("serialize");
     assert_eq!(
         value,
         json!({
             "type": "code_execution",
             "ok": false,
             "toolCalls": 0,
-            "error": "Your reply contained 7 separate code blocks.",
-            "healing": {
-                "notAProgram": "several_blocks",
-                "blocks": 7,
-                "candidateShape": "fenced",
-            },
+            "durationMs": 0,
+            "error": "SyntaxError: redeclaration of const files",
         })
     );
     assert_eq!(
         serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
-        not_a_program
+        uncompiled
     );
-}
-
-/// **The two shapes are two different failures, and the record says which.** The same count, the
-/// same reason and two shapes: a model that fenced seven programs was told not to format its reply
-/// and formatted it anyway, while a model that pasted two programs together obeyed that rule and
-/// sent two answers. Without the shape on the wire an aggregate adds them into one number that
-/// describes neither, which is the signal responses-as-code exists to collect.
-#[test]
-fn a_several_programs_record_names_the_shape_it_counted() {
-    let bare = GgResponseHealing {
-        strategies: vec![GgHealingStrategy::DropDuplicateProgram],
-        not_a_program: Some(GgNotAProgram::SeveralBlocks),
-        blocks: Some(2),
-        candidate_shape: Some(GgCandidateShape::Bare),
-        did_not_converge: false,
-    };
-    assert_eq!(
-        serde_json::to_value(&bare).expect("serialize"),
-        json!({
-            "strategies": ["drop-duplicate-program"],
-            "notAProgram": "several_blocks",
-            "blocks": 2,
-            "candidateShape": "bare",
-        })
-    );
-    assert_eq!(
-        serde_json::from_value::<GgResponseHealing>(
-            serde_json::to_value(&bare).expect("serialize")
-        )
-        .expect("deserialize"),
-        bare
-    );
-
-    // The shape is a closed taxonomy of two, spelled snake_case like every other one here.
-    assert_eq!(
-        serde_json::to_value(GgCandidateShape::Fenced).unwrap(),
-        json!("fenced")
-    );
-    assert_eq!(
-        serde_json::to_value(GgCandidateShape::Bare).unwrap(),
-        json!("bare")
-    );
-
-    // A reply that ran carries neither fact, so the shape never claims a reply had candidates.
-    let ran = GgResponseHealing {
-        strategies: vec![GgHealingStrategy::StripFences],
-        ..GgResponseHealing::default()
-    };
-    let value = serde_json::to_value(&ran).expect("serialize");
-    assert!(value.get("candidateShape").is_none(), "{value}");
-    assert!(value.get("blocks").is_none(), "{value}");
 }
 
 /// A response that defeated the pipeline is byte-identical to a clean one on every other fact, so
@@ -1219,13 +1158,6 @@ fn response_healing_is_clean_only_when_every_fact_is_at_its_default() {
 
     assert!(
         !GgResponseHealing {
-            not_a_program: Some(GgNotAProgram::Prose),
-            ..GgResponseHealing::default()
-        }
-        .is_clean()
-    );
-    assert!(
-        !GgResponseHealing {
             strategies: vec![GgHealingStrategy::StripProse],
             ..GgResponseHealing::default()
         }
@@ -1241,20 +1173,14 @@ fn healing_strategy_ids_are_the_kebab_case_config_keys() {
         (GgHealingStrategy::StripFences, "strip-fences"),
         (GgHealingStrategy::StripProse, "strip-prose"),
         (GgHealingStrategy::DropImports, "drop-imports"),
+        (
+            GgHealingStrategy::DropDuplicateProgram,
+            "drop-duplicate-program",
+        ),
         (GgHealingStrategy::UnwrapAsync, "unwrap-async"),
-        (GgHealingStrategy::StripCommentOnly, "strip-comment-only"),
     ] {
         assert_eq!(serde_json::to_value(strategy).unwrap(), json!(id));
     }
-    // The not-a-program reasons stay snake_case, like every other closed taxonomy here.
-    assert_eq!(
-        serde_json::to_value(GgNotAProgram::ToolCallsOnly).unwrap(),
-        json!("tool_calls_only")
-    );
-    assert_eq!(
-        serde_json::to_value(GgNotAProgram::NoProgramBlock).unwrap(),
-        json!("no_program_block")
-    );
 }
 
 /// The breach the console groups thousands of runs by is a structured event, not a log line.
@@ -1369,10 +1295,6 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
         applications: 4,
         strip_fences: 3,
         strip_prose: 1,
-        not_a_program: 2,
-        several_blocks: 2,
-        several_blocks_fenced: 1,
-        several_blocks_bare: 1,
         enabled: vec![
             GgHealingStrategy::StripFences,
             GgHealingStrategy::StripProse,
@@ -1404,11 +1326,6 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
             "dropDuplicateProgram": 0,
             "dropImports": 0,
             "unwrapAsync": 0,
-            "stripCommentOnly": 0,
-            "notAProgram": 2,
-            "severalBlocks": 2,
-            "severalBlocksFenced": 1,
-            "severalBlocksBare": 1,
             "enabled": ["strip-fences", "strip-prose"],
         })
     );
@@ -1471,28 +1388,10 @@ fn the_disabled_healing_arm_serializes_as_a_present_empty_armed_set() {
     );
 }
 
-/// **The additive proof.** Every fact this record gained is optional to read: a `code_execution`
-/// written before the candidate shape was carried, and a healing rollup written before the shape
-/// counters and the armed set existed, both still deserialize — with the new members at their
-/// defaults rather than at a guess, because a count that was never taken is not one a re-read may
-/// invent.
+/// **The additive proof.** A healing rollup written before the armed set existed still
+/// deserializes, with the new member at its default rather than at a guess.
 #[test]
-fn healing_records_written_before_the_shape_split_still_deserialize() {
-    let event: GgTelemetryKind = serde_json::from_value(json!({
-        "type": "code_execution",
-        "ok": false,
-        "toolCalls": 0,
-        "healing": { "notAProgram": "several_blocks", "blocks": 7 },
-    }))
-    .expect("deserialize");
-    let GgTelemetryKind::CodeExecution { healing, .. } = &event else {
-        panic!("a code_execution deserialized as something else: {event:?}");
-    };
-    assert_eq!(healing.blocks, Some(7));
-    assert_eq!(healing.not_a_program, Some(GgNotAProgram::SeveralBlocks));
-    assert_eq!(healing.candidate_shape, None);
-    assert!(!healing.is_clean(), "the record still reads as unusual");
-
+fn a_healing_rollup_written_before_the_armed_set_still_deserializes() {
     let summary: GgSessionSummary = serde_json::from_value(json!({
         "terminalStatus": "completed",
         "agentsSpawned": 1,
@@ -1517,23 +1416,16 @@ fn healing_records_written_before_the_shape_split_still_deserialize() {
             "dropDuplicateProgram": 1,
             "dropImports": 0,
             "unwrapAsync": 0,
-            "stripCommentOnly": 0,
-            "notAProgram": 1,
-            "severalBlocks": 1,
         },
     }))
     .expect("deserialize");
     assert_eq!(summary.healing.healed, 1);
-    assert_eq!(summary.healing.several_blocks, 1);
-    assert_eq!(summary.healing.several_blocks_fenced, 0);
-    assert_eq!(summary.healing.several_blocks_bare, 0);
+    assert_eq!(summary.healing.drop_duplicate_program, 1);
     assert!(summary.healing.enabled.is_empty());
 
-    // Re-serializing writes the new members out rather than dropping them again, so a record read
-    // and re-written by this build is one this build could have produced.
+    // Re-serializing writes the new member out rather than dropping it again, so a record read and
+    // re-written by this build is one this build could have produced.
     let value = serde_json::to_value(&summary).expect("serialize");
-    assert_eq!(value["healing"]["severalBlocksFenced"], json!(0));
-    assert_eq!(value["healing"]["severalBlocksBare"], json!(0));
     assert_eq!(value["healing"]["enabled"], json!([]));
 }
 

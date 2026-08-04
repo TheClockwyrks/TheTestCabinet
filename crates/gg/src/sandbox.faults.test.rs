@@ -176,7 +176,9 @@ fn program_faults_are_reported_not_trapped() {
     let (outcome, _) = run("fs.readFile(\"a.ts\", { offset: -1 });");
     let error = program_error(&outcome);
     assert!(
-        error.message.contains("whole number between 0 and"),
+        error
+            .message
+            .contains("must be a whole number 0..4294967295"),
         "{}",
         error.message
     );
@@ -217,7 +219,7 @@ fn a_bad_return_value_is_explained_rather_than_lost() {
     let (outcome, _) = run("return Promise.resolve(1);");
     let error = program_error(&outcome);
     assert!(
-        error.message.contains("Promise") && error.message.contains("async"),
+        error.message.contains("Promise") && error.message.contains("synchronous"),
         "{}",
         error.message
     );
@@ -297,10 +299,8 @@ fn a_mistyped_argument_names_the_function_and_the_fault() {
     for fragment in [
         // Which call was wrong,
         "`addTask` failed (invalid-argument)",
-        // what the bindings actually said about it,
+        // and what the bindings actually said about it.
         "expected a string",
-        // and the one operation that answers the question it provokes.
-        "view.openDocsView(\"addTask\")",
     ] {
         assert!(error.message.contains(fragment), "{}", error.message);
     }
@@ -355,5 +355,11 @@ fn a_docs_lookup_of_a_non_function_is_refused_on_the_argument() {
     // A value of the wrong type entirely is named for what it is.
     let (outcome, _) = run("view.openDocsView(42);");
     let error = program_error(&outcome);
-    assert!(error.message.contains("not a number"), "{}", error.message);
+    assert!(
+        error
+            .message
+            .contains("expected a function or function name, got number"),
+        "{}",
+        error.message
+    );
 }

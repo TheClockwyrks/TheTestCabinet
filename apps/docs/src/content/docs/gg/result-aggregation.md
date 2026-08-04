@@ -47,11 +47,9 @@ worth calling out because they answer questions the rest cannot:
   it, or `"none"` for a run that hit none. It is distinct from terminal status because
   two ceilings share the status `limit_exceeded` while two others have statuses of their
   own, so this is the facet that answers "which ceiling?" directly.
-- **Thirteen [response-healing](/gg/response-healing/) metrics** — how many of a run's
-  replies had to be repaired before they could run, how many applications each strategy
-  made, how many replies were not programs at all (and, of those, how many offered several
-  programs — split by whether the reply fenced them or pasted them bare, which are two
-  different mistakes), and the computed `healing_rate`. Averaging that rate across a bucket
+- **Eight [response-healing](/gg/response-healing/) metrics** — how many of a run's
+  replies had to be repaired before they could run, how many applications each of the five
+  strategies made, and the computed `healing_rate`. Averaging that rate across a bucket
   grouped by primary model answers "which models still need their replies repaired?" in one
   query, which is exactly the instruction-following signal responses-as-code exists to
   measure.

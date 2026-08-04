@@ -102,8 +102,7 @@ async fn write_memory_surfaces_a_cap_breach_as_a_revise_or_evict_error() {
         )
         .await;
     assert!(!outcome.ok);
-    assert!(outcome.output.contains("per-memory limit"));
-    assert!(outcome.output.contains("concise"));
+    assert!(outcome.output.contains("(max 10)"), "{}", outcome.output);
     assert_eq!(store.lock().count(), 0);
 
     // Fill to the count cap, then the next write is refused with evict guidance.

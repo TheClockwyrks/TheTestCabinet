@@ -237,10 +237,24 @@ async fn long_output_is_tailed_and_written_to_the_file_pair() {
     );
     assert!(!data.body.contains("line-37"), "{}", data.body);
     // The note is part of the body, so a code program that prints the output sees where the rest
-    // went — not only the tool-calling prose around it.
-    assert!(data.body.contains("Output truncated"), "{}", data.body);
-    assert!(data.body.contains(".stdout"), "{}", data.body);
-    assert!(data.body.contains(".stderr"), "{}", data.body);
+    // went — not only the tool-calling prose around it. It says what was kept and where the whole of
+    // it is, and nothing else.
+    let note: Vec<&str> = data.body.lines().rev().take(3).collect();
+    assert!(
+        note[2].starts_with("[Output truncated: last 3 lines]"),
+        "{}",
+        data.body
+    );
+    assert!(
+        note[1].starts_with("stdout: ") && note[1].ends_with(".stdout"),
+        "{}",
+        data.body
+    );
+    assert!(
+        note[0].starts_with("stderr: ") && note[0].ends_with(".stderr"),
+        "{}",
+        data.body
+    );
     assert!(outcome.output.contains("line-40"), "{}", outcome.output);
 
     let (stdout, stderr) = written_pair(&dir);
@@ -373,11 +387,17 @@ async fn a_failed_write_falls_back_to_inline_output() {
     assert!(!data.truncated, "the whole output fits under the byte cap");
     assert!(data.body.contains("kept-1\n"), "{}", data.body);
     assert!(data.body.contains("kept-20\n"), "{}", data.body);
+    // The failure is disclosed as the one fact it is: where gg tried to write, and why it could not.
+    let note = data.body.lines().next_back().expect("a note");
     assert!(
-        data.body.contains("could not write"),
-        "the failure is disclosed: {}",
+        note.starts_with(&format!(
+            "[could not write output to {}: ",
+            blocked.join("shell").display()
+        )),
+        "{}",
         data.body
     );
+    assert!(note.ends_with(']'), "{}", data.body);
 }
 
 /// The tool's own description states the ceiling and the directory when offloading is on, so a model
@@ -431,7 +451,8 @@ fn the_definition_states_the_ceiling_when_offloading() {
 // ---------------------------------------------------------------------------
 
 /// A command that worked comes back as its exit code and the paths — not as its output, however
-/// short that output was.
+/// short that output was — and as nothing else: three lines of facts, with no sentence around them
+/// restating what the tool description already told the model.
 #[tokio::test]
 async fn a_successful_command_returns_only_its_exit_code() {
     let dir = TempDir::new().unwrap();
@@ -443,21 +464,26 @@ async fn a_successful_command_returns_only_its_exit_code() {
     .await;
 
     assert!(outcome.ok);
-    assert!(
-        outcome.output.starts_with("exit code: 0\n"),
-        "{}",
-        outcome.output
-    );
-    assert!(!outcome.output.contains("one"), "{}", outcome.output);
+    assert!(!outcome.output.contains("one\n"), "{}", outcome.output);
     let data = shell_data(&outcome);
     assert!(data.truncated);
-    assert!(data.body.contains("succeeded"), "{}", data.body);
-    // The output is withheld, not discarded: the pair holds the whole of it, and the body says so.
+    // The output is withheld, not discarded: the pair holds the whole of it, and the body names it.
+    let lines: Vec<&str> = data.body.lines().collect();
+    assert_eq!(lines.len(), 3, "{}", data.body);
+    assert_eq!(lines[0], "Exit code: 0", "{}", data.body);
     assert!(
-        data.body.contains(".stdout") && data.body.contains(".stderr"),
+        lines[1].starts_with("stdout: ") && lines[1].ends_with(".stdout"),
         "{}",
         data.body
     );
+    assert!(
+        lines[2].starts_with("stderr: ") && lines[2].ends_with(".stderr"),
+        "{}",
+        data.body
+    );
+    // The exit code is stated once, by the body itself — the tool-calling header would repeat it,
+    // and a code program that prints the body would otherwise never see it at all.
+    assert_eq!(outcome.output, data.body, "{}", outcome.output);
     assert_eq!(written_pair(&dir).0, "one\ntwo\n");
 }
 

@@ -141,8 +141,8 @@ async fn create_epic_requires_a_three_to_six_letter_prefix() {
         tool.invoke(epic_args("xy"), &ctx)
             .await
             .output
-            .contains("AUTH-1"),
-        "the refusal shows what a prefix is for"
+            .contains("`xy`"),
+        "the refusal names the value it rejected"
     );
     assert_eq!(store.lock().unwrap().epic_count(), 0);
 }

@@ -31,10 +31,11 @@
 //!
 //! # A top-level module, not part of the sandbox
 //!
-//! This runs *before* the sandbox and often *instead* of it: a response classified as
-//! [not a program](HealingVerdict::NotAProgram) never touches the wasm engine at all. So the tree
-//! reads as the pipeline does — `healing.rs` (text) → `sandbox/transpile.rs` (syntax) →
-//! `sandbox/engine.rs` (execution).
+//! This runs *before* the sandbox, and only ever hands it text. It never decides whether a reply
+//! "is a program" — that question belongs to the type-strip, which answers it with a located
+//! compiler diagnostic rather than with gg's opinion of the model's prose. So the tree reads as the
+//! pipeline does — `healing.rs` (text) → `sandbox/transpile.rs` (syntax) → `sandbox/engine.rs`
+//! (execution), with every reply travelling the whole way.
 //!
 //! Nothing here does I/O, reads a clock, allocates a `Store`, or is `async`; its only imports are
 //! `serde_json::Value` and the two capability types the resolver reads. Two things follow. Every
@@ -64,28 +65,24 @@ pub enum HealingStrategy {
     /// Remove explanatory lines from before and after the program body.
     StripProse,
     /// Delete an exact repeated trailing copy of the program — the fence-free shape of a model that
-    /// sent the same program twice — and classify the reply that is two *different* programs.
+    /// sent the same program twice.
     DropDuplicateProgram,
     /// Remove `import`/`require` statements for a tool surface that is already in scope.
     DropImports,
     /// Unwrap an `async` wrapper around the whole program and delete the `await`s it implied.
     UnwrapAsync,
-    /// Classify a reply that is nothing but comments as not a program, rather than running it to a
-    /// silent success.
-    StripCommentOnly,
 }
 
 impl HealingStrategy {
     /// Every strategy, in the order [`heal`] applies them — which is also the order the capability's
     /// config table, the docs page and the session summary list them in, so those four listings
     /// cannot drift apart.
-    pub const ALL: [HealingStrategy; 6] = [
+    pub const ALL: [HealingStrategy; 5] = [
         Self::StripFences,
         Self::StripProse,
         Self::DropDuplicateProgram,
         Self::DropImports,
         Self::UnwrapAsync,
-        Self::StripCommentOnly,
     ];
 
     /// The strategy's stable id — the one spelling, in kebab-case.
@@ -96,7 +93,6 @@ impl HealingStrategy {
             Self::DropDuplicateProgram => "drop-duplicate-program",
             Self::DropImports => "drop-imports",
             Self::UnwrapAsync => "unwrap-async",
-            Self::StripCommentOnly => "strip-comment-only",
         }
     }
 
@@ -121,7 +117,6 @@ pub struct HealingConfig {
     drop_duplicate_program: bool,
     drop_imports: bool,
     unwrap_async: bool,
-    strip_comment_only: bool,
 }
 
 impl Default for HealingConfig {
@@ -134,7 +129,6 @@ impl Default for HealingConfig {
             drop_duplicate_program: true,
             drop_imports: true,
             unwrap_async: true,
-            strip_comment_only: true,
         }
     }
 }
@@ -142,17 +136,14 @@ impl Default for HealingConfig {
 impl HealingConfig {
     /// Every strategy off — the master switch's arm, and the ablation's floor.
     ///
-    /// It does not disable [`heal`] itself. An [empty](NotAProgramReason::Empty) reply, and one
-    /// carrying [only tool calls](NotAProgramReason::ToolCallsOnly), are still not programs under
-    /// this arm: reading an empty string as "nothing to run" is not a repair, it is reading it
-    /// correctly.
+    /// [`heal`] still runs under it and still canonicalises; it simply repairs nothing, so the reply
+    /// reaches the type-strip exactly as the model sent it.
     pub const OFF: Self = Self {
         strip_fences: false,
         strip_prose: false,
         drop_duplicate_program: false,
         drop_imports: false,
         unwrap_async: false,
-        strip_comment_only: false,
     };
 
     /// Whether `strategy` is armed.
@@ -163,7 +154,6 @@ impl HealingConfig {
             HealingStrategy::DropDuplicateProgram => self.drop_duplicate_program,
             HealingStrategy::DropImports => self.drop_imports,
             HealingStrategy::UnwrapAsync => self.unwrap_async,
-            HealingStrategy::StripCommentOnly => self.strip_comment_only,
         }
     }
 
@@ -211,7 +201,6 @@ impl HealingConfig {
             HealingStrategy::DropDuplicateProgram => &mut self.drop_duplicate_program,
             HealingStrategy::DropImports => &mut self.drop_imports,
             HealingStrategy::UnwrapAsync => &mut self.unwrap_async,
-            HealingStrategy::StripCommentOnly => &mut self.strip_comment_only,
         };
         *field = on;
     }
@@ -400,19 +389,11 @@ pub const MAX_PASSES: usize = 4;
 /// What one healing pass produced.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Healed {
-    /// The text to hand the [sandbox](crate::sandbox) — the healed program when the
-    /// verdict is [`Program`](HealingVerdict::Program), and the text as it stood when classification
-    /// stopped otherwise (which the loop must **not** run).
+    /// The text to hand the [sandbox](crate::sandbox): the healed program, which is always run.
     pub program: String,
-    /// Whether what came back is a program at all.
-    pub verdict: HealingVerdict,
     /// Every strategy application, in application order. A strategy may appear more than once (two
     /// nested fences are two applications), which is what makes "how many times did it fire" a count
     /// rather than a flag.
-    ///
-    /// Populated on **both** verdicts: a response whose fence was stripped and whose remainder
-    /// turned out to be comments only was both repaired and refused, and the model must be told
-    /// both.
     pub applied: Vec<HealingApplication>,
     /// Whether the pipeline failed to reach a fixpoint within [`MAX_PASSES`] and every repair was
     /// therefore discarded.
@@ -427,11 +408,8 @@ pub struct Healed {
 impl Healed {
     /// Whether the program that will run differs from the response the model sent — the metric's
     /// definition of "healed".
-    ///
-    /// Deliberately narrower than `!applied.is_empty()`: a response that was only *classified* was
-    /// not healed, because nothing ran.
     pub fn rewritten(&self) -> bool {
-        matches!(self.verdict, HealingVerdict::Program) && !self.applied.is_empty()
+        !self.applied.is_empty()
     }
 
     /// The strategies applied, in order and with repeats — what the telemetry carries.
@@ -440,161 +418,6 @@ impl Healed {
             .iter()
             .map(|application| application.strategy)
             .collect()
-    }
-}
-
-/// Whether a response is (or was healed into) something to run.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HealingVerdict {
-    /// Run it.
-    Program,
-    /// Do not run it, and tell the model why.
-    NotAProgram(NotAProgramReason),
-}
-
-/// Why a response is not a program.
-///
-/// Each carries its own model-facing sentence ([`message`](Self::message)) and its own
-/// operator-facing one ([`short`](Self::short)), so a reason and its wording cannot drift apart.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NotAProgramReason {
-    /// Nothing but whitespace. One of the two reasons **no** configuration can turn off.
-    Empty,
-    /// No text at all, but the response carried native tool calls — a reflex some providers push
-    /// even when no tools are offered. The other ungated reason: telling a model that answered with
-    /// tool calls that its reply was empty describes something it did not do.
-    ToolCallsOnly,
-    /// Prose only: nothing in the reply was code.
-    ///
-    /// Reached two ways, both producing this one reason and one message:
-    /// [`strip-prose`](HealingStrategy::StripProse) finding every line certainly prose, and — the
-    /// route that actually fires on real replies — a transpile failure over a source with no
-    /// code-shaped line, which the loop classifies with [`contains_code`].
-    Prose,
-    /// Comments and whitespace only. Transpiles cleanly into a program that does nothing, which is
-    /// why it has to be caught here instead.
-    CommentOnly,
-    /// The response is fenced blocks, none of which gg reads as a program.
-    NoProgramBlock,
-    /// The response offered more than one program, so none of them ran.
-    ///
-    /// Two shapes reach it, and they are the same mistake made two ways — see [`CandidateShape`].
-    SeveralBlocks {
-        /// How many **candidate programs** the response offered — the instruction-following signal
-        /// itself, and the same measurement in both shapes so the two are comparable: the candidate
-        /// blocks for a [fenced](CandidateShape::Fenced) reply, the
-        /// [redeclaration-delimited segments](redeclaration_segments) for a
-        /// [bare](CandidateShape::Bare) one, which is a lower bound and never an over-count.
-        blocks: usize,
-        /// How they were presented, which is all that differs between them.
-        shape: CandidateShape,
-    },
-}
-
-/// How a reply presented the several programs it offered.
-///
-/// The distinction exists first for the model's sake: the two shapes need different words. Telling a
-/// model that sent no fence at all that its reply "contained 2 code blocks" describes something it
-/// did not write, and a model cannot correct a mistake it does not recognise — which is the whole
-/// lesson of the round that produced this type.
-///
-/// It reaches the contract as
-/// [`GgCandidateShape`](test_cabinet_core::gg::GgCandidateShape) for a second reason: the two are
-/// different instruction-following failures — still formatting a reply that was to carry no
-/// formatting, against sending two answers in one turn — and an aggregate that could not tell them
-/// apart would report one number describing neither.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CandidateShape {
-    /// Several fenced blocks, each of which could have been the program.
-    Fenced,
-    /// No fences at all: one program pasted after another, which the top level of a single program
-    /// cannot be — the second copy redeclares what the first already declared.
-    Bare,
-}
-
-impl NotAProgramReason {
-    /// The sentence the **model** is shown, as the body of the not-a-program feedback.
-    ///
-    /// Each one says the same three things in its own terms: what the reply was, that nothing ran,
-    /// and that nothing changed — because the failure mode this whole verdict exists to break is a
-    /// model reasoning over work it believes it did.
-    pub fn message(&self) -> String {
-        match self {
-            Self::Empty => {
-                "Your reply was empty, so there was nothing to run and nothing changed.".to_string()
-            }
-            Self::ToolCallsOnly => "Your reply requested tool calls and contained no \
-                 text. This run offers no tool calls at all — every tool is a function you call \
-                 from inside a program — so nothing ran and nothing changed."
-                .to_string(),
-            Self::Prose => {
-                "Your reply was prose, not a program: there was nothing in it to run, and nothing \
-                 changed."
-                    .to_string()
-            }
-            Self::CommentOnly => {
-                "Your reply contained only comments, so there was nothing to run and nothing \
-                 changed."
-                    .to_string()
-            }
-            Self::NoProgramBlock => {
-                "Your reply contained no TypeScript to run — only fenced blocks that are not read \
-                 as a program. Your whole reply is the program: send the code itself, with nothing \
-                 around it."
-                    .to_string()
-            }
-            Self::SeveralBlocks {
-                blocks,
-                shape: CandidateShape::Fenced,
-            } => format!(
-                "Your reply contained {blocks} separate code blocks. Your whole reply is the \
-                 program, so gg cannot know which of them you meant — none of them ran, and \
-                 nothing changed."
-            ),
-            Self::SeveralBlocks {
-                blocks,
-                shape: CandidateShape::Bare,
-            } => format!(
-                "Your reply is at least {blocks} separate programs pasted one after another: it \
-                 declares the same name more than once at its top level, which one program cannot \
-                 do. gg cannot know which of them you meant, so nothing ran and nothing changed. \
-                 Send exactly one program: if you drafted several, choose one and delete the rest."
-            ),
-        }
-    }
-
-    /// The clause an **operator** reads — in the turn's `CodeExecution` error and in the run's
-    /// stream. Lower case and un-terminated, because it is embedded in a longer sentence.
-    pub fn short(&self) -> String {
-        match self {
-            Self::Empty => "the reply was empty, so there was no program to run".to_string(),
-            Self::ToolCallsOnly => {
-                "the reply carried native tool calls and no text, so there was no program to run"
-                    .to_string()
-            }
-            Self::Prose => {
-                "the reply was prose, not a program, so there was nothing to run".to_string()
-            }
-            Self::CommentOnly => {
-                "the reply contained only comments, so there was nothing to run".to_string()
-            }
-            Self::NoProgramBlock => {
-                "the reply contained no block that reads as a program".to_string()
-            }
-            Self::SeveralBlocks {
-                blocks,
-                shape: CandidateShape::Fenced,
-            } => {
-                format!("the reply contained {blocks} separate code blocks, so none of them ran")
-            }
-            Self::SeveralBlocks {
-                blocks,
-                shape: CandidateShape::Bare,
-            } => format!(
-                "the reply was at least {blocks} programs pasted one after another, redeclaring a \
-                 top-level name, so nothing ran"
-            ),
-        }
     }
 }
 
@@ -633,8 +456,6 @@ pub enum HealingDetail {
     },
     /// An exact repeated trailing copy of the program was deleted.
     DuplicateProgram,
-    /// The response was found to be two different programs — a classification, never a rewrite.
-    SeveralPrograms,
     /// Whole `import`/`require` statements were removed.
     Imports {
         /// How many lines went.
@@ -647,10 +468,6 @@ pub enum HealingDetail {
         /// How many `await` tokens were deleted with it.
         awaits: usize,
     },
-    /// The response was found to be comments only — a classification, never a rewrite.
-    CommentOnly,
-    /// The response was found to be prose only — a classification, never a rewrite.
-    ProseOnly,
 }
 
 /// How a fenced block ended — the three shapes measured in round 1.
@@ -675,110 +492,61 @@ pub enum AsyncWrapper {
     Iife,
 }
 
-/// Heal one model response into the program gg will run, or classify it as not a program at all.
+/// Heal one model response into the program gg will run.
 ///
 /// Total and pure: it never panics, performs no I/O, reads no clock, and returns a [`Healed`] for
 /// every input including the empty string.
 ///
-/// `had_tool_calls` is whether the model's response carried native tool calls the code path ignores
-/// — the one fact about a response that is not in its text. Without it a model that answers with
-/// tool calls and no text is told its reply was empty, which is not what it did.
+/// It asks **no** question about whether the reply is a program. Every reply that comes in goes
+/// back out as text for the [type-strip](crate::sandbox) to compile: an empty reply becomes an
+/// empty program that runs and does nothing, a reply of comments becomes a program that runs and
+/// does nothing, and a reply that is two programs pasted together fails to compile with the
+/// redeclaration error the compiler itself reports. That feedback comes from a compiler rather than
+/// from gg's reading of the model's text, which is the whole point: healing repairs shapes it can
+/// prove are repairable, and judges nothing.
 ///
 /// # The pipeline
 ///
 /// ```text
-/// trim  ->  [ strip-fences -> strip-prose -> drop-imports -> unwrap-async ]*  ->  strip-comment-only
-///               ^                                                        |
-///               +--------------------- repeat until a pass applies nothing +
+/// trim  ->  [ strip-fences -> strip-prose -> drop-duplicate-program
+///             -> drop-imports -> unwrap-async ]*
+///               ^                            |
+///               +--- repeat until a pass applies nothing +
 /// ```
 ///
 /// Fences first, because until the wrapper is off, "is this line prose?" and "is this line an
-/// import?" are questions about the wrong text. Prose before imports and async, because a leading
-/// `Here is the program:` is exactly what makes `unwrap-async` decline. Imports before async,
-/// because the same decline fires on a leading `import` line — one strategy's output enabling
-/// another's match is the reason this is a fixpoint rather than a list. Comment-only last, because
-/// it classifies whatever survived. [`HealingStrategy::ALL`] **is** this order.
-///
-/// A [`NotAProgram`](HealingVerdict::NotAProgram) verdict **short-circuits** immediately: no later
-/// strategy runs, so [`Healed::program`] is exactly "the text as it stood when classification
-/// stopped", which is what its documentation promises. Without that rule `strip-fences` could
-/// classify a response and `strip-prose` could then edit the very text the verdict describes.
+/// import?" are questions about the wrong text. Prose before duplicates, so the two copies of a
+/// program are adjacent when they are compared. Duplicates before imports and async, so a doubled
+/// reply is halved before either of those looks at it. Imports before async, because a leading
+/// `import` line is exactly what makes `unwrap-async` decline — one strategy's output enabling
+/// another's match is the reason this is a fixpoint rather than a list. [`HealingStrategy::ALL`]
+/// **is** this order.
 ///
 /// If the fixpoint is not reached within [`MAX_PASSES`], **every repair is discarded**, the response
 /// is returned as it was sent, and [`did_not_converge`](Healed::did_not_converge) says so. That
 /// keeps idempotence unconditional and keeps the honesty invariant intact: gg either produces a
 /// fixpoint it can explain, or it changes nothing and reports that it could not.
-pub fn heal(reply: &str, had_tool_calls: bool, config: &HealingConfig) -> Healed {
+pub fn heal(reply: &str, config: &HealingConfig) -> Healed {
     // Canonicalisation, not repair: a byte-order mark, blank lines around the reply and trailing
     // whitespace do not change what a program is, so there is no contract violation here to
     // disclose and nothing to count. It is therefore deliberately NOT an application, which is what
     // `Healed::rewritten` turns on.
     let original = trim_reply(reply);
 
-    if original.is_empty() {
-        // The two verdicts no configuration can turn off. Reading an empty reply as "not a program"
-        // is not a repair, it is reading it correctly — and the alternative is that the OFF arm of
-        // an ablation transpiles the empty program, runs it to a silent success, and loops forever
-        // on a model that has stopped answering.
-        let reason = if had_tool_calls {
-            NotAProgramReason::ToolCallsOnly
-        } else {
-            NotAProgramReason::Empty
-        };
-        return Healed {
-            program: String::new(),
-            verdict: HealingVerdict::NotAProgram(reason),
-            applied: Vec::new(),
-            did_not_converge: false,
-        };
-    }
-
     let mut text = original.to_string();
     let mut applied = Vec::new();
 
     match to_fixpoint(&mut text, config, &mut applied, MAX_PASSES) {
-        Fixpoint::Converged => {}
-        Fixpoint::Classified(reason) => {
-            return Healed {
-                program: text,
-                verdict: HealingVerdict::NotAProgram(reason),
-                applied,
-                did_not_converge: false,
-            };
-        }
-        Fixpoint::Exhausted => {
-            return Healed {
-                program: original.to_string(),
-                verdict: HealingVerdict::Program,
-                applied: Vec::new(),
-                did_not_converge: true,
-            };
-        }
-    }
-
-    if config.enabled(HealingStrategy::StripCommentOnly)
-        && let StrategyOutcome::Classified { reason, detail } =
-            apply(HealingStrategy::StripCommentOnly, &text)
-    {
-        if let Some(detail) = detail {
-            applied.push(HealingApplication {
-                strategy: HealingStrategy::StripCommentOnly,
-                detail,
-            });
-        }
-        return Healed {
+        Fixpoint::Converged => Healed {
             program: text,
-            verdict: HealingVerdict::NotAProgram(reason),
             applied,
             did_not_converge: false,
-        };
-    }
-
-    Healed {
-        program: text,
-        verdict: HealingVerdict::Program,
-        applied,
-        did_not_converge: false,
+        },
+        Fixpoint::Exhausted => Healed {
+            program: original.to_string(),
+            applied: Vec::new(),
+            did_not_converge: true,
+        },
     }
 }
 
@@ -804,15 +572,10 @@ fn trim_reply(reply: &str) -> &str {
 
 /// Whether any line of `source` is **certainly** a line of code.
 ///
-/// Exported because the loop needs it for exactly one decision: a source that failed to type-strip
-/// and contains no code-shaped line was never a program at all, and must be reported as such —
-/// with the instruction to call `finish` — rather than as a syntax error the model is asked to fix.
-///
-/// Measured against the round-1 captures, that classification is right on every case that occurred:
-/// **0 of 7** lines across the four terminal prose replies are code-shaped, and **every** captured
-/// program has at least one line that is. A real program has a code-shaped line by construction, so
-/// the classifier cannot take one away from a model that wrote one.
-pub fn contains_code(source: &str) -> bool {
+/// Used by [`strip_fences`] alone, for two decisions that are both about *deleting*: whether a lone
+/// block with an unrecognised tag is nonetheless the program, and whether a line outside the fences
+/// is code an unwrap would throw away.
+fn contains_code(source: &str) -> bool {
     source.lines().any(looks_like_code)
 }
 
@@ -822,9 +585,9 @@ pub fn contains_code(source: &str) -> bool {
 
 /// What one strategy did with the text it was handed.
 ///
-/// Three outcomes rather than an `Option<String>` because a strategy has three genuinely different
-/// things to say, and collapsing "I found this is not a program" into "I changed nothing" is what
-/// would let a classified response go on to be transpiled.
+/// Two outcomes and nothing else: a strategy either deletes something it can prove is safe to
+/// delete, or it leaves the text exactly as it was. There is no third answer, because "this is not
+/// a program" is not healing's question to answer — the type-strip answers it, with a diagnostic.
 enum StrategyOutcome {
     /// The strategy does not apply — the text is untouched and nothing is recorded.
     Declined,
@@ -835,21 +598,12 @@ enum StrategyOutcome {
         /// What the model is told about it.
         detail: HealingDetail,
     },
-    /// The strategy found the response is not a program.
-    Classified {
-        /// Why.
-        reason: NotAProgramReason,
-        /// The application to record, for the classifications that are worth counting as one.
-        detail: Option<HealingDetail>,
-    },
 }
 
-/// How the rewriting half of the pipeline ended.
+/// How the pipeline ended.
 enum Fixpoint {
     /// A pass applied nothing, so the text is a fixpoint of every armed strategy.
     Converged,
-    /// A strategy found the response is not a program, and the pipeline short-circuited.
-    Classified(NotAProgramReason),
     /// Every one of the allotted passes still changed something, so no fixpoint was reached.
     Exhausted,
 }
@@ -857,10 +611,9 @@ enum Fixpoint {
 /// Apply the rewriting strategies, in [order](HealingStrategy::ALL), until a whole pass applies
 /// nothing or `budget` passes have been spent.
 ///
-/// `text` and `applied` are left holding whatever the pipeline reached — including on
-/// [`Classified`](Fixpoint::Classified), where "whatever it reached" is precisely what
-/// [`Healed::program`] promises. On [`Exhausted`](Fixpoint::Exhausted) the caller discards both,
-/// which is what keeps a non-converging response byte-identical to the one the model sent.
+/// `text` and `applied` are left holding whatever the pipeline reached. On
+/// [`Exhausted`](Fixpoint::Exhausted) the caller discards both, which is what keeps a non-converging
+/// response byte-identical to the one the model sent.
 ///
 /// The budget is a parameter rather than a constant read from inside so that a test can measure how
 /// many passes a real response needs: a response needing exactly *n* productive passes converges at
@@ -875,9 +628,7 @@ fn to_fixpoint(
     for _ in 0..budget {
         let mut changed = false;
         for strategy in HealingStrategy::ALL {
-            // The classifier runs once, after the fixpoint, over whatever survived: it rewrites
-            // nothing, so it can never be what a further pass would react to.
-            if strategy == HealingStrategy::StripCommentOnly || !config.enabled(strategy) {
+            if !config.enabled(strategy) {
                 continue;
             }
             match apply(strategy, text) {
@@ -889,12 +640,6 @@ fn to_fixpoint(
                     applied.push(HealingApplication { strategy, detail });
                     *text = healed;
                     changed = true;
-                }
-                StrategyOutcome::Classified { reason, detail } => {
-                    if let Some(detail) = detail {
-                        applied.push(HealingApplication { strategy, detail });
-                    }
-                    return Fixpoint::Classified(reason);
                 }
             }
         }
@@ -916,7 +661,6 @@ fn apply(strategy: HealingStrategy, text: &str) -> StrategyOutcome {
         HealingStrategy::DropDuplicateProgram => drop_duplicate_program(text),
         HealingStrategy::DropImports => drop_imports(text),
         HealingStrategy::UnwrapAsync => unwrap_async(text),
-        HealingStrategy::StripCommentOnly => strip_comment_only(text),
     }
 }
 
@@ -991,24 +735,21 @@ struct FenceScan<'a> {
 /// 3. otherwise, blocks whose (unrecognised) tag is anything else **and** whose body satisfies
 ///    [`contains_code`].
 ///
-/// # The decline ladder, in this exact order
-///
-/// The precedence is part of the specification rather than an implementation detail, because D2 and
-/// D3 disagree on real inputs.
+/// # The decline ladder
 ///
 /// | # | Condition | Result |
 /// | --- | --- | --- |
 /// | **D1** | no blocks at all | not applicable; nothing recorded |
-/// | **D2** | **two or more candidates** | [`SeveralBlocks`](NotAProgramReason::SeveralBlocks); nothing recorded; the whole pipeline short-circuits |
-/// | **D3** | exactly one candidate, but some line **outside the fences** is certainly code | decline **silently** — unwrapping would delete real code |
-/// | **D4** | zero candidates | [`NoProgramBlock`](NotAProgramReason::NoProgramBlock) when no outside line is code; otherwise decline silently |
+/// | **D2** | **two or more candidates** | decline — gg cannot know which of them was meant, and picking one would delete a program the model wrote |
+/// | **D3** | exactly one candidate, but some line **outside the fences** is certainly code | decline — unwrapping would delete real code |
+/// | **D4** | zero candidates | decline |
 /// | — | otherwise | unwrap to the single candidate's body |
 ///
-/// **D2 before D3.** A response offering gg several candidate programs is a plain contract violation
-/// whatever else is in it, and the tailored feedback is what teaches the model. Under the reverse
-/// order a reply that both offers several candidates *and* contains code outside them would decline
-/// silently, record nothing, serialise as a **clean** response, and send a page of Markdown to the
-/// type-strip.
+/// **D2 declines rather than refusing the reply.** A reply offering several candidate blocks is
+/// left exactly as the model sent it and compiled: what comes back is the compiler's own error over
+/// the model's own text — most often the redeclaration that two pasted programs really do produce —
+/// rather than gg's reading of how many programs it thinks the reply contains. Healing may delete
+/// what it can prove is safe to delete and nothing else; it does not adjudicate.
 ///
 /// **D3 asks about every line outside the fences, not only the lines above the first one.** What
 /// distinguishes a fence *inside* a program from a fence *around* one is whether real code survives
@@ -1034,36 +775,19 @@ fn strip_fences(text: &str) -> StrategyOutcome {
     let candidates = candidate_blocks(&scan.blocks);
     // D2.
     if candidates.len() >= 2 {
-        return StrategyOutcome::Classified {
-            reason: NotAProgramReason::SeveralBlocks {
-                blocks: candidates.len(),
-                shape: CandidateShape::Fenced,
-            },
-            detail: None,
-        };
+        return StrategyOutcome::Declined;
     }
 
-    // The one measurement D3 and D4 share: is there code the unwrap would throw away? Above the
-    // fences it is a program that contains one; below them it is a program the model continued past
-    // one. Both are code, and both are deleted by an unwrap that reports only which wrapper it
-    // removed — so both decline.
-    let outside_is_code = scan.outside.iter().copied().any(looks_like_code);
-
-    // D3.
-    if candidates.len() == 1 && outside_is_code {
+    // D3: is there code the unwrap would throw away? Above the fences it is a program that contains
+    // one; below them it is a program the model continued past one. Both are code, and both are
+    // deleted by an unwrap that reports only which wrapper it removed.
+    if scan.outside.iter().copied().any(looks_like_code) {
         return StrategyOutcome::Declined;
     }
 
     // D4.
     let Some(&chosen) = candidates.first() else {
-        return if outside_is_code {
-            StrategyOutcome::Declined
-        } else {
-            StrategyOutcome::Classified {
-                reason: NotAProgramReason::NoProgramBlock,
-                detail: None,
-            }
-        };
+        return StrategyOutcome::Declined;
     };
 
     let ignored = scan.blocks.len() - 1;
@@ -1284,8 +1008,10 @@ fn backticks(line: &str) -> usize {
 /// heuristics — and **while the text still contains an opening fence**, because its precondition is
 /// "this is a program with prose around it", which is false while a wrapper survives. That last
 /// decline is what stops it chewing Markdown [`strip_fences`] deliberately declined to unwrap and
-/// then reporting a repair that repaired nothing. When removal would leave nothing at all, the
-/// response was prose and is classified as such.
+/// then reporting a repair that repaired nothing. It also declines when removal would leave nothing
+/// at all: a reply that is prose from end to end has no program under the explanation, so there is
+/// nothing to strip *to* — it goes to the type-strip as the model wrote it, and the diagnostic the
+/// model gets is the compiler's.
 ///
 /// It is deliberately severe. Round 1 produced *no* bare-program-with-prose responses — every model
 /// fenced — so a strategy with no evidence behind it gets the setting where a false positive costs
@@ -1310,13 +1036,10 @@ fn strip_prose(text: &str) -> StrategyOutcome {
         }
     }
 
-    // Every line was prose or blank, so there is no program under the explanation — the one case
-    // this strategy classifies rather than repairs.
+    // Every line was prose or blank, so there is no program under the explanation and nothing to
+    // strip to. This strategy only ever deletes text from around a program.
     if leading > 0 && leading_end == lines.len() {
-        return StrategyOutcome::Classified {
-            reason: NotAProgramReason::Prose,
-            detail: Some(HealingDetail::ProseOnly),
-        };
+        return StrategyOutcome::Declined;
     }
     if leading == 0 {
         leading_end = 0;
@@ -1387,19 +1110,13 @@ const LEXICAL_KEYWORDS: [&str; 3] = ["const", "let", "class"];
 /// as sent could not execute a single statement — so the deletion removes text that had no
 /// behaviour at all and turns a reply that could never run into the program the model wrote once.
 ///
-/// # Refusal — two programs that are not identical
-///
-/// **Classifies** as [`SeveralBlocks`](NotAProgramReason::SeveralBlocks), shaped
-/// [`Bare`](CandidateShape::Bare), a reply that declares the same name more than once with a
-/// lexical keyword at the top level, counting the programs it is by
-/// [cutting it at every redeclaration](redeclaration_segments). That is the same early error seen
-/// from the other side: the halves differ, so there is nothing to delete, and gg refuses to guess
-/// which half was meant rather than handing the model a bare redeclaration message that never
-/// mentions the actual mistake.
-///
-/// **Declines** on everything else, including a repeated tail with no lexical declaration in it
-/// (which really would run twice) and a name declared twice in different scopes (which is ordinary
-/// shadowing, and legal).
+/// **Declines** on everything else — including two programs that are *not* identical, where there
+/// is nothing safe to delete: the reply goes to the type-strip, which refuses it with the
+/// redeclaration error it really is, naming the identifier, its line and its column. That is the
+/// compiler's diagnostic over the model's own text, which is a better answer than any count gg
+/// could infer. It also declines on a repeated tail with no lexical declaration in it (which really
+/// would run twice) and on a name declared twice in different scopes (ordinary shadowing, and
+/// legal).
 fn drop_duplicate_program(text: &str) -> StrategyOutcome {
     let Some(mask) = code_mask(text) else {
         return StrategyOutcome::Declined;
@@ -1412,16 +1129,7 @@ fn drop_duplicate_program(text: &str) -> StrategyOutcome {
         };
     }
 
-    match redeclaration_segments(text, &mask) {
-        Some(programs) => StrategyOutcome::Classified {
-            reason: NotAProgramReason::SeveralBlocks {
-                blocks: programs,
-                shape: CandidateShape::Bare,
-            },
-            detail: Some(HealingDetail::SeveralPrograms),
-        },
-        None => StrategyOutcome::Declined,
-    }
+    StrategyOutcome::Declined
 }
 
 /// `text` without its exact repeated tail, when it has one that may be deleted.
@@ -1453,35 +1161,6 @@ fn without_repeated_tail<'a>(text: &'a str, mask: &CodeMask) -> Option<&'a str> 
     // model asked to run twice.
     declares_lexically(tail, mask, offset).next()?;
     Some(text[..offset].trim_end())
-}
-
-/// How many programs `text` is, counted by cutting it at every top-level redeclaration — or `None`
-/// when nothing is redeclared and it is therefore one program.
-///
-/// One program may not declare a name twice at its top level, so every repeat is a seam: the scan
-/// walks the [lexical declarations](declares_lexically) in source order and starts a new segment at
-/// the first name the current one already holds. The result is the smallest number of programs the
-/// reply *must* be, which is what makes it the same measurement the fenced shape reports as
-/// [`blocks`](NotAProgramReason::SeveralBlocks) — a count of candidate programs, not of anything
-/// about names.
-///
-/// It is a **lower bound** and never an over-count. Five programs sharing one name between two of
-/// them are two segments, because two is all the redeclaration evidence proves; deciding the other
-/// three were separate programs would take a parse and a guess about intent, and this subsystem
-/// does neither. Round 2 measured exactly that reply — five programs, two segments — and the honest
-/// two is still worth far more than the figure it replaces, which was the copy count of one name
-/// and meant nothing a study could compare with the fenced shape.
-fn redeclaration_segments(text: &str, mask: &CodeMask) -> Option<usize> {
-    let mut segments = 1;
-    let mut current: Vec<&str> = Vec::new();
-    for name in declares_lexically(text, mask, 0) {
-        if current.contains(&name) {
-            segments += 1;
-            current.clear();
-        }
-        current.push(name);
-    }
-    (segments > 1).then_some(segments)
 }
 
 /// Every name `text` binds with a [lexical keyword](LEXICAL_KEYWORDS) at its **top level**, in
@@ -1948,38 +1627,6 @@ fn common_prefix<'a>(left: &'a str, right: &'a str) -> &'a str {
 }
 
 // ---------------------------------------------------------------------------------------------
-// strip-comment-only
-// ---------------------------------------------------------------------------------------------
-
-/// Classify a reply whose bytes, minus comments and whitespace, are empty.
-///
-/// It rewrites nothing and declines when the [mask](code_mask) is unavailable or any byte survives
-/// the removal of comments and whitespace. It exists because a comment-only program type-strips
-/// *cleanly*, runs, returns nothing, and produces a turn that looks like a success — the worst
-/// available outcome, because the model then believes it did something.
-///
-/// The test is "every remaining byte is **comment**" rather than "no byte is **code**", and the
-/// difference is not pedantic: a reply still wrapped in a Markdown fence (because
-/// [`strip-fences`](HealingStrategy::StripFences) is disarmed for an ablation) lexes as one long
-/// template literal, which is not code either — and reporting a fenced program as "only comments"
-/// would hand the model a sentence about something it did not write.
-fn strip_comment_only(text: &str) -> StrategyOutcome {
-    let Some(mask) = code_mask(text) else {
-        return StrategyOutcome::Declined;
-    };
-    let only_comments = text
-        .char_indices()
-        .all(|(index, c)| c.is_whitespace() || mask.is_comment(index));
-    if !only_comments {
-        return StrategyOutcome::Declined;
-    }
-    StrategyOutcome::Classified {
-        reason: NotAProgramReason::CommentOnly,
-        detail: Some(HealingDetail::CommentOnly),
-    }
-}
-
-// ---------------------------------------------------------------------------------------------
 // The predicates and the lexical mask
 // ---------------------------------------------------------------------------------------------
 
@@ -2159,19 +1806,15 @@ fn is_ident_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '$'
 }
 
-/// Which bytes of a source are **code**, and which are **comment**.
+/// Which bytes of a source are **code** — as opposed to string, template-literal or comment text.
 ///
-/// Two vectors rather than one because the three strategies that consult the mask ask two different
-/// questions of it. [`drop_imports`] and [`unwrap_async`] ask "is this byte code?", so that an
-/// `import` inside a string or an `await` inside a comment is left alone. [`strip_comment_only`] asks
-/// "is every remaining byte a comment?", which is a strictly stronger question than "is no byte
-/// code?" — string and template-literal text is neither.
+/// The question [`drop_imports`], [`unwrap_async`] and [`drop_duplicate_program`] each ask of it is
+/// the same one: is this byte code? — so that an `import` inside a string, an `await` inside a
+/// comment, or a `const` inside a template literal is left alone.
 struct CodeMask {
     /// Per byte: not string, template-literal, or comment text. A substitution's `${` and `}`
     /// delimiters are code, because they are what a brace count has to see to come back out again.
     code: Vec<bool>,
-    /// Per byte: comment text, its `//`, `/*` and `*/` delimiters included.
-    comment: Vec<bool>,
 }
 
 impl CodeMask {
@@ -2180,14 +1823,9 @@ impl CodeMask {
     fn is_code(&self, index: usize) -> bool {
         self.code.get(index) == Some(&true)
     }
-
-    /// Whether the byte at `index` is comment text.
-    fn is_comment(&self, index: usize) -> bool {
-        self.comment.get(index) == Some(&true)
-    }
 }
 
-/// Lex `src` into its [code and comment masks](CodeMask).
+/// Lex `src` into its [code mask](CodeMask).
 ///
 /// `None` means the source did not lex cleanly, and every strategy that needs the mask declines on
 /// it. Three states end a scan uncleanly: an unterminated block comment, an unterminated template
@@ -2196,8 +1834,8 @@ impl CodeMask {
 ///
 /// Handles `'…'`, `"…"`, `` `…` `` with `${ … }` substitutions re-entering code (nesting tracked),
 /// `//…\n`, `/*…*/`, and backslash escapes. Used by [`drop_imports`], [`unwrap_async`] and
-/// [`strip_comment_only`]; deliberately **not** used by [`strip_fences`] or [`strip_prose`], whose
-/// input is not JavaScript yet.
+/// [`drop_duplicate_program`]; deliberately **not** used by [`strip_fences`] or [`strip_prose`],
+/// whose input is not JavaScript yet.
 ///
 /// # The one thing it does not lex
 ///
@@ -2219,7 +1857,6 @@ fn code_mask(src: &str) -> Option<CodeMask> {
 
     let bytes = src.as_bytes();
     let mut code = vec![true; bytes.len()];
-    let mut comment = vec![false; bytes.len()];
     let mut mode = Mode::Code;
     // The brace depth each open `${ … }` substitution returns to Template at. Its length is how
     // many template literals the scan is currently inside.
@@ -2233,14 +1870,14 @@ fn code_mask(src: &str) -> Option<CodeMask> {
         match mode {
             Mode::Code => match byte {
                 b'/' if next == Some(b'/') => {
-                    mark_comment(&mut code, &mut comment, index);
-                    mark_comment(&mut code, &mut comment, index + 1);
+                    mark_comment(&mut code, index);
+                    mark_comment(&mut code, index + 1);
                     mode = Mode::LineComment;
                     index += 2;
                 }
                 b'/' if next == Some(b'*') => {
-                    mark_comment(&mut code, &mut comment, index);
-                    mark_comment(&mut code, &mut comment, index + 1);
+                    mark_comment(&mut code, index);
+                    mark_comment(&mut code, index + 1);
                     mode = Mode::BlockComment;
                     index += 2;
                 }
@@ -2323,14 +1960,14 @@ fn code_mask(src: &str) -> Option<CodeMask> {
                 if byte == b'\n' {
                     mode = Mode::Code;
                 } else {
-                    mark_comment(&mut code, &mut comment, index);
+                    mark_comment(&mut code, index);
                 }
                 index += 1;
             }
             Mode::BlockComment => {
-                mark_comment(&mut code, &mut comment, index);
+                mark_comment(&mut code, index);
                 if byte == b'*' && next == Some(b'/') {
-                    mark_comment(&mut code, &mut comment, index + 1);
+                    mark_comment(&mut code, index + 1);
                     mode = Mode::Code;
                     index += 2;
                 } else {
@@ -2343,13 +1980,12 @@ fn code_mask(src: &str) -> Option<CodeMask> {
     // A line comment is closed by end of input; a string, a template literal, a block comment and an
     // open `${` substitution are not, and each one means the scan lost its place.
     (matches!(mode, Mode::Code | Mode::LineComment) && substitutions.is_empty())
-        .then_some(CodeMask { code, comment })
+        .then_some(CodeMask { code })
 }
 
-/// Mark one byte as comment text — not code, and countable by [`strip_comment_only`].
-fn mark_comment(code: &mut [bool], comment: &mut [bool], index: usize) {
+/// Mark one byte as comment text, which is not code.
+fn mark_comment(code: &mut [bool], index: usize) {
     code[index] = false;
-    comment[index] = true;
 }
 
 // ---------------------------------------------------------------------------------------------

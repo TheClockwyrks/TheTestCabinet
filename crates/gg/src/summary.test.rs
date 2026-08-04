@@ -41,16 +41,14 @@ fn breakdown(fullness: f64) -> GgTelemetryKind {
     }
 }
 
-/// A `CodeExecution` event carrying `healing` — one code-shaped turn. `ok` is derived from the
-/// record so the synthetic event is self-consistent (a reply that was not a program never ran, so
-/// it cannot have returned normally); the summary reads only the healing record and the event's
-/// existence, so every other field is the shape a turn of that kind would really carry.
+/// A `CodeExecution` event carrying `healing` — one code-shaped turn. The summary reads only the
+/// healing record and the event's existence, so every other field is the shape a turn that ran would
+/// really carry.
 fn code_turn(healing: GgResponseHealing) -> GgTelemetryKind {
     GgTelemetryKind::CodeExecution {
-        ok: healing.not_a_program.is_none(),
+        ok: true,
         tool_calls: 0,
-        // Absent exactly when there was no program to run at all — the rule the contract states.
-        duration_ms: healing.not_a_program.is_none().then_some(0),
+        duration_ms: Some(0),
         error: None,
         finished: None,
         logs: Vec::new(),
@@ -374,9 +372,9 @@ fn observing_the_terminal_events_is_a_no_op() {
 }
 
 /// The healing rollup is folded from the very events `code_executions` counts, so a mixed run —
-/// clean turns, repaired turns, a turn repaired twice by one strategy, two turns that were not
-/// programs, and one the pipeline could not converge on — totals every counter exactly, and the
-/// denominator counts *turns* rather than only the ones that ran.
+/// clean turns, repaired turns, a turn repaired twice by one strategy, and one the pipeline could
+/// not converge on — totals every counter exactly, and the denominator counts *turns* rather than
+/// only the ones that needed something.
 #[test]
 fn the_healing_rollup_folds_every_code_execution() {
     let tracker = SessionSummaryTracker::new();
@@ -393,28 +391,10 @@ fn the_healing_rollup_folds_every_code_execution() {
         GgHealingStrategy::StripFences,
         GgHealingStrategy::StripFences,
     ])));
-    // Several fenced candidate blocks: gg refused to guess, so nothing ran and nothing was healed.
-    tracker.observe(&code_turn(GgResponseHealing {
-        not_a_program: Some(GgNotAProgram::SeveralBlocks),
-        blocks: Some(7),
-        candidate_shape: Some(GgCandidateShape::Fenced),
-        ..GgResponseHealing::default()
-    }));
-    // The same refusal in its other shape — two programs pasted together with no fence — which the
-    // rollup must count apart from the fenced one, because they are two different mistakes.
-    tracker.observe(&code_turn(GgResponseHealing {
-        strategies: vec![GgHealingStrategy::DropDuplicateProgram],
-        not_a_program: Some(GgNotAProgram::SeveralBlocks),
-        blocks: Some(2),
-        candidate_shape: Some(GgCandidateShape::Bare),
-        ..GgResponseHealing::default()
-    }));
-    // Comments only: a classification, which is an application without being a heal.
-    tracker.observe(&code_turn(GgResponseHealing {
-        strategies: vec![GgHealingStrategy::StripCommentOnly],
-        not_a_program: Some(GgNotAProgram::CommentOnly),
-        ..GgResponseHealing::default()
-    }));
+    // A program pasted after a copy of itself: one strategy, one heal.
+    tracker.observe(&code_turn(healed(&[
+        GgHealingStrategy::DropDuplicateProgram,
+    ])));
     // An awaited wrapper around imported tools: two strategies, one heal.
     tracker.observe(&code_turn(healed(&[
         GgHealingStrategy::UnwrapAsync,
@@ -429,24 +409,19 @@ fn the_healing_rollup_folds_every_code_execution() {
 
     let summary = tracker.finalize("completed");
     assert_eq!(
-        summary.code_executions, 8,
-        "every code-shaped turn counts, including the three that were not programs"
+        summary.code_executions, 6,
+        "every code-shaped turn counts, including the two that needed nothing"
     );
     assert_eq!(
         summary.healing,
         GgHealingSummary {
-            healed: 3,
-            applications: 8,
+            healed: 4,
+            applications: 7,
             strip_fences: 3,
             strip_prose: 1,
             drop_duplicate_program: 1,
             drop_imports: 1,
             unwrap_async: 1,
-            strip_comment_only: 1,
-            not_a_program: 3,
-            several_blocks: 2,
-            several_blocks_fenced: 1,
-            several_blocks_bare: 1,
             // Nothing recorded an armed set on this tracker: `record_healing` is a launch-time
             // fact, and these events were folded on their own.
             enabled: Vec::new(),
@@ -454,16 +429,7 @@ fn the_healing_rollup_folds_every_code_execution() {
     );
     assert!(
         summary.healing.applications >= summary.healing.healed,
-        "a heal is at least one application, and a classification is an application on its own"
-    );
-    assert!(
-        summary.healing.several_blocks <= summary.healing.not_a_program,
-        "the several-blocks count is a subset of the not-a-program count"
-    );
-    assert_eq!(
-        summary.healing.several_blocks,
-        summary.healing.several_blocks_fenced + summary.healing.several_blocks_bare,
-        "every several-programs reply is counted under exactly one of its two shapes"
+        "a heal is at least one application, since one reply may need several"
     );
 }
 

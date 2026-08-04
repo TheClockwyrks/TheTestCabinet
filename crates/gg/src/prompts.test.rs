@@ -1,6 +1,5 @@
 use super::*;
 use crate::ending::EndingRole;
-use crate::healing::{CandidateShape, NotAProgramReason};
 
 /// A rendered prompt with every run of whitespace collapsed to one space.
 ///
@@ -941,77 +940,6 @@ fn the_nothing_shown_notice_names_the_calls_that_would_have_shown_something() {
         "a model whose output vanished must be told where it went: {rendered}"
     );
     assert_no_blank_run(&rendered);
-}
-
-/// The ending it names is the reader's **own**. A reviewer that answers in prose because it has
-/// reached a verdict is exactly the agent this turn is for, and pointing it at a `harness.finish`
-/// that is not in its scope would send it to a function that does not exist.
-#[test]
-fn the_not_a_program_feedback_names_the_reply_and_this_role_s_ending() {
-    let reasons = [
-        NotAProgramReason::Empty,
-        NotAProgramReason::ToolCallsOnly,
-        NotAProgramReason::Prose,
-        NotAProgramReason::CommentOnly,
-        NotAProgramReason::NoProgramBlock,
-        NotAProgramReason::SeveralBlocks {
-            blocks: 7,
-            shape: CandidateShape::Fenced,
-        },
-    ];
-    for reason in reasons {
-        let rendered = render_code_not_a_program(&CodeNotAProgramContext {
-            reason: reason.message(),
-            ending_calls: vec!["harness.finish".to_string()],
-        });
-        // The reason leads, in the model's own terms.
-        assert!(
-            rendered.starts_with(&reason.message()),
-            "the reason must lead the feedback:\n{rendered}"
-        );
-        assert!(
-            flat(&rendered).contains(
-                "Your whole response must be TypeScript. Any non-code text — Markdown, prose, \
-                 explanations — prevents it from being processed."
-            ),
-            "{rendered}"
-        );
-        assert!(
-            flat(&rendered).contains(
-                "Saying the work is done does not end your session. Call `harness.finish`."
-            ),
-            "{rendered}"
-        );
-        assert_no_blank_run(&rendered);
-    }
-
-    // A reviewer is pointed at both its verdicts and at no `finish` at all.
-    let reviewer = render_code_not_a_program(&CodeNotAProgramContext {
-        reason: NotAProgramReason::Prose.message(),
-        ending_calls: vec![
-            "review.approve".to_string(),
-            "review.requestChanges".to_string(),
-        ],
-    });
-    assert!(
-        flat(&reviewer).contains("Call `review.approve` or `review.requestChanges`."),
-        "{reviewer}"
-    );
-    assert!(!reviewer.contains("finish"), "{reviewer}");
-
-    // The one reason whose sentence carries a number carries the real one.
-    let several = render_code_not_a_program(&CodeNotAProgramContext {
-        reason: NotAProgramReason::SeveralBlocks {
-            blocks: 7,
-            shape: CandidateShape::Fenced,
-        }
-        .message(),
-        ending_calls: vec!["harness.finish".to_string()],
-    });
-    assert!(
-        several.starts_with("Your reply contained 7 separate code blocks."),
-        "{several}"
-    );
 }
 
 // ---------------------------------------------------------------------------

@@ -29,7 +29,7 @@
  */
 
 import * as raw from "test-cabinet:gg/session";
-import { ToolError, call } from "./errors.js";
+import { ToolError, call, typeName } from "./errors.js";
 
 /** The names this module reports its failures under. They are not tool names; nothing dispatches them. */
 const FINISH = "finish";
@@ -47,7 +47,7 @@ function requireString(fn: string, expected: string, value: unknown): asserts va
     throw new ToolError(
       fn,
       "invalid-argument",
-      `${fn}(…) takes ${expected}. Your session is NOT over; call it again.`,
+      `expected ${expected}, got ${typeName(value)}`,
     );
   }
 }
@@ -60,7 +60,7 @@ function requireString(fn: string, expected: string, value: unknown): asserts va
  * get another turn.
  */
 export function finish(summary: string): void {
-  requireString(FINISH, "a summary string — one or two sentences saying what you did", summary);
+  requireString(FINISH, "a summary string", summary);
   call(() => raw.finish(summary));
 }
 
@@ -85,8 +85,7 @@ export function requestChanges(items: string[]): void {
     throw new ToolError(
       REQUEST_CHANGES,
       "invalid-argument",
-      `${REQUEST_CHANGES}(…) takes an array of strings, one per change that must be made. Your ` +
-        "session is NOT over; call it again.",
+      `expected an array of strings, got ${typeName(items)}`,
     );
   }
   const listed = items.map((item) => (typeof item === "string" ? item : String(item)));
@@ -102,14 +101,9 @@ export function selectWinner(attempt: number, rationale: string): void {
     throw new ToolError(
       SELECT_WINNER,
       "invalid-argument",
-      `${SELECT_WINNER}(…) takes the winning attempt's number as an integer of 1 or more. Your ` +
-        "session is NOT over; call it again.",
+      `\`attempt\` must be an integer of 1 or more, got ${String(attempt)}`,
     );
   }
-  requireString(
-    SELECT_WINNER,
-    "a rationale string — one sentence saying why that attempt won",
-    rationale,
-  );
+  requireString(SELECT_WINNER, "a rationale string", rationale);
   call(() => raw.selectWinner(attempt, rationale));
 }

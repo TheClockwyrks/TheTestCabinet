@@ -265,7 +265,7 @@ fn create_is_refused_when_the_index_entry_would_not_fit() {
         matches!(err, MemoryError::IndexCap { cap: 12, .. }),
         "{err:?}"
     );
-    assert!(err.to_string().contains("delete"));
+    assert!(err.to_string().contains("(max 12)"), "{err}");
     assert_eq!(store.count(), 1, "a refused create must not be stored");
 
     // Deleting frees the room again, so the ceiling is a budget rather than a one-way ratchet.

@@ -214,18 +214,14 @@ pub fn resolve_path(cwd: &Path, path: &str) -> Result<PathBuf, String> {
 /// paging arguments). Absent or `null` is `None` — the caller's default applies — while a
 /// present value that is not a positive integer is an error rather than a silent default,
 /// so a model passing `0` or `"10"` is told instead of quietly getting something else.
-fn positive_arg(args: &Value, field: &str, tool: &str) -> Result<Option<usize>, ArgumentError> {
+fn positive_arg(args: &Value, field: &str) -> Result<Option<usize>, ArgumentError> {
     match args.get(field) {
         None | Some(Value::Null) => Ok(None),
         Some(value) => value
             .as_u64()
             .filter(|&n| n > 0)
             .map(|n| Some(n as usize))
-            .ok_or_else(|| {
-                ArgumentError(format!(
-                    "`{tool}`: argument `{field}` must be a positive integer"
-                ))
-            }),
+            .ok_or_else(|| ArgumentError(format!("argument `{field}` must be a positive integer"))),
     }
 }
 
@@ -483,7 +479,7 @@ impl ReadFileTool {
             // found, and the message names its length so the next call can be corrected.
             return ToolOutcome::failed(
                 ToolFailure::InvalidArgument,
-                format!("read_file: `offset` {offset} is past the end of the file ({total} lines)"),
+                format!("`offset` {offset} is past the end of the file ({total} lines)"),
             );
         }
         let end = start.saturating_add(window).min(total);
@@ -600,15 +596,15 @@ impl Tool for ReadFileTool {
     }
 
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
-        let path = match required_str(&args, "path", "read_file") {
+        let path = match required_str(&args, "path") {
             Ok(path) => path,
             Err(error) => return error.into(),
         };
-        let offset = match positive_arg(&args, "offset", "read_file") {
+        let offset = match positive_arg(&args, "offset") {
             Ok(offset) => offset,
             Err(error) => return error.into(),
         };
-        let limit = match positive_arg(&args, "limit", "read_file") {
+        let limit = match positive_arg(&args, "limit") {
             Ok(limit) => limit,
             Err(error) => return error.into(),
         };
@@ -633,17 +629,14 @@ impl ReadFileTool {
     ) -> ToolOutcome {
         let resolved = match resolve_path(&ctx.workspace_dir, &path) {
             Ok(resolved) => resolved,
-            Err(why) => return invalid_argument(format!("`read_file`: {why}")),
+            Err(why) => return invalid_argument(why),
         };
         let offset = offset.map(|offset| offset.max(1)).unwrap_or(1);
 
         let bytes = match std::fs::read(&resolved) {
             Ok(bytes) => bytes,
             Err(err) => {
-                return ToolOutcome::failed(
-                    ToolFailure::from_io(&err),
-                    format!("read_file: {err}"),
-                );
+                return ToolOutcome::failed(ToolFailure::from_io(&err), format!("`{path}`: {err}"));
             }
         };
 
@@ -698,11 +691,11 @@ impl Tool for WriteFileTool {
     }
 
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
-        let path = match required_str(&args, "path", "write_file") {
+        let path = match required_str(&args, "path") {
             Ok(path) => path,
             Err(error) => return error.into(),
         };
-        let contents = match required_str(&args, "contents", "write_file") {
+        let contents = match required_str(&args, "contents") {
             Ok(contents) => contents,
             Err(error) => return error.into(),
         };
@@ -716,7 +709,7 @@ impl WriteFileTool {
     pub(crate) fn write(&self, ctx: &ToolContext, path: String, contents: String) -> ToolOutcome {
         let resolved = match resolve_path(&ctx.workspace_dir, &path) {
             Ok(resolved) => resolved,
-            Err(why) => return invalid_argument(format!("`write_file`: {why}")),
+            Err(why) => return invalid_argument(why),
         };
 
         if let Some(parent) = resolved.parent()
@@ -724,11 +717,11 @@ impl WriteFileTool {
         {
             return ToolOutcome::failed(
                 ToolFailure::from_io(&err),
-                format!("write_file: creating parent dirs: {err}"),
+                format!("creating parent dirs: {err}"),
             );
         }
         if let Err(err) = std::fs::write(&resolved, contents.as_bytes()) {
-            return ToolOutcome::failed(ToolFailure::from_io(&err), format!("write_file: {err}"));
+            return ToolOutcome::failed(ToolFailure::from_io(&err), format!("`{path}`: {err}"));
         }
 
         let bytes = contents.len();
@@ -783,15 +776,15 @@ impl Tool for EditFileTool {
     }
 
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
-        let path = match required_str(&args, "path", "edit_file") {
+        let path = match required_str(&args, "path") {
             Ok(path) => path,
             Err(error) => return error.into(),
         };
-        let old_string = match required_str(&args, "old_string", "edit_file") {
+        let old_string = match required_str(&args, "old_string") {
             Ok(value) => value,
             Err(error) => return error.into(),
         };
-        let new_string = match required_str(&args, "new_string", "edit_file") {
+        let new_string = match required_str(&args, "new_string") {
             Ok(value) => value,
             Err(error) => return error.into(),
         };
@@ -812,25 +805,20 @@ impl EditFileTool {
     ) -> ToolOutcome {
         let resolved = match resolve_path(&ctx.workspace_dir, &path) {
             Ok(resolved) => resolved,
-            Err(why) => return invalid_argument(format!("`edit_file`: {why}")),
+            Err(why) => return invalid_argument(why),
         };
 
         if old_string.is_empty() {
-            return invalid_argument("edit_file: `old_string` must not be empty");
+            return invalid_argument("`old_string` must not be empty");
         }
         if old_string == new_string {
-            return invalid_argument(
-                "edit_file: `old_string` and `new_string` are identical; nothing to change",
-            );
+            return invalid_argument("`old_string` and `new_string` are identical");
         }
 
         let contents = match std::fs::read_to_string(&resolved) {
             Ok(contents) => contents,
             Err(err) => {
-                return ToolOutcome::failed(
-                    ToolFailure::from_io(&err),
-                    format!("edit_file: {err}"),
-                );
+                return ToolOutcome::failed(ToolFailure::from_io(&err), format!("`{path}`: {err}"));
             }
         };
 
@@ -842,27 +830,21 @@ impl EditFileTool {
             0 => {
                 return ToolOutcome::failed(
                     ToolFailure::NotFound,
-                    "edit_file: `old_string` was not found in the file",
+                    "`old_string` was not found in the file",
                 );
             }
             1 => {}
             n => {
                 return ToolOutcome::failed(
                     ToolFailure::Conflict,
-                    format!(
-                        "edit_file: `old_string` is not unique ({n} occurrences); \
-                         include more surrounding context to make it unique"
-                    ),
+                    format!("`old_string` is not unique ({n} occurrences)"),
                 );
             }
         }
 
         let updated = contents.replacen(&old_string, &new_string, 1);
         if let Err(err) = std::fs::write(&resolved, updated.as_bytes()) {
-            return ToolOutcome::failed(
-                ToolFailure::from_io(&err),
-                format!("edit_file: writing back: {err}"),
-            );
+            return ToolOutcome::failed(ToolFailure::from_io(&err), format!("writing back: {err}"));
         }
 
         ToolOutcome::ok("replaced 1 occurrence", "edited (1 replacement)")

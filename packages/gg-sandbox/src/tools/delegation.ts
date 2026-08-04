@@ -45,7 +45,7 @@ function brief(fn: string, request: BriefInput): SubagentBrief {
   throw new ToolError(
     fn,
     "invalid-argument",
-    `${fn}(…) needs exactly one of \`prompt\` (a self-contained brief) or \`issueId\` (a board issue).`,
+    "expected exactly one of `prompt` or `issueId`",
   );
 }
 

@@ -78,7 +78,7 @@ fn parse_archive_ranges_refuses_malformed_calls() {
     // differ by the whole call.
     let reversed = parse_archive_ranges(&json!({ "ranges": [[19, 4]] }));
     assert!(reversed.is_err());
-    assert!(reversed.unwrap_err().contains("[4, 19]"));
+    assert!(reversed.unwrap_err().contains("[19, 4]"));
     // And the list is bounded.
     let many: Vec<[u64; 2]> = (0..MAX_ARCHIVE_RANGES as u64 + 1).map(|n| [n, n]).collect();
     assert!(parse_archive_ranges(&json!({ "ranges": many })).is_err());

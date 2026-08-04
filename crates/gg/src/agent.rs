@@ -96,11 +96,10 @@ use test_cabinet_core::gg::{
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL,
     CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS,
     GgAgentApi, GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind,
-    GgCandidateShape, GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy,
-    GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgNotAProgram, GgResponseHealing, GgReviewer,
-    GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgSubagentScope, GgTelemetryKind,
-    GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE,
-    SHELL_OUTPUT_MODES,
+    GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy, GgIssueReviewPhase,
+    GgLimitBreach, GgLimitKind, GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding,
+    GgSpeculationPhase, GgSubagentScope, GgTelemetryKind, GgWorkflowPhase,
+    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
 };
 use test_cabinet_core::gg_replay::{
     GgReplayAgent, GgReplayAgentOrigin, GgReplayFidelity, GgReplayModalities,
@@ -127,10 +126,7 @@ use crate::docs::DocsRuntime;
 use crate::ending::{Ending, EndingRole};
 use crate::fsm::{FsmPosition, FsmSpec};
 use crate::git;
-use crate::healing::{
-    self, AssistantMessageMode, CandidateShape, Healed, HealingConfig, HealingStrategy,
-    HealingVerdict, NotAProgramReason, plural,
-};
+use crate::healing::{self, AssistantMessageMode, Healed, HealingConfig, HealingStrategy, plural};
 use crate::limits::{
     AgentLimits, FatalFault, RunLimits, RunSpend, TurnErrorKind, TurnOutcome, resolve_run_limits,
 };
@@ -145,10 +141,9 @@ use crate::observer::SessionObserver;
 use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
     self, ApiView, AssignedIssueView, AttemptBriefContext, AutoloadView, BoardView,
-    CodeHeadingView, CodeNotAProgramContext, EndingView, FixBriefContext, JudgeAttemptView,
-    JudgeBriefContext, MemoriesView, MergeBriefContext, NumberedItem, ReadFileView,
-    ReviewBriefContext, ReviewChangesView, ReviewRecordView, ShellView, SpawnableAgentView,
-    SystemContext, TasksView,
+    CodeHeadingView, EndingView, FixBriefContext, JudgeAttemptView, JudgeBriefContext,
+    MemoriesView, MergeBriefContext, NumberedItem, ReadFileView, ReviewBriefContext,
+    ReviewChangesView, ReviewRecordView, ShellView, SpawnableAgentView, SystemContext, TasksView,
 };
 use crate::replay::{GgRecorder, RecordedSeed, RecordingClient};
 use crate::sandbox::{
@@ -2406,7 +2401,7 @@ async fn handle_wait_for_issue(
         _ => {
             return ToolOutcome::failed(
                 ToolFailure::InvalidArgument,
-                "wait_for_issue needs a non-empty `issueId` (the id of the issue to wait for).",
+                "missing required argument `issueId`",
             );
         }
     };
@@ -2434,19 +2429,13 @@ async fn wait_for_issue_by_id(
     if project.assigned_issue.as_deref() == Some(issue_id) {
         return ToolOutcome::failed(
             ToolFailure::InvalidArgument,
-            format!(
-                "you cannot wait on issue `{issue_id}`: it is the issue you were assigned to \
-                 implement. Do the work and finish — your issue is completed when you are."
-            ),
+            format!("cannot wait on issue `{issue_id}`: it is this agent's own assigned issue"),
         );
     }
     let Some(status) = board.issue_status(issue_id) else {
         return ToolOutcome::failed(
             ToolFailure::NotFound,
-            format!(
-                "no issue `{issue_id}` is on the board (your current board is in your context); \
-                 create it with `create_issue` or correct the id."
-            ),
+            format!("no issue `{issue_id}` on the board"),
         );
     };
     if status.is_terminal() {
@@ -3738,7 +3727,7 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
         _ => {
             return ToolOutcome::failed(
                 ToolFailure::InvalidArgument,
-                "spawn_subagent needs a non-empty `prompt` (the subagent's brief).",
+                "missing required argument `prompt`",
             );
         }
     };
@@ -3860,14 +3849,14 @@ fn resolve_delegation_target(
         Some(agent) => Err(ToolOutcome::failed(
             ToolFailure::InvalidArgument,
             format!(
-                "cannot spawn `{agent}`: it is not one of the agents you may spawn. Pass one of: {}.",
+                "`agent`: unknown agent `{agent}`; expected one of: {}",
                 allowed()
             ),
         )),
         None => Err(ToolOutcome::failed(
             ToolFailure::InvalidArgument,
             format!(
-                "this call needs an `agent` — the name of the agent to run. You may spawn: {}.",
+                "missing required argument `agent`; expected one of: {}",
                 allowed()
             ),
         )),
@@ -3907,8 +3896,7 @@ fn dispatch_child(
         return Err(DispatchError::new(
             ToolFailure::LimitExceeded,
             format!(
-                "cannot spawn a subagent: you are at the maximum delegation depth ({}), so you \
-                 must do this work yourself rather than delegating deeper.",
+                "at the maximum delegation depth ({})",
                 orch.config.max_depth
             ),
         ));
@@ -6713,16 +6701,11 @@ impl Agent {
             // On the tool-calling path there is no program and no healing; the reply is recorded as
             // sent.
             let healed = code.enabled.then(|| {
-                healing::heal(
-                    response.text.as_deref().unwrap_or_default(),
-                    !response.tool_calls.is_empty(),
-                    &code.healing,
-                )
+                healing::heal(response.text.as_deref().unwrap_or_default(), &code.healing)
             });
             // The text the assistant turn is recorded with. Under post-response healing it is the
             // healed program gg actually ran — but only when healing changed anything
-            // (`rewritten()`); a reply healing left alone, or one that was not a program, is recorded
-            // verbatim. Under no-post-processing (and on the tool-calling path) it is always the raw
+            // (`rewritten()`); a reply healing left alone is recorded verbatim. Under no-post-processing (and on the tool-calling path) it is always the raw
             // reply. The healing that runs regardless is still disclosed in the turn's feedback.
             let assistant_text = match (&healed, code.assistant_messages) {
                 (Some(healed), AssistantMessageMode::ResponseHealing) if healed.rewritten() => {
@@ -9175,18 +9158,6 @@ fn ending_view(role: EndingRole, responses_as_code: bool) -> EndingView {
         approve: call("review", "approve", completion::APPROVE_TOOL),
         request_changes: call("review", "requestChanges", completion::REQUEST_CHANGES_TOOL),
         select_winner: call("judge", "selectWinner", completion::SELECT_WINNER_TOOL),
-    }
-}
-
-/// The [ending calls](EndingRole) this agent may make, as it writes them — what the feedback for a
-/// reply that was not a program points the model at, and the one place a role's calls are spelled for
-/// a message that is not the system prompt.
-fn ending_calls(role: EndingRole, responses_as_code: bool) -> Vec<String> {
-    let view = ending_view(role, responses_as_code);
-    match role {
-        EndingRole::Standard => vec![view.finish],
-        EndingRole::Review => vec![view.approve, view.request_changes],
-        EndingRole::Judge { .. } => vec![view.select_winner],
     }
 }
 

@@ -475,9 +475,8 @@ Beyond the per-turn model, tool and context events, two carry outcomes a study r
 directly:
 
 - **`code_execution`** — one per **code-shaped turn** of a
-  [responses-as-code](/gg/responses-as-code/) run, including a turn whose reply was not a
-  program at all, which is what makes its count the exact denominator for every healing
-  rate. It carries whether the program ran, how many calls it composed, how long its own
+  [responses-as-code](/gg/responses-as-code/) run, including a turn whose reply never
+  compiled, which is what makes its count the exact denominator for every healing rate. It carries whether the program ran, how many calls it composed, how long its own
   execution took, the failure if there was one, `finished` — the summary a program passed to
   `finish`, present on exactly the turn that ended the run and absent on every other —
   and `healing`, the record of what gg had to repair before it could run the reply

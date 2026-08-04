@@ -209,7 +209,7 @@ const DENIED_GLOBALS: readonly (readonly [string, string])[] = [
   ["clearInterval", "there is no clock and no event loop"],
   ["queueMicrotask", "deferred work is not part of your program's result"],
   ["requestAnimationFrame", "there is no clock and no event loop"],
-  ["fetch", "there is no network — use `shell` if you truly need one"],
+  ["fetch", "there is no network"],
 ];
 
 /**
@@ -224,14 +224,10 @@ const DENIED_MEMBERS: readonly (readonly [string, readonly string[], string])[] 
   ["crypto", ["getRandomValues", "randomUUID"], "there is no randomness"],
 ];
 
-/** Closes every denial message, because every denial has the same underlying cause. */
-const SYNCHRONOUS_NOTE =
-  "Every tool function is synchronous and returns its value directly — call it directly.";
-
-/** A function that throws the denial for `name`, with the reason and the shared closing note. */
+/** A function that throws the denial for `name`, naming what the sandbox does not have. */
 function denier(name: string, why: string): () => never {
   return () => {
-    throw new Error(`${name} is not available in the sandbox: ${why}. ${SYNCHRONOUS_NOTE}`);
+    throw new Error(`${name} is not available in the sandbox: ${why}`);
   };
 }
 
@@ -326,9 +322,8 @@ function noteDeferred(name: string): void {
   if (deferredNoted) return;
   deferredNoted = true;
   feedback.reportDeferred(
-    `\`${name}\` ran AFTER your program ended, from work you deferred with \`.then()\` or ` +
-      "after an `await`. Deferred work is outside your turn and its failures are not reported. " +
-      "Write straight-line synchronous code.",
+    `\`${name}\` ran after your program ended, from work deferred with \`.then()\` or ` +
+      "`await`; failures there are not reported",
   );
 }
 
@@ -365,20 +360,14 @@ function guard(js: string, fn: ToolFn): ToolFn {
  * `addTask` missing its required `id` — raises `TypeError: expected a string, received [undefined]`
  * with no function name, no field name and no clue which of a record's fields was wrong.
  *
- * Re-tagging it as a {@link ToolError} on `js` puts the model back on the path it needs: the call
- * that failed, and the one operation that tells it what that call takes. A {@link ToolError} is
- * passed straight through — the membrane already said something better — and so is anything that is
- * not error-like, which the shim describes on its own terms.
+ * Re-tagging it as a {@link ToolError} on `js` supplies the one fact it was missing: which call
+ * failed. A {@link ToolError} is passed straight through — the membrane already said something
+ * better — and so is anything that is not error-like, which the shim describes on its own terms.
  */
 function attribute(js: string, thrown: unknown): unknown {
   const err = asToolError(thrown);
   if (err instanceof ToolError || !isErrorLike(err)) return err;
-  return new ToolError(
-    js,
-    "invalid-argument",
-    `${errorName(err)}: ${errorMessage(err)}. Check the arguments \`${js}\` takes with ` +
-      `\`view.openDocsView("${js}")\`.`,
-  );
+  return new ToolError(js, "invalid-argument", `${errorName(err)}: ${errorMessage(err)}`);
 }
 
 /**
@@ -561,10 +550,10 @@ export function run(
 
   const scope: Record<string, unknown> = buildScope(enabled, ending, library);
   // Captured BEFORE `lib` and `ToolError` join the scope: the unknown-name hint lists the API
-  // OBJECTS a program may reach (`fs`, `project`, `harness`, …) and tells it to call `list()` on
-  // one. `lib` answers to neither — it holds no gg functions and has no directory — so it is named
-  // separately rather than folded into a sentence that would be false about it. A model offered
-  // `ToolError` there would likewise be pointed at a class as though it were an API object.
+  // OBJECTS a program may reach (`fs`, `project`, `harness`, …). `lib` is not one — it holds no gg
+  // functions and has no directory — so it is named separately rather than folded into a list that
+  // would be false about it. A model offered `ToolError` there would likewise be pointed at a class
+  // as though it were an API object.
   const callable = Object.keys(scope);
   // Built against the tool scope alone, then added to it: a module sees the same objects the program
   // does, and nothing sees a half-built `lib`.
@@ -585,10 +574,7 @@ export function run(
     if (isThenable(value)) {
       feedback.reportError({
         kind: "other",
-        message:
-          "your program returned a Promise. Every tool function is synchronous and returns its " +
-          "value directly — remove `async` and `await`, and open a view on what you want to see " +
-          "(`view.openText(label, body)`).",
+        message: "your program returned a Promise; this sandbox is synchronous",
         location: undefined,
       });
       return;
@@ -639,12 +625,8 @@ function describe(
       return {
         kind: "unknown-name",
         message:
-          `${message}. The API objects available to your program this run are: ` +
-          `${names.join(", ")}. Call \`<object>.list()\` to see an object's functions.` +
-          (lib
-            ? ` The code you have loaded from skills and memories is on \`${LIB_OBJECT}\`, which is ` +
-              "not an API object and has no `list()`."
-            : ""),
+          `${message}; API objects this run: ${names.join(", ")}` +
+          (lib ? `, plus \`${LIB_OBJECT}\` for loaded skill and memory code` : ""),
         location,
       };
     }

@@ -77,15 +77,16 @@ itself can render is not a counter-example — it illustrates a message the mode
   undefined identifier here, exactly as a withheld tool is. Each is a real membrane
   function, not a rule about text: it **sets a flag** in the agent's host-side context and
   returns, the program runs on, and the loop reads the flag once the program has ended.
-- **A reply that is not a program is an error turn**, not a conclusion. Prose, an
-  empty reply, comments only, or several candidate code blocks each earn a
-  [`Notice`](#the-three-things-gg-says) naming the shape it sent, saying that nothing ran
-  and nothing changed, and
-  telling it which of its own calls would have ended the session. Such a turn counts as an
-  **error turn**,
-  so a configured [error ceiling](/gg/execution-limits/) can stop a model that has
-  started answering in prose; with none configured, the run is bounded by its turn
-  ceiling as it always was.
+- **Every reply is compiled, and gg judges none of them.** After
+  [healing](/gg/response-healing/) the reply goes straight to the type-strip. Prose does
+  not compile and earns a `Compiler error`; two programs pasted together do not compile
+  and earn the redeclaration error that is what is actually wrong with them; a reply of
+  comments, or an empty reply, is a program that compiles, runs and does nothing. gg
+  performs **no** analysis of the text to decide whether it "is a program" — the compiler
+  answers that, over the model's own words, with a line and a column. A turn that failed
+  to compile is an **error turn**, so a configured
+  [error ceiling](/gg/execution-limits/) can stop a model that has started answering in
+  prose; with none configured, the run is bounded by its turn ceiling as it always was.
 
 ### A reversal: there is no fenced block, and there *is* a `finish`
 
@@ -284,10 +285,9 @@ coercing it looked up a function literally named `"undefined"` and reported that
 unknown. The name was never the model's: nothing it wrote said `undefined`, so it was sent
 hunting a typo that did not exist. The last layer that can still see what the value *was* is
 the one that names it, so `undefined` and `null` are answered with the fault that actually
-occurred — the object does not carry that function, check with `<object>.list()` — and any
-other wrong type is named for what it is (*takes a function or a function name, not a
-number*). A name that is merely unknown still throws `not-found`, because that one really is
-a name the model wrote.
+occurred (*no documentation found*) and any other wrong type is named for what it is
+(*expected a function or function name, got number*). A name that is merely unknown still
+throws `not-found`, because that one really is a name the model wrote.
 
 That is a reversal, and the thing it replaced is worth stating because the replacement is a
 subtraction. gg used to hang a `.docs()` method off every bound function (and a
@@ -362,7 +362,7 @@ SDK wrappers**, on the three shapes that are otherwise silent or unreadable:
 
 - `shell("npm test", 300)` — a positional argument where an options object belongs
   would quietly read `timeoutSecs` off a number, get `undefined`, and use the default.
-  It is refused with *"`shell(…)` takes an options object for its optional arguments"*.
+  It is refused with *"expected an options object, got number"*.
 - `readFile("a.ts", { offset: -1 })` — a negative number lowers across the membrane by
   two's-complement wrap and fails for a reason unrelated to what was written. It is
   refused with the permitted range.
@@ -440,9 +440,9 @@ view.openText("rows", `${rows.length} rows, ${rows[0].length} columns`);
 `lib` follows the same capability rule every other object does: it joins the scope only when
 the agent has actually loaded something, so a program written by an agent that has read no
 code has no `lib` identifier at all. It is not an **API object**, though — it holds no gg
-functions, and it has no `list()` to call. The hint an unknown name earns says so, naming
-the API objects a program may reach and then naming `lib` separately, because a sentence
-that lumped them together would be false about one of them.
+functions, and it has no `list()` to call. The hint an unknown name earns keeps the two
+apart, listing the API objects a program may reach and then naming `lib` separately, because
+a list that lumped them together would be false about one of them.
 
 Loaded code is **not context**. It is transpiled once and held by the host, so it costs no
 tokens, is never summarized, and a [compaction](/gg/compaction/) does not sweep it — an
@@ -516,7 +516,7 @@ own outcome untouched.
 
 ```text
 the model's whole reply
-   └─ heal it into a program             (not a program ⇒ an error turn, fed back)
+   └─ heal it (deletion only; it never refuses a reply)
         └─ oxc type-strip, in process    (~0.2 ms; size and nesting bounded first)
              └─ instantiate the process-wide compiled component  (24–124 µs)
                   └─ run the program against exactly this run's tools
@@ -626,15 +626,19 @@ after subtracting the time spent in host calls, trapping only when the guest's o
 genuinely spent.
 :::
 
-Three further bounds are not configurable, because each protects gg itself rather than
+Two further bounds are not configurable, because each protects gg itself rather than
 rationing a run:
 
-- **A program is at most 64 KiB**, and nests brackets at most 200 deep. The TypeScript
-  parser is recursive descent with no depth guard, and a stack overflow is not a
-  catchable panic — it would take the whole gg process down over one degenerate
-  response. A model that repeats a bracket in a generation loop produces exactly that
-  shape, so the untrusted input is bounded before it is parsed (and the parse runs on a
-  256 MiB stack sized against what those bounds still admit).
+- **A program nests brackets at most 200 deep.** The TypeScript parser is recursive
+  descent with no depth guard, and a stack overflow is not a catchable panic — it would
+  take the whole gg process down over one degenerate response. A model that repeats a
+  bracket in a generation loop produces exactly that shape, so that one shape is bounded
+  before the parse. **Nothing bounds a program's *length*:** a response is processed in
+  full however long it is, and the parse runs on a stack sized *for that program* —
+  4 KiB per byte of source, never under 256 MiB, against the ~1.2 KiB per source byte the
+  hungriest measured shape actually consumes. A thread's stack is reserved rather than
+  committed, so the pages a parse never touches cost nothing and sizing generously per
+  program is free.
 - **A `shell` timeout is clamped to what is left of the run's wall-clock budget.** A
   host function cannot trap, so one `shell("sleep 3600")` would otherwise carry the run
   past its deadline with no mechanism left to stop it.
@@ -1060,8 +1064,7 @@ names. A model cannot act on gg's internals, and a trace full of them is a trace
 read past to find the one line it can.
 
 `Notice` is the `System` band, and it is where the small population of things gg genuinely has
-to say lives: a reply that [was not a program](#the-contract-a-model-sees); an ending a
-[validation command](/gg/completion/) rejected; the results of a deferred `wait_for_issue`;
+to say lives: an ending a [validation command](/gg/completion/) rejected; the results of a deferred `wait_for_issue`;
 [statements after a top-level `return`](#statements-that-cannot-run) that could not run; and
 the one notice a *working* program can earn, [below](#a-program-that-worked-earns-no-message).
 When a turn produces both a notice and an error, the notices come first and the error last —
@@ -1092,12 +1095,15 @@ There is one carve-out, and it is narrower than it looks: the layer that *raises
 compose into it the answer to the question that fault provokes, because at that point the
 answer is part of the diagnostic rather than commentary on it. A `ReferenceError` provokes
 *what do I have?*, so the guest names the API objects this run bound — the model would
-otherwise have to spend a turn asking. A mistyped argument provokes *what does this call
-take?*, so the re-tagged failure names the call and points at
-`view.openDocsView("addTask")`, the one operation that answers it. Both are composed **in the
-guest, at the call site**, by the code that knows what went wrong; neither is gg reading a
-finished error and deciding to be helpful about it a turn later, which is the thing this rule
-forbids.
+otherwise have to spend a turn asking. That is composed **in the guest, at the call site**,
+by the code that knows what went wrong; it is not gg reading a finished error and deciding to
+be helpful about it a turn later, which is the thing this rule forbids.
+
+The carve-out covers a *fact* the fault implies, never advice about what to do with it. Every
+message the guest raises is one clause and is made of facts — the offending value, the
+argument's name, the cap, the path, the expected type — because the fault class is already in
+the rendered line (`` `openDocsView` failed (invalid-argument): … ``) and a model acts on the
+value it got wrong, not on a sentence explaining why the rule exists.
 
 There used to be a fourth message, headed `Output`, and its absence is the clearest statement
 of the change. It reported what a program had done: the roster of its composed calls, how many
@@ -1242,8 +1248,8 @@ produce an ordinary, located, catchable program error naming what is missing and
 
 Every one of these is a **turn** outcome, not a run outcome, and every one emits its
 `code_execution` telemetry event whether it succeeded or not — including a turn whose
-reply was not a program at all, which is what makes that event's count the exact number
-of code-shaped turns a run took.
+reply never compiled, which is what makes that event's count the exact number of
+code-shaped turns a run took.
 
 The third column is what reaches the **model**, under one of
 [the three headings](#the-three-things-gg-says). Several rows say *nothing*: the program
@@ -1252,19 +1258,18 @@ record.
 
 | What went wrong | Caught by | What the model is told |
 | --- | --- | --- |
-| The reply was not a program — prose, empty, comments only, native tool calls and no text, no block gg reads as a program, or several candidate blocks | [healing](/gg/response-healing/), before any engine work | a `Notice`: which shape it sent, that nothing ran and nothing changed, and which of its own calls would have ended the run |
+| The reply is prose, or several code blocks, or anything else that is not TypeScript | the type-strip — gg itself judges nothing | a `Compiler error` carrying the parser's diagnostics over the reply exactly as sent |
 | The program is not valid TypeScript | the type-strip, before any engine work | a `Compiler error` carrying every parser diagnostic — each with its line, its column and the offending source line quoted — and nothing else; that none of it ran is what the heading means |
 | The program breaks an **early error** — most often a `const` declared twice, i.e. two programs in one reply | the type-strip's scope analysis, before any engine work | a `Compiler error`: the identifier, and **both** places it was bound, each with a line, a column and the source line quoted |
 | The reply carried statements after a top-level `return` | the type-strip, from the tree it already built | a `Notice`: how many did not run, which one was first, and that a top-level `return` ends the program — the program itself still runs |
 | `import`, `export`, a dynamic `import()`, or a top-level `await` | the type-strip | a `Compiler error` saying the sandbox has no module system and is synchronous, and what to write instead |
-| The program is longer than 64 KiB | the size guard, before the parse | a `Compiler error`: its size, the cap, and that a program orchestrates tools rather than carrying a document inline |
 | The program nests brackets past 200 deep | the nesting guard, before the parse | a `Compiler error`: its depth, the cap, that the parse runs on a bounded stack, and that this is almost always a repeated bracket |
 | An unknown identifier (usually a withheld tool) | the guest | a `Runtime error`: the name, the program line — **and the API objects this run binds**, because the question a `ReferenceError` provokes is *what do I have?*, and the guest composes that into the error rather than gg wrapping prose around it |
-| An argument of the wrong shape — a record missing a required field, a number where a string goes | the SDK's validators, or the generated bindings one layer below them | a catchable `invalid-argument` `ToolError` thrown at the call site and, uncaught, a `Runtime error`: **which function** the argument was wrong for, what the bindings said was wrong with it, the line of the program that made the call, and `view.openDocsView("<fn>")`. It used to be caught by nothing at all — the bindings' `TypeError` is an `Error` from [another realm](#a-tool-failure-throws), so it fell through to the value branch and arrived as the literal string `{}` |
+| An argument of the wrong shape — a record missing a required field, a number where a string goes | the SDK's validators, or the generated bindings one layer below them | a catchable `invalid-argument` `ToolError` thrown at the call site and, uncaught, a `Runtime error`: **which function** the argument was wrong for, what the bindings said was wrong with it, and the line of the program that made the call. It used to be caught by nothing at all — the bindings' `TypeError` is an `Error` from [another realm](#a-tool-failure-throws), so it fell through to the value branch and arrived as the literal string `{}` |
 | A tool threw and was not caught | the guest's single `catch` | a `Runtime error`: which tool failed, its code and message, and the one line of *its own* program it threw on. Not the calls that already landed — those stand, which the [system prompt](/gg/prompts/) says once |
 | A tool failed but was caught | the program's own `catch` | nothing. It was handed the typed `ToolError` at the statement that made the call, which is the whole point of the surface; the operator's stream still records the failure |
-| A denied global (`setTimeout`, `fetch`, `crypto.randomUUID`, …) | the guest's throwers | a `Runtime error`: the denial, located, plus "every tool function is synchronous" |
-| The program returned a Promise | the guest | a `Runtime error` telling it to remove `async`/`await`, since every function on the surface is synchronous |
+| A denied global (`setTimeout`, `fetch`, `crypto.randomUUID`, …) | the guest's throwers | a `Runtime error`: the denied name, what the sandbox does not have (a clock, randomness, the network), and the line |
+| The program returned a Promise | the guest | a `Runtime error` naming what came back and that the sandbox is synchronous |
 | The program `return`ed a value | the guest | nothing. That a returned value is discarded is a standing rule in the system prompt; that this program returned one goes to the operator |
 | A view call broke one of [its caps](#the-caps-and-why-none-of-them-truncates) — a body or label over the ceiling, a fifty-first text view, a hundred-and-first view operation, an empty label | the host, which owns the window | a catchable `limit-exceeded` (or `invalid-argument`) thrown at the call site, **naming the cap**, and nothing afterwards: material that never reached the window is refused where the program can still do something about it |
 | The program called `finish` and then failed | the host, which revokes the flag | the failure, as a `Runtime error`, and nothing about the revocation — the system prompt states that a program which throws has not finished, and the operator's stream records that this one lost its ending |
@@ -1278,8 +1283,8 @@ record.
 
 Which of these count as an **error turn** follows one definition shared by both execution
 modes: a turn is an error when the work it *declared* could not be carried out as
-declared — a reply that was not a program, a program that did not compile, one that threw
-uncaught, one the sandbox stopped at a ceiling. A failure gg reported *into* a program
+declared — a program that did not compile, one that threw uncaught, one the sandbox
+stopped at a ceiling. A failure gg reported *into* a program
 that carried on — a caught throw, a refused call, a non-zero `shell` exit, a call refused
 because the wall-clock budget is spent — is **not** one: the program handled it, which is
 the entire point of the typed surface. How many such turns a run tolerates is a matter of

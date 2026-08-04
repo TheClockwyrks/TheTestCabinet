@@ -293,7 +293,11 @@ async fn edit_memory_classifies_each_refusal() {
         )
         .await;
     assert_eq!(emptied.failure, Some(ToolFailure::InvalidArgument));
-    assert!(emptied.output.contains("delete the memory instead"));
+    assert!(
+        emptied.output.contains("delete it instead"),
+        "{}",
+        emptied.output
+    );
     assert_eq!(store.lock().count(), 1);
 }
 

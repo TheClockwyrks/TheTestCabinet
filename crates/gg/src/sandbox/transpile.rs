@@ -43,29 +43,39 @@
 //! why the sandbox has no promises. Refusing them here costs no engine work at all and hands the
 //! model a sentence it can act on.
 //!
-//! # The parser recurses, so the input is bounded and the stack is deep
+//! # The parser recurses, so the stack is sized against the source
 //!
 //! `oxc`'s parser is recursive descent with **no depth guard**: one stack frame per level of
 //! grammatical nesting. A stack overflow is not a catchable panic — it is `fatal runtime error:
 //! stack overflow` and `SIGABRT`, which would take down the whole gg process (the run, its subagent
 //! tree, its worktrees) over one degenerate response. A model that repeats a bracket in a
-//! generation loop produces exactly that shape, so the program text is untrusted input and is
-//! bounded before it is parsed.
+//! generation loop produces exactly that shape, so the program text is untrusted input and the
+//! stack it is parsed on is not left to chance.
 //!
-//! Three measures together, each load-bearing, all measured on this machine against `oxc` 0.141:
+//! **No program is refused for being long.** A response is what the model had to say, and truncating
+//! or refusing one because of its size discards work that was already paid for; whatever a model
+//! emits is transpiled in full. What that costs is a stack big enough for it, which is a *sizing*
+//! problem rather than a bound on the input.
 //!
-//! 1. [`MAX_PROGRAM_BYTES`] bounds how many levels the source can possibly ask for at all — the
-//!    parser recurses at most once per token, and a token is at least one byte.
-//! 2. [`MAX_NESTING_DEPTH`] bounds the **bracket** shapes, which are both the ones a degenerate
+//! Two measures together, both load-bearing, all figures measured on this machine against `oxc`
+//! 0.141:
+//!
+//! 1. [`MAX_NESTING_DEPTH`] bounds the **bracket** shapes, which are both the ones a degenerate
 //!    generation actually produces and the most expensive per level (~3.4 KiB of stack for each
-//!    `{a:`, against ~1.3 KiB for each `!`). Without it, 64 KiB of `(` would ask for 64,000 levels.
-//! 3. [`PARSER_STACK_BYTES`] gives the parse a stack sized against what 1 and 2 still allow — the
-//!    bracket-free shapes, whose worst measured appetite is a chain of postfix `!` at ~1.2 KiB of
-//!    stack per byte of source.
+//!    `{a:`, against ~1.3 KiB for each `!`). Capping their *count* is what makes their total
+//!    contribution a constant — ~0.7 MiB — no matter how long the source is.
+//! 2. [`parser_stack_bytes`] gives the parse a stack **proportional to the source's length**, sized
+//!    against what measure 1 still allows: the bracket-free shapes, which the nesting scan cannot
+//!    see at all and whose worst measured appetite is a chain of postfix `!` at ~1.2 KiB of stack
+//!    per byte of source.
 //!
-//! The three leave every shape measured at better than 3× margin, in the `dev` profile whose frames
-//! are the fatter ones. The alternative — growing the stack alone — is not a fix: any fixed stack
-//! has a threshold, and the bound has to be on the input because the input is what is untrusted.
+//! Those two exhaust the recursions the parser can be made to perform. Every level is either a
+//! bracket — capped in count, so bounded in total — or a bracket-free production, which takes at
+//! least one byte of source per level and at most ~1,261 bytes of stack for it. So the appetite of
+//! *any* source is under `0.7 MiB + 1,261 × its length`, and a stack allowed to grow with the
+//! length covers it at better than 3× margin at every length, in the `dev` profile whose frames are
+//! the fatter ones. A *fixed* stack is what could not do this: any constant has a threshold, and the
+//! only way to keep a constant honest is to refuse the input that would cross it.
 
 use std::path::Path;
 
@@ -81,19 +91,6 @@ use oxc::transformer::{TransformOptions, Transformer};
 /// The virtual path diagnostics are labelled with. Never read from disk — a program has no file.
 const VIRTUAL_SOURCE_PATH: &str = "program.ts";
 
-/// The most bytes of TypeScript the sandbox will parse.
-///
-/// 64 KiB is around sixteen hundred lines — far more than a model emits in one response, and close
-/// to what most providers' output ceilings let it emit at all. A program is an *orchestration over
-/// the tools*, not a place to carry a large document inline, and the message a program over this
-/// size gets says so.
-///
-/// The cap is not a matter of taste, though: it is what bounds how deeply the parser can be made to
-/// recurse. Recursive descent takes at most one level per token and a token is at least one byte,
-/// so a source of *n* bytes can ask for at most *n* levels — which is what makes
-/// [`PARSER_STACK_BYTES`] sizeable at all.
-const MAX_PROGRAM_BYTES: usize = 65_536;
-
 /// The deepest `(`, `[` or `{` nesting the sandbox will parse.
 ///
 /// Real programs nest fewer than ten levels; 200 is twenty times that and still five times under
@@ -105,30 +102,55 @@ const MAX_PROGRAM_BYTES: usize = 65_536;
 /// They are also the shape a degenerate generation actually produces: `return ((((…1…))));` is
 /// what a model emits when a repetition loop runs away, and `[[[[…]]]]` is one bracket-repetition
 /// bug from the same place.
+///
+/// It is kept even though nothing else about a program's size is bounded any more, because it is
+/// what turns the brackets' appetite into a *constant* — at most 200 levels of the priciest shape
+/// is ~0.7 MiB — and leaves [`parser_stack_bytes`] a per-byte figure to be sized against. It costs
+/// one linear scan and refuses only shapes nobody meant to write.
 const MAX_NESTING_DEPTH: u32 = 200;
 
-/// The stack `oxc` is given to parse, transform and generate on — 128× what the sandbox's own
-/// blocking thread has.
+/// The stack every parse gets regardless of how short the source is — 128× what the sandbox's own
+/// blocking thread has, and what [`parser_stack_bytes`] hands any source under 64 KiB.
 ///
-/// With the program capped at [`MAX_PROGRAM_BYTES`] and its bracket nesting at
-/// [`MAX_NESTING_DEPTH`], what remains are the bracket-*free* recursions the nesting scan cannot
-/// see at all: chains of postfix `!`, prefix `!`, `.b`, `?:`, unary `-`, `as any`, `<any>`, `new`.
-/// The hungriest of those measured is a chain of postfix non-null assertions, at **1,261 bytes of
-/// stack per byte of source**; a program of 64 KiB of them therefore needs ~83 MiB, and the bracket
-/// nesting the cap still permits adds ~0.7 MiB on top. 256 MiB leaves better than 3× margin over
-/// every shape measured.
+/// A floor rather than a pure ratio because the ratio is a bound on *recursion*, and a parse also
+/// spends stack on things that have nothing to do with the source's length. It costs nothing to
+/// keep: reserved pages a short program never touches are never committed.
+const PARSER_STACK_FLOOR_BYTES: usize = 256 * 1024 * 1024;
+
+/// The stack [`parser_stack_bytes`] reserves for each byte of source — 4 KiB, against the 1,261
+/// bytes per source byte the hungriest shape measured actually consumes in the `dev` profile.
+const PARSER_STACK_BYTES_PER_SOURCE_BYTE: usize = 4 * 1024;
+
+/// The stack `oxc` is given to parse, transform and generate on, for a source of `src_len` bytes:
+/// 4 KiB per byte of source, never less than [`PARSER_STACK_FLOOR_BYTES`].
 ///
-/// **That figure is the `dev` profile's**, deliberately: an unoptimised frame is up to ~16× fatter
+/// # Where 4 KiB per source byte comes from
+///
+/// With bracket nesting capped at [`MAX_NESTING_DEPTH`], what a long source can still ask for are
+/// the bracket-*free* recursions the nesting scan cannot see at all: chains of postfix `!`, prefix
+/// `!`, `.b`, `?:`, unary `-`, `as any`, `<any>`, `new`. Every one of them costs at least one byte
+/// of source per level, and the hungriest measured — a chain of postfix non-null assertions — takes
+/// **1,261 bytes of stack for each of those bytes**. The brackets the depth cap still permits add
+/// ~0.7 MiB, once, whatever the length. So `4,096 × n` clears `0.7 MiB + 1,261 × n` by better than
+/// 3× at every length: the same margin the old fixed 256 MiB gave a program capped at 64 KiB, now
+/// held at *any* size rather than bought by refusing the sources that would break it.
+///
+/// **That 1,261 is the `dev` profile's**, deliberately: an unoptimised frame is up to ~16× fatter
 /// than an optimised one (the same chain costs 80 bytes per source byte in `release`), the test
 /// suite runs unoptimised, and the margin has to hold for the build a developer runs as well as the
-/// one a run container gets. `the_hungriest_programs_the_caps_admit_still_transpile` is what keeps
-/// this honest: it parses each worst-case shape at the size cap, so a drift between the caps and
-/// this number fails the suite rather than a run.
+/// one a run container gets. `the_hungriest_programs_transpile_at_any_size` is what keeps this
+/// honest: it parses each worst-case shape at four times the size that used to be refused outright,
+/// so a drift between the measured appetite and this ratio fails the suite rather than a run.
 ///
-/// It costs a thread: ~48 µs to spawn and join — flat in the stack size, because the stack is
-/// *reserved* rather than committed and untouched pages never fault in — against a ~226 µs
-/// type-strip and a turn measured in seconds.
-const PARSER_STACK_BYTES: usize = 256 * 1024 * 1024;
+/// # Why sizing per program costs nothing
+///
+/// A thread's stack is *reserved* address space, not committed memory: the pages a parse never
+/// touches are never faulted in, and the ~48 µs it takes to spawn and join the thread is flat in
+/// the stack size (against a ~226 µs type-strip and a turn measured in seconds). Sizing generously
+/// per program is therefore paid for only by the recursion that actually happens.
+fn parser_stack_bytes(src_len: usize) -> usize {
+    PARSER_STACK_FLOOR_BYTES.max(src_len.saturating_mul(PARSER_STACK_BYTES_PER_SOURCE_BYTE))
+}
 
 /// A program that type-stripped cleanly: the JavaScript to run, and what the strip observed about
 /// the program on the way past.
@@ -181,13 +203,11 @@ pub struct UnreachableTail {
 /// engine has to parse. Plain JavaScript therefore passes through essentially unchanged, so a model
 /// that ignores the word "TypeScript" in the prompt still runs.
 ///
-/// The two size guards run first and cost one pass over the text: a program that is too long or too
-/// deeply nested is refused with an explanation, because the parser it would otherwise be handed to
-/// recurses without a depth guard (see the [module docs](self)).
+/// A program of any length transpiles: what its length changes is the size of the stack the parse
+/// is given, not whether it is accepted (see the [module docs](self)). The one guard that runs first
+/// costs a single pass over the text and refuses only degenerate bracket nesting, because the parser
+/// below it recurses without a depth guard.
 pub fn transpile_ts(src: &str) -> Result<Transpiled, TranspileError> {
-    if src.len() > MAX_PROGRAM_BYTES {
-        return Err(TranspileError::Unsupported(oversized_message(src.len())));
-    }
     let deepest = nesting_depth(src);
     if deepest > MAX_NESTING_DEPTH {
         return Err(TranspileError::Unsupported(over_nested_message(deepest)));
@@ -195,8 +215,11 @@ pub fn transpile_ts(src: &str) -> Result<Transpiled, TranspileError> {
     strip_types_on_a_deep_stack(src)
 }
 
-/// Run `work` on a thread with [`PARSER_STACK_BYTES`] of stack, and hand back exactly what it
-/// returned.
+/// Run `work` on a thread with the stack [`parser_stack_bytes`] sizes for `src`, and hand back
+/// exactly what it returned.
+///
+/// The source is passed rather than a size because the stack is a function of *that* source's
+/// length: this is where "no program is refused for being long" is actually paid for.
 ///
 /// The whole pipeline runs there, not only the parse: the transformer and the code generator walk
 /// the same tree the parser built, so they recurse to the same depth. It is generic over the work
@@ -206,13 +229,15 @@ pub fn transpile_ts(src: &str) -> Result<Transpiled, TranspileError> {
 /// Two failures of the thread itself, and why each is handled the way it is. A thread that cannot be
 /// *started* is a machine out of threads or address space, which `std::thread::spawn` itself panics
 /// on — and a panic here is contained, arriving at the loop's `spawn_blocking` join as a failed
-/// turn, which is precisely the outcome a stack overflow does *not* give us. And a panic *inside*
-/// `oxc` is re-raised on this thread rather than translated into a model-facing error, so the extra
-/// thread changes nothing about how a defect in the transpiler surfaces.
-fn on_a_deep_stack<T: Send>(work: impl FnOnce() -> T + Send) -> T {
+/// turn, which is precisely the outcome a stack overflow does *not* give us. That is also what a
+/// source long enough for its proportional stack to exceed the address space would get: a failed
+/// turn rather than a dead process, at a length no model can emit and no author would write. And a
+/// panic *inside* `oxc` is re-raised on this thread rather than translated into a model-facing
+/// error, so the extra thread changes nothing about how a defect in the transpiler surfaces.
+fn on_a_deep_stack<T: Send>(src: &str, work: impl FnOnce() -> T + Send) -> T {
     std::thread::scope(|scope| {
         let parser = std::thread::Builder::new()
-            .stack_size(PARSER_STACK_BYTES)
+            .stack_size(parser_stack_bytes(src.len()))
             .spawn_scoped(scope, work)
             .expect("the sandbox's parser thread can be started");
         match parser.join() {
@@ -224,7 +249,7 @@ fn on_a_deep_stack<T: Send>(work: impl FnOnce() -> T + Send) -> T {
 
 /// [`strip_types`] on the deep stack — the program path's whole pipeline.
 fn strip_types_on_a_deep_stack(src: &str) -> Result<Transpiled, TranspileError> {
-    on_a_deep_stack(|| strip_types(src))
+    on_a_deep_stack(src, || strip_types(src))
 }
 
 /// The `oxc` pipeline itself: parse, reject what the sandbox cannot run, strip the types, print.
@@ -374,24 +399,12 @@ pub enum TranspileError {
     ///
     /// Two families share this variant because they share that shape. One is a **feature with no
     /// implementation** — `import`, `export`, a dynamic `import()`, a top-level `await`. The other
-    /// is a program **past the parser's bounds**: longer than [`MAX_PROGRAM_BYTES`] or nested
-    /// deeper than [`MAX_NESTING_DEPTH`], where refusing it is what keeps an unguarded recursive
-    /// descent from overflowing the stack (see the [module docs](self)). In both cases the program
-    /// is syntactically fine and the model is told precisely what to change.
+    /// is a program nested deeper than [`MAX_NESTING_DEPTH`], where refusing it is what keeps an
+    /// unguarded recursive descent from overflowing the stack (see the [module docs](self)).
+    /// Nothing is refused for its *length*. In both cases the program is syntactically fine and the
+    /// model is told precisely what to change.
     #[error("{0}")]
     Unsupported(String),
-}
-
-/// The guidance for a program the sandbox will not even parse because of its size.
-///
-/// It names the number rather than saying "too long", and it says what to do instead, because the
-/// model that hits this is usually inlining a document it should be writing out in pieces.
-fn oversized_message(bytes: usize) -> String {
-    format!(
-        "Your program is {bytes} bytes long, and the sandbox parses at most {MAX_PROGRAM_BYTES}. A \
-         program orchestrates the tools; it is not the place to carry a large document inline. \
-         Write large content out in pieces, or split the work across turns."
-    )
 }
 
 /// The guidance for a program nested deeper than the parser is given room for.
@@ -624,8 +637,9 @@ fn line_column(src: &str, offset: usize) -> (usize, usize, &str) {
 /// How much of the offending source line the diagnostic quotes.
 ///
 /// A program is one line more often than it should be — a model that minifies its output, or one
-/// whose whole program is a single `return` of a large literal — and a diagnostic that pasted 64 KiB
-/// back into the context window would cost far more than it explains.
+/// whose whole program is a single `return` of a large literal — and, with no bound at all on how
+/// long a program may be, a diagnostic that quoted such a line whole could paste the entire program
+/// back into the context window at a cost far past what it explains.
 const MAX_EXCERPT_CHARS: usize = 120;
 
 /// The source line as the diagnostic quotes it: trimmed, and capped at [`MAX_EXCERPT_CHARS`].

@@ -478,7 +478,6 @@ describe("gg response-healing toggles", () => {
       "drop-duplicate-program": false,
       "drop-imports": false,
       "unwrap-async": false,
-      "strip-comment-only": false,
     });
   });
 

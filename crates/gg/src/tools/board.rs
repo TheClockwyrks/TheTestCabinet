@@ -129,7 +129,6 @@ fn failure_for(err: &BoardError) -> ToolFailure {
 fn name_array(
     args: &Value,
     field: &str,
-    tool: &str,
     noun: &str,
     required: bool,
 ) -> Result<Vec<String>, ArgumentError> {
@@ -137,8 +136,7 @@ fn name_array(
         None | Some(Value::Null) => {
             if required {
                 Err(ArgumentError(format!(
-                    "`{tool}`: missing required argument `{field}` (a list of {noun}s; pass \
-                     `[]` to clear)"
+                    "missing required argument `{field}` (a list of {noun}s)"
                 )))
             } else {
                 Ok(Vec::new())
@@ -149,12 +147,12 @@ fn name_array(
             .map(|item| match item {
                 Value::String(id) => Ok(id.clone()),
                 _ => Err(ArgumentError(format!(
-                    "`{tool}`: every entry in `{field}` must be a {noun} string"
+                    "every entry in `{field}` must be a {noun} string"
                 ))),
             })
             .collect(),
         Some(_) => Err(ArgumentError(format!(
-            "`{tool}`: argument `{field}` must be an array of {noun}s"
+            "argument `{field}` must be an array of {noun}s"
         ))),
     }
 }
@@ -209,15 +207,15 @@ impl Tool for CreateEpicTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let prefix = match required_str(&args, "prefix", CREATE_EPIC_TOOL) {
+        let prefix = match required_str(&args, "prefix") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let title = match required_str(&args, "title", CREATE_EPIC_TOOL) {
+        let title = match required_str(&args, "title") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let description = match required_str(&args, "description", CREATE_EPIC_TOOL) {
+        let description = match required_str(&args, "description") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
@@ -248,7 +246,7 @@ impl CreateEpicTool {
                 format!("created epic `{id}`"),
             )
             .with_data(board_node_data(&id, &store)),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("create_epic: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }
@@ -306,8 +304,7 @@ impl CreateIssueTool {
         Some(ToolOutcome::failed(
             ToolFailure::InvalidArgument,
             format!(
-                "create_issue: `agent` names `{name}`, which is not an agent you may assign an \
-                 issue to. You may assign to: {}.",
+                "`agent`: unknown agent `{name}`; expected one of: {}",
                 self.policy.implementer_list()
             ),
         ))
@@ -321,8 +318,7 @@ impl CreateIssueTool {
         Some(ToolOutcome::failed(
             ToolFailure::InvalidArgument,
             format!(
-                "create_issue: `reviewers` names `{name}`, which is not an agent you may assign a \
-                 review to. You may name: {}.",
+                "`reviewers`: unknown agent `{name}`; expected one of: {}",
                 self.policy.reviewer_list()
             ),
         ))
@@ -407,42 +403,39 @@ impl Tool for CreateIssueTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let title = match required_str(&args, "title", CREATE_ISSUE_TOOL) {
+        let title = match required_str(&args, "title") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let in_scope = match required_str(&args, "inScope", CREATE_ISSUE_TOOL) {
+        let in_scope = match required_str(&args, "inScope") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let out_of_scope = match required_str(&args, "outOfScope", CREATE_ISSUE_TOOL) {
+        let out_of_scope = match required_str(&args, "outOfScope") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let completion_criteria = match required_str(&args, "completionCriteria", CREATE_ISSUE_TOOL)
-        {
+        let completion_criteria = match required_str(&args, "completionCriteria") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let agent = match required_str(&args, "agent", CREATE_ISSUE_TOOL) {
+        let agent = match required_str(&args, "agent") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let description = match optional_str(&args, "description", CREATE_ISSUE_TOOL) {
+        let description = match optional_str(&args, "description") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let epic_id = match optional_str(&args, "epicId", CREATE_ISSUE_TOOL) {
+        let epic_id = match optional_str(&args, "epicId") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let blocked_by = match name_array(&args, "blockedBy", CREATE_ISSUE_TOOL, "issue id", false)
-        {
+        let blocked_by = match name_array(&args, "blockedBy", "issue id", false) {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let reviewers = match name_array(&args, "reviewers", CREATE_ISSUE_TOOL, "agent name", false)
-        {
+        let reviewers = match name_array(&args, "reviewers", "agent name", false) {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
@@ -492,8 +485,7 @@ impl CreateIssueTool {
             return ToolOutcome::failed(
                 ToolFailure::InvalidArgument,
                 format!(
-                    "create_issue: this run requires every issue to name at least one reviewer in \
-                     `reviewers`. You may name: {}.",
+                    "`reviewers` must name at least one reviewer; expected one of: {}",
                     self.policy.reviewer_list()
                 ),
             );
@@ -523,7 +515,7 @@ impl CreateIssueTool {
                 format!("created issue `{id}`"),
             )
             .with_data(board_node_data(&id, &store)),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("create_issue: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }
@@ -589,42 +581,41 @@ impl Tool for UpdateIssueTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let id = match required_str(&args, "id", UPDATE_ISSUE_TOOL) {
+        let id = match required_str(&args, "id") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let title = match optional_str(&args, "title", UPDATE_ISSUE_TOOL) {
+        let title = match optional_str(&args, "title") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let description = match optional_str(&args, "description", UPDATE_ISSUE_TOOL) {
+        let description = match optional_str(&args, "description") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let in_scope = match optional_str(&args, "inScope", UPDATE_ISSUE_TOOL) {
+        let in_scope = match optional_str(&args, "inScope") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let out_of_scope = match optional_str(&args, "outOfScope", UPDATE_ISSUE_TOOL) {
+        let out_of_scope = match optional_str(&args, "outOfScope") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let completion_criteria = match optional_str(&args, "completionCriteria", UPDATE_ISSUE_TOOL)
-        {
+        let completion_criteria = match optional_str(&args, "completionCriteria") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let epic_id = match optional_str(&args, "epicId", UPDATE_ISSUE_TOOL) {
+        let epic_id = match optional_str(&args, "epicId") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let status = match optional_str(&args, "status", UPDATE_ISSUE_TOOL) {
+        let status = match optional_str(&args, "status") {
             Ok(Some(raw)) => match IssueStatus::parse(&raw) {
                 Some(status) => Some(status),
                 None => {
                     return invalid_argument(format!(
-                        "update_issue: `{raw}` is not a valid status; use `open`, `in_progress`, \
-                         or `done`."
+                        "`{raw}` is not a valid status; expected `open`, \
+                         `in_progress` or `done`"
                     ));
                 }
             },
@@ -677,7 +668,7 @@ impl UpdateIssueTool {
                 format!("updated issue `{id}`"),
             ),
             Ok(_) => unreachable!("update_issue yields IssueUpdated"),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("update_issue: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }
@@ -731,17 +722,11 @@ impl Tool for SetIssueBlockedByTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let id = match required_str(&args, "id", SET_ISSUE_BLOCKED_BY_TOOL) {
+        let id = match required_str(&args, "id") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
-        let blocked_by = match name_array(
-            &args,
-            "blockedBy",
-            SET_ISSUE_BLOCKED_BY_TOOL,
-            "issue id",
-            true,
-        ) {
+        let blocked_by = match name_array(&args, "blockedBy", "issue id", true) {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
@@ -764,9 +749,7 @@ impl SetIssueBlockedByTool {
                 ToolOutcome::ok(format!("Updated the blockers of issue `{id}`."), summary)
             }
             Ok(_) => unreachable!("set_issue_blocked_by yields BlockersSet"),
-            Err(err) => {
-                ToolOutcome::failed(failure_for(&err), format!("set_issue_blocked_by: {err}"))
-            }
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }
@@ -810,7 +793,7 @@ impl Tool for RemoveEpicTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let id = match required_str(&args, "id", REMOVE_EPIC_TOOL) {
+        let id = match required_str(&args, "id") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
@@ -830,7 +813,7 @@ impl RemoveEpicTool {
             )
             .with_data(usage_data(&store)),
             Ok(_) => unreachable!("remove_epic yields EpicRemoved"),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("remove_epic: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }
@@ -874,7 +857,7 @@ impl Tool for RemoveIssueTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let id = match required_str(&args, "id", REMOVE_ISSUE_TOOL) {
+        let id = match required_str(&args, "id") {
             Ok(v) => v,
             Err(error) => return error.into(),
         };
@@ -894,7 +877,7 @@ impl RemoveIssueTool {
             )
             .with_data(usage_data(&store)),
             Ok(_) => unreachable!("remove_issue yields IssueRemoved"),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("remove_issue: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }

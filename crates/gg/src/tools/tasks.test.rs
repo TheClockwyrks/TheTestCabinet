@@ -72,7 +72,7 @@ async fn set_blocked_by_surfaces_a_cycle_as_a_tool_error_without_mutating() {
         .await;
     assert!(!cyclic.ok, "a cycle-inducing edge must be refused");
     assert!(
-        cyclic.output.contains("cycle") && cyclic.output.contains("DAG"),
+        cyclic.output.contains("cycle"),
         "the refusal explains it would create a cycle: {}",
         cyclic.output
     );

@@ -20,16 +20,16 @@ renders a test case's [`prompt.hbs`](/testing/end-to-end/overview/#prompt-templa
 | `board.hbs`                | The pinned [Project management](/gg/project-management/) board block.                                                                                                                  |
 | `memories.hbs`             | The pinned [memories](/gg/memories/) block.                                                                                                                                            |
 | `memory-notice.hbs`        | The per-turn notice a holder of a [linked memory instance](/gg/memories/#linked-instances-being-told-what-somebody-else-wrote) is given when **another** holder wrote, revised or deleted one. |
-| `code-not-a-program.hbs`   | The **`Notice`** a reply that was not a program at all earns — prose, empty, comments only, or several candidate blocks.                                                               |
 | `code-nothing-shown.hbs`   | The **`Notice`** a [program](/gg/responses-as-code/) that ran but put nothing in the window earns, checked against the assembled window rather than inferred from the outcome.         |
 
-### Two `code-*` templates, where there were six
+### One `code-*` template, where there were six
 
 gg used to author a per-turn report for every [responses-as-code](/gg/responses-as-code/)
 turn: one template for a program that ran — its roster of composed calls, the views it
 opened, closed or was refused, the value it discarded — and one each for a program that did
 not compile, for one the sandbox could not run to a result, and for one it stopped at its
-execution timeout. All four are gone, and what is left is the two `Notice` templates above.
+execution timeout. A sixth told a model its reply was not a program at all. All of them are
+gone, and what is left is the one `Notice` template above.
 
 gg now authors almost nothing for a code turn, because the whole vocabulary is three
 messages — `Compiler error`, `Runtime error`, and a `Notice` — and a program that compiled,

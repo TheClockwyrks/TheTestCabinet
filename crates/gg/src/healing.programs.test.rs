@@ -1,6 +1,6 @@
-//! Tests for the five strategies that work on something that is already meant to be a program —
-//! `strip-prose`, `drop-duplicate-program`, `drop-imports`, `unwrap-async` and
-//! `strip-comment-only` — and for the two predicates and the lexical mask they are built on.
+//! Tests for the four strategies that work on something that is already meant to be a program —
+//! `strip-prose`, `drop-duplicate-program`, `drop-imports` and `unwrap-async` — and for the two
+//! predicates and the lexical mask they are built on.
 //!
 //! The predicates get their own cases because they are where the whole subsystem's asymmetry lives:
 //! `looks_like_code` may only ever cost a repair, and `is_prose_line` may never cost a line of the
@@ -55,46 +55,30 @@ fn a_line_that_might_be_code_stops_the_prose_strip() {
     assert!(result.applied.is_empty(), "{:?}", result.applied);
 }
 
-/// A reply that is prose from top to bottom is classified, not emptied: there is no program under
-/// the explanation, and removing everything would leave gg running the empty string.
+/// A reply that is prose from top to bottom is left alone, not emptied: there is no program under
+/// the explanation, so there is nothing to strip *to*, and the type-strip is what answers it.
 #[test]
-fn a_prose_only_response_is_not_a_program() {
-    let result =
-        healed("I have finished the task and everything is in place.\nBoth files are listed.");
-    assert_eq!(
-        result.verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::Prose)
-    );
-    assert_eq!(
-        result.applied,
-        vec![HealingApplication {
-            strategy: HealingStrategy::StripProse,
-            detail: HealingDetail::ProseOnly
-        }]
-    );
+fn a_prose_only_response_is_left_for_the_type_strip() {
+    let reply = "I have finished the task and everything is in place.\nBoth files are listed.";
+    let result = healed(reply);
+    assert_eq!(result.program, reply);
+    assert!(result.applied.is_empty(), "{:?}", result.applied);
     assert!(!result.rewritten());
 }
 
-/// **The honest test.** `strip-prose` classifies *none* of the four terminal prose replies real
-/// models actually sent, and that is why the loop has a second route to the same verdict.
+/// **The honest test.** `strip-prose` touches *none* of the four terminal prose replies real models
+/// actually sent.
 ///
-/// Every one of them contains a backtick or a parenthesis, which `is_prose_line` must reject —
-/// it deletes what it matches, so it may only match text that could not possibly be code. Measured
-/// over these four replies it matches **0 of 7** non-blank lines. A synthetic prose fixture would
-/// pass a `NotAProgram(Prose)` assertion here and hide the fact that the modal real failure reaches
-/// this verdict through the transpile instead.
+/// Every one of them contains a backtick or a parenthesis, which `is_prose_line` must reject — it
+/// deletes what it matches, so it may only match text that could not possibly be code. Measured over
+/// these four replies it matches **0 of 7** non-blank lines, so every one of them reaches the
+/// type-strip exactly as sent.
 #[test]
-fn the_round_one_terminal_prose_replies_are_not_classified_by_strip_prose() {
+fn the_round_one_terminal_prose_replies_are_not_touched_by_strip_prose() {
     let mut lines = 0;
     let mut matched = 0;
     for fixture in TERMINAL_PROSE {
         let result = healed(fixture.reply);
-        assert_eq!(
-            result.verdict,
-            HealingVerdict::Program,
-            "{}: strip-prose classified a reply it cannot safely delete",
-            fixture.name
-        );
         assert!(
             result.applied.is_empty(),
             "{}: {:?}",
@@ -113,9 +97,9 @@ fn the_round_one_terminal_prose_replies_are_not_classified_by_strip_prose() {
     );
 }
 
-/// The classifier that *does* catch them: not one line of any of the four is code-shaped, so a reply
-/// that also fails to type-strip was never a program and is reported as prose rather than as a syntax
-/// error the model is asked to fix.
+/// The predicate [`strip_fences`] leans on, measured from the other side: not one line of any of the
+/// four terminal prose replies is code-shaped, so a fence scan over one of them can never mistake
+/// narration for code it must not delete.
 #[test]
 fn the_round_one_terminal_prose_replies_contain_no_code() {
     for fixture in TERMINAL_PROSE {
@@ -127,9 +111,8 @@ fn the_round_one_terminal_prose_replies_contain_no_code() {
     }
 }
 
-/// The other half of that classifier: every program a round-1 model actually emitted has at least
-/// one code-shaped line, so telling a failed transpile from a reply that was never a program cannot
-/// take a turn away from a model that did write code.
+/// The other half of it: every program a round-1 model actually emitted has at least one code-shaped
+/// line, so a decline that protects code outside a fence cannot be defeated by a real program.
 #[test]
 fn every_captured_program_contains_code() {
     let mut programs = 0;
@@ -173,7 +156,6 @@ fn strip_prose_declines_while_a_fence_survives() {
 #[test]
 fn an_exact_repeated_program_is_deleted() {
     let result = healed(SOL_DUPLICATE_PROGRAM);
-    assert_eq!(result.verdict, HealingVerdict::Program);
     assert_eq!(
         result.strategies(),
         vec![HealingStrategy::DropDuplicateProgram]
@@ -194,7 +176,6 @@ fn an_exact_repeated_program_is_deleted() {
 #[test]
 fn the_other_models_exact_repeat_is_deleted_too() {
     let result = healed(TERRA_DUPLICATE_PROGRAM);
-    assert_eq!(result.verdict, HealingVerdict::Program);
     assert_eq!(
         result.program,
         "const files = listDir(\"src\").filter((e) => e.kind === \"file\").map((e) => e.name);\n\
@@ -230,76 +211,58 @@ fn a_repeat_that_could_really_run_twice_is_left_alone() {
 }
 
 /// Two *different* programs pasted together cannot be repaired — there is nothing to delete that is
-/// certainly dead — so the reply is refused with the tailored verdict rather than handed to the
-/// guest to fail on a redeclaration.
+/// certainly dead — so the reply is handed on whole and the type-strip reports the redeclaration it
+/// really is.
+///
+/// This is the case gg used to answer with a notice of its own, counting how many programs it
+/// thought the reply held. It does not: the compiler names the identifier, its line and its column,
+/// which is a better answer than any count gg could infer.
 #[test]
-fn two_different_programs_that_redeclare_a_name_are_refused() {
+fn two_different_programs_that_redeclare_a_name_are_left_for_the_type_strip() {
     let reply = "const files = listDir(\"src\");\n\
                  return files.length;\n\n\
                  const files = listDir(\"src\").map((e) => e.name);\n\
                  writeFile(\"MANIFEST.md\", files.join(\"\\n\"));";
     let result = healed(reply);
-    assert_eq!(
-        result.verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-            blocks: 2,
-            shape: CandidateShape::Bare,
-        })
-    );
-    // The bare shape gets its own words: a model that emitted no fence cannot act on a sentence
-    // about the code blocks it did not write.
-    let message = NotAProgramReason::SeveralBlocks {
-        blocks: 2,
-        shape: CandidateShape::Bare,
-    }
-    .message();
-    assert!(
-        message.contains("at least 2 separate programs"),
-        "{message}"
-    );
-    assert!(
-        message.contains("choose one and delete the rest"),
-        "{message}"
-    );
-    assert!(!message.contains("code blocks"), "{message}");
+    assert_eq!(result.program, reply);
+    assert!(result.applied.is_empty(), "{:?}", result.applied);
 }
 
-/// **The count means candidate programs, in both shapes.** A reply that pastes five programs
-/// together is counted by cutting it at its redeclarations, exactly as a fenced reply is counted by
-/// its candidate blocks — so an aggregate may add the two together without adding two different
-/// measurements.
-///
-/// The figure is a **lower bound**, and this fixture is why it has to be described as one: five
-/// programs share a single name between two of them, so two is all the evidence proves. Two is also
-/// what the count it replaced happened to report here — for the wrong reason, as the copy count of
-/// one name — and the difference shows up the moment a reply repeats two different names.
+/// A reply that repeats two different names at its top level is left exactly as sent: gg counts
+/// nothing and refuses nothing, so the redeclaration reaches the compiler that can name it.
 #[test]
-fn the_bare_candidate_count_is_programs_rather_than_copies_of_a_name() {
-    assert_eq!(
-        healed(GEMINI_FIVE_PROGRAMS).verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-            blocks: 2,
-            shape: CandidateShape::Bare,
-        }),
-        "five programs sharing one name are the two the redeclaration proves"
-    );
-
-    // Three programs, with two different names repeated twice each: the copy count this replaces
-    // says 2, the segment count says 3, and only one of those is a number a study may compare with
-    // a fenced reply's.
-    let three = "const a = listDir(\"src\");\n\
+fn a_reply_of_many_pasted_programs_is_left_alone() {
+    let reply = "const a = listDir(\"src\");\n\
                  return a.length;\n\
                  const a = listDir(\".\");\n\
                  const b = readTextFile(\"README.md\");\n\
                  return b.length;\n\
                  const b = readTextFile(\"MANIFEST.md\");\n\
                  return b.length;";
+    let result = healed(reply);
+    assert_eq!(result.program, reply);
+    assert!(result.applied.is_empty(), "{:?}", result.applied);
+}
+
+/// The largest fence-free reply in the corpus — five programs and the output the model invented for
+/// each — keeps **every** one of its declarations. `strip-prose` may take the narration off its ends,
+/// but nothing deletes a program, and no strategy claims the reply was not one.
+#[test]
+fn the_five_program_reply_keeps_every_program_it_holds() {
+    let result = healed(GEMINI_FIVE_PROGRAMS);
     assert_eq!(
-        healed(three).verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-            blocks: 3,
-            shape: CandidateShape::Bare,
-        })
+        result.program.matches("const srcEntries").count(),
+        GEMINI_FIVE_PROGRAMS.matches("const srcEntries").count(),
+        "a declaration was deleted:\n{}",
+        result.program
+    );
+    assert!(
+        result
+            .strategies()
+            .iter()
+            .all(|strategy| *strategy == HealingStrategy::StripProse),
+        "something other than the surrounding narration was removed: {:?}",
+        result.applied
     );
 }
 
@@ -310,15 +273,14 @@ fn the_bare_candidate_count_is_programs_rather_than_copies_of_a_name() {
 fn two_drafts_that_declare_different_names_are_left_for_the_type_strip() {
     for fixture in [TERRA_TWO_DRAFTS, SOL_TWO_DRAFTS] {
         let result = healed(fixture);
-        assert_eq!(result.verdict, HealingVerdict::Program);
         assert_eq!(result.program, fixture.trim());
         assert!(result.applied.is_empty(), "{:?}", result.applied);
     }
 }
 
-/// A name declared twice in *different scopes* is ordinary shadowing, and legal. The classification
-/// reads unindented declarations only, which is what a top-level statement is in every program a
-/// model writes.
+/// A name declared twice in *different scopes* is ordinary shadowing, and legal. The repeated-tail
+/// guard reads unindented declarations only, which is what a top-level statement is in every program
+/// a model writes.
 #[test]
 fn a_name_shadowed_in_a_nested_scope_is_not_a_second_program() {
     let reply = "const files = listDir(\"src\");\n\
@@ -328,7 +290,6 @@ fn a_name_shadowed_in_a_nested_scope_is_not_a_second_program() {
                  }\n\
                  return files.length;";
     let result = healed(reply);
-    assert_eq!(result.verdict, HealingVerdict::Program);
     assert!(result.applied.is_empty(), "{:?}", result.applied);
 }
 
@@ -341,7 +302,6 @@ fn redeclarable_keywords_are_not_evidence_of_a_second_program() {
         "function run() { return 1; }\nfunction run() { return 2; }\nreturn run();",
     ] {
         let result = healed(reply);
-        assert_eq!(result.verdict, HealingVerdict::Program, "{reply}");
         assert!(result.applied.is_empty(), "{reply}");
     }
 }
@@ -368,7 +328,7 @@ fn a_fenced_duplicate_is_unwrapped_and_then_deduplicated() {
 fn disarming_the_strategy_leaves_the_duplicate_alone() {
     let mut config = HealingConfig::default();
     config.set(HealingStrategy::DropDuplicateProgram, false);
-    let result = heal(SOL_DUPLICATE_PROGRAM, false, &config);
+    let result = heal(SOL_DUPLICATE_PROGRAM, &config);
     assert_eq!(result.program, SOL_DUPLICATE_PROGRAM.trim());
     assert!(result.applied.is_empty(), "{:?}", result.applied);
 }
@@ -546,7 +506,6 @@ fn an_async_wrapper_that_is_never_called_is_left_alone() {
     let result = healed(reply);
     assert_eq!(result.program, reply);
     assert!(result.applied.is_empty(), "{:?}", result.applied);
-    assert_eq!(result.verdict, HealingVerdict::Program);
 }
 
 /// Anything at the top level besides the wrapper and its call stops the unwrap: the strategy earns
@@ -627,46 +586,37 @@ fn the_dedent_does_not_reflow_a_template_literal() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// strip-comment-only
+// Comments
 // ---------------------------------------------------------------------------------------------
 
-/// A reply that is only comments is refused rather than run.
-///
-/// It type-strips cleanly, runs, and returns nothing, so without this it would produce a turn that
-/// looks like a success — the worst available outcome, because the model then believes it did
-/// something.
+/// A reply that is only comments is a program: it compiles, it runs, and it does nothing. gg does
+/// not read it as a refusal to work, because reading intent out of a model's comments is exactly
+/// the analysis this pipeline does not perform.
 #[test]
-fn a_comment_only_response_is_not_a_program() {
-    let result = healed("// I have already written MANIFEST.md.\n/* Nothing left to do. */");
-    assert_eq!(
-        result.verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::CommentOnly)
-    );
-    assert_eq!(result.strategies(), vec![HealingStrategy::StripCommentOnly]);
-}
-
-/// One statement among the comments makes it a program, and it is left exactly as written.
-#[test]
-fn a_program_with_one_statement_among_its_comments_is_a_program() {
-    let reply = "// Write the manifest.\nwriteFile(\"MANIFEST.md\", \"ok\");\n// Done.";
+fn a_comment_only_response_is_a_program() {
+    let reply = "// I have already written MANIFEST.md.\n/* Nothing left to do. */";
     let result = healed(reply);
-    assert_eq!(result.verdict, HealingVerdict::Program);
     assert_eq!(result.program, reply);
     assert!(result.applied.is_empty(), "{:?}", result.applied);
 }
 
-/// A reply still wrapped in a fence — because `strip-fences` is disarmed for an ablation — is not
-/// "only comments".
-///
-/// It lexes as one long template literal, which is not code either; the test is "every remaining
-/// byte is a comment", so the model is never told it wrote comments when it wrote Markdown.
+/// One statement among the comments is left exactly as written too.
 #[test]
-fn a_fenced_program_is_not_comment_only_when_fences_are_disarmed() {
+fn a_program_with_one_statement_among_its_comments_is_a_program() {
+    let reply = "// Write the manifest.\nwriteFile(\"MANIFEST.md\", \"ok\");\n// Done.";
+    let result = healed(reply);
+    assert_eq!(result.program, reply);
+    assert!(result.applied.is_empty(), "{:?}", result.applied);
+}
+
+/// A reply still wrapped in a fence — because `strip-fences` is disarmed for an ablation — reaches
+/// the type-strip with its fence on, which is the whole cost that arm exists to measure.
+#[test]
+fn a_fenced_program_is_untouched_when_fences_are_disarmed() {
     let mut config = HealingConfig::default();
     config.set(HealingStrategy::StripFences, false);
     let reply = "```ts\nconst x = 1;\n```";
-    let result = heal(reply, false, &config);
-    assert_eq!(result.verdict, HealingVerdict::Program);
+    let result = heal(reply, &config);
     assert_eq!(result.program, reply);
     assert!(result.applied.is_empty(), "{:?}", result.applied);
 }
@@ -761,16 +711,19 @@ fn the_mask_reads_template_substitutions_as_code() {
     );
 }
 
-/// A comment is comment, a string is not — the distinction `strip-comment-only` turns on.
+/// Neither a comment nor a string is code, which is what keeps a strategy that only ever edits code
+/// out of both.
 #[test]
-fn the_mask_tells_a_comment_from_a_string() {
+fn neither_a_comment_nor_a_string_is_code() {
     let src = "// note\nconst a = \"text\";";
     let mask = code_mask(src).expect("a clean source");
-    assert!(mask.is_comment(0), "the comment opener is not comment");
-    assert!(mask.is_comment(src.find("note").unwrap()));
-    let string = src.find("text").unwrap();
-    assert!(!mask.is_comment(string), "string text read as a comment");
-    assert!(!mask.is_code(string), "string text read as code");
+    assert!(!mask.is_code(0), "the comment opener read as code");
+    assert!(!mask.is_code(src.find("note").unwrap()));
+    assert!(
+        !mask.is_code(src.find("text").unwrap()),
+        "string text read as code"
+    );
+    assert!(mask.is_code(src.find("const").unwrap()), "code is code");
 }
 
 /// An unterminated block comment, an unterminated template literal and a string still open at a

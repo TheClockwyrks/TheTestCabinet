@@ -91,8 +91,8 @@ describe("transcoding an aggregate query", () => {
       "| stats sum(summary.healing.stripFences) by preset",
     );
     expect(
-      transcode("metric=sum|summary:responses_several_blocks_bare&group=preset"),
-    ).toBe("| stats sum(summary.healing.severalBlocksBare) by preset");
+      transcode("metric=sum|summary:healing_drop_duplicate_program&group=preset"),
+    ).toBe("| stats sum(summary.healing.dropDuplicateProgram) by preset");
   });
 
   it("drops the one metric the document model cannot express", () => {

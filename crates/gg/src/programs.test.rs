@@ -77,7 +77,7 @@ fn an_empty_library_says_there_is_nothing_to_fetch() {
     let refusal = library.source(None).unwrap_err();
 
     assert!(
-        refusal.message.contains("has not run one yet"),
+        refusal.message.contains("no program has been kept yet"),
         "{}",
         refusal.message
     );

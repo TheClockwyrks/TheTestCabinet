@@ -423,7 +423,6 @@ fn only_error_outcomes_count_as_errors() {
         TurnOutcome::Progressed,
         TurnOutcome::Finished,
         TurnOutcome::Error(TurnErrorKind::ModelApi),
-        TurnOutcome::Error(TurnErrorKind::NotAProgram),
         TurnOutcome::Error(TurnErrorKind::Transpile),
         TurnOutcome::Error(TurnErrorKind::ProgramFault),
         TurnOutcome::Error(TurnErrorKind::SandboxLimit),
@@ -437,7 +436,6 @@ fn only_error_outcomes_count_as_errors() {
             TurnOutcome::Progressed | TurnOutcome::Finished | TurnOutcome::Fatal(_) => false,
             TurnOutcome::Error(kind) => match kind {
                 TurnErrorKind::ModelApi
-                | TurnErrorKind::NotAProgram
                 | TurnErrorKind::Transpile
                 | TurnErrorKind::ProgramFault
                 | TurnErrorKind::SandboxLimit
@@ -506,10 +504,10 @@ fn every_error_kind_counts_towards_the_consecutive_ceiling() {
     let breaches = record_all(
         limits,
         &[
-            TurnOutcome::Error(TurnErrorKind::NotAProgram),
             TurnOutcome::Error(TurnErrorKind::Transpile),
             TurnOutcome::Error(TurnErrorKind::ProgramFault),
             TurnOutcome::Error(TurnErrorKind::SandboxLimit),
+            TurnOutcome::Error(TurnErrorKind::MissingCompletion),
             TurnOutcome::Error(TurnErrorKind::ModelApi),
         ],
     );

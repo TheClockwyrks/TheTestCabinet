@@ -11,7 +11,6 @@ import type { HarnessEvent } from "../client/types";
 import type {
   GgLimitBreach,
   GgLimitKind,
-  GgNotAProgram,
   GgTelemetryEvent,
 } from "@test-cabinet/run-record/gg";
 
@@ -24,17 +23,6 @@ const LIMIT_LABELS: Record<GgLimitKind, string> = {
   consecutive_errors: "consecutive-error",
   error_rate: "error-rate",
   cost: "cost",
-};
-
-// Why a reply was not a program at all. Total over `GgNotAProgram` for the same
-// reason — a new shape must be named before it can reach a reviewer's feed.
-const NOT_A_PROGRAM_LABELS: Record<GgNotAProgram, string> = {
-  empty: "empty reply",
-  tool_calls_only: "tool calls only",
-  prose: "prose",
-  comment_only: "comments only",
-  no_program_block: "no program block",
-  several_blocks: "several programs",
 };
 
 // A ceiling's figure, trimmed to two decimals and with trailing zeros dropped, so
@@ -70,39 +58,17 @@ function ggCodeExecutionDetail(
 ): string {
   const healing = event.healing;
   const parts: string[] = [];
-  if (healing?.notAProgram) {
-    // The reply was never a program, so there is no execution to describe — only
-    // which shape it was and, for several programs, how many gg counted and how the
-    // reply presented them. The presentation is worth the two words: several fenced
-    // blocks is a model still formatting a reply it was told not to format, while
-    // programs pasted bare one after another is a model sending two answers in one
-    // turn, and the two are read and fixed differently.
-    const shape =
-      healing.candidateShape === undefined ? "" : `, ${healing.candidateShape}`;
-    const blocks =
-      healing.blocks === undefined ? "" : ` (${healing.blocks}${shape})`;
+  parts.push(event.ok ? "program ran" : "program failed");
+  if (event.toolCalls > 0) {
     parts.push(
-      `not a program: ${NOT_A_PROGRAM_LABELS[healing.notAProgram]}${blocks}`,
+      `${event.toolCalls} tool call${event.toolCalls === 1 ? "" : "s"}`,
     );
-  } else {
-    parts.push(event.ok ? "program ran" : "program failed");
-    if (event.toolCalls > 0) {
-      parts.push(
-        `${event.toolCalls} tool call${event.toolCalls === 1 ? "" : "s"}`,
-      );
-    }
-    // A response is *healed* only when repairs were applied and it still became a
-    // program; a classification is an application too, but calling that "healed"
-    // would conflate "gg repaired this" with "gg refused this".
-    if (healing?.strategies?.length) {
-      parts.push(`healed: ${healing.strategies.join(", ")}`);
-    }
   }
-  // Outside the branch, deliberately: a reply can both defeat the healing pipeline
-  // *and* then be classified as not a program, and that combination is the single
-  // most pathological shape a model can send. Reporting it only on the arm where
-  // the program ran would drop the flag exactly where it matters most — and the
-  // run rollup does not count it, so this line is the only place it surfaces.
+  if (healing?.strategies?.length) {
+    parts.push(`healed: ${healing.strategies.join(", ")}`);
+  }
+  // The run rollup does not count a reply that defeated the pipeline, so this line
+  // is the only place it surfaces.
   if (healing?.didNotConverge) parts.push("healing did not converge");
   // What the program printed is not shown to the model — `console.*` writes to whoever
   // is watching the run, and this event is the only record of it — so the count belongs

@@ -5,16 +5,18 @@ title: "Completion"
 Every agent gg drives has to say when it is done, and **saying it is always an explicit
 call**. There is no shape of reply that means "finished" by implication: a
 [tool-calling](/gg/prompts/) turn that requests no tools is an **error**, and a
-[responses-as-code](/gg/responses-as-code/) reply that is not a program is an error. One
-rule, both execution modes, no per-run variation.
+[responses-as-code](/gg/responses-as-code/) turn ends the session only when the program it
+compiled calls the ending function. One rule, both execution modes, no per-run variation.
 
 *Which* call an agent makes depends on the **role it was dispatched in** — see
 [ending calls](#ending-calls). The **completion** capability configures the one thing that
 genuinely varies between studies: the [validation commands](#validation-commands) that
 gate the ending.
 
-A model that loops emitting prose therefore does not quietly burn its whole turn budget:
-each text-only reply is an **error turn**, so the run trips its
+A model that loops emitting prose therefore does not quietly burn its whole turn budget.
+On the tool-calling path each text-only reply is an **error turn**; under responses as
+code prose is compiled like anything else and fails to, so the turn is a type-strip error.
+Either way the run trips its
 [consecutive-error and error-rate ceilings](/gg/execution-limits/) and stops early with a
 diagnosis, rather than running to exhaustion with nothing to point at.
 

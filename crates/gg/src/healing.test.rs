@@ -288,7 +288,7 @@ pub(super) fn every_configuration() -> Vec<HealingConfig> {
 
 /// Heal with every strategy armed — the default arm, and what most cases mean by "heal".
 pub(super) fn healed(reply: &str) -> Healed {
-    heal(reply, false, &HealingConfig::default())
+    heal(reply, &HealingConfig::default())
 }
 
 /// An agent profile carrying `responses-as-code` with the given params.
@@ -324,15 +324,13 @@ fn is_subsequence(needle: &str, haystack: &str) -> bool {
 fn every_healed_program_is_a_subsequence_of_the_response() {
     for fixture in CORPUS {
         for config in every_configuration() {
-            for had_tool_calls in [false, true] {
-                let result = heal(fixture.reply, had_tool_calls, &config);
-                assert!(
-                    is_subsequence(&result.program, fixture.reply),
-                    "{}: healing invented or reordered text\n--- program ---\n{}",
-                    fixture.name,
-                    result.program
-                );
-            }
+            let result = heal(fixture.reply, &config);
+            assert!(
+                is_subsequence(&result.program, fixture.reply),
+                "{}: healing invented or reordered text\n--- program ---\n{}",
+                fixture.name,
+                result.program
+            );
         }
     }
 }
@@ -346,8 +344,8 @@ fn every_healed_program_is_a_subsequence_of_the_response() {
 fn healing_is_idempotent() {
     for fixture in CORPUS {
         for config in every_configuration() {
-            let once = heal(fixture.reply, false, &config);
-            let twice = heal(&once.program, false, &config);
+            let once = heal(fixture.reply, &config);
+            let twice = heal(&once.program, &config);
             assert_eq!(
                 twice.program, once.program,
                 "{}: healing a healed response changed it again",
@@ -381,7 +379,7 @@ fn the_repairs_reach_the_same_program_in_any_order() {
         for strategy in &armed {
             config.set(*strategy, true);
         }
-        let partial = heal(EVERY_STRATEGY, false, &config);
+        let partial = heal(EVERY_STRATEGY, &config);
         assert_eq!(
             healed(&partial.program).program,
             target,
@@ -436,7 +434,6 @@ fn healing_that_does_not_converge_changes_nothing_and_says_so() {
         result.applied
     );
     assert!(!result.rewritten(), "a discarded repair counted as a heal");
-    assert_eq!(result.verdict, HealingVerdict::Program);
 }
 
 /// A shallower nest **does** converge, so the previous test is measuring the budget rather than a
@@ -467,8 +464,7 @@ fn strategies_apply_in_the_documented_order() {
             "strip-prose",
             "drop-duplicate-program",
             "drop-imports",
-            "unwrap-async",
-            "strip-comment-only"
+            "unwrap-async"
         ]
     );
     let result = healed(EVERY_STRATEGY);
@@ -505,7 +501,7 @@ fn dropping_an_import_is_what_lets_the_async_wrapper_unwrap() {
 
     let mut without_imports = HealingConfig::default();
     without_imports.set(HealingStrategy::DropImports, false);
-    let unhelped = heal(reply, false, &without_imports);
+    let unhelped = heal(reply, &without_imports);
     assert!(
         unhelped.applied.is_empty(),
         "the wrapper unwrapped with the import still above it: {:?}",
@@ -513,31 +509,21 @@ fn dropping_an_import_is_what_lets_the_async_wrapper_unwrap() {
     );
 }
 
-/// A not-a-program verdict stops the pipeline dead, so `program` really is "the text as it stood
-/// when classification stopped".
+/// A reply offering several candidate blocks is left **exactly as the model sent it**.
 ///
-/// Without the rule, `strip-fences` could classify a response and `strip-prose` could then edit the
-/// very text the verdict describes.
+/// gg does not choose between them and does not refuse the turn over its own count of how many
+/// programs it thinks the reply holds: `strip-fences` declines, nothing else matches, and the whole
+/// reply goes to the type-strip, whose diagnostic is the model's feedback.
 #[test]
-fn a_not_a_program_verdict_short_circuits_the_pipeline() {
+fn several_candidate_blocks_are_left_alone_for_the_type_strip() {
     let reply = "Here is the plan.\n\n\
                  ```ts\nwriteFile(\"a.txt\", \"a\");\n```\n\n\
                  ```ts\nwriteFile(\"b.txt\", \"b\");\n```\n\n\
                  That is everything.";
     let result = healed(reply);
-    assert_eq!(
-        result.verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-            blocks: 2,
-            shape: CandidateShape::Fenced,
-        })
-    );
-    assert_eq!(
-        result.program,
-        reply.trim(),
-        "a later strategy edited a classified response"
-    );
+    assert_eq!(result.program, reply.trim(), "the reply was edited");
     assert!(result.applied.is_empty(), "{:?}", result.applied);
+    assert!(!result.rewritten());
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -560,109 +546,80 @@ fn trimming_alone_is_not_a_heal() {
     assert!(!result.rewritten(), "trimming was reported as a repair");
 }
 
-/// A response that was only *classified* was not healed: nothing ran, so nothing was repaired — and
-/// both facts are still recorded, because the model has to be told both.
+/// A reply of nothing but comments is healed of its fence and then **runs**, doing nothing.
+///
+/// gg does not read a comment-only reply as "not a program": it is a program, it compiles, and it
+/// has no statements. Judging it would be gg deciding what the model meant.
 #[test]
-fn a_classified_response_is_counted_but_not_healed() {
+fn a_comment_only_reply_is_a_program_that_does_nothing() {
     let result = healed("```ts\n// Everything is already done.\n```");
-    assert_eq!(
-        result.verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::CommentOnly)
-    );
-    assert_eq!(
-        result.strategies(),
-        vec![
-            HealingStrategy::StripFences,
-            HealingStrategy::StripCommentOnly
-        ],
-        "both applications must be recorded"
-    );
-    assert!(!result.rewritten(), "a classified response is not a heal");
+    assert_eq!(result.program, "// Everything is already done.");
+    assert_eq!(result.strategies(), vec![HealingStrategy::StripFences]);
+    assert!(result.rewritten(), "the fence really was removed");
 }
 
-/// A reply with no text but native tool calls is told what it actually did, rather than that it was
-/// empty.
+/// An empty reply heals to an empty program, which the type-strip compiles and the sandbox runs.
 #[test]
-fn a_response_with_tool_calls_and_no_text_is_tool_calls_only() {
-    let result = heal("", true, &HealingConfig::default());
-    assert_eq!(
-        result.verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::ToolCallsOnly)
-    );
-    assert!(
-        NotAProgramReason::ToolCallsOnly
-            .message()
-            .contains("no text"),
-        "the model is told its reply was empty rather than what it did"
-    );
+fn an_empty_reply_is_an_empty_program() {
+    let result = healed("   \n  ");
+    assert!(result.program.is_empty());
+    assert!(result.applied.is_empty());
+    assert!(!result.rewritten());
 }
 
-/// Every one of the ten committed round-1 replies produces the verdict this design was built
-/// against. The table is the specification's, and the counts are measured rather than estimated.
+/// A reply of terminal prose is left as the model wrote it: `strip-prose` has nothing to strip
+/// *to*, so it declines and the compiler is what answers.
 #[test]
-fn the_committed_round_one_replies_produce_their_recorded_verdicts() {
-    let expected: [(&str, &str, HealingVerdict); 10] = [
-        (
-            "round1-gemini-glued-close",
-            GEMINI_GLUED_CLOSE,
-            HealingVerdict::Program,
-        ),
-        (
-            "round1-gemini-turn-01",
-            GEMINI_TURN_01,
-            HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-                blocks: 7,
-                shape: CandidateShape::Fenced,
-            }),
-        ),
-        (
-            "round1-gpt-turn-01",
-            GPT_TURN_01,
-            HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-                blocks: 5,
-                shape: CandidateShape::Fenced,
-            }),
-        ),
-        (
-            "round1-haiku-turn-01",
-            HAIKU_TURN_01,
-            HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-                blocks: 2,
-                shape: CandidateShape::Fenced,
-            }),
-        ),
-        (
-            "round1-deepseek-turn-01",
-            DEEPSEEK_TURN_01,
-            HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-                blocks: 2,
-                shape: CandidateShape::Fenced,
-            }),
-        ),
-        (
-            "round1-haiku-turn-03",
-            HAIKU_TURN_03,
-            HealingVerdict::Program,
-        ),
-        (
-            "round1-haiku-turn-04",
-            HAIKU_TURN_04,
-            HealingVerdict::Program,
-        ),
-        (
-            "round1-deepseek-turn-04",
-            DEEPSEEK_TURN_04,
-            HealingVerdict::Program,
-        ),
-        (
-            "round1-gemini-turn-03",
-            GEMINI_TURN_03,
-            HealingVerdict::Program,
-        ),
-        ("round1-gpt-turn-02", GPT_TURN_02, HealingVerdict::Program),
+fn a_reply_that_is_prose_from_end_to_end_is_left_alone() {
+    for fixture in TERMINAL_PROSE {
+        let result = healed(fixture.reply);
+        assert_eq!(
+            result.program,
+            fixture.reply.trim(),
+            "{}: prose was edited",
+            fixture.name
+        );
+        assert!(
+            result.applied.is_empty(),
+            "{}: {:?}",
+            fixture.name,
+            result.applied
+        );
+    }
+}
+
+/// Every one of the ten committed round-1 replies now reaches the type-strip, and the four that
+/// carry one candidate block are unwrapped to it.
+///
+/// The table is measured rather than estimated: the five multi-candidate replies are the ones gg
+/// used to refuse, are handed on whole.
+#[test]
+fn the_committed_round_one_replies_all_reach_the_type_strip() {
+    let unwrapped: [(&str, &str); 2] = [
+        ("round1-gemini-glued-close", GEMINI_GLUED_CLOSE),
+        ("round1-haiku-turn-03", HAIKU_TURN_03),
     ];
-    for (name, reply, verdict) in expected {
-        assert_eq!(healed(reply).verdict, verdict, "{name}");
+    for (name, reply) in unwrapped {
+        let result = healed(reply);
+        assert!(
+            result.strategies().contains(&HealingStrategy::StripFences),
+            "{name}: the single candidate block was not unwrapped"
+        );
+    }
+
+    let untouched: [(&str, &str); 4] = [
+        ("round1-gemini-turn-01", GEMINI_TURN_01),
+        ("round1-gpt-turn-01", GPT_TURN_01),
+        ("round1-haiku-turn-01", HAIKU_TURN_01),
+        ("round1-deepseek-turn-01", DEEPSEEK_TURN_01),
+    ];
+    for (name, reply) in untouched {
+        let result = healed(reply);
+        assert_eq!(
+            result.program,
+            reply.trim(),
+            "{name}: a multi-candidate reply was edited"
+        );
     }
 }
 
@@ -673,27 +630,9 @@ fn the_committed_round_one_replies_produce_their_recorded_verdicts() {
 /// With everything disarmed, healing changes nothing at all — the ablation's off arm.
 #[test]
 fn healing_off_is_a_no_op() {
-    let result = heal(EVERY_STRATEGY, false, &HealingConfig::OFF);
+    let result = heal(EVERY_STRATEGY, &HealingConfig::OFF);
     assert_eq!(result.program, EVERY_STRATEGY.trim());
     assert!(result.applied.is_empty());
-    assert_eq!(result.verdict, HealingVerdict::Program);
-}
-
-/// Even with everything disarmed, an empty reply is not a program.
-///
-/// Reading an empty string as "nothing to run" is not a repair, it is reading it correctly — and the
-/// alternative is that the off arm transpiles the empty program, runs it to a silent success, and
-/// loops forever on a model that has stopped answering.
-#[test]
-fn healing_off_still_refuses_an_empty_response() {
-    assert_eq!(
-        heal("   \n  ", false, &HealingConfig::OFF).verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::Empty)
-    );
-    assert_eq!(
-        heal("", true, &HealingConfig::OFF).verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::ToolCallsOnly)
-    );
 }
 
 /// Each strategy can be turned off on its own, and turning one off leaves the other four working —
@@ -714,10 +653,6 @@ fn each_strategy_can_be_disabled_on_its_own() {
             HealingStrategy::UnwrapAsync,
             "async function main() {\n  await writeFile(\"a.txt\", \"hi\");\n}\nmain();",
         ),
-        (
-            HealingStrategy::StripCommentOnly,
-            "// Everything is already done.",
-        ),
     ];
     for (strategy, reply) in cases {
         let armed = healed(reply);
@@ -729,7 +664,7 @@ fn each_strategy_can_be_disabled_on_its_own() {
 
         let mut config = HealingConfig::default();
         config.set(strategy, false);
-        let disarmed = heal(reply, false, &config);
+        let disarmed = heal(reply, &config);
         assert!(
             !disarmed.strategies().contains(&strategy),
             "{}: fired while disarmed",
@@ -879,61 +814,4 @@ fn assistant_messages_on_a_disabled_capability_are_ignored() {
     let resolved = resolve_assistant_messages(&set);
     assert_eq!(resolved.mode, AssistantMessageMode::None);
     assert!(resolved.unknown_params.is_empty());
-}
-
-// ---------------------------------------------------------------------------------------------
-// Disclosure
-// ---------------------------------------------------------------------------------------------
-
-/// Every reason carries a model-facing sentence and an operator-facing clause, and the `match` is
-/// exhaustive so a reason cannot ship without either.
-#[test]
-fn every_not_a_program_reason_has_a_message() {
-    for reason in [
-        NotAProgramReason::Empty,
-        NotAProgramReason::ToolCallsOnly,
-        NotAProgramReason::Prose,
-        NotAProgramReason::CommentOnly,
-        NotAProgramReason::NoProgramBlock,
-        NotAProgramReason::SeveralBlocks {
-            blocks: 3,
-            shape: CandidateShape::Fenced,
-        },
-    ] {
-        // The exhaustive arm: adding a reason without a sentence fails to compile here.
-        match reason {
-            NotAProgramReason::Empty
-            | NotAProgramReason::ToolCallsOnly
-            | NotAProgramReason::Prose
-            | NotAProgramReason::CommentOnly
-            | NotAProgramReason::NoProgramBlock
-            | NotAProgramReason::SeveralBlocks { .. } => {}
-        }
-        assert!(!reason.message().is_empty(), "{reason:?}");
-        assert!(!reason.short().is_empty(), "{reason:?}");
-        assert!(
-            reason.message().ends_with('.'),
-            "the model-facing sentence is not a sentence: {reason:?}"
-        );
-        assert!(
-            !reason.short().ends_with('.'),
-            "the operator clause is embedded in a longer sentence: {reason:?}"
-        );
-    }
-}
-
-/// The several-blocks wording names the count, because the count *is* the instruction-following
-/// signal: how many programs the model believed it was emitting in one turn.
-#[test]
-fn the_several_blocks_message_names_the_count() {
-    let reason = NotAProgramReason::SeveralBlocks {
-        blocks: 7,
-        shape: CandidateShape::Fenced,
-    };
-    assert!(
-        reason.message().contains("7 separate code blocks"),
-        "{}",
-        reason.message()
-    );
-    assert!(reason.short().contains('7'), "{}", reason.short());
 }

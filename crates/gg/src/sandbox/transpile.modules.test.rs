@@ -129,11 +129,13 @@ fn a_dynamic_import_is_refused() {
     assert!(format!("{error}").contains("no loader"), "{error}");
 }
 
+/// A module is not refused for its length either: a big authored library transpiles like a small
+/// one, on a stack sized for it.
 #[test]
-fn an_oversized_module_is_refused_before_it_is_parsed() {
-    let source = format!("export const x = \"{}\";\n", "a".repeat(MAX_PROGRAM_BYTES));
-    let error = transpile_module(&source).expect_err("an oversized module is refused");
-    assert!(matches!(error, TranspileError::Unsupported(_)));
+fn a_very_large_module_transpiles() {
+    let source = format!("export const x = \"{}\";\n", "a".repeat(256 * 1024));
+    let module = transpile_module(&source).expect("a very large module transpiles");
+    assert_eq!(module.exports, vec!["x".to_string()]);
 }
 
 #[test]

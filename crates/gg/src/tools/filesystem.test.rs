@@ -71,7 +71,7 @@ async fn read_missing_file_is_an_error() {
     let (_dir, ctx) = workspace();
     let read = reader().invoke(json!({ "path": "nope.txt" }), &ctx).await;
     assert!(!read.ok);
-    assert!(read.output.contains("read_file"));
+    assert!(read.output.contains("nope.txt"), "{}", read.output);
 }
 
 // ---------------------------------------------------------------------------

@@ -40,9 +40,9 @@ use std::collections::BTreeSet;
 use std::sync::Mutex;
 
 use test_cabinet_core::gg::{
-    GgCandidateShape, GgHealingStrategy, GgHealingSummary, GgIssueReviewPhase, GgIssueStatus,
-    GgLimitBreach, GgNotAProgram, GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost,
-    GgSpeculationPhase, GgTelemetryKind,
+    GgHealingStrategy, GgHealingSummary, GgIssueReviewPhase, GgIssueStatus, GgLimitBreach,
+    GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost, GgSpeculationPhase,
+    GgTelemetryKind,
 };
 
 /// Accumulates a running session's aggregatable outcome from the telemetry stream it
@@ -148,16 +148,8 @@ impl SummaryState {
     /// * every entry in [`strategies`](GgResponseHealing::strategies) is one **application**, and a
     ///   strategy that fired twice on one response is two — which is why the record carries a list
     ///   rather than a set;
-    /// * a response is **healed** exactly when repairs were applied *and* it then became a program
-    ///   ([`not_a_program`](GgResponseHealing::not_a_program) absent). A response that was only
-    ///   classified — `strip-comment-only` deciding a reply of pure comments is not a program — was
-    ///   repaired of nothing, because nothing ran, so it counts an application without counting a
-    ///   heal;
-    /// * [`several_blocks`](GgHealingSummary::several_blocks) is a subset of
-    ///   [`not_a_program`](GgHealingSummary::not_a_program), never an alternative to it, so the
-    ///   two counts stay comparable — and it splits exactly into its two
-    ///   [shapes](GgCandidateShape), which are two different instruction-following failures and are
-    ///   counted apart so a study never has to re-derive one from the other.
+    /// * a response is **healed** exactly when at least one repair was applied to it, since every
+    ///   healed reply then runs.
     ///
     /// The per-strategy `match` is exhaustive on purpose: a strategy added to the contract is a
     /// compile error here rather than an application silently missing from every run's rollup.
@@ -171,30 +163,13 @@ impl SummaryState {
                 GgHealingStrategy::DropDuplicateProgram => &mut rollup.drop_duplicate_program,
                 GgHealingStrategy::DropImports => &mut rollup.drop_imports,
                 GgHealingStrategy::UnwrapAsync => &mut rollup.unwrap_async,
-                GgHealingStrategy::StripCommentOnly => &mut rollup.strip_comment_only,
             };
             *count += 1;
         }
-        match healing.not_a_program {
-            Some(reason) => {
-                rollup.not_a_program += 1;
-                if reason == GgNotAProgram::SeveralBlocks {
-                    rollup.several_blocks += 1;
-                    // The shape rides on the same record and is populated by the same match that
-                    // set the reason, so this cannot silently drop one: the `match` is exhaustive,
-                    // and the absent arm is reachable only from a record deserialized from before
-                    // the shape was carried, where guessing a shape would be worse than the gap.
-                    match healing.candidate_shape {
-                        Some(GgCandidateShape::Fenced) => rollup.several_blocks_fenced += 1,
-                        Some(GgCandidateShape::Bare) => rollup.several_blocks_bare += 1,
-                        None => {}
-                    }
-                }
-            }
-            None if !healing.strategies.is_empty() => rollup.healed += 1,
-            // A clean response: nothing was repaired and nothing was refused. The overwhelmingly
-            // common shape, and the one that contributes only to the denominator.
-            None => {}
+        // A clean response — nothing repaired — is the overwhelmingly common shape, and the one that
+        // contributes only to the denominator.
+        if !healing.strategies.is_empty() {
+            rollup.healed += 1;
         }
     }
 }
@@ -323,9 +298,9 @@ impl SessionSummaryTracker {
                     state.speculations += 1;
                 }
             }
-            // One event per code-shaped *turn*, including a turn whose reply was not a program at
-            // all — so this count is the exact denominator for the healing rates folded alongside
-            // it, and the two are incremented by the same statement.
+            // One event per code-shaped *turn*, including a turn whose reply did not compile — so
+            // this count is the exact denominator for the healing rates folded alongside it, and
+            // the two are incremented by the same statement.
             GgTelemetryKind::CodeExecution { healing, .. } => {
                 state.code_executions += 1;
                 state.fold_healing(healing);

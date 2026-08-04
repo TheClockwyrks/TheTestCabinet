@@ -175,10 +175,6 @@ pub enum TurnErrorKind {
     /// must stay the process's one non-zero exit. Making model-API errors survivable is a change to
     /// gg's model-error policy and would be designed as one.
     ModelApi,
-    /// The reply was not a program: empty, prose, comments only, native tool calls with no text, no
-    /// block gg reads as a program, or several candidate blocks. Responses-as-code only; the six
-    /// reasons are [`NotAProgramReason`](crate::healing::NotAProgramReason).
-    NotAProgram,
     /// The program did not type-strip — a syntax error, a module feature the
     /// [sandbox](crate::sandbox) has no implementation of, or a program past the size/nesting
     /// guards. Nothing ran.

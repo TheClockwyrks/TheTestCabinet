@@ -4,7 +4,7 @@
       "description": "The run's [response-healing](GgResponseHealing) rollup: how much of what the models sent had to\nbe repaired before it could run, and which repairs did the work.\n\nThe denominator for every rate here is [`code_executions`](GgSessionSummary::code_executions),\nwhich is one per code-shaped turn — the same event these counters are folded from, so numerator\nand denominator can never come from different mechanisms and drift. Every counter is `0`, and\n[`enabled`](Self::enabled) empty, for a tool-calling run, because healing never runs there.\n\nRead the per-strategy counts as **what gg's pipeline did**, not as what the model wrote: the\npipeline applies its strategies in a fixed order to a fixpoint, so which strategy gets the\ncredit for a response that several could have repaired is a property of that order.\n\n# What this rollup deliberately does not count\n\nA reply that defeated the pipeline entirely — one whose repairs never reached a fixpoint, so\nevery repair was discarded and the reply was compiled exactly as sent — contributes only to the\ndenominator here, exactly as a clean reply does. That fact lives on the turn's own\n[`GgResponseHealing::did_not_converge`] rather than being totted up per run, because it is a\ndiagnosis of one pathological response rather than a rate a study slices on. It is stated here,\nand on the docs page, so the gap is known rather than inferred from a rollup that looks\ncomplete.",
       "properties": {
         "applications": {
-          "description": "Total strategy applications; at least [`healed`](Self::healed), since one response may need\nseveral repairs, and possibly more, since a classification is an application too.",
+          "description": "Total strategy applications; at least [`healed`](Self::healed), since one response may need\nseveral repairs.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -35,38 +35,6 @@
           "minimum": 0,
           "type": "integer"
         },
-        "notAProgram": {
-          "description": "Responses that were not programs at all, and so never ran.",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "severalBlocks": {
-          "description": "Of those, the ones that offered more than one candidate program — the shape that\nsilently broke sessions before gg started refusing to guess between them.\n\nOn every run gg records this is exactly\n[`several_blocks_fenced`](Self::several_blocks_fenced) +\n[`several_blocks_bare`](Self::several_blocks_bare); it is kept beside them rather than left\nto be summed because a query that only wants \"how often did a model send more than one\nprogram?\" should not have to know there are two ways to do it.",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "severalBlocksBare": {
-          "default": 0,
-          "description": "Of those, the ones that pasted one program after another with no fence anywhere — the count\nthat answers \"does this model think a turn may carry more than one answer?\".\n\nA different failure from its fenced sibling, and the one real models actually produce now\nthat fences are gone from the contract: the reply is formatted exactly as asked and still\ncould not run, because its second program redeclares what its first already declared.",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "severalBlocksFenced": {
-          "default": 0,
-          "description": "Of those, the ones that presented their programs as several **fenced** code blocks — the\ncount that answers \"is this model still formatting its reply after being told its whole\nreply is the program?\".\n\nAlways written, and `default`ed on the way in like its bare sibling, so a rollup recorded\nbefore the split still reads — with both shape counts at `0`, which is why the sum stated on\n[`several_blocks`](Self::several_blocks) is a property of what gg *records* rather than of\nwhat it can *read*: a count that was never taken is not one a re-read may invent.",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "stripCommentOnly": {
-          "description": "Applications of [`strip-comment-only`](GgHealingStrategy::StripCommentOnly).",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
         "stripFences": {
           "description": "Applications of [`strip-fences`](GgHealingStrategy::StripFences) — the count that answers\n\"how often did this model still wrap its program in a code fence after being told not to?\".",
           "format": "uint64",
@@ -93,10 +61,7 @@
         "stripProse",
         "dropDuplicateProgram",
         "dropImports",
-        "unwrapAsync",
-        "stripCommentOnly",
-        "notAProgram",
-        "severalBlocks"
+        "unwrapAsync"
       ],
       "type": "object"
     },
@@ -209,7 +174,7 @@
       "type": "integer"
     },
     "codeExecutions": {
-      "description": "How many **code-shaped turns** the run took — one per\n[`CodeExecution`](GgTelemetryKind::CodeExecution) event. `0` when the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability was off (traditional tool\ncalling), so a non-zero count is the proof the code path actually ran.\n\nThis counts turns, not executions: a turn whose reply was **not a program at all** — prose,\nan empty reply, comments only, or several candidate blocks — emits its event like any\nother and is counted here, which is exactly what makes this the denominator for every rate\nin the run's [healing rollup](Self::healing). Numerator and denominator are folded from the\nsame event, so they cannot come from different mechanisms and drift.",
+      "description": "How many **code-shaped turns** the run took — one per\n[`CodeExecution`](GgTelemetryKind::CodeExecution) event. `0` when the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability was off (traditional tool\ncalling), so a non-zero count is the proof the code path actually ran.\n\nThis counts turns, not executions: a turn whose reply did not compile at all emits its event\nlike any other and is counted here, which is exactly what makes this the denominator for\nevery rate in the run's [healing rollup](Self::healing). Numerator and denominator are folded\nfrom the same event, so they cannot come from different mechanisms and drift.",
       "format": "uint64",
       "minimum": 0,
       "type": "integer"
@@ -252,11 +217,6 @@
         "dropImports": 0,
         "enabled": [],
         "healed": 0,
-        "notAProgram": 0,
-        "severalBlocks": 0,
-        "severalBlocksBare": 0,
-        "severalBlocksFenced": 0,
-        "stripCommentOnly": 0,
         "stripFences": 0,
         "stripProse": 0,
         "unwrapAsync": 0

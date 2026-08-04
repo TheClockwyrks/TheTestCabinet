@@ -175,6 +175,18 @@ export function call<T>(fn: () => T): T {
 }
 
 /**
+ * What a value **is**, for the `got …` half of an argument message.
+ *
+ * `typeof` alone answers `"object"` for an array and for `null`, which are exactly the two values a
+ * model passes where an object is wanted — so the one word the message exists to carry would be the
+ * one word that does not distinguish them.
+ */
+export function typeName(value: unknown): string {
+  if (value === null) return "null";
+  return Array.isArray(value) ? "array" : typeof value;
+}
+
+/**
  * An options object, or a {@link ToolError} naming the positional mistake.
  *
  * Every optional argument in this SDK travels in a trailing options object, so a model that writes
@@ -187,8 +199,7 @@ export function opts<T extends object>(fn: string, value: unknown): T | undefine
     throw new ToolError(
       fn,
       "invalid-argument",
-      `${fn}(…) takes an options object for its optional arguments, not a bare value — ` +
-        `write ${fn}(…, { … }).`,
+      `expected an options object, got ${typeName(value)}`,
     );
   }
   return value as T;
@@ -217,7 +228,7 @@ export function uint(
     throw new ToolError(
       fn,
       "invalid-argument",
-      `${fn}(…): \`${name}\` must be a whole number between 0 and ${max}, got ${String(value)}.`,
+      `\`${name}\` must be a whole number 0..${max}, got ${String(value)}`,
     );
   }
   return value;
@@ -230,7 +241,7 @@ export function positive(fn: string, name: string, value: unknown): number | und
     throw new ToolError(
       fn,
       "invalid-argument",
-      `${fn}(…): \`${name}\` must be a positive number, got ${String(value)}.`,
+      `\`${name}\` must be a positive number, got ${String(value)}`,
     );
   }
   return value;
@@ -250,7 +261,11 @@ export function positive(fn: string, name: string, value: unknown): number | und
 export function list<T = string>(fn: string, name: string, value: unknown): T[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) {
-    throw new ToolError(fn, "invalid-argument", `${fn}(…): \`${name}\` must be an array.`);
+    throw new ToolError(
+      fn,
+      "invalid-argument",
+      `\`${name}\` must be an array, got ${typeName(value)}`,
+    );
   }
   return value as T[];
 }

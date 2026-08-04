@@ -1345,8 +1345,8 @@ export type GgRunLimits = {
    * explicitly to widen or tighten the ceiling.
    *
    * A turn is an error when the work it *declared* could not be carried out as declared: a
-   * model call that failed, a reply that was not a program, a program that did not compile, one
-   * that threw uncaught, or one the sandbox stopped at a ceiling. A tool call that failed
+   * model call that failed, a program that did not compile, one that threw uncaught, or one the
+   * sandbox stopped at a ceiling. A tool call that failed
    * **inside** an otherwise successful program is not one — the program handled it, which is
    * the entire point of the typed tool surface, and counting it would make the one capability
    * that expects failures the one capability that cannot survive them.
@@ -1484,40 +1484,7 @@ export type GgHealingStrategy =
   | "strip-prose"
   | "drop-duplicate-program"
   | "drop-imports"
-  | "unwrap-async"
-  | "strip-comment-only";
-
-/**
- * Why a response was not a program at all.
- *
- * Such a turn is **not** a completion: gg feeds it back to the model as an error turn naming the
- * shape it sent and telling it to call `finish(summary)` if it meant to end the run, and it
- * counts towards the run's [error ceilings](GgRunLimits) — which is what stops a model that has
- * started answering in prose from looping forever. It still emits its own
- * [`CodeExecution`](GgTelemetryKind::CodeExecution) (with `ok: false` and no duration, because
- * nothing ran), so [`code_executions`](GgSessionSummary::code_executions) counts code-shaped
- * *turns* and stays the exact denominator for every healing rate.
- */
-export type GgNotAProgram =
-  | "empty"
-  | "tool_calls_only"
-  | "prose"
-  | "comment_only"
-  | "no_program_block"
-  | "several_blocks";
-
-/**
- * How a reply that offered [several programs](GgNotAProgram::SeveralBlocks) presented them.
- *
- * The two shapes are the same mistake made two ways, and telling them apart is the point: a model
- * that wrapped seven programs in seven code fences was told not to fence and fenced anyway, while
- * a model that pasted two programs one after another with nothing between them obeyed the fence
- * rule and sent two answers. One is an instruction-following failure about *formatting*, the other
- * about *how many programs a turn is*, and an aggregate that could not separate them would report
- * a single number that answers neither question — which is precisely the signal
- * [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) exists to collect.
- */
-export type GgCandidateShape = "fenced" | "bare";
+  | "unwrap-async";
 
 /**
  * What gg had to do to a model's response before it could run it — the healing record of one
@@ -1537,38 +1504,6 @@ export type GgResponseHealing = {
    * Empty for a clean response.
    */
   strategies?: Array<GgHealingStrategy>;
-  /**
-   * Why the response was not a program, when it was not one. Absent for a response that ran.
-   *
-   * A response is **healed** exactly when [`strategies`](Self::strategies) is non-empty *and*
-   * this is absent: a response that was only classified was repaired of nothing, because
-   * nothing ran.
-   */
-  notAProgram?: GgNotAProgram;
-  /**
-   * How many **candidate programs** the response offered. Present only alongside
-   * [`SeveralBlocks`](GgNotAProgram::SeveralBlocks), where it is the instruction-following
-   * signal itself: how many programs the model sent in one turn.
-   *
-   * It counts the same thing in both [shapes](Self::candidate_shape), which is what makes it
-   * aggregatable across them: for a [fenced](GgCandidateShape::Fenced) reply, the candidate
-   * blocks gg found; for a [bare](GgCandidateShape::Bare) one, the segments the reply's
-   * top-level redeclarations cut it into. A redeclared name can only ever fall in a later
-   * segment than the one before it, so the bare figure is a **lower bound** — five programs that
-   * happen to share one name between two of them count as two, because two is all the reply
-   * proves. It is never an over-count in either shape, so an aggregate of it reads "at least
-   * this many programs per offending reply".
-   */
-  blocks?: number;
-  /**
-   * How those candidates were presented. Present exactly when [`blocks`](Self::blocks) is.
-   *
-   * Carried because the two shapes are two different failures with two different fixes — the
-   * fenced one is a model still formatting its reply after being told not to, the bare one is a
-   * model sending two answers in one turn — and a rollup that merged "seven fenced blocks" with
-   * "two bare programs" would report a number that describes neither.
-   */
-  candidateShape?: GgCandidateShape;
   /**
    * Whether the healing pipeline failed to reach a fixpoint, so every repair was discarded and
    * the response ran exactly as sent.
@@ -1609,7 +1544,7 @@ export type GgHealingSummary = {
   healed: number;
   /**
    * Total strategy applications; at least [`healed`](Self::healed), since one response may need
-   * several repairs, and possibly more, since a classification is an application too.
+   * several repairs.
    */
   applications: number;
   /**
@@ -1635,45 +1570,6 @@ export type GgHealingSummary = {
    * Applications of [`unwrap-async`](GgHealingStrategy::UnwrapAsync).
    */
   unwrapAsync: number;
-  /**
-   * Applications of [`strip-comment-only`](GgHealingStrategy::StripCommentOnly).
-   */
-  stripCommentOnly: number;
-  /**
-   * Responses that were not programs at all, and so never ran.
-   */
-  notAProgram: number;
-  /**
-   * Of those, the ones that offered more than one candidate program — the shape that
-   * silently broke sessions before gg started refusing to guess between them.
-   *
-   * On every run gg records this is exactly
-   * [`several_blocks_fenced`](Self::several_blocks_fenced) +
-   * [`several_blocks_bare`](Self::several_blocks_bare); it is kept beside them rather than left
-   * to be summed because a query that only wants "how often did a model send more than one
-   * program?" should not have to know there are two ways to do it.
-   */
-  severalBlocks: number;
-  /**
-   * Of those, the ones that presented their programs as several **fenced** code blocks — the
-   * count that answers "is this model still formatting its reply after being told its whole
-   * reply is the program?".
-   *
-   * Always written, and `default`ed on the way in like its bare sibling, so a rollup recorded
-   * before the split still reads — with both shape counts at `0`, which is why the sum stated on
-   * [`several_blocks`](Self::several_blocks) is a property of what gg *records* rather than of
-   * what it can *read*: a count that was never taken is not one a re-read may invent.
-   */
-  severalBlocksFenced: number;
-  /**
-   * Of those, the ones that pasted one program after another with no fence anywhere — the count
-   * that answers "does this model think a turn may carry more than one answer?".
-   *
-   * A different failure from its fenced sibling, and the one real models actually produce now
-   * that fences are gone from the contract: the reply is formatted exactly as asked and still
-   * could not run, because its second program redeclares what its first already declared.
-   */
-  severalBlocksBare: number;
   /**
    * The [strategies](GgHealingStrategy) that were **armed** for this run, in the order gg
    * applies them — the resolved configuration, recorded rather than left to be re-derived from
@@ -1853,11 +1749,10 @@ export type GgSessionSummary = {
    * [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability was off (traditional tool
    * calling), so a non-zero count is the proof the code path actually ran.
    *
-   * This counts turns, not executions: a turn whose reply was **not a program at all** — prose,
-   * an empty reply, comments only, or several candidate blocks — emits its event like any
-   * other and is counted here, which is exactly what makes this the denominator for every rate
-   * in the run's [healing rollup](Self::healing). Numerator and denominator are folded from the
-   * same event, so they cannot come from different mechanisms and drift.
+   * This counts turns, not executions: a turn whose reply did not compile at all emits its event
+   * like any other and is counted here, which is exactly what makes this the denominator for
+   * every rate in the run's [healing rollup](Self::healing). Numerator and denominator are folded
+   * from the same event, so they cannot come from different mechanisms and drift.
    */
   codeExecutions: number;
   /**
@@ -2729,17 +2624,14 @@ export type GgTelemetryKind =
        * Reported on every path that reached the engine, including a fault, a trap, or an
        * [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is
        * the time burned up to the stop, not the ceiling); `Some(0)` when the program never
-       * reached the engine (a type-strip failure, or a sandbox that could not be built); and
-       * **absent** when there was no program at all — see
-       * [`healing.not_a_program`](GgResponseHealing::not_a_program) — because a turn that ran
-       * nothing has no duration to average into a run's efficiency.
+       * reached the engine (a type-strip failure, or a sandbox that could not be built).
        */
       durationMs?: number;
       /**
        * The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault
-       * (a syntax error the type-strip rejected, or a value the program threw), a sandbox
-       * failure (an execution timeout or memory exhaustion, a trap), or, for a reply that was not
-       * a program, the sentence saying which shape it was. Absent on a clean execution.
+       * (a syntax error the type-strip rejected, or a value the program threw) or a sandbox
+       * failure (an execution timeout or memory exhaustion, a trap). Absent on a clean
+       * execution.
        */
       error?: string;
       /**
@@ -3680,17 +3572,14 @@ export type GgTelemetryEvent = {
        * Reported on every path that reached the engine, including a fault, a trap, or an
        * [execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is
        * the time burned up to the stop, not the ceiling); `Some(0)` when the program never
-       * reached the engine (a type-strip failure, or a sandbox that could not be built); and
-       * **absent** when there was no program at all — see
-       * [`healing.not_a_program`](GgResponseHealing::not_a_program) — because a turn that ran
-       * nothing has no duration to average into a run's efficiency.
+       * reached the engine (a type-strip failure, or a sandbox that could not be built).
        */
       durationMs?: number;
       /**
        * The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault
-       * (a syntax error the type-strip rejected, or a value the program threw), a sandbox
-       * failure (an execution timeout or memory exhaustion, a trap), or, for a reply that was not
-       * a program, the sentence saying which shape it was. Absent on a clean execution.
+       * (a syntax error the type-strip rejected, or a value the program threw) or a sandbox
+       * failure (an execution timeout or memory exhaustion, a trap). Absent on a clean
+       * execution.
        */
       error?: string;
       /**

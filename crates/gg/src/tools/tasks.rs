@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 
 use super::{
     ArgumentError, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, UsagePair,
-    invalid_argument, required_str, saturating_u32,
+    invalid_argument, optional_str, required_str, saturating_u32,
 };
 use crate::model::ToolDefinition;
 use crate::tasks::{StructuredFields, TaskChange, TaskError, TaskMode, TaskStatus, TaskStore};
@@ -88,32 +88,14 @@ fn failure_for(err: &TaskError) -> ToolFailure {
     }
 }
 
-/// An optional string argument: absent (or JSON `null`) yields `None`; a non-string is an
-/// [invalid-argument](ToolFailure::InvalidArgument) error.
-fn optional_str(args: &Value, field: &str, tool: &str) -> Result<Option<String>, ArgumentError> {
-    match args.get(field) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(value)) => Ok(Some(value.clone())),
-        Some(_) => Err(ArgumentError(format!(
-            "`{tool}`: argument `{field}` must be a string"
-        ))),
-    }
-}
-
 /// A list-of-task-ids argument. When `required`, an absent key is an error; otherwise it
 /// yields an empty list. Every entry must be a string.
-fn id_array(
-    args: &Value,
-    field: &str,
-    tool: &str,
-    required: bool,
-) -> Result<Vec<String>, ArgumentError> {
+fn id_array(args: &Value, field: &str, required: bool) -> Result<Vec<String>, ArgumentError> {
     match args.get(field) {
         None | Some(Value::Null) => {
             if required {
                 Err(ArgumentError(format!(
-                    "`{tool}`: missing required argument `{field}` (a list of task ids; pass \
-                     `[]` to clear)"
+                    "missing required argument `{field}` (a list of task ids)"
                 )))
             } else {
                 Ok(Vec::new())
@@ -124,12 +106,12 @@ fn id_array(
             .map(|item| match item {
                 Value::String(id) => Ok(id.clone()),
                 _ => Err(ArgumentError(format!(
-                    "`{tool}`: every entry in `{field}` must be a task id string"
+                    "every entry in `{field}` must be a task id string"
                 ))),
             })
             .collect(),
         Some(_) => Err(ArgumentError(format!(
-            "`{tool}`: argument `{field}` must be an array of task ids"
+            "argument `{field}` must be an array of task ids"
         ))),
     }
 }
@@ -205,23 +187,23 @@ impl Tool for AddTaskTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let id = match required_str(&args, "id", ADD_TASK_TOOL) {
+        let id = match required_str(&args, "id") {
             Ok(id) => id,
             Err(error) => return error.into(),
         };
-        let title = match required_str(&args, "title", ADD_TASK_TOOL) {
+        let title = match required_str(&args, "title") {
             Ok(title) => title,
             Err(error) => return error.into(),
         };
-        let description = match optional_str(&args, "description", ADD_TASK_TOOL) {
+        let description = match optional_str(&args, "description") {
             Ok(description) => description,
             Err(error) => return error.into(),
         };
-        let structured = match read_structured(&args, ADD_TASK_TOOL) {
+        let structured = match read_structured(&args) {
             Ok(structured) => structured,
             Err(error) => return error.into(),
         };
-        let blocked_by = match id_array(&args, "blockedBy", ADD_TASK_TOOL, false) {
+        let blocked_by = match id_array(&args, "blockedBy", false) {
             Ok(blocked_by) => blocked_by,
             Err(error) => return error.into(),
         };
@@ -254,7 +236,7 @@ impl AddTaskTool {
             )
             .with_data(usage_data(&store)),
             Ok(_) => unreachable!("add yields Added"),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("add_task: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }
@@ -286,11 +268,11 @@ impl OwnedStructured {
 /// Parse the optional `inScope` / `outOfScope` / `completionCriteria` string arguments a task tool
 /// accepts in [issues](TaskMode::Issues) mode. Absent ones yield `None`; the store enforces which
 /// are required for the current mode (so a simple-mode call that happens to pass them is harmless).
-fn read_structured(args: &Value, tool: &str) -> Result<OwnedStructured, ArgumentError> {
+fn read_structured(args: &Value) -> Result<OwnedStructured, ArgumentError> {
     Ok(OwnedStructured {
-        in_scope: optional_str(args, "inScope", tool)?,
-        out_of_scope: optional_str(args, "outOfScope", tool)?,
-        completion_criteria: optional_str(args, "completionCriteria", tool)?,
+        in_scope: optional_str(args, "inScope")?,
+        out_of_scope: optional_str(args, "outOfScope")?,
+        completion_criteria: optional_str(args, "completionCriteria")?,
     })
 }
 
@@ -380,29 +362,29 @@ impl Tool for UpdateTaskTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let id = match required_str(&args, "id", UPDATE_TASK_TOOL) {
+        let id = match required_str(&args, "id") {
             Ok(id) => id,
             Err(error) => return error.into(),
         };
-        let title = match optional_str(&args, "title", UPDATE_TASK_TOOL) {
+        let title = match optional_str(&args, "title") {
             Ok(title) => title,
             Err(error) => return error.into(),
         };
-        let description = match optional_str(&args, "description", UPDATE_TASK_TOOL) {
+        let description = match optional_str(&args, "description") {
             Ok(description) => description,
             Err(error) => return error.into(),
         };
-        let structured = match read_structured(&args, UPDATE_TASK_TOOL) {
+        let structured = match read_structured(&args) {
             Ok(structured) => structured,
             Err(error) => return error.into(),
         };
-        let status = match optional_str(&args, "status", UPDATE_TASK_TOOL) {
+        let status = match optional_str(&args, "status") {
             Ok(Some(raw)) => match TaskStatus::parse(&raw) {
                 Some(status) => Some(status),
                 None => {
                     return invalid_argument(format!(
-                        "update_task: `{raw}` is not a valid status; use `pending`, \
-                         `in_progress`, or `done`."
+                        "`{raw}` is not a valid status; expected `pending`, \
+                         `in_progress` or `done`"
                     ));
                 }
             },
@@ -440,7 +422,7 @@ impl UpdateTaskTool {
                 format!("updated task `{id}`"),
             ),
             Ok(_) => unreachable!("update yields Updated"),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("update_task: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }
@@ -494,11 +476,11 @@ impl Tool for SetBlockedByTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let id = match required_str(&args, "id", SET_BLOCKED_BY_TOOL) {
+        let id = match required_str(&args, "id") {
             Ok(id) => id,
             Err(error) => return error.into(),
         };
-        let blocked_by = match id_array(&args, "blockedBy", SET_BLOCKED_BY_TOOL, true) {
+        let blocked_by = match id_array(&args, "blockedBy", true) {
             Ok(blocked_by) => blocked_by,
             Err(error) => return error.into(),
         };
@@ -521,7 +503,7 @@ impl SetBlockedByTool {
                 ToolOutcome::ok(format!("Updated the blockers of task `{id}`."), summary)
             }
             Ok(_) => unreachable!("set_blocked_by yields BlockersSet"),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("set_blocked_by: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }
@@ -568,7 +550,7 @@ impl Tool for CompleteTaskTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let id = match required_str(&args, "id", COMPLETE_TASK_TOOL) {
+        let id = match required_str(&args, "id") {
             Ok(id) => id,
             Err(error) => return error.into(),
         };
@@ -589,7 +571,7 @@ impl CompleteTaskTool {
                 format!("completed task `{id}`"),
             ),
             Ok(_) => unreachable!("complete yields Completed"),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("complete_task: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }
@@ -636,7 +618,7 @@ impl Tool for RemoveTaskTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let id = match required_str(&args, "id", REMOVE_TASK_TOOL) {
+        let id = match required_str(&args, "id") {
             Ok(id) => id,
             Err(error) => return error.into(),
         };
@@ -656,7 +638,7 @@ impl RemoveTaskTool {
             )
             .with_data(usage_data(&store)),
             Ok(_) => unreachable!("remove yields Removed"),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("remove_task: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }

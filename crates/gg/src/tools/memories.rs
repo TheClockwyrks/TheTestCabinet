@@ -82,19 +82,16 @@ pub fn is_memory_tool(name: &str) -> bool {
 /// the first place — the [registry](super::ToolRegistry) withholds them, so no schema for one is
 /// ever shown and no program has one in scope. This answers the one path that can still reach a
 /// write anyway: a [responses-as-code](crate::sandbox) program written against a scope the agent
-/// no longer has. It names the calls the agent *does* have, because a refusal that only says no
-/// leaves the model to guess at what it may do instead.
+/// no longer has. A file-shaped store's read call is named, because on that strategy the contents
+/// are not otherwise in front of the model at all.
 pub fn read_only_refusal(strategy: crate::memories::MemoryStrategy, code_mode: bool) -> String {
     let calls = strategy.calls(code_mode);
     let alternative = if strategy.is_file_shaped() {
-        format!(" Read one with {} instead.", calls.read)
+        format!("; read one with {}", calls.read)
     } else {
-        " They are already in your context above; read them there instead.".to_string()
+        String::new()
     };
-    format!(
-        "these memories belong to another agent and you hold them read-only, so they cannot be \
-         changed from here.{alternative}"
-    )
+    format!("these memories are held read-only{alternative}")
 }
 
 /// A short line describing how full the store is after a mutation, for the confirmation.
@@ -257,7 +254,7 @@ impl Tool for WriteMemoryTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let (name, description, body) = match write_args(&args, WRITE_MEMORY_TOOL) {
+        let (name, description, body) = match write_args(&args) {
             Ok(fields) => fields,
             Err(error) => return error.into(),
         };
@@ -341,7 +338,7 @@ impl Tool for UpdateMemoryTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let (name, description, body) = match write_args(&args, UPDATE_MEMORY_TOOL) {
+        let (name, description, body) = match write_args(&args) {
             Ok(fields) => fields,
             Err(error) => return error.into(),
         };
@@ -416,7 +413,7 @@ impl Tool for DeleteMemoryTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let name = match required_str(&args, "name", DELETE_MEMORY_TOOL) {
+        let name = match required_str(&args, "name") {
             Ok(name) => name,
             Err(error) => return error.into(),
         };
@@ -436,17 +433,17 @@ impl DeleteMemoryTool {
             )
             .with_data(usage_data(&store)),
             Ok(_) => unreachable!("delete yields Deleted"),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("delete_memory: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }
 
 /// Extract the `name`, `description`, and `body` string arguments shared by
 /// `write_memory` and `update_memory`.
-fn write_args(args: &Value, tool: &str) -> Result<(String, String, String), ArgumentError> {
-    let name = required_str(args, "name", tool)?;
-    let description = required_str(args, "description", tool)?;
-    let body = required_str(args, "body", tool)?;
+fn write_args(args: &Value) -> Result<(String, String, String), ArgumentError> {
+    let name = required_str(args, "name")?;
+    let description = required_str(args, "description")?;
+    let body = required_str(args, "body")?;
     Ok((name, description, body))
 }
 

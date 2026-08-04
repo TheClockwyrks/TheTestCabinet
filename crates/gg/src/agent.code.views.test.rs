@@ -40,22 +40,27 @@ fn a_blank_label_is_an_argument_error() {
     assert!(refusal.message.contains("non-empty label"));
 }
 
-/// Both size caps refuse, name themselves, and say what was NOT done — nothing was truncated and
-/// nothing was shown.
+/// Both size caps refuse, name themselves, and carry the size that broke them — the two facts a
+/// program branching on the refusal needs, and nothing else.
 #[test]
-fn the_size_caps_name_themselves_and_promise_no_truncation() {
+fn the_size_caps_name_themselves_and_the_size_that_broke_them() {
     let long_label = "l".repeat(MAX_VIEW_LABEL_BYTES + 1);
     let refusal = text_view_refusal(&long_label, "body", &[]).expect("the label is over the cap");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
     assert!(refusal.message.contains("MAX_VIEW_LABEL_BYTES"));
+    assert!(
+        refusal.message.contains(&long_label.len().to_string()),
+        "the size that broke the cap has to be in the message: {}",
+        refusal.message
+    );
 
     let long_body = "b".repeat(MAX_TEXT_VIEW_BYTES + 1);
     let refusal = text_view_refusal("notes", &long_body, &[]).expect("the body is over the cap");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
     assert!(refusal.message.contains("MAX_TEXT_VIEW_BYTES"));
     assert!(
-        refusal.message.contains("Nothing was truncated"),
-        "the model must be able to tell a refusal from a silent cut: {}",
+        refusal.message.contains(&long_body.len().to_string()),
+        "the size that broke the cap has to be in the message: {}",
         refusal.message
     );
 }
@@ -83,11 +88,6 @@ fn the_open_count_cap_still_admits_a_replacement() {
     let refusal = text_view_refusal("view-new", "body", &open).expect("the window is full");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
     assert!(refusal.message.contains("MAX_OPEN_TEXT_VIEWS"));
-    assert!(
-        refusal.message.contains("view.close"),
-        "a refusal has to say what to do about it: {}",
-        refusal.message
-    );
 
     assert!(
         text_view_refusal("view-7", "a better summary", &open).is_none(),
@@ -104,13 +104,6 @@ fn the_op_budget_refuses_only_when_spent() {
     let refusal = view_ops_refusal(MAX_VIEW_OPS_PER_PROGRAM).expect("the budget is spent");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
     assert!(refusal.message.contains("MAX_VIEW_OPS_PER_PROGRAM"));
-    assert!(
-        refusal
-            .message
-            .contains("already opened are in your window"),
-        "the views it did open are not lost, and the model must not think they are: {}",
-        refusal.message
-    );
 }
 
 /// A blank selector is an argument error; anything else is left to close whatever it names —
@@ -223,7 +216,7 @@ fn no_configured_cap_refuses_nothing() {
 /// there is no longer a constant to name, and an operator reading the transcript can find the knob
 /// that produced this number in the run's own configuration.
 #[test]
-fn the_image_cap_refuses_a_new_picture_and_names_the_way_out() {
+fn the_image_cap_refuses_a_new_picture_and_names_itself() {
     let refusal = image_view_refusal(Some(CONFIGURED_CAP), CONFIGURED_CAP, false)
         .expect("the window is full");
     assert_eq!(refusal.failure, ToolFailure::LimitExceeded);
@@ -231,16 +224,6 @@ fn the_image_cap_refuses_a_new_picture_and_names_the_way_out() {
     assert!(
         refusal.message.contains(&CONFIGURED_CAP.to_string()),
         "the number in force has to be in the message, not just the name of the knob: {}",
-        refusal.message
-    );
-    assert!(
-        refusal.message.contains("view.close(path)"),
-        "the model has to be told what to close: {}",
-        refusal.message
-    );
-    assert!(
-        refusal.message.contains("no view was opened"),
-        "a refusal must not read as a view that opened without its picture: {}",
         refusal.message
     );
 }

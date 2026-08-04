@@ -58,14 +58,18 @@ produce and the part an agent least often needs: `cargo build` printing forty li
 success comes back as
 
 ```
-exit code: 0
-[The command succeeded, so its output is not shown. The full stdout and stderr were written to:
-  stdout: /tmp/gg-shell/cmd-41-0003.stdout
-  stderr: /tmp/gg-shell/cmd-41-0003.stderr
-Read or grep those files if you need them.]
+Exit code: 0
+stdout: /tmp/gg-shell/cmd-41-0003.stdout
+stderr: /tmp/gg-shell/cmd-41-0003.stderr
 ```
 
-and a failure comes back exactly as it would under `offload`. A command that printed
+Three lines of facts and nothing else: what the command did, and where the whole of what it
+printed is. The `exit code:` header a tool call's result normally carries is dropped here,
+because the note already states it — and it has to state it, since a
+[responses-as-code](/gg/responses-as-code/) program is handed the note *without* that
+header around it.
+
+A failure comes back exactly as it would under `offload`. A command that printed
 nothing and succeeded reads `(no output)` — there is nothing worth pointing at. A command
 killed by its timeout did not succeed, so its partial output is *not* withheld.
 
@@ -102,12 +106,13 @@ Output that fits under the ceiling comes back untouched, with no note: a two-lin
 costs no context for a feature it did not need. Output that does not is followed by:
 
 ```
-[Output truncated: showing the last 200 lines. The full stdout and stderr of this command
-were written to:
-  stdout: /tmp/gg-shell/cmd-41-0003.stdout
-  stderr: /tmp/gg-shell/cmd-41-0003.stderr
-Read or grep those files if you need more than what is shown above.]
+[Output truncated: last 200 lines]
+stdout: /tmp/gg-shell/cmd-41-0003.stdout
+stderr: /tmp/gg-shell/cmd-41-0003.stderr
 ```
+
+If gg's 16 KiB byte cap cut the tail further, the first line says so too —
+`[Output truncated: last 200 lines, capped at 16384 bytes]`.
 
 The note is part of the command's **output** rather than prose gg wraps around it, so a
 [responses-as-code](/gg/responses-as-code/) program that shows itself a `ShellOutput.output`

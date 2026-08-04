@@ -25,7 +25,7 @@
 
 import * as raw from "test-cabinet:gg/views";
 import { DOCS_NAME } from "../catalogue.js";
-import { ToolError, U32_MAX, call, opts, uint } from "../errors.js";
+import { ToolError, U32_MAX, call, opts, typeName, uint } from "../errors.js";
 import type { FileRead, OpenView } from "../types.js";
 import { asFileRead } from "./files.js";
 
@@ -99,8 +99,9 @@ export function openDocsView(target: Function | string): void {
  * `view.openDocsView(system.run)` — a function this run does not bind — evaluates to `undefined`
  * long before the call, and coercing it produced a lookup for a function literally named
  * `"undefined"`, reported back as an unknown name. The name was never the model's; nothing it wrote
- * said `undefined`, and telling it so sends it looking for a typo that is not there. The real fault
- * is the argument, so that is what is named.
+ * said `undefined`, and telling it so sends it looking for a typo that is not there. So a value
+ * that does not exist is reported as documentation that does not exist, and a value of the wrong
+ * type is reported as the type it was.
  */
 function docsName(target: Function | string): string {
   if (typeof target === "string") return target;
@@ -109,10 +110,8 @@ function docsName(target: Function | string): string {
       "openDocsView",
       "invalid-argument",
       target === undefined || target === null
-        ? "openDocsView(…) was given a value that does not exist, so there is no function to " +
-            "document. That is what a name this run did not bind evaluates to — check the object " +
-            "really carries the function, with `<object>.list()`."
-        : `openDocsView(…) takes a function or a function name, not a ${typeof target}.`,
+        ? "no documentation found"
+        : `expected a function or function name, got ${typeName(target)}`,
     );
   }
   const tagged = (target as unknown as Record<symbol, unknown>)[DOCS_NAME];

@@ -117,7 +117,7 @@
           "type": ["integer", "null"]
         },
         "maxConsecutiveErrors": {
-          "description": "How many **error turns in a row** end an agent. **Absent means gg's default of 5**; set it\nexplicitly to widen or tighten the ceiling.\n\nA turn is an error when the work it *declared* could not be carried out as declared: a\nmodel call that failed, a reply that was not a program, a program that did not compile, one\nthat threw uncaught, or one the sandbox stopped at a ceiling. A tool call that failed\n**inside** an otherwise successful program is not one — the program handled it, which is\nthe entire point of the typed tool surface, and counting it would make the one capability\nthat expects failures the one capability that cannot survive them.",
+          "description": "How many **error turns in a row** end an agent. **Absent means gg's default of 5**; set it\nexplicitly to widen or tighten the ceiling.\n\nA turn is an error when the work it *declared* could not be carried out as declared: a\nmodel call that failed, a program that did not compile, one that threw uncaught, or one the\nsandbox stopped at a ceiling. A tool call that failed\n**inside** an otherwise successful program is not one — the program handled it, which is\nthe entire point of the typed tool surface, and counting it would make the one capability\nthat expects failures the one capability that cannot survive them.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]

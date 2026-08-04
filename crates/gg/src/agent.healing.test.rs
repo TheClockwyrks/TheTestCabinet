@@ -3,8 +3,8 @@
 //! Healing's own suite proves the algorithm — what each strategy matches, what it declines, that a
 //! healed program is always a subsequence of the reply — over pure inputs with no loop behind it.
 //! What it cannot prove is the wiring, and the wiring is where this subsystem's honesty lives: that
-//! what gg repaired is **disclosed to the model** in the same turn, **counted on the turn's
-//! telemetry**, and that a reply healing refused as not-a-program never reaches the sandbox at all.
+//! what gg repaired is **counted on the turn's telemetry** and never disclosed to the model, and
+//! that every reply — repaired or not — goes on to the type-strip.
 //!
 //! The round-1 captures are used verbatim here as well as in the healing suite, because the two
 //! answer different questions about them: there, "what does the algorithm do with this?"; here,
@@ -12,9 +12,9 @@
 
 use super::*;
 
-/// The modal round-1 terminal reply: prose that healing calls a program (its `strip-prose` predicate
-/// declines, because that strategy *deletes*), which then fails to type-strip, and which the loop
-/// reclassifies as prose because not one of its lines is certainly code.
+/// The modal round-1 terminal reply: prose that healing leaves alone (its `strip-prose` predicate
+/// declines, because that strategy *deletes*) and that then fails to type-strip, which is the
+/// diagnostic the model is answered with.
 const TERMINAL_PROSE: &str = include_str!("testdata/round1-haiku-turn-04.txt");
 
 /// A real single-block round-1 reply: prose, one `ts` block, prose. The positive case.
@@ -115,7 +115,7 @@ async fn a_healed_turn_reports_what_was_healed_on_its_code_execution() {
         vec![GgHealingStrategy::StripFences],
         "the fence was stripped, and the run says which strategy did it"
     );
-    assert!(records[0].not_a_program.is_none(), "and it then ran");
+
     assert!(
         records[1].is_clean() && records[2].is_clean(),
         "a reply that needed nothing carries the default, which the wire omits: {records:?}"
@@ -124,9 +124,9 @@ async fn a_healed_turn_reports_what_was_healed_on_its_code_execution() {
 
 /// **Healing never reaches the model.**
 ///
-/// Every one of the four code feedback paths is driven here over a repaired reply — a program that
-/// ran, one that did not compile, one refused as not a program, and one the sandbox stopped — and
-/// none of the turns that follow says a word about the repair, or names the harness at all.
+/// Every code feedback path is driven here over a repaired reply — a program that ran, one that did
+/// not compile, one that ran and did nothing, and one the sandbox stopped — and none of the turns
+/// that follow says a word about the repair, or names the harness at all.
 ///
 /// The note it replaces described a mechanism the model cannot invoke, disable or reason about, in
 /// gg's own name, on every repaired turn. It also had to stay honest about whether the repaired reply
@@ -135,8 +135,8 @@ async fn a_healed_turn_reports_what_was_healed_on_its_code_execution() {
 /// the healed source gg actually compiled.
 #[tokio::test]
 async fn healing_is_never_disclosed_to_the_model() {
-    // Three of the four, in one run: a program that ran, one that did not compile, and a reply that
-    // was not a program — each wrapped in the fence healing strips.
+    // Three of them in one run: a program that ran, one that did not compile, and one that ran and
+    // did nothing — each wrapped in the fence healing strips.
     let dir = TempDir::new().unwrap();
     let (_, _, requests) = drive_recorded_code_run(
         &dir,
@@ -163,7 +163,7 @@ async fn healing_is_never_disclosed_to_the_model() {
         assert!(!leaks(messages), "turn {turn} was told what gg repaired");
     }
 
-    // The fourth template: a program the sandbox stopped. Its own run, because it needs an execution
+    // The last one: a program the sandbox stopped. Its own run, because it needs an execution
     // timeout short enough to trip and that timeout would strand the ordinary programs above.
     let dir = TempDir::new().unwrap();
     let (_, _, requests) = drive_recorded_code_run(
@@ -182,17 +182,18 @@ async fn healing_is_never_disclosed_to_the_model() {
 }
 
 // ---------------------------------------------------------------------------
-// A reply that was never a program
+// Every reply reaches the type-strip
 // ---------------------------------------------------------------------------
 
-/// **A reply that is not a program never reaches the sandbox.**
+/// **gg performs no analysis of the reply's text beyond healing.**
 ///
-/// No component, no store, no timer — the verdict short-circuits before anything under `sandbox/` is
-/// entered at all. The observable half is the duration figure: it is **absent** rather than zero,
-/// because a turn that ran nothing has no duration to average into a run's efficiency, and a
-/// fabricated zero would quietly halve one.
+/// Three replies that gg used to refuse without compiling — comments only, several candidate blocks,
+/// and two programs pasted together — each reach the sandbox. The comment-only one compiles and runs
+/// to a clean, empty turn; the other two are compiled as sent and answered with the compiler's own
+/// diagnostic. What none of them earns is a sentence of gg's about how many programs it thinks the
+/// reply was.
 #[tokio::test]
-async fn a_not_a_program_response_never_reaches_the_sandbox() {
+async fn every_reply_is_compiled_rather_than_judged() {
     let dir = TempDir::new().unwrap();
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
@@ -200,14 +201,12 @@ async fn a_not_a_program_response_never_reaches_the_sandbox() {
     let client = MockClient::new(
         "mock/primary",
         vec![
-            // Comments only: it would type-strip cleanly into a program that does nothing, run to a
-            // silent success, and leave the model believing it had done something.
+            // Comments only: a program that does nothing, which is what it is.
             code_reply("// I will write the manifest next turn."),
-            // Several candidate blocks: gg refuses to guess between them rather than running the
-            // first and silently discarding the rest.
+            // Several candidate blocks: healing declines and the whole reply is compiled.
             code_reply("```ts\nreturn 1;\n```\n\nor perhaps\n\n```ts\nreturn 2;\n```"),
-            // The same refusal in its other shape: two programs pasted together with no fence
-            // anywhere, which is what a model sends once fences are gone from the contract.
+            // Two programs pasted together with no fence anywhere: a redeclaration, which the
+            // type-strip reports as one.
             code_reply(
                 "const files = fs.listDir(\"src\");\nreturn files.length;\n\n\
                  const files = fs.listDir(\".\");\nreturn files.map((e) => e.name);",
@@ -224,51 +223,49 @@ async fn a_not_a_program_response_never_reaches_the_sandbox() {
         code_with(HealingConfig::default()),
     )
     .await;
-    assert_eq!(end.status, "exhausted", "neither reply ended the session");
+    assert_eq!(end.status, "exhausted", "no reply ended the session");
 
     let events = sink.events();
-    for (ok, duration_ms, error) in executions(&events) {
-        assert!(!ok);
+    let executions = executions(&events);
+    // Every turn reached the engine or the transpile, so every one carries a duration figure — the
+    // observable proof that nothing short-circuited ahead of the sandbox.
+    for (index, (_, duration_ms, _)) in executions.iter().enumerate() {
         assert!(
-            duration_ms.is_none(),
-            "nothing ran, so there is no duration figure: {duration_ms:?}"
+            duration_ms.is_some(),
+            "turn {index} never reached the sandbox: {duration_ms:?}"
         );
-        assert!(error.is_some());
     }
+    let (ok, _, error) = &executions[0];
+    assert!(
+        ok,
+        "a comment-only program is a program that runs: {error:?}"
+    );
+    for (index, (ok, _, error)) in executions.iter().enumerate().skip(1) {
+        assert!(!ok, "turn {index} was expected to fail to compile");
+        let error = error.as_deref().unwrap_or_default();
+        assert!(
+            !error.contains("separate programs") && !error.contains("separate code blocks"),
+            "turn {index} was answered with gg's opinion rather than the compiler's: {error}"
+        );
+    }
+
+    // And nothing about any of it is claimed as a repair beyond the fence that really came off.
     let records = healing_records(&events);
-    assert_eq!(records[0].not_a_program, Some(GgNotAProgram::CommentOnly));
-    assert_eq!(records[0].candidate_shape, None, "nothing was counted");
-    // How many programs the model sent in one turn is the signal itself, and how it presented them
-    // is the other half of it: the same count and the same reason, from two different mistakes.
-    assert_eq!(records[1].not_a_program, Some(GgNotAProgram::SeveralBlocks));
-    assert_eq!(records[1].blocks, Some(2));
-    assert_eq!(
-        records[1].candidate_shape,
-        Some(GgCandidateShape::Fenced),
-        "a reply that fenced its programs is a model still formatting a reply it was told not to"
-    );
-    assert_eq!(records[2].not_a_program, Some(GgNotAProgram::SeveralBlocks));
-    assert_eq!(records[2].blocks, Some(2));
-    assert_eq!(
-        records[2].candidate_shape,
-        Some(GgCandidateShape::Bare),
-        "a reply that pasted its programs together is a model sending two answers in one turn"
-    );
+    assert!(records[0].is_clean(), "{records:?}");
+    assert!(records[1].is_clean(), "{records:?}");
+    assert!(records[2].is_clean(), "{records:?}");
 }
 
-/// **A transpile failure over a reply with no code in it is reported as prose, not as a syntax
-/// error.**
+/// **A reply of pure prose is answered with the compiler's diagnostic.**
 ///
 /// This is the modal round-1 failure, driven end to end with the reply a real model actually sent.
-/// It is the one place healing's question ("was this a program?") and the transpile's ("is this
-/// program valid?") meet, and the route is forced by measurement: `strip-prose` has to be severe
-/// because it deletes, so on real terminal replies it declines — and a model whose prose came back
-/// as a syntax error would never be told the one thing it needs, which is that saying "task
-/// complete" does not end the run.
+/// `strip-prose` declines on it (it deletes, so it has to be severe), the reply is compiled exactly
+/// as sent, and the turn's error is the type-strip's — not gg's reading of whether the text was
+/// "really" a program.
 #[tokio::test]
-async fn a_transpile_failure_over_prose_is_reported_as_not_a_program() {
+async fn a_prose_reply_is_answered_by_the_type_strip() {
     let dir = TempDir::new().unwrap();
-    let (_, events, requests) = drive_recorded_code_run(
+    let (_, events, _) = drive_recorded_code_run(
         &dir,
         healing_set(json!({})),
         vec![code_reply(TERMINAL_PROSE), code_reply(FINISHING_PROGRAM)],
@@ -276,33 +273,21 @@ async fn a_transpile_failure_over_prose_is_reported_as_not_a_program() {
     .await;
 
     let records = healing_records(&events);
-    assert_eq!(
-        records[0].not_a_program,
-        Some(GgNotAProgram::Prose),
-        "the reply is reported for what it was: {records:?}"
-    );
     assert!(
-        records[0].strategies.is_empty(),
-        "no strategy touched it — it is a classification the loop made, not a repair"
+        records[0].is_clean(),
+        "no strategy touched it, and none is claimed: {records:?}"
     );
     let (ok, duration_ms, error) = executions(&events).remove(0);
     assert!(!ok);
-    assert!(duration_ms.is_none(), "nothing ran");
-    assert!(
-        error
-            .as_deref()
-            .is_some_and(|error| error.contains("prose")),
-        "and the operator's stream says so too: {error:?}"
+    assert_eq!(
+        duration_ms,
+        Some(0),
+        "the reply reached the transpile — it just did not survive it"
     );
-    // The feedback the model got is the one that fixes the failure: it names what a turn must look
-    // like, and it names this agent's own ending call.
+    let error = error.unwrap_or_default();
     assert!(
-        requests[1]
-            .iter()
-            .any(|message| message.content.as_deref().is_some_and(|text| text
-                .contains("Your whole response must be TypeScript")
-                && text.contains("`harness.finish`"))),
-        "the model was told what to do instead"
+        !error.contains("prose"),
+        "the turn carried gg's verdict rather than the compiler's: {error}"
     );
 }
 

@@ -305,40 +305,29 @@ pub enum TaskError {
 impl fmt::Display for TaskError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TaskError::EmptyField(field) => write!(f, "`{field}` must not be empty."),
-            TaskError::Duplicate(id) => write!(
-                f,
-                "a task with id `{id}` already exists; use `update_task` to revise it, or \
-                 choose a different id."
-            ),
-            TaskError::NotFound(id) => write!(
-                f,
-                "no task with id `{id}` exists (your current tasks are listed in your \
-                 context); use `add_task` to create it."
-            ),
-            TaskError::BlockerNotFound(id) => write!(
-                f,
-                "`blockedBy` references task `{id}`, which does not exist; add it first, or \
-                 correct the id."
-            ),
+            TaskError::EmptyField(field) => write!(f, "`{field}` must not be empty"),
+            TaskError::Duplicate(id) => {
+                write!(f, "a task with id `{id}` already exists")
+            }
+            TaskError::NotFound(id) => write!(f, "no task with id `{id}`"),
+            TaskError::BlockerNotFound(id) => {
+                write!(f, "`blockedBy`: no task with id `{id}`")
+            }
             TaskError::SelfBlock(id) => {
-                write!(f, "task `{id}` cannot be blocked by itself.")
+                write!(f, "task `{id}` cannot be blocked by itself")
             }
             TaskError::Cycle { task, blocker } => write!(
                 f,
                 "blocking `{task}` on `{blocker}` would create a cycle: `{blocker}` already \
-                 depends (directly or indirectly) on `{task}`. Tasks form a DAG, so this \
-                 edge is refused."
+                 depends on `{task}`"
             ),
-            TaskError::CountCap { cap } => write!(
-                f,
-                "you already hold the maximum of {cap} tasks; complete or remove one with \
-                 `complete_task`/`remove_task` before adding another."
-            ),
+            TaskError::CountCap { cap } => {
+                write!(f, "at the maximum of {cap} tasks")
+            }
             TaskError::NoUpdateFields => write!(
                 f,
-                "`update_task` needs at least one of `title`, `description`, or `status` (or, in \
-                 issues mode, `inScope`/`outOfScope`/`completionCriteria`) to change."
+                "`update_task` needs one of `title`, `description`, `status`, `inScope`, \
+                 `outOfScope` or `completionCriteria`"
             ),
         }
     }

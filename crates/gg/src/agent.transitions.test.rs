@@ -178,7 +178,7 @@ fn an_ending_declared_this_turn_beats_a_later_exec() {
 
     assert_eq!(outcome.failure, Some(ToolFailure::Refused));
     assert!(
-        outcome.output.contains("the ending stands"),
+        outcome.output.contains("already ended this turn"),
         "the refusal says which one won: {}",
         outcome.output
     );

@@ -79,7 +79,7 @@ impl Tool for ReadSkillTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let name = match required_str(&args, "name", READ_SKILL_TOOL) {
+        let name = match required_str(&args, "name") {
             Ok(name) => name,
             Err(error) => return error.into(),
         };
@@ -109,7 +109,7 @@ impl ReadSkillTool {
                 ToolOutcome::failed(
                     ToolFailure::NotFound,
                     format!(
-                        "read_skill: no skill named `{name}`; available skills: {}",
+                        "no skill named `{name}`; available skills: {}",
                         available.join(", ")
                     ),
                 )

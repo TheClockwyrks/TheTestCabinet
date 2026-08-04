@@ -631,39 +631,30 @@ impl fmt::Display for MemoryError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MemoryError::EmptyField(field) => {
-                write!(f, "`{field}` must not be empty.")
+                write!(f, "`{field}` must not be empty")
             }
             MemoryError::InvalidSlug(name) => write!(
                 f,
-                "`{name}` is not a usable memory name; use up to {MAX_SLUG_LEN} characters of \
-                 letters, digits, `-`, `_` or `.` (for example `build-commands`)."
+                "`{name}` is not a usable memory name; up to {MAX_SLUG_LEN} characters of \
+                 letters, digits, `-`, `_` or `.`"
             ),
-            MemoryError::Duplicate { name, revise } => write!(
-                f,
-                "a memory named `{name}` already exists; use {revise} to revise it, or choose a \
-                 different name."
-            ),
-            MemoryError::NotFound { name, create } => write!(
-                f,
-                "no memory named `{name}` exists; check the name against the memories you hold, \
-                 or use {create} to create it."
-            ),
+            MemoryError::Duplicate { name, revise } => {
+                write!(f, "memory `{name}` already exists; revise it with {revise}")
+            }
+            MemoryError::NotFound { name, create } => {
+                write!(f, "no memory named `{name}`; create it with {create}")
+            }
             MemoryError::DescriptionCap { name, len, cap } => write!(
                 f,
-                "the description for memory `{name}` is {len} characters, over the \
-                 {cap}-character limit; it is a one-line summary, so say what the memory is \
-                 for and leave the detail to the body."
+                "the description for memory `{name}` is {len} characters (max {cap})"
             ),
-            MemoryError::PerMemoryCap { name, len, cap } => write!(
-                f,
-                "memory `{name}` is {len} characters, over the per-memory limit of {cap}; \
-                 make it more concise, or split it across two memories."
-            ),
+            MemoryError::PerMemoryCap { name, len, cap } => {
+                write!(f, "memory `{name}` is {len} characters (max {cap})")
+            }
             MemoryError::CodeCap { name, half, len } => write!(
                 f,
-                "the `{half}` of memory `{name}` is {len} characters, over the \
-                 {MAX_MEMORY_CODE_CHARS}-character limit; keep a module to the helpers you \
-                 actually reuse, and split what is really two modules into two memories."
+                "the `{half}` of memory `{name}` is {len} characters (max \
+                 {MAX_MEMORY_CODE_CHARS})"
             ),
             MemoryError::CountCap {
                 cap,
@@ -671,39 +662,30 @@ impl fmt::Display for MemoryError {
                 delete,
             } => write!(
                 f,
-                "you already hold the maximum of {cap} memories; revise an existing one with \
-                 {revise}, or remove one with {delete}, before adding another."
+                "at the maximum of {cap} memories; revise one with {revise} or remove one with \
+                 {delete}"
             ),
-            MemoryError::TotalCap { would_be, cap } => write!(
-                f,
-                "this would bring your total memory to {would_be} characters, over the \
-                 {cap}-character budget; shorten or delete other memories first."
-            ),
+            MemoryError::TotalCap { would_be, cap } => {
+                write!(f, "total memory would be {would_be} characters (max {cap})")
+            }
             MemoryError::IndexCap { would_be, cap } => write!(
                 f,
-                "this entry would bring your memory index to {would_be} characters, over the \
-                 {cap}-character limit; delete a memory you no longer need before adding \
-                 another."
+                "the memory index would be {would_be} characters (max {cap})"
             ),
-            MemoryError::EditNotFound { name } => write!(
-                f,
-                "the text you searched for does not appear in memory `{name}`; read it and \
-                 quote the text exactly as it stands."
-            ),
+            MemoryError::EditNotFound { name } => {
+                write!(f, "the search text does not appear in memory `{name}`")
+            }
             MemoryError::EditNotUnique { name, occurrences } => write!(
                 f,
-                "the text you searched for appears {occurrences} times in memory `{name}`; \
-                 include enough surrounding text to make the match unique."
+                "the search text appears {occurrences} times in memory `{name}`"
             ),
             MemoryError::WouldEmpty(name) => write!(
                 f,
-                "that edit would leave memory `{name}` empty; delete the memory instead if you \
-                 no longer need it."
+                "that edit would leave memory `{name}` empty; delete it instead"
             ),
-            MemoryError::NoKeywords => write!(
-                f,
-                "give at least one non-empty keyword to search your memories for."
-            ),
+            MemoryError::NoKeywords => {
+                write!(f, "`keywords` needs at least one non-empty keyword")
+            }
         }
     }
 }

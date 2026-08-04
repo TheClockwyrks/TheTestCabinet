@@ -353,7 +353,7 @@ fn the_sandbox_globals_are_denied_not_trapped() {
         .deferred_note
         .as_deref()
         .expect("the deferred call was reported");
-    assert!(note.contains("AFTER your program ended"), "{note}");
+    assert!(note.contains("ran after your program ended"), "{note}");
 }
 
 /// The two ceilings stop a runaway program, and everything it did first is still reported.
@@ -598,12 +598,17 @@ fn a_program_ends_the_run_by_calling_finish() {
         program_error(&outcome)
     );
 
-    // 8. A summary that is not a usable summary finishes nothing: the model is told what to write and
-    //    the run carries on, rather than ending on an empty final word.
-    for program in [
-        "harness.finish(\"\");",
-        "harness.finish(\"   \");",
-        "harness.finish(42 as any);",
+    // 8. A summary that is not a usable summary finishes nothing: the model is told what was wrong
+    //    with it and the run carries on, rather than ending on an empty final word. The blank ones
+    //    are refused by the HOST, which knows whether the text is usable; the mistyped one by the
+    //    guest, the only layer that can still see it was never a string at all.
+    for (program, wanted) in [
+        ("harness.finish(\"\");", "non-empty summary"),
+        ("harness.finish(\"   \");", "non-empty summary"),
+        (
+            "harness.finish(42 as any);",
+            "expected a summary string, got number",
+        ),
     ] {
         let (outcome, _) = run(program);
         assert!(
@@ -622,7 +627,7 @@ fn a_program_ends_the_run_by_calling_finish() {
             error.message
         );
         assert!(
-            error.message.contains("session is NOT over"),
+            error.message.contains(wanted),
             "`{program}`: {}",
             error.message
         );

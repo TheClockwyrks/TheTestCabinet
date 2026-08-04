@@ -217,9 +217,7 @@ pub(super) fn withhold_pictures(outcome: &mut ToolOutcome) {
     if let Some(ToolData::FileImage(image)) = outcome.data.as_mut() {
         image.shown = false;
         image.not_shown_reason = Some(
-            "`fs.readFile` reads and describes an image but does not show it to you; open a view \
-             of it with `view.openFile(path)` to actually look at it"
-                .to_string(),
+            "`fs.readFile` does not show images; open one with `view.openFile(path)`".to_string(),
         );
     }
 }

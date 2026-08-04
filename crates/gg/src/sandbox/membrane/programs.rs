@@ -73,15 +73,13 @@ impl<A: ToolApi> ProgramsHost for MembraneState<A> {
         if source.trim().is_empty() {
             return Err(refused(
                 ErrorCode::InvalidArgument,
-                "`programs.rerun(source)` needs a program to run; the source given was blank. \
-                 Fetch one with `programs.get()` and patch it, or write the program you meant.",
+                "`source` must not be blank",
             ));
         }
         if self.rerun.is_some() {
             return Err(refused(
                 ErrorCode::Refused,
-                "you have already handed gg a program to run this turn, and the first hand-over \
-                 stands. Compose the whole replacement first, then hand it over once.",
+                "a program was already handed over this turn",
             ));
         }
         self.rerun = Some(source);

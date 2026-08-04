@@ -25,8 +25,8 @@
 //!   knowledge-state re-emission, context reclaim, skill pinning) is preserved for a composed call.
 //! * [`dispatch_code_tool_call`] — the per-call counterpart of the tool-calling loop's dispatch, so
 //!   the two paths gate and route identically.
-//! * The four feedback-context builders, which turn what happened into whichever of the four
-//!   `code-*.hbs` templates the turn earned.
+//! * The feedback builders, which turn what happened into the compiler diagnostic, runtime fault or
+//!   notice the turn earned.
 //!
 //! Everything the seam only reads is grouped into [`CodeTurn`]; what it mutates — the context
 //! window, the skills runtime, the subagent context — stays an explicit `&mut` parameter, which is
@@ -253,8 +253,7 @@ pub(super) async fn run_code_turn(
     // well as in the model's own feedback. A silent rewrite of a model's output is exactly the class
     // of thing this harness exists to make visible: a study reading a live run must be able to see
     // that the program gg compiled was not byte-for-byte the one the model sent, without waiting for
-    // the run's closing rollup. Gated on `rewritten` rather than on "a strategy fired", because a
-    // reply that was only *classified* was repaired of nothing — nothing ran.
+    // the run's closing rollup.
     if healed.rewritten() {
         emitter.emit(log(
             "info",
@@ -271,34 +270,6 @@ pub(super) async fn run_code_turn(
         ));
     }
 
-    // A reply that never became a program short-circuits here: no component, no store, no timer.
-    // Nothing under `sandbox/` is entered at all. The per-turn state was never moved into a program,
-    // so it is handed straight back untouched.
-    if let HealingVerdict::NotAProgram(reason) = healed.verdict {
-        let decision = not_a_program(turn, &healed, reason);
-        return (
-            decision,
-            Some(CodeTurnState {
-                context,
-                skills,
-                docs,
-                // Nothing ran, so there is no program to keep: the library records what *executed*,
-                // and a reply that was not a program executed nothing. A model that fetches after
-                // one of these turns gets the last program it really ran, which is what it wants.
-                programs,
-                knowledge,
-                subagents,
-                // Nothing ran, so no program could have requested a wait, declared a compaction, or
-                // made a call against a pending one.
-                issue_waits: Vec::new(),
-                compact_requested: None,
-                handoff_requested: None,
-                forks_requested: Vec::new(),
-                compaction_calls: (0, 0),
-            }),
-        );
-    }
-
     let (outcome, chain, mut state) = run_code_program(
         &healed.program,
         code.limits,
@@ -313,27 +284,10 @@ pub(super) async fn run_code_turn(
     )
     .await;
 
-    // A reply that failed to type-strip and contains no code-shaped line was never a program at
-    // all. It is the one place healing's question ("was this a program?") and the transpile's ("is
-    // this program valid?") meet, and it is forced by measurement rather than taste: on the real
-    // terminal prose replies models actually send, the prose *strategy* declines (it deletes, so it
-    // has to be severe) while this classification — which deletes nothing — is exact. Without it the
-    // modal failure of this protocol would be answered with a syntax error whose feedback never
-    // mentions how to end the run.
-    if matches!(&outcome.result, Err(SandboxError::Transpile(_)))
-        && !healing::contains_code(&healed.program)
-    {
-        return (
-            not_a_program(turn, &healed, NotAProgramReason::Prose),
-            state,
-        );
-    }
-
     // Keep what ran, so a later turn can fetch it back and patch it instead of writing it again.
-    // Recorded here — after the reclassification above, which is the one path where a "program" did
-    // not exist to be kept — and against the source the chain actually **executed**, so a fetch
-    // returns a program rather than the lines that handed one over. A library the agent's profile
-    // did not enable ignores this.
+    // Recorded against the source the chain actually **executed**, so a fetch returns a program
+    // rather than the lines that handed one over. A library the agent's profile did not enable
+    // ignores this.
     if let Some(state) = state.as_mut() {
         let (ok, error) = program_verdict(&outcome);
         state.programs.record(turn.turn, &chain.source, ok, error);
@@ -512,49 +466,6 @@ pub(super) async fn run_code_turn(
     (decision, state)
 }
 
-/// The turn a reply that was **not a program** earns: its own `CodeExecution`, the fourth feedback
-/// template, and the error kind that keeps a prose loop from running forever.
-///
-/// Shared by healing's own verdict and the loop's post-transpile reclassification because the two
-/// arrive at the same fact by different routes and the model must be told the same thing either
-/// way. `duration_ms` is **absent** rather than zero: a turn that ran nothing has no duration to
-/// average into a run's efficiency, and a fabricated zero would quietly halve one.
-fn not_a_program(
-    turn: &CodeTurn<'_>,
-    healed: &Healed,
-    reason: NotAProgramReason,
-) -> CodeTurnOutcome {
-    let emitter = turn.emitter;
-    emitter.emit(GgTelemetryKind::CodeExecution {
-        ok: false,
-        tool_calls: 0,
-        duration_ms: None,
-        error: Some(reason.short()),
-        finished: None,
-        // Empty for the same reason `duration_ms` is absent: there was no program, so there is
-        // nothing that could have printed.
-        logs: Vec::new(),
-        logs_suppressed: 0,
-        // Absent for the same reason `duration_ms` is: nothing about this turn touched the sandbox,
-        // so there is no component to have waited on.
-        compile_wait_ms: None,
-        healing: healing_record_with(healed, Some(reason)),
-    });
-    CodeTurnOutcome::Continue {
-        // A `Notice`, not a `Compiler error`. Nothing was compiled: the reply was not a program in
-        // the first place, so there is no diagnostic to hand back — what the model needs is the
-        // process fact that gg could not act on what it sent, which is exactly what a notice is for.
-        feedback: vec![CodeFeedback::notice(prompts::render_code_not_a_program(
-            &CodeNotAProgramContext {
-                reason: reason.message(),
-                ending_calls: turn.ending_calls(),
-            },
-        ))],
-        error: Some(TurnErrorKind::NotAProgram),
-        report: format!("its last reply was not a program ({})", reason.short()),
-    }
-}
-
 /// The one line a **spawner** is given for a turn whose program ran — what it said, or failed to, in
 /// gg's own words rather than in the model's source.
 ///
@@ -615,37 +526,13 @@ fn ellipsize(text: &str, max: usize) -> String {
 // The healing record, on the wire
 // ---------------------------------------------------------------------------
 
-/// The [contract record](GgResponseHealing) of what healing did to one reply that gg then ran.
-fn healing_record(healed: &Healed) -> GgResponseHealing {
-    healing_record_with(healed, None)
-}
-
-/// The [contract record](GgResponseHealing) of what healing did, with the verdict stated
-/// explicitly.
-///
-/// The verdict is a parameter rather than being read off `healed.verdict` for one case: the loop's
-/// post-transpile reclassification decides a reply was prose *after* healing has already called it a
-/// program, and the record must report the reason the model was actually told. Every other caller
-/// passes `None` and the verdict is taken from the pass itself.
+/// The [contract record](GgResponseHealing) of what healing did to one reply.
 ///
 /// A clean reply produces the default, which the wire omits entirely — so the presence of this
 /// object on an event *is* "something was unusual about this response".
-fn healing_record_with(healed: &Healed, reason: Option<NotAProgramReason>) -> GgResponseHealing {
-    let reason = reason.or(match healed.verdict {
-        HealingVerdict::Program => None,
-        HealingVerdict::NotAProgram(reason) => Some(reason),
-    });
+fn healing_record(healed: &Healed) -> GgResponseHealing {
     GgResponseHealing {
         strategies: healed.strategies().into_iter().map(wire_strategy).collect(),
-        not_a_program: reason.map(wire_reason),
-        blocks: match reason {
-            Some(NotAProgramReason::SeveralBlocks { blocks, .. }) => Some(saturating_u32(blocks)),
-            _ => None,
-        },
-        candidate_shape: match reason {
-            Some(NotAProgramReason::SeveralBlocks { shape, .. }) => Some(wire_shape(shape)),
-            _ => None,
-        },
         did_not_converge: healed.did_not_converge,
     }
 }
@@ -662,31 +549,6 @@ pub(super) fn wire_strategy(strategy: HealingStrategy) -> GgHealingStrategy {
         HealingStrategy::DropDuplicateProgram => GgHealingStrategy::DropDuplicateProgram,
         HealingStrategy::DropImports => GgHealingStrategy::DropImports,
         HealingStrategy::UnwrapAsync => GgHealingStrategy::UnwrapAsync,
-        HealingStrategy::StripCommentOnly => GgHealingStrategy::StripCommentOnly,
-    }
-}
-
-/// One [candidate shape](CandidateShape) as the contract spells it — written out for the same
-/// reason [`wire_strategy`] is: gg's pipeline vocabulary and the published wire values are two
-/// vocabularies, and a rename on either side must not travel silently to the other.
-fn wire_shape(shape: CandidateShape) -> GgCandidateShape {
-    match shape {
-        CandidateShape::Fenced => GgCandidateShape::Fenced,
-        CandidateShape::Bare => GgCandidateShape::Bare,
-    }
-}
-
-/// One [not-a-program reason](NotAProgramReason) as the contract spells it. The candidate count and
-/// their shape ride on their own fields rather than inside the variant, because a wire enum a study
-/// groups by must be a closed set of bare strings.
-fn wire_reason(reason: NotAProgramReason) -> GgNotAProgram {
-    match reason {
-        NotAProgramReason::Empty => GgNotAProgram::Empty,
-        NotAProgramReason::ToolCallsOnly => GgNotAProgram::ToolCallsOnly,
-        NotAProgramReason::Prose => GgNotAProgram::Prose,
-        NotAProgramReason::CommentOnly => GgNotAProgram::CommentOnly,
-        NotAProgramReason::NoProgramBlock => GgNotAProgram::NoProgramBlock,
-        NotAProgramReason::SeveralBlocks { .. } => GgNotAProgram::SeveralBlocks,
     }
 }
 
@@ -995,19 +857,6 @@ pub(super) struct CodeTurn<'a> {
     /// [roster](test_cabinet_core::gg::GgAgentConfig::subagents), which is what an `exec` target is
     /// checked against. Empty when it has none, which is also when the call is not bound.
     pub(super) exec_roster: &'a [GgSubagentRef],
-}
-
-impl CodeTurn<'_> {
-    /// The [ending calls](EndingRole) this agent's programs may make, as a program writes them.
-    ///
-    /// The feedback for a reply that was not a program names them, and it does so *every turn* — far
-    /// later in the context than the system prompt that named them first. If the two ever disagree
-    /// the later text wins, so both read this one fact: a reviewer pointed at a `harness.finish` it
-    /// does not have would spend its turns calling a function that is not in its scope, and a
-    /// reviewer that never returns a verdict is exactly what leaves an issue unaccepted.
-    pub(super) fn ending_calls(&self) -> Vec<String> {
-        ending_calls(self.ending_role, true)
-    }
 }
 
 /// The per-turn state a code turn takes **by value** and hands back: the context window, the skills
@@ -2021,8 +1870,7 @@ impl LoopToolApi {
         if issue_id.is_empty() {
             return ToolOutcome::failed(
                 ToolFailure::InvalidArgument,
-                "wait_for_issue needs a non-empty `issueId` (the id of the issue to wait for)."
-                    .to_string(),
+                "missing required argument `issueId`".to_string(),
             );
         }
         if self.project.is_none() {
@@ -2040,19 +1888,13 @@ impl LoopToolApi {
         {
             return ToolOutcome::failed(
                 ToolFailure::InvalidArgument,
-                format!(
-                    "you cannot wait on issue `{issue_id}`: it is the issue you were assigned to \
-                     implement. Do the work and finish — your issue is completed when you are."
-                ),
+                format!("cannot wait on issue `{issue_id}`: it is this agent's own assigned issue"),
             );
         }
         if self.board.issue_status(issue_id).is_none() {
             return ToolOutcome::failed(
                 ToolFailure::NotFound,
-                format!(
-                    "no issue `{issue_id}` is on the board (your current board is in your context); \
-                     create it with `create_issue` or correct the id."
-                ),
+                format!("no issue `{issue_id}` on the board"),
             );
         }
         let issue_id = issue_id.to_string();
@@ -2148,13 +1990,14 @@ impl LoopToolApi {
 ///
 /// Stated flatly, and deliberately so. The prose version of this — *"so there is nothing to show
 /// you"*, followed by advice — read as an explanation of gg's reasoning, which is not what a model
-/// correcting a lookup needs; what it needs is the name that failed. A guess about the *argument*
+/// correcting a lookup needs; what it needs is the name that failed, which is all this says. A
+/// guess about the *argument*
 /// never reaches here at all: `view.openDocsView(system.run)` is refused in the guest, by the one
 /// layer that can still see the value was `undefined` rather than a name.
 fn docs_not_found_refusal(name: &str) -> ViewRefusal {
     ViewRefusal {
         failure: ToolFailure::NotFound,
-        message: format!("No documentation for function `{name}` found."),
+        message: format!("no documentation for `{name}`"),
     }
 }
 
@@ -2164,9 +2007,7 @@ fn view_ops_refusal(made: u32) -> Option<ViewRefusal> {
         failure: ToolFailure::LimitExceeded,
         message: format!(
             "this program has already made {MAX_VIEW_OPS_PER_PROGRAM} view operations \
-             (MAX_VIEW_OPS_PER_PROGRAM), which is the most one program may make. The views it \
-             already opened are in your window; open the rest next turn, or show fewer, larger \
-             views."
+             (MAX_VIEW_OPS_PER_PROGRAM)"
         ),
     })
 }
@@ -2183,19 +2024,14 @@ fn text_view_refusal(label: &str, body: &str, open: &[String]) -> Option<ViewRef
     if label.trim().is_empty() {
         return Some(ViewRefusal {
             failure: ToolFailure::InvalidArgument,
-            message:
-                "a view needs a non-empty label: it is the selector you close and replace the \
-                      view by, so a view without one could never be closed, replaced or attributed."
-                    .to_string(),
+            message: "a view needs a non-empty label".to_string(),
         });
     }
     if label.len() > MAX_VIEW_LABEL_BYTES {
         return Some(ViewRefusal {
             failure: ToolFailure::LimitExceeded,
             message: format!(
-                "that label is {} bytes; a view label may be at most {MAX_VIEW_LABEL_BYTES} \
-                 (MAX_VIEW_LABEL_BYTES). A label is the short name you close the view by, not a \
-                 description — put the description in the body.",
+                "that label is {} bytes (max {MAX_VIEW_LABEL_BYTES}, MAX_VIEW_LABEL_BYTES)",
                 label.len()
             ),
         });
@@ -2204,9 +2040,7 @@ fn text_view_refusal(label: &str, body: &str, open: &[String]) -> Option<ViewRef
         return Some(ViewRefusal {
             failure: ToolFailure::LimitExceeded,
             message: format!(
-                "that body is {} bytes; one text view may be at most {MAX_TEXT_VIEW_BYTES} \
-                 (MAX_TEXT_VIEW_BYTES). Nothing was truncated and nothing was shown — split it \
-                 across several views, trim it, or write it to a file and open a file view of that.",
+                "that body is {} bytes (max {MAX_TEXT_VIEW_BYTES}, MAX_TEXT_VIEW_BYTES)",
                 body.len()
             ),
         });
@@ -2214,12 +2048,7 @@ fn text_view_refusal(label: &str, body: &str, open: &[String]) -> Option<ViewRef
     if open.len() >= MAX_OPEN_TEXT_VIEWS && !open.iter().any(|open| open == label) {
         return Some(ViewRefusal {
             failure: ToolFailure::LimitExceeded,
-            message: format!(
-                "you already have {MAX_OPEN_TEXT_VIEWS} text views open (MAX_OPEN_TEXT_VIEWS), \
-                 which is the most one agent may hold. Close one with `view.close(label)` — \
-                 `view.current()` lists them — or re-open an existing label to replace what it \
-                 shows."
-            ),
+            message: format!("{MAX_OPEN_TEXT_VIEWS} text views already open (MAX_OPEN_TEXT_VIEWS)"),
         });
     }
     None
@@ -2244,17 +2073,13 @@ fn text_view_refusal(label: &str, body: &str, open: &[String]) -> Option<ViewRef
 /// model holding a view whose body says a picture is there and no picture — it learns about the loss
 /// afterwards, in a form it cannot branch on, if it learns at all. A refusal is a value the program
 /// catches at the call site, and nothing enters the window: no view, no read charged to it. So the
-/// message has to name both the cap and the way out, which is a close the agent can actually
-/// perform.
+/// message names the cap and what is already open, which is what a program branching on it needs.
 fn image_view_refusal(cap: Option<usize>, open: usize, superseding: bool) -> Option<ViewRefusal> {
     let cap = cap?;
     (open >= cap && !superseding).then(|| ViewRefusal {
         failure: ToolFailure::LimitExceeded,
         message: format!(
-            "you already have {open} image views open, and {cap} is the most this agent may hold \
-             (its `imageViewCap`) — a picture is re-sent on every request for as long as its view \
-             is open. Nothing was shown and no view was opened. Close one with `view.close(path)` \
-             — `view.current()` lists what is open — and open this one again."
+            "{open} image views already open (max {cap}, this agent's `imageViewCap`)"
         ),
     })
 }
@@ -2266,8 +2091,7 @@ fn image_view_refusal(cap: Option<usize>, open: usize, superseding: bool) -> Opt
 fn close_selector_refusal(selector: &str) -> Option<ViewRefusal> {
     selector.trim().is_empty().then(|| ViewRefusal {
         failure: ToolFailure::InvalidArgument,
-        message: "`view.close` needs a non-empty selector: a file view's path or a text view's \
-                  label. `view.current()` lists what is open."
+        message: "needs a non-empty selector: a file view's path or a text view's label"
             .to_string(),
     })
 }
@@ -2805,10 +2629,7 @@ impl ToolApi for LoopToolApi {
                 Some(sub) => handle_fork(sub, spawner, forks_requested, &call),
                 None => ToolOutcome::failed(
                     ToolFailure::Unavailable,
-                    format!(
-                        "`{FORK_TOOL}` is not available: this run has no delegation runtime, so a \
-                         copy of you could never be waited on or messaged."
-                    ),
+                    format!("`{FORK_TOOL}` is not available: this run has no delegation runtime"),
                 ),
             }
         })

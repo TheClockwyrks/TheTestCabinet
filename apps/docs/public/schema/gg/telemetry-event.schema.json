@@ -258,21 +258,6 @@
       ],
       "type": "object"
     },
-    "GgCandidateShape": {
-      "description": "How a reply that offered [several programs](GgNotAProgram::SeveralBlocks) presented them.\n\nThe two shapes are the same mistake made two ways, and telling them apart is the point: a model\nthat wrapped seven programs in seven code fences was told not to fence and fenced anyway, while\na model that pasted two programs one after another with nothing between them obeyed the fence\nrule and sent two answers. One is an instruction-following failure about *formatting*, the other\nabout *how many programs a turn is*, and an aggregate that could not separate them would report\na single number that answers neither question — which is precisely the signal\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) exists to collect.",
-      "oneOf": [
-        {
-          "const": "fenced",
-          "description": "Several Markdown code fences, each holding something that could have been the program.",
-          "type": "string"
-        },
-        {
-          "const": "bare",
-          "description": "No fence anywhere: one program pasted after another, which one program's top level cannot\nbe — the second declares a name the first already declared, so the reply as sent could not\nhave executed a single statement.",
-          "type": "string"
-        }
-      ]
-    },
     "GgContextAction": {
       "description": "The kind of agent-managed-context action a [`ContextManaged`](GgTelemetryKind::ContextManaged)\nevent reports — the model-facing window management that is the complement to\n[compaction](CAPABILITY_COMPACTION).\n\nThe [agent-managed context](https://docs.testcabinet.ai/gg/agent-managed-context/)\ncapability lets a disciplined agent reclaim window space itself rather than waiting for\nthe automatic backstop: it can [evict file views](Self::EvictFileViews) it no longer\nneeds (safe — it can re-read the file later), [close text views](Self::CloseTextViews)\nit composed and no longer wants in front of it, [close documentation\nviews](Self::CloseDocsViews) it has finished with, or [archive a section of its\nthread](Self::ArchiveThread) (removed from the live window but kept **searchable** via\n`search_archive`). All four reclaim tokens; a `search_archive` call reclaims nothing and\nso is reported only as an ordinary tool result, not as a `ContextManaged` action.",
       "oneOf": [
@@ -411,11 +396,6 @@
         {
           "const": "unwrap-async",
           "description": "An `async function` wrapper (or an async IIFE) was unwrapped and the `await`s it implied\ndeleted. Every function on the model-facing surface is synchronous and returns its value\ndirectly.",
-          "type": "string"
-        },
-        {
-          "const": "strip-comment-only",
-          "description": "A response that was only comments and whitespace was classified as not a program — a\nverdict rather than a rewrite, because such a response type-strips cleanly into a program\nthat does nothing and would otherwise run to a silent success, turn after turn.",
           "type": "string"
         }
       ]
@@ -768,41 +748,6 @@
         }
       ]
     },
-    "GgNotAProgram": {
-      "description": "Why a response was not a program at all.\n\nSuch a turn is **not** a completion: gg feeds it back to the model as an error turn naming the\nshape it sent and telling it to call `finish(summary)` if it meant to end the run, and it\ncounts towards the run's [error ceilings](GgRunLimits) — which is what stops a model that has\nstarted answering in prose from looping forever. It still emits its own\n[`CodeExecution`](GgTelemetryKind::CodeExecution) (with `ok: false` and no duration, because\nnothing ran), so [`code_executions`](GgSessionSummary::code_executions) counts code-shaped\n*turns* and stays the exact denominator for every healing rate.",
-      "oneOf": [
-        {
-          "const": "empty",
-          "description": "The reply was nothing but whitespace. The one verdict no configuration can turn off:\nreading an empty string as \"not a program\" is not a repair, it is reading it correctly.",
-          "type": "string"
-        },
-        {
-          "const": "tool_calls_only",
-          "description": "The reply carried no text at all, but did carry native tool calls — a reflex some providers\npush even when no tools are offered. Reported as its own shape so the model is told what it\nactually did rather than that its reply was empty.",
-          "type": "string"
-        },
-        {
-          "const": "prose",
-          "description": "Prose only: nothing in the reply was code. The modal failure of a model that narrates a\nfinished task instead of ending the run.",
-          "type": "string"
-        },
-        {
-          "const": "comment_only",
-          "description": "Comments and whitespace only. Caught here rather than run, because it type-strips cleanly\ninto a program that does nothing.",
-          "type": "string"
-        },
-        {
-          "const": "no_program_block",
-          "description": "The reply was fenced blocks, none of which gg reads as a program.",
-          "type": "string"
-        },
-        {
-          "const": "several_blocks",
-          "description": "The reply offered more than one program, so none of them ran. gg refuses to guess between\nthem rather than running the first and silently discarding the rest, which is the failure\nthis whole protocol change exists to remove. The count rides on\n[`GgResponseHealing::blocks`] and the presentation on\n[`GgResponseHealing::candidate_shape`].\n\nTwo shapes reach this one value: several fenced candidate blocks, and — with fences gone\nfrom the contract, the shape real models actually send — one program pasted after another\nwith nothing between them, which declares the same name twice at the top level and could\ntherefore never have run. They are two different mistakes with two different fixes, which\nis why the shape is carried beside the reason rather than folded into it.",
-          "type": "string"
-        }
-      ]
-    },
     "GgPromptRef": {
       "description": "A pointer from one turn's [`Prompt`](GgTelemetryKind::Prompt) into the\n[message pool](GgTelemetryKind::ContextMessage) — one message in the request, in\nthe order it was sent.\n\nThe message's content is carried once, on its [`ContextMessage`](GgTelemetryKind::ContextMessage)\ndefinition; a prompt references it by [`id`](Self::id) so a message repeated across\nturns is never restreamed. [`source`](Self::source) is the [`GgContextSource`] band\nthe message occupies **this turn** — carried on the reference rather than the pooled\nmessage because a single message can change bands over its life (a mutable block\nsuperseded into [`History`](GgContextSource::History) keeps its content, and thus its\nid, but moves band). It is what lets a request's message list line up, message by\nmessage, with the per-source [`ContextBreakdown`](GgTelemetryKind::ContextBreakdown).",
       "properties": {
@@ -821,37 +766,9 @@
     "GgResponseHealing": {
       "description": "What gg had to do to a model's response before it could run it — the healing record of one\ncode-shaped turn.\n\nHealing is textual and conservative: it only ever **deletes**, so a healed program is always a\nsubsequence of the response the model sent, and every repair is disclosed to the model in its\nturn feedback — this record is a fact the model was told, never something done behind it.\n\nA response that needed nothing carries the default and is omitted from the wire entirely, so\nthe presence of this object *is* \"something was unusual about this response\".",
       "properties": {
-        "blocks": {
-          "description": "How many **candidate programs** the response offered. Present only alongside\n[`SeveralBlocks`](GgNotAProgram::SeveralBlocks), where it is the instruction-following\nsignal itself: how many programs the model sent in one turn.\n\nIt counts the same thing in both [shapes](Self::candidate_shape), which is what makes it\naggregatable across them: for a [fenced](GgCandidateShape::Fenced) reply, the candidate\nblocks gg found; for a [bare](GgCandidateShape::Bare) one, the segments the reply's\ntop-level redeclarations cut it into. A redeclared name can only ever fall in a later\nsegment than the one before it, so the bare figure is a **lower bound** — five programs that\nhappen to share one name between two of them count as two, because two is all the reply\nproves. It is never an over-count in either shape, so an aggregate of it reads \"at least\nthis many programs per offending reply\".",
-          "format": "uint32",
-          "minimum": 0,
-          "type": ["integer", "null"]
-        },
-        "candidateShape": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/GgCandidateShape"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "How those candidates were presented. Present exactly when [`blocks`](Self::blocks) is.\n\nCarried because the two shapes are two different failures with two different fixes — the\nfenced one is a model still formatting its reply after being told not to, the bare one is a\nmodel sending two answers in one turn — and a rollup that merged \"seven fenced blocks\" with\n\"two bare programs\" would report a number that describes neither."
-        },
         "didNotConverge": {
           "description": "Whether the healing pipeline failed to reach a fixpoint, so every repair was discarded and\nthe response ran exactly as sent.\n\nCarried so that the one response pathological enough to defeat the pipeline is\ndistinguishable from a clean one, which is otherwise byte-identical on the wire.",
           "type": "boolean"
-        },
-        "notAProgram": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/GgNotAProgram"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Why the response was not a program, when it was not one. Absent for a response that ran.\n\nA response is **healed** exactly when [`strategies`](Self::strategies) is non-empty *and*\nthis is absent: a response that was only classified was repaired of nothing, because\nnothing ran."
         },
         "strategies": {
           "description": "Each strategy application, in the order applied — a strategy may appear more than once (two\nnested fences are two applications), which is what makes this a count rather than a flag.\nEmpty for a clean response.",
@@ -2049,7 +1966,7 @@
       "type": "object"
     },
     {
-      "description": "A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) **turn** — the\nevent that makes a code-shaped turn observable: what gg had to do to the model's reply\nbefore it could run it, what the program then did, and whether it ended the run.\n\nEmitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)\nonce per code-shaped turn, on the agent that emitted the reply, so it rides on that agent's\nown [`agent_id`](GgTelemetryEvent::agent_id). That includes a turn whose reply was **not a\nprogram at all** — prose, an empty reply, only comments, no block gg reads as a program, or\nseveral candidate blocks — which is reported the same way a program that did not compile\nis: `ok: false` and an [`error`](Self::CodeExecution::error) saying so. One event per\ncode-shaped turn is the invariant, and it is what makes\n[`code_executions`](GgSessionSummary::code_executions) the exact denominator for the run's\n[healing rollup](GgHealingSummary).\n\nThe individual tool calls the program made still stream as ordinary\n[`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the\nprogram composed them — this event carries the *turn* itself: whether the program returned\nnormally, how many tool calls it composed, how long its own execution took (the efficiency\nsignal that replaced the wasmtime fuel the sandbox used to meter), and — when it did not\nreturn normally — the fault. A run with the capability off emits none.",
+      "description": "A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) **turn** — the\nevent that makes a code-shaped turn observable: what gg had to do to the model's reply\nbefore it could run it, what the program then did, and whether it ended the run.\n\nEmitted (when the [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability is enabled)\nonce per code-shaped turn, on the agent that emitted the reply, so it rides on that agent's\nown [`agent_id`](GgTelemetryEvent::agent_id). That includes a turn whose reply was **not a\nprogram at all** — prose, or an empty reply — which reaches the type-strip like anything\nelse and is reported the same way a program that did not compile is: `ok: false` and an\n[`error`](Self::CodeExecution::error) carrying the compiler's diagnostic. One event per\ncode-shaped turn is the invariant, and it is what makes\n[`code_executions`](GgSessionSummary::code_executions) the exact denominator for the run's\n[healing rollup](GgHealingSummary).\n\nThe individual tool calls the program made still stream as ordinary\n[`ToolCall`](Self::ToolCall)/[`ToolResult`](Self::ToolResult) events in the order the\nprogram composed them — this event carries the *turn* itself: whether the program returned\nnormally, how many tool calls it composed, how long its own execution took (the efficiency\nsignal that replaced the wasmtime fuel the sandbox used to meter), and — when it did not\nreturn normally — the fault. A run with the capability off emits none.",
       "properties": {
         "compileWaitMs": {
           "description": "How long **this** program spent obtaining the sandbox's compiled interpreter component,\nin milliseconds — absent (the ordinary case) when the component was already compiled and\nnothing here was on the turn's critical path.\n\nThe component is compiled once per process, and a run that enables the capability starts\nthat compile before its first model request. But starting it early only **overlaps** it\nwith the request rather than eliminating it: on a run container with one or two cores the\ncompile takes seconds, so a model that answers quickly gets its first program back before\nthe warm-up has finished, and that program compiles the component itself. This is the\nfigure that says so — without it, \"did this program wait on the one shared compile or is\nit genuinely slow?\" is only answerable by comparing timestamps across sibling runs.",
@@ -2058,13 +1975,13 @@
           "type": ["integer", "null"]
         },
         "durationMs": {
-          "description": "How long the program's **own execution** took, in milliseconds — the wall-clock time it\nspent running, excluding time parked in a bridged tool call, which is the per-program\nefficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.\nReported on every path that reached the engine, including a fault, a trap, or an\n[execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is\nthe time burned up to the stop, not the ceiling); `Some(0)` when the program never\nreached the engine (a type-strip failure, or a sandbox that could not be built); and\n**absent** when there was no program at all — see\n[`healing.not_a_program`](GgResponseHealing::not_a_program) — because a turn that ran\nnothing has no duration to average into a run's efficiency.",
+          "description": "How long the program's **own execution** took, in milliseconds — the wall-clock time it\nspent running, excluding time parked in a bridged tool call, which is the per-program\nefficiency signal that replaced the wasmtime fuel figure the sandbox used to meter.\nReported on every path that reached the engine, including a fault, a trap, or an\n[execution-timeout](https://docs.testcabinet.ai/gg/responses-as-code/) stop (where it is\nthe time burned up to the stop, not the ceiling); `Some(0)` when the program never\nreached the engine (a type-strip failure, or a sandbox that could not be built).",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
         },
         "error": {
-          "description": "The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault\n(a syntax error the type-strip rejected, or a value the program threw), a sandbox\nfailure (an execution timeout or memory exhaustion, a trap), or, for a reply that was not\na program, the sentence saying which shape it was. Absent on a clean execution.",
+          "description": "The failure message, when [`ok`](Self::CodeExecution::ok) is `false` — a program fault\n(a syntax error the type-strip rejected, or a value the program threw) or a sandbox\nfailure (an execution timeout or memory exhaustion, a trap). Absent on a clean\nexecution.",
           "type": ["string", "null"]
         },
         "finished": {

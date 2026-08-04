@@ -183,7 +183,7 @@ fn per_memory_length_cap_is_enforced_with_a_revise_message() {
             cap: 10,
         }
     );
-    assert!(err.to_string().contains("concise"));
+    assert!(err.to_string().contains("11 characters (max 10)"), "{err}");
     assert_eq!(store.count(), 0, "an over-cap write must not be stored");
 }
 
@@ -231,7 +231,7 @@ fn total_length_cap_is_enforced_across_memories() {
             cap: 15
         }
     );
-    assert!(err.to_string().contains("delete"));
+    assert!(err.to_string().contains("16 characters (max 15)"), "{err}");
     assert_eq!(store.total_len(), 10);
 
     // A 5-char body fits (15 total, at the cap).
@@ -378,7 +378,7 @@ fn the_description_cap_refuses_a_long_one_liner() {
             cap: 20,
         }
     );
-    assert!(err.to_string().contains("one-line summary"), "{err}");
+    assert!(err.to_string().contains("21 characters (max 20)"), "{err}");
     // Nothing was stored: a refused write leaves the set exactly as it was.
     assert_eq!(store.count(), 0);
 

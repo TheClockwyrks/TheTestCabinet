@@ -273,7 +273,7 @@ fn main() -> Result<()> {
                 gg::GgIssueReviewPhase, gg::GgReviewer,
                 gg::GgSpeculationPhase,
                 gg::GgRunLimits, gg::GgLimitKind, gg::GgLimitBreach,
-                gg::GgHealingStrategy, gg::GgNotAProgram, gg::GgCandidateShape,
+                gg::GgHealingStrategy,
                 gg::GgResponseHealing, gg::GgHealingSummary,
                 gg::GgSlotCost, gg::GgSessionSummary,
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
@@ -599,8 +599,6 @@ fn main() -> Result<()> {
                 // there.
                 "GgResponseHealing",
                 "GgHealingStrategy",
-                "GgNotAProgram",
-                "GgCandidateShape",
             ],
             schema: root_schema::<gg::GgTelemetryEvent>(),
         },

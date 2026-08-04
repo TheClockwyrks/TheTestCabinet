@@ -202,13 +202,10 @@ impl ProgramLibrary {
             None => "no program has been kept yet".to_string(),
         };
         if self.entries.is_empty() {
-            return format!(
-                "{asked}; this agent has not run one yet, so there is nothing to fetch — write the \
-                 program you meant to run."
-            );
+            return asked;
         }
         format!(
-            "{asked}. The turns held are: {}.",
+            "{asked}; turns held: {}",
             self.entries
                 .iter()
                 .map(|entry| entry.turn.to_string())

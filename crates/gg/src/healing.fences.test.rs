@@ -123,19 +123,15 @@ fn an_ignored_block_that_looked_like_code_is_recorded() {
     );
 }
 
-/// A reply made only of blocks gg does not read as programs is refused as such — never called
-/// "prose", which would be a sentence about something the model did not do.
+/// A reply made only of blocks gg does not read as programs is left exactly as it was: there is no
+/// candidate to unwrap to, and inventing one would delete the rest.
 #[test]
-fn a_reply_of_only_non_program_blocks_is_no_program_block() {
-    let result = healed(
-        "Here is what I found.\n\n\
-         ```json\nnull\n```\n\n\
-         ```text\nsrc entries\n```",
-    );
-    assert_eq!(
-        result.verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::NoProgramBlock)
-    );
+fn a_reply_of_only_non_program_blocks_is_left_alone() {
+    let reply = "Here is what I found.\n\n\
+                 ```json\nnull\n```\n\n\
+                 ```text\nsrc entries\n```";
+    let result = healed(reply);
+    assert_eq!(result.program, reply);
     assert!(result.applied.is_empty(), "{:?}", result.applied);
 }
 
@@ -204,13 +200,13 @@ fn the_round_one_glued_closing_fence_is_healed() {
 /// discarded, and the model narrated work that never happened.
 #[test]
 fn the_round_one_glued_opening_fence_is_recognised() {
+    let result = healed(DEEPSEEK_TURN_01);
     assert_eq!(
-        healed(DEEPSEEK_TURN_01).verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-            blocks: 2,
-            shape: CandidateShape::Fenced,
-        })
+        result.program,
+        DEEPSEEK_TURN_01.trim(),
+        "a two-candidate reply was unwrapped to one of them"
     );
+    assert!(result.applied.is_empty(), "{:?}", result.applied);
     let scan = scan_fences(DEEPSEEK_TURN_01.trim());
     assert_eq!(scan.blocks.len(), 2, "the glued opener was swallowed");
     assert!(
@@ -221,13 +217,13 @@ fn the_round_one_glued_opening_fence_is_recognised() {
     );
 }
 
-/// **The failure this whole protocol change exists for.** Four models, four multi-block turn-1
-/// replies, and the counts measured against the committed captures.
+/// **The four multi-block turn-1 replies, measured against the committed captures.**
 ///
-/// gg refuses to guess which of them was meant rather than running the first and discarding the
-/// rest. Nothing is rewritten, so the response the model is asked about is the response it sent.
+/// gg does not guess which of the candidates was meant, and it does not refuse the turn over its own
+/// count of them either: it rewrites nothing, and the reply the type-strip compiles is the reply the
+/// model sent.
 #[test]
-fn several_program_blocks_are_refused_rather_than_guessed_at() {
+fn several_program_blocks_are_neither_guessed_at_nor_refused() {
     let cases = [
         ("round1-haiku-turn-01", HAIKU_TURN_01, 2),
         ("round1-gpt-turn-01", GPT_TURN_01, 5),
@@ -235,15 +231,12 @@ fn several_program_blocks_are_refused_rather_than_guessed_at() {
         ("round1-deepseek-turn-01", DEEPSEEK_TURN_01, 2),
     ];
     for (name, reply, blocks) in cases {
-        let result = healed(reply);
         assert_eq!(
-            result.verdict,
-            HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-                blocks,
-                shape: CandidateShape::Fenced,
-            }),
-            "{name}"
+            candidate_blocks(&scan_fences(reply.trim()).blocks).len(),
+            blocks,
+            "{name}: the fixture no longer offers this many candidates"
         );
+        let result = healed(reply);
         assert_eq!(
             result.program,
             reply.trim(),
@@ -253,16 +246,10 @@ fn several_program_blocks_are_refused_rather_than_guessed_at() {
     }
 }
 
-/// **The decline precedence, pinned.** Several candidates outrank code outside the fences: D2 runs
-/// before D3.
-///
-/// Under the reverse order a reply that offers several programs *and* has a code-shaped line outside
-/// them would decline silently, record nothing, serialise as a clean response, and send a page of
-/// Markdown to the type-strip — which is exactly what the 9,800-byte round-1 reply is.
+/// A reply that satisfies **both** declines at once — several candidates *and* a code-shaped line
+/// outside every fence — is still left exactly as it was.
 #[test]
-fn several_candidates_outrank_outside_code() {
-    // The synthetic case, which satisfies both declines at once: two candidates, and a certainly-code
-    // line outside every fence.
+fn several_candidates_with_outside_code_still_decline() {
     let both = "const plan = 1;\n\n\
                 ```ts\nwriteFile(\"a.txt\", \"a\");\n```\n\n\
                 ```ts\nwriteFile(\"b.txt\", \"b\");\n```";
@@ -273,23 +260,9 @@ fn several_candidates_outrank_outside_code() {
             .any(|line| looks_like_code(line)),
         "the fixture no longer satisfies decline 3"
     );
-    assert_eq!(
-        healed(both).verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-            blocks: 2,
-            shape: CandidateShape::Fenced,
-        }),
-        "the several-candidates refusal lost to a silent decline"
-    );
-
-    // The real one: seven candidate programs in 9,800 bytes of narration.
-    assert_eq!(
-        healed(GEMINI_TURN_01).verdict,
-        HealingVerdict::NotAProgram(NotAProgramReason::SeveralBlocks {
-            blocks: 7,
-            shape: CandidateShape::Fenced,
-        })
-    );
+    let result = healed(both);
+    assert_eq!(result.program, both);
+    assert!(result.applied.is_empty(), "{:?}", result.applied);
 }
 
 /// The positive case, on the reply that actually produced it: prose, one block, prose — healed to
@@ -341,7 +314,6 @@ fn a_program_that_writes_a_markdown_fence_is_left_alone() {
     let result = healed(reply);
     assert_eq!(result.program, reply);
     assert!(result.applied.is_empty(), "{:?}", result.applied);
-    assert_eq!(result.verdict, HealingVerdict::Program);
 }
 
 /// **Decline 3, below the fence.** A model that fences half its program and carries on underneath
@@ -361,7 +333,6 @@ fn code_after_the_fence_stops_the_unwrap() {
         "the trailing statements were deleted"
     );
     assert!(result.applied.is_empty(), "{:?}", result.applied);
-    assert_eq!(result.verdict, HealingVerdict::Program);
 }
 
 /// The same decline on the shape that costs the most: the `finish` call written under the fence.
@@ -384,18 +355,14 @@ fn a_finish_outside_the_fence_is_never_deleted() {
     assert!(result.applied.is_empty(), "{:?}", result.applied);
 }
 
-/// A glued close that pushes real code outside the block declines too — and, decisively, the reply
-/// is still a program.
+/// A glued close that pushes real code outside the block declines too.
 ///
 /// This is the shape where an unwrap does the most damage: the block's body is the model's *prose*,
-/// so unwrapping would both delete the code and then classify the leftover narration as
-/// [`Prose`](NotAProgramReason::Prose) — telling a model that wrote code that its reply contained
-/// none.
+/// so unwrapping would keep the narration and delete every statement the model wrote.
 #[test]
-fn a_glued_close_that_exposes_code_declines_and_stays_a_program() {
+fn a_glued_close_that_exposes_code_declines() {
     let reply = "```ts\nStarting now.\n```ts\nconst a = 1;\n```\n```\nreturn a;";
     let result = healed(reply);
-    assert_eq!(result.verdict, HealingVerdict::Program);
     assert!(result.applied.is_empty(), "{:?}", result.applied);
     assert!(
         result.program.contains("const a = 1;"),

@@ -923,16 +923,21 @@ impl From<ArgumentError> for ToolOutcome {
     }
 }
 
-/// Extract a required string field from a tool's `args`, or an [`ArgumentError`] naming the tool
-/// and field. Shared by the tool implementations for uniform argument diagnostics.
-fn required_str(args: &Value, field: &str, tool: &str) -> Result<String, ArgumentError> {
+/// Extract a required string field from a tool's `args`, or an [`ArgumentError`] naming the field.
+/// Shared by the tool implementations for uniform argument diagnostics.
+///
+/// The message deliberately does **not** name the tool. Both paths a failure reaches the model by
+/// already attribute it: a native tool result is bound to the `tool_use` that asked for it, and the
+/// [sandbox](crate::sandbox) renders a `ToolError` as "`<tool>` failed (`<code>`): `<message>`". A
+/// tool name here would be the second half of that line saying what the first half already said.
+fn required_str(args: &Value, field: &str) -> Result<String, ArgumentError> {
     match args.get(field) {
         Some(Value::String(value)) => Ok(value.clone()),
         Some(_) => Err(ArgumentError(format!(
-            "`{tool}`: argument `{field}` must be a string"
+            "argument `{field}` must be a string"
         ))),
         None => Err(ArgumentError(format!(
-            "`{tool}`: missing required argument `{field}`"
+            "missing required argument `{field}`"
         ))),
     }
 }
@@ -940,34 +945,34 @@ fn required_str(args: &Value, field: &str, tool: &str) -> Result<String, Argumen
 /// Extract an optional string field: absent (or JSON `null`) yields `None`; a non-string is an
 /// [`ArgumentError`]. The spelling for an argument a tool may legitimately be called without — a
 /// description a strategy does not require, a replacement that is deliberately empty.
-fn optional_str(args: &Value, field: &str, tool: &str) -> Result<Option<String>, ArgumentError> {
+fn optional_str(args: &Value, field: &str) -> Result<Option<String>, ArgumentError> {
     match args.get(field) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(value)) => Ok(Some(value.clone())),
         Some(_) => Err(ArgumentError(format!(
-            "`{tool}`: argument `{field}` must be a string"
+            "argument `{field}` must be a string"
         ))),
     }
 }
 
 /// Extract a required array-of-strings field. An absent key, a non-array, or an entry that is not
-/// a string is an [`ArgumentError`] naming the tool and field.
-fn required_str_array(args: &Value, field: &str, tool: &str) -> Result<Vec<String>, ArgumentError> {
+/// a string is an [`ArgumentError`] naming the field.
+fn required_str_array(args: &Value, field: &str) -> Result<Vec<String>, ArgumentError> {
     match args.get(field) {
         Some(Value::Array(items)) => items
             .iter()
             .map(|item| match item {
                 Value::String(value) => Ok(value.clone()),
                 _ => Err(ArgumentError(format!(
-                    "`{tool}`: every entry in `{field}` must be a string"
+                    "every entry in `{field}` must be a string"
                 ))),
             })
             .collect(),
         Some(_) => Err(ArgumentError(format!(
-            "`{tool}`: argument `{field}` must be an array of strings"
+            "argument `{field}` must be an array of strings"
         ))),
         None => Err(ArgumentError(format!(
-            "`{tool}`: missing required argument `{field}`"
+            "missing required argument `{field}`"
         ))),
     }
 }

@@ -27,33 +27,31 @@ no note at the top of the turn, no mention anywhere in the prompt. See
 the model's reply, unmodified   ── streamed as its assistant_message, pushed to the context
         │
         ▼
-   heal(reply, had_tool_calls, config)
-        │                      ═══════ THE SEAM ═══════
-        │                      above: text repair.  below: syntax.
-        ├─ verdict = not a program ──▶ an error turn, fed back; the sandbox is never entered
-        └─ verdict = program
-                 ▼
-          oxc type-strip ──▶ instantiate ──▶ run
+   heal(reply, config)
+        │            ═══════ THE SEAM ═══════
+        │            above: text repair.  below: syntax.
+        ▼
+  oxc type-strip ──▶ instantiate ──▶ run
 ```
+
+Every reply travels the whole way. **gg never asks whether a reply "is a program"** —
+that question belongs to the compiler, which answers it with a located diagnostic over
+the model's own text rather than with gg's reading of it. An empty reply becomes an empty
+program that runs and does nothing. A reply of comments becomes a program that runs and
+does nothing. A reply that is two programs pasted together fails to compile, with the
+redeclaration error that really is what is wrong with it. A reply of prose fails to
+compile too, and the model is shown the syntax error rather than an essay about what gg
+thinks it meant.
 
 The raw reply is what gg streams and stores: healing never touches the recorded
 assistant message, so "did this model still emit a fence?" is answerable from the
 transcript as well as from the counters.
 
-Healing owns **"was this a program at all?"**; the type-strip owns **"is this program
-valid?"**. Keeping them apart is what lets a not-a-program verdict short-circuit before
-any engine work — no component, no store, no timer — and what lets every rule on this
-page be a microsecond-scale unit test with no wasm behind it. The module
+Everything on this page is therefore a **deletion**, never a judgement — which is what
+lets every rule here be a microsecond-scale unit test with no wasm behind it. The module
 (`crates/gg/src/healing.rs`) does no I/O, reads no clock, is not `async`, and imports
 nothing from the sandbox; turning a strategy off changes only what one pure function
 returns, which is what makes the ablation honest.
-
-There is exactly **one** hand-back across the seam, and it is forced by measurement
-rather than taste: a reply that failed to type-strip and contains **no code-shaped line**
-is reclassified as prose (see [below](#the-six-not-a-program-reasons)). It is the modal
-real failure, and answering it with a syntax error the model is asked to fix — rather
-than with "that was not a program; call `finish` if you meant to stop" — is what made
-one real session unrecoverable.
 
 Healing does not run on the [replay](/gg/replay/) path at all. The replay driver
 *reconstructs* a code turn from the record; it does not re-drive the text through the
@@ -68,7 +66,7 @@ pipeline.
 > whitespace removed.**
 
 One machine-checkable sentence that covers "never invents code" and "never reorders" for
-all six strategies at once. It is enforced as a property test over the whole fixture
+all five strategies at once. It is enforced as a property test over the whole fixture
 corpus — every captured real reply — under **every** configuration.
 
 Where a strategy cannot apply cleanly it **declines**: silently, leaving the text exactly
@@ -82,14 +80,14 @@ same program, so it is not counted. What is deliberately *kept* is the
 than a fence, so un-indenting it here would answer a question the fence scanner exists to
 ask.
 
-## The six strategies
+## The five strategies
 
-They run in this order, repeated to a fixpoint, with the classifier last:
+They run in this order, repeated to a fixpoint:
 
 ```text
 trim  ->  [ strip-fences -> strip-prose -> drop-duplicate-program
-            -> drop-imports -> unwrap-async ]*  ->  strip-comment-only
-              ^                                 |
+            -> drop-imports -> unwrap-async ]*
+              ^                            |
               +---- repeat until a pass applies nothing +
 ```
 
@@ -99,17 +97,14 @@ copies of a program are adjacent when they are compared. Duplicates before impor
 async, so a doubled reply is halved before either of those looks at it. Imports before
 async, because a leading `import` line is exactly what makes `unwrap-async` decline —
 one strategy's output enabling another's match is why this is a fixpoint and not a list.
-Comment-only last, because it classifies whatever survived.
 
-A **not-a-program verdict short-circuits immediately**: no later strategy runs, so what
-the model is told about is the text as it stood when classification stopped. The
-fixpoint is bounded at four passes; measured, no real reply needs more than one and the
-deepest shape in the corpus (a fence nested in a fence) needs two. If that bound is ever
-reached, **every repair is discarded**, the reply runs exactly as it was sent, the run
-logs a `warn`, and the turn's record carries `didNotConverge` — because the alternative
-(an untouched program and an empty repair list) is byte-identical to a clean response,
-and reporting the one pathological reply as "nothing was unusual" is the kind of quiet
-lie this subsystem exists to remove.
+The fixpoint is bounded at four passes; measured, no real reply needs more than one and
+the deepest shape in the corpus (a fence nested in a fence) needs two. If that bound is
+ever reached, **every repair is discarded**, the reply runs exactly as it was sent, the
+run logs a `warn`, and the turn's record carries `didNotConverge` — because the
+alternative (an untouched program and an empty repair list) is byte-identical to a clean
+response, and reporting the one pathological reply as "nothing was unusual" is the kind
+of quiet lie this subsystem exists to remove.
 
 ### `strip-fences`
 
@@ -144,16 +139,17 @@ because two of its rungs disagree on real inputs:
 | # | Condition | Result |
 | --- | --- | --- |
 | **D1** | no blocks at all | not applicable; nothing recorded |
-| **D2** | **two or more candidates** | not a program (`several_blocks`); nothing rewritten, nothing recorded, the pipeline short-circuits |
-| **D3** | exactly one candidate, but a line **outside the fences** is certainly code | decline **silently** — unwrapping would delete real code |
-| **D4** | zero candidates | not a program (`no_program_block`) when no line outside a block is code; otherwise decline silently |
+| **D2** | **two or more candidates** | decline — gg cannot know which was meant, and picking one would delete a program the model wrote |
+| **D3** | exactly one candidate, but a line **outside the fences** is certainly code | decline — unwrapping would delete real code |
+| **D4** | zero candidates | decline |
 | — | otherwise | unwrap to the single candidate's body |
 
-**D2 outranks D3** because a reply offering gg several candidate programs is a plain
-contract violation whatever else is in it, and the tailored feedback is what teaches the
-model. Under the reverse order the worst real reply measured — seven candidate blocks
-inside 9,800 bytes of narration — would decline silently, record nothing, serialise as a
-*clean* response, and send a page of Markdown to the type-strip.
+**D2 declines rather than refusing the reply.** The worst real reply measured — seven
+candidate blocks inside 9,800 bytes of narration — is compiled exactly as sent, and what
+comes back is the compiler's error over the model's own text. gg used to answer that
+shape with a sentence of its own ("your reply contained 7 separate code blocks"); it does
+not, because counting how many programs a reply "is" is an analysis of the text, and the
+only analysis this pipeline performs is the one it can prove is a safe deletion.
 
 **D3 asks about every line outside the fences**, not only those above the first one. What
 tells a fence *inside* a program from a fence *around* one is whether real code survives
@@ -179,8 +175,9 @@ explicitly.
 text, and nowhere else. **Declines** at the first line that is not certainly prose — no
 scanning past it, no paragraph heuristics — and **while an opening fence survives**,
 because its precondition ("a program with prose around it") is false while a wrapper is
-still there. When removal would leave nothing, the reply *was* prose and is classified as
-such.
+still there. It also declines when removal would leave nothing at all: a reply that is
+prose from end to end has no program under the explanation, so there is nothing to strip
+*to*, and it goes to the type-strip as the model wrote it.
 
 It is deliberately severe. A line is certainly prose only when it contains none of
 `` ` `` `;` `{` `}` `(` `)` `[` `]` `=` `<` `>` `|` `&` `$` `\`, contains no `//` or
@@ -207,18 +204,18 @@ once. `var` and `function` are deliberately not on that list: both may legally b
 twice in the function body a program is evaluated as, so a repetition of either is evidence
 of nothing.
 
-This is the fence-free counterpart of `strip-fences`' several-candidates verdict. With
+This is the fence-free counterpart of `strip-fences`' several-candidates decline. With
 fences gone from the contract, a model that drafts two programs has nothing left to
 separate them with, and it pastes the second after the first. Where the two halves are
-*not* identical there is nothing safe to delete, so the same strategy **classifies**
-instead: a reply that declares the same top-level name more than once is
-[`several_blocks`](#the-six-not-a-program-reasons) in its bare shape, counted by cutting the
-reply at every redeclaration, and the model is told what it actually sent rather than being
-handed a redeclaration message that never mentions the real mistake.
+*not* identical there is nothing safe to delete, so the strategy **declines** and the
+reply is compiled as sent — and the [type-strip](/gg/responses-as-code/) refuses it as
+the early error it is, naming the redeclared identifier, its line and its column. That
+diagnostic comes from a compiler reading the model's own text, which is a better answer
+than any count gg could infer from it.
 
-Two different drafts that declare *different* names are neither repaired nor refused: that
-is a legal program with a dead tail, it runs, and the
-[type-strip](/gg/responses-as-code/) is what reports the half that could not run.
+Two different drafts that declare *different* names are likewise left alone: that is a
+legal program with a dead tail, it runs, and the type-strip is what reports the half that
+could not run.
 
 ### `drop-imports`
 
@@ -264,17 +261,10 @@ Unwrapping it would not repair anything; it would *execute* statements the respo
 asked to execute, and it would make `async` the difference between a forgotten call doing
 nothing and a forgotten call deleting a directory.
 
-### `strip-comment-only`
-
-Classifies a reply whose bytes, minus comments and whitespace, are empty. It rewrites
-nothing. It exists because a comment-only program type-strips *cleanly*, runs, does
-nothing, and produces a turn that counts as a success — the worst available outcome,
-because a success turn is one no error ceiling will ever stop.
-
 ### The lexical mask, and the one thing it cannot lex
 
-`drop-imports`, `unwrap-async` and `strip-comment-only` each work over a mask of which
-bytes are code as opposed to string, template-literal or comment text. It handles `'…'`,
+`drop-imports`, `unwrap-async` and `drop-duplicate-program` each work over a mask of
+which bytes are code as opposed to string, template-literal or comment text. It handles `'…'`,
 `"…"`, `` `…` `` with `${ … }` substitutions re-entering code, `//…`, `/*…*/` and
 backslash escapes. Three states end a scan uncleanly — an unterminated block comment, an
 unterminated template literal, and a quoted string still open at a newline — and every
@@ -286,36 +276,6 @@ exists to avoid. A regex containing a quote (`str.replace(/don't/g, "")`) theref
 desyncs the scan, which leaves a string open at the next newline, which makes the mask
 unclean, which makes every strategy decline. The failure mode of the one shape it cannot
 lex is **no healing at all**, which is the correct one.
-
-## The six not-a-program reasons
-
-A reply that is not a program is an **error turn**, never a completion. gg feeds it back
-naming the shape it sent, saying that nothing ran and nothing changed, and telling the
-model that only `finish` ends the run.
-
-| Reason | What it is |
-| --- | --- |
-| `empty` | Nothing but whitespace. |
-| `tool_calls_only` | No text at all, but the response carried native tool calls — a reflex some providers push even when no tools are offered. Telling such a model its reply was "empty" would describe something it did not do. |
-| `prose` | Nothing in the reply was code. |
-| `comment_only` | Comments and whitespace only. |
-| `no_program_block` | The reply is fenced blocks, none of which gg reads as a program. |
-| `several_blocks` | The reply offered more than one program, so none of them ran; the count and the shape it was counted in both ride along on the record. Two shapes reach it: several fenced candidate blocks, and — the shape real models send now that fences are gone from the contract — one program pasted after another, which declares the same top-level name twice and could therefore never have run. The two are told apart in the words the model is shown, because a model that sent no fence cannot act on a sentence about the code blocks it did not write, and on the record, because they are different failures a study must be able to count separately. |
-
-`prose` is reached two ways, and the second is the one that fires on real replies. The
-`strip-prose` predicate has to be severe, because that strategy *deletes* — and applied
-to the real terminal prose replies models actually send, it matches **none** of their
-lines. The classification that does fire deletes nothing: a source that failed to
-type-strip and contains no **certainly-code** line was never a program. That predicate is
-safe precisely because it is only ever used to classify: measured against the captured
-replies it matches 0 of 7 lines across the terminal prose ones and at least one line in
-every real program. A real program has a code-shaped line by construction.
-
-Two reasons — `empty` and `tool_calls_only` — are **not gated on any strategy**. Even
-with healing switched off entirely, an empty reply is still not a program: reading an
-empty string as "nothing to run" is not a repair, it is reading it correctly, and the
-alternative is that the off arm of an ablation type-strips the empty program, runs it to
-a silent success, and loops forever on a model that has stopped answering.
 
 ## Why healing is silent
 
@@ -334,9 +294,9 @@ belongs — in the harness's own name. Three things were wrong with it:
 - **It named the harness on every repaired turn.** An agent is told what to do and how,
   never what is driving it.
 - **It had a second contract to get wrong.** The note had to say whether the repaired
-  reply then *ran* — and when it did not (a reply that failed to type-strip, or one gg
-  refused as not a program) an unconditional wording contradicted the very error message
-  it opened. That shipped, and a model cannot act on a turn that asserts both.
+  reply then *ran* — and when it did not, because it failed to type-strip, an
+  unconditional wording contradicted the very error message it opened. That shipped, and
+  a model cannot act on a turn that asserts both.
 
 What the model needs from a repaired turn is the diagnostic, which it gets. A type-strip
 error is located in the **healed** source; a model told "line 4" fixes line 4, which is
@@ -386,15 +346,15 @@ The point of a toggle is the arm it creates, so each one's cost is stated plainl
 
 | Off | What that run then does |
 | --- | --- |
-| `strip-fences` | A fenced reply is compiled *with* its fence, which is not code, so the turn is a type-strip error — and a multi-block reply is no longer refused with the tailored "which of these did you mean?" feedback either; the whole thing goes to the type-strip. This is the arm that measures what a fence costs when nothing catches it. |
-| `strip-prose` | A bare program with an explanatory sentence around it fails to type-strip, or — if none of it is code-shaped — is classified as prose. (No real reply has yet taken this shape: every model fenced.) |
+| `strip-fences` | A fenced reply is compiled *with* its fence, which is not code, so the turn is a type-strip error. This is the arm that measures what a fence costs when nothing catches it. |
+| `strip-prose` | A bare program with an explanatory sentence around it fails to type-strip. (No real reply has yet taken this shape: every model fenced.) |
 | `drop-duplicate-program` | A reply that sent the same program twice reaches the type-strip, which refuses it as an early error naming the redeclared identifier, its line and its column. That is a good diagnostic and a lost turn: this is the arm that measures whether a model recovers from it on its own. |
 | `drop-imports` | An `import` line reaches the type-strip, which refuses it and tells the model the sandbox has no module system. |
 | `unwrap-async` | An `async`-wrapped program runs to its first `await` and defers the rest past its own return. Nothing names the deferred half: a program that ran is told nothing at all, so the only sign the model gets is the notice a turn earns when the program put nothing in its context — and even that is absent for a program whose synchronous prefix managed to open a view. This is the arm that measures how long a model goes on wrapping. |
-| `strip-comment-only` | A comments-only reply type-strips cleanly, runs and does nothing, so instead of the error turn the classification would have made it, it is a **success turn** the ceilings never count — precisely the cost that strategy exists to measure. The model is not left entirely in the dark (a program that shows itself nothing earns a notice), but a notice is not an error, and nothing stops the run from looping on it. |
 
-`empty` and `tool_calls_only` still classify under every arm, including the master
-switch's, for the reason given [above](#the-six-not-a-program-reasons).
+Under the master switch every reply is compiled exactly as the model sent it. Healing
+still runs — it canonicalises a byte-order mark and the blank lines around a reply, which
+is not a repair — and repairs nothing.
 
 ## Metrics
 
@@ -405,21 +365,9 @@ about this response":
 ```jsonc
 "healing": {
   "strategies": ["strip-fences", "drop-imports"],   // in application order, repeats kept
-  "notAProgram": "several_blocks",                  // absent when the reply ran
-  "blocks": 7,                                      // only alongside several_blocks
-  "candidateShape": "fenced",                       // "fenced" or "bare"; present with blocks
   "didNotConverge": false                           // omitted when false
 }
 ```
-
-`blocks` counts **candidate programs**, and counts the same thing in both shapes so the two
-are comparable: the candidate blocks of a fenced reply, and the segments a bare reply's
-top-level redeclarations cut it into. The bare figure is a **lower bound** — five programs
-that share one name between two of them count as two, because two is all the reply proves —
-and never an over-count, so an aggregate of it reads "at least this many programs per
-offending reply". `candidateShape` is what keeps the two apart: a fenced reply is a model
-still formatting a reply it was told not to format, a bare one is a model sending two
-answers in one turn, and those are different mistakes with different fixes.
 
 Per **run**, on the session summary's `healing` rollup, folded from that same event so
 numerator and denominator can never come from different mechanisms:
@@ -427,11 +375,8 @@ numerator and denominator can never come from different mechanisms:
 | Field | What it counts |
 | --- | --- |
 | `healed` | Responses that had to be repaired **and then ran**. |
-| `applications` | Total strategy applications — at least `healed`, since one response may need several repairs, and possibly more, since a classification is an application too. |
-| `stripFences`, `stripProse`, `dropDuplicateProgram`, `dropImports`, `unwrapAsync`, `stripCommentOnly` | Applications of each strategy. |
-| `notAProgram` | Responses that were not programs at all, and so never ran. |
-| `severalBlocks` | Of those, the ones that offered more than one program — a subset of `notAProgram`, never an alternative to it, and exactly the sum of the two below. |
-| `severalBlocksFenced`, `severalBlocksBare` | The same count split by `candidateShape`, so a study can ask which of the two mistakes a model makes without re-deriving it from every turn's record. |
+| `applications` | Total strategy applications — at least `healed`, since one response may need several repairs. |
+| `stripFences`, `stripProse`, `dropDuplicateProgram`, `dropImports`, `unwrapAsync` | Applications of each strategy. |
 | `enabled` | The strategies that were **armed** for the run, in application order. Empty means every one was off (for a code-mode run) — `executionMode` is what tells that apart from a tool-calling run, where healing never runs at all. |
 
 `enabled` is the field that makes an ablation legible from the telemetry alone. Every
@@ -444,15 +389,13 @@ healing-off arm indistinguishable all over again. The same resolved set is named
 launch log, beside the ceilings:
 
 ```text
-response healing: strip-fences, strip-prose, drop-duplicate-program, drop-imports, unwrap-async, strip-comment-only
+response healing: strip-fences, strip-prose, drop-duplicate-program, drop-imports, unwrap-async
 response healing: disabled — every strategy is off, so a reply is compiled exactly as the model sent it
 ```
 
-A response is **healed** exactly when repairs were applied *and* it then became a
-program. A response that was only *classified* was repaired of nothing, because nothing
-ran: it counts an application without counting a heal. The denominator for every rate is
-`codeExecutions`, which is one per code-shaped turn — including the turns whose reply was
-not a program.
+A response is **healed** exactly when at least one repair was applied to it, since every
+healed reply then runs. The denominator for every rate is `codeExecutions`, which is one
+per code-shaped turn — including the turns whose reply did not compile.
 
 Read the per-strategy counts as **what gg's pipeline did**, not as what the model wrote.
 The pipeline applies its strategies in a fixed order to a fixpoint, so which strategy
@@ -467,11 +410,10 @@ rollup.
 
 ### Querying them
 
-[Result aggregation](/gg/result-aggregation/) exposes thirteen summary metrics —
-`responses_healed`, `healing_rate`, `healing_applications`, the six per-strategy counts,
-`responses_not_a_program`, `responses_several_blocks` and its two per-shape splits
-`responses_several_blocks_fenced` and `responses_several_blocks_bare`. `healing_rate` is the
-computed one (`healed / code_executions`, absent for a run that took no code-shaped turn), so:
+[Result aggregation](/gg/result-aggregation/) exposes eight summary metrics —
+`responses_healed`, `healing_rate`, `healing_applications` and the five per-strategy
+counts. `healing_rate` is the computed one (`healed / code_executions`, absent for a run
+that took no code-shaped turn), so:
 
 ```jsonc
 { "groupBy": [{ "kind": "slotModel", "slot": "primary" }],

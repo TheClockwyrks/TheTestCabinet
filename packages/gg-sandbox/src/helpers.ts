@@ -28,7 +28,7 @@ export function readTextFile(
     throw new ToolError(
       "read_file",
       "invalid-argument",
-      `\`${path}\` is a ${read.label} image, not text; use readFile() to inspect it.`,
+      `\`${path}\` is a ${read.label} image, not text`,
     );
   }
   return read.contents;

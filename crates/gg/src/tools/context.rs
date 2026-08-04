@@ -79,9 +79,7 @@ pub fn parse_evict_path(args: &Value) -> Result<Option<String>, String> {
         Some(Value::String(_)) => Err(format!(
             "`{EVICT_FILE_VIEW_TOOL}`: `path` must not be empty"
         )),
-        Some(_) => Err(format!(
-            "`{EVICT_FILE_VIEW_TOOL}`: `path` must be a string (omit it to evict all file views)"
-        )),
+        Some(_) => Err(format!("`{EVICT_FILE_VIEW_TOOL}`: `path` must be a string")),
     }
 }
 
@@ -99,7 +97,7 @@ pub fn parse_archive_ranges(args: &Value) -> Result<Vec<TurnRange>, String> {
     let usage = || {
         format!(
             "`{ARCHIVE_THREAD_TOOL}`: `ranges` must be a non-empty array of inclusive turn pairs, \
-             e.g. [[4, 19], [22, 25]] — read the turn numbers off the headers on your results"
+             e.g. [[4, 19], [22, 25]]"
         )
     };
     let Some(Value::Array(entries)) = args.get("ranges") else {
@@ -123,8 +121,7 @@ pub fn parse_archive_ranges(args: &Value) -> Result<Vec<TurnRange>, String> {
         };
         if from > to {
             return Err(format!(
-                "`{ARCHIVE_THREAD_TOOL}`: the range [{from}, {to}] ends before it starts; write it \
-                 as [{to}, {from}] if you meant those turns"
+                "`{ARCHIVE_THREAD_TOOL}`: the range [{from}, {to}] ends before it starts"
             ));
         }
         ranges.push(TurnRange { from, to });
@@ -265,9 +262,8 @@ impl ArchiveThreadTool {
         }
         if let Some(range) = ranges.iter().find(|range| range.from > range.to) {
             return invalid_argument(format!(
-                "`{ARCHIVE_THREAD_TOOL}`: the range [{}, {}] ends before it starts; write it as \
-                 [{}, {}] if you meant those turns",
-                range.from, range.to, range.to, range.from
+                "`{ARCHIVE_THREAD_TOOL}`: the range [{}, {}] ends before it starts",
+                range.from, range.to
             ));
         }
         ToolOutcome::ok("archiving thread history", "archive thread")
@@ -297,12 +293,7 @@ pub fn parse_compact_request(args: &Value) -> Result<CompactionRequest, String> 
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|summary| !summary.is_empty())
-        .ok_or_else(|| {
-            format!(
-                "`{COMPACT_TOOL}`: `summary` must be a non-empty string — the working state you \
-                 need in order to continue after the thread is dropped."
-            )
-        })?
+        .ok_or_else(|| format!("`{COMPACT_TOOL}`: `summary` must be a non-empty string"))?
         .to_string();
 
     let files = match args.get("files") {
@@ -326,8 +317,7 @@ pub fn parse_compact_request(args: &Value) -> Result<CompactionRequest, String> 
         }
         Some(_) => {
             return Err(format!(
-                "`{COMPACT_TOOL}`: `files` must be an array of workspace path strings (omit it to \
-                 carry no files across)"
+                "`{COMPACT_TOOL}`: `files` must be an array of workspace path strings"
             ));
         }
     };
@@ -441,7 +431,7 @@ impl Tool for SearchArchiveTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let query = match required_str(&args, "query", SEARCH_ARCHIVE_TOOL) {
+        let query = match required_str(&args, "query") {
             Ok(query) => query,
             Err(error) => return error.into(),
         };

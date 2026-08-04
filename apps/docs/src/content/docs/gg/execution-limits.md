@@ -61,7 +61,6 @@ failures the one capability that cannot survive them.
 | Turn | Why |
 | --- | --- |
 | the model call failed, after the client's own retry/backoff was exhausted | no turn happened at all (and this one is separately fatal — see [below](#a-model-api-error-is-still-fatal)) |
-| the reply was **not a program** — prose, empty, comments only, native tool calls and no text, no block gg reads as a program, or several candidate blocks | nothing ran; the model is told so and told that only `finish` ends the run |
 | the program did not type-strip | nothing ran; the model gets a `Compiler error` carrying the compiler's error and nothing else |
 | the program threw uncaught | every statement after the throw never ran, so the model must re-declare the remainder; it gets a `Runtime error` carrying the throw and nothing else |
 | the sandbox stopped the program at its execution timeout or memory ceiling, or the guest trapped | the program ran and its landed calls stand, but the work it declared was cut short — reported as the same `Runtime error` an uncaught throw produces |

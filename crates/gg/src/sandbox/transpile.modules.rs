@@ -48,8 +48,8 @@ use oxc::parser::{Parser, ParserReturn};
 use oxc::span::{GetSpan, SourceType};
 
 use super::{
-    MAX_NESTING_DEPTH, MAX_PROGRAM_BYTES, TranspileError, located, nesting_depth, on_a_deep_stack,
-    over_nested_message, oversized_message, strip_types,
+    MAX_NESTING_DEPTH, TranspileError, located, nesting_depth, on_a_deep_stack,
+    over_nested_message, strip_types,
 };
 
 /// The guidance for module syntax a code module cannot use either — `import`, `export … from`,
@@ -92,21 +92,21 @@ pub struct TranspiledModule {
 /// Transpile a code module into the function body the guest evaluates: type-stripped JavaScript
 /// ending in the `return { … }` that makes its exports the value of evaluating it.
 ///
-/// The size guards run first and on the **original** source, exactly as they do for a program: a
+/// The nesting guard runs first and on the **original** source, exactly as it does for a program: a
 /// module is untrusted input whoever wrote it, and the parser below it recurses without a depth
-/// guard.
+/// guard. Length is not guarded, here either — a module of any size is transpiled, on a stack sized
+/// for it.
 pub fn transpile_module(src: &str) -> Result<TranspiledModule, TranspileError> {
-    if src.len() > MAX_PROGRAM_BYTES {
-        return Err(TranspileError::Unsupported(oversized_message(src.len())));
-    }
     let deepest = nesting_depth(src);
     if deepest > MAX_NESTING_DEPTH {
         return Err(TranspileError::Unsupported(over_nested_message(deepest)));
     }
 
     // One trip to the deep stack for both parses: the plan's and the strip's. They recurse to the
-    // same depth over the same source, and paying for the thread twice would buy nothing.
-    on_a_deep_stack(|| {
+    // same depth over the same source, and paying for the thread twice would buy nothing. Blanking
+    // the `export` keywords preserves the source's length exactly, so the stack sized for `src` is
+    // the stack the strip's parse of the blanked text needs too.
+    on_a_deep_stack(src, || {
         let plan = plan_module(src)?;
         let stripped = strip_types(&plan.blanked)?;
         // The generated `return` is gg's, not the author's, so `Transpiled::unreachable` — which is

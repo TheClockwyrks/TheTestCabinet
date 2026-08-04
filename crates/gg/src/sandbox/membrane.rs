@@ -529,8 +529,7 @@ impl<A: ToolApi> MembraneState<A> {
             return Err(self.refuse(
                 tool,
                 ErrorCode::LimitExceeded,
-                "the run's wall-clock budget is spent; this call was refused so the program stops \
-                 cleanly. Everything it already did stands.",
+                "the run's wall-clock budget is spent",
             ));
         }
         if !self.enabled.contains(tool) {
@@ -613,10 +612,8 @@ impl<A: ToolApi> MembraneState<A> {
             Some(data) => format!(" (it produced a `{}` payload instead)", data_kind(data)),
             None => String::new(),
         };
-        let message = format!(
-            "`{tool}` produced no structured result{produced}; this is a gg defect, not a fault in \
-             your program."
-        );
+        let message =
+            format!("`{tool}` produced no structured result{produced}; this is a gg defect");
         self.amend_last_call_as_failed(&message);
         ToolError {
             code: ErrorCode::IoError,

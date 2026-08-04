@@ -235,10 +235,7 @@ pub enum GitError {
 impl std::fmt::Display for GitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            GitError::NotFound => write!(
-                f,
-                "the `git` binary is not available; worktrees require git in the run environment"
-            ),
+            GitError::NotFound => write!(f, "the `git` binary is not available"),
             GitError::Command { context, stderr } => {
                 if stderr.is_empty() {
                     write!(f, "{context} failed")

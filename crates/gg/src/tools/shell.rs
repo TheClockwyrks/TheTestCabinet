@@ -307,7 +307,7 @@ impl Tool for ShellTool {
     }
 
     async fn invoke(&self, args: Value, ctx: &ToolContext) -> ToolOutcome {
-        let command = match required_str(&args, "command", SHELL_TOOL) {
+        let command = match required_str(&args, "command") {
             Ok(command) => command,
             Err(error) => return error.into(),
         };
@@ -394,10 +394,15 @@ pub(crate) async fn run_command(
         return ToolOutcome::failed(failure, message);
     }
 
-    // Whether the command worked, which the [adaptive](OffloadPolicy::Adaptive) policy decides on.
-    // A timeout kill and a failed `wait()` both count as "did not succeed": in either case the
-    // agent is about to be told something went wrong, and the output is the part that says what.
-    let succeeded = matches!(status, ShellStatus::Exited { code: Some(0) });
+    // What the command exited with, or `None` when it never got that far — a timeout kill and a
+    // failed `wait()` both count as "did not succeed": in either case the agent is about to be told
+    // something went wrong, and the output is the part that says what. Read here, ahead of the
+    // terminal branches below, because the output policy needs it: a withheld body reports the exit
+    // code, since the exit code is the only thing it reports.
+    let exit_code = match &status {
+        ShellStatus::Exited { code } => *code,
+        _ => None,
+    };
     // What comes back inline, under whichever output policy is in force. Computed before the
     // terminal branches so a killed command's partial output is offloaded on the same terms a
     // completed one's is — a command that hung after printing a hundred megabytes is exactly the
@@ -406,7 +411,8 @@ pub(crate) async fn run_command(
         body,
         truncated,
         explained,
-    } = capture_output(&stdout, &stderr, offload, succeeded).await;
+        withheld,
+    } = capture_output(&stdout, &stderr, offload, exit_code).await;
 
     let code = match status {
         ShellStatus::Exited { code } => code,
@@ -432,9 +438,13 @@ pub(crate) async fn run_command(
     };
 
     let ok = code == Some(0);
-    let mut output = match code {
-        Some(code) => format!("exit code: {code}\n"),
-        None => "exit code: (terminated by signal)\n".to_string(),
+    // A withheld body opens with the exit code itself — it has to, because it is handed to a
+    // [responses-as-code](crate::sandbox) program without this header around it — so adding the
+    // header here would print the same fact twice.
+    let mut output = if withheld {
+        String::new()
+    } else {
+        format!("exit code: {}\n", describe_exit_code(code))
     };
     if body.is_empty() {
         output.push_str("(no output)");
@@ -513,6 +523,10 @@ struct Captured {
     /// body (the note is part of it, so a code program that prints the body sees the file paths);
     /// false under the inline policy, where the prose adds gg's byte-cap note around it.
     explained: bool,
+    /// Whether [`body`](Self::body) is the withheld-output note rather than any of the command's
+    /// own output — which also means it states the exit code itself, so the caller does not head it
+    /// with one.
+    withheld: bool,
 }
 
 /// The file pair one offloaded command's streams were written to.
@@ -525,8 +539,9 @@ struct OffloadPaths {
 
 /// Apply `offload` to a finished command's streams: merge them, keep whatever the policy permits
 /// inline, and — under a [truncating](OffloadPolicy::Offload) policy — write the whole of both
-/// streams to a file pair first. `succeeded` is whether the command exited cleanly, which the
-/// [adaptive](OffloadPolicy::Adaptive) policy decides on.
+/// streams to a file pair first. `exit_code` is what the command exited with — `None` when it never
+/// got a status — which decides both whether the [adaptive](OffloadPolicy::Adaptive) policy withholds
+/// the output and what the withheld body reports in its place.
 ///
 /// The pair is written for **every** command, not only a chatty one, because "the full output is on
 /// disk" is only useful if it is true unconditionally: an agent that has to guess whether this
@@ -536,7 +551,7 @@ async fn capture_output(
     stdout: &str,
     stderr: &str,
     offload: &OffloadPolicy,
-    succeeded: bool,
+    exit_code: Option<i32>,
 ) -> Captured {
     let merged = merge_output(stdout, stderr);
     let Some(limits) = offload.limits() else {
@@ -545,17 +560,19 @@ async fn capture_output(
             body,
             truncated,
             explained: false,
+            withheld: false,
         };
     };
     // Under the adaptive policy a command that worked is reported by its exit code alone. A command
     // that printed nothing is left as the empty body the caller renders as "(no output)": there is
     // nothing on disk worth pointing at, and the note would be the only thing the agent read.
-    let withhold = succeeded && offload.withholds_on_success();
+    let withhold = exit_code == Some(0) && offload.withholds_on_success();
     if withhold && merged.is_empty() {
         return Captured {
             body: String::new(),
             truncated: false,
             explained: false,
+            withheld: false,
         };
     }
 
@@ -569,11 +586,10 @@ async fn capture_output(
             let (mut body, truncated) = truncate(&merged, MAX_OUTPUT_BYTES);
             body.push_str(&separator(&body));
             body.push_str(&format!(
-                "[could not write this command's output to {}: {err}. The output above is all \
-                 that was kept{}.]",
+                "[could not write output to {}: {err}{}]",
                 limits.dir.display(),
                 if truncated {
-                    format!(", truncated to its last {MAX_OUTPUT_BYTES} bytes")
+                    format!("; kept the last {MAX_OUTPUT_BYTES} bytes")
                 } else {
                     String::new()
                 },
@@ -582,6 +598,7 @@ async fn capture_output(
                 body,
                 truncated,
                 explained: true,
+                withheld: false,
             };
         }
     };
@@ -590,16 +607,20 @@ async fn capture_output(
         // "Only the exit code" as far as the command's own output goes — but the paths come with it.
         // Withholding output the agent has no way to ask for again would not be offloading, it would
         // be discarding, and the agent would be left re-running the command to see what it printed.
+        //
+        // Three lines of facts, and no sentence explaining them: the model is told what the file
+        // pair is in the tool's own description and in the system prompt, and repeating it in the
+        // result of every successful command spends context on a thing it has already read.
         return Captured {
             body: format!(
-                "[The command succeeded, so its output is not shown. The full stdout and stderr \
-                 were written to:\n  stdout: {}\n  stderr: {}\nRead or grep those files if you \
-                 need them.]",
+                "Exit code: {}\nstdout: {}\nstderr: {}",
+                describe_exit_code(exit_code),
                 paths.stdout.display(),
                 paths.stderr.display(),
             ),
             truncated: true,
             explained: true,
+            withheld: true,
         };
     }
 
@@ -611,12 +632,10 @@ async fn capture_output(
     if truncated {
         body.push_str(&separator(&body));
         body.push_str(&format!(
-            "[Output truncated: showing the {}{}. The full stdout and stderr of this command were \
-             written to:\n  stdout: {}\n  stderr: {}\nRead or grep those files if you need more \
-             than what is shown above.]",
+            "[Output truncated: {}{}]\nstdout: {}\nstderr: {}",
             limits.describe(),
             if byte_cut {
-                format!(", further capped at {MAX_OUTPUT_BYTES} bytes")
+                format!(", capped at {MAX_OUTPUT_BYTES} bytes")
             } else {
                 String::new()
             },
@@ -628,6 +647,17 @@ async fn capture_output(
         body,
         truncated,
         explained: true,
+        withheld: false,
+    }
+}
+
+/// How an exit status reads in the model-facing output: the code, or — for a process a signal ended
+/// — that it was ended by one. An option rather than a sentinel `-1` all the way out, because
+/// "killed" and "exited 255" are different events.
+fn describe_exit_code(code: Option<i32>) -> String {
+    match code {
+        Some(code) => code.to_string(),
+        None => "(terminated by signal)".to_string(),
     }
 }
 

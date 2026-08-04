@@ -637,56 +637,35 @@ pub enum BoardError {
 impl fmt::Display for BoardError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BoardError::EmptyField(field) => write!(f, "`{field}` must not be empty."),
+            BoardError::EmptyField(field) => write!(f, "`{field}` must not be empty"),
             BoardError::InvalidPrefix(raw) => write!(
                 f,
-                "`prefix` must be {MIN_PREFIX_LEN} to {MAX_PREFIX_LEN} letters (a-z) and nothing \
-                 else; `{raw}` is not. It names this epic's issues (a prefix of `AUTH` numbers them \
-                 `AUTH-1`, `AUTH-2`, …), so choose a short mnemonic for what the epic covers."
+                "`prefix`: `{raw}` is not {MIN_PREFIX_LEN} to {MAX_PREFIX_LEN} letters (a-z)"
             ),
-            BoardError::DuplicateEpic(id) => write!(
-                f,
-                "an epic with the prefix `{id}` already exists; choose a different prefix (it is \
-                 what this epic's issues are numbered under)."
-            ),
-            BoardError::EpicNotFound(id) => write!(
-                f,
-                "no epic with id `{id}` exists (your current board is in your context); create \
-                 it with `create_epic`."
-            ),
-            BoardError::IssueNotFound(id) => write!(
-                f,
-                "no issue with id `{id}` exists (your current board is in your context); create \
-                 it with `create_issue`."
-            ),
-            BoardError::BlockerNotFound(id) => write!(
-                f,
-                "`blockedBy` references issue `{id}`, which does not exist; create it first, or \
-                 correct the id."
-            ),
+            BoardError::DuplicateEpic(id) => {
+                write!(f, "an epic with the prefix `{id}` already exists")
+            }
+            BoardError::EpicNotFound(id) => write!(f, "no epic with id `{id}`"),
+            BoardError::IssueNotFound(id) => write!(f, "no issue with id `{id}`"),
+            BoardError::BlockerNotFound(id) => {
+                write!(f, "`blockedBy`: no issue with id `{id}`")
+            }
             BoardError::SelfBlock(id) => {
-                write!(f, "issue `{id}` cannot be blocked by itself.")
+                write!(f, "issue `{id}` cannot be blocked by itself")
             }
             BoardError::Cycle { issue, blocker } => write!(
                 f,
                 "blocking `{issue}` on `{blocker}` would create a cycle: `{blocker}` already \
-                 depends (directly or indirectly) on `{issue}`. Issues form a DAG, so this edge \
-                 is refused."
+                 depends on `{issue}`"
             ),
-            BoardError::UnknownEpic(id) => write!(
-                f,
-                "`epicId` references epic `{id}`, which does not exist; create it with \
-                 `create_epic`, or omit `epicId` to leave the issue ungrouped."
-            ),
-            BoardError::CountCap { kind, cap } => write!(
-                f,
-                "you already hold the maximum of {cap} {kind}(s); remove one before adding \
-                 another."
-            ),
+            BoardError::UnknownEpic(id) => write!(f, "`epicId`: no epic with id `{id}`"),
+            BoardError::CountCap { kind, cap } => {
+                write!(f, "at the maximum of {cap} {kind}(s)")
+            }
             BoardError::NoUpdateFields => write!(
                 f,
-                "`update_issue` needs at least one of `title`, `description`, `inScope`, \
-                 `outOfScope`, `completionCriteria`, `status`, or `epicId` to change."
+                "`update_issue` needs one of `title`, `description`, `inScope`, `outOfScope`, \
+                 `completionCriteria`, `status`, or `epicId`"
             ),
         }
     }

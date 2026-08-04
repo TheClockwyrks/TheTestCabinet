@@ -110,15 +110,15 @@ impl Tool for CreateMemoryTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let name = match required_str(&args, "name", CREATE_MEMORY_TOOL) {
+        let name = match required_str(&args, "name") {
             Ok(name) => name,
             Err(error) => return error.into(),
         };
-        let description = match optional_str(&args, "description", CREATE_MEMORY_TOOL) {
+        let description = match optional_str(&args, "description") {
             Ok(description) => description.unwrap_or_default(),
             Err(error) => return error.into(),
         };
-        let contents = match required_str(&args, "contents", CREATE_MEMORY_TOOL) {
+        let contents = match required_str(&args, "contents") {
             Ok(contents) => contents,
             Err(error) => return error.into(),
         };
@@ -145,7 +145,7 @@ impl CreateMemoryTool {
             )
             .with_data(usage_data(&store)),
             Ok(_) => unreachable!("create yields Written"),
-            Err(err) => ToolOutcome::failed(failure_for(&err), format!("create_memory: {err}")),
+            Err(err) => ToolOutcome::failed(failure_for(&err), err.to_string()),
         }
     }
 }
@@ -199,7 +199,7 @@ impl Tool for ReadMemoryTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let name = match required_str(&args, "name", READ_MEMORY_TOOL) {
+        let name = match required_str(&args, "name") {
             Ok(name) => name,
             Err(error) => return error.into(),
         };
@@ -286,17 +286,17 @@ impl Tool for EditMemoryTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let name = match required_str(&args, "name", EDIT_MEMORY_TOOL) {
+        let name = match required_str(&args, "name") {
             Ok(name) => name,
             Err(error) => return error.into(),
         };
-        let old_string = match required_str(&args, "old_string", EDIT_MEMORY_TOOL) {
+        let old_string = match required_str(&args, "old_string") {
             Ok(old) => old,
             Err(error) => return error.into(),
         };
         // The replacement may legitimately be empty — that is how text is cut out — so it is read
         // as an optional string rather than a required one and defaults to "".
-        let new_string = match optional_str(&args, "new_string", EDIT_MEMORY_TOOL) {
+        let new_string = match optional_str(&args, "new_string") {
             Ok(new) => new.unwrap_or_default(),
             Err(error) => return error.into(),
         };
@@ -374,7 +374,7 @@ impl Tool for SearchMemoriesTool {
     }
 
     async fn invoke(&self, args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        let keywords = match required_str_array(&args, "keywords", SEARCH_MEMORIES_TOOL) {
+        let keywords = match required_str_array(&args, "keywords") {
             Ok(keywords) => keywords,
             Err(error) => return error.into(),
         };
@@ -390,7 +390,7 @@ impl SearchMemoriesTool {
         let hits = match store.search(&keywords) {
             Ok(hits) => hits,
             Err(err) => {
-                return ToolOutcome::failed(failure_for(&err), format!("search_memories: {err}"));
+                return ToolOutcome::failed(failure_for(&err), err.to_string());
             }
         };
         // The store's lock is released before the results are rendered: the hits are owned, and

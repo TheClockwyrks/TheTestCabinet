@@ -99,10 +99,6 @@ not the two lines that asked for it. That is what makes fetch-patch-rerun *compo
 patched program is what the next turn's `get()` returns, so a chain of turns each refining
 the last does not degenerate into a chain of trampolines.
 
-A turn whose reply was **not a program** contributes nothing: there is no source, so
-`get()` after such a turn still returns the last program the agent really ran, which is
-what it wants.
-
 A program that **failed** is kept, and is the single most likely thing to fetch. Its
 record carries the error it ended with — in the same words the model was already given —
 so a program deciding whether to reach for it can read what went wrong without searching

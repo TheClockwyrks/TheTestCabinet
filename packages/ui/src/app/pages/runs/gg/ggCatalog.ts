@@ -449,11 +449,6 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
     label:
       "unwrap-async — unwrap an async wrapper and its awaits; every tool is synchronous",
   },
-  {
-    value: "strip-comment-only",
-    label:
-      "strip-comment-only — treat a reply that is only comments as no program at all",
-  },
 ];
 
 // How the assistant message a code turn records is derived from the model's reply
@@ -1618,7 +1613,7 @@ export const RUN_LIMIT_SPECS: ReadonlyArray<RunLimitSpec> = [
     kind: "count",
     defaultValue: String(DEFAULT_MAX_CONSECUTIVE_ERRORS),
     placeholder: "e.g. 5",
-    hint: `How many error turns in a row end an agent; gg's default is ${DEFAULT_MAX_CONSECUTIVE_ERRORS}. A turn is an error when the work it declared could not be carried out — a failed model call, a reply that was not a program, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.`,
+    hint: `How many error turns in a row end an agent; gg's default is ${DEFAULT_MAX_CONSECUTIVE_ERRORS}. A turn is an error when the work it declared could not be carried out — a failed model call, a program that did not compile, threw, or was stopped at a sandbox ceiling. A tool call that failed inside a program that carried on is not one.`,
   },
   {
     key: "maxErrorRate",

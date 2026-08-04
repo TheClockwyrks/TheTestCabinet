@@ -7,7 +7,7 @@
  */
 
 import * as raw from "test-cabinet:gg/context";
-import { ToolError, U32_MAX, call, list, uint } from "../errors.js";
+import { ToolError, U32_MAX, call, list, typeName, uint } from "../errors.js";
 import type { ArchiveSearch, ReclaimReport, TurnRange } from "../types.js";
 
 /**
@@ -33,7 +33,7 @@ export function archiveThread(ranges: TurnRange[]): ReclaimReport {
       throw new ToolError(
         "archiveThread",
         "invalid-argument",
-        "archiveThread(…): every entry of `ranges` must be a { from, to } turn span.",
+        `every entry of \`ranges\` must be a { from, to } turn span, got ${typeName(range)}`,
       );
     }
     const from = uint("archiveThread", "ranges[].from", range.from, U32_MAX);
@@ -42,7 +42,7 @@ export function archiveThread(ranges: TurnRange[]): ReclaimReport {
       throw new ToolError(
         "archiveThread",
         "invalid-argument",
-        "archiveThread(…): every entry of `ranges` needs both `from` and `to`.",
+        "every entry of `ranges` needs both `from` and `to`",
       );
     }
     // `from`/`to` on the way in, `start`/`end` across the membrane — `from` is a WIT keyword, and

@@ -125,13 +125,6 @@ const MEMORY_NOTICE_TEMPLATE: &str = include_str!("../templates/memory-notice.hb
 /// the report, and a covering note over them would be gg narrating what the model can already read.
 const CODE_NOTHING_SHOWN_TEMPLATE: &str = include_str!("../templates/code-nothing-shown.hbs");
 
-/// The turn feedback for a reply that was not a program at all — prose, comments, an empty message.
-///
-/// It exists because under this protocol such a reply is a *failed turn* rather than a conclusion:
-/// the run ends when a program calls `finish` and at no other time, so a model that says "done" has
-/// to be told, in gg's own words, that saying it did nothing.
-const CODE_NOT_A_PROGRAM_TEMPLATE: &str = include_str!("../templates/code-not-a-program.hbs");
-
 /// The dispatch brief an [issue](crate::board) is handed to the agent that implements it.
 const ISSUE_BRIEF_TEMPLATE: &str = include_str!("../templates/issue-brief.hbs");
 
@@ -211,7 +204,6 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("memory-index", MEMORY_INDEX_TEMPLATE),
     ("memory-notice", MEMORY_NOTICE_TEMPLATE),
     ("code-nothing-shown", CODE_NOTHING_SHOWN_TEMPLATE),
-    ("code-not-a-program", CODE_NOT_A_PROGRAM_TEMPLATE),
     ("issue-brief", ISSUE_BRIEF_TEMPLATE),
     ("review-brief", REVIEW_BRIEF_TEMPLATE),
     ("fix-brief", FIX_BRIEF_TEMPLATE),
@@ -735,32 +727,6 @@ pub fn default_system_prompt_template_code() -> &'static str {
 // The code-turn feedback
 // ---------------------------------------------------------------------------
 
-/// The variables `code-not-a-program.hbs` may reference: the notice for a turn whose reply never
-/// became something to run.
-///
-/// The only code message that takes a context at all, and it is still narrow: the reply was prose,
-/// or comments, or empty, or several candidate blocks, and the two things the model needs are which
-/// of those it was and what a turn is supposed to look like instead. A compiler or runtime error
-/// needs no context because it *is* its error.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CodeNotAProgramContext {
-    /// Why the reply was not a program, as
-    /// [`NotAProgramReason::message`](crate::healing::NotAProgramReason::message) words it.
-    ///
-    /// Pre-rendered in Rust rather than branched on here: the reason is an enum with one sentence
-    /// per variant, and a template that reproduced that mapping would be a second place for the six
-    /// sentences to live.
-    pub reason: String,
-    /// This agent's [ending calls](crate::ending::EndingRole), as a program writes them.
-    ///
-    /// It matters most on this template of the four: this is the turn a model takes when it has
-    /// answered in prose because it believes the work is done, so it is precisely the moment to name
-    /// the call it should have made instead — and naming a call the agent's role does not have would
-    /// send it looking for a function that is not in its scope.
-    pub ending_calls: Vec<String>,
-}
-
 /// The notice a program that ran cleanly and showed itself nothing earns.
 ///
 /// Falls back to a plain sentence rather than panicking, as every model-facing render here does: a
@@ -770,27 +736,6 @@ pub fn render_code_nothing_shown() -> String {
         "Your program ran and put nothing in your context. Open a view to see something: \
          `view.openText(label, body)` for a value you computed, `view.openFile(path)` for a file."
             .to_string()
-    })
-}
-
-/// The model-facing feedback for a reply that was **not a program**, so nothing ran at all.
-///
-/// Falls back to a plain sentence for the same reason the other three do — its input is derived from
-/// a model's own output — and the fallback keeps the two facts the turn exists to deliver: why the
-/// reply was refused, and which call would actually have ended the session.
-pub fn render_code_not_a_program(context: &CodeNotAProgramContext) -> String {
-    try_render("code-not-a-program", context).unwrap_or_else(|_| {
-        format!(
-            "{} Every turn is a program: reply with code alone. Saying the work is done does not \
-             end your session — call {} instead.",
-            context.reason,
-            context
-                .ending_calls
-                .iter()
-                .map(|call| format!("`{call}`"))
-                .collect::<Vec<_>>()
-                .join(" or ")
-        )
     })
 }
 
