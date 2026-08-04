@@ -41,6 +41,44 @@
   }
 }
 
+// The error row: the total, the consecutive peak, and the ranked types, one tile each.
+// Its own block rather than three tiles in the bento, for the reason the clocks row below
+// is — auto-placement would pack them into whatever gap the row above left, and the two
+// surfaces differ by exactly the one card that decides how big that gap is.
+//
+// Below the bento breakpoint the two scalar tiles pair up on one line and the ranking takes
+// the line under them (see `.errorsRanking`), rather than all three stacking: they are two
+// short figures and one list, so the pairing costs nothing and keeps the clocks row above
+// the fold on the surface someone is watching a run on.
+.errorsBlock {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: t.$space-md;
+  align-items: stretch;
+  min-width: 0;
+}
+
+// The ranking is the row's wide tile. Below the breakpoint it claims the full width of the
+// two-column block; above it, the block's own 3/3/6 tracks size it and the span is released
+// so it does not try to take two of three columns.
+.errorsRanking {
+  grid-column: 1 / -1;
+}
+
+// Above the breakpoint the block takes the whole bento row: a third each for the two
+// figures and a half for the ranking, whose rows carry a sentence-length label, a base
+// badge and a count where the other two carry a number and a phrase. The span belongs here
+// rather than in the base rule for the reason `.runtimeBlock`'s does (see `.cards`).
+@media (min-width: 52rem) {
+  .errorsBlock {
+    grid-column: span 12;
+    grid-template-columns: 3fr 3fr 6fr;
+  }
+  .errorsRanking {
+    grid-column: auto;
+  }
+}
+
 // The clocks row: the wall clock, the active agent time, the waiting, and the ceiling,
 // one tile each. Its own block rather than four tiles in the bento, for the reason the
 // money row below is — auto-placement (and `grid-auto-flow: dense` in particular) would
@@ -148,9 +186,9 @@
 // breakpoint, where that grid does: below it the cards sit in a single-column track and a
 // span would grow the implicit grid rather than clamp to it (see `.cards`), so a card
 // carrying one simply takes a full row like every other. The top row pairs them to fill
-// twelve either way: status + turns + errors + rate (3+3+3+3) on the live monitor, turns
-// + errors + rate (4+4+4) where the page header carries the state. The clocks below it
-// are not spans at all — they are `.runtimeBlock`'s own grid.
+// twelve either way: status + turns + rate (4+4+4) on the live monitor, turns + rate
+// (6+6) where the page header carries the state. The errors and the clocks below it are
+// not spans at all — they are `.errorsBlock`'s and `.runtimeBlock`'s own grids.
 @media (min-width: 52rem) {
   .cardFull {
     grid-column: span 12;
@@ -160,9 +198,6 @@
   }
   .cardThird {
     grid-column: span 4;
-  }
-  .cardQuarter {
-    grid-column: span 3;
   }
 }
 
@@ -325,15 +360,15 @@
   color: t.$color-text-muted;
 }
 
-// --- The errors card ----------------------------------------------------------
+// --- The errors row -----------------------------------------------------------
 
-// The per-kind split of a run's errored turns: one row per kind that happened, the
-// reason on the left and its count hard against the right edge. Laid out like the
-// configuration card's agent bindings (`.slot`) rather than like the cost rows — this
-// tile is a quarter of the top row, and a label/bar/figure grid needs width the row
-// deliberately does not have, while a two-cell row degrades to nothing worse than a
-// wrapped label.
-.errorKinds {
+// The ranked split of a run's errored turns: one row per specific type, most common
+// first, with the base kind it rolls up into badged between the type and its count. Laid
+// out like the configuration card's agent bindings (`.slot`) rather than like the cost
+// rows — a label/bar/figure grid would spend the tile's width on bars whose lengths only
+// restate three adjacent numbers, where three text rows stay legible however the tile is
+// sized and degrade to nothing worse than a wrapped label.
+.errorTypes {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -343,26 +378,39 @@
   min-width: 0;
 }
 
-.errorKind {
+.errorType {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: t.$space-xs;
   font-size: t.$font-sm;
   min-width: 0;
 }
 
-// The reason, in the muted caption weight the other per-row labels take: the count
-// beside it is the figure being read, and the reason is what qualifies it.
-.errorKindLabel {
+// What failed, in the run's own text weight: this is the row's subject, and the badge
+// beside it and the count after it are what qualify and quantify it. It takes the row's
+// spare width and wraps within it rather than pushing the tile wider.
+.errorTypeLabel {
+  color: t.$color-text;
+  min-width: 0;
+}
+
+// The base kind, as a muted chip in the caption weight the other per-row labels take —
+// deliberately quieter than the type it groups, since the ranking is of types and the base
+// is the family that type belongs to rather than a second finding.
+.errorTypeBase {
   color: t.$color-text-muted;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-size: 0.72rem;
-  min-width: 0;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
-.errorKindCount {
+// The count, hard against the right edge — pushed there by its own margin rather than by
+// the row's `space-between`, which would have stranded the badge in the middle of the row
+// instead of keeping it beside the label it annotates.
+.errorTypeCount {
+  margin-left: auto;
   color: t.$color-text;
   font-variant-numeric: tabular-nums;
   flex: 0 0 auto;
@@ -668,6 +716,24 @@
   color: t.$color-text;
 }
 
+// One agent profile's block: its name/model binding (`.slots`) over the capability chips
+// (`.capabilities`) that were on for it. The card's markup named this class from the day it
+// was written and no rule here ever defined it, so it resolved to `undefined` and left the
+// block a plain `<div>` — the chips sat flush against the model id above them with no gap
+// at all, and two profiles ran together with nothing between them either. The column gap
+// separates the binding from what it was configured with; the sibling margin is a step
+// larger again, so the break between two profiles reads as bigger than the break inside one.
+.agentConfig {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+
+  & + & {
+    margin-top: t.$space-md;
+  }
+}
+
 .slots {
   display: flex;
   flex-direction: column;
@@ -781,11 +847,15 @@
   }
 }
 
+// The status dot and the agent's text, side by side. The gap is a step wider than the one
+// inside `.agentIdentityText` on purpose: the dot is a 0.5rem mark rather than a line of
+// text, so at the tighter step it read as attached to the agent's name — a diacritic on it
+// rather than a separate reading of the agent's state.
 .agentIdentity {
   flex: 1 1 9rem;
   display: flex;
   align-items: center;
-  gap: t.$space-xs;
+  gap: t.$space-sm;
   min-width: 0;
 }
 

@@ -5,9 +5,11 @@
 // stream — the rich view is not something that changes shape once the run ends. The one
 // deliberate difference is the status card, which the finished run omits because its page
 // header already carries the run's state; everything below that must be identical, in the
-// same order. These pin that, the clocks row (four sibling tiles of its own, so the run's
-// two clocks are not footnotes to one another), and the money row's own composition (Cost
-// leading, Tokens beside it, the configuration under Tokens).
+// same order. These pin that, the error row (three sibling tiles of its own, so the
+// consecutive peak and the type ranking are not footnotes to the total), the clocks row
+// (four sibling tiles of its own, so the run's two clocks are not footnotes to one
+// another), and the money row's own composition (Cost leading, Tokens beside it, the
+// configuration under Tokens).
 
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -184,8 +186,10 @@ describe("the gg Dashboard", () => {
     expect(cardLabels()).toEqual([
       "Status",
       "Turns",
-      "Errors",
       "Tokens / s",
+      "Total errors",
+      "Max consecutive errors",
+      "Top error types",
       "Runtime",
       "Active",
       "Waiting",
@@ -203,8 +207,10 @@ describe("the gg Dashboard", () => {
     renderDashboard();
     expect(cardLabels()).toEqual([
       "Turns",
-      "Errors",
       "Tokens / s",
+      "Total errors",
+      "Max consecutive errors",
+      "Top error types",
       "Runtime",
       "Active",
       "Waiting",
@@ -329,7 +335,7 @@ describe("the gg Dashboard", () => {
     expect(within(limit).getByText("—")).toBeInTheDocument();
     expect(within(limit).getByText("no limit resolved")).toBeInTheDocument();
     // And the row is still four tiles, in the same order.
-    expect(cardLabels().slice(4, 8)).toEqual([
+    expect(cardLabels().slice(6, 10)).toEqual([
       "Runtime",
       "Active",
       "Waiting",
@@ -374,7 +380,7 @@ describe("the gg Dashboard", () => {
   });
 });
 
-// One turn's outcome, as gg publishes it — the event the Errors card is folded from.
+// One turn's outcome, as gg publishes it — the event the error row is folded from.
 function outcome(
   agentId: string,
   turns: number,
@@ -390,8 +396,8 @@ function outcome(
 }
 
 // The Dashboard over the shared fixture plus whatever outcomes a test is about, which is
-// what the Errors card reads. Rendered without a status card so the assertions are about
-// the card rather than about which surface it is on.
+// what the error row reads. Rendered without a status card so the assertions are about the
+// row rather than about which surface it is on.
 function renderErrors(...outcomes: HarnessEvent[]) {
   const events = [...EVENTS, ...outcomes];
   const derived = reduceGgEvents(events);
@@ -413,18 +419,32 @@ function renderErrors(...outcomes: HarnessEvent[]) {
   );
 }
 
-// The Errors card, reached from its label.
-function errorsCard(): HTMLElement {
-  return screen.getByText("Errors").parentElement!;
+// One of the error row's three tiles, reached from its own label.
+function errorTile(label: string): HTMLElement {
+  return screen.getByText(label).parentElement!;
 }
 
-// A card's headline figure — the big slot, read apart from the per-kind counts under it,
+// A card's headline figure — the big slot, read apart from the ranked counts under it,
 // which are the same shape of digits.
 function headline(card: HTMLElement): string {
   return card.querySelector("[class*='metricValue']")?.textContent ?? "";
 }
 
-describe("the gg Dashboard's Errors card", () => {
+// The ranking, in the order it puts its rows: each row's type label and its count, with
+// the base-kind badge that sits between them dropped — the badge is asserted on its own
+// where it is the point.
+function rankedTypes(): Array<[string, string]> {
+  return [
+    ...errorTile("Top error types").querySelectorAll(
+      "[class*='errorTypes'] li",
+    ),
+  ].map((row) => [
+    row.querySelector("[class*='errorTypeLabel']")?.textContent ?? "",
+    row.querySelector("[class*='errorTypeCount']")?.textContent ?? "",
+  ]);
+}
+
+describe("the gg Dashboard's error row", () => {
   it("states the failures with the denominator they were taken against", () => {
     // Never a bare percentage: 50% of two turns and 50% of two hundred are not the same
     // claim about a configuration, and the count of attempts is what tells them apart.
@@ -433,77 +453,202 @@ describe("the gg Dashboard's Errors card", () => {
       outcome("root", 2, {
         outcome: "error",
         error: "transpile",
+        errorType: "transpile_syntax",
         consecutiveErrors: 1,
       }),
       outcome("root", 3, {
         outcome: "error",
         error: "transpile",
+        errorType: "transpile_syntax",
         consecutiveErrors: 2,
       }),
       outcome("root", 4),
     );
-    const card = errorsCard();
-    expect(headline(card)).toBe("2");
+    const total = errorTile("Total errors");
+    expect(headline(total)).toBe("2");
+    expect(within(total).getByText("50% of 4 turns")).toBeInTheDocument();
+  });
+
+  it("gives the consecutive peak a tile rather than a clause on the rate's line", () => {
+    // It is the counter gg's own ceiling is enforced on — whether two failures in forty
+    // turns were adjacent is the difference between a flaky run and one falling over — so
+    // it reads at the same weight as the total beside it, and says whose peak it is: a
+    // maximum over agents, since turns from concurrent agents interleave.
+    renderErrors(
+      outcome("root", 1, {
+        outcome: "error",
+        error: "model_api",
+        errorType: "model_retry_exhausted",
+        consecutiveErrors: 1,
+      }),
+      outcome("root", 2, {
+        outcome: "error",
+        error: "model_api",
+        errorType: "model_retry_exhausted",
+        consecutiveErrors: 2,
+      }),
+      outcome("agent-0", 1, {
+        outcome: "error",
+        error: "model_api",
+        errorType: "model_retry_exhausted",
+        consecutiveErrors: 1,
+      }),
+    );
+    const peak = errorTile("Max consecutive errors");
+    // Two in a row for the root and one for the subagent: the peak is two, not the three
+    // errors summed and not the six a naive streak over the merged stream might claim.
+    expect(headline(peak)).toBe("2");
     expect(
-      within(card).getByText("50% of 4 turns · 2 in a row at worst"),
+      within(peak).getByText("in a row at worst, by one agent"),
+    ).toBeInTheDocument();
+    expect(peak.title).toContain("any single agent");
+  });
+
+  it("ranks the specific error types by count, most common first", () => {
+    // The ranking is over the nineteen specific types rather than the five base kinds —
+    // "top error types" over five buckets is barely a narrowing.
+    renderErrors(
+      outcome("root", 1, {
+        outcome: "error",
+        error: "program_fault",
+        errorType: "program_unknown_name",
+        consecutiveErrors: 1,
+      }),
+      outcome("root", 2, {
+        outcome: "error",
+        error: "program_fault",
+        errorType: "program_unknown_name",
+        consecutiveErrors: 2,
+      }),
+      outcome("root", 3, {
+        outcome: "error",
+        error: "sandbox_limit",
+        errorType: "sandbox_timeout",
+        consecutiveErrors: 3,
+      }),
+    );
+    expect(rankedTypes()).toEqual([
+      ["unknown name", "2"],
+      ["execution timeout", "1"],
+    ]);
+    // The base kind rides along as a badge, because a specific type does not always name
+    // its own family — "unknown name" says nothing about being a program fault, and the
+    // families are what gg's five error ceilings are written against.
+    const ranking = errorTile("Top error types");
+    expect(within(ranking).getByText("program fault")).toBeInTheDocument();
+    expect(within(ranking).getByText("sandbox limit")).toBeInTheDocument();
+  });
+
+  it("names only three types however many the run produced", () => {
+    // The point of a ranking is the narrowing. A run failing five ways lists the worst
+    // three; the fourth and fifth are what the Errors panel is for.
+    renderErrors(
+      ...(
+        [
+          "transpile_syntax",
+          "transpile_syntax",
+          "transpile_syntax",
+          "sandbox_trap",
+          "sandbox_trap",
+          "model_parse",
+          "program_throw",
+        ] as const
+      ).map((errorType, i) =>
+        outcome("root", i + 1, {
+          outcome: "error",
+          error: "transpile",
+          errorType,
+          consecutiveErrors: i + 1,
+        }),
+      ),
+    );
+    expect(rankedTypes()).toEqual([
+      ["syntax error", "3"],
+      ["sandbox trap", "2"],
+      // Two rows tie at one — "uncaught throw" and "unparseable model response" — and the
+      // tie breaks on the label, so a live run's ranking does not shuffle equal rows past
+      // each other as it re-renders.
+      ["uncaught throw", "1"],
+    ]);
+  });
+
+  it("does not pad the ranking out to three", () => {
+    renderErrors(
+      outcome("root", 1, {
+        outcome: "error",
+        error: "sandbox_limit",
+        errorType: "sandbox_out_of_memory",
+        consecutiveErrors: 1,
+      }),
+    );
+    expect(rankedTypes()).toEqual([["out of memory", "1"]]);
+  });
+
+  it("says a clean run is clean, and says so against its turn count", () => {
+    renderErrors(outcome("root", 1), outcome("root", 2), outcome("agent-0", 1));
+    const total = errorTile("Total errors");
+    expect(headline(total)).toBe("0");
+    expect(
+      within(total).getByText("no errored turns of 3"),
+    ).toBeInTheDocument();
+    // No streak claim on a run that has no streak, and nothing to rank — but each tile
+    // still says so rather than rendering an empty box.
+    expect(headline(errorTile("Max consecutive errors"))).toBe("0");
+    expect(
+      within(errorTile("Max consecutive errors")).getByText("no turn errored"),
+    ).toBeInTheDocument();
+    expect(rankedTypes()).toEqual([]);
+    expect(
+      within(errorTile("Top error types")).getByText("no errors to rank"),
     ).toBeInTheDocument();
   });
 
-  it("splits the failures by kind, showing only the kinds that happened", () => {
-    // Five zeroed rows under a run that failed one way would bury the one row that matters.
+  it("claims nothing at all for a stream that carries no outcomes", () => {
+    // A run recorded before gg published outcomes, or one that has not finished its first
+    // turn. A "0" there would read as a clean record it has no evidence for — in every one
+    // of the three tiles, not just the total.
+    renderErrors();
+    expect(headline(errorTile("Total errors"))).toBe("—");
+    expect(headline(errorTile("Max consecutive errors"))).toBe("—");
+    expect(screen.getAllByText("no turn outcomes reported yet")).toHaveLength(
+      3,
+    );
+  });
+
+  it("says an untyped run's errors went unrecorded rather than calling it clean", () => {
+    // A run recorded before gg typed its errors has errors and no types. Rendering that as
+    // "no errors to rank" would report the opposite of what happened.
     renderErrors(
       outcome("root", 1, {
         outcome: "error",
         error: "model_api",
         consecutiveErrors: 1,
       }),
-      outcome("root", 2, {
-        outcome: "error",
-        error: "missing_completion",
-        consecutiveErrors: 2,
-      }),
     );
-    const card = errorsCard();
-    expect(within(card).getByText("model call")).toBeInTheDocument();
-    expect(within(card).getByText("no work declared")).toBeInTheDocument();
-    expect(within(card).queryByText("sandbox limit")).toBeNull();
-  });
-
-  it("says a clean run is clean, and says so against its turn count", () => {
-    renderErrors(outcome("root", 1), outcome("root", 2), outcome("agent-0", 1));
-    const card = errorsCard();
-    expect(headline(card)).toBe("0");
-    expect(within(card).getByText("no errored turns of 3")).toBeInTheDocument();
-    // Nothing to split, so no split — and no streak claim on a run that has no streak.
-    expect(within(card).queryByText("model call")).toBeNull();
-  });
-
-  it("claims nothing at all for a stream that carries no outcomes", () => {
-    // A run recorded before gg published outcomes, or one that has not finished its first
-    // turn. A "0" there would read as a clean record it has no evidence for.
-    renderErrors();
-    const card = errorsCard();
-    expect(headline(card)).toBe("—");
+    expect(headline(errorTile("Total errors"))).toBe("1");
+    expect(rankedTypes()).toEqual([]);
     expect(
-      within(card).getByText("no turn outcomes reported yet"),
+      within(errorTile("Top error types")).getByText(
+        "not recorded — this run predates per-type errors",
+      ),
     ).toBeInTheDocument();
   });
 
   it("reports the replies loop detection threw away, and only when there were any", () => {
     // Not errors — the retry succeeded — but money spent on nothing, which is the whole
-    // figure that says whether arming the detector paid for itself.
+    // figure that says whether arming the detector paid for itself. It hangs on the total,
+    // which is the tile about what the run spent its turns on.
     renderErrors(outcome("root", 1, { loopAborts: 3 }), outcome("root", 2));
     expect(
-      within(errorsCard()).getByText("looping", { exact: false }),
+      within(errorTile("Total errors")).getByText("looping", { exact: false }),
     ).toBeInTheDocument();
 
     // A run that left the detector disarmed — which is every run by default — says nothing.
     renderErrors(outcome("root", 1));
     expect(
-      within(screen.getAllByText("Errors")[1]!.parentElement!).queryByText(
-        "looping",
-        { exact: false },
-      ),
+      within(
+        screen.getAllByText("Total errors")[1]!.parentElement!,
+      ).queryByText("looping", { exact: false }),
     ).toBeNull();
   });
 });

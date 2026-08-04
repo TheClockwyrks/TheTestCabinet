@@ -11,14 +11,15 @@ import type {
 } from "./useGgRunState";
 import {
   ROOT_ID,
-  TURN_ERROR_KINDS,
   TURN_ERROR_LABELS,
   addErrorTally,
   emptyErrorTally,
   ggPeakContext,
   ggToolBreakdown,
   shortTokens,
+  topErrorTypes,
   type GgErrorTally,
+  type GgRankedError,
 } from "./useGgRunState";
 import {
   pricedSlots,
@@ -125,11 +126,13 @@ interface GgDashboardProps {
  * slot and per model, across all the run's models rather than scoped to any one agent
  * — with Tokens beside it and the configuration slotted in underneath.
  *
- * Under the top row the run's clocks take a row of their own — the wall clock, the active
- * agent time, the waiting, and the ceiling, one tile each (see {@link RuntimeRow}). They
- * were a single tile with three sub-lines crammed under one headline, which read as a
- * footnote to the wall clock rather than as the four independent facts they are; given a
- * row, each figure gets a headline and a sentence saying what it counts.
+ * Under the top row the run's errors take a row of their own — how many turns failed, the
+ * worst any one agent clustered them, and which specific types they were (see
+ * {@link ErrorsRow}) — and under that the run's clocks take another, one tile each for the
+ * wall clock, the active agent time, the waiting, and the ceiling (see {@link RuntimeRow}).
+ * Both were single tiles with their sub-facts crammed under one headline, which read as
+ * footnotes to whichever figure won the big slot rather than as the independent facts they
+ * are; given a row, each gets a headline and a sentence saying what it counts.
  *
  * Both surfaces get the *same* layout: the one difference is the status card, which a
  * finished run omits because the run detail page's own header already carries its state
@@ -191,12 +194,12 @@ export function GgDashboard({
   }, [perAgent]);
 
   // The bento span the top row's tiles take — the status card's included, so the row is
-  // sized in one place rather than by a card deciding its own width. The row is four tiles
-  // beside the status card and three without it, so it fills twelve either way: quarters
-  // where the status card leads (3 + 3 + 3 + 3), thirds where the page header carries the
-  // state instead (4 + 4 + 4). The runtime figures are no longer in this row at all; they
-  // have one of their own below it.
-  const statSpan = status ? styles.cardQuarter : styles.cardThird;
+  // sized in one place rather than by a card deciding its own width. The row is three tiles
+  // beside the status card and two without it, so it fills twelve either way: thirds where
+  // the status card leads (4 + 4 + 4), halves where the page header carries the state
+  // instead (6 + 6). Neither the runtime figures nor the error record are in this row any
+  // more; each has one of its own below it.
+  const statSpan = status ? styles.cardThird : styles.cardHalf;
 
   return (
     <div className={styles.dashboard}>
@@ -207,25 +210,26 @@ export function GgDashboard({
       {children}
 
       <div className={styles.cards}>
-        {/* The top row: where the run is at — its phase, how many turns it has spent, how
-            many of those turns failed, and how fast it is generating. The live monitor leads
-            the row with the status card; a finished run's gg tab has its state in the page's
-            own header, so the three stat tiles widen to split that row between them rather
-            than leaving a hole where the status card would have been — the rows below it are
-            then identical on both surfaces. How long the run has been going is the row
-            underneath, which is four figures rather than one and so earns its own.
-
-            Errors sits directly beside Turns because it is read against it: a count of
-            failures is meaningless without the count of attempts, and the two adjacent is
-            what makes "seven" read as "seven of two hundred" rather than as a lot. */}
+        {/* The top row: where the run is at — its phase, how many turns it has spent, and
+            how fast it is generating. The live monitor leads the row with the status card; a
+            finished run's gg tab has its state in the page's own header, so the two stat
+            tiles widen to split that row between them rather than leaving a hole where the
+            status card would have been — the rows below it are then identical on both
+            surfaces. How the run's turns went, and how long it has been going, are the two
+            rows underneath: each is several figures rather than one and so earns its own. */}
         {status && <StatusCard status={status} className={statSpan} />}
         <TurnsCard
           turns={totalTurns}
           agents={perAgent.size}
           className={statSpan}
         />
-        <ErrorsCard errors={errors} className={statSpan} />
         <ThroughputCard throughput={throughput} className={statSpan} />
+
+        {/* The error row, directly under the turn count it is read against — a count of
+            failures is meaningless without the count of attempts, which is why the total
+            still carries its own denominator on its face rather than relying on the
+            adjacency alone. */}
+        <ErrorsRow errors={errors} />
 
         {/* The clocks row, laid out as its own block for the reason the money row below
             is: its four tiles are fixed here rather than wherever the bento's dense
@@ -504,78 +508,144 @@ function TurnsCard({
   );
 }
 
-// The run's error record: how many of its turns failed, how hard they clustered, and
-// why. It sits directly beside the turn count because it is read against it — a count of
-// failures without the count of attempts is not a figure anyone can act on — and gg
-// already makes this judgement on every turn, since it is the judgement its error
-// ceilings are enforced on. Without this card, that judgement was thrown away the moment
-// an agent's loop ended, and a run that failed a third of its turns and finished anyway
-// looked exactly like one that never failed a turn.
+// How many error types the ranking names before it stops. Three, because the point of a
+// ranking is the narrowing: gg's taxonomy has nineteen specific types, and a run whose
+// failures do not concentrate into a few of them is telling you that on its face.
+const TOP_ERROR_TYPES_SHOWN = 3;
+
+// The error row: how many of the run's turns failed, how hard they clustered, and which
+// specific types they were — one tile each.
 //
-// The headline is the error COUNT rather than the rate: a rate is a derived figure, and
-// putting it in the tile's big slot invites reading "0%" on a run that has taken two
-// turns as though it meant something. The rate is on the line under it, beside the
-// denominator it was taken against, so the two can never be read apart.
+// Three tiles rather than one, for the reason the clocks row is four: these are three
+// independent facts and not a headline with footnotes. They *were* one Errors card, at a
+// quarter of the top row, with the consecutive-error peak reduced to a clause on the rate's
+// line and the split reduced to two-cell rows that a quarter-row tile could just about hold.
+// The peak is the counter gg's own ceiling is enforced on — the figure that says whether a
+// run was failing steadily or falling over — and it read as a footnote to a percentage; and
+// the split, now that gg types every error specifically, is a ranking rather than a five-row
+// list and needs the width to be one.
 //
-// The per-kind split is shown only once there is something to split — five zeroed rows
-// under a clean run's "0" would be five lines saying nothing — and the loop-abort line
-// only on a run that armed loop detection at all, since for every other run it is
-// permanently zero.
-function ErrorsCard({
-  errors,
-  className,
-}: {
-  errors: GgErrorTally;
-  /** The bento span the card takes — see {@link TurnsCard}. */
-  className: string | undefined;
-}) {
+// The ranking takes the row's wide share (see `.errorsBlock`) because its rows carry a
+// sentence-length label, a base-kind badge and a count, where the two scalar tiles carry a
+// figure and a phrase. Splitting the row evenly would either wrap every type label or waste
+// two thirds of the row on two numbers.
+//
+// gg already *judges* every turn, since that judgement is what its error ceilings are
+// enforced on; this row is that judgement kept rather than thrown away the moment an agent's
+// loop ended, which is what used to make a run that failed a third of its turns and finished
+// anyway indistinguishable from one that never failed a turn.
+function ErrorsRow({ errors }: { errors: GgErrorTally }) {
   const { turns, errors: failed, maxConsecutive, loopAborts } = errors;
-  // Only the kinds that actually happened, in the contract's declaration order. A run's
-  // failures are usually all of one kind, so listing the empty buckets would bury the one
-  // row that matters.
-  const kinds = TURN_ERROR_KINDS.filter((kind) => errors.byKind[kind] > 0);
+  // The ranking is over the SPECIFIC types (`byType`), not the five base kinds: "top error
+  // types" over five buckets is barely a narrowing, and the base each type rolls up into
+  // rides along on every row as a badge, so nothing the per-kind split said is lost.
+  const top = topErrorTypes(errors, TOP_ERROR_TYPES_SHOWN);
   return (
-    <div className={`${styles.card} ${className}`}>
-      <span className={styles.cardLabel}>Errors</span>
-      <span className={styles.metricValue}>
-        {turns === 0 ? "—" : numberFmt.format(failed)}
-      </span>
-      {/* The denominator travels with the rate, always. A percentage on its own is the
-          one read-out here that could mislead: 50% of two turns and 50% of two hundred
-          are not the same claim about a configuration. A stream with no outcomes on it at
-          all (a run recorded before gg published them, or one that has not finished its
-          first turn) says so rather than claiming a clean record. */}
-      <span className={styles.metricUnit}>
-        {turns === 0
-          ? "no turn outcomes reported yet"
-          : failed === 0
-            ? `no errored turns of ${numberFmt.format(turns)}`
-            : `${formatPercent(failed / turns)} of ${numberFmt.format(turns)} turns · ${numberFmt.format(maxConsecutive)} in a row at worst`}
-      </span>
-      {kinds.length > 0 && (
-        <ul className={styles.errorKinds}>
-          {kinds.map((kind) => (
-            <li key={kind} className={styles.errorKind}>
-              <span className={styles.errorKindLabel}>
-                {TURN_ERROR_LABELS[kind]}
-              </span>
-              <span className={styles.errorKindCount}>
-                {numberFmt.format(errors.byKind[kind])}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {/* Not an error — the retry succeeded — but money and wall-clock spent on nothing,
-          which is the figure that says whether arming loop detection paid for itself.
-          Absent on every run that left it disarmed, which is the default. */}
-      {loopAborts > 0 && (
-        <span className={styles.metricUnit}>
-          {numberFmt.format(loopAborts)} looping{" "}
-          {loopAborts === 1 ? "reply" : "replies"} discarded
+    <div className={styles.errorsBlock}>
+      {/* The headline is the error COUNT rather than the rate: a rate is a derived figure,
+          and putting it in the tile's big slot invites reading "0%" on a run that has taken
+          two turns as though it meant something. The rate is on the line under it, beside
+          the denominator it was taken against, so the two can never be read apart — 50% of
+          two turns and 50% of two hundred are not the same claim about a configuration. A
+          stream with no outcomes on it at all (a run recorded before gg published them, or
+          one that has not finished its first turn) says so rather than claiming a clean
+          record. */}
+      <div
+        className={styles.card}
+        title="Errored turns across every agent in the run, against the turns that reported an outcome at all"
+      >
+        <span className={styles.cardLabel}>Total errors</span>
+        <span className={styles.metricValue}>
+          {turns === 0 ? "—" : numberFmt.format(failed)}
         </span>
-      )}
+        <span className={styles.metricUnit}>
+          {turns === 0
+            ? "no turn outcomes reported yet"
+            : failed === 0
+              ? `no errored turns of ${numberFmt.format(turns)}`
+              : `${formatPercent(failed / turns)} of ${numberFmt.format(turns)} turns`}
+        </span>
+        {/* Not an error — the retry succeeded — but money and wall-clock spent on nothing,
+            which is the figure that says whether arming loop detection paid for itself.
+            Absent on every run that left it disarmed, which is the default. */}
+        {loopAborts > 0 && (
+          <span className={styles.metricUnit}>
+            {numberFmt.format(loopAborts)} looping{" "}
+            {loopAborts === 1 ? "reply" : "replies"} discarded
+          </span>
+        )}
+      </div>
+
+      {/* A peak over agents, not a streak across the run: turns from concurrent agents
+          interleave arbitrarily, so a streak counted off the merged stream would be an
+          artefact of scheduling rather than a fact about any agent (see
+          `GgErrorTally.maxConsecutive`). It is stated because it is the exact counter gg's
+          consecutive-error ceiling is enforced on — a run reading "2 of 40 turns" is a
+          different animal depending on whether those two were adjacent. */}
+      <div
+        className={styles.card}
+        title="The longest unbroken run of errored turns any single agent reached — the counter gg's consecutive-error ceiling is enforced on. A peak over agents, not a streak across the whole run, whose turns interleave."
+      >
+        <span className={styles.cardLabel}>Max consecutive errors</span>
+        <span className={styles.metricValue}>
+          {turns === 0 ? "—" : numberFmt.format(maxConsecutive)}
+        </span>
+        <span className={styles.metricUnit}>
+          {turns === 0
+            ? "no turn outcomes reported yet"
+            : failed === 0
+              ? "no turn errored"
+              : "in a row at worst, by one agent"}
+        </span>
+      </div>
+
+      <div className={`${styles.card} ${styles.errorsRanking}`}>
+        <span className={styles.cardLabel}>Top error types</span>
+        {top.length > 0 ? (
+          <ul className={styles.errorTypes}>
+            {top.map((row) => (
+              <ErrorTypeRow key={row.id} row={row} />
+            ))}
+          </ul>
+        ) : (
+          // Three distinct nothings, and conflating them would each time claim something
+          // the run does not say. No outcomes at all is not evidence of a clean run; a
+          // clean run is not a run whose types went unrecorded; and a run recorded before
+          // gg typed its errors has errors this console cannot rank — rendering that as
+          // "no errors" would report the opposite of what happened.
+          <span className={styles.metricUnit}>
+            {turns === 0
+              ? "no turn outcomes reported yet"
+              : failed === 0
+                ? "no errors to rank"
+                : "not recorded — this run predates per-type errors"}
+          </span>
+        )}
+      </div>
     </div>
+  );
+}
+
+// One row of the ranking: what failed, which base bucket it belongs to, and how often.
+//
+// The base kind rides as a badge because a specific type does not always name its own
+// family — "syntax error" and "unknown name" say nothing about being a transpile failure
+// and a program fault respectively, and that grouping is what the five error ceilings are
+// written against. It is withheld where it would only repeat the label beside it (a base
+// with a single type shares its wording), since a badge that restates its row is noise, and
+// on a type from a newer gg than this console, which has no base to claim.
+function ErrorTypeRow({ row }: { row: GgRankedError }) {
+  const base = row.kind == null ? null : TURN_ERROR_LABELS[row.kind];
+  return (
+    <li className={styles.errorType}>
+      <span className={styles.errorTypeLabel}>{row.label}</span>
+      {base != null && base !== row.label && (
+        <span className={styles.errorTypeBase}>{base}</span>
+      )}
+      <span className={styles.errorTypeCount}>
+        {numberFmt.format(row.count)}
+      </span>
+    </li>
   );
 }
 
