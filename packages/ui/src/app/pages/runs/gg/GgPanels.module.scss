@@ -3570,6 +3570,15 @@ details[open] > summary .reqCaret {
   font-variant-numeric: tabular-nums;
 }
 
+// "read_file 3×" — the tool a figure several bound functions share belongs to, named beside
+// it. Without the name the count reads as the row's own, which is the one thing this file
+// must not say: gg records a call under the tool, and three functions can be behind one.
+.toolCallsGate {
+  font-family: monospace;
+  margin-right: 0.35em;
+  opacity: 0.8;
+}
+
 .toolBar {
   flex: 1 1 4rem;
   height: 0.4rem;
@@ -3595,4 +3604,41 @@ details[open] > summary .reqCaret {
   font-size: t.$font-sm;
   color: t.$color-text-muted;
   font-variant-numeric: tabular-nums;
+}
+
+// --- Offered surface (an instance's Tools / APIs file) ------------------------
+// What the instance was offered to call, over what it called. The rows are the tools
+// panel's rows above — an offered tool and a called one are the same kind of thing, and
+// two shapes for one kind of thing read as two kinds — so all this adds is the state a
+// usage list has no need for: a row for something never called, and a row for something
+// the run withheld.
+
+// The file's sections stacked like the Overview's: the offered set, then the ablation.
+.surfaceFile {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-lg;
+}
+
+// An object's functions inside its card, set off from the description above them.
+.surfaceFunctions {
+  margin-top: t.$space-2xs;
+}
+
+// Offered and never called. Dimmed rather than dropped, and never so far dimmed that it
+// stops being readable: the contrast between this row and the one above it is the whole
+// reason the file exists, and a row nobody can read cannot carry it.
+.toolRow[data-uncalled] {
+  opacity: 0.62;
+}
+
+// Never offered at all — struck out as well as dimmed, because "the model ignored it"
+// and "the model was never given it" are opposite findings and must not merely differ
+// in weight.
+.toolRow[data-withheld] {
+  opacity: 0.62;
+
+  .toolName {
+    text-decoration: line-through;
+  }
 }

@@ -9433,6 +9433,16 @@ mod transition_tests;
 #[path = "agent.modules.test.rs"]
 mod module_tests;
 
+/// **What each instance is offered**, the surface half of the pair the file above covers the holding
+/// half of: that every incarnation really reports its resolved toolset (and, in code mode, its bound
+/// API objects), so *"never offered"* and *"offered and never called"* are distinguishable findings.
+///
+/// Separate from the toolset tests in this file — which prove the *gating* with no loop behind it —
+/// because what these guard is that the gated result reaches the record once per instance, carrying
+/// the ending calls the loop appends outside the registry.
+#[path = "agent.surface.test.rs"]
+mod surface_tests;
+
 /// The **handoff-compaction summarizer's** model call reaches the record.
 ///
 /// It did not before this: gg's second model client was resolved through the same factory as the

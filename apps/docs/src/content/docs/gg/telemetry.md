@@ -17,6 +17,10 @@ The telemetry must let the console display:
   form.
 - For each agent, whether it is **actively executing or blocked** waiting on other
   agents.
+- For each agent, **what it was offered to call** — the toolset gg resolved for it, or
+  the API objects a [code-shaped](/gg/responses-as-code/) agent's programs bind — because
+  a tool that was never on the table and a tool the model ignored are otherwise the same
+  silence (see [below](#what-an-agent-is-offered)).
 - Every **succession** — an [`exec`](/gg/fork-and-exec/), a `fork`, or an
   [FSM transition](/gg/fsms/). One `agent_transition` on the outgoing instance's stream
   carries what happened to each [module](/gg/modules/) — one row per kind naming its
@@ -98,7 +102,22 @@ identically down to the order of the cards) reads a run through these surfaces:
   them, and the **context spend** described
   [below](#what-filled-the-window-and-what-it-cost). A profile the configuration
   declares but the run never instantiated still gets a row, because "the reviewer never
-  ran" is a result. Each instance is a chip that opens it in the Instances explorer.
+  ran" is a result. The detail **leads** with what the profile was *offered* — headed
+  **Tools** or **APIs** by the mode its instances reported answering in — because that is
+  the same statement the capability chips above it make, one step later: the chips are
+  what the configuration asked for, this is what gg
+  [resolved out of them](#what-an-agent-is-offered). It is a **union** across the
+  profile's instances and pointedly not a sum: an offered set is not a quantity, and
+  instances of one profile legitimately differ, since where an instance stands in its
+  [machine](/gg/fsms/) gates what it may call — so an entry only some of them were
+  offered carries the fraction that says so rather than being averaged away or dropped.
+  An entry the profile never called is dimmed rather than removed, which is the whole
+  contrast; the observed-usage section at the foot of the detail (**Tool calls**) is the
+  other half of it, and the two are deliberately separate read-outs. A figure that
+  several bound functions share is named with the **tool** it belongs to, for the reason
+  given [below](#what-an-agent-is-offered) — the count is the gate's, and a chip that
+  showed it bare would claim it for the one function it sits on.
+  Each instance is a chip that opens it in the Instances explorer.
   Under those chips sits the one read-out on the panel that is **not** a sum: what this
   profile's instances *hold*. Module state does not fold — twelve instances may be reading
   one store or twelve, and which of those it is *is* the configuration under test — so
@@ -143,17 +162,48 @@ identically down to the order of the cards) reads a run through these surfaces:
   and reads by its own issue-derived name (`AUTH-1.0i`, its reviewers `AUTH-1.0i.0r`),
   everywhere it is named — the tree, its Overview, and the Dashboard's agent overview
   — so a fleet of concurrent agents says which piece of work each one is on.
-  A file is offered when the run's configuration justifies it, not when data happens
+  With one exception, a file is offered when the run's configuration justifies it, not
+  when data happens
   to have arrived: a capability the run **has** always has its file (showing its own
   "nothing yet" state until the first event streams), a capability the run **lacks**
   has none, and **Context** is always offered because every run has a window that
   fills. Overview, **Prompt**, and activity are unconditional too — every agent was
   given *something* (for a subagent, the **brief its parent handed it**, which rides
   on the always-present spawn event; for the main agent, its opening prompt), so the
-  Prompt file is always there. The **Overview** also carries the agent's own
-  **tool-usage breakdown** — the itemized version of the Dashboard row's tool chips:
-  every tool it called, how many times, and how much each tool's results added to its
-  window — its **working directory** (the isolated
+  Prompt file is always there. Directly after Prompt sits the one file gated on the
+  **instance** rather than on the configuration: what that instance was
+  [offered to call](#what-an-agent-is-offered), named **tools** for an agent that
+  answers in tool calls and **apis** for a
+  [code-shaped](/gg/responses-as-code/) one — the same set reached two different ways,
+  and one name for both would misname whichever agent it was not written for. It is
+  offered exactly when that instance reported a surface, because a stream recorded
+  before gg reported one carries none at all and a file showing an empty toolset for
+  those runs would assert the very thing it exists to distinguish. It lists every tool
+  the instance was offered with its own call count — the ones it never reached for
+  **dimmed rather than dropped**, which is the entire point of the file — and, beside
+  them, the tools this instance's [ablation](/gg/toolset-ablation/) withheld, marked as
+  such rather than merely absent. That withheld list is gg's own, reported on the same
+  event rather than re-read from the configuration, so a `disabledTools` entry that
+  names nothing gg offers is never shown here as an applied ablation. A code agent reads
+  the same thing through its
+  objects: one card per object, carrying the one-line description its own system prompt
+  introduced the object by, over the functions this instance bound, each joined to its
+  count through the gg **tool** behind it — a view call, an ending call, a
+  [program-library](/gg/program-library/) call, and the `list` every object ends with
+  have no tool behind them, so they carry no
+  figure at all rather than a zero that would read as ignored. Where one tool backs
+  several of the functions an agent bound — `read_file` is behind `fs.readFile`,
+  `fs.readTextFile` *and* `view.openFile` — the figure is the **tool's** and is named
+  with it, because gg records a call under the tool and nothing says which function
+  wrote it; claiming it for each of them in turn would report a function the model never
+  wrote as one it used. A gate nothing ran through needs no such care: zero means none of
+  the functions behind it ran, which is true of each of them on its own.
+  The **Overview** also carries the agent's own
+  **Tool calls** breakdown — the itemized version of the Dashboard row's tool chips:
+  every tool it *called*, how many times, and how much each tool's results added to its
+  window (what it was *offered* is the file above; the two are named apart because they
+  are the two halves of one question, not one read-out twice) — its **working
+  directory** (the isolated
   [worktree](/gg/project-management/) checkout its tools are rooted at, or the shared
   workspace), and, while it is blocked, **what it is waiting on**: `blocked` on its
   own is indistinguishable from stuck, so the wait names its condition (the issue it
@@ -223,6 +273,91 @@ things carry it:
   and its **copied** task list are distinguishable and a store swapped underneath a
   successor (a `shared` profile re-binding its own instance) is visible as the two
   different ids it is.
+
+## What an agent is offered
+
+A roster says what an agent **holds**. It does not say what the agent may **call**, and
+until this release nothing on the stream did: a `tool_call` reports only what an agent
+reached for, so *"the model was never given that tool"* and *"the model had it and never
+touched it"* arrive as the same silence. Those are opposite findings — the first is a fact
+about the run, the second a fact about the model — and telling them apart is the entire
+question a [toolset ablation](/gg/toolset-ablation/) is run to answer. So the offered set
+is its own event, the other half of the pair `agent_modules` opens:
+
+- **`agent_surface`** — the **offered set**: how the instance answers a turn
+  (`executionMode`, `tool_calling` or `responses_as_code`), every gg tool it was offered
+  (`tools`), for a [responses-as-code](/gg/responses-as-code/) agent the namespaced
+  API objects its programs bind (`apis`), and the ablation gg really applied to it
+  (`withheld`). Emitted **once per incarnation, for every
+  instance** — the root, every subagent, every successor — immediately after that
+  instance's `agent_modules`, and **un-gated**: an agent offered nothing at all still says
+  so, which is a finding rather than an absence. It is never re-emitted, for the same
+  reason a roster is not: everything that changes what an agent may call — an
+  [`exec`](/gg/fork-and-exec/), a `fork`, an [FSM transition](/gg/fsms/) — mints a new
+  agent id, and the arriving instance reports its own surface.
+
+  `tools` is the **resolved** set, read off the registry gg actually hands the provider
+  rather than re-derived from anything: after the capabilities this profile has, the
+  [modules](/gg/modules/) it really bound, the [memory](/gg/memories/) strategy behind
+  them, where the instance stands in its [machine](/gg/fsms/), and the per-tool
+  `disabledTools` [ablation](/gg/toolset-ablation/) that strikes a tool whose capability is
+  on. Re-deriving it from the run's capability set can know none of those, which is why it
+  is a fact the run reports rather than one a console computes. It is populated in **both**
+  execution modes: a code agent reaches these same tools through its objects, and its calls
+  are recorded under these names.
+
+  It ends with the **ending calls** the agent's dispatched role may finish on — `finish`,
+  or a reviewer's `approve` / `request_changes`, or a judge's `select_winner`. Those are
+  appended by the loop to every request rather than contributed by a capability, but the
+  model is genuinely offered them every turn, and a surface that left them out would answer
+  *"was `finish` offered?"* with silence.
+
+  `apis` is present only for a code agent — empty for a tool-calling one, which has no such
+  surface rather than an unknown one. One entry per object (`fs`, `view`, `harness`),
+  carrying the same one-line description the agent's own system prompt introduced the
+  object by and the functions this instance actually bound; an object nothing bound is
+  absent rather than listed empty. Every object ends with `list`, the meta function the
+  guest seeds onto every object it creates and no tool gates — the
+  [directory](/gg/responses-as-code/#reading-the-documentation-is-opening-a-view) a
+  program consults to find out what it may call. It is bound but not *catalogued*, since
+  the catalogue is reflected out of the SDK's exported signatures and `list` is the
+  documentation carve-out's own, so the surface appends it rather than finding it — last,
+  where the model's own `object.list()` puts it, so the read-out and the directory the
+  model gets for itself agree function for function. Each function names the gg **tool**
+  that gates it, and
+  that field is the load-bearing one: a program's calls are recorded under the tool they
+  run through, not under their JavaScript name, so it is the join key from a bound function
+  to how many times it was really called. A function no tool backs — a view call, an ending
+  call, a [program-library](/gg/program-library/) call, an object's own `list` — names none,
+  and reads as bound rather than as bound-and-never-called.
+
+  The join is at the grain of the **tool**, and one tool can gate several functions:
+  `read_file` is the gate on `fs.readFile`, `fs.readTextFile` and `view.openFile` alike.
+  A count read off that gate is therefore the group's, not any one function's, and the
+  console shows it as the tool's rather than repeating it as each function's own — the
+  latter would report calls that never happened and, worse, would stop a function the
+  model genuinely ignored from reading as ignored. Nothing is lost in the direction that
+  matters: a gate with no calls under it means every function behind it went unused.
+
+  `withheld` is the other side of `tools`: what this instance's per-agent
+  `disabledTools` [ablation](/gg/toolset-ablation/) actually took away, which is the
+  names it lists that **are gg tools**. A name gg does not know — a typo, a tool since
+  removed — is absent from the field, because it withheld nothing: gg warns about it at
+  startup and offers the agent exactly the surface it would have had. That is the whole
+  reason the field is reported rather than re-read from the configuration, where a
+  mistyped ablation is indistinguishable from an applied one, and it is why a consumer
+  may state each of these as an applied ablation without checking it against a tool
+  vocabulary it has no way to know. A name that *is* here was asked for, which is not
+  quite the same as taken: an ablation may also name a real tool no enabled capability
+  was contributing, which withholds nothing in practice but is still a deliberate arm of
+  a sweep. What was actually offered is `tools`; the two together say which of those
+  happened, and neither derives the other. Empty for an agent that ablates nothing.
+
+The [Reference](/gg/reference/) section answers a neighbouring but different question. It
+is what gg **can** offer, catalogue-wide, projected out of gg's own definitions; this event
+is what **one instance** of **one run** was actually offered, after every gate the
+configuration and the run's own shape imposed. A tool present in the reference and absent
+from an instance's surface is exactly the interesting case.
 
 ## What filled the window, and what it cost
 

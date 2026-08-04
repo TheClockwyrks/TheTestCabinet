@@ -198,6 +198,113 @@
   padding: 0 t.$space-xs;
 }
 
+// --- What the agent was offered -------------------------------------------------
+//
+// The offered surface is chips rather than ranked rows, and that is the same decision the
+// capabilities above it make for the same reason: it is a *set*, and the reading is what is
+// and is not in it. Laid out as rows, forty tools would be forty full-width lines of mostly
+// small numbers, which is a list nobody reads to the end of — and the entry a reader is
+// looking for is precisely the one with nothing beside it. Wrapped chips put the whole
+// surface in a few lines, where the dim ones stand out at a glance.
+
+.surfaceApis {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+}
+
+// One namespaced object of a code agent's surface: what a program calls *through*, then what
+// it may call *on* it. The description sits on the same line as the object rather than above
+// its functions, so the chips below belong unambiguously to the name beside it.
+.surfaceApi {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.surfaceApiHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: t.$space-xs;
+  min-width: 0;
+}
+
+.surfaceObject {
+  color: t.$color-text;
+  font-size: t.$font-sm;
+  font-weight: 600;
+}
+
+.surfaceObjectDesc {
+  color: t.$color-text-muted;
+  font-size: 0.72rem;
+  min-width: 0;
+}
+
+.surfaceEntries {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+// One offered thing. The instance chip's shape, since both are "here is one member of a set
+// this agent has" — but never a control: there is nowhere for an offered tool to go.
+.surfaceEntry {
+  display: inline-flex;
+  align-items: baseline;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  color: t.$color-text;
+  border: t.$border-hairline solid
+    color-mix(in srgb, t.$color-border 60%, transparent);
+  border-radius: t.$radius-sm;
+  padding: 0 t.$space-xs;
+
+  // Offered and never called — dimmed, never dropped. The contrast between this and the
+  // withheld chip above it (`.disabledTool`, marked negative) is the reason the section
+  // exists at all, so it is drawn the way a deleted memory is on the module views: still
+  // there, plainly not live.
+  &[data-uncalled] {
+    color: t.$color-text-muted;
+    border-style: dashed;
+    opacity: 0.72;
+  }
+}
+
+.surfaceEntryCalls {
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+}
+
+// "read_file 3×" — the tool a shared figure belongs to, named on the chip. Set in the tool
+// vocabulary's own monospace so it reads as a different kind of name from the function beside
+// it: the figure is the tool's, and a chip that showed it bare would claim it for the
+// function.
+.surfaceEntryGate {
+  font-family: monospace;
+  margin-right: 0.25em;
+  opacity: 0.8;
+}
+
+// "2/3" — offered to some of the profile's instances but not all. Accented rather than
+// muted: it is the one reading here that is neither a quantity nor an absence but a fact
+// about the run that a reader should stop on.
+.surfaceEntryPartial {
+  color: t.$color-accent-2;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+}
+
 // --- Instances ----------------------------------------------------------------
 
 .instances {

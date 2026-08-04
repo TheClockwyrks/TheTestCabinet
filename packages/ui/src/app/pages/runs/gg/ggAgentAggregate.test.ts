@@ -10,6 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 import type {
+  GgAgentApi,
   GgAgentConfig,
   GgAgentModule,
   GgCapabilitySet,
@@ -144,6 +145,22 @@ function roster(
     { type: "agent_modules", modules } as GgTelemetryKind,
     parentAgentId,
   );
+}
+
+/** The surface one instance reports as it opens — what it was offered, not what it called. */
+function offered(
+  agentId: string,
+  tools: string[],
+  apis?: GgAgentApi[],
+  withheld?: string[],
+): HarnessEvent {
+  return gg(agentId, {
+    type: "agent_surface",
+    executionMode: apis ? "responses_as_code" : "tool_calling",
+    tools,
+    ...(apis ? { apis } : {}),
+    ...(withheld?.length ? { withheld } : {}),
+  } as GgTelemetryKind);
 }
 
 function set(...agents: GgAgentConfig[]): GgCapabilitySet {
@@ -638,5 +655,158 @@ describe("deriveGgAgentSummaries", () => {
     expect(summaries[0]!.declared).toBe(false);
     expect(summaries[0]!.root).toBe(false);
     expect(summaries[0]!.capabilities).toEqual([]);
+  });
+
+  it("unions its instances' offered surfaces and counts who saw each entry", () => {
+    // Two reviewers, and they were not offered the same things: the second sat in an FSM
+    // state that withholds `exec`. Taking either one's set as the profile's would assert
+    // something false about the other, so the union is the answer and each entry says how
+    // much of the profile it covers.
+    const toolCall = (agentId: string, name: string) =>
+      gg(agentId, { type: "tool_call", name, args: {} } as GgTelemetryKind);
+
+    const summaries = summarize(
+      [
+        spawn("root", "Root", "vendor/big"),
+        offered("root", ["spawn_agent", "finish"]),
+        spawn("r1", "reviewer", "vendor/small", "root"),
+        offered("r1", ["read_file", "exec", "approve"]),
+        toolCall("r1", "read_file"),
+        spawn("r2", "reviewer", "vendor/small", "root"),
+        offered("r2", ["read_file", "approve"]),
+      ],
+      set(
+        profile("Root", "vendor/big", ["subagents"]),
+        profile("reviewer", "vendor/small", []),
+      ),
+    );
+
+    const reviewer = summaries.find((s) => s.name === "reviewer")!;
+    const surface = reviewer.surface!;
+    expect(surface.executionMode).toBe("tool_calling");
+    expect(surface.reportingInstances).toBe(2);
+    // Order is the order the model was shown them, with the entry only one instance saw
+    // appended where it first appeared — never a frequency sort.
+    expect(surface.tools).toEqual([
+      { name: "read_file", tool: "read_file", offeredBy: 2 },
+      { name: "exec", tool: "exec", offeredBy: 1 },
+      { name: "approve", tool: "approve", offeredBy: 2 },
+    ]);
+    expect(surface.apis).toEqual([]);
+    expect(surface.withheld).toEqual([]);
+
+    // The whole point of carrying both: `approve` was offered to both reviewers and called
+    // by neither, which the observed breakdown alone cannot say.
+    expect(reviewer.tools.tools.map((t) => t.name)).toEqual(["read_file"]);
+
+    // The root's own surface is its own — a profile's union never reaches across profiles.
+    expect(
+      summaries
+        .find((s) => s.name === "Root")!
+        .surface!.tools.map((t) => t.name),
+    ).toEqual(["spawn_agent", "finish"]);
+  });
+
+  it("carries the ablation gg resolved, never the one the configuration asked for", () => {
+    // The configuration names two ablations; only one of them is a tool gg has. gg reports
+    // just that one, because the other withheld nothing — and the union has to be gg's, so
+    // that no panel above it can mark an inert ablation as applied.
+    const summaries = summarize(
+      [
+        spawn("root", "Root", "vendor/big"),
+        spawn("r1", "reviewer", "vendor/small", "root"),
+        offered("r1", ["read_file"], undefined, ["write_file"]),
+        spawn("r2", "reviewer", "vendor/small", "root"),
+        offered("r2", ["read_file"], undefined, ["write_file"]),
+      ],
+      set(
+        profile("Root", "vendor/big", ["subagents"]),
+        profile("reviewer", "vendor/small", []),
+      ),
+    );
+
+    // A set, not a tally: every instance of a profile is ablated identically, so the two
+    // reports of the same name are one entry rather than a count of two.
+    expect(summaries.find((s) => s.name === "reviewer")!.surface!.withheld) //
+      .toEqual(["write_file"]);
+  });
+
+  it("unions a responses-as-code profile's api objects, keeping each function's gate", () => {
+    // The gate is the join key: a program's `readFile` is recorded as `read_file`, so a
+    // function's call count can only be found through it. A function with no tool behind it
+    // has no count to find, and must stay distinguishable from one that has a count of zero.
+    const fs: GgAgentApi = {
+      object: "fs",
+      description: "Read and write the workspace.",
+      functions: [
+        { name: "readFile", tool: "read_file" },
+        { name: "writeFile", tool: "write_file" },
+      ],
+    };
+    const view: GgAgentApi = {
+      object: "view",
+      description: "Show the model something.",
+      functions: [{ name: "openFile" }],
+    };
+
+    const summaries = summarize(
+      [
+        spawn("root", "Root", "vendor/big"),
+        spawn("w1", "worker", "vendor/small", "root"),
+        offered("w1", ["read_file", "write_file"], [fs, view]),
+        spawn("w2", "worker", "vendor/small", "root"),
+        // The second worker never bound `view` at all, so the object itself is partial.
+        offered(
+          "w2",
+          ["read_file"],
+          [{ ...fs, functions: [fs.functions[0]!] }],
+        ),
+      ],
+      set(
+        profile("Root", "vendor/big", ["subagents"]),
+        profile("worker", "vendor/small", ["responses-as-code"]),
+      ),
+    );
+
+    const surface = summaries.find((s) => s.name === "worker")!.surface!;
+    expect(surface.executionMode).toBe("responses_as_code");
+    expect(surface.apis).toEqual([
+      {
+        object: "fs",
+        description: "Read and write the workspace.",
+        offeredBy: 2,
+        functions: [
+          { name: "readFile", tool: "read_file", offeredBy: 2 },
+          { name: "writeFile", tool: "write_file", offeredBy: 1 },
+        ],
+      },
+      {
+        object: "view",
+        description: "Show the model something.",
+        offeredBy: 1,
+        functions: [{ name: "openFile", tool: null, offeredBy: 1 }],
+      },
+    ]);
+  });
+
+  it("leaves a run that never reported a surface with none, and nothing else changed", () => {
+    // Every record written before gg emitted `agent_surface`. A null surface is what tells
+    // the panels to show nothing at all — an empty one would read as "offered nothing" —
+    // and the rest of the row must fold exactly as it did before the event existed.
+    const summaries = summarize(
+      [
+        spawn("root", "Root", "vendor/big"),
+        turn("root"),
+        usage("root", "Root", "vendor/big", { input: 100, output: 20 }),
+      ],
+      set(
+        profile("Root", "vendor/big", ["subagents"]),
+        profile("reviewer", "vendor/small", []),
+      ),
+    );
+
+    expect(summaries.map((s) => s.surface)).toEqual([null, null]);
+    expect(summaries[0]!.turns).toBe(1);
+    expect(summaries[0]!.usage.totalTokens).toBe(120);
   });
 });

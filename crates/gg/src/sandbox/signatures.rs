@@ -274,7 +274,8 @@ fn first_sentence(doc: &'static str) -> &'static str {
 /// program-library calls, the tools, and the one helper — each projected as a
 /// [`CatalogueFunction`]. The docs runtime filters these by the run's enabled set, the agent's role
 /// and whether it keeps a program library, and adds the `list` meta function itself, since it is the
-/// carve-out's own and has no catalogue entry.
+/// carve-out's own and has no catalogue entry. Every other reader of this catalogue that reports what
+/// an object binds — the agent-surface telemetry — has to add it back for the same reason.
 pub fn catalogue_functions() -> Vec<CatalogueFunction> {
     let catalogue = catalogue();
     let mut functions = Vec::with_capacity(

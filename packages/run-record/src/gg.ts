@@ -450,6 +450,56 @@ export type GgTransitionModule = {
 };
 
 /**
+ * One namespaced API object a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program binds — a
+ * row of an [`AgentSurface`](GgTelemetryKind::AgentSurface)'s
+ * [`apis`](GgTelemetryKind::AgentSurface::apis) list.
+ *
+ * An object is present exactly when the agent binds at least one of its functions, so a withheld
+ * capability drops the whole object rather than leaving a named-but-empty one. The
+ * [description](Self::description) is the same one-line prose the agent's own system prompt names
+ * the object by — the surface reports what the model was told, not a second wording of it.
+ */
+export type GgAgentApi = {
+  /**
+   * The object a program calls through — `fs`, `view`, `harness`.
+   */
+  object: string;
+  /**
+   * The one-line description of the object the agent's system prompt carries.
+   */
+  description: string;
+  /**
+   * The functions this instance actually binds on the object, in catalogue order, ending with
+   * the `list` meta function every object carries — the same order the model sees when it calls
+   * `object.list()` for itself. Never empty: an object with nothing bound is absent instead.
+   */
+  functions: Array<GgAgentApiFunction>;
+};
+
+/**
+ * One function bound on a [`GgAgentApi`] — what a
+ * [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call, and what gates it.
+ *
+ * The load-bearing field is [`tool`](Self::tool): a code program's calls are recorded under the gg
+ * **tool** they run through, not under their JavaScript name, so it is the join key between a
+ * bound function and how many times this agent actually called it. A function with no tool behind
+ * it — a view call, an ending call, a program-library call — has none, and a consumer reports it
+ * as bound rather than as bound-and-never-called.
+ */
+export type GgAgentApiFunction = {
+  /**
+   * The name a program calls it by — `readFile`, `openDocsView`, `finish`.
+   */
+  name: string;
+  /**
+   * The gg tool whose being offered binds this function, and the name its calls are counted
+   * under. `None` for the calls no tool backs: the view channel, the ending calls the agent's
+   * dispatched role decides, and the program library's own calls.
+   */
+  tool?: string;
+};
+
+/**
  * One entry of the thread [archive](CAPABILITY_AGENT_MANAGED_CONTEXT) — a band of an
  * [`ArchiveState`](GgTelemetryKind::ArchiveState) snapshot.
  *
@@ -2393,6 +2443,52 @@ export type GgTelemetryKind =
       modules: Array<GgAgentModule>;
     }
   | {
+      type: "agent_surface";
+      /**
+       * How this instance answers a turn: `tool_calling`, or `responses_as_code` when the
+       * [capability](CAPABILITY_RESPONSES_AS_CODE) is on for its profile. It is a per-agent
+       * property, not a run-wide one — one run may drive a code-shaped root and a tool-calling
+       * reviewer — which is why it is reported here rather than read off the session summary.
+       */
+      executionMode: string;
+      /**
+       * Every gg tool name this instance is offered, in the order the model is shown them: the
+       * registry's tools in registration order, then the ending calls its dispatched role may
+       * end with (`finish`, or a reviewer's `approve`/`request_changes`, or a judge's
+       * `select_winner`).
+       *
+       * The ending calls are appended by the loop rather than contributed by a capability, and
+       * are included here because the model is genuinely offered them every turn — a surface
+       * that omitted them would answer *"was `finish` offered?"* with silence.
+       *
+       * Populated in **both** execution modes: a responses-as-code agent reaches these same
+       * tools through its [`apis`](Self::AgentSurface::apis), and its calls are recorded under
+       * these names.
+       */
+      tools: Array<string>;
+      /**
+       * The namespaced API objects a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program
+       * binds, in the order the system prompt lists them. Empty for a tool-calling agent, which
+       * has no such surface — not merely unknown for one.
+       */
+      apis?: Array<GgAgentApi>;
+      /**
+       * The tools this instance's per-tool [ablation](GgAgentConfig::disabled_tools) actually
+       * took away: the names its profile disables that **are gg tools**. A name gg does not know
+       * — a typo, a tool since removed — is absent, because it withheld nothing; gg logs a
+       * startup warning about it and offers the agent exactly the surface it would have had.
+       * A consumer may therefore state each of these as an applied ablation without re-checking
+       * it against gg's vocabulary, which it has no way to know anyway.
+       *
+       * A name here is *asked for* rather than necessarily *taken*: an ablation may also name a
+       * real tool no enabled capability was contributing, which withholds nothing in practice
+       * but is a deliberate, meaningful setting for an arm of a sweep. What was actually offered
+       * is [`tools`](Self::AgentSurface::tools) — the two together say which of the two
+       * happened, and neither derives the other.
+       */
+      withheld?: Array<string>;
+    }
+  | {
       type: "slot_usage";
       /**
        * The slot this rollup accounts for.
@@ -3296,6 +3392,52 @@ export type GgTelemetryEvent = {
        * absent.
        */
       modules: Array<GgAgentModule>;
+    }
+  | {
+      type: "agent_surface";
+      /**
+       * How this instance answers a turn: `tool_calling`, or `responses_as_code` when the
+       * [capability](CAPABILITY_RESPONSES_AS_CODE) is on for its profile. It is a per-agent
+       * property, not a run-wide one — one run may drive a code-shaped root and a tool-calling
+       * reviewer — which is why it is reported here rather than read off the session summary.
+       */
+      executionMode: string;
+      /**
+       * Every gg tool name this instance is offered, in the order the model is shown them: the
+       * registry's tools in registration order, then the ending calls its dispatched role may
+       * end with (`finish`, or a reviewer's `approve`/`request_changes`, or a judge's
+       * `select_winner`).
+       *
+       * The ending calls are appended by the loop rather than contributed by a capability, and
+       * are included here because the model is genuinely offered them every turn — a surface
+       * that omitted them would answer *"was `finish` offered?"* with silence.
+       *
+       * Populated in **both** execution modes: a responses-as-code agent reaches these same
+       * tools through its [`apis`](Self::AgentSurface::apis), and its calls are recorded under
+       * these names.
+       */
+      tools: Array<string>;
+      /**
+       * The namespaced API objects a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program
+       * binds, in the order the system prompt lists them. Empty for a tool-calling agent, which
+       * has no such surface — not merely unknown for one.
+       */
+      apis?: Array<GgAgentApi>;
+      /**
+       * The tools this instance's per-tool [ablation](GgAgentConfig::disabled_tools) actually
+       * took away: the names its profile disables that **are gg tools**. A name gg does not know
+       * — a typo, a tool since removed — is absent, because it withheld nothing; gg logs a
+       * startup warning about it and offers the agent exactly the surface it would have had.
+       * A consumer may therefore state each of these as an applied ablation without re-checking
+       * it against gg's vocabulary, which it has no way to know anyway.
+       *
+       * A name here is *asked for* rather than necessarily *taken*: an ablation may also name a
+       * real tool no enabled capability was contributing, which withholds nothing in practice
+       * but is a deliberate, meaningful setting for an arm of a sweep. What was actually offered
+       * is [`tools`](Self::AgentSurface::tools) — the two together say which of the two
+       * happened, and neither derives the other.
+       */
+      withheld?: Array<string>;
     }
   | {
       type: "slot_usage";

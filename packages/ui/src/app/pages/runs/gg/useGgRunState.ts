@@ -14,6 +14,7 @@ import { useWorkers } from "../../../../client/context";
 import type { HarnessEvent, RunOutcome } from "../../../../client/types";
 import type { CostMetrics, TokenMetrics } from "@test-cabinet/run-record";
 import type {
+  GgAgentApi,
   GgAgentModule,
   GgAgentStatus,
   GgArchiveEntry,
@@ -106,6 +107,44 @@ export interface UsageTally {
 
 // --- Subagent tree (Phase 4) -------------------------------------------------
 
+// What one agent instance was OFFERED, as its incarnation opened — gg's resolved
+// answer to "could this agent have called that?", which nothing else on the stream
+// can supply. A tool's absence from a run is otherwise indistinguishable from a
+// model that simply never reached for it, and the two are opposite findings: the
+// first is the harness withholding it (a capability off, a module unbound, an
+// a `disabledTools` ablation, an FSM state that gates it), the second is the model's
+// own choice.
+//
+// The set is per INSTANCE, not per profile: an instance sitting in an FSM state is
+// offered a different set from its sibling in another, so folding it at the profile
+// grain has to be done as a union that says how many instances each entry reached
+// (see `ggAgentAggregate`).
+export interface GgAgentSurface {
+  // How this instance answers a turn: "tool_calling" or "responses_as_code". A plain
+  // string on the wire rather than a union, so an unrecognised mode from a newer gg
+  // reads through rather than breaking the fold.
+  executionMode: string;
+  // Every gg tool this instance was offered, in the order the model was shown them
+  // (the registry's own order, then the ending calls its role may finish with).
+  // Populated in BOTH modes — a responses-as-code program reaches these same tools
+  // through its `apis`, and its calls are still recorded under these names.
+  tools: string[];
+  // The namespaced API objects a responses-as-code program binds, each function
+  // carrying the tool that gates it. Empty for a tool-calling instance, which has no
+  // such surface — normalized here so a consumer never has to tell the wire's absent
+  // key from an empty one.
+  apis: GgAgentApi[];
+  // The tools this instance's `disabledTools` ablation actually took away: the names
+  // its profile disables that ARE gg tools. gg resolves this itself and omits a name it
+  // does not know — a typo, a tool since removed — because such a name withheld
+  // nothing, so a consumer may state each entry as an applied ablation without
+  // re-checking it against a vocabulary it has no way to know. Re-deriving it from the
+  // configuration is exactly what this replaces: the config says what was *asked for*,
+  // and only gg can say which of it landed. Empty for an instance that ablated nothing
+  // — normalized here, like `apis`, so absent and empty read alike.
+  withheld: string[];
+}
+
 // One node of the subagent tree — an agent that joined the run. Its identity
 // (`id`) and its spawner (`parentId`) come from the event envelope's
 // `agentId`/`parentAgentId`, not the payload. `slot`/`modelId`/`depth`/`brief`/
@@ -114,7 +153,8 @@ export interface UsageTally {
 // `worktree_merged` that named an agent no spawn had yet introduced. `status`
 // tracks the latest `agent_status` transition (defaulting to "running" on spawn);
 // `returnSummary` is set from `agent_returned` (which also implies "done");
-// `worktreeOutcome` is derived from `worktree_merged`.
+// `worktreeOutcome` is derived from `worktree_merged`; `surface` is set from
+// `agent_surface` and is absent on a stream recorded before gg reported it.
 export interface AgentNode {
   // The agent's id: "root" for the root agent, "agent-N" for a subagent.
   id: string;
@@ -161,6 +201,10 @@ export interface AgentNode {
   // How the agent's worktree reconciled, once it did: merged back cleanly,
   // discarded, or left unmerged by a conflict.
   worktreeOutcome?: "merged" | "discarded" | "conflict";
+  // What this instance was offered to call. ABSENT MEANS UNREPORTED, not "nothing
+  // offered": every stream recorded before gg emitted `agent_surface` has none, so a
+  // read-out must render nothing at all rather than an empty toolset.
+  surface?: GgAgentSurface;
   // When the agent's clock started — the envelope timestamp of the first event it
   // emitted (its `agent_spawned` for a subagent, the session's opening for the root).
   // Absent for an agent no event was ever attributed to.
@@ -1788,6 +1832,23 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
       case "agent_modules":
         modules.push(...gg.modules);
         break;
+      case "agent_surface": {
+        // Unlike the roster beside it, this lands on the NODE rather than a partition
+        // array: a surface is only ever read about one instance ("what was agent-7
+        // offered?"), and hanging it on the node means the whole-stream fold answers
+        // that for every instance at once instead of only within its own slice.
+        const node = ensureAgent(
+          event.event.agentId ?? ROOT_ID,
+          event.event.parentAgentId,
+        );
+        node.surface = {
+          executionMode: gg.executionMode,
+          tools: gg.tools,
+          apis: gg.apis ?? [],
+          withheld: gg.withheld ?? [],
+        };
+        break;
+      }
       case "archive_state": {
         // Latest snapshot wins: gg re-emits the whole archive after each archival.
         archive = {

@@ -95,11 +95,12 @@ use test_cabinet_core::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_PROGRAM_LIBRARY,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL,
     CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS,
-    GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCandidateShape, GgCapabilitySet,
-    GgContextAction, GgContextSource, GgHealingStrategy, GgIssueReviewPhase, GgLimitBreach,
-    GgLimitKind, GgNotAProgram, GgResponseHealing, GgReviewer, GgRunLimits, GgSlotBinding,
-    GgSpeculationPhase, GgSubagentScope, GgTelemetryKind, GgWorkflowPhase,
-    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
+    GgAgentApi, GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind,
+    GgCandidateShape, GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy,
+    GgIssueReviewPhase, GgLimitBreach, GgLimitKind, GgNotAProgram, GgResponseHealing, GgReviewer,
+    GgRunLimits, GgSlotBinding, GgSpeculationPhase, GgSubagentScope, GgTelemetryKind,
+    GgWorkflowPhase, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE,
+    SHELL_OUTPUT_MODES,
 };
 use test_cabinet_core::gg_replay::{
     GgReplayAgent, GgReplayAgentOrigin, GgReplayFidelity, GgReplayModalities,
@@ -2974,6 +2975,12 @@ async fn run_agent(
             fsm: agent.fsm.as_ref(),
         };
         let registry = ToolRegistry::from_run(&profile, modules.caps(), &facts);
+        // Whether this agent keeps a [program library](crate::programs) — the one family neither a
+        // tool nor a role gates, which is why both the skill catalogue below and the surface event
+        // after it have to be told about it separately.
+        let program_library = crate::programs::resolve_program_library(&profile)
+            .library
+            .is_enabled();
         // gg's own skills — one per family of the functions **this agent** has — joined to whatever
         // the workspace authored. They are resolved against the toolset just built, because a
         // catalogue that described a tool the agent lacks is the one thing a catalogue must never
@@ -2984,9 +2991,7 @@ async fn run_agent(
             &registry.tool_names(),
             &registry.definitions(),
             ending_role,
-            crate::programs::resolve_program_library(&profile)
-                .library
-                .is_enabled(),
+            program_library,
             code.enabled,
             profile
                 .capability(CAPABILITY_SKILLS)
@@ -2999,6 +3004,47 @@ async fn run_agent(
             modules.caps_mut().skills_mut().offer_builtins(builtins);
             ToolRegistry::from_run(&profile, modules.caps(), &facts)
         };
+
+        // What this instance is **offered**, the other half of the roster above — and read off the
+        // *completed* registry, because the rebuild above is what decides whether `read_skill`
+        // exists at all. Un-gated and emitted for every incarnation of every agent, because the
+        // whole point is that an agent offered nothing still says so: "it was never given the tool"
+        // and "it had the tool and never called it" are different findings, and joining a call
+        // count to a re-derivation of the capability set can tell them apart only for the runs
+        // where nothing else gated the toolset.
+        //
+        // The ending calls are appended for the same reason the loop appends their definitions to
+        // every request: the model is genuinely offered them, they are simply not the registry's.
+        // A code agent's `apis` reports the same tools grouped the way its programs reach them;
+        // a tool-calling agent has no such surface, so it reports none rather than an empty one.
+        //
+        // The ablation this agent's profile asks for travels with the surface, minus the names gg
+        // does not recognize — drawn at exactly the boundary the startup warning below draws,
+        // because a name that is not a tool gg offers withholds nothing, and a reader shown it as
+        // withheld would be reading a study variable that was never applied. Read from the profile
+        // rather than diffed against the registry on purpose: an ablation naming a tool no enabled
+        // capability contributed is still what this arm asked for.
+        let unrecognized_ablations = unknown_disabled_tools(&profile);
+        emitter.emit(GgTelemetryKind::AgentSurface {
+            execution_mode: execution_mode(code.enabled).to_string(),
+            tools: registry
+                .tool_names()
+                .into_iter()
+                .chain(ending_role.tools().iter().map(|name| name.to_string()))
+                .collect(),
+            apis: if code.enabled {
+                api_surface(&registry, ending_role, program_library)
+            } else {
+                Vec::new()
+            },
+            withheld: profile
+                .disabled_tools
+                .iter()
+                .filter(|name| !unrecognized_ablations.contains(name))
+                .cloned()
+                .collect(),
+        });
+
         // The agent's file/shell tools are rooted at the [directory it was announced
         // with](workspace_dir) — its isolated worktree when it has one, so every mutation (and every
         // command it runs without an explicit path) lands in the private copy rather than the shared
@@ -3046,12 +3092,10 @@ async fn run_agent(
             // Record the run's execution mode (code-shaped responses vs traditional tool calling) so
             // the "does responses-as-code help?" study is a durable, sliceable outcome dimension
             // alongside the capabilityEnabled facet.
-            emitter.record_execution_mode(if code.enabled {
-                "responses_as_code"
-            } else {
-                "tool_calling"
-            });
-            for unknown in unknown_disabled_tools(&profile) {
+            emitter.record_execution_mode(execution_mode(code.enabled));
+            // The same set the surface above kept out of its `withheld` list, so the warning and the
+            // console panel cannot disagree about which of an ablation's names applied.
+            for unknown in &unrecognized_ablations {
                 emitter.emit(log(
                     "warn",
                     format!(
@@ -8667,7 +8711,7 @@ struct PromptInputs<'a> {
 /// each stating that run's configured limits. A
 /// disabled capability contributes nothing at all: no tools, no prose, no context.
 /// The API objects a code program has this run, in a fixed display order, each with the one-line
-/// description the prompt names it by.
+/// description the prompt names it by, and the functions it actually binds.
 ///
 /// An object appears exactly when the agent binds at least one of its functions — derived from the
 /// enabled tools **and its [ending role](EndingRole)** through the
@@ -8678,9 +8722,22 @@ struct PromptInputs<'a> {
 /// material into its own window with — including documentation, which is why the object that used to
 /// exist purely to hold the doc lookup no longer has to. A run that offers no tools at all must
 /// still be able to show its model something. The descriptions are stable product surface authored
-/// here; the *functions* on each object are not listed at all, because a model discovers those on
-/// demand with `object.list()` and `view.openDocsView()`.
-fn api_views(registry: &ToolRegistry, role: EndingRole, library: bool) -> Vec<ApiView> {
+/// here.
+///
+/// This is the one place the objects, their prose and the binding rule live, and it has two
+/// consumers with opposite needs. The [prompt](api_views) takes objects and descriptions **without**
+/// the functions, because a model discovers those on demand with `object.list()` and
+/// `view.openDocsView()` rather than being shown every signature up front; the
+/// [surface event](GgTelemetryKind::AgentSurface) takes the functions too, because a console reader
+/// asking *"was this agent offered that call at all?"* is asking the question the on-demand
+/// discovery deliberately does not answer up front. Both read this, so neither can drift from what
+/// the guest actually binds.
+///
+/// Each function carries the gg tool that gates it — `None` for the calls no tool backs — because
+/// that name, not the JavaScript one, is what a program's calls are recorded under. Every object
+/// ends with [`list`](crate::docs::LIST_FUNCTION), which is bound but not catalogued — see the note
+/// at the tail of the function.
+fn api_surface(registry: &ToolRegistry, role: EndingRole, library: bool) -> Vec<GgAgentApi> {
     const OBJECTS: &[(&str, &str)] = &[
         ("fs", "read, write, and edit workspace files"),
         ("system", "run shell commands in the workspace"),
@@ -8715,28 +8772,82 @@ fn api_views(registry: &ToolRegistry, role: EndingRole, library: bool) -> Vec<Ap
         EndingRole::Review => "review",
         EndingRole::Judge { .. } => "judge",
     };
-    let present: BTreeSet<&'static str> = crate::sandbox::catalogue_functions()
-        .into_iter()
-        .filter(|function| {
-            if function.library {
-                return library;
-            }
+    // Grouped by object rather than filtered per object, so the catalogue is walked once and the
+    // gating predicate is written once.
+    let mut bound: BTreeMap<&'static str, Vec<GgAgentApiFunction>> = BTreeMap::new();
+    for function in crate::sandbox::catalogue_functions() {
+        let is_bound = if function.library {
+            library
+        } else {
             match (function.gate, function.ending) {
                 (Some(tool), _) => enabled.contains(tool),
                 (None, Some(role)) => role == ending,
                 (None, None) => true,
             }
-        })
-        .map(|function| function.object)
-        .collect();
+        };
+        if is_bound {
+            bound
+                .entry(function.object)
+                .or_default()
+                .push(GgAgentApiFunction {
+                    name: function.name.to_string(),
+                    tool: function.gate.map(str::to_string),
+                });
+        }
+    }
     OBJECTS
         .iter()
-        .filter(|(object, _)| present.contains(object))
-        .map(|(object, description)| ApiView {
-            object: (*object).to_string(),
-            description: (*description).to_string(),
+        .filter_map(|(object, description)| {
+            bound.remove(object).map(|mut functions| {
+                // The catalogue above is reflected from the SDK's exported signatures, and `list`
+                // is not one of them: it is the [documentation carve-out](crate::docs)'s own meta
+                // function, which the guest seeds onto every object it creates and no tool gates.
+                // So it has no catalogue entry to be found by, yet it is genuinely bound on
+                // everything reported here — and it goes last, where `DocsRuntime::list` puts it,
+                // so this readout and the directory the model itself gets from `object.list()`
+                // list the same functions in the same order.
+                functions.push(GgAgentApiFunction {
+                    name: crate::docs::LIST_FUNCTION.to_string(),
+                    tool: None,
+                });
+                GgAgentApi {
+                    object: (*object).to_string(),
+                    description: (*description).to_string(),
+                    functions,
+                }
+            })
         })
         .collect()
+}
+
+/// The API objects a code program has this run as the **system prompt** names them: the object and
+/// its one-line description, and deliberately not its functions — a model discovers those on demand
+/// with `object.list()` and `view.openDocsView()`.
+///
+/// A projection of [`api_surface`], which owns the objects, the prose and the binding rule.
+fn api_views(registry: &ToolRegistry, role: EndingRole, library: bool) -> Vec<ApiView> {
+    api_surface(registry, role, library)
+        .into_iter()
+        .map(|api| ApiView {
+            object: api.object,
+            description: api.description,
+        })
+        .collect()
+}
+
+/// How an agent answers a turn, as the record spells it: `responses_as_code` when the
+/// [capability](CAPABILITY_RESPONSES_AS_CODE) is on for its profile, `tool_calling` otherwise.
+///
+/// One spelling, read by the run-level
+/// [outcome dimension](crate::telemetry::Emitter::record_execution_mode) and by every instance's
+/// [surface](GgTelemetryKind::AgentSurface), so a query cannot find a run's mode under one string
+/// and an agent's under another.
+fn execution_mode(code_enabled: bool) -> &'static str {
+    if code_enabled {
+        "responses_as_code"
+    } else {
+        "tool_calling"
+    }
 }
 
 /// The [message headings](code_heading) a responses-as-code run documents in its system prompt, in

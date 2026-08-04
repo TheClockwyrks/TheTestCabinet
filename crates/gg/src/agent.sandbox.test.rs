@@ -257,6 +257,39 @@ async fn responses_as_code_routes_the_turn_through_the_sandbox() {
     let summary = session_summary(&events).expect("a session summary");
     assert_eq!(summary.execution_mode, "responses_as_code");
     assert_eq!(summary.code_executions, 2);
+
+    // (d) the instance's own surface says what it was offered, in the shape a code agent reaches it
+    // through: objects with the functions bound on them, each naming the gg tool its calls are
+    // recorded under — which is the join a reader needs to tell "never offered" from "never called".
+    let (mode, tools, apis) = events
+        .iter()
+        .find_map(|event| match &event.kind {
+            GgTelemetryKind::AgentSurface {
+                execution_mode,
+                tools,
+                apis,
+                ..
+            } => Some((execution_mode.clone(), tools.clone(), apis.clone())),
+            _ => None,
+        })
+        .expect("an AgentSurface event");
+    assert_eq!(mode, "responses_as_code");
+    assert!(
+        tools.contains(&"write_file".to_string()),
+        "a code agent still reports the tool names its calls are recorded under: {tools:?}"
+    );
+    let fs = apis
+        .iter()
+        .find(|api| api.object == "fs")
+        .expect("the `fs` object the program composed its calls on");
+    assert_eq!(
+        fs.functions
+            .iter()
+            .find(|function| function.name == "writeFile")
+            .and_then(|function| function.tool.as_deref()),
+        Some("write_file"),
+        "the composed call is joined to its tool"
+    );
 }
 
 /// Completion **validation** gates a code-mode `finish`: a program that calls `finish` before the

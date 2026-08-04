@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  GgAgentApi,
   GgAgentModule,
   GgContextSource,
   GgContextSourceUsage,
@@ -228,6 +229,65 @@ function roster(
     type: "agent_modules",
     modules,
   } as GgTelemetryKind);
+}
+
+// What one incarnation reports it was OFFERED as it opens: gg's own resolved answer to
+// "could this agent have called that?", after its capabilities, the modules it bound and
+// any ablation. Passing `apis` makes it a responses-as-code instance, which reaches the
+// same tools through namespaced objects instead of naming them. `withheld` is the other
+// arm gg resolves: the profile's `disabledTools` entries that actually name a gg tool, so
+// a name gg does not know is already gone by the time it reaches the console. Nearly every
+// fixture in this file reports none at all — which is what a run recorded before gg
+// emitted the event looks like, and it has to keep rendering.
+function surface(
+  agentId: string,
+  tools: string[],
+  apis: GgAgentApi[] = [],
+  withheld: string[] = [],
+): HarnessEvent {
+  return ggFrom(agentId, undefined, {
+    type: "agent_surface",
+    executionMode: apis.length > 0 ? "responses_as_code" : "tool_calling",
+    tools,
+    apis,
+    withheld,
+  } as GgTelemetryKind);
+}
+
+// The announcement for a run that ABLATES a tool: `disabledTools` strikes a tool from a
+// profile whose capability is otherwise on, so it is the "never offered" arm of the very
+// distinction the surface file exists to draw.
+function sessionStartedAblating(
+  profile: string,
+  capabilities: ReadonlyArray<string>,
+  disabledTools: string[],
+): HarnessEvent {
+  return gg({
+    type: "session_started",
+    capabilitySet: {
+      agents: [
+        {
+          name: profile,
+          capabilities: capabilities.map((id) => ({
+            id,
+            enabled: true,
+            params: {},
+          })),
+          modelId: "mock/scripted-builder",
+          disabledTools,
+        },
+      ],
+    },
+  });
+}
+
+// The row one offered thing reads on, found by its name inside the section it belongs to.
+// Its state is carried on data attributes rather than on a class, because the test
+// environment stubs CSS modules away — and "offered but never called" is a state, not a
+// look.
+function surfaceRow(section: string, name: string): HTMLElement {
+  const region = screen.getByRole("region", { name: section });
+  return within(region).getByText(name).closest("li")!;
 }
 
 // A small but representative Phase-1 stream: a session, one agent message, two
@@ -782,9 +842,7 @@ describe("GgRunMonitorPage", () => {
     // Twice: a collapsible row renders a one-line preview AND the full body.
     expect(screen.getAllByText(/checked 12 files/).length).toBeGreaterThan(0);
     expect(
-      screen.getByText(
-        "2 lines · 4 earlier lines dropped by the capture cap",
-      ),
+      screen.getByText("2 lines · 4 earlier lines dropped by the capture cap"),
     ).toBeInTheDocument();
     // A turn that printed nothing adds no row: the program itself is already visible as
     // the assistant message that carried it.
@@ -1051,6 +1109,276 @@ describe("GgRunMonitorPage", () => {
       screen.getByRole("region", { name: "Messages" }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/conversation window/)).toBeNull();
+  });
+
+  it("reads an instance's offered tools against the ones it called", () => {
+    // The question the file answers: was this tool never offered, or offered and never
+    // reached for? A call count alone cannot tell those apart, and they are opposite
+    // findings — one is the harness, the other is the model.
+    renderMonitor([
+      sessionStartedAblating("Root", ["shell", "filesystem"], ["run_shell"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface("root", ["read_file", "write_file", "grep"], [], ["run_shell"]),
+      gg({ type: "tool_call", name: "read_file", args: {} }),
+      gg({ type: "tool_call", name: "read_file", args: {} }),
+    ]);
+    openTab("Instances");
+    openFile("root tools");
+
+    // Every tool it was given, whether or not it used one: the two calls it made, and
+    // the two it never made — dimmed and said in words, never dropped.
+    expect(surfaceRow("offered tools", "read_file")).toHaveTextContent("2×");
+    expect(surfaceRow("offered tools", "read_file")).not.toHaveAttribute(
+      "data-uncalled",
+    );
+    expect(surfaceRow("offered tools", "write_file")).toHaveTextContent(
+      "never called",
+    );
+    expect(surfaceRow("offered tools", "write_file")).toHaveAttribute(
+      "data-uncalled",
+    );
+    expect(screen.getByText("1 of 3 called")).toBeInTheDocument();
+
+    // And the ablation beside it, as gg reported it applied: a tool this profile was
+    // denied is listed as withheld rather than being an absence indistinguishable from a
+    // tool nobody called.
+    const withheld = surfaceRow("withheld tools", "run_shell");
+    expect(withheld).toHaveTextContent("withheld");
+    expect(withheld).toHaveAttribute("data-withheld");
+    expect(
+      within(screen.getByRole("region", { name: "offered tools" })).queryByText(
+        "run_shell",
+      ),
+    ).toBeNull();
+  });
+
+  it("says nothing was withheld when the ablation named no gg tool", () => {
+    // The validity hazard this closes. A configuration may disable a name gg does not
+    // know — a typo, a tool since removed — and gg treats it as inert: it warns at
+    // startup and offers the agent exactly the surface it would have had. So gg leaves it
+    // out of the surface's `withheld`, and the console must not resurrect it from the
+    // configuration: asserting an ablation that never applied, on the one page that
+    // exists to separate "the harness never gave it" from "the model ignored it", would
+    // make an unrun arm of a sweep read as a run one.
+    renderMonitor([
+      sessionStartedAblating("Root", ["filesystem"], ["read_files"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      // gg resolved the ablation to nothing, so it reports none — with the offered set
+      // untouched, `read_file` and all.
+      surface("root", ["read_file", "write_file"]),
+    ]);
+    openTab("Instances");
+    openFile("root tools");
+
+    // No section at all rather than an empty one: there is nothing to say. Between that
+    // and the offered set, the typo has nowhere left on the file to appear.
+    expect(screen.queryByRole("region", { name: "withheld tools" })).toBeNull();
+    const offered = screen.getByRole("region", { name: "offered tools" });
+    expect(within(offered).queryByText("read_files")).toBeNull();
+    // And the real tool the typo was reaching for is still offered, undimmed by it.
+    expect(within(offered).getByText("read_file")).toBeInTheDocument();
+  });
+
+  it("names a code agent's surface APIs, and joins each function to its tool", () => {
+    // A responses-as-code instance is offered the same tools through namespaced objects,
+    // so the file is called `apis` and reads by object. Its calls are still recorded
+    // under the gg tool behind each function, which is how a function joins to a count —
+    // and why a function no tool backs shows none at all rather than a zero.
+    renderMonitor([
+      sessionStarted(["shell", "filesystem"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface(
+        "root",
+        ["read_file", "write_file"],
+        [
+          {
+            object: "fs",
+            description: "Read and write the workspace.",
+            functions: [
+              { name: "readFile", tool: "read_file" },
+              { name: "writeFile", tool: "write_file" },
+              // The meta function every object binds, reported last, exactly where the
+              // agent's own `object.list()` puts it. No tool gates it.
+              { name: "list" },
+            ],
+          },
+          {
+            object: "view",
+            description: "Put material in front of the model.",
+            functions: [{ name: "openFile" }, { name: "list" }],
+          },
+        ],
+      ),
+      gg({ type: "tool_call", name: "read_file", args: {} }),
+    ]);
+    openTab("Instances");
+    // The file is named for how the agent answers a turn, so a code agent has no `tools`
+    // row at all.
+    expect(screen.queryByRole("button", { name: "root tools" })).toBeNull();
+    openFile("root apis");
+
+    expect(
+      screen.getByText("Read and write the workspace."),
+    ).toBeInTheDocument();
+    expect(surfaceRow("offered apis", "fs.readFile")).toHaveTextContent("1×");
+    expect(surfaceRow("offered apis", "fs.writeFile")).toHaveTextContent(
+      "never called",
+    );
+    // Ungated: the view channel runs through no tool, so it is bound with nothing to
+    // count — which must not read as a tool the model ignored.
+    const ungated = surfaceRow("offered apis", "view.openFile");
+    expect(ungated).not.toHaveAttribute("data-uncalled");
+    expect(ungated).not.toHaveTextContent("never called");
+    // `list` is bound and therefore counted, on every object and in the header's total —
+    // a reader asking "was this agent offered `list`?" gets an answer rather than silence.
+    // Ungated like any other function no tool backs.
+    const list = surfaceRow("offered apis", "fs.list");
+    expect(list).not.toHaveAttribute("data-uncalled");
+    expect(list).not.toHaveTextContent("never called");
+    expect(
+      within(screen.getByRole("region", { name: "offered apis" })).getByText(
+        "view.list",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/2 objects · 5 functions/)).toBeInTheDocument();
+  });
+
+  it("shows a figure several functions share as the tool's, not as each function's", () => {
+    // The catalogue really does bind three functions behind one gate: `fs.readFile`,
+    // `fs.readTextFile` and `view.openFile` all arrive on the stream as a `read_file`
+    // call, with nothing saying which of them the program wrote. Handing each of them the
+    // gate's count would report three calls where one happened, and would leave two
+    // functions the model never wrote reading exactly like one it used — the false
+    // positive this whole file exists to rule out.
+    renderMonitor([
+      sessionStarted(["filesystem"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface(
+        "root",
+        ["read_file"],
+        [
+          {
+            object: "fs",
+            description: "Read and write the workspace.",
+            functions: [
+              { name: "readFile", tool: "read_file" },
+              { name: "readTextFile", tool: "read_file" },
+            ],
+          },
+          {
+            object: "view",
+            description: "Put material in front of the model.",
+            functions: [{ name: "openFile", tool: "read_file" }],
+          },
+        ],
+      ),
+      gg({ type: "tool_call", name: "read_file", args: {} }),
+    ]);
+    openTab("Instances");
+    openFile("root apis");
+
+    for (const name of ["fs.readFile", "fs.readTextFile", "view.openFile"]) {
+      const row = surfaceRow("offered apis", name);
+      // The count is named with the gate it belongs to, and the row says so in words.
+      expect(row).toHaveTextContent("read_file1×");
+      expect(row.getAttribute("title")).toMatch(
+        /^read_file — the tool behind fs\.readFile, fs\.readTextFile, view\.openFile — was called 1 time\./,
+      );
+      expect(row.getAttribute("title")).toMatch(/not the function/);
+    }
+  });
+
+  it("keeps a shared gate's never-called reading per function", () => {
+    // Nothing recorded under the gate means none of the functions behind it ran, which is
+    // true of each one on its own — so the half of the contrast an ablation is read for
+    // needs no attribution and must not acquire any.
+    renderMonitor([
+      sessionStarted(["filesystem"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface(
+        "root",
+        ["read_file"],
+        [
+          {
+            object: "fs",
+            description: "Read and write the workspace.",
+            functions: [
+              { name: "readFile", tool: "read_file" },
+              { name: "readTextFile", tool: "read_file" },
+            ],
+          },
+        ],
+      ),
+    ]);
+    openTab("Instances");
+    openFile("root apis");
+
+    const row = surfaceRow("offered apis", "fs.readTextFile");
+    expect(row).toHaveAttribute("data-uncalled");
+    expect(row).toHaveTextContent("never called");
+    expect(row).not.toHaveTextContent("read_file1×");
+    expect(row).toHaveAttribute(
+      "title",
+      "fs.readTextFile was offered and never called.",
+    );
+  });
+
+  it("offers no surface file to an instance that never reported one", () => {
+    // Every run recorded before gg emitted the event, and every instance of a mixed run
+    // that predates it. An empty "tools" file would assert the one thing the file exists
+    // to distinguish — nothing offered — so the entry is absent instead.
+    renderMonitor([
+      sessionStarted(["shell", "filesystem"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface("root", ["read_file"]),
+      ggFrom("agent-0", "root", {
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 1,
+      }),
+    ]);
+    openTab("Instances");
+    expect(
+      screen.getByRole("button", { name: "root tools" }),
+    ).toBeInTheDocument();
+    openFolder("agent agent-0");
+    // The subagent reported none, so it keeps every other file and none of this one.
+    expect(
+      screen.getByRole("button", { name: "agent-0 overview" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "agent-0 tools" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "agent-0 apis" })).toBeNull();
   });
 
   it("offers each agent the modules its own profile justifies, not the Root's", () => {
@@ -1934,10 +2262,11 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("read_file")).toBeInTheDocument();
 
     // Clicking the reviewer's row switches to the Instances tab and lands on its Overview,
-    // where its tool usage is broken down (grep, called once).
+    // where its tool usage is broken down (grep, called once) — captioned "Tool calls",
+    // since what it was *offered* is its own file and the two must not share a name.
     fireEvent.click(screen.getByRole("button", { name: "Open agent-0" }));
     expect(screen.getByRole("radio", { name: "Instances" })).toBeChecked();
-    expect(screen.getByText("Tools")).toBeInTheDocument();
+    expect(screen.getByText("Tool calls")).toBeInTheDocument();
     expect(screen.getByText("grep")).toBeInTheDocument();
     // …alongside how much it got out of each response: one call in its one turn.
     expect(screen.getByText("1.0 calls per response")).toBeInTheDocument();

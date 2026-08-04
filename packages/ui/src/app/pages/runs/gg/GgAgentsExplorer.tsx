@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
+  GgAgentApi,
   GgCapabilitySet,
   GgModuleKind,
 } from "@test-cabinet/run-record/gg";
@@ -30,6 +31,12 @@ import {
 } from "./useGgRunState";
 import { cx } from "./ggFsTree";
 import {
+  sharedSurfaceGates,
+  surfaceCallCount,
+  surfaceCallPhrase,
+  type SurfaceCallCount,
+} from "./ggSurfaceCalls";
+import {
   FsExplorer,
   FsFileRow,
   FsFolder,
@@ -46,11 +53,12 @@ import {
 } from "./ggModules";
 import type { AgentEntry, AgentFileKind } from "./ggAgentEntries";
 import {
-  FILE_ICONS,
-  FILE_LABELS,
   MODULE_ICONS,
   OVERVIEW_ENTRY,
+  answersAsCode,
   entriesFor,
+  fileIcon,
+  fileLabel,
   filesFor,
   sameEntry,
 } from "./ggAgentEntries";
@@ -269,6 +277,7 @@ export function GgAgentsExplorer({
         capabilitySet,
         selected.slot,
         modules.byAgent.get(selected.id) ?? [],
+        selected.surface,
       ).some((entry) => sameEntry(entry, selection.entry))
     )
       return;
@@ -378,9 +387,10 @@ function FolderNode({
   depth: number;
   ctx: ExplorerCtx;
 }) {
-  // This agent's own files — read off the profile it runs under, not the run's Root —
-  // and the module instances it holds, in the contract's kind order.
-  const files = filesFor(ctx.capabilitySet, node.slot);
+  // This agent's own files — read off the profile it runs under, not the run's Root,
+  // and off what this very instance reported it was offered — and the module instances
+  // it holds, in the contract's kind order.
+  const files = filesFor(ctx.capabilitySet, node.slot, node.surface);
   const held = ctx.modules.byAgent.get(node.id) ?? [];
   // A succession's successor is parented to its predecessor (a fresh id, the same
   // depth) — so it arrives here as a child, and would otherwise read as something this
@@ -465,7 +475,11 @@ function FolderNode({
       }
     >
       {files.map((file) => {
-        const FileIcon = FILE_ICONS[file];
+        // Both the mark and the name are resolved against this instance: the surface
+        // file is `tools` under a wrench for an agent that names its tools, and `apis`
+        // under angle brackets for one that calls them as code.
+        const FileIcon = fileIcon(file, node.surface);
+        const fileName = fileLabel(file, node.surface);
         return (
           <FsFileRow
             key={file}
@@ -483,9 +497,9 @@ function FolderNode({
             // Name the agent so a file row is unambiguous on its own — a screen reader
             // (and the eye scanning a deep tree) should not have to infer which folder
             // an "activity" row belongs to.
-            ariaLabel={`${label} ${FILE_LABELS[file]}`}
+            ariaLabel={`${label} ${fileName}`}
             icon={<FileIcon className={panels.fsIcon} />}
-            name={FILE_LABELS[file]}
+            name={fileName}
           />
         );
       })}
@@ -800,6 +814,12 @@ function FileContent({
           />
         </div>
       );
+    case "surface":
+      return (
+        <div className={panels.panelBody}>
+          <SurfaceFile node={node} state={state} />
+        </div>
+      );
     case "activity":
       return <ActivityFeed feed={state.feed} live={live} />;
     case "context":
@@ -987,11 +1007,14 @@ function OverviewFile({
   );
 }
 
-// An agent's tool-usage breakdown, shown on its Overview: every tool it called, most
+// An agent's tool-usage breakdown, shown on its Overview: every tool it CALLED, most
 // used first, with how many times it called it and — where the message log recorded
 // it — how many tokens that tool's results added to the window, as a share of all the
-// tokens that entered the agent's context. The Dashboard's agent overview shows the
-// same tools as bare chips; this is the itemized version behind them. Its caption line
+// tokens that entered the agent's context. It is captioned "Tool calls" rather than
+// "Tools" because the instance's own surface file answers what it was *offered*, and a
+// list of the tools it used named the same thing as the list of the tools it had would
+// quietly answer the wrong question. The Dashboard's agent overview shows the same
+// tools as bare chips; this is the itemized version behind them. Its caption line
 // also carries the instance's call rate — how many calls it got out of each response —
 // which is a fact about the agent rather than about any tool in the list, so it sits on
 // the header beside the caption instead of being wedged in as a first row.
@@ -1013,7 +1036,7 @@ function AgentToolsPanel({
   return (
     <section className={panels.agentSection}>
       <div className={panels.toolsHead}>
-        <span className={panels.subPanelLabel}>Tools</span>
+        <span className={panels.subPanelLabel}>Tool calls</span>
         <span
           className={panels.toolsRate}
           title={
@@ -1057,5 +1080,271 @@ function AgentToolsPanel({
         })}
       </ul>
     </section>
+  );
+}
+
+// What one instance was OFFERED to call, over what it actually called: every gg tool it
+// was given — or, for an agent that answers its turns as code, every function bound on
+// the API objects its programs run against — each carrying its own call count.
+//
+// The contrast is the reason the file exists. A tool listed here that the model never
+// reached for was offered and ignored, which is a fact about the model; a tool that is
+// missing was never on the table, which is a fact about the run — a capability off, a
+// module unbound, an FSM state that gates it, or a deliberate ablation. Those are
+// opposite findings, and no other read-out of a run can tell them apart, because a call
+// count on its own cannot say what the agent had to choose from.
+//
+// Both halves come off the instance's own reported surface rather than being re-derived
+// from the configuration: gg resolves it per incarnation, and a re-derivation here could
+// not know which modules bound, which state of a machine the instance sat in, or which
+// tools its role's ending calls added. Its ablated tools are shown beside the offered set
+// and marked as withheld rather than dropped — "the model ignored it" and "the harness
+// never gave it" are precisely the two answers this file keeps apart, so the second one
+// has to be on the page, and it has to be the ablation that actually applied rather than
+// the one the configuration asked for.
+function SurfaceFile({
+  node,
+  state,
+}: {
+  node: AgentNode;
+  state: DerivedGgState;
+}) {
+  // This instance's own call counts — its partition of the stream, the same breakdown
+  // its Overview's Tool-calls panel itemizes. Keyed by gg tool name, which is what a
+  // code program's calls are recorded under too: a bound function joins to its count
+  // through the tool that gates it, never through its JavaScript name.
+  const calls = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const tool of ggToolBreakdown(state).tools)
+      counts.set(tool.name, tool.calls);
+    return counts;
+  }, [state]);
+  const surface = node.surface;
+  if (!surface) {
+    // Unreachable through the sidebar, which does not offer the file to an instance that
+    // reported no surface — but the pane is rendered from a selection, and a selection
+    // outliving its instance must say what is missing rather than assert an empty toolset.
+    return (
+      <p className={panels.empty}>
+        This instance never reported what it was offered.
+      </p>
+    );
+  }
+  // A code agent is read through its objects; a tool-calling one through the flat list —
+  // decided by the same predicate that named the row, so the file always opens what its
+  // name promised. The objects have to actually be there: a code instance that bound
+  // none still reads as the tools it holds rather than as an empty page.
+  const asCode = answersAsCode(surface) && surface.apis.length > 0;
+  return (
+    <div className={panels.surfaceFile}>
+      {asCode ? (
+        <ApiSurface apis={surface.apis} calls={calls} />
+      ) : (
+        <ToolSurface tools={surface.tools} calls={calls} />
+      )}
+      {surface.withheld.length > 0 && (
+        <WithheldTools tools={surface.withheld} />
+      )}
+    </div>
+  );
+}
+
+// A tool-calling surface has no gate any two entries share — every tool IS its own gate — so
+// its rows join on an empty sharing map rather than on a computed one.
+const NO_SHARING: ReadonlyMap<string, readonly string[]> = new Map();
+
+// The flat offered set of a tool-calling instance, in the order the model was shown it —
+// the registry's own order, which is the order the tools appear in its system prompt, so
+// the file reads the way the agent was addressed rather than by anything this view sorts
+// by. The caption says how much of the set was used at all, which is the one number worth
+// having before reading a row of it.
+function ToolSurface({
+  tools,
+  calls,
+}: {
+  tools: readonly string[];
+  calls: ReadonlyMap<string, number>;
+}) {
+  const used = tools.filter((tool) => (calls.get(tool) ?? 0) > 0).length;
+  return (
+    <section className={panels.agentSection} aria-label="offered tools">
+      <div className={panels.toolsHead}>
+        <span className={panels.subPanelLabel}>Tools</span>
+        <span
+          className={panels.toolsRate}
+          title={
+            "Every tool this instance was offered, after its capabilities, the modules it " +
+            "bound and any ablation were resolved. A tool it never called is dimmed, not " +
+            "dropped — offered and unused is a different finding from never offered."
+          }
+        >
+          {used} of {tools.length} called
+        </span>
+      </div>
+      <ul className={panels.toolList}>
+        {tools.map((tool) => (
+          <SurfaceRow
+            key={tool}
+            name={tool}
+            // A tool is the only thing behind its own gate, so its count is its own and no
+            // sharing can arise: the empty map says exactly that rather than skipping a step.
+            calls={surfaceCallCount({ name: tool, tool }, calls, NO_SHARING)}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// The offered set of a responses-as-code instance, grouped the way its programs address
+// it: one card per namespaced object, carrying the same one-line description the agent's
+// own system prompt introduced the object by, over the functions this instance actually
+// binds. An object it was not given is absent entirely rather than listed empty, which is
+// gg's own reporting and not a choice this view makes.
+function ApiSurface({
+  apis,
+  calls,
+}: {
+  apis: readonly GgAgentApi[];
+  calls: ReadonlyMap<string, number>;
+}) {
+  const functions = apis.reduce(
+    (total, api) => total + api.functions.length,
+    0,
+  );
+  // Which gates back more than one of the bound functions, taken across every object at once:
+  // `fs.readFile` and `view.openFile` sit on different objects and are the same `read_file`
+  // call on the stream, so an object-at-a-time pass would find no sharing and hand each of
+  // them the whole tool's figure as its own.
+  const shared = useMemo(
+    () =>
+      sharedSurfaceGates(
+        apis.flatMap((api) =>
+          api.functions.map((fn) => ({
+            name: `${api.object}.${fn.name}`,
+            tool: fn.tool ?? null,
+          })),
+        ),
+      ),
+    [apis],
+  );
+  return (
+    <section className={panels.agentSection} aria-label="offered apis">
+      <div className={panels.toolsHead}>
+        <span className={panels.subPanelLabel}>APIs</span>
+        <span
+          className={panels.toolsRate}
+          title={
+            "The objects this instance's programs are bound against. A function's calls are " +
+            "recorded under the gg tool behind it, so a function no tool backs — a view, an " +
+            "ending, a program-library call — carries no count rather than a zero, and a " +
+            "figure several functions share is shown named with the tool it belongs to."
+          }
+        >
+          {apis.length} object{apis.length === 1 ? "" : "s"} · {functions}{" "}
+          function{functions === 1 ? "" : "s"}
+        </span>
+      </div>
+      <ul className={panels.knowledgeList}>
+        {apis.map((api) => (
+          <li key={api.object} className={panels.knowledgeRow}>
+            <div className={panels.knowledgeHead}>
+              <span className={panels.knowledgeName}>{api.object}</span>
+              <span className={panels.knowledgeBadge}>
+                {api.functions.length} fn
+              </span>
+            </div>
+            <p className={panels.knowledgeDesc}>{api.description}</p>
+            <ul className={cx(panels.toolList, panels.surfaceFunctions)}>
+              {api.functions.map((fn) => (
+                <SurfaceRow
+                  key={fn.name}
+                  name={`${api.object}.${fn.name}`}
+                  // Through the gate, never the name — and the gate decides whose figure it
+                  // is. A function no tool backs is counted nowhere, and one whose tool backs
+                  // its neighbours too shows that tool's count as the tool's.
+                  calls={surfaceCallCount(
+                    { name: `${api.object}.${fn.name}`, tool: fn.tool ?? null },
+                    calls,
+                    shared,
+                  )}
+                />
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// The tools this instance's profile ablated away — named in its `disabledTools`, which
+// strikes a tool from the registry after every capability that would have offered it is
+// on. They are the run's own control arm, so they are listed rather than merely absent:
+// without them, "this agent has no `read_file`" and "this agent was never given
+// `read_file`" are the same empty space on the page.
+//
+// gg reports these, and it reports only the names that ARE gg tools: a `disabledTools`
+// entry gg does not recognise withholds nothing at all — gg warns about it at startup and
+// offers the agent exactly the surface it would have had — so it never reaches this list.
+// Asserting a typo as an applied ablation would be the one lie this file cannot afford,
+// on the one page whose purpose is telling an ablation apart from a model's own restraint.
+function WithheldTools({ tools }: { tools: readonly string[] }) {
+  return (
+    <section className={panels.agentSection} aria-label="withheld tools">
+      <div className={panels.toolsHead}>
+        <span className={panels.subPanelLabel}>Withheld</span>
+        <span className={panels.toolsRate}>
+          ablated by this agent&rsquo;s configuration
+        </span>
+      </div>
+      <ul className={panels.toolList}>
+        {tools.map((tool) => (
+          <li key={tool} className={panels.toolRow} data-withheld="">
+            <span className={panels.toolName}>{tool}</span>
+            <span className={panels.toolCalls}>withheld</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+// One offered thing and what became of it. Four states, and keeping them visually distinct
+// is the feature: called (its count), offered and never called (dimmed, and said in words —
+// a bare "0×" reads as a measurement rather than as the finding it is), offered with nothing
+// to count, which is what an ungated call — a view, an ending, the program library —
+// honestly is, and called through a gate it shares with its neighbours, where the figure is
+// the gate's and is labelled with it rather than claimed for this row alone.
+function SurfaceRow({
+  name,
+  calls,
+}: {
+  name: string;
+  calls: SurfaceCallCount;
+}) {
+  const uncalled = calls.count === 0;
+  return (
+    <li
+      className={panels.toolRow}
+      data-uncalled={uncalled ? "" : undefined}
+      title={surfaceCallPhrase(name, calls)}
+    >
+      <span className={panels.toolName}>{name}</span>
+      <span className={panels.toolCalls}>
+        {calls.count == null ? (
+          ""
+        ) : uncalled ? (
+          "never called"
+        ) : (
+          <>
+            {calls.sharedGate != null && (
+              <span className={panels.toolCallsGate}>{calls.sharedGate}</span>
+            )}
+            {calls.count}×
+          </>
+        )}
+      </span>
+    </li>
   );
 }

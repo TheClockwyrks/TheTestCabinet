@@ -32,6 +32,12 @@ use std::collections::BTreeSet;
 use crate::ending::EndingRole;
 use crate::sandbox::{CatalogueFunction, FunctionSummary, catalogue_functions, type_declaration};
 
+/// The name the `list()` meta function is bound and looked up under. Named once here because it is
+/// not the catalogue's to name: the guest binds `list` on every object it creates, this runtime
+/// answers and documents it, and the [surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface)
+/// reports it as bound — three places that must agree on one string.
+pub const LIST_FUNCTION: &str = "list";
+
 /// The `list()` meta function's one-line summary — it is added to **every** object's directory.
 const LIST_SUMMARY: &str = "List this object's functions, each with a one-line summary.";
 
@@ -84,7 +90,7 @@ impl DocsRuntime {
             })
             .collect();
         out.push(FunctionSummary {
-            name: "list".to_string(),
+            name: LIST_FUNCTION.to_string(),
             summary: LIST_SUMMARY.to_string(),
         });
         out
@@ -98,7 +104,7 @@ impl DocsRuntime {
     /// nothing about having read one changes what the next one says.
     pub fn read(&self, name: &str) -> Option<String> {
         match name {
-            "list" => Some(format!("{LIST_SIGNATURE}\n\n{LIST_DOC}")),
+            LIST_FUNCTION => Some(format!("{LIST_SIGNATURE}\n\n{LIST_DOC}")),
             _ => {
                 let function = catalogue_functions()
                     .into_iter()

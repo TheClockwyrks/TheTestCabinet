@@ -245,13 +245,16 @@ annotated **handed on** instead, and is nowhere counted as shared.
 That distinction is the one thing a holder *count* can never make, and it is made the same
 way on all three surfaces: sharing is read off the holders whose origin is not
 `transferred` — the ones that *joined* the store rather than replacing its previous holder.
-Without it every `exec` looks like sharing, and an [FSM](/gg/fsm/) run, where each state is
+Without it every `exec` looks like sharing, and an [FSM](/gg/fsms/) run, where each state is
 a succession, turns one conversation window into an N-holder "agent-scoped" store.
 
 What moved, and what did not, follows one rule: a file about the **agent** stayed where it
 was, and a file that was really a view onto a **module** moved in. So Overview, Prompt,
 Activity, Context, Requests, Metrics and Compaction are unchanged (compaction is not
-module-backed — there is no `compaction` module), **Tasks** moved to `modules/tasks`, and
+module-backed — there is no `compaction` module; the agent's own files have since gained
+one more, what that instance was
+[offered to call](/gg/telemetry/#what-an-agent-is-offered), which is a fact about the
+agent and so belongs beside them rather than in here), **Tasks** moved to `modules/tasks`, and
 the old joint **Knowledge** file split into `modules/skills` and `modules/memories`, which
 were always two independently gated modules shared on entirely different terms. Three
 files are new: `modules/board` (this agent's handle on the run's board, with a link to the

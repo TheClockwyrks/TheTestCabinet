@@ -38,7 +38,12 @@ differently:
   `programs`, `harness`, `review`, `judge` — because that is how a program reaches them
   (`fs.readFile`, not "the filesystem family's read call") and it is what a model itself
   enumerates mid-run with `object.list()`. Each folder is captioned with its family's own
-  one-line description; the last family supplies three objects, one per agent role.
+  one-line description; the last family supplies three objects, one per agent role. That
+  `list` is the one function the tab does not carry: the sandbox binds it on every object
+  it creates rather than exporting it from the SDK, so the reflected catalogue this page
+  is built from has no signature to show for it. An instance's own
+  [surface](/gg/telemetry/#what-an-agent-is-offered) does report it, appended last on
+  every object.
 
 Descriptions and documentation are rendered verbatim, whitespace and all, rather than as
 markdown: the point of the page is to see what the model sees.
@@ -76,6 +81,13 @@ A description that enumerates **run data** rather than a policy — the skills i
 library, the agents on the roster, a state's outgoing edges — has no
 configuration-independent rendering, so it is built from obvious placeholders (`<skill>`,
 `<agent>`, `<state>`) and its note says the real list is the run's.
+
+The reference is therefore what gg **can** offer, and every gate on this page is written
+as a condition rather than an answer. *Which of them one agent of one run was actually
+offered* is a different question, answered by that instance's own
+[`agent_surface`](/gg/telemetry/#what-an-agent-is-offered) event and read in the console's
+Instances and Agents views — where a tool this page describes and that instance never had
+is the case worth finding.
 
 ## Generating it
 

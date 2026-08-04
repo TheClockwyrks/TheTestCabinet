@@ -302,7 +302,12 @@ store. That view is not only for the session that launched the run:
   configuration on the stream's first event, so a run with the tasks capability
   always has a **modules → tasks** file (empty until the model builds its list), while
   a run with compaction off has no compaction file. Every agent always has **overview**,
-  **activity**, and **context** files. The [Project management](/gg/project-management/)
+  **activity**, and **context** files. One file is deliberately the exception: what an
+  instance was [offered to call](/gg/telemetry/#what-an-agent-is-offered) (**tools**, or
+  **apis** for a [code-shaped](/gg/responses-as-code/) agent) is gated on the *instance*,
+  appearing only where that instance reported its resolved surface — a run recorded before
+  gg reported one has no such file, because a file showing an empty toolset would assert
+  the very thing it exists to distinguish. The [Project management](/gg/project-management/)
   board is **not** a per-agent file — because it is shared run-wide it surfaces as a
   run-global **Project** section, present only when that capability is on, and an
   agent's own `modules → board` file links through to it rather than drawing a second

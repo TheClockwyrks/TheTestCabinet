@@ -258,6 +258,7 @@ fn main() -> Result<()> {
                 gg::GgCapabilityConfig, gg::GgCapabilitySet,
                 gg::GgModuleKind, gg::GgModuleOwnership, gg::GgModuleOrigin,
                 gg::GgAgentModule, gg::GgModuleDisposition, gg::GgTransitionModule,
+                gg::GgAgentApi, gg::GgAgentApiFunction,
                 gg::GgArchiveEntry,
                 gg::GgFsmState, gg::GgFsmTransition,
                 gg::GgContextSource, gg::GgContextSourceUsage,
@@ -583,6 +584,10 @@ fn main() -> Result<()> {
                 "GgAgentModule",
                 "GgModuleDisposition",
                 "GgTransitionModule",
+                // The per-agent offered surface's vocabulary, which rides on `AgentSurface` and
+                // appears nowhere else in the contract.
+                "GgAgentApi",
+                "GgAgentApiFunction",
                 "GgArchiveEntry",
                 "GgIssueReviewPhase",
                 "GgReviewer",

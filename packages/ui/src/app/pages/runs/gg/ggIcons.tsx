@@ -149,6 +149,29 @@ export function CompactionIcon({ className }: IconProps) {
   );
 }
 
+// Tools — a wrench: the set of gg tools an instance was *offered*, which is a different
+// thing from the ones it reached for. It marks the surface file of a tool-calling agent.
+export function ToolsIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="M15 4.5a5 5 0 0 0-6.3 6.3l-5 5a2.1 2.1 0 0 0 3 3l5-5a5 5 0 0 0 6.3-6.3l-2.9 2.9-2.5-.7-.7-2.5 2.9-2.9Z" />
+    </Icon>
+  );
+}
+
+// APIs — angle brackets: the same offered surface for an agent that answers its turns as
+// code, where what it is given is a set of namespaced objects to call rather than tools to
+// name. Deliberately not the wrench: the two are the same question asked of two different
+// kinds of agent, and the glyph is what says which one this instance is.
+export function ApiIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="m16 6 5 6-5 6" />
+      <path d="m8 6-5 6 5 6" />
+    </Icon>
+  );
+}
+
 // Board — kanban columns of epics and issues.
 export function BoardIcon({ className }: IconProps) {
   return (

@@ -12,11 +12,22 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import dash from "./GgDashboard.module.scss";
 import styles from "./GgAgentsSummary.module.scss";
-import { useGgAgentSummaries, type GgAgentSummary } from "./ggAgentAggregate";
+import {
+  useGgAgentSummaries,
+  type GgAgentSummary,
+  type GgAgentSurfaceEntry,
+  type GgAgentSurfaceSummary,
+} from "./ggAgentAggregate";
 import type {
   GgAttributionRow,
   GgViewAttributionRow,
 } from "./ggContextAttribution";
+import {
+  sharedSurfaceGates,
+  surfaceCallCount,
+  surfaceCallPhrase,
+  type SurfaceCallCount,
+} from "./ggSurfaceCalls";
 import type {
   AgentTransition,
   AgentTreeNode,
@@ -370,35 +381,71 @@ function Figure({
 // One agent in full, behind its row: what it is configured as, what its instances spent, and
 // what filled their windows.
 //
-// The detail leads with the agent's *identity* — the capabilities it was granted and the
-// instances that came of it — because those two say what this arm of the experiment is, and
-// every number below is read against them. Then six content sections in one order: the summed
-// figures, the two spend widgets that take the money and token figures of that row apart, what
-// those instances hold, what filled their windows, and what they called. Each is a direct
-// child of `.agentDetail`, so every boundary between them is the single gap that container
-// sets — see the stylesheet for why the uniformity is deliberate.
+// The detail leads with the agent's *identity* — the capabilities it was granted, the surface
+// gg then resolved out of them, and the instances that came of it — because those say what
+// this arm of the experiment is, and every number below is read against them. The three are
+// one statement read in narrowing order: what was asked for, what was actually offered, and
+// who it was offered to. Then six content sections in one order: the summed figures, the two
+// spend widgets that take the money and token figures of that row apart, what those instances
+// hold, what filled their windows, and what they called. Each is a direct child of
+// `.agentDetail`, so every boundary between them is the single gap that container sets — see
+// the stylesheet for why the uniformity is deliberate.
+// The tools this profile's chips mark as struck, and whether that marking is a finding or
+// only a reading of the configuration.
+//
+// gg's own account wins wherever there is one. It holds exactly the `disabledTools` entries
+// that NAME A GG TOOL, because a name gg does not recognise withholds nothing — gg warns at
+// startup and offers the agent the surface it would have had — so a typo is absent from it
+// and a chip claiming an ablation that never applied cannot be drawn. Re-reading the
+// configuration here would draw precisely that chip, on the panel whose whole job is telling
+// "the harness never gave it" apart from "the model ignored it".
+//
+// The configuration is the fallback and only the fallback: a profile the run never spawned,
+// and every profile of a record written before gg emitted a surface, has no account to
+// prefer. There the chips still say what the arm asked for — losing that would leave an
+// unexercised arm undescribed — but they say it as a request rather than as an outcome.
+function agentAblation(agent: GgAgentSummary): {
+  tools: readonly string[];
+  applied: boolean;
+} {
+  if (agent.surface) return { tools: agent.surface.withheld, applied: true };
+  return { tools: agent.disabledTools, applied: false };
+}
+
 function AgentDetail({ agent }: { agent: GgAgentSummary }) {
   const ran = agent.instances.length > 0;
+  const ablation = agentAblation(agent);
   return (
     <>
-      {(agent.capabilities.length > 0 || agent.disabledTools.length > 0) && (
+      {(agent.capabilities.length > 0 || ablation.tools.length > 0) && (
         <div className={styles.capabilities}>
           {agent.capabilities.map((id) => (
             <span key={id} className={dash.capability}>
               {id}
             </span>
           ))}
-          {agent.disabledTools.map((tool) => (
+          {ablation.tools.map((tool) => (
             <span
               key={`-${tool}`}
               className={styles.disabledTool}
-              title="withheld from this agent even though its capability is on"
+              title={
+                ablation.applied
+                  ? "withheld from this agent even though its capability is on"
+                  : "the configuration asks for this to be withheld; no instance of this agent reported what it was offered, so whether it applied is unknown"
+              }
             >
               −{tool}
             </span>
           ))}
         </div>
       )}
+
+      {/* Directly under the chips, because it is the same statement made one step later:
+          the capability chips are what the configuration asked for, this is what gg resolved
+          out of them for the instances that actually ran — with the struck chips above
+          already gg's own (see `agentAblation`). It renders nothing at all for a profile
+          whose instances reported no surface — every record written before gg emitted one. */}
+      <SurfaceSection agent={agent} />
 
       {ran ? (
         <>
@@ -438,6 +485,215 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
       )}
     </>
   );
+}
+
+// --- What the agent was offered ------------------------------------------------
+//
+// Everything this profile's instances could call, as gg resolved it for each of them: the
+// tools a tool-calling agent was handed, or the API objects a responses-as-code program
+// binds.
+//
+// It exists to make one distinction readable that nothing else on this panel can make. The
+// observed-usage section at the foot of the detail lists what an agent *called*, so a tool it
+// was never given and a tool it was given and ignored look identical there — and telling
+// those two apart is the entire question a toolset ablation is run to answer. So this section
+// lists the offered set whole, keeps the never-called entries in it rather than dropping
+// them, and only dims them.
+//
+// The union across instances is the aggregate's, not this file's (see
+// {@link GgAgentSurfaceSummary}), and it is deliberately not averaged away: a profile's
+// instances legitimately differ, since where an instance stands in its state machine gates
+// what it may call. An entry short of the full count therefore says something true about the
+// run rather than reporting a disagreement, and is marked with the count instead of hidden.
+
+// Whether a profile's surface reads as API objects rather than as a flat list of tools.
+//
+// Decided by the mode the instances themselves reported rather than by the capability set:
+// the capability says what was asked for, this says what gg resolved, and only the second
+// knows which shape the agent's turn actually took. The fallback covers the two answers a
+// mode cannot give — instances that disagreed, and a mode this console has not met — where
+// what the instances actually bound is the better witness than a name nothing here
+// understands. A code agent that bound no object at all falls back with them, and reads as
+// the tools its program's calls were gated on, which is the only surface there is to show.
+function readsAsApis(surface: GgAgentSurfaceSummary): boolean {
+  if (surface.executionMode === "tool_calling") return false;
+  return surface.apis.length > 0;
+}
+
+// The offered surface of one profile: its tools, or its API objects and what each binds.
+function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
+  const { surface } = agent;
+  // The profile's observed calls, keyed by the gg tool a call is RECORDED under. That is the
+  // key an entry joins on, never the name it reads by: a code program's `readFile` is
+  // recorded as `read_file`, and joining on the displayed name would report every function
+  // of an API surface as never called.
+  const calls = useMemo(
+    () => new Map(agent.tools.tools.map((tool) => [tool.name, tool.calls])),
+    [agent.tools],
+  );
+  if (!surface) return null;
+
+  const asApis = readsAsApis(surface);
+  if (!asApis && surface.tools.length === 0) return null;
+  const label = asApis ? "APIs" : "Tools";
+  // Entries under the names they are joined and explained by. A chip reads by its bare
+  // function name under the object heading above it, but a shared figure has to name the
+  // functions it covers across objects — `readFile` alone would not say which one.
+  const shown: GgAgentSurfaceEntry[] = asApis
+    ? surface.apis.flatMap((api) =>
+        api.functions.map((fn) => ({
+          ...fn,
+          name: `${api.object}.${fn.name}`,
+        })),
+      )
+    : surface.tools;
+  // Taken across the whole surface, never per object — the two functions `read_file` backs on
+  // `fs` and the one it backs on `view` are one gate, and only a pass over all of them sees it.
+  const shared = sharedSurfaceGates(shown);
+  // The markings are only worth explaining where the section actually carries one — a legend
+  // for a distinction nothing below it draws is a line to read and discard.
+  const counts = shown.map((entry) => surfaceCallCount(entry, calls, shared));
+  const notes = [
+    counts.some((count) => count.count === 0)
+      ? "Dimmed entries were offered and never called."
+      : null,
+    shown.some((entry) => entry.offeredBy < surface.reportingInstances)
+      ? `A fraction marks an entry only some of the ${plural(surface.reportingInstances, "instance")} were offered — where an instance stands in its state machine gates what it may call.`
+      : null,
+    counts.some((count) => count.sharedGate != null)
+      ? "A figure named with a tool is that tool's own: gg records a call under the tool behind a function, and one tool can back several of them."
+      : null,
+  ].filter((note): note is string => note != null);
+
+  return (
+    <section
+      className={styles.section}
+      aria-label={`${agent.name} ${label.toLowerCase()}`}
+    >
+      <span className={dash.cardLabel}>
+        {asApis
+          ? `APIs · ${plural(surface.apis.length, "object")}`
+          : `Tools · ${numberFmt.format(surface.tools.length)} offered`}
+      </span>
+      {asApis ? (
+        <ul className={styles.surfaceApis}>
+          {surface.apis.map((api) => (
+            <li key={api.object} className={styles.surfaceApi}>
+              <div className={styles.surfaceApiHead}>
+                <span className={styles.surfaceObject}>{api.object}</span>
+                <span className={styles.surfaceObjectDesc}>
+                  {api.description}
+                </span>
+              </div>
+              <SurfaceEntries
+                entries={api.functions}
+                object={api.object}
+                calls={calls}
+                shared={shared}
+                instances={surface.reportingInstances}
+              />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <SurfaceEntries
+          entries={surface.tools}
+          calls={calls}
+          shared={shared}
+          instances={surface.reportingInstances}
+        />
+      )}
+      {notes.length > 0 && (
+        <p className={styles.sectionNote}>{notes.join(" ")}</p>
+      )}
+    </section>
+  );
+}
+
+// The offered things themselves, as chips: a set rather than a ranking, so it is read for
+// what is and is not in it rather than down a column of counts.
+//
+// A chip reads by its bare name under the object heading above it, but joins and explains
+// itself by the qualified one: `readFile` is not enough to say which function a shared
+// figure covers, and every object on the surface binds a `list`.
+function SurfaceEntries({
+  entries,
+  object,
+  calls,
+  shared,
+  instances,
+}: {
+  entries: readonly GgAgentSurfaceEntry[];
+  /** The object these functions sit on, where they sit on one — the qualifying prefix. */
+  object?: string;
+  /** The profile's observed calls, keyed by the tool they are recorded under. */
+  calls: ReadonlyMap<string, number>;
+  /** The gates backing more than one offered entry, whose counts are the gate's own. */
+  shared: ReadonlyMap<string, readonly string[]>;
+  /** The instances the union was taken over — the denominator of "offered by N of them". */
+  instances: number;
+}) {
+  return (
+    <ul className={styles.surfaceEntries}>
+      {entries.map((entry) => {
+        const qualified =
+          object == null ? entry.name : `${object}.${entry.name}`;
+        const count = surfaceCallCount(
+          { name: qualified, tool: entry.tool },
+          calls,
+          shared,
+        );
+        const partial = entry.offeredBy < instances;
+        return (
+          <li key={entry.name}>
+            <span
+              className={styles.surfaceEntry}
+              // An attribute rather than a second class, matching how the module views mark
+              // a row that is present but no longer live: the chip states a fact about the
+              // entry and the stylesheet decides what that looks like.
+              data-uncalled={count.count === 0 ? "" : undefined}
+              title={entryTitle(qualified, entry, count, instances)}
+            >
+              <span>{entry.name}</span>
+              {count.count != null && (
+                <span className={styles.surfaceEntryCalls}>
+                  {/* Whose figure it is, said on the chip itself. A count several functions
+                      share is the gate's, and a chip that showed it bare would read as this
+                      function's own — the one false reading this section must not produce. */}
+                  {count.sharedGate != null && (
+                    <span className={styles.surfaceEntryGate}>
+                      {count.sharedGate}
+                    </span>
+                  )}
+                  {count.count}×
+                </span>
+              )}
+              {partial && (
+                <span className={styles.surfaceEntryPartial}>
+                  {entry.offeredBy}/{instances}
+                </span>
+              )}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+// What a chip says on hover: what became of it, and — where it was not offered to all of
+// them — why a profile's instances can honestly differ. The dimming, the fraction and the
+// gate a figure is named with are all silent about their reason, and this is where the
+// reasons live.
+function entryTitle(
+  qualified: string,
+  entry: GgAgentSurfaceEntry,
+  count: SurfaceCallCount,
+  instances: number,
+): string {
+  const outcome = surfaceCallPhrase(qualified, count);
+  if (entry.offeredBy >= instances) return outcome;
+  return `${outcome} Offered to ${entry.offeredBy} of the ${plural(instances, "instance")} that reported a surface — an instance's position in its state machine gates what it may call, so an entry only some of them were offered is a fact about where they stood rather than an inconsistency.`;
 }
 
 // The instances themselves, each a chip that opens it in the Instances explorer — the way
@@ -1097,6 +1353,11 @@ function AttributionList({
 // Every tool this agent's instances called, summed — the itemized version of the Dashboard
 // row's chips, but per profile rather than per instance, so "the reviewer reads forty files
 // per review" is a thing you can see.
+//
+// Headed "Tool calls" rather than "Tools": the detail now also carries what the agent was
+// *offered* (see {@link SurfaceSection}), and the whole point of showing both is that they
+// are different sets — one heading for the two of them would have made the section this one
+// exists to be contrasted with look like a longer copy of it.
 function ToolsSection({ agent }: { agent: GgAgentSummary }) {
   const { tools, totalCalls, outputTokensKnown, totalContextTokens } =
     agent.tools;
@@ -1104,7 +1365,7 @@ function ToolsSection({ agent }: { agent: GgAgentSummary }) {
   return (
     <section className={styles.section}>
       <span className={dash.cardLabel}>
-        Tools · {numberFmt.format(totalCalls)} calls
+        Tool calls · {numberFmt.format(totalCalls)}
       </span>
       <ul className={styles.attrList}>
         {tools.map((tool) => {

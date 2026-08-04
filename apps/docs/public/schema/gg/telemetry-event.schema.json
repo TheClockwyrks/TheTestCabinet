@@ -1,5 +1,42 @@
 {
   "$defs": {
+    "GgAgentApi": {
+      "description": "One namespaced API object a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program binds — a\nrow of an [`AgentSurface`](GgTelemetryKind::AgentSurface)'s\n[`apis`](GgTelemetryKind::AgentSurface::apis) list.\n\nAn object is present exactly when the agent binds at least one of its functions, so a withheld\ncapability drops the whole object rather than leaving a named-but-empty one. The\n[description](Self::description) is the same one-line prose the agent's own system prompt names\nthe object by — the surface reports what the model was told, not a second wording of it.",
+      "properties": {
+        "description": {
+          "description": "The one-line description of the object the agent's system prompt carries.",
+          "type": "string"
+        },
+        "functions": {
+          "description": "The functions this instance actually binds on the object, in catalogue order, ending with\nthe `list` meta function every object carries — the same order the model sees when it calls\n`object.list()` for itself. Never empty: an object with nothing bound is absent instead.",
+          "items": {
+            "$ref": "#/$defs/GgAgentApiFunction"
+          },
+          "type": "array"
+        },
+        "object": {
+          "description": "The object a program calls through — `fs`, `view`, `harness`.",
+          "type": "string"
+        }
+      },
+      "required": ["object", "description", "functions"],
+      "type": "object"
+    },
+    "GgAgentApiFunction": {
+      "description": "One function bound on a [`GgAgentApi`] — what a\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call, and what gates it.\n\nThe load-bearing field is [`tool`](Self::tool): a code program's calls are recorded under the gg\n**tool** they run through, not under their JavaScript name, so it is the join key between a\nbound function and how many times this agent actually called it. A function with no tool behind\nit — a view call, an ending call, a program-library call — has none, and a consumer reports it\nas bound rather than as bound-and-never-called.",
+      "properties": {
+        "name": {
+          "description": "The name a program calls it by — `readFile`, `openDocsView`, `finish`.",
+          "type": "string"
+        },
+        "tool": {
+          "description": "The gg tool whose being offered binds this function, and the name its calls are counted\nunder. `None` for the calls no tool backs: the view channel, the ending calls the agent's\ndispatched role decides, and the program library's own calls.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["name"],
+      "type": "object"
+    },
     "GgAgentModule": {
       "description": "One [module](GgModuleKind) an agent instance holds — a row of an\n[`AgentModules`](GgTelemetryKind::AgentModules) roster.\n\nThe load-bearing field is [`module_id`](Self::module_id): it identifies the **backing store**\nrather than the holder, so two instances reporting one id are holding one store and two ids are\ntwo stores that may merely agree. Everything a reader wants to know about sharing — which\ninstances read one memory, whether a fork copied or linked, whether a profile's twelve instances\ncurate one notebook or twelve — is a fold over that field across every instance's roster.",
       "properties": {
@@ -1704,6 +1741,42 @@
         }
       },
       "required": ["type", "modules"],
+      "type": "object"
+    },
+    {
+      "description": "What one agent instance is **offered**: the calls it may make, as its incarnation opens —\nthe other half of the pair [`AgentModules`](Self::AgentModules) opens, which says what it\n*holds*.\n\nEmitted **once per incarnation, for every instance** — the root, every subagent, every\nsuccessor — immediately after that instance's [`AgentModules`](Self::AgentModules), and\nun-gated: an agent offered nothing at all still reports an empty\n[`tools`](Self::AgentSurface::tools), which is a finding rather than an absence. It is\nemitted once and never re-emitted, for the same reason a roster is: everything that changes\nwhat an agent holds — an `exec`, an [FSM](CAPABILITY_FSM) transition, a `fork` — mints a new\nagent id, and the new instance reports its own surface.\n\nIt exists because *\"the model was never given that tool\"* and *\"the model was given it and\nnever touched it\"* are different findings, and nothing else in the record tells them apart:\na [`ToolCall`](Self::ToolCall) reports only what was called, and re-deriving the offered set\nfrom the run's capability set cannot know about a\n[module binding](GgModuleKind), a [memory](CAPABILITY_MEMORIES) strategy, where the instance\nstands in its machine, or the per-tool\n[ablation](GgAgentConfig::disabled_tools) that withheld one tool of an enabled capability.\n[`tools`](Self::AgentSurface::tools) is the resolved, post-gating, post-`disabledTools` set,\nso a consumer joining it to this agent's calls can say which of the two happened, and\n[`withheld`](Self::AgentSurface::withheld) names that ablation as gg understood it — the one\nthing a consumer must not re-derive from the configuration, because a name gg does not\nrecognize withholds nothing at all.\n\nThe two [execution modes](Self::AgentSurface::execution_mode) offer the same capabilities\nthrough different surfaces, so the payload reports both shapes and each mode fills the one\nthat describes it: a tool-calling agent is offered tool names, and a responses-as-code agent\ncomposes those same tools as functions on namespaced [objects](GgAgentApi), which is what\n[`apis`](Self::AgentSurface::apis) enumerates.",
+      "properties": {
+        "apis": {
+          "description": "The namespaced API objects a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program\nbinds, in the order the system prompt lists them. Empty for a tool-calling agent, which\nhas no such surface — not merely unknown for one.",
+          "items": {
+            "$ref": "#/$defs/GgAgentApi"
+          },
+          "type": "array"
+        },
+        "executionMode": {
+          "description": "How this instance answers a turn: `tool_calling`, or `responses_as_code` when the\n[capability](CAPABILITY_RESPONSES_AS_CODE) is on for its profile. It is a per-agent\nproperty, not a run-wide one — one run may drive a code-shaped root and a tool-calling\nreviewer — which is why it is reported here rather than read off the session summary.",
+          "type": "string"
+        },
+        "tools": {
+          "description": "Every gg tool name this instance is offered, in the order the model is shown them: the\nregistry's tools in registration order, then the ending calls its dispatched role may\nend with (`finish`, or a reviewer's `approve`/`request_changes`, or a judge's\n`select_winner`).\n\nThe ending calls are appended by the loop rather than contributed by a capability, and\nare included here because the model is genuinely offered them every turn — a surface\nthat omitted them would answer *\"was `finish` offered?\"* with silence.\n\nPopulated in **both** execution modes: a responses-as-code agent reaches these same\ntools through its [`apis`](Self::AgentSurface::apis), and its calls are recorded under\nthese names.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "type": {
+          "const": "agent_surface",
+          "type": "string"
+        },
+        "withheld": {
+          "description": "The tools this instance's per-tool [ablation](GgAgentConfig::disabled_tools) actually\ntook away: the names its profile disables that **are gg tools**. A name gg does not know\n— a typo, a tool since removed — is absent, because it withheld nothing; gg logs a\nstartup warning about it and offers the agent exactly the surface it would have had.\nA consumer may therefore state each of these as an applied ablation without re-checking\nit against gg's vocabulary, which it has no way to know anyway.\n\nA name here is *asked for* rather than necessarily *taken*: an ablation may also name a\nreal tool no enabled capability was contributing, which withholds nothing in practice\nbut is a deliberate, meaningful setting for an arm of a sweep. What was actually offered\nis [`tools`](Self::AgentSurface::tools) — the two together say which of the two\nhappened, and neither derives the other.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["type", "executionMode", "tools"],
       "type": "object"
     },
     {

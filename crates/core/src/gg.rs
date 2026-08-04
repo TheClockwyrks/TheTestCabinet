@@ -668,6 +668,50 @@ impl std::fmt::Display for GgModuleDisposition {
     }
 }
 
+/// One namespaced API object a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program binds — a
+/// row of an [`AgentSurface`](GgTelemetryKind::AgentSurface)'s
+/// [`apis`](GgTelemetryKind::AgentSurface::apis) list.
+///
+/// An object is present exactly when the agent binds at least one of its functions, so a withheld
+/// capability drops the whole object rather than leaving a named-but-empty one. The
+/// [description](Self::description) is the same one-line prose the agent's own system prompt names
+/// the object by — the surface reports what the model was told, not a second wording of it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgAgentApi {
+    /// The object a program calls through — `fs`, `view`, `harness`.
+    pub object: String,
+    /// The one-line description of the object the agent's system prompt carries.
+    pub description: String,
+    /// The functions this instance actually binds on the object, in catalogue order, ending with
+    /// the `list` meta function every object carries — the same order the model sees when it calls
+    /// `object.list()` for itself. Never empty: an object with nothing bound is absent instead.
+    pub functions: Vec<GgAgentApiFunction>,
+}
+
+/// One function bound on a [`GgAgentApi`] — what a
+/// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program may call, and what gates it.
+///
+/// The load-bearing field is [`tool`](Self::tool): a code program's calls are recorded under the gg
+/// **tool** they run through, not under their JavaScript name, so it is the join key between a
+/// bound function and how many times this agent actually called it. A function with no tool behind
+/// it — a view call, an ending call, a program-library call — has none, and a consumer reports it
+/// as bound rather than as bound-and-never-called.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgAgentApiFunction {
+    /// The name a program calls it by — `readFile`, `openDocsView`, `finish`.
+    pub name: String,
+    /// The gg tool whose being offered binds this function, and the name its calls are counted
+    /// under. `None` for the calls no tool backs: the view channel, the ending calls the agent's
+    /// dispatched role decides, and the program library's own calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub tool: Option<String>,
+}
+
 /// The stable id of the Phase 2 [compaction] capability: the automatic
 /// summarize-and-restart that lets a run continue past the active model's context
 /// window. When the thread nears the window it summarizes the ephemeral history and
@@ -4591,6 +4635,82 @@ pub enum GgTelemetryKind {
         /// instance's profile has switched off, so an ablation's off arm is legible rather than
         /// absent.
         modules: Vec<GgAgentModule>,
+    },
+    /// What one agent instance is **offered**: the calls it may make, as its incarnation opens —
+    /// the other half of the pair [`AgentModules`](Self::AgentModules) opens, which says what it
+    /// *holds*.
+    ///
+    /// Emitted **once per incarnation, for every instance** — the root, every subagent, every
+    /// successor — immediately after that instance's [`AgentModules`](Self::AgentModules), and
+    /// un-gated: an agent offered nothing at all still reports an empty
+    /// [`tools`](Self::AgentSurface::tools), which is a finding rather than an absence. It is
+    /// emitted once and never re-emitted, for the same reason a roster is: everything that changes
+    /// what an agent holds — an `exec`, an [FSM](CAPABILITY_FSM) transition, a `fork` — mints a new
+    /// agent id, and the new instance reports its own surface.
+    ///
+    /// It exists because *"the model was never given that tool"* and *"the model was given it and
+    /// never touched it"* are different findings, and nothing else in the record tells them apart:
+    /// a [`ToolCall`](Self::ToolCall) reports only what was called, and re-deriving the offered set
+    /// from the run's capability set cannot know about a
+    /// [module binding](GgModuleKind), a [memory](CAPABILITY_MEMORIES) strategy, where the instance
+    /// stands in its machine, or the per-tool
+    /// [ablation](GgAgentConfig::disabled_tools) that withheld one tool of an enabled capability.
+    /// [`tools`](Self::AgentSurface::tools) is the resolved, post-gating, post-`disabledTools` set,
+    /// so a consumer joining it to this agent's calls can say which of the two happened, and
+    /// [`withheld`](Self::AgentSurface::withheld) names that ablation as gg understood it — the one
+    /// thing a consumer must not re-derive from the configuration, because a name gg does not
+    /// recognize withholds nothing at all.
+    ///
+    /// The two [execution modes](Self::AgentSurface::execution_mode) offer the same capabilities
+    /// through different surfaces, so the payload reports both shapes and each mode fills the one
+    /// that describes it: a tool-calling agent is offered tool names, and a responses-as-code agent
+    /// composes those same tools as functions on namespaced [objects](GgAgentApi), which is what
+    /// [`apis`](Self::AgentSurface::apis) enumerates.
+    AgentSurface {
+        /// How this instance answers a turn: `tool_calling`, or `responses_as_code` when the
+        /// [capability](CAPABILITY_RESPONSES_AS_CODE) is on for its profile. It is a per-agent
+        /// property, not a run-wide one — one run may drive a code-shaped root and a tool-calling
+        /// reviewer — which is why it is reported here rather than read off the session summary.
+        execution_mode: String,
+        /// Every gg tool name this instance is offered, in the order the model is shown them: the
+        /// registry's tools in registration order, then the ending calls its dispatched role may
+        /// end with (`finish`, or a reviewer's `approve`/`request_changes`, or a judge's
+        /// `select_winner`).
+        ///
+        /// The ending calls are appended by the loop rather than contributed by a capability, and
+        /// are included here because the model is genuinely offered them every turn — a surface
+        /// that omitted them would answer *"was `finish` offered?"* with silence.
+        ///
+        /// Populated in **both** execution modes: a responses-as-code agent reaches these same
+        /// tools through its [`apis`](Self::AgentSurface::apis), and its calls are recorded under
+        /// these names.
+        tools: Vec<String>,
+        /// The namespaced API objects a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program
+        /// binds, in the order the system prompt lists them. Empty for a tool-calling agent, which
+        /// has no such surface — not merely unknown for one.
+        // Omitted from the wire whenever it is empty, which is every tool-calling agent — so it has
+        // to declare its own optionality: the enum's `optional_fields` only reaches `Option<T>`, and
+        // a consumer promised an array the record does not carry would read `undefined.length`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        apis: Vec<GgAgentApi>,
+        /// The tools this instance's per-tool [ablation](GgAgentConfig::disabled_tools) actually
+        /// took away: the names its profile disables that **are gg tools**. A name gg does not know
+        /// — a typo, a tool since removed — is absent, because it withheld nothing; gg logs a
+        /// startup warning about it and offers the agent exactly the surface it would have had.
+        /// A consumer may therefore state each of these as an applied ablation without re-checking
+        /// it against gg's vocabulary, which it has no way to know anyway.
+        ///
+        /// A name here is *asked for* rather than necessarily *taken*: an ablation may also name a
+        /// real tool no enabled capability was contributing, which withholds nothing in practice
+        /// but is a deliberate, meaningful setting for an arm of a sweep. What was actually offered
+        /// is [`tools`](Self::AgentSurface::tools) — the two together say which of the two
+        /// happened, and neither derives the other.
+        // Omitted from the wire whenever it is empty, which is every agent that ablates nothing —
+        // same optionality problem, and the same fix, as `apis` above.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        withheld: Vec<String>,
     },
     /// A per-[slot](GgSlotBinding) usage/cost rollup for the run so far — the accounting that
     /// replaces "one figure for one model" now that a run spans several models.

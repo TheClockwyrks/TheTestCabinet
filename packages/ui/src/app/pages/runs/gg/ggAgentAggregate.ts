@@ -52,6 +52,7 @@ import {
   toolCallsPerResponse,
   type AgentTreeNode,
   type DerivedGgState,
+  type GgAgentSurface,
   type GgToolBreakdown,
   type GgToolUsage,
   type UsageTally,
@@ -74,6 +75,95 @@ export interface GgAgentInstance {
   /** The fullest its context window ever got, as a fraction and in raw tokens. */
   peakFullness: number | null;
   peakTokens: number;
+}
+
+/**
+ * One thing a profile's instances were offered: a gg tool, or a function bound on one of a
+ * responses-as-code program's API objects.
+ *
+ * The load-bearing field is {@link tool} — the name a call is RECORDED under, which is not
+ * always the name the entry reads by. A tool entry is called by its own name, but a code
+ * program's `readFile` is recorded as `read_file`, so joining a function to how many times
+ * it was actually called goes through the gate, never through {@link name}. A function with
+ * no tool behind it (a view call, an ending call, a program-library call) has none, and is
+ * reported as bound rather than as bound-and-never-called.
+ */
+export interface GgAgentSurfaceEntry {
+  /** The name the entry reads by: the gg tool's name, or the function's name on its object. */
+  name: string;
+  /**
+   * The gg tool this entry's calls are counted under — the join key into the profile's
+   * {@link GgAgentSummary.tools} breakdown. Equal to {@link name} for a tool entry; the
+   * function's gate for an API entry; null for a function no tool backs, which therefore has
+   * no call count to show rather than a count of zero.
+   */
+  tool: string | null;
+  /**
+   * How many of the profile's REPORTING instances were offered it — out of
+   * {@link GgAgentSurfaceSummary.reportingInstances}. Short of that total is the interesting
+   * case: the instances of one profile genuinely differ, because an FSM state gates the
+   * transition call and withholds `exec` while it holds, so an entry only some instances saw
+   * is a fact about where in its machine they were, not an inconsistency.
+   */
+  offeredBy: number;
+}
+
+/** One namespaced API object of a profile's offered surface, unioned across its instances. */
+export interface GgAgentSurfaceApi {
+  /** The object a program calls through — `fs`, `view`, `harness`. */
+  object: string;
+  /** The one-line description the agents' own system prompts name the object by. */
+  description: string;
+  /** The functions its instances bound on it, in catalogue order (first-seen wins). */
+  functions: GgAgentSurfaceEntry[];
+  /** How many of the profile's reporting instances bound the object at all. */
+  offeredBy: number;
+}
+
+/**
+ * What a profile's instances were OFFERED, unioned across them.
+ *
+ * Like the module roster beside it this does not sum, and for a sharper reason: an offered
+ * set is not a quantity, so twelve instances are twelve answers to one question rather than
+ * twelve samples of one figure. Where they agree — the normal case — the union is simply
+ * that answer; where they differ, taking any one instance's set would silently assert a tool
+ * was withheld from a profile that in fact holds it in another state. So the union is the
+ * profile's surface and each entry carries the count that says how much of the profile it
+ * really covers.
+ */
+export interface GgAgentSurfaceSummary {
+  /**
+   * How this profile's instances answer a turn — `tool_calling` or `responses_as_code` — as
+   * they THEMSELVES reported it. Deliberately not inferred from the capability set: the
+   * capability says what was asked for and this says what gg resolved, and it is the second
+   * that decides whether the profile has tools or an API surface. Null only where instances
+   * somehow disagree, which no configuration produces.
+   */
+  executionMode: string | null;
+  /**
+   * How many instances this union was taken over — the denominator every `offeredBy` reads
+   * against. It counts the instances that REPORTED a surface, not every instance of the
+   * profile, so a run that mixes reporting and pre-`agent_surface` instances still reads
+   * "offered by all of them" for a tool they all held.
+   */
+  reportingInstances: number;
+  /** Every gg tool any instance was offered, in the order the model was shown them. */
+  tools: GgAgentSurfaceEntry[];
+  /** The API objects a responses-as-code profile's programs bind. Empty for tool calling. */
+  apis: GgAgentSurfaceApi[];
+  /**
+   * The tools an ablation took off this profile — gg's own account of it, and only the
+   * `disabledTools` entries that NAME A GG TOOL. A name gg does not recognise withheld
+   * nothing (gg warns and offers the agent the surface it would have had), so it is absent
+   * here, which is the whole reason this is unioned off the instances rather than re-read
+   * from the configuration: a typo shown as an applied ablation is the one claim this panel
+   * cannot afford.
+   *
+   * Unlike everything else here the union is uniform by construction — an ablation is a
+   * property of the profile, not of where an instance stands in its machine — so the entries
+   * carry no `offeredBy` count to read against {@link reportingInstances}.
+   */
+  withheld: string[];
 }
 
 /** Everything one configured agent did, summed across every instance of it. */
@@ -155,6 +245,17 @@ export interface GgAgentSummary {
    * index (see {@link deriveGgAgentSummaries}).
    */
   modules: GgAgentModuleSummary[];
+  /**
+   * What its instances were OFFERED, unioned across them — the counterpart to {@link tools},
+   * which is only what they went on to CALL. Reading the two together is the point: a tool
+   * present here and absent there was offered and ignored, and a tool absent from both was
+   * never on the table at all.
+   *
+   * Null when no instance reported a surface — a profile the run never instantiated, and
+   * every profile of a run recorded before gg emitted `agent_surface`. A consumer must then
+   * show nothing rather than an empty toolset, which would read as "offered none".
+   */
+  surface: GgAgentSurfaceSummary | null;
 }
 
 const EMPTY_STATUS_COUNTS: Record<GgAgentStatus, number> = {
@@ -233,6 +334,85 @@ export function mergeToolBreakdowns(
 }
 
 /**
+ * Union several instances' offered surfaces into their profile's — see
+ * {@link GgAgentSurfaceSummary}. Null for no surfaces at all, which is what keeps a profile
+ * the run never ran (and every profile of a pre-`agent_surface` record) rendering nothing
+ * instead of an empty one.
+ *
+ * Order is the order the model was shown things — the first instance's registry order, with
+ * anything a later instance adds appended — never a frequency sort, because the offered set
+ * is meant to be read against what the agent's own prompt listed.
+ */
+export function mergeAgentSurfaces(
+  parts: readonly GgAgentSurface[],
+): GgAgentSurfaceSummary | null {
+  if (parts.length === 0) return null;
+
+  const tools = new Map<string, GgAgentSurfaceEntry>();
+  // Each object's own fold: its description (first seen), how many instances bound it, and
+  // its functions in the same first-seen order the objects themselves keep.
+  const apis = new Map<
+    string,
+    {
+      description: string;
+      offeredBy: number;
+      functions: Map<string, GgAgentSurfaceEntry>;
+    }
+  >();
+  const modes = new Set<string>();
+  // A set, not a tally: every instance of a profile is ablated identically, so a name is
+  // either in the profile's control arm or it is not.
+  const withheld = new Set<string>();
+
+  for (const part of parts) {
+    modes.add(part.executionMode);
+    for (const name of part.withheld) withheld.add(name);
+    for (const name of part.tools) {
+      const at = tools.get(name);
+      if (at) at.offeredBy += 1;
+      else tools.set(name, { name, tool: name, offeredBy: 1 });
+    }
+    for (const api of part.apis) {
+      let group = apis.get(api.object);
+      if (!group) {
+        group = {
+          description: api.description,
+          offeredBy: 0,
+          functions: new Map(),
+        };
+        apis.set(api.object, group);
+      }
+      group.offeredBy += 1;
+      for (const fn of api.functions) {
+        const at = group.functions.get(fn.name);
+        if (at) at.offeredBy += 1;
+        else
+          group.functions.set(fn.name, {
+            name: fn.name,
+            tool: fn.tool ?? null,
+            offeredBy: 1,
+          });
+      }
+    }
+  }
+
+  return {
+    // One mode is the answer; a profile whose instances somehow disagree has none, since
+    // naming either would decide the read-out's whole shape on a coin toss.
+    executionMode: modes.size === 1 ? [...modes][0]! : null,
+    reportingInstances: parts.length,
+    tools: [...tools.values()],
+    apis: [...apis.entries()].map(([object, group]) => ({
+      object,
+      description: group.description,
+      functions: [...group.functions.values()],
+      offeredBy: group.offeredBy,
+    })),
+    withheld: [...withheld],
+  };
+}
+
+/**
  * The profile an instance ran under: the name its spawn carried, or — for the main agent on
  * a stream recorded before gg named it — the configuration's first profile, which is the
  * root by definition. An instance the stream never named at all (a placeholder built from an
@@ -301,6 +481,10 @@ export function deriveGgAgentSummaries(
     const usage = emptyTally();
     const pricedSlots: PricedSlot[] = [];
     const toolParts: GgToolBreakdown[] = [];
+    // Collected off the forest nodes rather than the per-agent slices, so an instance whose
+    // slice never materialized still contributes what it was offered — the surface is a fact
+    // about the instance opening, not about anything it went on to do.
+    const surfaceParts: GgAgentSurface[] = [];
     const contextParts: GgContextAttribution[] = [];
     const statusCounts = { ...EMPTY_STATUS_COUNTS };
     const modelIds: string[] = [];
@@ -320,6 +504,7 @@ export function deriveGgAgentSummaries(
       statusCounts[node.status] += 1;
       if (node.modelId && !modelIds.includes(node.modelId))
         modelIds.push(node.modelId);
+      if (node.surface) surfaceParts.push(node.surface);
 
       const state = perAgent.get(node.id);
       if (!state) {
@@ -399,6 +584,7 @@ export function deriveGgAgentSummaries(
       toolCallsPerResponse: toolCallsPerResponse(tools, turns),
       context: mergeGgAttributions(contextParts),
       modules: modules?.byProfile.get(name) ?? [],
+      surface: mergeAgentSurfaces(surfaceParts),
     };
   });
 }
