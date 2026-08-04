@@ -138,6 +138,24 @@ forwarded backend: point `tcab` at it with `TCAB_BACKEND_URL=http://127.0.0.1:87
 Connections settings. After editing a test case, re-ingest with
 `make -C deployments/local local-ingest`.
 
+If a later `local-forward` fails to bind — "address already in use", or one service
+reachable while another is not — a previous session left `kubectl port-forward`
+children behind: `local-forward` backgrounds one per service, so a Ctrl-C that only
+reached the foreground process, or a terminal that died outright, can orphan some of
+them. Clear them with:
+
+```sh
+scripts/free-local-forward.sh              # stop local forwarding
+scripts/free-local-forward.sh --dry-run    # show what would be stopped, and stop nothing
+```
+
+It only touches forwards into the local namespace that target this repo's own
+services, so a forward you are deliberately holding open against staging or prod
+survives. It finishes by reporting each forwarded port as free or still held, and
+exits non-zero if any is still held. A port held by something that is **not** one of
+our forwards is reported and left alone — in a devcontainer that is usually the
+editor auto-forwarding the port, which you stop in its PORTS panel.
+
 ## Pointing `tcab` at a deployment
 
 `tcab` is a thin enqueue-and-watch client, so the only difference between the local
