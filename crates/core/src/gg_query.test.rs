@@ -18,8 +18,8 @@ use crate::code_analysis::{
 };
 use crate::gg::{
     CAPABILITY_COMPACTION, CAPABILITY_FSM, CAPABILITY_MEMORIES, CAPABILITY_SHELL,
-    CAPABILITY_SKILLS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgHealingSummary,
-    GgRunLimits, GgSessionSummary, GgSlotCost,
+    CAPABILITY_SKILLS, GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgErrorSummary,
+    GgHealingSummary, GgRunLimits, GgSessionSummary, GgSlotCost,
 };
 use crate::metrics::{Cost, RunMetrics, TokenCounts};
 use crate::run_record::{
@@ -381,6 +381,17 @@ fn session_summary() -> GgSessionSummary {
         execution_mode: "tool_calling".to_string(),
         code_executions: 0,
         healing: GgHealingSummary::default(),
+        errors: GgErrorSummary {
+            turns: 20,
+            errors: 3,
+            max_consecutive: 2,
+            model_api: 1,
+            transpile: 0,
+            program_fault: 2,
+            sandbox_limit: 0,
+            missing_completion: 0,
+            loop_aborts: 4,
+        },
         issues_created: 0,
         issues_completed: 0,
         slot_costs: vec![
@@ -649,6 +660,36 @@ fn the_whole_session_summary_is_queryable_without_an_enum_arm() {
         Some(&GgValue::String("tool_calling".to_string()))
     );
     assert_eq!(doc.get("limit"), Some(&GgValue::String("none".to_string())));
+}
+
+#[test]
+fn the_error_rollup_is_queryable_the_moment_it_exists_on_the_summary() {
+    // The same property one level down: `GgErrorSummary` was added to the summary and no
+    // arm anywhere had to be written for it. A study asking "which configurations fail
+    // more than a fifth of their turns?" divides two fields the summary carries, which is
+    // exactly why no percentage is stored.
+    let doc = build_run_doc(&gg_record(), &GgDocLifecycle::default());
+    assert_eq!(
+        doc.get("summary.errors.turns"),
+        Some(&GgValue::Number(20.0))
+    );
+    assert_eq!(
+        doc.get("summary.errors.errors"),
+        Some(&GgValue::Number(3.0))
+    );
+    assert_eq!(
+        doc.get("summary.errors.maxConsecutive"),
+        Some(&GgValue::Number(2.0))
+    );
+    assert_eq!(
+        doc.get("summary.errors.programFault"),
+        Some(&GgValue::Number(2.0))
+    );
+    assert_eq!(
+        doc.get("summary.errors.loopAborts"),
+        Some(&GgValue::Number(4.0)),
+        "a discarded looping attempt is money spent on nothing and must be sliceable"
+    );
 }
 
 #[test]

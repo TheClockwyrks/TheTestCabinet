@@ -108,6 +108,7 @@ fn prose_reply(text: &str) -> ModelResponse {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -165,6 +166,7 @@ async fn self_summarization_falls_back_when_the_reply_is_empty() {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     });
     script.push(stop_response());
 

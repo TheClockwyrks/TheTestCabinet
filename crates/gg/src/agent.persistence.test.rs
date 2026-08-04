@@ -145,6 +145,7 @@ fn read_with(id: &str, arguments: serde_json::Value) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 

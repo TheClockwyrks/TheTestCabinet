@@ -17,6 +17,7 @@ import {
   emptyDraft,
   fsmStatesWarnings,
   launchModelSlots,
+  loopDetectionWarning,
   renameStateDraft,
   resetAgentForMode,
   runLimitsWarning,
@@ -264,6 +265,107 @@ describe("gg agents", () => {
     expect(back.agents[1]!.promptCacheTtl).toBeUndefined();
   });
 
+  it("round-trips loop detection knob for knob, writing no key when nobody armed it", () => {
+    const configured = set({
+      agents: [
+        agent({
+          loopDetection: {
+            enabled: true,
+            windowWords: 512,
+            // 0 is a SETTING on this knob — "abandon as soon as the window saturates" —
+            // not an unset field, and it has to survive as one.
+            minSaturatedRun: 0,
+          },
+        }),
+        agent({ name: "scout" }),
+      ],
+    });
+    const draft = draftFromCapabilitySet(configured);
+    expect(draft.agents[0]!.loopDetection.enabled).toBe(true);
+    expect(draft.agents[0]!.loopDetection.knobs.windowWords).toBe("512");
+    expect(draft.agents[0]!.loopDetection.knobs.minSaturatedRun).toBe("0");
+    // A knob the configuration did not name is an empty field, which is exactly "take
+    // gg's default" — seeding it with the default figure would freeze today's number into
+    // every stored configuration.
+    expect(draft.agents[0]!.loopDetection.knobs.repeatThreshold).toBe("");
+    // An agent that names no declaration — every configuration stored before the lever
+    // existed — loads disarmed, which is gg's own reading of the absent key.
+    expect(draft.agents[1]!.loopDetection.enabled).toBe(false);
+
+    const back = capabilitySetFromDraft(draft, null);
+    expect(back.agents[0]!.loopDetection).toEqual({
+      enabled: true,
+      windowWords: 512,
+      minSaturatedRun: 0,
+    });
+    expect(back.agents[1]!.loopDetection).toBeUndefined();
+  });
+
+  it("keeps the knobs of a detector that was tuned and then switched off", () => {
+    // The operator configured it and disarmed it; discarding the settings on save would
+    // lose them the next time it was armed.
+    const draft = emptyDraft();
+    draft.agents[0]!.loopDetection = {
+      enabled: false,
+      knobs: {
+        ...draft.agents[0]!.loopDetection.knobs,
+        repeatThreshold: "64",
+      },
+    };
+    expect(
+      capabilitySetFromDraft(draft, null).agents[0]!.loopDetection,
+    ).toEqual({ enabled: false, repeatThreshold: 64 });
+  });
+
+  it("writes no knob for a field left empty or half-typed", () => {
+    const draft = emptyDraft();
+    draft.agents[0]!.loopDetection = {
+      enabled: true,
+      knobs: { ...draft.agents[0]!.loopDetection.knobs, windowWords: "  " },
+    };
+    expect(
+      capabilitySetFromDraft(draft, null).agents[0]!.loopDetection,
+    ).toEqual({ enabled: true });
+  });
+
+  it("refuses a loop-detection knob that is not a whole, non-negative count", () => {
+    const draft = emptyDraft();
+    const knobs = draft.agents[0]!.loopDetection.knobs;
+    draft.agents[0]!.loopDetection = {
+      enabled: true,
+      knobs: { ...knobs, windowWords: "-4" },
+    };
+    expect(draftSaveError(draft)).toContain("Root");
+    expect(draftSaveError(draft)).toContain("Window (words)");
+    draft.agents[0]!.loopDetection = {
+      enabled: true,
+      knobs: { ...knobs, windowWords: "12.5" },
+    };
+    expect(draftSaveError(draft)).not.toBeNull();
+    draft.agents[0]!.loopDetection = {
+      enabled: true,
+      knobs: { ...knobs, windowWords: "512" },
+    };
+    expect(draftSaveError(draft)).toBeNull();
+  });
+
+  it("warns, without refusing, about an armed detector that could never trip", () => {
+    // gg resolves this at launch by arming it as declared and warning; the console says the
+    // same thing while it can still be fixed, and refuses nothing gg would accept.
+    const draft = emptyDraft();
+    const knobs = draft.agents[0]!.loopDetection.knobs;
+    const armed = {
+      enabled: true,
+      knobs: { ...knobs, windowWords: "8", minOffenders: "20" },
+    };
+    draft.agents[0]!.loopDetection = armed;
+    expect(loopDetectionWarning(armed)).toContain("could never trip");
+    expect(draftSaveError(draft)).toBeNull();
+
+    // Nothing is said about a detector nothing will read.
+    expect(loopDetectionWarning({ ...armed, enabled: false })).toBeNull();
+  });
+
   it("refuses structural agent errors", () => {
     const draft = emptyDraft();
     draft.agents.push(agentDraft(draft, "reviewer"));
@@ -433,16 +535,23 @@ describe("gg filesystem capabilities", () => {
   });
 });
 
-// The `responses-as-code` capability's `healing` param: a `toggles` control whose
-// members are on unless switched off, so only the off ones are ever written.
+// The `responses-as-code` capability's `healing` param: a `toggles` control whose members
+// each sit at their own default — five on, `drop-doubled-response` off — so only the ones
+// an operator MOVES are ever written, in whichever direction they moved.
 const CODE = "responses-as-code";
 
 function healingOf(s: GgCapabilitySet): unknown {
   return setCaps(s).find((cap) => cap.id === CODE)?.params?.healing;
 }
 
+// The `healing` toggles draft of the (single) agent, which holds the members moved off
+// their default rather than a raw off-list.
+function healingDraft(draft: GgConfigDraft): string | undefined {
+  return draftCaps(draft)[CODE]?.params?.healing;
+}
+
 describe("gg response-healing toggles", () => {
-  it("writes nothing when every strategy is left on", () => {
+  it("writes nothing when every strategy is left at its own default", () => {
     const draft = emptyDraft();
     draft.agents[0]!.capabilities[CODE] = {
       ...draft.agents[0]!.capabilities[CODE]!,
@@ -479,6 +588,71 @@ describe("gg response-healing toggles", () => {
       "drop-imports": false,
       "unwrap-async": false,
     });
+  });
+
+  it("arms the one strategy gg leaves off, which no subtractive rule could express", () => {
+    // `drop-doubled-response` is the only repair that is off unless a configuration arms
+    // it — the half it deletes is valid code under any other reading — so the draft has to
+    // record a MOVE rather than an omission, and write `true` rather than nothing.
+    const draft = emptyDraft();
+    const cap = draft.agents[0]!.capabilities[CODE]!;
+    // The param belongs to the responses-as-code agent TYPE, so the agent has to be one
+    // for anything about it to be written at all.
+    draft.agents[0]!.mode = "rac";
+    draft.agents[0]!.capabilities[CODE] = {
+      ...cap,
+      enabled: true,
+      params: { ...cap.params, healing: "drop-doubled-response" },
+    };
+    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
+      "drop-doubled-response": true,
+    });
+  });
+
+  it("round-trips an armed default-off strategy back to the same key", () => {
+    const configured = capSet([
+      {
+        id: CODE,
+        enabled: true,
+        params: { healing: { "drop-doubled-response": true } },
+      },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    // Moved off its default, so it is exactly what the draft records.
+    expect(healingDraft(draft)).toBe("drop-doubled-response");
+    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
+      "drop-doubled-response": true,
+    });
+  });
+
+  it("leaves an unmentioned default-off strategy off rather than arming it", () => {
+    // A stored object names only what was moved, so every member it does not mention takes
+    // its own default — which for this one is off. Resolving the off-list off the entries
+    // alone would silently arm it on the next save.
+    const configured = capSet([
+      {
+        id: CODE,
+        enabled: true,
+        params: { healing: { "drop-imports": false } },
+      },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(healingDraft(draft)).toBe("drop-imports");
+    expect(healingOf(capabilitySetFromDraft(draft, null))).toEqual({
+      "drop-imports": false,
+    });
+  });
+
+  it("reads the `true` shorthand as the defaults, not as every strategy on", () => {
+    // The two scalar shorthands are deliberately asymmetric: `false` is the master switch
+    // and means every member off, while `true` means each member at its own default — so
+    // it must not arm the one that defaults off.
+    const configured = capSet([
+      { id: CODE, enabled: true, params: { healing: true } },
+    ]);
+    const draft = draftFromCapabilitySet(configured);
+    expect(healingDraft(draft)).toBe("");
+    expect(healingOf(capabilitySetFromDraft(draft, null))).toBeUndefined();
   });
 
   it("preserves a value the control cannot represent in the passthrough", () => {

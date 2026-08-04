@@ -30,6 +30,12 @@ And one stop that is not configured at all — an operator's
 documented here because it is read at exactly the same place as the two run-wide ceilings,
 on exactly the same terms, and stops a run in exactly the same shape.
 
+One guardrail is deliberately **not** here: [loop detection](/gg/loop-detection/) bounds a
+single *reply* rather than a run, is armed per agent rather than per run, and abandons work
+mid-flight rather than at a turn boundary. It has its own page for those reasons, and its
+work — a reply thrown away and re-requested — is the one thing on this page's terms that no
+ceiling ever observes, because a discarded attempt is not a turn.
+
 Three of them are new. The turn ceiling and the wall-clock budget predate them and are
 folded in **unchanged in behaviour**, so there is one place to configure a ceiling, one
 place a breach is recorded, and one aggregation facet across all five, rather than two
@@ -81,6 +87,29 @@ A tool-calling turn is total in three rows: it requested calls (a good turn), it
 requested none (it ended the session), or the model call failed. That asymmetry — four of
 the five error shapes are code-mode shapes — is real rather than an oversight: a
 tool-calling turn has no way to declare work that can be cut short.
+
+### The same judgement is what the run publishes
+
+This definition is evaluated **once** per turn, at a single seam, and everything downstream
+reads that one answer. The ceilings below are enforced on it, and it is also emitted on the
+run's [telemetry](/gg/telemetry/#how-a-turn-ended) as a `turn_outcome` event and rolled up
+onto the session summary as `errors`. There is deliberately no second, softer notion of
+"went wrong" for the metrics to count — a run's reported error rate and the threshold that
+would have stopped it are the same measurement, so a study can compare a run that tripped a
+ceiling with one that did not without translating between two vocabularies.
+
+That matters most for the runs a ceiling never stopped. A ceiling only records something
+when it fires, so a `maxConsecutiveErrors` of 5 tells you nothing about the run that peaked
+at 4 — and "peaked at 4 out of 96 turns" is exactly the reading that says whether the
+ceiling is set anywhere near the right place. The rollup carries that for every run, hit or
+not: `turns`, `errors`, `maxConsecutive`, the per-kind split, and the replies
+[loop detection](/gg/loop-detection/) discarded on the way.
+
+One shape is counted in **neither**: a reply abandoned mid-stream by loop detection is not
+an error turn at all. The attempt is discarded, the request is retried, and the turn is
+judged on whatever the retry produced — so a looping reply that the next attempt fixes never
+touches a ceiling. It is still money spent, which is why it is counted separately as
+`loopAborts` rather than not at all.
 
 ## The defaults catch a failing run, not a long one
 
@@ -399,6 +428,15 @@ attempt within a single turn; counting it and looping again would be a second,
 undocumented retry layer with a worse backoff and no jitter. The deterministic kinds recur
 identically, and a refused credential must remain the one non-zero process exit, or it
 gets scored against a model that never ran.
+
+A reply that [looped](/gg/loop-detection/) on every one of the client's attempts arrives
+here too, and ends the session on exactly these terms — but it is **named** separately in
+the log (*"generation loop (every attempt looped)"*), because "retries exhausted" would send
+an operator looking at the provider for an outage that never happened. What actually
+happened is that the model kept writing the same thing and gg kept throwing it away. The
+recorded error kind is still `model_api`: by the time it reaches the loop it is a
+model-client failure after that client exhausted its own budget, indistinguishable at this
+seam from any other.
 
 ## What a breach records
 

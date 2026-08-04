@@ -852,6 +852,19 @@ pub enum GgReplayModelErrorKind {
     VisionUnsupported,
     /// A `2xx` response could not be parsed into a model response. Fatal.
     Parse,
+    /// Every attempt at the request was abandoned mid-stream by
+    /// [loop detection](crate::gg::GgLoopDetection) — the model produced a repetition, not a reply,
+    /// on all of them. Retryable at the turn level and counted against the run's error ceiling,
+    /// exactly like [`RetryExhausted`](Self::RetryExhausted), and kept apart from it because the
+    /// two are diagnosed completely differently: one is the provider failing, the other is the
+    /// model failing.
+    ///
+    /// A reconstruction sees only the attempts that were *returned*, never the discarded ones: the
+    /// recorder journals the response a turn actually got, so a reply the guard abandoned never
+    /// entered the context and correctly never enters the replay either. The
+    /// [`attempts`](GgReplayModelError::attempts) count is how many were discarded before the loop
+    /// gave up.
+    ResponseLoop,
 }
 
 /// A tool call the agent (or a [responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE)

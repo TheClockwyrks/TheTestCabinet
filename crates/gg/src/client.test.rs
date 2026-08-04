@@ -27,6 +27,7 @@ fn build_request_body_uses_openai_tools_shape() {
         &tools,
         None,
         CacheTtl::Standard,
+        false,
     );
 
     assert_eq!(body["model"], json!("anthropic/claude-opus-4-8"));
@@ -60,7 +61,7 @@ fn build_request_body_encodes_tool_call_arguments_as_string() {
         Message::tool_result("call_1", "wrote 13 bytes"),
     ];
 
-    let body = build_request_body("m", &messages, &[], None, CacheTtl::Standard);
+    let body = build_request_body("m", &messages, &[], None, CacheTtl::Standard, false);
 
     let wire_call = &body["messages"][0]["tool_calls"][0];
     assert_eq!(wire_call["id"], json!("call_1"));
@@ -87,7 +88,14 @@ fn build_request_body_encodes_tool_call_arguments_as_string() {
 /// With no tools offered, neither `tools` nor `tool_choice` is present.
 #[test]
 fn build_request_body_omits_tools_when_none() {
-    let body = build_request_body("m", &[Message::user("hi")], &[], None, CacheTtl::Standard);
+    let body = build_request_body(
+        "m",
+        &[Message::user("hi")],
+        &[],
+        None,
+        CacheTtl::Standard,
+        false,
+    );
     assert!(body.get("tools").is_none());
     assert!(body.get("tool_choice").is_none());
 }
@@ -105,6 +113,7 @@ fn build_request_body_sends_the_session_key_as_both_fields() {
         &[],
         Some("session-42"),
         CacheTtl::Standard,
+        false,
     );
     assert_eq!(body["session_id"], json!("session-42"));
     assert_eq!(body["prompt_cache_key"], json!("session-42"));
@@ -115,13 +124,21 @@ fn build_request_body_sends_the_session_key_as_both_fields() {
 #[test]
 fn build_request_body_omits_the_session_key_without_one() {
     for body in [
-        build_request_body("m", &[Message::user("hi")], &[], None, CacheTtl::Standard),
+        build_request_body(
+            "m",
+            &[Message::user("hi")],
+            &[],
+            None,
+            CacheTtl::Standard,
+            false,
+        ),
         build_request_body(
             "m",
             &[Message::user("hi")],
             &[],
             Some(""),
             CacheTtl::Standard,
+            false,
         ),
     ] {
         assert!(body.get("session_id").is_none());
@@ -142,6 +159,7 @@ fn build_request_body_truncates_an_over_long_session_key() {
         &[],
         Some(&key),
         CacheTtl::Standard,
+        false,
     );
 
     let sent = body["session_id"].as_str().expect("a session id");
@@ -167,6 +185,7 @@ fn build_request_body_sends_an_attached_image_as_a_content_part() {
         &[],
         None,
         CacheTtl::Standard,
+        false,
     );
 
     let tool_msg = &body["messages"][1];
@@ -204,6 +223,7 @@ fn build_request_body_keeps_plain_content_without_images() {
         &[],
         None,
         CacheTtl::Standard,
+        false,
     );
 
     // The anchor (index 1) and the tail (index 3) are breakpoints; the untouched middle keeps
@@ -235,6 +255,7 @@ fn build_request_body_sends_no_markers_to_an_implicitly_caching_model() {
             &[],
             None,
             CacheTtl::Standard,
+            false,
         );
         assert!(
             markers(&body).is_empty(),
@@ -319,6 +340,7 @@ fn build_request_body_marks_the_opening_context_and_the_tail() {
         &[],
         None,
         CacheTtl::Standard,
+        false,
     );
 
     // The anchor is the last message before the first assistant turn (the fixed preamble), and
@@ -426,6 +448,7 @@ fn build_request_body_marks_the_last_part_of_an_image_message() {
         &[],
         None,
         CacheTtl::Extended,
+        false,
     );
 
     let parts = body["messages"][1]["content"]
@@ -487,6 +510,7 @@ fn build_request_body_extends_the_ttl_of_the_stable_breakpoints() {
         &[],
         None,
         CacheTtl::Extended,
+        false,
     );
 
     let extended = json!({ "type": "ephemeral", "ttl": "1h" });
@@ -525,6 +549,7 @@ fn build_request_body_qualifies_no_marker_at_the_standard_lifetime() {
         &[],
         None,
         CacheTtl::Standard,
+        false,
     );
 
     let standard = json!({ "type": "ephemeral" });
@@ -557,6 +582,7 @@ fn build_request_body_extends_a_lone_anchor() {
         &[],
         None,
         CacheTtl::Extended,
+        false,
     );
 
     assert_eq!(
@@ -581,6 +607,7 @@ fn build_request_body_orders_extended_markers_before_the_rolling_one() {
             &[],
             None,
             CacheTtl::Extended,
+            false,
         );
         let sent = markers(&body);
         let rolling = sent
@@ -924,6 +951,7 @@ async fn mock_client_advances_through_script_then_terminates() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         },
         ModelResponse {
             text: Some("turn 2".to_string()),
@@ -931,6 +959,7 @@ async fn mock_client_advances_through_script_then_terminates() {
             finish_reason: FinishReason::Stop,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         },
     ];
     let client = MockClient::new("mock/test", script);

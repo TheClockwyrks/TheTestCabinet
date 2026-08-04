@@ -75,6 +75,7 @@ fn call(id: &str, name: &str, arguments: Value) -> ModelResponse {
             comparable: Some(0.0011),
             actual: Some(0.0011),
         }),
+        loop_aborts: 0,
     }
 }
 
@@ -91,6 +92,7 @@ fn finish(text: &str) -> ModelResponse {
             reasoning: None,
         },
         cost: None,
+        loop_aborts: 0,
     }
 }
 

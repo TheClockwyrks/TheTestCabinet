@@ -130,6 +130,7 @@ use crate::healing::{self, AssistantMessageMode, Healed, HealingConfig, HealingS
 use crate::limits::{
     AgentLimits, FatalFault, RunLimits, RunSpend, TurnErrorKind, TurnOutcome, resolve_run_limits,
 };
+use crate::loopguard::LoopGuardConfig;
 use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};
 use crate::message_log::finish_reason_token;
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
@@ -455,11 +456,13 @@ impl SlotAccounting {
 /// A [`GgSlotBinding`] is still the [factory](ClientFactory)'s input DTO (it keys purely on the
 /// model id); its `slot` field carries the profile name so the resolved model is attributed to the
 /// right profile in telemetry, and its
-/// [prompt-cache lifetime](GgAgentConfig::prompt_cache_ttl) carries this profile's choice through
-/// to the client built for it.
+/// [prompt-cache lifetime](GgAgentConfig::prompt_cache_ttl) and its
+/// [loop-detection policy](GgAgentConfig::loop_detection) carry this profile's choices through to
+/// the client built for it — the second of which also decides that client's **transport**, since a
+/// detector can only watch a reply that arrives in pieces.
 ///
 /// Naming an [FSM shell](crate::fsm::is_shell) resolves the
-/// [entry state's](crate::fsm::dispatched_profile) profile instead, model and cache lifetime alike:
+/// [entry state's](crate::fsm::dispatched_profile) profile instead, model and per-agent levers alike:
 /// a machine takes no turns, so it has no model, and the agent dispatched onto it *becomes* its
 /// entry state before its first one. Binding the shell would mean demanding a model of every
 /// machine and then discarding the client built from it — which is also why the returned binding
@@ -472,7 +475,9 @@ fn profile_binding(set: &GgCapabilitySet, profile: &str) -> Result<GgSlotBinding
     let model_id = agent.resolved_model_id().ok_or_else(|| {
         format!("the `{profile}` agent profile has no model bound; there is no model to run")
     })?;
-    Ok(GgSlotBinding::new(profile, model_id).with_prompt_cache_ttl(agent.prompt_cache_ttl))
+    Ok(GgSlotBinding::new(profile, model_id)
+        .with_prompt_cache_ttl(agent.prompt_cache_ttl)
+        .with_loop_detection(agent.loop_detection))
 }
 
 /// The launch warnings a capability set earns for naming a capability gg **no longer implements**.
@@ -892,6 +897,15 @@ pub(crate) async fn run_with_seams(
     // this run bounded by?" is answerable from the operator log as well as from the summary.
     root_emitter.emit(log("info", orch.limits.armed_summary()));
     root_emitter.record_limits(recorded_limits(&orch.limits, orch.config.max_parallel));
+    // ...and the [generation-loop detector](crate::loopguard), when the root agent armed one. Said
+    // on the same terms as the ceilings and the healing set below — a resolved configuration that
+    // decides how the run behaves — and said only when it is armed, because a disarmed detector has
+    // no configuration to name and every knob on the declaration is inert. Arming it also changes
+    // the transport (a detector can only watch a reply that arrives in pieces), so this line is also
+    // the operator's notice that this run streamed its responses.
+    if let Some(config) = orch.loop_guard {
+        root_emitter.emit(log("info", config.armed_summary()));
+    }
     // ...and, for a code-mode run, which response-healing strategies are armed. Recorded and logged
     // beside the ceilings because it is the same kind of fact — a resolved configuration that
     // decides how the run behaves — and because it is the one an ablation turns on: every healing
@@ -1471,6 +1485,17 @@ struct Orchestrator {
     /// The resolved [execution ceilings](RunLimits) every agent is bounded by. Shared as a value
     /// rather than behind a lock: five scalars nothing mutates after launch.
     limits: RunLimits,
+    /// The **root** agent's resolved [generation-loop detector](crate::loopguard), or `None` when it
+    /// left the capability disarmed (the default).
+    ///
+    /// Held for one purpose — the launch line that names the armed configuration — on exactly the
+    /// footing [`code.healing`](CodeSetup::healing) is held on: a resolved configuration fact worth
+    /// saying out loud once, resolved here so the line and the run can never describe different
+    /// settings. It is deliberately **not** how any client gets its detector: loop detection is per
+    /// agent, so each agent's own client resolves its own from the
+    /// [binding](GgSlotBinding::loop_detection) built for its profile, and a subagent on a different
+    /// profile is watched on its own terms rather than the root's.
+    loop_guard: Option<LoopGuardConfig>,
     /// The optional shared wall-clock deadline (from run start) every agent stops at — the
     /// [runtime ceiling](RunLimits::max_runtime) as an absolute instant, resolved once so every
     /// agent measures it against the same session start.
@@ -1699,6 +1724,25 @@ impl Orchestrator {
                 ));
             }
         }
+        // Loop detection is per agent, so every profile's declaration is read here — not just the
+        // root's — and each one's warnings are stamped with the agent they belong to. A knob that
+        // cannot bound anything reverts to gg's default, which would otherwise leave a study
+        // measuring the default detector under the name of the one it thought it configured.
+        let mut loop_guard = None;
+        for (index, agent) in set.agents.iter().enumerate() {
+            let resolved = crate::loopguard::resolve_loop_guard(&agent.loop_detection);
+            warnings.extend(
+                resolved
+                    .warnings
+                    .iter()
+                    .map(|warning| format!("agent `{}`: {warning}", agent.name)),
+            );
+            // The root is the set's **first** agent — identified by position, never by name, since
+            // an operator may rename it.
+            if index == 0 {
+                loop_guard = resolved.config;
+            }
+        }
         // The run's module id mint, built before anything it identifies: the board below is the
         // run's single board module, and it takes its id from here.
         let module_ids: ModuleIds = Arc::new(ModuleIdMint::default());
@@ -1751,6 +1795,7 @@ impl Orchestrator {
             model_windows: invocation.model_windows.clone(),
             vision: Arc::new(VisionSupport::new(invocation.model_modalities.clone())),
             limits,
+            loop_guard,
             deadline,
             spend: Arc::new(RunSpend::default()),
             cancel: match invocation.cancel_file.clone() {
@@ -6602,7 +6647,16 @@ impl Agent {
                     // retry-exhausted transient failure and a fatal one both end the
                     // session here; the client has already exhausted its own retries, so
                     // there is nothing left to retry at the turn level in Phase 0.
-                    let kind = if err.is_retryable_exhausted() {
+                    //
+                    // A [generation loop](crate::loopguard) that survived every attempt is one of
+                    // those retry-exhausted failures and ends the session on exactly the same terms
+                    // — but it is named separately, because "retries exhausted" would send an
+                    // operator looking at the provider for an outage that never happened. What
+                    // actually happened is that the model kept writing the same thing and gg kept
+                    // throwing it away.
+                    let kind = if matches!(err, ModelError::ResponseLoop { .. }) {
+                        "generation loop (every attempt looped)"
+                    } else if err.is_retryable_exhausted() {
                         "transient failure (retries exhausted)"
                     } else if err.is_auth_failure() {
                         "authentication failure"
@@ -6620,8 +6674,20 @@ impl Agent {
                     // with backoff over every retryable class, so counting this one and looping
                     // again would be a second, undocumented retry layer with a worse backoff and no
                     // jitter.
-                    let _ =
-                        agent_limits.record(TurnOutcome::Error(TurnErrorKind::ModelApi), &self.id);
+                    //
+                    // A loop that survived every attempt is recorded as the `ModelApi` error it
+                    // arrives as (the contract has no separate kind for it, deliberately), and the
+                    // replies it discarded on the way are carried on the event so the money spent on
+                    // them is still counted — this is the one error path that can have any.
+                    let _ = self.record_turn(
+                        &mut agent_limits,
+                        emitter,
+                        TurnOutcome::Error(TurnErrorKind::ModelApi),
+                        match &err {
+                            ModelError::ResponseLoop { attempts, .. } => *attempts,
+                            _ => 0,
+                        },
+                    );
                     let status = if err.is_auth_failure() {
                         // An auth failure is the run's credential being refused, not the model
                         // failing at its work, so it ends the session under its own status — which
@@ -6654,6 +6720,26 @@ impl Agent {
             // Hand the phase accounting the same figure the `prompt` event carries, so the two
             // events never disagree about how long the model took.
             turn_timer.model_call_finished(model_call_ms);
+
+            // How many replies [loop detection](crate::loopguard) threw away before this one
+            // arrived. Held for the whole turn because it belongs on the turn's *outcome* event,
+            // which is recorded at whichever of this loop's exits the turn eventually takes — and
+            // always `0` on a run that left the capability disarmed, which is the default.
+            let loop_aborts = response.loop_aborts;
+            if loop_aborts > 0 {
+                // Said out loud, and said as a `warn`: gg paid for every one of those replies in
+                // tokens and in wall-clock, and none of them ever reached the model's context. A
+                // run whose stream is full of these is a run whose model is looping, which is the
+                // fact this capability exists to make visible rather than merely to bound.
+                emitter.emit(log(
+                    "warn",
+                    format!(
+                        "loop detection discarded {} on turn {turn} before one completed; gg paid \
+                         for every one of them and none of them entered the context.",
+                        plural(loop_aborts as usize, "looping model response"),
+                    ),
+                ));
+            }
 
             record_usage(&response, emitter, &self.slot, client.model_id());
             total_tokens = add_counts(total_tokens, response.usage);
@@ -6797,7 +6883,12 @@ impl Agent {
                     .await;
                 // The turn did exactly the work it was asked for, so it counts as progress — not as
                 // an error, and not as the completion a tool-less reply would otherwise be.
-                if let Some(breach) = agent_limits.record(TurnOutcome::Progressed, &self.id) {
+                if let Some(breach) = self.record_turn(
+                    &mut agent_limits,
+                    emitter,
+                    TurnOutcome::Progressed,
+                    loop_aborts,
+                ) {
                     return self.stop_on_limit(
                         emitter,
                         breach,
@@ -6903,7 +6994,12 @@ impl Agent {
                 // Every code turn is recorded, including the one that finishes and the one that
                 // ends fatally, so the rate window is fed uniformly and the accounting cannot drift
                 // from the number of model calls made. Neither of those two ever breaches.
-                let breach = agent_limits.record(decision.turn_outcome(), &self.id);
+                let breach = self.record_turn(
+                    &mut agent_limits,
+                    emitter,
+                    decision.turn_outcome(),
+                    loop_aborts,
+                );
                 match decision {
                     CodeTurnOutcome::Finished { ending } => {
                         // A persistent agent hands its open file views to its next instance. On the
@@ -7184,9 +7280,11 @@ impl Agent {
             if response.tool_calls.is_empty()
                 && let Some(pending) = pending_compaction
             {
-                let breach = agent_limits.record(
+                let breach = self.record_turn(
+                    &mut agent_limits,
+                    emitter,
                     TurnOutcome::Error(TurnErrorKind::MissingCompletion),
-                    &self.id,
+                    loop_aborts,
                 );
                 context.push(
                     GgContextSource::System,
@@ -7215,9 +7313,11 @@ impl Agent {
             // rather than burning to its turn budget — and it is answered by naming the calls this
             // agent's role actually gives it.
             if response.tool_calls.is_empty() {
-                let breach = agent_limits.record(
+                let breach = self.record_turn(
+                    &mut agent_limits,
+                    emitter,
                     TurnOutcome::Error(TurnErrorKind::MissingCompletion),
-                    &self.id,
+                    loop_aborts,
                 );
                 context.push(
                     GgContextSource::ToolOutput,
@@ -7511,7 +7611,12 @@ impl Agent {
             // now recorded, so the conversation is valid and the session may end. Recorded as a
             // `Finished` turn (which never breaches).
             if let Some(ending) = declared_ending {
-                let _ = agent_limits.record(TurnOutcome::Finished, &self.id);
+                let _ = self.record_turn(
+                    &mut agent_limits,
+                    emitter,
+                    TurnOutcome::Finished,
+                    loop_aborts,
+                );
                 // A persistent agent hands the file views it still has open to its next instance —
                 // recorded only on this path, because only an agent that *finished its work* has a desk
                 // worth inheriting. One stopped by a ceiling or an error leaves the previous
@@ -7584,7 +7689,12 @@ impl Agent {
             // it is continuing as somebody else, and the error-rate window this agent has built up
             // travels no further than this incarnation anyway.
             if let Some(handoff) = declared_handoff {
-                let _ = agent_limits.record(TurnOutcome::Progressed, &self.id);
+                let _ = self.record_turn(
+                    &mut agent_limits,
+                    emitter,
+                    TurnOutcome::Progressed,
+                    loop_aborts,
+                );
                 return LoopEnd {
                     status: STATUS_COMPLETED,
                     turns: turn + 1,
@@ -7604,7 +7714,12 @@ impl Agent {
             // completes it — and recorded at all because a `Progressed` turn can be the
             // one that first *fills* the error-rate window, and a window that becomes judgeable at
             // three errors in four must breach then rather than waiting for a fourth failure.
-            if let Some(breach) = agent_limits.record(TurnOutcome::Progressed, &self.id) {
+            if let Some(breach) = self.record_turn(
+                &mut agent_limits,
+                emitter,
+                TurnOutcome::Progressed,
+                loop_aborts,
+            ) {
                 return self.stop_on_limit(
                     emitter,
                     breach,
@@ -7641,6 +7756,64 @@ impl Agent {
             last_report.as_deref(),
             last_text,
         )
+    }
+
+    /// Record one turn's [outcome](TurnOutcome) — the **one** seam every turn of this loop passes
+    /// through, in both execution modes and on every path out of the loop.
+    ///
+    /// It does three things, in this order and for these reasons:
+    ///
+    /// 1. **folds the outcome into this agent's [ceilings](AgentLimits)**, which is what makes the
+    ///    consecutive count and the rate window statements about a complete turn sequence;
+    /// 2. **publishes it** as a [`TurnOutcome`](GgTelemetryKind::TurnOutcome) event, so the judgement
+    ///    the ceilings act on is the judgement a reader sees. That is the whole reason this helper
+    ///    exists: the outcome used to be folded in from eight scattered call sites and emitted from
+    ///    none of them, so a run that failed a third of its turns and finished anyway was
+    ///    indistinguishable, from the outside, from one that never failed a turn — and the two
+    ///    `MissingCompletion` sites reported nothing at all;
+    /// 3. **returns the breach** the fold produced, so every caller keeps its existing
+    ///    "record, then stop if that was the one" shape and nothing had to move.
+    ///
+    /// The event carries the agent's state **after** the fold — its consecutive-error run and its
+    /// running turn count — because both are per-agent facts a run-wide stream cannot re-derive
+    /// (turns from concurrently running agents interleave arbitrarily), and because the maximum of
+    /// the first is exactly [`GgErrorSummary::max_consecutive`](test_cabinet_core::gg::GgErrorSummary).
+    ///
+    /// `loop_aborts` is how many replies [loop detection](crate::loopguard) discarded before this
+    /// turn produced one — `0` for every turn of every run that left the capability disarmed, which
+    /// is the default. It rides here rather than on an event of its own because a discarded attempt
+    /// is not a turn: it produced nothing and the request was simply retried, so the turn that
+    /// eventually succeeded is the only event there is to hang the count on.
+    fn record_turn(
+        &self,
+        agent_limits: &mut AgentLimits,
+        emitter: &Emitter,
+        outcome: TurnOutcome,
+        loop_aborts: u32,
+    ) -> Option<GgLimitBreach> {
+        let breach = agent_limits.record(outcome, &self.id);
+        let (wire_outcome, error) = outcome.wire();
+        emitter.emit(GgTelemetryKind::TurnOutcome {
+            outcome: wire_outcome,
+            error,
+            // The streak **this turn is part of**, which is why a turn that is not an error
+            // publishes zero rather than the raw counter. The two only differ on a terminal turn:
+            // the accounting neither raises nor clears the count for one (the session is over
+            // either way), so an agent that failed twice and then finished still *holds* a count of
+            // two — a number that describes the turns before it and not this one. Publishing it
+            // here would put a streak on a turn that did not fail, and it would tell a reader
+            // nothing new, because the error turn that produced it published the same figure.
+            // What is left is one clean statement: a non-zero streak and an error outcome are the
+            // same thing.
+            consecutive_errors: if outcome.is_error() {
+                agent_limits.consecutive_errors()
+            } else {
+                0
+            },
+            turns: agent_limits.turns_recorded(),
+            loop_aborts: u64::from(loop_aborts),
+        });
+        breach
     }
 
     /// End this agent's loop on a breached [ceiling](RunLimits) — the **one** place any of the five

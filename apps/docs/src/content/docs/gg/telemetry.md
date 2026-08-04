@@ -33,6 +33,10 @@ The telemetry must let the console display:
 - **Where each turn's time went** — one `turn_timing` per turn, splitting the turn's
   wall-clock into the three phases it passes through (see
   [below](#where-a-turns-time-went)).
+- **How each turn ended** — one `turn_outcome` per turn, carrying gg's own judgement of
+  whether the turn did what it declared, why it did not, and how long the agent's failing
+  streak is (see [below](#how-a-turn-ended)). Without it a run's error rate is only
+  observable for the runs a [ceiling](/gg/execution-limits/) actually stopped.
 - The **[message log](/gg/context-visibility/#the-message-log-the-exact-requests-de-duplicated)** —
   the exact request each turn sent and the reply it got, streamed as a de-duplicated pool
   of message bodies (`context_message`) plus one pointer list per turn (`prompt`), so the
@@ -57,7 +61,12 @@ identically down to the order of the cards) reads a run through these surfaces:
   the time it spent inside its model calls, which is the average across every model it
   used (a multi-model run's card names each model's own rate on hover). The two counts
   say how much a run has done and spent; the rate is what says whether the wall-clock
-  behind them went into generating or into waiting. Beside them the **runtime** states
+  behind them went into generating or into waiting. Next to the turn count sits the
+  **errors** card, which shares its denominator: how many of those turns failed, what
+  fraction that is, the longest failing streak any one agent reached, and
+  [which way they failed](#how-a-turn-ended) — because "the run finished" and "the run
+  finished having failed a third of its turns" are very different results. Beside them the
+  **runtime** states
   the run's two clocks, because either alone misleads: the **wall clock** the run has
   occupied (what the [timeout](/gg/execution-limits/) is measured against), and under it
   every agent's **active** time summed — the gap between the two being the parallelism
@@ -437,6 +446,99 @@ A turn that ends **abnormally** — a ceiling breached mid-turn, a model call th
 failed — still reports a timing, carrying the phases it reached with the ones it never
 entered at `0`. The accounting closes when the turn's scope does, which is also why
 such a timing lands *after* the event that ended the turn.
+
+## How a turn ended
+
+gg already **judges** every turn: the same sentence the
+[execution ceilings](/gg/execution-limits/#what-counts-as-an-error) are enforced on —
+*was the work the turn declared carried out as declared?* — is evaluated once per turn, per
+agent. That judgement used to be thrown away when the agent's loop ended. A run that failed
+a third of its turns and finished anyway was, in the durable record, indistinguishable from
+one that never failed a turn at all.
+
+So one **`turn_outcome`** rides on the stream per turn, emitted from the *one* seam where
+gg records an outcome against an agent's ceilings — which is what makes it impossible for
+this event and the ceilings to disagree about what an error is. A run emits exactly one per
+model call it made:
+
+```jsonc
+{ "type": "turn_outcome", "outcome": "error", "error": "transpile",
+  "consecutiveErrors": 2, "turns": 31 }
+```
+
+| Field | What it carries |
+| --- | --- |
+| `outcome` | `progressed` (the turn did its declared work), `finished` (the turn ended the session — never an error: a session that ends on purpose has not failed), `error`, or `fatal` (gg's own machinery broke, which is recorded so the turn accounting stays whole but is deliberately **not** charged to the model's error budget). |
+| `error` | Why, on an `error` outcome, and **absent on every other** — so `error != null` and `outcome == "error"` are the same statement. One of `model_api`, `transpile`, `program_fault`, `sandbox_limit`, `missing_completion`. |
+| `consecutiveErrors` | This agent's failing streak **after** this turn. |
+| `turns` | How many turns this agent has recorded, including this one — its own running total, not the run's, and the same figure its turn ceiling is measured against. |
+| `loopAborts` | How many replies [loop detection](/gg/loop-detection/) discarded before this turn produced one. Omitted when zero, which is every turn of every run that left the detector disarmed. |
+
+Two of those need their exact meaning stating, because a reader who guesses will guess
+wrong.
+
+**`consecutiveErrors` is `0` on every non-error turn**, including a `finished` or `fatal`
+one that followed failures. gg's internal counter is only *cleared* by a turn that carried
+out its declared work, so an agent that failed twice and then finished still holds a count
+of 2 — but publishing that would put a streak on a turn that did not fail, and would
+contradict the field's own definition. The invariant the stream guarantees instead is
+simply: `consecutiveErrors > 0` if and only if `outcome` is `error`.
+
+**`consecutiveErrors` is carried rather than re-derived** because the count is **per agent**
+and the stream is run-wide. Turns from concurrently running agents interleave arbitrarily,
+so a reader folding the stream could only ever reconstruct a run-wide streak — which is an
+artefact of scheduling rather than a fact about any agent.
+
+Under [responses as code](/gg/responses-as-code/) this event sits beside `code_execution`
+and does not duplicate it: that one reports what a **program** did and exists only in that
+mode, while this is the mode-agnostic judgement of the **turn**. A tool-calling run emits
+`turn_outcome` too, which is what lets one error rate be compared across both modes. The
+turn that used to be silent entirely — a tool-calling turn that ends with no tool call under
+an explicit-call [completion signal](/gg/completion/) — is reported here as
+`missing_completion`.
+
+### The run rollup
+
+Folded from those same events onto the session summary, so numerator and denominator can
+never come from different mechanisms:
+
+```jsonc
+"errors": { "turns": 96, "errors": 4, "maxConsecutive": 2,
+            "modelApi": 1, "transpile": 2, "programFault": 1,
+            "sandboxLimit": 0, "missingCompletion": 0,
+            "loopAborts": 7 }
+```
+
+`turns` is the denominator and counts every turn whatever its outcome — a `fatal` one
+included, so the accounting stays whole even though no ceiling ever observes it. `errors` is
+exactly the sum of the five per-kind counters. `maxConsecutive` is the **maximum over
+agents** of the per-turn `consecutiveErrors` above, which is the only honest way to summarise
+a per-agent counter on a run-wide record, and the peak of the same counter
+`maxConsecutiveErrors` is enforced on.
+
+**No percentage is stored.** The error rate is `errors / turns` and the reader divides. A
+stored rate is a figure that can disagree with its own denominator — after a rounding change,
+a partially recorded run, or a reader that averages two runs' rates — and the one thing that
+must be trustworthy here is that the numbers add up.
+
+What it deliberately does not count: a **tool call that failed inside a program that carried
+on** (the program handled it, which is the whole point of the typed surface), a **healed**
+reply ([healing](/gg/response-healing/) repairs the message, not the turn), and **per-agent
+attribution** — these are run-wide totals, and the per-agent breakdown lives on the stream,
+where every `turn_outcome` rides on its own agent's id.
+
+The console reads it two ways: an **Errors** card on the Dashboard, deliberately beside the
+turn count it shares a denominator with, because "seven" and "seven of two hundred" are not
+the same claim — errored turns, the rate they are of, the longest streak, the per-kind
+split, and the replies [loop detection](/gg/loop-detection/) discarded when there were any —
+and a detail line on the live event feed, so an errored turn names its kind as it happens
+rather than only in a rollup at the end. Because the whole summary is flattened
+into the [query language](/gg/analysis/query-language/)'s document, every field above is
+directly queryable:
+
+```text
+has.summary:true | stats avg(summary.errors.maxConsecutive) as streak by model
+```
 
 ## Reading the metric graphs
 

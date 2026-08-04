@@ -47,12 +47,15 @@ import type { GgAgentModuleSummary, GgModuleIndex } from "./ggModules";
 import { ROOT_AGENT } from "./ggCatalog";
 import {
   ROOT_ID,
+  addErrorTally,
+  emptyErrorTally,
   ggPeakContext,
   ggToolBreakdown,
   toolCallsPerResponse,
   type AgentTreeNode,
   type DerivedGgState,
   type GgAgentSurface,
+  type GgErrorTally,
   type GgToolBreakdown,
   type GgToolUsage,
   type UsageTally,
@@ -195,6 +198,17 @@ export interface GgAgentSummary {
   statusCounts: Record<GgAgentStatus, number>;
   /** The turns its instances took between them. */
   turns: number;
+  /**
+   * How those turns went, summed across the profile's instances — the figure that says
+   * whether this arm of the ablation is one the model can actually drive. A profile
+   * failing a third of its turns and finishing anyway looks identical to a clean one in
+   * every other figure on this row.
+   *
+   * {@link GgErrorTally.maxConsecutive} is the worst any ONE instance reached, not a
+   * streak across them: twelve reviewers that each failed twice did not fail
+   * twenty-four times in a row.
+   */
+  errors: GgErrorTally;
   /** Its instances' token and cost tallies, summed. */
   usage: UsageTally;
   /** That usage split per (profile, model) so it can be priced at each model's own rate. */
@@ -489,6 +503,9 @@ export function deriveGgAgentSummaries(
     const statusCounts = { ...EMPTY_STATUS_COUNTS };
     const modelIds: string[] = [];
     const rows: GgAgentInstance[] = [];
+    // The profile's error record, summed off its instances' own slices — where the
+    // consecutive-error streak is a genuine streak, since a slice is one agent's stream.
+    const errors = emptyErrorTally();
     let turns = 0;
     let compactions = 0;
     // The two halves of the profile's generation rate, summed across its instances (see
@@ -523,6 +540,7 @@ export function deriveGgAgentSummaries(
 
       const peak = ggPeakContext(state);
       addTally(usage, state.usage);
+      addErrorTally(errors, state.errors);
       turns += state.turnCount;
       compactions += state.compactions.length;
       generated += generatedTokens(state.usage);
@@ -572,6 +590,7 @@ export function deriveGgAgentSummaries(
       instances: rows,
       statusCounts,
       turns,
+      errors,
       usage,
       pricedSlots,
       cost: deriveGgCostBreakdown(pricedSlots, priceOf),

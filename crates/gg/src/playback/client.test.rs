@@ -158,6 +158,7 @@ fn response(text: &str) -> ModelResponse {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 

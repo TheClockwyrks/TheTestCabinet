@@ -272,8 +272,12 @@ pub(super) const CORPUS: &[Fixture] = &[
     },
 ];
 
-/// Every one of the 32 on/off combinations of the five strategies — what "every configuration"
-/// means in the property tests.
+/// Every one of the 2^n on/off combinations of the strategies — what "every configuration" means in
+/// the property tests.
+///
+/// Written against [`HealingStrategy::ALL`] rather than against a hard-coded arity so that adding a
+/// strategy widens the property tests by itself: six strategies is 64 configurations, and the day
+/// there are seven it is 128 with no edit here.
 pub(super) fn every_configuration() -> Vec<HealingConfig> {
     (0..(1u32 << HealingStrategy::ALL.len()))
         .map(|bits| {
@@ -286,9 +290,21 @@ pub(super) fn every_configuration() -> Vec<HealingConfig> {
         .collect()
 }
 
-/// Heal with every strategy armed — the default arm, and what most cases mean by "heal".
+/// Heal under the **default** configuration — what most cases mean by "heal".
+///
+/// That is deliberately not the same as "every strategy armed": `drop-doubled-response` is
+/// [armed only when a configuration asks for it](HealingStrategy::default_armed), so a case that
+/// exercises it goes through [`healed_with`] instead.
 pub(super) fn healed(reply: &str) -> Healed {
     heal(reply, &HealingConfig::default())
+}
+
+/// Heal with `strategy` armed on top of the defaults — the way the one default-off strategy is
+/// exercised, and the way an operator arms it for a real run.
+pub(super) fn healed_with(strategy: HealingStrategy, reply: &str) -> Healed {
+    let mut config = HealingConfig::default();
+    config.set(strategy, true);
+    heal(reply, &config)
 }
 
 /// An agent profile carrying `responses-as-code` with the given params.
@@ -319,7 +335,9 @@ fn is_subsequence(needle: &str, haystack: &str) -> bool {
 ///
 /// Healing only ever deletes, so the healed program — whitespace removed — is a subsequence of the
 /// response the model sent. One machine-checkable sentence covering "never invents code" and "never
-/// reorders" for all five strategies at once, over the whole corpus under all 32 configurations.
+/// reorders" for every strategy at once, over the whole corpus under
+/// [every configuration](every_configuration) — all 64 of them, since a sixth strategy doubled the
+/// space.
 #[test]
 fn every_healed_program_is_a_subsequence_of_the_response() {
     for fixture in CORPUS {
@@ -462,6 +480,7 @@ fn strategies_apply_in_the_documented_order() {
         [
             "strip-fences",
             "strip-prose",
+            "drop-doubled-response",
             "drop-duplicate-program",
             "drop-imports",
             "unwrap-async"
@@ -635,7 +654,7 @@ fn healing_off_is_a_no_op() {
     assert!(result.applied.is_empty());
 }
 
-/// Each strategy can be turned off on its own, and turning one off leaves the other four working —
+/// Each strategy can be turned off on its own, and turning one off leaves the others working —
 /// which is what makes a single-strategy ablation mean what it says.
 #[test]
 fn each_strategy_can_be_disabled_on_its_own() {
@@ -673,9 +692,10 @@ fn each_strategy_can_be_disabled_on_its_own() {
     }
 }
 
-/// A capability that says nothing about healing gets every strategy.
+/// A capability that says nothing about healing gets **the defaults** — which is not the same thing
+/// as every strategy.
 #[test]
-fn absent_healing_arms_everything() {
+fn absent_healing_takes_the_defaults() {
     for params in [
         json!({}),
         json!({ "healing": null }),
@@ -691,6 +711,95 @@ fn absent_healing_arms_everything() {
     );
 }
 
+/// **The default arm, spelled out.** Five strategies are on because repairing is strictly safer than
+/// not; `drop-doubled-response` is off because the half it deletes is valid code under any other
+/// reading, so it is armed deliberately rather than by omission.
+///
+/// Asserted as a literal table rather than by folding `default_armed` over `ALL`, because a test
+/// that recomputed the thing it is checking would agree with any change to it.
+#[test]
+fn the_defaults_arm_every_strategy_except_the_doubled_response_one() {
+    let expected = [
+        (HealingStrategy::StripFences, true),
+        (HealingStrategy::StripProse, true),
+        (HealingStrategy::DropDoubledResponse, false),
+        (HealingStrategy::DropDuplicateProgram, true),
+        (HealingStrategy::DropImports, true),
+        (HealingStrategy::UnwrapAsync, true),
+    ];
+    let config = HealingConfig::default();
+    for (strategy, armed) in expected {
+        assert_eq!(
+            strategy.default_armed(),
+            armed,
+            "{}: wrong declared default",
+            strategy.id()
+        );
+        assert_eq!(
+            config.enabled(strategy),
+            armed,
+            "{}: the default configuration disagrees with the declared default",
+            strategy.id()
+        );
+    }
+    assert_eq!(
+        config.armed(),
+        vec![
+            HealingStrategy::StripFences,
+            HealingStrategy::StripProse,
+            HealingStrategy::DropDuplicateProgram,
+            HealingStrategy::DropImports,
+            HealingStrategy::UnwrapAsync,
+        ],
+        "the launch log would name the wrong arm"
+    );
+}
+
+/// The default-off strategy is armed by the **same** `{ "<id>": true }` mechanism that disarms a
+/// default-on one with `false` — there is no second path, which is what keeps the documented truth
+/// table a description of one line of code.
+#[test]
+fn the_doubled_response_strategy_is_armed_by_naming_it() {
+    let resolved = resolve_healing(&set_with(
+        json!({ "healing": { "drop-doubled-response": true } }),
+    ));
+    assert!(
+        resolved
+            .config
+            .enabled(HealingStrategy::DropDoubledResponse)
+    );
+    assert!(resolved.unknown_params.is_empty());
+    // Naming one strategy leaves every other one at its own default.
+    for strategy in HealingStrategy::ALL {
+        if strategy != HealingStrategy::DropDoubledResponse {
+            assert_eq!(
+                resolved.config.enabled(strategy),
+                strategy.default_armed(),
+                "{}",
+                strategy.id()
+            );
+        }
+    }
+    assert!(
+        resolved
+            .config
+            .armed_summary()
+            .contains("drop-doubled-response"),
+        "the launch log did not name the strategy the operator armed: {}",
+        resolved.config.armed_summary()
+    );
+}
+
+/// `"healing": false` is still the master switch **over the defaults**: it turns off the five that
+/// were on and leaves off the one that already was.
+#[test]
+fn the_master_switch_disarms_the_default_off_strategy_too() {
+    let resolved = resolve_healing(&set_with(json!({ "healing": false })));
+    for strategy in HealingStrategy::ALL {
+        assert!(!resolved.config.enabled(strategy), "{}", strategy.id());
+    }
+}
+
 /// `"healing": false` is the master switch.
 #[test]
 fn healing_false_disarms_everything() {
@@ -699,14 +808,19 @@ fn healing_false_disarms_everything() {
     assert!(resolved.unknown_params.is_empty());
 }
 
-/// One strategy can be named and disarmed; the rest stay armed.
+/// One strategy can be named and disarmed; every other one stays at its own default.
 #[test]
 fn a_named_strategy_can_be_disarmed() {
     let resolved = resolve_healing(&set_with(json!({ "healing": { "strip-prose": false } })));
     assert!(!resolved.config.enabled(HealingStrategy::StripProse));
     for strategy in HealingStrategy::ALL {
         if strategy != HealingStrategy::StripProse {
-            assert!(resolved.config.enabled(strategy), "{}", strategy.id());
+            assert_eq!(
+                resolved.config.enabled(strategy),
+                strategy.default_armed(),
+                "{}",
+                strategy.id()
+            );
         }
     }
     assert!(resolved.unknown_params.is_empty());
@@ -724,13 +838,29 @@ fn an_unknown_healing_key_is_reported_not_guessed_at() {
     assert_eq!(resolved.unknown_params, vec!["healing.stripFences"]);
 }
 
-/// A known id whose value is not a toggle stays armed, and the key is reported: `0` is not `false`,
-/// and reading it as one would be exactly the silent reinterpretation above.
+/// A known id whose value is not a toggle keeps its default, and the key is reported: `0` is not
+/// `false`, and reading it as one would be exactly the silent reinterpretation above.
+///
+/// It cuts both ways — `{"drop-doubled-response": 1}` leaves the strategy **off**, because `1` is
+/// not `true` either, and an operator who thinks they armed it is told they did not.
 #[test]
-fn a_non_boolean_toggle_stays_armed_and_is_reported() {
+fn a_non_boolean_toggle_keeps_its_default_and_is_reported() {
     let resolved = resolve_healing(&set_with(json!({ "healing": { "strip-prose": 0 } })));
     assert!(resolved.config.enabled(HealingStrategy::StripProse));
     assert_eq!(resolved.unknown_params, vec!["healing.strip-prose"]);
+
+    let resolved = resolve_healing(&set_with(
+        json!({ "healing": { "drop-doubled-response": 1 } }),
+    ));
+    assert!(
+        !resolved
+            .config
+            .enabled(HealingStrategy::DropDoubledResponse)
+    );
+    assert_eq!(
+        resolved.unknown_params,
+        vec!["healing.drop-doubled-response"]
+    );
 
     for unreadable in [json!(5), json!("off"), json!([])] {
         let resolved = resolve_healing(&set_with(json!({ "healing": unreadable })));

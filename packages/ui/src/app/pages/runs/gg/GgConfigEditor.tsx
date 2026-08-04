@@ -13,6 +13,8 @@ import {
   AGENT_MODE_HINT,
   CAP_GROUPS,
   FSM_CAP,
+  LOOP_DETECTION_HINT,
+  LOOP_DETECTION_SPECS,
   RESPONSES_AS_CODE_CAP,
   RUN_LIMIT_SPECS,
   SUBAGENT_SCOPES,
@@ -20,6 +22,7 @@ import {
   type CapGroup,
   type CapSpec,
   type GgAgentMode,
+  type LoopDetectionSpec,
   type RunLimitSpec,
 } from "./ggCatalog";
 import {
@@ -36,6 +39,8 @@ import {
   blankModelSlot,
   capabilityActive,
   dropAgentReferences,
+  loopDetectionError,
+  loopDetectionWarning,
   referencedModelSlots,
   runLimitsError,
   runLimitsWarning,
@@ -504,6 +509,20 @@ export function GgConfigEditor({
     patchAgent({
       disabledTools: setToolBundle(agent.disabledTools, tools, on),
     });
+  // Loop detection's switch and its knobs, written separately: the knobs survive the
+  // switch going off, so an operator who tunes the detector and then disarms it finds
+  // their settings still there when they arm it again.
+  const setLoopEnabled = (enabled: boolean) =>
+    patchAgent({ loopDetection: { ...agent.loopDetection, enabled } });
+  const setLoopKnob = (key: LoopDetectionSpec["key"], next: string) =>
+    patchAgent({
+      loopDetection: {
+        ...agent.loopDetection,
+        knobs: { ...agent.loopDetection.knobs, [key]: next },
+      },
+    });
+  const loopError = loopDetectionError(agent.loopDetection);
+  const loopWarning = loopDetectionWarning(agent.loopDetection);
   // Changing the type changes nothing else. Everything the other types were configured
   // with stays in the draft untouched, so switching away and back inside one session is
   // not an edit — the wind-back to a type's defaults happens when the agent is
@@ -707,6 +726,73 @@ export function GgConfigEditor({
               resumed.
             </p>
           )}
+
+          {/* Loop detection — the other half of how gg talks to this agent's model, and
+              so directly under the binding it belongs to. Not a capability: it changes
+              nothing about what the agent can do, only whether gg watches the reply
+              arrive and abandons one that has degenerated into repetition. It is
+              nonetheless authored exactly like one — a switch, a purpose, and a body of
+              knobs revealed once it is on — because that is the shape an operator already
+              knows for "a thing gg does that you turn on".
+
+              Per agent, because looping is a property of the model and one run's profiles
+              may be bound to several; absent under a machine along with the binding above
+              it, which takes no turns and so has no reply to watch. */}
+          <div className={gg.capList}>
+            <div
+              className={`${gg.capRow}${
+                agent.loopDetection.enabled ? "" : ` ${gg.capOff}`
+              }`}
+            >
+              <label className={gg.capHeader}>
+                <Switch
+                  checked={agent.loopDetection.enabled}
+                  disabled={readOnly}
+                  onChange={setLoopEnabled}
+                />
+                <span className={gg.capName}>Loop detection</span>
+                <HelpTip text={LOOP_DETECTION_HINT} />
+              </label>
+              <p className={gg.capPurpose}>
+                Abandon and retry a reply that has degenerated into repetition,
+                instead of paying for it to the model&rsquo;s output cap. Arming
+                it moves this agent onto gg&rsquo;s streaming transport.
+              </p>
+              {/* The knobs are shown only while the detector is armed — a disarmed
+                  agent's are still recorded and still come back, but a grid of numbers
+                  nothing will read invites tuning a detector that is not running. */}
+              {agent.loopDetection.enabled && (
+                <div className={gg.capBody}>
+                  <div className={gg.capParamGrid}>
+                    {LOOP_DETECTION_SPECS.map((spec) => (
+                      <label key={spec.key} className={gg.capParamField}>
+                        <FieldLabel label={spec.label} hint={spec.hint} />
+                        <input
+                          className={runExec.input}
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={agent.loopDetection.knobs[spec.key]}
+                          disabled={readOnly}
+                          onChange={(e) =>
+                            setLoopKnob(spec.key, e.target.value)
+                          }
+                          placeholder={`gg's default: ${spec.ggDefault.toLocaleString("en-US")}`}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  {loopError ? (
+                    <p className={gg.fieldError}>{loopError}</p>
+                  ) : (
+                    loopWarning && (
+                      <p className={gg.limitWarning}>{loopWarning}</p>
+                    )
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         </>
       )}
 

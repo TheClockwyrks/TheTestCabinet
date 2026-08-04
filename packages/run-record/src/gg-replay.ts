@@ -503,7 +503,8 @@ export type GgReplayModelErrorKind =
   | "fatal"
   | "retry_exhausted"
   | "vision_unsupported"
-  | "parse";
+  | "parse"
+  | "response_loop";
 
 /**
  * Why a model call failed.

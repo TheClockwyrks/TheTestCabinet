@@ -58,6 +58,7 @@ mod git;
 mod healing;
 mod knowledge;
 mod limits;
+mod loopguard;
 mod memories;
 mod message_log;
 mod model;

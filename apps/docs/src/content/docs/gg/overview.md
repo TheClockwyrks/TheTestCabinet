@@ -108,6 +108,14 @@ feature under ablation while a ceiling is an operator's guardrail over all of th
 because the set is what a run _records_, so a run stopped by a ceiling carries both the
 breach and the ceiling that produced it.
 
+The individual **agent profiles** carry two more settings that are not capabilities
+either, for the same reason and at a finer grain — they are properties of the *model* a
+profile is bound to rather than of the work it does: its
+[prompt-cache lifetime](/gg/configurations/#prompt-cache-lifetime), and
+[**loop detection**](/gg/loop-detection/) — whether gg reads that agent's replies as they
+stream and abandons one that has stopped answering and started repeating itself. Both are
+per agent because both come out differently for each model in the same run.
+
 The capability set is a **first-class Test Cabinet concept** that **replaces** the
 `harness + model + orchestrator` tuple for a gg run (only the test case and variant
 carry over — those are test-case-level). Making it first-class is what keeps an

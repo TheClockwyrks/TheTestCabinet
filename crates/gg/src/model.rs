@@ -257,6 +257,26 @@ pub struct ModelResponse {
     /// The turn's cost, when the provider reported one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<Cost>,
+    /// How many *earlier* replies to this same call the client read, judged to be a
+    /// [generation loop](crate::loopguard), and threw away before this one arrived.
+    ///
+    /// Zero for every response that is not the product of a
+    /// [streaming transport](crate::client::StreamAccumulator) with loop detection armed, which is
+    /// every response gg produced before the detector existed and every response an agent that
+    /// leaves the detector off produces now.
+    ///
+    /// It rides on the *successful* response rather than being reported separately because a
+    /// discarded attempt has no other carrier: the reply never enters the conversation, never
+    /// reaches the healing pipeline, and is not an error turn — the retry worked. What it *is* is
+    /// money spent on nothing, so the number has to reach the turn loop somehow, and the answer
+    /// that finally came back is the only thing the turn loop is handed. The loop logs it and
+    /// counts it (see [`GgErrorSummary::loop_aborts`](test_cabinet_core::gg::GgErrorSummary)).
+    ///
+    /// `#[serde(default)]` so a response captured before this field existed still reads; nothing
+    /// stores a `ModelResponse` today, but the type is `Deserialize` and a required field would be
+    /// a silent trap for the first thing that does.
+    #[serde(default)]
+    pub loop_aborts: u32,
 }
 
 /// A failure running a model turn.
@@ -314,6 +334,31 @@ pub enum ModelError {
     /// an already-successful-but-malformed response would not help.
     #[error("could not parse model response: {0}")]
     Parse(String),
+    /// Every attempt the client made was abandoned mid-stream by
+    /// [loop detection](crate::loopguard): the model answered with a repetition rather than a
+    /// reply, and kept doing so until the retry policy ran out.
+    ///
+    /// **Retryable at the turn level**, exactly like
+    /// [`RetryExhausted`](Self::RetryExhausted) — see
+    /// [`is_retryable_exhausted`](Self::is_retryable_exhausted). It is not a host fault and not a
+    /// misconfiguration: the request was well-formed and the provider answered it, the answer was
+    /// just worthless. A later turn, on a shorter context, routinely succeeds.
+    ///
+    /// It exists as its own variant rather than folding into `RetryExhausted` because the two say
+    /// completely different things to an operator reading the run's log. `RetryExhausted` means
+    /// the provider would not serve the request; this means the provider served it several times
+    /// and gg threw every answer away. Only one of those is worth changing a model binding over.
+    #[error("model looped: {detail}; discarded {attempts} response(s)")]
+    ResponseLoop {
+        /// How many streamed replies were read and discarded before the client gave up — the
+        /// [retry policy's](crate::client::RetryPolicy) full attempt count, since a loop that left
+        /// any attempt unused would have returned that attempt's answer instead.
+        attempts: u32,
+        /// What tripped the detector on the final attempt, in the detector's own words (a
+        /// [`LoopTrip`](crate::loopguard::LoopTrip)'s `Display`), so the failure and the `warn`
+        /// line for each discarded attempt describe the same event identically.
+        detail: String,
+    },
     /// A [playback](crate::playback) could not answer this call from the record: its
     /// agent's recorded turns are exhausted, the live request is no longer the recorded
     /// question, or the client was never bound to a recorded agent at all.
@@ -334,11 +379,21 @@ pub enum ModelError {
 }
 
 impl ModelError {
-    /// Whether this error is a retry-exhausted transient failure (as opposed to a
-    /// fatal one). The loop uses this to decide whether re-attempting the turn later
-    /// is worthwhile; every non-`RetryExhausted` variant is fatal.
+    /// Whether this error is a transient failure the client already retried to its policy (as
+    /// opposed to a fatal one). The loop uses this to decide whether re-attempting the turn later
+    /// is worthwhile.
+    ///
+    /// Two variants qualify, and they are the two where the *request* was fine:
+    /// [`RetryExhausted`](Self::RetryExhausted), where the provider never served it, and
+    /// [`ResponseLoop`](Self::ResponseLoop), where the provider served it and every answer was a
+    /// [generation loop](crate::loopguard). Both end the run as `model_error` if they survive the
+    /// turn loop's own patience, and neither says anything is wrong with the configuration. Every
+    /// other variant is fatal.
     pub fn is_retryable_exhausted(&self) -> bool {
-        matches!(self, ModelError::RetryExhausted { .. })
+        matches!(
+            self,
+            ModelError::RetryExhausted { .. } | ModelError::ResponseLoop { .. }
+        )
     }
 
     /// Whether this error means the run's **credential** was refused: a

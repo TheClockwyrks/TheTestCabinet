@@ -1,6 +1,6 @@
-//! Tests for the four strategies that work on something that is already meant to be a program —
-//! `strip-prose`, `drop-duplicate-program`, `drop-imports` and `unwrap-async` — and for the two
-//! predicates and the lexical mask they are built on.
+//! Tests for the five strategies that work on something that is already meant to be a program —
+//! `strip-prose`, `drop-doubled-response`, `drop-duplicate-program`, `drop-imports` and
+//! `unwrap-async` — and for the two predicates and the lexical mask they are built on.
 //!
 //! The predicates get their own cases because they are where the whole subsystem's asymmetry lives:
 //! `looks_like_code` may only ever cost a repair, and `is_prose_line` may never cost a line of the
@@ -8,9 +8,16 @@
 
 use super::tests::{
     CAPTURED_PROGRAM_REPLIES, GEMINI_FIVE_PROGRAMS, SOL_DUPLICATE_PROGRAM, SOL_TWO_DRAFTS,
-    TERMINAL_PROSE, TERRA_DUPLICATE_PROGRAM, TERRA_TWO_DRAFTS, healed,
+    TERMINAL_PROSE, TERRA_DUPLICATE_PROGRAM, TERRA_TWO_DRAFTS, healed, healed_with,
 };
 use super::*;
+
+/// Heal with `drop-doubled-response` armed on top of the defaults — the configuration an operator
+/// writes for a model observed to double its completions, and the only one under which any case in
+/// the section below fires.
+fn healed_doubled(reply: &str) -> Healed {
+    healed_with(HealingStrategy::DropDoubledResponse, reply)
+}
 
 // ---------------------------------------------------------------------------------------------
 // strip-prose
@@ -145,6 +152,195 @@ fn strip_prose_declines_while_a_fence_survives() {
     let result = healed(reply);
     assert_eq!(result.program, reply);
     assert!(result.applied.is_empty(), "{:?}", result.applied);
+}
+
+// ---------------------------------------------------------------------------------------------
+// drop-doubled-response
+// ---------------------------------------------------------------------------------------------
+
+/// **The operator's case.** The provider recorded the completion twice, with nothing between the
+/// copies, and the reply is byte-for-byte `X + X`.
+#[test]
+fn a_doubled_completion_is_halved() {
+    let result = healed_doubled("foo();\nbar();foo();\nbar();");
+    assert_eq!(result.program, "foo();\nbar();");
+    assert_eq!(
+        result.strategies(),
+        vec![HealingStrategy::DropDoubledResponse]
+    );
+    assert_eq!(
+        result.applied[0].detail,
+        HealingDetail::DoubledResponse { chars: 13 }
+    );
+}
+
+/// **The regression test for the length floor never coming back.** The observed doubling happens
+/// most often on a run's *first* turn, where the program is a line long — so a strategy with any
+/// meaningful minimum length would miss precisely the case it exists for.
+#[test]
+fn a_short_first_turn_doubling_is_repaired() {
+    let reply = "listDir(\".\");listDir(\".\");";
+    assert!(
+        reply.len() < 64,
+        "the case stopped being short, and stopped testing anything"
+    );
+    assert_eq!(healed_doubled(reply).program, "listDir(\".\");");
+}
+
+/// **The separator argument, measured.** A model that *means* to repeat a statement writes something
+/// between the copies, and any single-character separator makes the whole reply odd-length — so the
+/// strategy declines on arithmetic before it compares a single byte.
+///
+/// This is the whole justification for the strategy having almost no guards, so it is pinned rather
+/// than argued: both spellings a model actually writes are left exactly as sent.
+#[test]
+fn a_deliberate_repetition_with_a_separator_declines_on_length() {
+    for reply in ["step(); step();", "step();\nstep();"] {
+        assert_eq!(
+            reply.len() % 2,
+            1,
+            "{reply}: the separator did not make the reply odd-length, so this case no longer \
+             tests the argument the strategy rests on"
+        );
+        let result = healed_doubled(reply);
+        assert_eq!(result.program, reply, "{reply}: a repetition was deleted");
+        assert!(result.applied.is_empty(), "{reply}: {:?}", result.applied);
+    }
+}
+
+/// An ordinary program of even length is not a doubling, and is left alone. Without this the
+/// strategy would be "delete the second half of anything long enough", which is not what it claims.
+#[test]
+fn a_program_of_even_length_that_is_not_doubled_declines() {
+    let reply = "const a = 1;\nconst b = 22;\nreturn a + b;";
+    assert_eq!(reply.len() % 2, 0, "the case stopped being even-length");
+    let result = healed_doubled(reply);
+    assert_eq!(result.program, reply);
+    assert!(result.applied.is_empty(), "{:?}", result.applied);
+}
+
+/// A quadrupled reply converges to one copy, one halving per pass of the fixpoint loop — which is
+/// why the strategy applies **once** per pass rather than looping inside itself.
+#[test]
+fn a_quadrupled_reply_converges_to_one_copy() {
+    let program = "tick();";
+    let result = healed_doubled(&program.repeat(4));
+    assert_eq!(result.program, program);
+    assert_eq!(
+        result.strategies(),
+        vec![
+            HealingStrategy::DropDoubledResponse,
+            HealingStrategy::DropDoubledResponse
+        ]
+    );
+    assert!(!result.did_not_converge);
+}
+
+/// A reply whose midpoint falls **inside** a multi-byte character neither panics nor matches.
+///
+/// The boundary check is panic-safety rather than a heuristic: slicing a UTF-8 sequence in half
+/// would abort the turn, and a midpoint inside a character means the halves hold different fragments
+/// of it, so they could not have compared equal anyway.
+#[test]
+fn a_reply_whose_midpoint_splits_a_character_declines_without_panicking() {
+    for reply in ["aéa", "→a"] {
+        assert_eq!(
+            reply.len() % 2,
+            0,
+            "{reply}: no longer even-length in bytes"
+        );
+        assert!(
+            !reply.is_char_boundary(reply.len() / 2),
+            "{reply}: the midpoint stopped landing inside a character, so this case no longer \
+             exercises the panic-safety check"
+        );
+        let result = healed_doubled(reply);
+        assert_eq!(result.program, reply, "{reply}: text was edited");
+        assert!(result.applied.is_empty(), "{reply}: {:?}", result.applied);
+    }
+}
+
+/// A doubling whose halves are whole characters is still repaired — the boundary check excludes
+/// nothing a multi-byte program would want to keep.
+#[test]
+fn a_doubling_of_multi_byte_text_is_still_repaired() {
+    assert_eq!(
+        healed_doubled("log(\"é\");log(\"é\");").program,
+        "log(\"é\");"
+    );
+}
+
+/// An empty or whitespace-only reply declines and records **nothing**.
+///
+/// The emptiness floor is the only size rule the strategy has, and it exists precisely for this: two
+/// empty halves compare equal, so without it a blank reply would be "repaired" into itself and
+/// counted — a no-op application inflating the healing metrics for every terminal turn that says
+/// nothing.
+#[test]
+fn an_empty_reply_declines_and_counts_nothing() {
+    for reply in ["", "   ", "\n\n", "  \n\t \n"] {
+        let result = healed_doubled(reply);
+        assert!(result.program.is_empty(), "{reply:?}: {}", result.program);
+        assert!(
+            result.applied.is_empty(),
+            "{reply:?}: a no-op was counted as a repair: {:?}",
+            result.applied
+        );
+        assert!(!result.rewritten());
+    }
+}
+
+/// The strategy is **off** unless a configuration arms it, so the operator's own case is left
+/// untouched by a run that did not ask for the repair.
+///
+/// This is the asymmetry that makes it the one default-off strategy: the deleted half is valid code
+/// under any reading other than "the transport duplicated this".
+#[test]
+fn the_doubled_reply_is_left_alone_under_the_default_configuration() {
+    let reply = "foo();\nbar();foo();\nbar();";
+    let result = healed(reply);
+    assert_eq!(result.program, reply, "an unarmed strategy fired");
+    assert!(result.applied.is_empty(), "{:?}", result.applied);
+}
+
+/// **The two duplicate strategies partition the shape, and the separator is the boundary.**
+///
+/// A model that pastes its program out twice puts a newline between the copies, which makes the
+/// reply odd-length — so `drop-doubled-response` declines and `drop-duplicate-program`, which
+/// searches for a repeated *tail* at a line start, is what repairs it. A provider that concatenates
+/// the same completion writes no separator at all, which puts the second copy mid-line where the
+/// tail search cannot see it — and that is exactly the gap `drop-doubled-response` was added to
+/// close.
+///
+/// Running the coarse test first therefore costs the finer one nothing: by the time it runs, the
+/// reply is not a clean doubling.
+#[test]
+fn the_newline_between_the_copies_is_what_decides_which_strategy_repairs_it() {
+    let program = "const root = listDir(\".\");\nwriteFile(\"a.md\", root.length);";
+
+    // Pasted twice, as a model writes it: a newline separates the copies.
+    let pasted = healed_doubled(&format!("{program}\n{program}"));
+    assert_eq!(pasted.program, program);
+    assert_eq!(
+        pasted.strategies(),
+        vec![HealingStrategy::DropDuplicateProgram],
+        "the coarse strategy claimed a reply the finer one already repairs"
+    );
+
+    // Concatenated, as the provider records it: nothing between the copies at all.
+    let concatenated = healed_doubled(&program.repeat(2));
+    assert_eq!(concatenated.program, program);
+    assert_eq!(
+        concatenated.strategies(),
+        vec![HealingStrategy::DropDoubledResponse]
+    );
+
+    // And the gap: without the new strategy, the concatenated reply is not repaired at all.
+    assert_eq!(
+        healed(&program.repeat(2)).program,
+        program.repeat(2),
+        "the finer strategy found a repeated tail that begins mid-line"
+    );
 }
 
 // ---------------------------------------------------------------------------------------------

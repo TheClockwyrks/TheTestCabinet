@@ -57,19 +57,25 @@
 //! test that constructs the invocation itself (supplying the windows a launch would
 //! have), which is exactly the intended blast radius.
 
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use test_cabinet_core::gg::{GgPromptCacheTtl, GgSlotBinding, ROOT_AGENT};
+use test_cabinet_core::gg::{GgLoopDetection, GgPromptCacheTtl, GgSlotBinding, ROOT_AGENT};
 use test_cabinet_core::gg_replay::{GgClientRole, GgReplayAgentOrigin};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
+use crate::loopguard::{LoopGuard, LoopGuardConfig, LoopVerdict, resolve_loop_guard};
 use crate::model::{
     FinishReason, Message, ModelClient, ModelError, ModelResponse, Role, ToolCall, ToolDefinition,
 };
+
+#[cfg(doc)]
+use crate::loopguard::ResolvedLoopGuard;
 
 /// OpenRouter's OpenAI-compatible API root.
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
@@ -286,9 +292,26 @@ pub fn classify_status(status: u16) -> StatusClass {
 ///
 /// The [`reqwest::Client`] and `base_url` are injected via [`new`](Self::new) so tests
 /// can construct one without touching the network; the request/response mapping is in
-/// the pure [`build_request_body`]/[`parse_response`] functions. Non-streaming in
-/// Phase 0 (robust); the seam for streaming is a future `complete` variant that reuses
-/// the same request builder.
+/// the pure [`build_request_body`]/[`parse_response`] functions.
+///
+/// # Two transports
+///
+/// A client either **buffers** a reply or **streams** it, and which one it uses is decided once,
+/// at construction, by whether the agent it serves armed [loop detection](crate::loopguard):
+///
+/// - [`loop_guard`](Self::loop_guard) is `None` — the default, and what every stored configuration
+///   asks for — and the client posts the request and reads the whole body with `resp.text()`, then
+///   [parses](parse_response) it. This is gg's original transport, unchanged: same request bytes,
+///   same parse, same errors.
+/// - [`loop_guard`](Self::loop_guard) is `Some` and the client asks for
+///   [server-sent events](StreamAccumulator), assembling the reply chunk by chunk and showing each
+///   text delta to a [`LoopGuard`] as it arrives, so a reply that has degenerated into a repetition
+///   can be abandoned while the model is still writing it rather than paid for in full.
+///
+/// The split is deliberate rather than "stream everything". Streaming is the strictly more
+/// complicated wire format — partial lines, per-index tool-call fragments, usage on a trailing
+/// chunk — and it buys nothing at all for an agent that is going to read whatever comes back. Only
+/// an agent that might *stop* reading has a use for it.
 pub struct OpenRouterClient {
     http: reqwest::Client,
     base_url: String,
@@ -308,6 +331,15 @@ pub struct OpenRouterClient {
     /// client rather than per run: a client serves one agent, and that is the granularity at which
     /// the extended lifetime is worth its premium.
     stable_ttl: CacheTtl,
+    /// The [detector](LoopGuardConfig) each of this client's replies is watched with, or `None`
+    /// when the agent this client serves left [loop detection](GgLoopDetection) off.
+    ///
+    /// It is the switch between the client's [two transports](Self) as well as the detector's
+    /// knobs, because the two are the same decision: a detector that is only shown a reply once it
+    /// is complete has nothing left to save, so arming one *is* asking to stream. Carried as the
+    /// already-[resolved](resolve_loop_guard) configuration rather than as the declaration, so the
+    /// per-attempt path constructs a [`LoopGuard`] and does no interpretation at all.
+    loop_guard: Option<LoopGuardConfig>,
 }
 
 impl OpenRouterClient {
@@ -318,7 +350,10 @@ impl OpenRouterClient {
     ///
     /// The prompt cache takes the [standard lifetime](CacheTtl::Standard); a client for an agent
     /// configured for the extended one is built through
-    /// [`with_prompt_cache_ttl`](Self::with_prompt_cache_ttl).
+    /// [`with_prompt_cache_ttl`](Self::with_prompt_cache_ttl). [Loop detection](crate::loopguard)
+    /// is **off**, so the client buffers its replies — the transport gg has always used; a client
+    /// for an agent that armed it is built through
+    /// [`with_loop_detection`](Self::with_loop_detection).
     pub fn new(
         base_url: impl Into<String>,
         http: reqwest::Client,
@@ -335,6 +370,7 @@ impl OpenRouterClient {
             retry,
             session_key,
             stable_ttl: CacheTtl::Standard,
+            loop_guard: None,
         }
     }
 
@@ -343,6 +379,26 @@ impl OpenRouterClient {
     /// [`client_for_slot`] carries in on the binding.
     pub fn with_prompt_cache_ttl(mut self, ttl: GgPromptCacheTtl) -> Self {
         self.stable_ttl = ttl.into();
+        self
+    }
+
+    /// This client watching its replies for a [generation loop](crate::loopguard) as `declared` —
+    /// the agent profile's [configured choice](GgLoopDetection), which
+    /// [`client_for_slot`] carries in on the binding, exactly as it carries the
+    /// [prompt-cache lifetime](Self::with_prompt_cache_ttl).
+    ///
+    /// A declaration that is off (the default) leaves the client on its buffering
+    /// [transport](Self), so passing an unarmed declaration is a no-op and every agent that says
+    /// nothing about loop detection behaves precisely as it did before the detector existed.
+    ///
+    /// The [warnings](ResolvedLoopGuard::warnings) resolution produces are deliberately dropped
+    /// here. They are one-per-run operator advice about a knob that could not do its job, not
+    /// one-per-agent-client advice, and a client has no stream to emit them on; the launch path
+    /// resolves the same declaration itself and logs them once, in the register of the
+    /// [run limits](crate::limits::resolve_run_limits)' warnings. Resolution is pure, so resolving
+    /// twice cannot disagree.
+    pub fn with_loop_detection(mut self, declared: GgLoopDetection) -> Self {
+        self.loop_guard = resolve_loop_guard(&declared).config;
         self
     }
 
@@ -372,12 +428,44 @@ impl OpenRouterClient {
             RetryPolicy::default(),
             session_key.map(str::to_string),
         )
-        .with_prompt_cache_ttl(binding.prompt_cache_ttl))
+        .with_prompt_cache_ttl(binding.prompt_cache_ttl)
+        .with_loop_detection(binding.loop_detection))
     }
 
     /// The chat-completions URL for this client's base.
     fn endpoint(&self) -> String {
         format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
+    }
+
+    /// Whether this client asks the provider to stream — true exactly when
+    /// [loop detection](Self::loop_guard) is armed. One predicate rather than two `is_some()`
+    /// checks, so the request body and the transport can never disagree about which shape of reply
+    /// is coming back.
+    fn streams(&self) -> bool {
+        self.loop_guard.is_some()
+    }
+
+    /// One attempt's request, headers and all, before its body is attached.
+    ///
+    /// Shared by [both transports](Self) rather than written out twice: the headers are the run's
+    /// identity and its [sticky-session key](build_request_body), and a streamed request that
+    /// quietly stopped sending one of them would cost the agent its prompt cache in a way no test
+    /// of either transport alone would catch.
+    fn attempt(&self, url: &str) -> reqwest::RequestBuilder {
+        let mut request = self
+            .http
+            .post(url)
+            .header(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {}", self.api_key),
+            )
+            .header("HTTP-Referer", GG_HTTP_REFERER)
+            .header("X-Title", GG_X_TITLE);
+        // The header form of the `session_id` the body already carries — see `session_key`.
+        if let Some(key) = self.session_key.as_deref().filter(|key| !key.is_empty()) {
+            request = request.header(SESSION_ID_HEADER, session_key_on_the_wire(key));
+        }
+        request
     }
 }
 
@@ -394,6 +482,7 @@ impl ModelClient for OpenRouterClient {
             tools,
             self.session_key.as_deref(),
             self.stable_ttl,
+            self.streams(),
         );
         self.send(body, messages).await
     }
@@ -412,6 +501,7 @@ impl ModelClient for OpenRouterClient {
             tool,
             self.session_key.as_deref(),
             self.stable_ttl,
+            self.streams(),
         );
         self.send(body, messages).await
     }
@@ -429,7 +519,24 @@ impl OpenRouterClient {
     /// build. `messages` is passed for the one thing the transport reads off it: whether the
     /// request carried pictures, which decides whether a fatal refusal is the recoverable
     /// [vision](ModelError::VisionUnsupported) one.
+    ///
+    /// Which of the [two transports](Self) runs is decided here and nowhere else, off the one
+    /// field that decides it. An agent with no [detector](Self::loop_guard) takes
+    /// [`send_buffered`](Self::send_buffered) — the code gg has always run, byte for byte.
     async fn send(&self, body: Value, messages: &[Message]) -> Result<ModelResponse, ModelError> {
+        match self.loop_guard {
+            None => self.send_buffered(body, messages).await,
+            Some(guard) => self.send_streamed(body, messages, guard).await,
+        }
+    }
+
+    /// The **buffering** transport: post the request, read the whole body, [parse](parse_response)
+    /// it. gg's original and still its default — see [`send`](Self::send).
+    async fn send_buffered(
+        &self,
+        body: Value,
+        messages: &[Message],
+    ) -> Result<ModelResponse, ModelError> {
         let url = self.endpoint();
         let mut last_err = String::new();
         // Whether this request carries a picture at all. A provider's "no image route"
@@ -438,20 +545,7 @@ impl OpenRouterClient {
         let carries_images = messages.iter().any(|message| !message.images.is_empty());
 
         for attempt in 1..=self.retry.max_attempts {
-            let mut request = self
-                .http
-                .post(&url)
-                .header(
-                    reqwest::header::AUTHORIZATION,
-                    format!("Bearer {}", self.api_key),
-                )
-                .header("HTTP-Referer", GG_HTTP_REFERER)
-                .header("X-Title", GG_X_TITLE);
-            // The header form of the `session_id` the body already carries — see `session_key`.
-            if let Some(key) = self.session_key.as_deref().filter(|key| !key.is_empty()) {
-                request = request.header(SESSION_ID_HEADER, session_key_on_the_wire(key));
-            }
-            let sent = request.json(&body).send().await;
+            let sent = self.attempt(&url).json(&body).send().await;
 
             match sent {
                 // Transport-level failure (connect/timeout/etc.): always retryable.
@@ -470,17 +564,8 @@ impl OpenRouterClient {
                             // A refusal of the *images* rather than of the request: the
                             // loop can recover from this one by dropping them and
                             // retrying, so it is reported as its own error rather than
-                            // ending the run as an ordinary fatal 4xx.
-                            if carries_images && is_image_unsupported(status, &body) {
-                                return Err(ModelError::VisionUnsupported {
-                                    model_id: self.model_id.clone(),
-                                    message: truncate(&body),
-                                });
-                            }
-                            return Err(ModelError::Fatal {
-                                status,
-                                message: truncate(&body),
-                            });
+                            // ending the run as an ordinary fatal 4xx. See `refusal`.
+                            return Err(self.refusal(status, &body, carries_images));
                         }
                         StatusClass::Retryable => {
                             let body = resp.text().await.unwrap_or_default();
@@ -499,6 +584,191 @@ impl OpenRouterClient {
             attempts: self.retry.max_attempts,
             last: last_err,
         })
+    }
+
+    /// The **streaming** transport: ask for server-sent events, assemble the reply with a
+    /// [`StreamAccumulator`], and show every text delta to a [`LoopGuard`] as it arrives.
+    ///
+    /// Used only by a client whose agent armed [loop detection](crate::loopguard) — see
+    /// [`send`](Self::send). Everything outside the success branch is deliberately identical to
+    /// [`send_buffered`](Self::send_buffered): the status is classified on the response *head*,
+    /// before a single chunk is read, so a `4xx` refusal (including the recoverable
+    /// [vision](ModelError::VisionUnsupported) one) and a `5xx` are handled by exactly the same
+    /// rules whichever transport happened to be in use.
+    ///
+    /// A reply the detector abandons is treated precisely as an HTTP `5xx` is: the response is
+    /// dropped unread, the failure is recorded, the loop backs off and asks again. That is the
+    /// whole point of doing this inside the client's existing retry loop rather than surfacing an
+    /// error — a looping reply is a *transient* provider failure, and the next attempt usually
+    /// answers properly.
+    ///
+    /// If every attempt is spent, the error says which thing went wrong. A run that saw at least
+    /// one loop ends as [`ResponseLoop`](ModelError::ResponseLoop) rather than
+    /// [`RetryExhausted`](ModelError::RetryExhausted), even if the final attempt failed some other
+    /// way, because "the model kept answering with a repetition" is the fact worth acting on and
+    /// "the last attempt got a 503" is not.
+    async fn send_streamed(
+        &self,
+        body: Value,
+        messages: &[Message],
+        guard: LoopGuardConfig,
+    ) -> Result<ModelResponse, ModelError> {
+        let url = self.endpoint();
+        let mut last_err = String::new();
+        // The trip of the most recent abandoned attempt, and how many attempts were abandoned in
+        // total. Both survive across attempts because both are reported at the end: the count on
+        // the response that finally works, the trip on the error if none ever does.
+        let mut last_trip: Option<String> = None;
+        let mut loop_aborts: u32 = 0;
+        // See `send_buffered` — the same recoverability question, asked the same way.
+        let carries_images = messages.iter().any(|message| !message.images.is_empty());
+
+        for attempt in 1..=self.retry.max_attempts {
+            let sent = self.attempt(&url).json(&body).send().await;
+
+            match sent {
+                // Transport-level failure (connect/timeout/etc.): always retryable.
+                Err(err) => last_err = format!("transport error: {err}"),
+                Ok(resp) => {
+                    let status = resp.status().as_u16();
+                    match classify_status(status) {
+                        StatusClass::Success => match read_stream(resp, guard).await {
+                            StreamOutcome::Reply(response) => {
+                                // The count of thrown-away attempts rides out on the reply that
+                                // worked; nothing else the turn loop is handed could carry it.
+                                return Ok(ModelResponse {
+                                    loop_aborts,
+                                    ..response
+                                });
+                            }
+                            StreamOutcome::Looping(trip) => {
+                                loop_aborts = loop_aborts.saturating_add(1);
+                                last_err = format!("abandoned a looping reply: {trip}");
+                                last_trip = Some(trip);
+                            }
+                            StreamOutcome::Interrupted(detail) => last_err = detail,
+                            StreamOutcome::Malformed(err) => return Err(err),
+                        },
+                        StatusClass::Fatal => {
+                            let body = resp.text().await.unwrap_or_default();
+                            return Err(self.refusal(status, &body, carries_images));
+                        }
+                        StatusClass::Retryable => {
+                            let body = resp.text().await.unwrap_or_default();
+                            last_err = format!("HTTP {status}: {}", truncate(&body));
+                        }
+                    }
+                }
+            }
+
+            if attempt < self.retry.max_attempts {
+                tokio::time::sleep(backoff_delay(attempt, &self.retry)).await;
+            }
+        }
+
+        match last_trip {
+            Some(detail) => Err(ModelError::ResponseLoop {
+                // How many replies were read and thrown away — which is what the message says, and
+                // is not the same as the attempt count when some attempts failed at the HTTP level.
+                attempts: loop_aborts,
+                detail,
+            }),
+            None => Err(ModelError::RetryExhausted {
+                attempts: self.retry.max_attempts,
+                last: last_err,
+            }),
+        }
+    }
+
+    /// The [`ModelError`] a non-retryable status is: an image refusal when the request carried
+    /// pictures and the body says so, and an ordinary [`Fatal`](ModelError::Fatal) otherwise.
+    ///
+    /// Factored out of [`send_buffered`](Self::send_buffered)'s inline branch so the streaming
+    /// transport cannot classify a refusal differently. The distinction is load-bearing: a vision
+    /// refusal is the one fatal status the turn loop *recovers* from, by
+    /// [stripping](Message::strip_images) the pictures and re-running the turn.
+    fn refusal(&self, status: u16, body: &str, carries_images: bool) -> ModelError {
+        if carries_images && is_image_unsupported(status, body) {
+            return ModelError::VisionUnsupported {
+                model_id: self.model_id.clone(),
+                message: truncate(body),
+            };
+        }
+        ModelError::Fatal {
+            status,
+            message: truncate(body),
+        }
+    }
+}
+
+/// How one streamed attempt ended.
+///
+/// Four outcomes rather than a `Result`, because the caller's three-way decision — return, retry,
+/// give up — is not the two-way one a `Result` expresses. In particular a reply the detector
+/// abandoned is neither a success nor a failure of the *request*: it is a retryable failure of the
+/// answer, and collapsing it into an error would put the retry decision in the wrong place.
+enum StreamOutcome {
+    /// The stream completed and assembled into a reply.
+    Reply(ModelResponse),
+    /// [Loop detection](crate::loopguard) abandoned the reply mid-stream. Carries the
+    /// [trip](crate::loopguard::LoopTrip)'s rendered sentence for the log and, if no attempt ever
+    /// succeeds, for the [error](ModelError::ResponseLoop). **Retryable.**
+    Looping(String),
+    /// The connection failed part-way through the reply. **Retryable**, on the same terms as a
+    /// transport error before the response head: nothing about the request was wrong.
+    Interrupted(String),
+    /// The stream was not a stream gg can read — an unparseable event, a provider error object, a
+    /// tool call whose assembled arguments are not JSON, or an empty reply with no finish reason.
+    /// **Fatal**, exactly as the same conditions are on the buffering transport.
+    Malformed(ModelError),
+}
+
+/// Read one streamed response to its end, its abandonment, or its failure.
+///
+/// The [guard](LoopGuard) is constructed **per attempt**, not per turn: each attempt is a fresh
+/// reply, and carrying a window across attempts would let words from a discarded reply condemn its
+/// replacement.
+///
+/// Abandoning is simply returning: the [`reqwest::Response`] and its chunk stream are dropped on
+/// the way out, which closes the connection and stops the provider sending the rest. gg neither
+/// reads nor pays for the remainder.
+async fn read_stream(resp: reqwest::Response, config: LoopGuardConfig) -> StreamOutcome {
+    let mut guard = LoopGuard::new(config);
+    let mut accumulator = StreamAccumulator::new();
+    let mut stream = resp.bytes_stream();
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = match chunk {
+            Ok(chunk) => chunk,
+            Err(err) => return StreamOutcome::Interrupted(format!("stream interrupted: {err}")),
+        };
+        let delta = match accumulator.push_bytes(&chunk) {
+            Ok(delta) => delta,
+            Err(err) => return StreamOutcome::Malformed(err),
+        };
+        if let LoopVerdict::Looping(trip) = guard.push(&delta) {
+            // The trip says which rule fired and in that rule's own units — words for a repetition,
+            // characters for the backstop. The size of what is being thrown away is appended in
+            // **both** units, because that is what the discarded reply cost: the operator reading
+            // this line wants to know how much generation was paid for and abandoned, whichever
+            // rule caught it.
+            return StreamOutcome::Looping(format!(
+                "{trip} ({} words, {} characters read before it was abandoned)",
+                guard.words_seen(),
+                guard.chars_seen(),
+            ));
+        }
+        // The terminal sentinel. Providers usually close the connection immediately after it, but
+        // not always, and waiting for a close that a keep-alive proxy may not forward would stall
+        // the turn on a reply that is already complete.
+        if accumulator.done() {
+            break;
+        }
+    }
+
+    match accumulator.finish() {
+        Ok(response) => StreamOutcome::Reply(response),
+        Err(err) => StreamOutcome::Malformed(err),
     }
 }
 
@@ -585,12 +855,23 @@ fn truncate(body: &str) -> String {
 /// worth its write premium depends on how that agent's turns are shaped. The tail always takes
 /// [`CacheTtl::Standard`], so `Standard` here produces exactly the unqualified markers gg sent
 /// before the lifetime was configurable.
+///
+/// `stream` asks the provider to deliver the reply as
+/// [server-sent events](StreamAccumulator) rather than as one JSON document, and is `true` only
+/// for an agent with [loop detection](crate::loopguard) armed — a detector cannot abandon a reply
+/// it is only shown once it is complete. It adds `stream: true` and
+/// `stream_options: { include_usage: true }`; the latter is what makes OpenRouter attach the
+/// `usage` block (and therefore the turn's cost) to the final chunk, without which a streamed turn
+/// would silently account zero tokens. The flag is a *parameter* rather than a mutation applied to
+/// the returned `Value` so that there is exactly one description of what gg sends, and a test can
+/// assert both shapes come out of the same function.
 pub fn build_request_body(
     model_id: &str,
     messages: &[Message],
     tools: &[ToolDefinition],
     session_key: Option<&str>,
     stable_ttl: CacheTtl,
+    stream: bool,
 ) -> Value {
     let breakpoints = if requires_cache_markers(model_id) {
         cache_breakpoints(messages)
@@ -622,6 +903,11 @@ pub fn build_request_body(
         "messages": messages,
         "usage": { "include": true },
     });
+
+    if stream {
+        body["stream"] = json!(true);
+        body["stream_options"] = json!({ "include_usage": true });
+    }
 
     if let Some(key) = session_key.filter(|key| !key.is_empty()) {
         let key = session_key_on_the_wire(key);
@@ -658,12 +944,17 @@ pub fn build_request_body(
 /// Its one caller is [handoff compaction](crate::compaction::HandoffCompactor), which has a single
 /// shot at a structured answer and no next turn in which to ask again. Pure, like
 /// [`build_request_body`], so the wire shape is unit tested without network.
+///
+/// `stream` carries the same meaning it has on [`build_request_body`], so the agent's transport
+/// choice applies to its compaction summary as well as to its turns — the summarizer runs on the
+/// same model, and a model that loops on a turn loops on a summary.
 pub fn build_required_tool_request_body(
     model_id: &str,
     messages: &[Message],
     tool: &ToolDefinition,
     session_key: Option<&str>,
     stable_ttl: CacheTtl,
+    stream: bool,
 ) -> Value {
     let mut body = build_request_body(
         model_id,
@@ -671,6 +962,7 @@ pub fn build_required_tool_request_body(
         std::slice::from_ref(tool),
         session_key,
         stable_ttl,
+        stream,
     );
     body["tool_choice"] = json!({
         "type": "function",
@@ -993,6 +1285,7 @@ pub fn parse_response(body: &str) -> Result<ModelResponse, ModelError> {
         finish_reason,
         usage,
         cost,
+        loop_aborts: 0,
     })
 }
 
@@ -1134,6 +1427,338 @@ struct WireCompletionDetails {
 }
 
 // ---------------------------------------------------------------------------
+// Streamed response assembly (pure)
+// ---------------------------------------------------------------------------
+
+/// The longest single server-sent-event line gg will buffer before giving up: **8 MiB**.
+///
+/// A chat-completion chunk is a few hundred bytes, so this is not a limit any provider approaches —
+/// it is a bound on the one thing an SSE reader cannot otherwise bound. Lines are only recognised
+/// at a newline, so a peer that sends bytes and never a newline would otherwise grow the buffer
+/// without limit, and the [detector](LoopGuard) could not save the process because it is never
+/// shown a delta until a line completes.
+const MAX_SSE_LINE_BYTES: usize = 8 * 1024 * 1024;
+
+/// The SSE field prefix carrying a chunk.
+const SSE_DATA_PREFIX: &str = "data:";
+
+/// The payload of the terminal `data:` line — the provider saying the reply is complete.
+const SSE_DONE: &str = "[DONE]";
+
+/// Accumulates OpenAI-style `chat.completion.chunk` deltas into one [`ModelResponse`].
+///
+/// **Pure and network-free**, on the same terms as [`build_request_body`] and [`parse_response`]:
+/// it is fed `&[u8]` and answers with values, so the whole streamed wire format — partial lines,
+/// keep-alive comments, tool-call fragments arriving out of one field at a time, usage on a
+/// trailing chunk — is unit tested against recorded transcripts with no server anywhere. The only
+/// thing [`read_stream`] adds is a socket to read the bytes off.
+///
+/// It shares every mapping with the buffering transport ([`parse_arguments`],
+/// [`map_finish_reason`], [`map_usage`], and the `Stop`-with-tool-calls normalisation), which is
+/// what makes the two transports' answers comparable rather than merely similar — see the
+/// equivalence test in `client.streaming.test.rs`, which feeds an SSE transcript whose deltas
+/// concatenate to a non-streaming fixture and asserts the two [`ModelResponse`]s are equal.
+///
+/// # What it tolerates
+///
+/// Everything the format says is not a chunk: blank lines (the event separator), `:` comment lines
+/// (OpenRouter sends `: OPENROUTER PROCESSING` as a keep-alive while a slow provider thinks), and
+/// any other field line (`event:`, `id:`, `retry:`). A `data:` line that is not `[DONE]` and not
+/// parseable JSON is *not* tolerated: a chunk gg cannot read is a reply gg cannot assemble, and
+/// silently skipping it would produce a confidently wrong answer.
+pub struct StreamAccumulator {
+    /// Bytes received but not yet forming a complete line.
+    ///
+    /// Raw bytes rather than a `String`, and this is the reason the accumulator takes `&[u8]` at
+    /// all: a TCP read may split a multi-byte UTF-8 sequence, and decoding each chunk as it arrives
+    /// would either fail or (worse, with a lossy decoder) replace half a character with `U+FFFD`
+    /// and corrupt the reply. Lines are cut at `\n`, which cannot occur inside a multi-byte
+    /// sequence, so every line handed on is a whole one and decodes cleanly.
+    buffer: Vec<u8>,
+    /// The assistant text assembled from every `delta.content` so far.
+    text: String,
+    /// Tool calls under assembly, keyed by the wire's `index` — the field that says which call a
+    /// fragment belongs to, since a chunk carries a slice of one and providers interleave several.
+    ///
+    /// A `BTreeMap` so [`finish`](Self::finish) emits them in index order, which is the order the
+    /// model asked for them in and the order the buffering transport returns them in. A `Vec`
+    /// indexed positionally would break the moment a provider sent index 1 before index 0.
+    tool_calls: BTreeMap<u64, PartialToolCall>,
+    /// The first non-null `finish_reason` any chunk carried. First rather than last because a
+    /// provider states it once, on the chunk that stops, and anything after it is bookkeeping (the
+    /// usage-only chunk) that must not overwrite it.
+    finish_reason: Option<String>,
+    /// The usage block, which OpenRouter attaches to the **final** chunk when the request asked for
+    /// `stream_options.include_usage` — see [`build_request_body`]. Absent until then, which is why
+    /// it cannot be read before the stream ends.
+    usage: Option<WireUsage>,
+    /// Whether the terminal `data: [DONE]` sentinel has been seen.
+    done: bool,
+}
+
+/// One tool call being assembled from the fragments of several chunks.
+#[derive(Default)]
+struct PartialToolCall {
+    /// The provider-assigned id, from whichever chunk carried it (typically only the first).
+    id: String,
+    /// The function name, from whichever chunk carried it (typically only the first).
+    name: String,
+    /// The `arguments` JSON **string**, concatenated across every chunk that carried a fragment.
+    /// It is not valid JSON until the last fragment lands, which is why it is parsed in
+    /// [`finish`](StreamAccumulator::finish) and not on the way in.
+    arguments: String,
+}
+
+impl Default for StreamAccumulator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StreamAccumulator {
+    /// An accumulator holding nothing, ready for the first bytes off the wire.
+    pub fn new() -> Self {
+        Self {
+            buffer: Vec::new(),
+            text: String::new(),
+            tool_calls: BTreeMap::new(),
+            finish_reason: None,
+            usage: None,
+            done: false,
+        }
+    }
+
+    /// Feed raw bytes off the wire.
+    ///
+    /// Returns the assistant **text** contained in them — the concatenated `delta.content` of every
+    /// complete chunk this call finished — and records everything else (tool-call fragments, the
+    /// finish reason, usage, the sentinel) internally. The return value exists for exactly one
+    /// caller: the [`LoopGuard`], which judges the reply the model is writing and must not be shown
+    /// the SSE framing, the JSON escaping or the tool-call arguments around it.
+    ///
+    /// Bytes that do not complete a line are held for the next call, so an event straddling two
+    /// reads is assembled rather than truncated.
+    ///
+    /// **Tool-call arguments are deliberately excluded**, and that is a real limit worth stating: a
+    /// model that loops *inside* a tool call's `arguments` — a `write_file` whose contents repeat
+    /// forever — is not caught by the window rule and is bounded only by the provider's own output
+    /// cap. The exclusion is right anyway. Arguments arrive as a JSON string, so the detector would
+    /// be judging escaped, quoted fragments rather than the model's words, and the defect this
+    /// exists for is a responses-as-code program, which arrives as `content`.
+    pub fn push_bytes(&mut self, bytes: &[u8]) -> Result<String, ModelError> {
+        self.buffer.extend_from_slice(bytes);
+        let mut delta = String::new();
+
+        while let Some(newline) = self.buffer.iter().position(|byte| *byte == b'\n') {
+            let raw: Vec<u8> = self.buffer.drain(..=newline).collect();
+            // Strip the terminator, and the `\r` of a CRLF peer. SSE permits either ending.
+            let mut line: &[u8] = &raw;
+            if let Some(rest) = line.strip_suffix(b"\n") {
+                line = rest;
+            }
+            if let Some(rest) = line.strip_suffix(b"\r") {
+                line = rest;
+            }
+            let line = std::str::from_utf8(line).map_err(|err| {
+                ModelError::Parse(format!("stream carried a line that is not UTF-8: {err}"))
+            })?;
+            self.push_line(line, &mut delta)?;
+        }
+
+        if self.buffer.len() > MAX_SSE_LINE_BYTES {
+            return Err(ModelError::Parse(format!(
+                "stream sent {} bytes with no line break; giving up at {MAX_SSE_LINE_BYTES}",
+                self.buffer.len()
+            )));
+        }
+
+        Ok(delta)
+    }
+
+    /// Whether the terminal `data: [DONE]` sentinel has been seen.
+    pub fn done(&self) -> bool {
+        self.done
+    }
+
+    /// Take one complete SSE line, appending any assistant text it carried to `delta`.
+    fn push_line(&mut self, line: &str, delta: &mut String) -> Result<(), ModelError> {
+        // The event separator, and the keep-alive comment OpenRouter sends while a slow provider
+        // is still thinking (`: OPENROUTER PROCESSING`). Both are framing, not content.
+        if line.trim().is_empty() || line.starts_with(':') {
+            return Ok(());
+        }
+        let Some(payload) = line.strip_prefix(SSE_DATA_PREFIX) else {
+            // Some other field (`event:`, `id:`, `retry:`) — nothing gg reads.
+            return Ok(());
+        };
+        let payload = payload.trim_start();
+        if payload == SSE_DONE {
+            self.done = true;
+            return Ok(());
+        }
+
+        let chunk: WireStreamChunk = serde_json::from_str(payload).map_err(|err| {
+            ModelError::Parse(format!("{err}; stream chunk: {}", truncate(payload)))
+        })?;
+
+        // A provider error arriving mid-stream, worded exactly as `parse_response` words the same
+        // object in a `2xx` envelope: the two transports must not describe one failure two ways.
+        if let Some(error) = chunk.error {
+            return Err(ModelError::Parse(format!(
+                "provider returned an error object: {}",
+                error.message
+            )));
+        }
+        if let Some(usage) = chunk.usage {
+            self.usage = Some(usage);
+        }
+
+        // gg asks for one completion and reads one, exactly as `parse_response` takes the first
+        // choice. A chunk carrying none is the usage-only trailer.
+        let Some(choice) = chunk.choices.into_iter().next() else {
+            return Ok(());
+        };
+        if self.finish_reason.is_none() {
+            self.finish_reason = choice.finish_reason;
+        }
+        if let Some(content) = choice.delta.content {
+            self.text.push_str(&content);
+            delta.push_str(&content);
+        }
+        for fragment in choice.delta.tool_calls {
+            let call = self.tool_calls.entry(fragment.index).or_default();
+            if let Some(id) = fragment.id {
+                call.id = id;
+            }
+            if let Some(function) = fragment.function {
+                if let Some(name) = function.name {
+                    call.name = name;
+                }
+                if let Some(arguments) = function.arguments {
+                    call.arguments.push_str(&arguments);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The assembled response.
+    ///
+    /// Applies exactly the normalisations [`parse_response`] applies: empty text becomes `None`,
+    /// each call's concatenated `arguments` string goes through [`parse_arguments`], a `Stop` with
+    /// tool calls becomes [`FinishReason::ToolCalls`], and usage goes through [`map_usage`].
+    ///
+    /// A stream that produced neither text nor tool calls is an error **only** if it also never
+    /// carried a finish reason. A model that legitimately answers with nothing at all is a shape
+    /// the buffering transport already accepts (it turns `""` into `None`), so rejecting it here
+    /// would make the transports disagree; a stream that ended without saying anything, on the
+    /// other hand, was cut off, and reporting that as an empty reply would hand the turn loop a
+    /// silence the model never produced.
+    pub fn finish(self) -> Result<ModelResponse, ModelError> {
+        let has_calls = !self.tool_calls.is_empty();
+        if self.text.is_empty() && !has_calls && self.finish_reason.is_none() {
+            return Err(ModelError::Parse(
+                "the stream ended without a reply or a finish reason".to_string(),
+            ));
+        }
+
+        let mut tool_calls = Vec::with_capacity(self.tool_calls.len());
+        for (index, call) in self.tool_calls {
+            let arguments = parse_arguments(&call.arguments).map_err(|err| {
+                ModelError::Parse(format!(
+                    "tool call #{index} ({}) had unparseable arguments: {err}",
+                    call.name
+                ))
+            })?;
+            tool_calls.push(ToolCall {
+                id: call.id,
+                name: call.name,
+                arguments,
+            });
+        }
+
+        let mut finish_reason = map_finish_reason(self.finish_reason.as_deref());
+        // The same normalization the buffering transport applies, for the same reason: a provider
+        // that omitted `finish_reason` but asked for tools still stopped to call them.
+        if finish_reason == FinishReason::Stop && has_calls {
+            finish_reason = FinishReason::ToolCalls;
+        }
+
+        let (usage, cost) = map_usage(self.usage.as_ref());
+
+        Ok(ModelResponse {
+            text: (!self.text.is_empty()).then_some(self.text),
+            tool_calls,
+            finish_reason,
+            usage,
+            cost,
+            // The transport fills this in: the accumulator assembles one attempt and has no idea
+            // how many earlier ones were thrown away.
+            loop_aborts: 0,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Streamed wire types
+// ---------------------------------------------------------------------------
+
+/// One `chat.completion.chunk` object, as it arrives on a `data:` line.
+#[derive(Debug, Deserialize)]
+struct WireStreamChunk {
+    #[serde(default)]
+    choices: Vec<WireStreamChoice>,
+    /// Present only on the final chunk, and only because the request asked for
+    /// `stream_options.include_usage` — see [`build_request_body`].
+    #[serde(default)]
+    usage: Option<WireUsage>,
+    /// A provider error delivered as a chunk rather than as a status. Same shape, and treated the
+    /// same way, as the one [`parse_response`] finds in a `2xx` envelope.
+    #[serde(default)]
+    error: Option<WireError>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WireStreamChoice {
+    #[serde(default)]
+    delta: WireDelta,
+    #[serde(default)]
+    finish_reason: Option<String>,
+}
+
+/// The incremental part of a choice. Every field is optional: a chunk carries whichever of them
+/// changed, and the usage-only trailer carries none.
+#[derive(Debug, Default, Deserialize)]
+struct WireDelta {
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    tool_calls: Vec<WireDeltaToolCall>,
+}
+
+/// A slice of one tool call. `index` is the only field guaranteed on every fragment — it is what
+/// says which call this is part of.
+#[derive(Debug, Deserialize)]
+struct WireDeltaToolCall {
+    #[serde(default)]
+    index: u64,
+    #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
+    function: Option<WireDeltaFunction>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WireDeltaFunction {
+    #[serde(default)]
+    name: Option<String>,
+    /// A **fragment** of the arguments JSON string, not the whole of it. Concatenated across
+    /// chunks; parsed once, at the end.
+    #[serde(default)]
+    arguments: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
 // Mock client
 // ---------------------------------------------------------------------------
 
@@ -1251,6 +1876,7 @@ impl MockClient {
                 comparable: Some(0.0011),
                 actual: Some(0.0011),
             }),
+            loop_aborts: 0,
         };
         let write_memory_call = ModelResponse {
             text: Some("Noting the game plan as a memory before building.".to_string()),
@@ -1275,6 +1901,7 @@ impl MockClient {
                 comparable: Some(0.0015),
                 actual: Some(0.0015),
             }),
+            loop_aborts: 0,
         };
         let add_scaffold_task = ModelResponse {
             text: Some("Planning the work: first, scaffold the page.".to_string()),
@@ -1297,6 +1924,7 @@ impl MockClient {
                 comparable: Some(0.0012),
                 actual: Some(0.0012),
             }),
+            loop_aborts: 0,
         };
         let add_movement_task = ModelResponse {
             text: Some("Then player movement, which is blocked by the scaffold.".to_string()),
@@ -1320,6 +1948,7 @@ impl MockClient {
                 comparable: Some(0.0012),
                 actual: Some(0.0012),
             }),
+            loop_aborts: 0,
         };
         // An intentionally cyclic edge: the movement task is already blocked by the scaffold
         // task, so also blocking the scaffold task on the movement task closes a loop. gg
@@ -1345,6 +1974,7 @@ impl MockClient {
                 comparable: Some(0.0012),
                 actual: Some(0.0012),
             }),
+            loop_aborts: 0,
         };
         let complete_scaffold_task = ModelResponse {
             text: Some("Scaffolding done — marking it complete to unblock movement.".to_string()),
@@ -1364,6 +1994,7 @@ impl MockClient {
                 comparable: Some(0.0012),
                 actual: Some(0.0012),
             }),
+            loop_aborts: 0,
         };
         let create_epic = ModelResponse {
             text: Some("Decomposing the build: opening an epic for the core loop.".to_string()),
@@ -1387,6 +2018,7 @@ impl MockClient {
                 comparable: Some(0.0013),
                 actual: Some(0.0013),
             }),
+            loop_aborts: 0,
         };
         let create_render_issue = ModelResponse {
             text: Some("First issue: the render loop, with an explicit scope.".to_string()),
@@ -1413,6 +2045,7 @@ impl MockClient {
                 comparable: Some(0.0016),
                 actual: Some(0.0016),
             }),
+            loop_aborts: 0,
         };
         let create_input_issue = ModelResponse {
             text: Some("Second issue: input handling, blocked by the render loop.".to_string()),
@@ -1440,6 +2073,7 @@ impl MockClient {
                 comparable: Some(0.0016),
                 actual: Some(0.0016),
             }),
+            loop_aborts: 0,
         };
         // An intentionally cyclic edge: the input issue is already blocked by the render issue,
         // so also blocking the render issue on the input issue closes a loop. gg refuses it (the
@@ -1465,6 +2099,7 @@ impl MockClient {
                 comparable: Some(0.0013),
                 actual: Some(0.0013),
             }),
+            loop_aborts: 0,
         };
         let write_call = ModelResponse {
             text: Some("Creating a minimal playable game in index.html.".to_string()),
@@ -1487,6 +2122,7 @@ impl MockClient {
                 comparable: Some(0.0042),
                 actual: Some(0.0042),
             }),
+            loop_aborts: 0,
         };
         let finish = ModelResponse {
             usage: TokenCounts {
@@ -1558,6 +2194,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(900, 120),
             cost: None,
+            loop_aborts: 0,
         };
         let read_level = ModelResponse {
             text: Some("Reading level.json to check the layout.".to_string()),
@@ -1569,6 +2206,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(950, 40),
             cost: None,
+            loop_aborts: 0,
         };
         let evict_level = ModelResponse {
             text: Some(
@@ -1582,6 +2220,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(1200, 40),
             cost: None,
+            loop_aborts: 0,
         };
         let reread_level = ModelResponse {
             text: Some("Pulling level.json back up to finish the layout pass.".to_string()),
@@ -1593,6 +2232,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(1100, 40),
             cost: None,
+            loop_aborts: 0,
         };
         let archive = ModelResponse {
             text: Some("Archiving the earlier thread to keep my window lean.".to_string()),
@@ -1606,6 +2246,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(700, 30),
             cost: None,
+            loop_aborts: 0,
         };
         let search = ModelResponse {
             text: Some("Recovering the archived level reference.".to_string()),
@@ -1617,6 +2258,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(400, 30),
             cost: None,
+            loop_aborts: 0,
         };
         let finish = ModelResponse {
             usage: usage(500, 40),
@@ -1669,6 +2311,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(900, 40),
             cost: None,
+            loop_aborts: 0,
         };
         let wait = ModelResponse {
             text: Some("Waiting for the subagent to finish.".to_string()),
@@ -1680,6 +2323,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(950, 30),
             cost: None,
+            loop_aborts: 0,
         };
         let finish = ModelResponse {
             usage: usage(1000, 50),
@@ -1738,6 +2382,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(900, 60),
             cost: None,
+            loop_aborts: 0,
         };
         let finish = ModelResponse {
             usage: usage(1000, 40),
@@ -1840,6 +2485,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(900, 50),
             cost: None,
+            loop_aborts: 0,
         };
         let finish = ModelResponse {
             usage: usage(1000, 40),
@@ -1904,6 +2550,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(800, 40),
             cost: None,
+            loop_aborts: 0,
         };
         let spawn = ModelResponse {
             text: Some("Delegating the investigation.".to_string()),
@@ -1918,6 +2565,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(900, 40),
             cost: None,
+            loop_aborts: 0,
         };
         let wait = ModelResponse {
             text: Some("Waiting for the subagent to finish.".to_string()),
@@ -1929,6 +2577,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(950, 30),
             cost: None,
+            loop_aborts: 0,
         };
         let finish = ModelResponse {
             usage: usage(1000, 50),
@@ -1966,6 +2615,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(500, 30),
             cost: None,
+            loop_aborts: 0,
         };
         let finish = ModelResponse {
             usage: usage(550, 40),
@@ -2002,6 +2652,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(tokens, 30),
             cost: None,
+            loop_aborts: 0,
         };
         let advance = ModelResponse {
             text: Some("The plan is ready; handing it to the builder.".to_string()),
@@ -2016,6 +2667,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(900, 40),
             cost: None,
+            loop_aborts: 0,
         };
         Self::new(
             model_id,
@@ -2051,6 +2703,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(600, 30),
             cost: None,
+            loop_aborts: 0,
         };
         let advance = ModelResponse {
             text: Some("Handing it to the verifier instead.".to_string()),
@@ -2062,6 +2715,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(700, 40),
             cost: None,
+            loop_aborts: 0,
         };
         Self::new(model_id, vec![illegal, advance])
     }
@@ -2110,6 +2764,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(600, 30),
             cost: None,
+            loop_aborts: 0,
         };
         let succeed = ModelResponse {
             text: Some("This needs the other agent's toolset.".to_string()),
@@ -2121,6 +2776,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(700, 40),
             cost: None,
+            loop_aborts: 0,
         };
         Self::new(model_id, vec![plan, succeed])
     }
@@ -2152,6 +2808,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(600, 30),
             cost: None,
+            loop_aborts: 0,
         };
         let condense_and_succeed = ModelResponse {
             text: Some("Summarizing, then handing over.".to_string()),
@@ -2170,6 +2827,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(700, 40),
             cost: None,
+            loop_aborts: 0,
         };
         Self::new(model_id, vec![plan, condense_and_succeed])
     }
@@ -2221,6 +2879,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(600, 30),
             cost: None,
+            loop_aborts: 0,
         };
         let split = ModelResponse {
             text: Some("Trying both fixes at once.".to_string()),
@@ -2232,6 +2891,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(700, 40),
             cost: None,
+            loop_aborts: 0,
         };
         Self::new(
             model_id,
@@ -2272,6 +2932,7 @@ impl MockClient {
             finish_reason: FinishReason::ToolCalls,
             usage: usage(500, 30),
             cost: None,
+            loop_aborts: 0,
         };
         let finish = ModelResponse {
             usage: usage(550, 40),
@@ -2328,6 +2989,7 @@ impl MockClient {
                 comparable: Some(0.002),
                 actual: Some(0.002),
             }),
+            loop_aborts: 0,
         };
         let finish = ModelResponse {
             text: Some(
@@ -2338,6 +3000,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage: usage(900, 30),
             cost: None,
+            loop_aborts: 0,
         };
         Self::new(model_id, vec![program, finish])
     }
@@ -2364,6 +3027,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage,
             cost: None,
+            loop_aborts: 0,
         };
         let finish = ModelResponse {
             text: Some(
@@ -2373,6 +3037,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage,
             cost: None,
+            loop_aborts: 0,
         };
         Self::new(model_id, vec![runaway, finish])
     }
@@ -2405,6 +3070,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage: usage(1000, 60),
             cost: None,
+                    loop_aborts: 0,
         };
         let finish = ModelResponse {
             text: Some(
@@ -2414,6 +3080,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage: usage(1000, 40),
             cost: None,
+            loop_aborts: 0,
         };
         Self::new(model_id, vec![program, finish])
     }
@@ -2440,6 +3107,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage: usage(500, 40),
             cost: None,
+            loop_aborts: 0,
         };
         let finish = ModelResponse {
             text: Some(format!(
@@ -2450,6 +3118,7 @@ impl MockClient {
             finish_reason: FinishReason::Stop,
             usage: usage(520, 30),
             cost: None,
+            loop_aborts: 0,
         };
         Self::new(model_id, vec![program, finish])
     }
@@ -2532,6 +3201,7 @@ impl ModelClient for MockClient {
                 finish_reason: FinishReason::Stop,
                 usage: TokenCounts::default(),
                 cost: None,
+                loop_aborts: 0,
             });
         }
 
@@ -2550,6 +3220,7 @@ impl ModelClient for MockClient {
                 finish_reason: FinishReason::ToolCalls,
                 usage: TokenCounts::default(),
                 cost: None,
+                loop_aborts: 0,
             });
         }
 
@@ -2697,6 +3368,7 @@ impl ModelClient for MockClient {
                     finish_reason: FinishReason::ToolCalls,
                     usage: TokenCounts::default(),
                     cost: None,
+                    loop_aborts: 0,
                 });
             }
             return Ok(done_turn("Done with this pass."));
@@ -2722,6 +3394,7 @@ impl ModelClient for MockClient {
                     finish_reason: FinishReason::ToolCalls,
                     usage: TokenCounts::default(),
                     cost: None,
+                    loop_aborts: 0,
                 });
             }
             return Ok(done_turn("My attempt is complete."));
@@ -2768,6 +3441,7 @@ fn ending_turn(name: &str, text: &str, arguments: Value) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -2823,6 +3497,7 @@ fn issue_review_tool_turn(
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -3169,3 +3844,7 @@ impl ClientFactory for DefaultClientFactory {
 #[cfg(test)]
 #[path = "client.test.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "client.streaming.test.rs"]
+mod streaming_tests;

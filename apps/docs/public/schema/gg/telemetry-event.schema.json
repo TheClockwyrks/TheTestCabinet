@@ -370,8 +370,79 @@
       "required": ["source", "tokens"],
       "type": "object"
     },
+    "GgErrorSummary": {
+      "description": "The run's **error rollup**: how many of its turns failed, how badly they clustered, and how.\n\nFolded from the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the run emitted — one per\nturn, on every agent — so [`turns`](Self::turns) is both this rollup's denominator and a count\nof the model calls the run actually made. Numerator and denominator come from the same event and\ntherefore cannot drift.\n\nThis exists because gg already *judges* every turn — the same judgement the\n[error ceilings](GgRunLimits) are enforced on — and used to throw that judgement away when the\nagent's loop ended. A run that failed a third of its turns and finished anyway was, in the\ndurable record, indistinguishable from one that never failed a turn.\n\n# No percentage is stored\n\n[`errors`](Self::errors) over [`turns`](Self::turns) is the error rate; it is deliberately not\nrecorded as a third field. A stored percentage is a figure that can disagree with its own\ndenominator — after a rounding change, a partially-recorded run, or a reader that sums two runs'\nrates — and the one thing a reader must be able to trust here is that the numbers add up.\n\n# What this rollup deliberately does not count\n\n- **Fatal turns.** A failure of gg's own machinery ends the session on the first occurrence and\n  is never charged to the model's error budget, exactly as the ceilings never observe one.\n  `turns` still counts it, so the accounting stays whole.\n- **A tool call that failed inside an otherwise successful program.** The program handled it,\n  which is the entire point of the typed tool surface.\n- **Per-agent attribution.** These are run-wide totals; the per-agent breakdown lives on the\n  stream, where each `TurnOutcome` rides on its own agent's id.",
+      "properties": {
+        "errors": {
+          "description": "Turns whose outcome was an [error](GgTurnOutcome::Error). At most [`turns`](Self::turns), and\nexactly the sum of the per-kind counters below.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "loopAborts": {
+          "description": "Responses discarded mid-stream by [loop detection](GgLoopDetection). **Not** an error turn —\na discarded attempt is retried, and the turn is judged on what the retry produced — and\ncounted here because it is money and wall-clock spent on nothing, which is the cost the\ncapability exists to bound and the figure that says whether arming it was worth it.\n\nAlways `0` for a run whose agents all left loop detection disarmed, which is the default.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "maxConsecutive": {
+          "description": "The longest **consecutive-error run any single agent reached** — the peak of the same\ncounter [`max_consecutive_errors`](GgRunLimits::max_consecutive_errors) is enforced on.\n\nA maximum over agents rather than a run-wide streak: the counter is per agent (turns from\ntwo agents interleave arbitrarily on a parallel run, so a run-wide streak would be an\nartefact of scheduling), which is why each `TurnOutcome` event carries its agent's running\ncount rather than leaving this to be re-derived here.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "missingCompletion": {
+          "description": "Errors of kind [`missing_completion`](GgTurnErrorKind::MissingCompletion).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "modelApi": {
+          "description": "Errors of kind [`model_api`](GgTurnErrorKind::ModelApi) — including a reply that\n[looped](GgLoopDetection) on every attempt.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "programFault": {
+          "description": "Errors of kind [`program_fault`](GgTurnErrorKind::ProgramFault).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "sandboxLimit": {
+          "description": "Errors of kind [`sandbox_limit`](GgTurnErrorKind::SandboxLimit).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "transpile": {
+          "description": "Errors of kind [`transpile`](GgTurnErrorKind::Transpile).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "turns": {
+          "description": "Turns recorded across every agent, whatever their outcome — the denominator every rate here\nis read against, and one per model call the run made.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "turns",
+        "errors",
+        "maxConsecutive",
+        "modelApi",
+        "transpile",
+        "programFault",
+        "sandboxLimit",
+        "missingCompletion",
+        "loopAborts"
+      ],
+      "type": "object"
+    },
     "GgHealingStrategy": {
-      "description": "One [response-healing](https://docs.testcabinet.ai/gg/response-healing/) strategy — a named,\nindependently toggleable repair gg may apply to a model's response before running it.\n\nThe wire values are the strategy ids, spelled exactly as the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param keys are\n(`{\"healing\": {\"strip-fences\": false}}`), because the id is one thing: a config key, a metric\nname, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly\nthat reason.\n\nEvery strategy is on unless a configuration turns it off, and every application is disclosed to\nthe model in its turn feedback — a repair the model is never told about teaches it nothing and\ncorrupts the ablation, whose whole question is whether models learn the contract.",
+      "description": "One [response-healing](https://docs.testcabinet.ai/gg/response-healing/) strategy — a named,\nindependently toggleable repair gg may apply to a model's response before running it.\n\nThe wire values are the strategy ids, spelled exactly as the\n[responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param keys are\n(`{\"healing\": {\"strip-fences\": false}}`), because the id is one thing: a config key, a metric\nname, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly\nthat reason.\n\nEvery application is disclosed to the model in its turn feedback — a repair the model is never\ntold about teaches it nothing and corrupts the ablation, whose whole question is whether models\nlearn the contract.\n\nMost strategies are armed unless a configuration turns them off, because for those, repairing is\nstrictly safer than not: the reply they delete from could not have run as sent. The exception is\n[`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration\narms it — see its own documentation for why that asymmetry exists.",
       "oneOf": [
         {
           "const": "strip-fences",
@@ -381,6 +452,11 @@
         {
           "const": "strip-prose",
           "description": "Explanatory lines were removed from before and/or after the program body.",
+          "type": "string"
+        },
+        {
+          "const": "drop-doubled-response",
+          "description": "The whole reply was one completion concatenated with a byte-identical copy of itself, and the\ntrailing copy was deleted. The shape a provider produces when it emits (or a proxy records)\nthe same completion twice: the reply's text is exactly `X + X`, with no fence, no blank line\nand no declaration to separate the halves.\n\nThe coarser, whole-reply sibling of\n[`drop-duplicate-program`](Self::DropDuplicateProgram), applied **before** it so the finer\ntest only ever sees a reply that is not a clean doubling. It is the one strategy that is\n**off unless a configuration arms it**: the half it deletes is valid code under any reading\nother than \"the transport duplicated this\", so unlike every other repair here, applying it to\na model that genuinely meant to do the work twice changes behaviour rather than restoring it.\nAn operator arms it for the models observed to exhibit the defect.",
           "type": "string"
         },
         {
@@ -483,6 +559,47 @@
         }
       },
       "required": ["id", "name", "args"],
+      "type": "object"
+    },
+    "GgLoopDetection": {
+      "description": "Whether one [agent](GgAgentConfig::loop_detection) has gg watch its replies for a **generation\nloop**, and the knobs of the detector if so.\n\nSome models, on some turns, stop producing a reply and start producing a *period*: the same\nshort fragment (`void 0;`, one line of a table, one call) emitted thousands of times until the\nprovider's output cap stops it. The reply is paid for in full, takes minutes to arrive, is\nuseless as a turn, and — worst — enters the context window, where it makes the next turn more\nlikely to do the same thing.\n\nArming this is what switches that agent's model transport to **streaming**: the detector reads\nthe reply as it arrives and abandons the request the moment the repetition is unmistakable,\nwhich is the only point at which any of the loss above is still avoidable. An agent that leaves\nit off keeps the non-streaming transport byte for byte, so this is an opt-in change of transport\nas much as it is a change of policy — which is exactly why it is off by default.\n\nIt is a **per-agent** (and therefore per-model) lever, like the\n[prompt-cache lifetime](GgPromptCacheTtl): looping is a property of a model, and a run whose\nroot runs on a model that loops has no reason to pay the streaming path for a reviewer that\ndoes not. It is deliberately **not** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)\nparam — a tool-calling model loops in exactly the same way, inside a tool call's arguments.\n\nEvery knob is optional and an absent one takes gg's own default (documented per field). A knob\nset to a value that cannot bound anything is a startup **warning** and takes the default, never\nan error, on the same terms as [`GgRunLimits`].\n\nSee the [loop-detection](https://docs.testcabinet.ai/gg/loop-detection/) page for the algorithm\nthese knobs parameterise.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Whether the detector runs for this agent at all. `false` — the default — leaves the agent on\ngg's ordinary non-streaming transport and no reply is ever discarded; `true` arms the\ndetector **and** switches the transport to streaming, because a detector that can only read a\ncompleted reply has already let every cost it exists to avoid be paid.",
+          "type": "boolean"
+        },
+        "maxResponseChars": {
+          "description": "A hard ceiling, in characters, on a single reply — the backstop for a runaway that is not\n*repetitive* enough to trip the window rule. Absent takes gg's default (**250 000**); `0`\nturns the backstop off and leaves only the repetition rule.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "minOffenders": {
+          "description": "`M` — how many **distinct** offenders must be present at once for the window to count as\n*saturated*. Absent takes gg's default (**2**).\n\nMore than one is required because a single very common token (`the`, `0,`, a brace) is\nordinary; a loop repeats a whole fragment, so it saturates several words together.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "minSaturatedRun": {
+          "description": "`R` — how many consecutive words must arrive while the window stays saturated before gg\nabandons the reply. Absent takes gg's default (**3000**).\n\nThis is the term that separates a loop from legitimately repetitive *content*: a tilemap\nliteral or a long table saturates the window and then **ends**, while a loop saturates it and\nnever stops. Requiring the saturation to be sustained is what lets the detector be aggressive\nwithout discarding a reply that was merely dense. `0` means \"trip as soon as the window is\nsaturated\" — the unmodified frequency rule, and a deliberate choice rather than a mistake.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "repeatThreshold": {
+          "description": "`P` — how many times a single word may occur within the window before it counts as an\n*offender*. Absent takes gg's default (**32**, one word occupying more than an eighth of a\n256-word window).\n\nStrictly more than `P` occurrences makes an offender, so raising it tolerates more legitimate\nrepetition (a dense data literal, a long table) at the cost of catching a loop later.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "windowWords": {
+          "description": "`N` — how many of the most recent words the detector looks back over when deciding whether a\nreply has become repetitive. Absent takes gg's default (**256**).\n\nA \"word\" is a whitespace-separated run of characters, plus a fixed-width slice whenever a run\nexceeds gg's internal cap — which is what makes a whitespace-free loop (`a();a();a();…`)\ndetectable at all rather than one unbounded word.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        }
+      },
       "type": "object"
     },
     "GgMemoryCaps": {
@@ -949,6 +1066,61 @@
       },
       "required": ["kind", "disposition"],
       "type": "object"
+    },
+    "GgTurnErrorKind": {
+      "description": "Why a turn was an [error](GgTurnOutcome::Error) — the wire mirror of gg's own `TurnErrorKind`.\n\nFour of the five are [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) shapes, and that\nasymmetry is real rather than an oversight: a tool-calling turn whose requested calls are all\ndispatched and answered cannot declare work that is then cut short.\n\n# There is deliberately no `response_loop` kind\n\nA reply abandoned by [loop detection](GgLoopDetection) is **not an error turn**: the attempt is\ndiscarded and the request retried, and the turn is judged on whatever the retry produced. A loop\nthat survives every attempt does reach the turn loop, but it arrives as a model-client failure\nafter that client exhausted its own retry budget — indistinguishable, at this seam, from any\nother exhausted retry — and is therefore reported as [`ModelApi`](Self::ModelApi). The discarded\nattempts are counted in their own right, on the\n[`loop_aborts`](GgTelemetryKind::TurnOutcome::loop_aborts) field of the same event and in\n[`GgErrorSummary::loop_aborts`], because they are money spent on nothing rather than a turn that\nfailed. Adding a kind here that nothing could ever emit would put a bucket in every console and\nevery aggregation that is permanently zero.",
+      "oneOf": [
+        {
+          "const": "model_api",
+          "description": "The model call itself failed, after the client had already exhausted its own retry/backoff\nbudget. No turn happened at all. Also where a reply that\n[looped](GgLoopDetection) on every attempt lands.",
+          "type": "string"
+        },
+        {
+          "const": "transpile",
+          "description": "The program did not type-strip — a syntax error, a module feature the sandbox has no\nimplementation of, or a program past the size/nesting guards. Nothing ran.",
+          "type": "string"
+        },
+        {
+          "const": "program_fault",
+          "description": "The program ran and threw an uncaught fault, so every statement after the throw never ran and\nthe model must re-declare the remainder.",
+          "type": "string"
+        },
+        {
+          "const": "sandbox_limit",
+          "description": "The sandbox stopped the program at a ceiling — its execution timeout or memory — or the guest\ntrapped. The program ran and its landed calls stand, but the work it declared was cut short.",
+          "type": "string"
+        },
+        {
+          "const": "missing_completion",
+          "description": "A tool-calling turn ended with no tool call under an\nexplicit-call [completion signal](CAPABILITY_COMPLETION), where a text-only reply\nis not a completion but a failure to end the run the one way this run allows. Counted as an\nerror so a model that keeps replying in prose trips the error ceilings instead of running to\nits turn budget.",
+          "type": "string"
+        }
+      ]
+    },
+    "GgTurnOutcome": {
+      "description": "How one agent turn ended — the wire mirror of gg's own `TurnOutcome`, which is the single\ndefinition of \"was that turn an error?\" the [execution ceilings](GgRunLimits) are enforced on.\n\nCarried on the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) event so the *same* judgement the\nceilings act on is visible on the stream. Without it, \"how error-prone was this configuration?\"\nis only answerable for the runs a ceiling actually stopped, and a run that failed a third of its\nturns and finished anyway is indistinguishable from one that never failed a turn at all.\n\nA closed taxonomy, deliberately: the console labels each value and a study groups by them, so\nthe set is fixed here rather than being a free string. The mapping from gg's enum to this one is\nwritten by hand on the gg side, so adding a variant there is a decision to publish it here.",
+      "oneOf": [
+        {
+          "const": "progressed",
+          "description": "The turn did what its protocol asks: a program that ran to a value (however its individual\ntool calls went), or a tool-calling turn whose requested calls were dispatched and answered.\nThe only outcome that clears an agent's\n[consecutive-error run](GgTelemetryKind::TurnOutcome::consecutive_errors).",
+          "type": "string"
+        },
+        {
+          "const": "finished",
+          "description": "The turn ended the session — a program called `finish`, or a tool-calling turn requested no\ntools. Terminal, and never an error: a session that ends on purpose has not failed.",
+          "type": "string"
+        },
+        {
+          "const": "error",
+          "description": "The turn's declared work could not be carried out as declared. The\n[kind](GgTelemetryKind::TurnOutcome::error) says how, and this is the outcome the error\nceilings count.",
+          "type": "string"
+        },
+        {
+          "const": "fatal",
+          "description": "gg's own machinery failed, so the session ends on the first occurrence. Recorded rather than\nskipped — so the turn accounting never drifts from the number of model calls the run made —\nand kept **apart** from [`Error`](Self::Error), because charging gg's defects to the model's\nerror budget would corrupt the one figure this event exists to publish.",
+          "type": "string"
+        }
+      ]
     },
     "GgWorkflowPhase": {
       "description": "The boundary a [`WorkflowStage`](GgTelemetryKind::WorkflowStage) event marks — the\n[start or finish](https://docs.testcabinet.ai/gg/workflows/) of one stage of a declared\n[workflow](CAPABILITY_WORKFLOWS).\n\nA workflow stage emits one event as it [starts](Self::Started) (right before it fans its\nsubagents out) and one as it [finishes](Self::Finished) (once every fanned-out agent has\nreturned and its results are collected to feed the next stage), so the console can render the\nworkflow's structure and each stage's duration on the timeline. The per-agent\n[`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentStatus`](GgTelemetryKind::AgentStatus)/[`AgentReturned`](GgTelemetryKind::AgentReturned)\nevents carry the detail of the agents that ran within the stage.",
@@ -2021,6 +2193,50 @@
         }
       },
       "required": ["type", "ok", "toolCalls"],
+      "type": "object"
+    },
+    {
+      "description": "How one agent turn ended, as gg judged it — the event that makes a run's **error rate**\nobservable.\n\nEmitted exactly once per turn, on the agent that took it, from the one seam where gg records\nan outcome against that agent's [error ceilings](GgRunLimits) — so this event and the\nceilings can never disagree about what an error is, and every outcome is reported, including\nthe ones that used to be recorded silently. A run emits one of these per model call it made,\nwhich makes [`turns`](Self::TurnOutcome::turns) the exact denominator for the run's\n[error rollup](GgErrorSummary).\n\nDistinct from [`CodeExecution`](Self::CodeExecution), which reports what one *program* did\nand only exists under [responses-as-code](CAPABILITY_RESPONSES_AS_CODE): this is the\nmode-agnostic judgement of the **turn**, and a tool-calling run emits it too.",
+      "properties": {
+        "consecutiveErrors": {
+          "description": "This agent's consecutive-error run **after** this turn — `0` on any non-error turn, since\nonly a turn that carried out its declared work clears the count.\n\nCarried per turn rather than re-derived by a reader because the count is **per agent**\nand a stream is run-wide: turns from concurrently running agents interleave arbitrarily,\nso a reader folding the stream could only reconstruct a run-wide streak, which is an\nartefact of scheduling rather than a fact about any agent. Taking the maximum of this\nfield is what makes [`GgErrorSummary::max_consecutive`] correct.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GgTurnErrorKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Why the turn was an error, on an [`Error`](GgTurnOutcome::Error) outcome. Absent on every\nother outcome, so `error != null` and `outcome == \"error\"` are the same statement — the\nkind is carried separately because a run that alternates between five ways of failing and\none that fails the same way five times are the same to a ceiling and very different to a\nperson reading the run."
+        },
+        "loopAborts": {
+          "description": "How many model responses [loop detection](GgLoopDetection) discarded before this turn\nproduced one, when any were. `0` — and omitted from the wire — for the ordinary turn, and\nfor every turn of every run that left the capability disarmed, which is the default.\n\nThis is the **one** place discarded attempts are published. A discarded attempt is never\na turn of its own (it produced nothing, and the request was retried), so it has no\n`TurnOutcome` event to be counted on; carrying it on the turn that eventually succeeded\nkeeps the count on the stream without inventing an event for a reply that does not exist,\nand lets [`GgErrorSummary::loop_aborts`] be a plain sum over these.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "outcome": {
+          "$ref": "#/$defs/GgTurnOutcome",
+          "description": "How the turn ended. [`Error`](GgTurnOutcome::Error) is the only outcome the error\nceilings count."
+        },
+        "turns": {
+          "description": "How many turns this agent has recorded, **including this one** — its own running total,\nnot the run's. The per-agent denominator, and the same figure the turn ceiling is\nmeasured against.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "type": {
+          "const": "turn_outcome",
+          "type": "string"
+        }
+      },
+      "required": ["type", "outcome", "consecutiveErrors", "turns"],
       "type": "object"
     },
     {

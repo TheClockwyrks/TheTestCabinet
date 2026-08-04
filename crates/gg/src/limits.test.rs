@@ -9,6 +9,8 @@
 //! recording one and running on — lives in `agent.limits.test.rs`, where there is a loop to stop.
 
 use serde_json::json;
+// `GgTurnOutcome` and `GgTurnErrorKind` arrive through the `super::*` glob below — the module under
+// test imports them for its own wire mapping.
 use test_cabinet_core::gg::{GgAgentConfig, GgCapabilityConfig, GgCapabilitySet, GgRunLimits};
 
 use super::*;
@@ -446,9 +448,145 @@ fn only_error_outcomes_count_as_errors() {
     }
 }
 
+/// Every outcome publishes itself, and publishes its kind exactly when it has one — the invariant
+/// the contract states as "`error != null` and `outcome == "error"` are the same statement".
+///
+/// Exhaustive over the taxonomy on purpose: a variant added here without a decision about what it
+/// looks like on the wire would otherwise be published as whatever the nearest arm happened to say.
+#[test]
+fn every_outcome_publishes_itself_and_carries_a_kind_exactly_when_it_is_an_error() {
+    let cases = [
+        (
+            TurnOutcome::Progressed,
+            GgTurnOutcome::Progressed,
+            None::<GgTurnErrorKind>,
+        ),
+        (TurnOutcome::Finished, GgTurnOutcome::Finished, None),
+        (
+            TurnOutcome::Error(TurnErrorKind::ModelApi),
+            GgTurnOutcome::Error,
+            Some(GgTurnErrorKind::ModelApi),
+        ),
+        (
+            TurnOutcome::Error(TurnErrorKind::Transpile),
+            GgTurnOutcome::Error,
+            Some(GgTurnErrorKind::Transpile),
+        ),
+        (
+            TurnOutcome::Error(TurnErrorKind::ProgramFault),
+            GgTurnOutcome::Error,
+            Some(GgTurnErrorKind::ProgramFault),
+        ),
+        (
+            TurnOutcome::Error(TurnErrorKind::SandboxLimit),
+            GgTurnOutcome::Error,
+            Some(GgTurnErrorKind::SandboxLimit),
+        ),
+        (
+            TurnOutcome::Error(TurnErrorKind::MissingCompletion),
+            GgTurnOutcome::Error,
+            Some(GgTurnErrorKind::MissingCompletion),
+        ),
+        // Both faults publish the same `fatal`: *which* piece of gg's machinery broke is a defect
+        // report the `error` log carries in sentences, not a dimension a study slices on.
+        (
+            TurnOutcome::Fatal(FatalFault::ArtifactDefect),
+            GgTurnOutcome::Fatal,
+            None,
+        ),
+        (
+            TurnOutcome::Fatal(FatalFault::HostFault),
+            GgTurnOutcome::Fatal,
+            None,
+        ),
+    ];
+
+    for (outcome, expected_outcome, expected_kind) in cases {
+        let (published, kind) = outcome.wire();
+        assert_eq!(published, expected_outcome, "{outcome:?}");
+        assert_eq!(kind, expected_kind, "{outcome:?}");
+        assert_eq!(
+            kind.is_some(),
+            outcome.is_error(),
+            "{outcome:?}: a kind is published exactly when the turn was an error"
+        );
+    }
+}
+
+/// A reply abandoned by loop detection has **no** wire kind of its own, and that is a decision
+/// rather than an omission: it never reaches this taxonomy at all, because the attempt is discarded
+/// and retried, and a loop that survives every attempt arrives as an exhausted model call.
+///
+/// Pinned as the set of kinds gg can publish, so adding a sixth is a deliberate act with a test to
+/// change rather than a silent widening of every console's bucket list.
+#[test]
+fn the_published_kinds_are_exactly_the_five_gg_can_produce() {
+    let published: Vec<GgTurnErrorKind> = [
+        TurnErrorKind::ModelApi,
+        TurnErrorKind::Transpile,
+        TurnErrorKind::ProgramFault,
+        TurnErrorKind::SandboxLimit,
+        TurnErrorKind::MissingCompletion,
+    ]
+    .into_iter()
+    .map(TurnErrorKind::wire)
+    .collect();
+
+    assert_eq!(
+        published,
+        vec![
+            GgTurnErrorKind::ModelApi,
+            GgTurnErrorKind::Transpile,
+            GgTurnErrorKind::ProgramFault,
+            GgTurnErrorKind::SandboxLimit,
+            GgTurnErrorKind::MissingCompletion,
+        ]
+    );
+}
+
 // ---------------------------------------------------------------------------------------------
 // The consecutive-error ceiling
 // ---------------------------------------------------------------------------------------------
+
+/// The consecutive count is **readable**, not merely enforceable — the per-agent figure each turn's
+/// event publishes, so a run-wide stream can be folded into a maximum over agents rather than into a
+/// streak that never happened.
+///
+/// It tracks exactly what the ceiling counts: it rises on every error kind, is cleared only by a
+/// turn that progressed, and survives a terminal turn (which is recorded but clears nothing).
+#[test]
+fn the_consecutive_count_is_readable_after_every_recorded_turn() {
+    let mut accounting = AgentLimits::new(bare_limits());
+    assert_eq!(
+        accounting.consecutive_errors(),
+        0,
+        "an agent that has taken no turns has no streak"
+    );
+
+    accounting.record(ERROR, AGENT);
+    assert_eq!(accounting.consecutive_errors(), 1);
+    accounting.record(TurnOutcome::Error(TurnErrorKind::SandboxLimit), AGENT);
+    assert_eq!(
+        accounting.consecutive_errors(),
+        2,
+        "every kind of failure is a failure"
+    );
+
+    accounting.record(TurnOutcome::Progressed, AGENT);
+    assert_eq!(
+        accounting.consecutive_errors(),
+        0,
+        "only a turn that carried out its declared work clears the count"
+    );
+
+    accounting.record(ERROR, AGENT);
+    accounting.record(TurnOutcome::Finished, AGENT);
+    assert_eq!(
+        accounting.consecutive_errors(),
+        1,
+        "a session that ended on purpose neither failed nor recovered"
+    );
+}
 
 #[test]
 fn consecutive_errors_breach_at_exactly_the_configured_count() {

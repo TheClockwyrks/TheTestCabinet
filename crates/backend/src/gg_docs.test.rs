@@ -51,6 +51,7 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
                 execution_mode: "tool_calling".to_string(),
                 code_executions: 0,
                 healing: Default::default(),
+                errors: Default::default(),
                 issues_created: 0,
                 issues_completed: 0,
                 slot_costs: Vec::new(),

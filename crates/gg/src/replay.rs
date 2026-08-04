@@ -398,6 +398,19 @@ fn replay_model_error(error: &ModelError) -> GgReplayModelError {
             attempts: None,
             model_id: None,
         },
+        // Every attempt was a [generation loop](crate::loopguard) and was thrown away. Its own
+        // class rather than `RetryExhausted`'s, because a reconstruction that folded the two
+        // together would claim the provider refused a request it in fact answered — repeatedly.
+        // `attempts` carries how many replies were discarded, which is the only place that number
+        // survives: the replies themselves never entered the record (see
+        // [`record_model_io`](CaptureHandle::record_model_io)).
+        ModelError::ResponseLoop { attempts, .. } => GgReplayModelError {
+            kind: GgReplayModelErrorKind::ResponseLoop,
+            message,
+            status: None,
+            attempts: Some(*attempts),
+            model_id: None,
+        },
         // A [playback](crate::playback) synthesized it, so the run being captured is itself a
         // reconstruction. Recorded as the class the loop branched on — it is fatal and
         // non-retryable, exactly like a refused request — with the message carrying the truth.
@@ -745,6 +758,15 @@ impl GgRecorder {
     /// An **empty** `tools` slice records no toolset at all rather than an empty one: the contract
     /// distinguishes "offered nothing" from "offered an empty array", and a turn that offers no
     /// tools is the former.
+    ///
+    /// `response` is the reply the client **returned**, which is the only reply a reconstruction
+    /// could ever be handed. A reply abandoned mid-stream by [loop detection](crate::loopguard) is
+    /// therefore never journalled: it was never returned, never entered the conversation, and a
+    /// reconstruction that replayed it would have to re-run a detector to throw it away again. All
+    /// that survives of the discarded attempts is their *count*, on
+    /// [`ModelResponse::loop_aborts`](crate::model::ModelResponse::loop_aborts) — or, when every
+    /// attempt looped and nothing was returned at all, on the recorded
+    /// [error](GgReplayModelErrorKind::ResponseLoop)'s `attempts`.
     pub fn record_model_io(&self, call: RecordedCall<'_>, response: &ModelResponse) {
         // Serialized outside the lock: this is the bulk of the per-turn work, and holding the one
         // lock every agent shares across it would serialize the fleet on the recorder.

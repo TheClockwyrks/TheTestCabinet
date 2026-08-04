@@ -238,9 +238,13 @@ ts-rs = "12"
 which = "8"
 # HTTP client for fetching OpenRouter model prices. rustls avoids a system
 # OpenSSL dependency so the workspace builds cleanly on minimal hosts (NixOS).
+# `stream` exposes `Response::bytes_stream`, which gg's streaming model transport
+# reads server-sent events off so its loop detector can abandon a reply while the
+# model is still writing it (`crates/gg/src/client.rs`).
 reqwest = { version = "0.12", default-features = false, features = [
 	"json",
 	"rustls-tls",
+	"stream",
 ] }
 
 # The wasm host for the Foray adversarial case (`crates/foray-host`). wasmtime is

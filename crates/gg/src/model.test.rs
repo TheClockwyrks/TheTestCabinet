@@ -59,6 +59,7 @@ fn model_response_round_trips_through_json() {
             comparable: Some(0.01),
             actual: Some(0.01),
         }),
+        loop_aborts: 0,
     };
 
     let encoded = serde_json::to_string(&response).expect("serialize");
@@ -80,9 +81,14 @@ fn model_response_deserializes_minimal_form() {
     assert!(decoded.tool_calls.is_empty());
     assert_eq!(decoded.usage, TokenCounts::default());
     assert!(decoded.cost.is_none());
+    // A response recorded before loop detection existed reads as one that discarded nothing,
+    // rather than failing to read at all.
+    assert_eq!(decoded.loop_aborts, 0);
 }
 
-/// Only `RetryExhausted` is a retryable error; every other variant is fatal.
+/// The two errors where the *request* was fine are retryable: the provider never served it
+/// (`RetryExhausted`), or it served it and every answer was a generation loop (`ResponseLoop`).
+/// Every other variant is fatal.
 #[test]
 fn model_error_classifies_retryable_versus_fatal() {
     assert!(
@@ -91,6 +97,14 @@ fn model_error_classifies_retryable_versus_fatal() {
             last: "HTTP 503".to_string()
         }
         .is_retryable_exhausted()
+    );
+    assert!(
+        ModelError::ResponseLoop {
+            attempts: 4,
+            detail: "2 words repeated across 3000 consecutive words".to_string(),
+        }
+        .is_retryable_exhausted(),
+        "a reply that looped on every attempt ends the run the way retry exhaustion does"
     );
 
     for fatal in [
@@ -103,6 +117,29 @@ fn model_error_classifies_retryable_versus_fatal() {
     ] {
         assert!(!fatal.is_retryable_exhausted(), "{fatal:?} should be fatal");
     }
+}
+
+/// A `ResponseLoop` says both halves of what happened — what the detector saw and how many replies
+/// were thrown away — and is not an auth failure or a recoverable vision refusal.
+///
+/// The wording is the point. `RetryExhausted` means the provider would not serve the request; this
+/// means it served the request repeatedly and gg discarded every answer. Only one of those is worth
+/// changing a model binding over, so the two must not read alike.
+#[test]
+fn a_response_loop_reports_what_looped_and_how_much_was_discarded() {
+    let error = ModelError::ResponseLoop {
+        attempts: 3,
+        detail: "the reply passed 250001 characters without finishing".to_string(),
+    };
+
+    let message = error.to_string();
+    assert!(
+        message.contains("the reply passed 250001 characters without finishing"),
+        "{message}"
+    );
+    assert!(message.contains("discarded 3 response(s)"), "{message}");
+    assert!(!error.is_auth_failure());
+    assert!(error.vision_unsupported_model().is_none());
 }
 
 /// A refused credential — absent, `401`, or `403` — is an auth failure; every other

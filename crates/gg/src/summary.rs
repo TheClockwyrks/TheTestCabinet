@@ -23,7 +23,9 @@
 //! [healing rollup](GgHealingSummary) and the
 //! [`code_executions`](GgSessionSummary::code_executions) it is a rate over are folded from the very
 //! same [`CodeExecution`](GgTelemetryKind::CodeExecution) event, so the two can never come from
-//! different places and drift.
+//! different places and drift. The run's [error rollup](GgErrorSummary) is folded on exactly the
+//! same terms from the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) event — one per turn of every
+//! agent — so its errors and the turns they are a rate over are counted by the same statement.
 //!
 //! Four figures cannot be folded and are **recorded** instead, each by its own `record_*` method
 //! that the binary calls once. Three of them —
@@ -40,9 +42,9 @@ use std::collections::BTreeSet;
 use std::sync::Mutex;
 
 use test_cabinet_core::gg::{
-    GgHealingStrategy, GgHealingSummary, GgIssueReviewPhase, GgIssueStatus, GgLimitBreach,
-    GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost, GgSpeculationPhase,
-    GgTelemetryKind,
+    GgErrorSummary, GgHealingStrategy, GgHealingSummary, GgIssueReviewPhase, GgIssueStatus,
+    GgLimitBreach, GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost,
+    GgSpeculationPhase, GgTelemetryKind, GgTurnErrorKind,
 };
 
 /// Accumulates a running session's aggregatable outcome from the telemetry stream it
@@ -96,6 +98,21 @@ struct SummaryState {
     /// counter, so there is nothing to convert at [finalize](SessionSummaryTracker::finalize) time
     /// and no second shape that could disagree with the one the run records.
     healing: GgHealingSummary,
+    /// The run's [error rollup](GgErrorSummary), folded from the
+    /// [`TurnOutcome`](GgTelemetryKind::TurnOutcome) event every agent emits once per turn — so the
+    /// numerator (errors) and the denominator ([`turns`](GgErrorSummary::turns)) come off the same
+    /// statement, exactly as the [healing rollup](Self::healing) does, and neither can drift from
+    /// the number of model calls the run made.
+    ///
+    /// Run-wide across the root and every subagent, because that is the stream this one tracker
+    /// observes. The per-agent breakdown is not lost: each event rides on its own agent's id, so a
+    /// reader of the stream can split what this rollup totals.
+    ///
+    /// Like [`healing`](Self::healing), the contract type doubles as the accumulator — it is
+    /// [`Default`] and every field is a `u64` counter — so there is nothing to convert at
+    /// [finalize](SessionSummaryTracker::finalize) time and no second shape that could disagree
+    /// with the one the run records.
+    errors: GgErrorSummary,
     /// The run's [execution mode](GgSessionSummary::execution_mode) — `"responses_as_code"` or
     /// `"tool_calling"`. Like [`effective_tools`](Self::effective_tools) this is **not**
     /// telemetry-derived (no event carries the configured mode); the binary records it once via
@@ -160,6 +177,7 @@ impl SummaryState {
             let count = match strategy {
                 GgHealingStrategy::StripFences => &mut rollup.strip_fences,
                 GgHealingStrategy::StripProse => &mut rollup.strip_prose,
+                GgHealingStrategy::DropDoubledResponse => &mut rollup.drop_doubled_response,
                 GgHealingStrategy::DropDuplicateProgram => &mut rollup.drop_duplicate_program,
                 GgHealingStrategy::DropImports => &mut rollup.drop_imports,
                 GgHealingStrategy::UnwrapAsync => &mut rollup.unwrap_async,
@@ -171,6 +189,58 @@ impl SummaryState {
         if !healing.strategies.is_empty() {
             rollup.healed += 1;
         }
+    }
+
+    /// Fold one turn's [outcome](GgTelemetryKind::TurnOutcome) into the run's
+    /// [error rollup](GgErrorSummary).
+    ///
+    /// Split out beside [`fold_healing`](Self::fold_healing) for the same reason — it is arithmetic
+    /// with definitions in it — and those definitions are:
+    ///
+    /// * **every** recorded turn advances [`turns`](GgErrorSummary::turns), whatever its outcome,
+    ///   including the one that finished the session and the one that ended it fatally. That is what
+    ///   makes the denominator the count of model calls the run made rather than the count of turns
+    ///   that could have failed;
+    /// * [`max_consecutive`](GgErrorSummary::max_consecutive) is a **maximum over the per-turn
+    ///   counts**, not a streak this tracker keeps. The count is per agent and this stream is
+    ///   run-wide, so a streak folded here would be an artefact of how two agents' turns happened to
+    ///   interleave;
+    /// * a fatal turn is counted in `turns` and **nowhere else**: gg's own machinery failing is not
+    ///   charged to the model's error budget, exactly as no ceiling ever observes one;
+    /// * [`loop_aborts`](GgErrorSummary::loop_aborts) is a plain sum, and is not an error count —
+    ///   the discarded attempt was retried and this very turn is the retry's outcome.
+    ///
+    /// The error is keyed on the [kind](GgTurnErrorKind) rather than on the outcome, which keeps
+    /// [`errors`](GgErrorSummary::errors) exactly the sum of the per-kind counters the contract
+    /// promises it to be. gg pairs the two by construction (`TurnOutcome::wire` returns them
+    /// together), so the two readings only differ for a stream gg did not write — and for one of
+    /// those, a total that still agrees with its own parts is the better answer.
+    ///
+    /// The per-kind `match` is exhaustive on purpose: a kind added to the contract is a compile
+    /// error here rather than an error silently missing from every run's rollup.
+    fn fold_turn_outcome(
+        &mut self,
+        error: Option<GgTurnErrorKind>,
+        consecutive_errors: u64,
+        loop_aborts: u64,
+    ) {
+        let rollup = &mut self.errors;
+        rollup.turns += 1;
+        rollup.max_consecutive = rollup.max_consecutive.max(consecutive_errors);
+        rollup.loop_aborts += loop_aborts;
+
+        let Some(kind) = error else {
+            return;
+        };
+        rollup.errors += 1;
+        let count = match kind {
+            GgTurnErrorKind::ModelApi => &mut rollup.model_api,
+            GgTurnErrorKind::Transpile => &mut rollup.transpile,
+            GgTurnErrorKind::ProgramFault => &mut rollup.program_fault,
+            GgTurnErrorKind::SandboxLimit => &mut rollup.sandbox_limit,
+            GgTurnErrorKind::MissingCompletion => &mut rollup.missing_completion,
+        };
+        *count += 1;
     }
 }
 
@@ -305,6 +375,15 @@ impl SessionSummaryTracker {
                 state.code_executions += 1;
                 state.fold_healing(healing);
             }
+            // One event per *turn* of every agent, code-shaped or not — the mode-agnostic judgement
+            // the error ceilings are enforced on, folded here so the run records how error-prone it
+            // was even when no ceiling ever stopped it.
+            GgTelemetryKind::TurnOutcome {
+                error,
+                consecutive_errors,
+                loop_aborts,
+                ..
+            } => state.fold_turn_outcome(*error, *consecutive_errors, *loop_aborts),
             GgTelemetryKind::BoardState { issues, .. } => {
                 for issue in issues {
                     state.issues_created.insert(issue.id.clone());
@@ -372,6 +451,7 @@ impl SessionSummaryTracker {
                 enabled: state.healing_enabled.clone(),
                 ..state.healing.clone()
             },
+            errors: state.errors.clone(),
             issues_created: state.issues_created.len() as u64,
             issues_completed: state.issues_completed.len() as u64,
             slot_costs: state.slot_costs.clone(),

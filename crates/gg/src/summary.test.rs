@@ -4,7 +4,9 @@
 //! `agent.test.rs`, driving the real emitter.
 
 use super::*;
-use test_cabinet_core::gg::{GgBoardIssue, GgContextSourceUsage, GgLimitKind};
+// `GgTurnOutcome` is the one contract type these tests construct that the module under test never
+// names: the fold keys on the error *kind*, which is what keeps `errors` the sum of its parts.
+use test_cabinet_core::gg::{GgBoardIssue, GgContextSourceUsage, GgLimitKind, GgTurnOutcome};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 /// A board issue with the given id and status (the scope/description fields are irrelevant to
@@ -66,6 +68,38 @@ fn healed(strategies: &[GgHealingStrategy]) -> GgResponseHealing {
     }
 }
 
+/// One recorded turn: how it ended, the agent's consecutive-error run after it, and how many
+/// looping replies were discarded before it produced one.
+///
+/// `turns` is the agent's own running total, which the summary deliberately ignores — it counts the
+/// events themselves, because the stream is run-wide and two agents' per-agent totals would be added
+/// together into a figure that means nothing. Set to a distinctive number here so a rollup that
+/// mistakenly read it would be caught.
+fn turn(
+    outcome: GgTurnOutcome,
+    error: Option<GgTurnErrorKind>,
+    consecutive_errors: u64,
+    loop_aborts: u64,
+) -> GgTelemetryKind {
+    GgTelemetryKind::TurnOutcome {
+        outcome,
+        error,
+        consecutive_errors,
+        turns: 999,
+        loop_aborts,
+    }
+}
+
+/// A turn that carried out its declared work: no error, no streak, nothing discarded.
+fn progressed() -> GgTelemetryKind {
+    turn(GgTurnOutcome::Progressed, None, 0, 0)
+}
+
+/// An error turn of `kind`, arriving `consecutive_errors` deep into that agent's streak.
+fn errored(kind: GgTurnErrorKind, consecutive_errors: u64) -> GgTelemetryKind {
+    turn(GgTurnOutcome::Error, Some(kind), consecutive_errors, 0)
+}
+
 /// A breach of `limit`, attributed to `agent_id`. The figures are the shape a real breach carries
 /// (threshold, what was observed, and how many turns that agent had taken); the summary carries the
 /// record verbatim and reads none of them.
@@ -105,6 +139,9 @@ fn empty_tracker_finalizes_to_a_zeroed_summary() {
     // Nothing was healed because nothing was ever sent to heal.
     assert_eq!(summary.code_executions, 0);
     assert_eq!(summary.healing, GgHealingSummary::default());
+    // Nothing errored because no turn was ever recorded — and a zeroed rollup with a zero
+    // denominator is the honest answer, not "an error rate of nothing".
+    assert_eq!(summary.errors, GgErrorSummary::default());
     // The ceilings and the breach are recorded facts, so an unrecorded run reports "none declared"
     // and "none hit" rather than leaving either unanswerable.
     assert_eq!(summary.limits, GgRunLimits::default());
@@ -419,6 +456,7 @@ fn the_healing_rollup_folds_every_code_execution() {
             applications: 7,
             strip_fences: 3,
             strip_prose: 1,
+            drop_doubled_response: 0,
             drop_duplicate_program: 1,
             drop_imports: 1,
             unwrap_async: 1,
@@ -532,4 +570,174 @@ fn a_subagents_breach_is_not_reported_as_the_runs_outcome() {
     tracker.record_limit_hit(Some(breach(GgLimitKind::Cost, "root")));
     let summary = tracker.finalize("limit_exceeded");
     assert_eq!(summary.limit_hit, Some(breach(GgLimitKind::Cost, "root")));
+}
+
+// ---------------------------------------------------------------------------
+// The error rollup
+// ---------------------------------------------------------------------------
+
+/// Every recorded turn advances the denominator, every error advances its own kind, and the total
+/// is exactly the sum of the kinds.
+///
+/// The stream here is the shape of a real code-mode run that struggled and recovered: a good turn,
+/// a program that would not type-strip, a program that threw, a recovery, a sandbox ceiling, a turn
+/// that finished the session — plus a fatal turn, which is counted in `turns` and charged to
+/// nothing, because gg's own machinery failing is not the model's error.
+#[test]
+fn the_error_rollup_counts_every_turn_and_splits_the_errors_by_kind() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(&progressed());
+    tracker.observe(&errored(GgTurnErrorKind::Transpile, 1));
+    tracker.observe(&errored(GgTurnErrorKind::ProgramFault, 2));
+    tracker.observe(&progressed());
+    tracker.observe(&errored(GgTurnErrorKind::SandboxLimit, 1));
+    tracker.observe(&turn(GgTurnOutcome::Fatal, None, 1, 0));
+    tracker.observe(&turn(GgTurnOutcome::Finished, None, 0, 0));
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(
+        summary.errors,
+        GgErrorSummary {
+            turns: 7,
+            errors: 3,
+            max_consecutive: 2,
+            model_api: 0,
+            transpile: 1,
+            program_fault: 1,
+            sandbox_limit: 1,
+            missing_completion: 0,
+            loop_aborts: 0,
+        }
+    );
+    assert_eq!(
+        summary.errors.errors,
+        summary.errors.model_api
+            + summary.errors.transpile
+            + summary.errors.program_fault
+            + summary.errors.sandbox_limit
+            + summary.errors.missing_completion,
+        "the total is exactly the sum of its parts, which is why no percentage is stored"
+    );
+    assert!(
+        summary.errors.errors < summary.errors.turns,
+        "the fatal turn and the finished one are in the denominator and in no error bucket"
+    );
+}
+
+/// The longest streak is a **maximum over the per-turn counts**, not a streak the tracker keeps.
+///
+/// This is what makes the figure correct on a parallel run: two agents' turns interleave
+/// arbitrarily on one stream, so the run-wide sequence here (`1, 1, 2, 1, 3`) never happened to
+/// anybody — the peak any single agent actually reached is `3`, and it is carried on the event
+/// rather than re-derived.
+#[test]
+fn the_longest_streak_is_the_peak_any_one_agent_reported() {
+    let tracker = SessionSummaryTracker::new();
+    // Read as two agents' turns arriving interleaved: one never gets past its second failure, the
+    // other reaches three in a row.
+    for consecutive in [1_u64, 1, 2, 1, 3] {
+        tracker.observe(&errored(GgTurnErrorKind::ModelApi, consecutive));
+    }
+    // ...and a later recovery must not lower the peak already observed.
+    tracker.observe(&progressed());
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(summary.errors.max_consecutive, 3);
+    assert_eq!(summary.errors.turns, 6);
+    assert_eq!(summary.errors.errors, 5);
+    assert_eq!(summary.errors.model_api, 5);
+}
+
+/// A discarded looping reply is **not** an error turn — the attempt was thrown away and retried, and
+/// the turn is judged on what the retry produced — but it is counted, because it is money spent on
+/// nothing. Both facts are asserted on the same stream, so neither can be quietly folded into the
+/// other.
+#[test]
+fn discarded_looping_replies_are_counted_without_being_charged_as_errors() {
+    let tracker = SessionSummaryTracker::new();
+    // Two attempts looped, the third produced a reply, and the turn it produced was perfectly fine.
+    tracker.observe(&turn(GgTurnOutcome::Progressed, None, 0, 2));
+    // A later turn looped once more and then failed for an unrelated reason.
+    tracker.observe(&turn(
+        GgTurnOutcome::Error,
+        Some(GgTurnErrorKind::Transpile),
+        1,
+        1,
+    ));
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(summary.errors.loop_aborts, 3, "a plain sum over the turns");
+    assert_eq!(
+        summary.errors.turns, 2,
+        "a discarded attempt is not a turn of its own"
+    );
+    assert_eq!(
+        summary.errors.errors, 1,
+        "only the transpile failure was an error turn"
+    );
+}
+
+/// A run that left loop detection disarmed — the default — reports a zero, and the field is omitted
+/// from the wire entirely, so no console has to distinguish "never looped" from "never watched".
+#[test]
+fn a_run_that_never_armed_loop_detection_reports_no_aborts() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(&progressed());
+    tracker.observe(&errored(GgTurnErrorKind::MissingCompletion, 1));
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(summary.errors.loop_aborts, 0);
+    assert_eq!(summary.errors.missing_completion, 1);
+
+    let json = serde_json::to_value(&summary).expect("summary serializes");
+    assert_eq!(
+        json.pointer("/errors/loopAborts"),
+        Some(&serde_json::json!(0)),
+        "the rollup itself always carries every counter, zero or not"
+    );
+}
+
+/// A tool-calling run has an error rollup too. It is the one figure in this summary that is
+/// deliberately **mode-agnostic**: healing and `codeExecutions` are zero for such a run by
+/// construction, but "how often did this configuration fail a turn?" is exactly as meaningful when
+/// the turns were tool calls.
+#[test]
+fn a_tool_calling_run_still_reports_its_error_rate() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.record_execution_mode("tool_calling");
+    tracker.observe(&progressed());
+    tracker.observe(&errored(GgTurnErrorKind::MissingCompletion, 1));
+    tracker.observe(&errored(GgTurnErrorKind::MissingCompletion, 2));
+    tracker.observe(&turn(GgTurnOutcome::Finished, None, 0, 0));
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(summary.code_executions, 0, "nothing code-shaped ran");
+    assert_eq!(summary.healing, GgHealingSummary::default());
+    assert_eq!(summary.errors.turns, 4);
+    assert_eq!(summary.errors.errors, 2);
+    assert_eq!(summary.errors.missing_completion, 2);
+}
+
+/// The rollup is folded from exactly one event kind. A busy stream of everything else — the events
+/// that carry their own figures and the ones that carry none — leaves it untouched, so a future
+/// event cannot start contributing to the error rate by accident.
+#[test]
+fn only_the_turn_outcome_event_feeds_the_error_rollup() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(&breakdown(0.5));
+    tracker.observe(&code_turn(healed(&[GgHealingStrategy::StripFences])));
+    tracker.observe(&GgTelemetryKind::AssistantMessage {
+        text: "working on it".to_string(),
+    });
+    tracker.observe(&GgTelemetryKind::LimitExceeded {
+        breach: breach(GgLimitKind::ConsecutiveErrors, "agent-1"),
+    });
+
+    let summary = tracker.finalize("completed");
+    assert_eq!(
+        summary.errors,
+        GgErrorSummary::default(),
+        "no turn was recorded, so the run made no model calls this rollup knows of"
+    );
+    assert_eq!(summary.code_executions, 1, "the other rollups still folded");
 }

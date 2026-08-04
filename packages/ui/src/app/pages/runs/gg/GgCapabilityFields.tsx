@@ -317,7 +317,15 @@ export function CapabilityBody({
                   <FieldLabel label={p.label} hint={p.hint} />
                   <div className={gg.toggleList}>
                     {(p.options ?? []).map((o) => (
-                      <label key={o.value} className={gg.toggleItem}>
+                      // A member whose label cannot carry why it exists — the one repair
+                      // that is off unless armed — states it on hover rather than by
+                      // stretching every other label to make room for a clause only it
+                      // needs.
+                      <label
+                        key={o.value}
+                        className={gg.toggleItem}
+                        title={o.hint}
+                      >
                         <input
                           type="checkbox"
                           checked={!off.includes(o.value)}

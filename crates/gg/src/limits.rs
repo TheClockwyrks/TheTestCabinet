@@ -63,6 +63,12 @@
 //! completed. That split is what makes every rule in here a microsecond-scale unit test with no
 //! loop, no model, no wasm engine and no clock behind it.
 //!
+//! [`TurnOutcome::wire`] does not break that rule: it *names* this judgement in the contract's
+//! published vocabulary, so the loop's one recording seam can put the same judgement the ceilings
+//! act on onto the telemetry stream. Nothing here emits it; the mapping is a pure function, and it
+//! is written out by hand precisely so that a rename on either side cannot travel silently to the
+//! other.
+//!
 //! # Per agent, or run-wide
 //!
 //! The two error ceilings are **per agent**, and that is a correctness property rather than a
@@ -89,7 +95,9 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use test_cabinet_core::gg::{GgCapabilitySet, GgLimitBreach, GgLimitKind, GgRunLimits};
+use test_cabinet_core::gg::{
+    GgCapabilitySet, GgLimitBreach, GgLimitKind, GgRunLimits, GgTurnErrorKind, GgTurnOutcome,
+};
 use test_cabinet_core::metrics::Cost;
 
 // ---------------------------------------------------------------------------------------------
@@ -147,6 +155,35 @@ impl TurnOutcome {
     fn is_terminal(self) -> bool {
         matches!(self, Self::Finished | Self::Fatal(_))
     }
+
+    /// This outcome as the contract publishes it: the
+    /// [wire outcome](test_cabinet_core::gg::GgTurnOutcome) and, on an error, the
+    /// [wire kind](test_cabinet_core::gg::GgTurnErrorKind) that says how.
+    ///
+    /// Returned as one pair rather than two accessors so the pairing is unrepresentably wrong: the
+    /// contract states that `error != null` and `outcome == "error"` are the same statement, and a
+    /// caller that could ask for either half separately could publish an error with no kind or a
+    /// kind on a turn that progressed.
+    ///
+    /// Written out by hand rather than derived through a `From`, and deliberately so: gg's enum is
+    /// the loop's internal vocabulary and the contract's is a **published** wire value read by the
+    /// console, the query language and every stored run. A conversion that made them
+    /// interchangeable would let a rename on either side travel silently to the other; this way,
+    /// adding an outcome here is a decision to publish it there. The same reasoning — and the same
+    /// shape — as `wire_strategy` on the healing side.
+    ///
+    /// [`Fatal`](Self::Fatal)'s [fault](FatalFault) is deliberately dropped: the contract's
+    /// `fatal` says the session ended on gg's own machinery, which is the fact a study slices on,
+    /// and *which* piece of gg's machinery broke is a defect report the `error` log already carries
+    /// in full sentences.
+    pub fn wire(self) -> (GgTurnOutcome, Option<GgTurnErrorKind>) {
+        match self {
+            Self::Progressed => (GgTurnOutcome::Progressed, None),
+            Self::Finished => (GgTurnOutcome::Finished, None),
+            Self::Error(kind) => (GgTurnOutcome::Error, Some(kind.wire())),
+            Self::Fatal(_) => (GgTurnOutcome::Fatal, None),
+        }
+    }
 }
 
 /// Why a turn was an error — a failure attributable to the model's turn.
@@ -199,6 +236,28 @@ pub enum TurnErrorKind {
     /// `finish` trips the run's [error ceilings](RunLimits) and stops early. The only tool-calling
     /// error shape besides [`ModelApi`](Self::ModelApi).
     MissingCompletion,
+}
+
+impl TurnErrorKind {
+    /// This kind as the contract publishes it — written out by hand, for the reason
+    /// [`TurnOutcome::wire`] gives.
+    ///
+    /// The two taxonomies are one-to-one today, and the contract carries no sixth kind for a reply
+    /// abandoned by [loop detection](crate::loopguard): a discarded attempt is retried rather than
+    /// counted, and a loop that survives every attempt reaches the turn loop as a model-client
+    /// failure after that client exhausted its own retry budget — indistinguishable, at this seam,
+    /// from any other exhausted retry, and therefore reported as [`ModelApi`](Self::ModelApi). The
+    /// attempts it discarded on the way are published in their own right, on the
+    /// [`loop_aborts`](test_cabinet_core::gg::GgTelemetryKind::TurnOutcome) field of the same event.
+    pub fn wire(self) -> GgTurnErrorKind {
+        match self {
+            Self::ModelApi => GgTurnErrorKind::ModelApi,
+            Self::Transpile => GgTurnErrorKind::Transpile,
+            Self::ProgramFault => GgTurnErrorKind::ProgramFault,
+            Self::SandboxLimit => GgTurnErrorKind::SandboxLimit,
+            Self::MissingCompletion => GgTurnErrorKind::MissingCompletion,
+        }
+    }
 }
 
 /// A failure of gg's own machinery, which ends the session rather than costing the model a turn.
@@ -678,6 +737,20 @@ impl AgentLimits {
     /// How many turn outcomes this agent has recorded.
     pub fn turns_recorded(&self) -> u64 {
         self.turns_recorded
+    }
+
+    /// This agent's error turns since its last [`Progressed`](TurnOutcome::Progressed) one — the
+    /// running count the [consecutive-error ceiling](RunLimits::max_consecutive_errors) is enforced
+    /// on, read **after** a [`record`](Self::record) so the turn just folded in is included.
+    ///
+    /// Exposed because the count is *per agent* and gg's telemetry stream is run-wide: turns from
+    /// concurrently running agents interleave arbitrarily, so a reader folding the stream could
+    /// only ever reconstruct a run-wide streak — an artefact of thread scheduling rather than a fact
+    /// about any agent. Publishing this figure on each turn's own event is what makes
+    /// [`GgErrorSummary::max_consecutive`](test_cabinet_core::gg::GgErrorSummary::max_consecutive)
+    /// a maximum over agents instead of a fiction.
+    pub fn consecutive_errors(&self) -> u64 {
+        u64::from(self.consecutive)
     }
 
     /// The ceiling the state just folded in has breached, if any.

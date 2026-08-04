@@ -46,6 +46,14 @@ time = { workspace = true }
 # The HTTP client the model client (`src/client.rs`) reaches OpenRouter with — the
 # workspace's rustls-backed `reqwest` (no system OpenSSL); see `crates/core`.
 reqwest = { workspace = true }
+# Draining `reqwest`'s `bytes_stream()` in the streaming model transport
+# (`src/client.rs`): `futures-util` supplies the `StreamExt::next` the chunk loop
+# is written against. Already in the dependency graph via reqwest/tokio, so naming
+# it adds no fetch. `bytes` is deliberately NOT added alongside it: each chunk
+# arrives as a `bytes::Bytes`, but it is only ever passed on as `&[u8]` through
+# its `Deref`, so gg never names the type and a direct dependency would be one
+# nothing in the crate uses.
+futures-util = { workspace = true }
 # `async fn` in the `ModelClient` trait (`src/model.rs`), so a boxed `dyn ModelClient`
 # can back the async turn loop and be shared across spawned subagents later.
 async-trait = { workspace = true }

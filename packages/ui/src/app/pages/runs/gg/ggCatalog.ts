@@ -14,6 +14,7 @@ import type {
   GgAgentConfig,
   GgCapabilitySet,
   GgHealingStrategy,
+  GgLoopDetection,
   GgModuleKind,
   GgRunLimits,
   GgSubagentScope,
@@ -182,10 +183,10 @@ const WORKER_MODES: ReadonlyArray<GgAgentMode> = ["tools", "rac"];
 // coerces into the JSON params object: fraction/number/bytes → a JSON number,
 // select → a JSON string (an empty selection omits the param entirely), text → a
 // JSON string of whatever was typed (an empty field omits the param), toggles → a
-// JSON object of `{ option: false }` for every option switched *off* (see
-// [TOGGLES_HINT]), boolean → `true` when switched on and no key at all when off (so
+// JSON object of `{ option: <state> }` for every option moved off *its own* default
+// (see [TOGGLES_HINT]), boolean → `true` when switched on and no key at all when off (so
 // its default arm is the absent key, for the same reason `toggles` records only what
-// was switched off).
+// was moved).
 //
 // Every param gg actually reads has a control here — there is deliberately no raw
 // JSON escape hatch in the editor, since the console knows gg's whole param schema.
@@ -245,7 +246,18 @@ export interface ParamSpec {
   defaultValue?: string;
   // The closed set of values a `select` offers, or the independently switchable
   // members a `toggles` param is made of.
-  options?: ReadonlyArray<{ value: string; label: string }>;
+  //
+  // A `toggles` member may declare its own default arm: `defaultOff` marks one gg leaves
+  // OFF unless a configuration arms it, which the form has to know because the draft
+  // records deviations from each member's default rather than a raw off-list (see
+  // [TOGGLES_HINT]). Absent means on-by-default, which is what every member but one is.
+  // `hint` is hover text for a member whose label cannot carry why it exists.
+  options?: ReadonlyArray<{
+    value: string;
+    label: string;
+    defaultOff?: boolean;
+    hint?: string;
+  }>;
   // The capability [implementations](CapSpec.implementationOptions) this param is
   // actually read under, when it is not read under all of them. A param gg ignores
   // outside a particular strategy is a control that can only mislead — the form hides
@@ -270,18 +282,24 @@ export function paramApplies(
   );
 }
 
-// Why a `toggles` param writes only the switched-*off* members: the underlying gg
-// params are "on unless a configuration says otherwise", so an absent key is the
-// default arm of the ablation and writing `{ "strip-fences": true }` for a member
-// nobody touched would turn every saved configuration into an explicit opt-in that
-// a later default change could no longer reach.
+// Why a `toggles` param writes only the members whose switch was *moved*: each
+// underlying gg param has its own default arm, so an absent key IS that default, and
+// writing `{ "strip-fences": true }` for a member nobody touched would turn every saved
+// configuration into an explicit opt-in that a later default change could no longer
+// reach.
+//
+// Almost every member is on by default, and one — `drop-doubled-response` — is off (see
+// [ParamSpec.options]'s `defaultOff`), which is exactly why this is stated as "off its
+// default" rather than as "switched off": a subtractive rule cannot express arming a
+// member gg leaves off.
 //
 // Every toggle set in the form ends its hint with this sentence — response healing's
-// repairs and the skills capability's built-ins today — so the subtractive rule is
-// stated once, in one wording, wherever it applies. That is why it names no particular
-// kind of member: what the toggles ARE is the surrounding hint's job.
+// repairs and the skills capability's built-ins today — so the rule is stated once, in
+// one wording, wherever it applies. That is why it names no particular kind of member:
+// what the toggles ARE, and which of them start on, is the surrounding hint's and the
+// members' own labels' job.
 const TOGGLES_HINT =
-  "Every one is on unless you switch it off; only the ones you switch off are recorded.";
+  "Each starts at its own default; only the ones you move off it are recorded.";
 
 export interface CapSpec {
   id: string;
@@ -422,9 +440,16 @@ export const AUTOLOAD_LOCKED_HINT =
 // `value` is typed as the contract's `GgHealingStrategy`, so a strategy added to or
 // renamed in `crates/core/src/gg.rs` is a compile error here rather than a control
 // that writes a key gg reports as unknown.
+//
+// All but one are armed unless a configuration switches them off, because for those the
+// repair is strictly safer than not making it: the reply they delete from could not have
+// run as sent. `drop-doubled-response` is the exception, and carries its own
+// [defaultOff](ParamSpec.options) flag rather than being a special case in the form.
 export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
   value: GgHealingStrategy;
   label: string;
+  defaultOff?: boolean;
+  hint?: string;
 }> = [
   {
     value: "strip-fences",
@@ -433,6 +458,13 @@ export const HEALING_STRATEGY_OPTIONS: ReadonlyArray<{
   {
     value: "strip-prose",
     label: "strip-prose — drop explanatory text before or after the program",
+  },
+  {
+    value: "drop-doubled-response",
+    label:
+      "drop-doubled-response — halve a reply that is one program sent twice (off by default)",
+    defaultOff: true,
+    hint: "Off unless you arm it, and the only strategy that is: the half it deletes is valid code under any other reading, so unlike every other repair here, not making it is the safer default. It fires only on a byte-exact doubling with nothing at all between the copies — a model that deliberately repeats a statement writes a separator, and any single character of separator makes the reply an odd number of bytes long, which the test declines on. Arm it for a model observed to concatenate its completion with itself.",
   },
   {
     value: "drop-duplicate-program",
@@ -465,6 +497,82 @@ export const ASSISTANT_MESSAGE_OPTIONS = [
 // labels into the field's help tooltip.
 export const ASSISTANT_MESSAGE_HINT =
   "No post-processing records the reply exactly as the model sent it (healing still runs and is disclosed, but its output is not stored). Post-response healing records the healed program gg actually ran whenever healing changed the reply, and the reply verbatim when it did not.";
+
+// --- Loop detection ---------------------------------------------------------------
+//
+// Some models get stuck generating: thousands of near-identical lines (`void 0;`,
+// repeated) until the provider's output cap stops them. gg is non-streaming by default,
+// so it pays for the whole reply and only learns what it bought once it is complete.
+//
+// Loop detection watches a reply as it arrives and abandons one that has become
+// repetitive. It is a **per-agent** lever, and not a capability: it changes nothing about
+// what the agent can do, only how gg talks to its model — which is why it is authored
+// beside the model binding and the prompt-cache lifetime rather than in the capability
+// list. It is per agent because looping is a property of the *model*, and the profiles of
+// one run may be bound to several.
+
+// What arming the detector costs and what it buys — the tooltip on the lever itself.
+// States the transport consequence up front, because that is the part an operator cannot
+// discover from the run: arming this is the only thing that moves an agent onto the
+// streaming transport, and a streamed turn is accounted from the stream's own usage chunk
+// rather than from a completed response body.
+export const LOOP_DETECTION_HINT =
+  "Watch this agent's replies as they arrive and abandon one that has degenerated into repetition, retrying the turn as though the request had failed — so a runaway costs one truncated reply instead of a full output cap, and never enters the agent's context. Arming it also moves this agent onto gg's streaming transport, which is what makes a partial reply visible at all; every other agent in the run is untouched. Off unless you arm it, per agent: the detector is worth its transport change on a model observed to loop, and nothing at all on one that never has.";
+
+// The knobs of the window rule, in the order they read as a sentence: how far back the
+// detector looks, how often a word must recur to be suspicious, how many such words make
+// the window suspicious, how long that must persist before the reply is abandoned — and
+// last, the backstop that does not read the window at all.
+//
+// `key` is typed as the contract's own optional fields, so a knob added to (or renamed
+// in) `GgLoopDetection` is a compile error here rather than a control writing a key gg
+// drops as unknown. `enabled` is deliberately not among them: it is the lever's switch,
+// not one of its settings.
+export interface LoopDetectionSpec {
+  key: Exclude<keyof GgLoopDetection, "enabled">;
+  label: string;
+  hint: string;
+  // gg's own default for the knob, shown as the field's placeholder so an empty box
+  // reads as the real figure rather than as "nothing". Left empty, the knob is not
+  // written at all — which is exactly "take gg's default", so a seeded value is
+  // deliberately NOT used here (unlike the run ceilings, which seed their fields):
+  // writing 256 for a window nobody chose freezes today's default into every stored
+  // configuration.
+  ggDefault: number;
+}
+
+export const LOOP_DETECTION_SPECS: ReadonlyArray<LoopDetectionSpec> = [
+  {
+    key: "windowWords",
+    label: "Window (words)",
+    ggDefault: 256,
+    hint: "How many of the most recent words the detector looks back over. A word is a whitespace-separated run of characters — plus a fixed-width slice whenever a run exceeds gg's internal cap, which is what makes a whitespace-free loop (`a();a();a();…`) detectable rather than one unbounded word. Empty takes gg's default of 256.",
+  },
+  {
+    key: "repeatThreshold",
+    label: "Repeats before suspicious",
+    ggDefault: 32,
+    hint: "How many times one word may occur inside the window before it counts as an offender — strictly more than this makes one. Raising it tolerates denser legitimate repetition (a data literal, a long table) at the cost of catching a loop later. Empty takes gg's default of 32, which is a word occupying more than an eighth of a 256-word window.",
+  },
+  {
+    key: "minOffenders",
+    label: "Offenders to saturate",
+    ggDefault: 2,
+    hint: "How many DISTINCT offenders must be present at once for the window to count as saturated. More than one is required because a single very common token (`the`, `0,`, a brace) is ordinary, while a loop repeats a whole fragment and so saturates several words together. Empty takes gg's default of 2.",
+  },
+  {
+    key: "minSaturatedRun",
+    label: "Saturated words before abandoning",
+    ggDefault: 3000,
+    hint: "How many consecutive words must arrive while the window stays saturated before the reply is abandoned. This is the term that separates a loop from legitimately repetitive content: a tilemap literal or a long table saturates the window and then ENDS, while a loop saturates it and never stops. 0 abandons as soon as the window saturates — the unmodified frequency rule, and a deliberate setting rather than a mistake. Empty takes gg's default of 3000.",
+  },
+  {
+    key: "maxResponseChars",
+    label: "Reply ceiling (characters)",
+    ggDefault: 250_000,
+    hint: "A hard ceiling on one reply, and the backstop for a runaway that is not repetitive enough to trip the window rule. 0 turns the backstop off and leaves only the repetition rule. Empty takes gg's default of 250,000.",
+  },
+];
 
 // --- Modules --------------------------------------------------------------------
 //

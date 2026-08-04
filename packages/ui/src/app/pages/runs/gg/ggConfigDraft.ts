@@ -29,6 +29,7 @@ import type {
   GgAgentConfig,
   GgCapabilityConfig,
   GgCapabilitySet,
+  GgLoopDetection,
   GgModelSlot,
   GgModuleKind,
   GgPromptCacheTtl,
@@ -44,6 +45,7 @@ import {
   FSM_CAP_ID,
   FSM_STATES_PARAM,
   LEGACY_FILESYSTEM_CAP_ID,
+  LOOP_DETECTION_SPECS,
   MODULE_KINDS,
   PRESET_CAP_IDS,
   PRIMARY_SLOT,
@@ -56,6 +58,7 @@ import {
   isModeCapability,
   type CapSpec,
   type GgAgentMode,
+  type LoopDetectionSpec,
   type ParamSpec,
 } from "./ggCatalog";
 
@@ -163,7 +166,37 @@ export interface GgAgentDraft {
   // default, and the only one that costs no premium — is what an agent that never touched
   // the knob saves as: no key at all.
   promptCacheTtl: GgPromptCacheTtl;
+  // Whether gg watches this agent's replies for a generation loop, and with what knobs.
+  loopDetection: GgLoopDetectionDraft;
   subagents: GgSubagentDraft[];
+}
+
+// One agent's loop detection as the editor holds it: the switch as a boolean, and one
+// *string* per knob keyed by its wire field.
+//
+// Strings for the same reason the run's ceilings are strings ([GgRunLimitsDraft]): an
+// empty field ("take gg's default") has to stay distinguishable from a deliberate `0`,
+// and two of these knobs read `0` as a real setting — `minSaturatedRun: 0` is the
+// unmodified frequency rule and `maxResponseChars: 0` turns the length backstop off. A
+// number-typed draft would collapse both onto "unset" the moment the field was cleared.
+//
+// A total record over the contract's own optional fields, so a knob added to
+// `GgLoopDetection` is a compile error in every function below rather than a setting the
+// form silently drops on a round-trip.
+export interface GgLoopDetectionDraft {
+  enabled: boolean;
+  knobs: Record<LoopDetectionSpec["key"], string>;
+}
+
+/**
+ * Loop detection as an agent that has never touched it holds it: off, with every knob at
+ * gg's default (an empty field). This is also what a stored configuration that declares
+ * none loads as, and what such an agent saves back as — no key at all.
+ */
+export function blankLoopDetection(): GgLoopDetectionDraft {
+  const knobs = {} as Record<LoopDetectionSpec["key"], string>;
+  for (const spec of LOOP_DETECTION_SPECS) knobs[spec.key] = "";
+  return { enabled: false, knobs };
 }
 
 // The run's execution ceilings as the editor holds them: one *string* per ceiling,
@@ -363,6 +396,7 @@ export function resetAgentForMode(agent: GgAgentDraft): GgAgentDraft {
         modelSlotId: "",
         modelId: "",
         promptCacheTtl: "standard" as const,
+        loopDetection: blankLoopDetection(),
         disabledTools: [],
         customInstructions: "",
         systemPromptTemplate: "",
@@ -432,6 +466,7 @@ export function blankAgentDraft(
     customInstructions: "",
     systemPromptTemplate: "",
     promptCacheTtl: "standard",
+    loopDetection: blankLoopDetection(),
     subagents: [],
   };
 }
@@ -635,24 +670,52 @@ export function emptyDraft(): GgConfigDraft {
 
 // --- `toggles` params -----------------------------------------------------------
 //
-// A `toggles` param is a JSON object of independently switchable members that are
-// **on unless switched off**. The draft holds only the switched-off member ids,
-// comma-separated, so it stays a plain string like every other dedicated control.
+// A `toggles` param is a JSON object of independently switchable members, each with its
+// own default arm: almost all are **on** unless switched off, and one — response
+// healing's `drop-doubled-response` — is **off** unless armed (see the catalog's
+// `defaultOff`).
+//
+// The draft holds the ids of the members whose switch has been MOVED OFF ITS OWN DEFAULT,
+// comma-separated, so it stays a plain string like every other dedicated control. Storing
+// the deviations rather than a raw off-list is what lets the two arms coexist: an empty
+// draft value means "every member at its default", whichever way each of those points,
+// and only a moved member is ever written to the wire.
 
 const TOGGLE_SEPARATOR = ",";
 
-/** The switched-off member ids a `toggles` draft value stands for, in catalog order. */
-export function togglesOff(
-  spec: ParamSpec,
-  raw: string | undefined,
-): ReadonlyArray<string> {
-  const off = new Set(
+/** Whether a member is on when nothing has touched it. */
+function toggleDefaultOn(option: { defaultOff?: boolean }): boolean {
+  return !option.defaultOff;
+}
+
+/** The member ids a draft value marks as moved off their default, as a set. */
+function togglesMoved(spec: ParamSpec, raw: string | undefined): Set<string> {
+  const ids = new Set(
     (raw ?? "")
       .split(TOGGLE_SEPARATOR)
       .map((id) => id.trim())
       .filter(Boolean),
   );
-  return (spec.options ?? []).map((o) => o.value).filter((id) => off.has(id));
+  // Filtered against the catalog, so a stale id from an older client cannot make a
+  // member that no longer exists decide anything.
+  return new Set(
+    (spec.options ?? []).map((o) => o.value).filter((id) => ids.has(id)),
+  );
+}
+
+/**
+ * The switched-**off** member ids a `toggles` draft value stands for, in catalog order —
+ * what the form's checkboxes are drawn from. A member is off when it has been moved and
+ * its default was on, or when it has NOT been moved and its default was off.
+ */
+export function togglesOff(
+  spec: ParamSpec,
+  raw: string | undefined,
+): ReadonlyArray<string> {
+  const moved = togglesMoved(spec, raw);
+  return (spec.options ?? [])
+    .filter((o) => moved.has(o.value) === toggleDefaultOn(o))
+    .map((o) => o.value);
 }
 
 /** The draft value for a `toggles` param with exactly `off` switched off. */
@@ -660,16 +723,25 @@ export function togglesDraftValue(
   spec: ParamSpec,
   off: ReadonlyArray<string>,
 ): string {
-  return togglesOff(spec, off.join(TOGGLE_SEPARATOR)).join(TOGGLE_SEPARATOR);
+  const offSet = new Set(off);
+  return (spec.options ?? [])
+    .filter((o) => offSet.has(o.value) === toggleDefaultOn(o))
+    .map((o) => o.value)
+    .join(TOGGLE_SEPARATOR);
 }
 
 /**
  * The draft value a *stored* `toggles` param decodes to, or `null` when the stored
  * value is not one this control can represent.
+ *
+ * The two scalar forms are gg's own shorthands, and they are not symmetric: `true` means
+ * "the defaults" (which is not the same as "everything on" once a member defaults off),
+ * while `false` is the master switch and means every member off.
  */
 function togglesFromParam(spec: ParamSpec, value: unknown): string | null {
-  const ids = (spec.options ?? []).map((o) => o.value);
-  if (value === false) return ids.join(TOGGLE_SEPARATOR);
+  const options = spec.options ?? [];
+  const ids = options.map((o) => o.value);
+  if (value === false) return togglesDraftValue(spec, ids);
   if (value === true) return "";
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
@@ -680,23 +752,35 @@ function togglesFromParam(spec: ParamSpec, value: unknown): string | null {
   ) {
     return null;
   }
+  // A member the stored object does not mention takes its own default, so the off-list
+  // has to be resolved over every member rather than read off the entries alone —
+  // otherwise an unmentioned default-off member would come back armed.
+  const stated = new Map(entries as Array<[string, boolean]>);
   return togglesDraftValue(
     spec,
-    entries.filter(([, on]) => on === false).map(([id]) => id),
+    options
+      .filter((o) => !(stated.get(o.value) ?? toggleDefaultOn(o)))
+      .map((o) => o.value),
   );
 }
 
 /**
- * The JSON a `toggles` draft value writes, or `undefined` for an all-on set (which
- * writes no param). Only the switched-off members are recorded.
+ * The JSON a `toggles` draft value writes, or `undefined` when every member sits at its
+ * own default (which writes no param at all). Only the moved members are recorded — a
+ * default-on member switched off as `false`, and a default-off member armed as `true`.
  */
 function togglesToParam(
   spec: ParamSpec,
   raw: string,
 ): Record<string, boolean> | undefined {
-  const off = togglesOff(spec, raw);
-  if (off.length === 0) return undefined;
-  return Object.fromEntries(off.map((id) => [id, false]));
+  const off = new Set(togglesOff(spec, raw));
+  const out: Record<string, boolean> = {};
+  for (const option of spec.options ?? []) {
+    const on = !off.has(option.value);
+    if (on === toggleDefaultOn(option)) continue;
+    out[option.value] = on;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 // --- `commands` params ----------------------------------------------------------
@@ -1235,6 +1319,7 @@ function agentDraftFromConfig(
     // A configuration stored before the lifetime was configurable names none, and reads
     // as the standard one — the same reading gg gives it.
     promptCacheTtl: agent.promptCacheTtl ?? "standard",
+    loopDetection: loopDetectionDraft(agent.loopDetection),
     // Filled in by [resolveAgentReferences], which needs every profile's id.
     subagents: [],
   });
@@ -1579,6 +1664,114 @@ export function runLimitsFromDraft(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+// --- Loop detection ---------------------------------------------------------------
+//
+// A per-agent, non-capability lever (see [GgLoopDetectionDraft]). The two conversions
+// below are the whole of its round-trip, and they are written to be exact in both
+// directions: a stored declaration comes back knob for knob, and an agent that never
+// touched the lever writes no key at all.
+
+/**
+ * A stored declaration as the editor holds it — every knob it named as text, every knob
+ * it did not as an empty field. `undefined` (a configuration that predates the lever, or
+ * one whose agent left it alone) is the disarmed default, which is exactly gg's own
+ * reading of an absent key.
+ */
+export function loopDetectionDraft(
+  stored: GgLoopDetection | undefined,
+): GgLoopDetectionDraft {
+  const draft = blankLoopDetection();
+  if (!stored) return draft;
+  draft.enabled = Boolean(stored.enabled);
+  for (const spec of LOOP_DETECTION_SPECS) {
+    const value = stored[spec.key];
+    // `0` is a setting on two of these knobs, so the test is against `undefined` rather
+    // than falsiness — `?? ""` would turn "abandon as soon as the window saturates" back
+    // into "take gg's default of 3000".
+    if (value !== undefined) draft.knobs[spec.key] = String(value);
+  }
+  return draft;
+}
+
+/**
+ * The `loopDetection` key an agent writes, spread into its wire config — or nothing at
+ * all when the agent is disarmed and named no knob, so a configuration that predates the
+ * lever round-trips byte for byte.
+ *
+ * A knob is written only when its field holds a number: an empty field means "take gg's
+ * default", which is the absent key, and half-typed text is not a value to record. A
+ * DISARMED agent that nevertheless carries knobs still writes them — the operator tuned
+ * the detector and switched it off, and silently discarding that on save would lose the
+ * settings the next time it was armed.
+ */
+export function loopDetectionKey(draft: GgLoopDetectionDraft): {
+  loopDetection?: GgLoopDetection;
+} {
+  const knobs: GgLoopDetection = { enabled: draft.enabled };
+  let named = false;
+  for (const spec of LOOP_DETECTION_SPECS) {
+    const raw = draft.knobs[spec.key].trim();
+    if (!raw) continue;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) continue;
+    knobs[spec.key] = value;
+    named = true;
+  }
+  if (!draft.enabled && !named) return {};
+  return { loopDetection: knobs };
+}
+
+/**
+ * Why an agent's loop detection cannot be saved, or `null` when it is well-formed.
+ *
+ * Only checks what the *form* cannot express: a knob is a whole, non-negative count of
+ * words, occurrences or characters. Everything gg itself merely warns about — a window of
+ * zero, more offenders than the window can hold — is left to gg, which resolves such a
+ * knob to its own default and says so at launch rather than refusing the run. Refusing the
+ * save for those would be the console being stricter than the thing it configures.
+ *
+ * A disarmed agent is checked too: its knobs are still recorded, so a value that could
+ * never be read back is still a value the operator will find later.
+ */
+export function loopDetectionError(draft: GgLoopDetectionDraft): string | null {
+  for (const spec of LOOP_DETECTION_SPECS) {
+    const raw = draft.knobs[spec.key].trim();
+    if (!raw) continue;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return `${spec.label} must be a number.`;
+    if (!Number.isInteger(value) || value < 0) {
+      return `${spec.label} must be a whole number, and cannot be negative.`;
+    }
+  }
+  return null;
+}
+
+/**
+ * The one thing about a well-formed, armed detector worth saying out loud without
+ * refusing the save: asking for more distinct offenders than the window holds words is a
+ * rule that can never be met, so the detector would run and never trip. gg warns about
+ * exactly this at launch and arms the configuration as declared; saying it here is saying
+ * it while it can still be fixed.
+ *
+ * Nothing is said for a disarmed agent — a warning about a value nothing will read is
+ * noise — and nothing is said about a knob left empty, which takes gg's default.
+ */
+export function loopDetectionWarning(
+  draft: GgLoopDetectionDraft,
+): string | null {
+  if (!draft.enabled) return null;
+  const window = draft.knobs.windowWords.trim();
+  const offenders = draft.knobs.minOffenders.trim();
+  if (!window || !offenders) return null;
+  const windowWords = Number(window);
+  const minOffenders = Number(offenders);
+  if (!Number.isFinite(windowWords) || !Number.isFinite(minOffenders)) {
+    return null;
+  }
+  if (minOffenders <= windowWords) return null;
+  return `The detector needs ${minOffenders} distinct repeated words in a window that only holds ${windowWords}, so it could never trip on repetition — only the reply ceiling would ever fire.`;
+}
+
 /**
  * One agent's per-capability param errors, keyed by capability id (`null` = ok).
  *
@@ -1696,6 +1889,13 @@ export function agentSaveError(
   if (draft.agents.some((a) => a.id !== agent.id && a.name.trim() === name)) {
     return `Another agent is already called \`${name}\` — agent names must be unique.`;
   }
+  // A machine takes no turns, so it runs no model and has no replies to watch: its
+  // loop-detection draft is reset on commit and shown by no control, and reporting a
+  // fault in a value nothing can see or read would be unfixable.
+  if (!isFsmShell(agent)) {
+    const loop = loopDetectionError(agent.loopDetection);
+    if (loop) return loop;
+  }
   const failed = Object.entries(agentParamErrors(agent, draft.agents)).find(
     ([, error]) => error !== null,
   );
@@ -1740,6 +1940,10 @@ export function draftSaveError(draft: GgConfigDraft): string | null {
         }
       } else if (!agent.modelId.trim()) {
         return `The \`${agent.name.trim()}\` agent pins no model — choose one, or bind it to a model slot.`;
+      }
+      const loop = loopDetectionError(agent.loopDetection);
+      if (loop) {
+        return `${loop.replace(/\.$/, "")} on the \`${agent.name.trim()}\` agent.`;
       }
     }
     // An issue names the agent it is dispatched to, drawn from the filer's own
@@ -1838,6 +2042,7 @@ function agentConfigFromDraft(
     ...(agent.promptCacheTtl !== "standard"
       ? { promptCacheTtl: agent.promptCacheTtl }
       : {}),
+    ...loopDetectionKey(agent.loopDetection),
     ...(subagents.length ? { subagents } : {}),
   };
 }

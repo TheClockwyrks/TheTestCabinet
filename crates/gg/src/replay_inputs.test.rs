@@ -307,6 +307,7 @@ fn response(text: &str) -> ModelResponse {
         finish_reason: FinishReason::Stop,
         usage: test_cabinet_core::metrics::TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 

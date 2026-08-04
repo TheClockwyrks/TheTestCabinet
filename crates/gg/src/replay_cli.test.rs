@@ -46,6 +46,7 @@ fn one_turn_record(session_id: &str) -> GgReplayRecord {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     };
     let parts = pools.into_parts();
 
@@ -81,6 +82,7 @@ fn v1_document() -> String {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     };
     let legacy = GgReplayRecordV1 {
         session_id: "run-legacy".to_string(),
@@ -270,6 +272,7 @@ fn a_record_that_does_not_reconstruct_is_an_error() {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     };
     if let GgReplayEntryKind::ModelIo {
         response: recorded, ..

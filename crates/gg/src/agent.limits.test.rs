@@ -20,6 +20,7 @@
 use super::*;
 use crate::limits::DEFAULT_MAX_CONSECUTIVE_ERRORS;
 use crate::subagents::DEFAULT_MAX_PARALLEL;
+use test_cabinet_core::gg::{GgLoopDetection, GgTurnErrorKind, GgTurnOutcome};
 
 /// A reply that is not a program — the shape a model sends when it narrates a finished task instead
 /// of ending the run, and therefore an error turn under this protocol.
@@ -61,6 +62,27 @@ fn turns_started(events: &[GgTelemetryEvent]) -> usize {
         .iter()
         .filter(|e| matches!(e.kind, GgTelemetryKind::TurnStarted {}))
         .count()
+}
+
+/// Every [`TurnOutcome`](GgTelemetryKind::TurnOutcome) on the stream, in emission order, as the
+/// tuple its assertions read: how the turn ended, why (on an error), the agent's streak after it,
+/// its running turn count, and the replies loop detection discarded on the way.
+fn turn_outcomes(
+    events: &[GgTelemetryEvent],
+) -> Vec<(GgTurnOutcome, Option<GgTurnErrorKind>, u64, u64, u64)> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::TurnOutcome {
+                outcome,
+                error,
+                consecutive_errors,
+                turns,
+                loop_aborts,
+            } => Some((*outcome, *error, *consecutive_errors, *turns, *loop_aborts)),
+            _ => None,
+        })
+        .collect()
 }
 
 /// A script of `n` prose replies — `n` error turns in a row.
@@ -248,6 +270,7 @@ fn priced_turn(dollars: f64) -> ModelResponse {
             comparable: Some(dollars),
             actual: Some(dollars),
         }),
+        loop_aborts: 0,
     }
 }
 
@@ -618,6 +641,7 @@ async fn a_limit_stopped_run_keeps_everything_it_built() {
             comparable: Some(1.0),
             actual: Some(1.0),
         }),
+        loop_aborts: 0,
     };
     let client = MockClient::new(
         "mock/primary",
@@ -715,10 +739,25 @@ async fn every_turn_records_exactly_one_outcome() {
         )
         .await;
         assert_eq!(end.status, label);
+        let events = sink.events();
         assert_eq!(
-            turns_started(&sink.events()),
+            turns_started(&events),
             end.turns,
             "{label}: the loop's turn count and the turns it started disagree"
+        );
+        // ...and the same invariant on the wire. Every recorded outcome is published, so the count
+        // of `turn_outcome` events is the count of model calls the run made — the denominator the
+        // run's error rollup is read against.
+        let outcomes = turn_outcomes(&events);
+        assert_eq!(
+            outcomes.len(),
+            end.turns,
+            "{label}: a turn was recorded without being published"
+        );
+        assert_eq!(
+            outcomes.iter().map(|outcome| outcome.3).collect::<Vec<_>>(),
+            (1..=end.turns as u64).collect::<Vec<_>>(),
+            "{label}: each event carries that agent's own running turn count"
         );
         if let Some(breach) = end.limit {
             assert_eq!(
@@ -980,4 +1019,459 @@ async fn every_recognized_shell_output_mode_launches_without_a_warning() {
             "`{mode}` is a mode gg offers:\n{warned}"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// The turn-outcome event
+// ---------------------------------------------------------------------------
+
+/// **An error turn says so on the stream, with the kind that made it one.**
+///
+/// The outcome the ceilings act on and the outcome a reader sees come from the one seam, so they
+/// cannot disagree about what an error is. Driven with prose replies under responses-as-code — a
+/// reply that is not a program never reaches the sandbox — and read straight off the stream: three
+/// failures in a row, each publishing its own kind and its own place in the streak, and a recovery
+/// that clears the streak on the very next event.
+#[tokio::test]
+async fn an_error_turn_publishes_its_kind_and_the_streak_it_is_part_of() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
+
+    let mut script = prose_script(3);
+    // A program that runs and ends the session: the recovery, and the loop's exit.
+    script.push(code_reply(FINISHING_PROGRAM));
+    let end = drive_root(
+        &MockClient::new("mock/primary", script),
+        dir.path(),
+        &registry,
+        &emitter,
+        setup_from(GgRunLimits {
+            max_turns: Some(9),
+            ..GgRunLimits::default()
+        }),
+        code_on(),
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+
+    assert_eq!(
+        turn_outcomes(&sink.events()),
+        vec![
+            // A reply that is not a program does not type-strip: the turn declared work that never
+            // ran, three times over, and the streak climbs with it.
+            (
+                GgTurnOutcome::Error,
+                Some(GgTurnErrorKind::Transpile),
+                1,
+                1,
+                0
+            ),
+            (
+                GgTurnOutcome::Error,
+                Some(GgTurnErrorKind::Transpile),
+                2,
+                2,
+                0
+            ),
+            (
+                GgTurnOutcome::Error,
+                Some(GgTurnErrorKind::Transpile),
+                3,
+                3,
+                0
+            ),
+            // `finish` ends the session: terminal, never an error, and it clears the streak the way
+            // any turn that carried out its declared work does.
+            (GgTurnOutcome::Finished, None, 0, 4, 0),
+        ],
+    );
+}
+
+/// **A turn that ended with no tool call now says so.**
+///
+/// The two `MissingCompletion` sites used to record an outcome and emit nothing at all, so a model
+/// that replied in prose turn after turn under an explicit-call completion signal produced a stream
+/// in which nothing had gone wrong. It is the regression this event exists for, so it is pinned
+/// directly: a text-only reply publishes an `error` turn of kind `missing_completion`.
+#[tokio::test]
+async fn a_turn_that_made_no_tool_call_publishes_a_missing_completion_error() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
+
+    let end = drive_root(
+        &MockClient::new(
+            "mock/primary",
+            vec![text_only_response(), text_only_response(), stop_response()],
+        ),
+        dir.path(),
+        &registry,
+        &emitter,
+        setup_from(GgRunLimits {
+            max_turns: Some(9),
+            ..GgRunLimits::default()
+        }),
+        no_code(),
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+
+    assert_eq!(
+        turn_outcomes(&sink.events()),
+        vec![
+            (
+                GgTurnOutcome::Error,
+                Some(GgTurnErrorKind::MissingCompletion),
+                1,
+                1,
+                0
+            ),
+            (
+                GgTurnOutcome::Error,
+                Some(GgTurnErrorKind::MissingCompletion),
+                2,
+                2,
+                0
+            ),
+            (GgTurnOutcome::Finished, None, 0, 3, 0),
+        ],
+        "a tool-calling run publishes the same judgement a code-shaped one does"
+    );
+}
+
+/// **A model call that failed is published like any other error turn**, and it is the one error
+/// path that can carry discarded attempts.
+///
+/// A reply that looped on every attempt reaches the loop as an exhausted model call — the contract
+/// has no separate kind for it, deliberately — so it lands as `model_api`. What is *not* lost is
+/// what it cost: the three replies the detector threw away ride on the same event, and the operator
+/// log names the loop rather than blaming a provider outage that never happened.
+#[tokio::test]
+async fn a_reply_that_looped_on_every_attempt_ends_the_run_on_its_own_message() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
+
+    let end = drive_root(
+        &FailingClient {
+            mode: FailureMode::Looping,
+        },
+        dir.path(),
+        &registry,
+        &emitter,
+        setup_from(GgRunLimits {
+            max_turns: Some(5),
+            ..GgRunLimits::default()
+        }),
+        no_code(),
+    )
+    .await;
+
+    // Ends on the same terms retry exhaustion does — the model failed at its work, so the run is a
+    // `model_error` rather than a host fault or a refused credential.
+    assert_eq!(end.status, "model_error");
+    assert_eq!(
+        end.turns, 1,
+        "the failed call is still a turn that happened"
+    );
+
+    let events = sink.events();
+    assert_eq!(
+        turn_outcomes(&events),
+        vec![(
+            GgTurnOutcome::Error,
+            Some(GgTurnErrorKind::ModelApi),
+            1,
+            1,
+            3
+        )],
+        "the discarded attempts are counted even though no reply survived"
+    );
+
+    let errors: Vec<String> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::Log { level, message } if level == "error" => Some(message.clone()),
+            _ => None,
+        })
+        .collect();
+    let logged = errors.join("\n");
+    assert!(
+        logged.contains("generation loop"),
+        "the log names what actually happened:\n{logged}"
+    );
+    assert!(
+        !logged.contains("retries exhausted"),
+        "...and does not send the operator looking for a provider outage:\n{logged}"
+    );
+}
+
+/// **A turn that survived a loop reports what was thrown away.**
+///
+/// Loop detection discarding two replies and the third one working is a *successful* turn — the
+/// outcome is `progressed`, no ceiling counts it, and nothing about the run's error rate changes.
+/// The money is still gone, so the count rides on the turn that eventually produced a reply, and the
+/// operator log says so out loud.
+#[tokio::test]
+async fn a_turn_that_survived_a_loop_reports_the_replies_that_were_discarded() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(None, Box::new(sink.clone()));
+    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/primary").root());
+
+    // The first turn's reply arrived only after two attempts were abandoned; the second ended the
+    // session on the first attempt, as an ordinary turn does.
+    let mut looped = tool_call_response(
+        "call_1",
+        "write_file",
+        json!({ "path": "notes.md", "contents": "hello" }),
+    );
+    looped.loop_aborts = 2;
+    let end = drive_root(
+        &MockClient::new("mock/primary", vec![looped, stop_response()]),
+        dir.path(),
+        &registry,
+        &emitter,
+        setup_from(GgRunLimits::default()),
+        no_code(),
+    )
+    .await;
+    assert_eq!(end.status, "completed");
+
+    let events = sink.events();
+    assert_eq!(
+        turn_outcomes(&events),
+        vec![
+            (GgTurnOutcome::Progressed, None, 0, 1, 2),
+            (GgTurnOutcome::Finished, None, 0, 2, 0),
+        ],
+        "a discarded attempt is not an error, and is not a turn of its own"
+    );
+
+    let warned = warn_messages(&events).join("\n");
+    assert!(
+        warned.contains("loop detection discarded 2 looping model responses"),
+        "the discarded replies are named on the operator's stream:\n{warned}"
+    );
+}
+
+/// **The run's error rollup is folded from the very stream it summarizes.**
+///
+/// The whole session, through the real emitter: the summary's `turns` is the number of
+/// `turn_outcome` events the run emitted, its `errors` is the number of those that were errors, and
+/// the two are read against each other rather than stored as a percentage that could disagree with
+/// its own denominator.
+#[tokio::test]
+async fn the_session_summary_carries_the_error_rollup_its_stream_reported() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-errors".to_string()), Box::new(sink.clone()));
+
+    // Two prose replies (each an error turn) and then a program that finishes, under a ceiling wide
+    // enough that nothing stops the run — the rollup must be recorded for a run that *finished*,
+    // which is exactly the run the old accounting could say nothing about.
+    let mut script = prose_script(2);
+    script.push(code_reply(FINISHING_PROGRAM));
+    let set = code_set("mock/primary", serde_json::Value::Null);
+    let end = run_with_factory(
+        &invocation(dir.path(), set),
+        &emitter,
+        Arc::new(ScriptedFactory::new().slot(ROOT_AGENT, move |_| {
+            Box::new(MockClient::new("mock/primary", script.clone()))
+        })),
+    )
+    .await;
+    assert_eq!(end, SessionOutcome::Ran);
+
+    let events = sink.events();
+    let summary = session_summary(&events).expect("a session summary");
+    let outcomes = turn_outcomes(&events);
+
+    assert_eq!(
+        summary.errors.turns,
+        outcomes.len() as u64,
+        "the denominator is the number of turns the run published"
+    );
+    assert_eq!(summary.errors.turns, 3);
+    assert_eq!(summary.errors.errors, 2);
+    assert_eq!(
+        summary.errors.transpile, 2,
+        "a prose reply does not compile"
+    );
+    assert_eq!(
+        summary.errors.max_consecutive, 2,
+        "the peak streak the one agent reached"
+    );
+    assert_eq!(summary.errors.loop_aborts, 0, "nothing armed the detector");
+    assert_eq!(
+        summary.terminal_status, "completed",
+        "a run that failed two thirds of its turns and finished anyway now says so"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Loop detection: configuration
+// ---------------------------------------------------------------------------
+
+/// **An armed detector names its configuration in the launch log**, beside the ceilings and the
+/// healing set — the same kind of fact, said the same way, before the first turn.
+///
+/// Arming it also switches that agent's transport to streaming, which is why the line is worth
+/// having at all: a run that streams and a run that does not are otherwise indistinguishable from
+/// the operator's log.
+#[tokio::test]
+async fn an_armed_loop_detector_names_its_configuration_at_launch() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-loopguard".to_string()), Box::new(sink.clone()));
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents[0].loop_detection = GgLoopDetection {
+        enabled: true,
+        repeat_threshold: Some(8),
+        ..GgLoopDetection::default()
+    };
+
+    assert_eq!(
+        run(&invocation(dir.path(), set), &emitter).await,
+        SessionOutcome::Ran
+    );
+
+    let events = sink.events();
+    let infos: Vec<String> = events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::Log { level, message } if level == "info" => Some(message.clone()),
+            _ => None,
+        })
+        .collect();
+    let logged = infos.join("\n");
+    assert!(
+        logged.contains("loop detection: armed"),
+        "the armed detector says so:\n{logged}"
+    );
+    assert!(
+        logged.contains("more than 8 times"),
+        "...and names the knobs actually in force, not the defaults:\n{logged}"
+    );
+}
+
+/// **A disarmed detector says nothing at all.** The default, and the shape of nearly every run: a
+/// declaration nothing will read has no configuration to name, and a line saying "off" in every
+/// run's log is noise in the one place an operator looks to find out what was configured.
+#[tokio::test]
+async fn a_disarmed_loop_detector_is_silent() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(Some("run-no-loopguard".to_string()), Box::new(sink.clone()));
+
+    assert_eq!(
+        run(
+            &invocation(dir.path(), GgCapabilitySet::minimal("mock/echo")),
+            &emitter
+        )
+        .await,
+        SessionOutcome::Ran
+    );
+
+    assert!(
+        !sink.events().iter().any(|e| matches!(
+            &e.kind,
+            GgTelemetryKind::Log { message, .. } if message.contains("loop detection")
+        )),
+        "a run that armed nothing mentions nothing"
+    );
+}
+
+/// **An unusable loop-detection knob warns and launches anyway** — the same terms every other
+/// declaration gg cannot act on is read on, and the warning names the agent, because the lever is
+/// per agent and a run with five profiles would otherwise say which knob but not whose.
+#[tokio::test]
+async fn an_unusable_loop_detection_knob_warns_and_launches_anyway() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(
+        Some("run-loopguard-warn".to_string()),
+        Box::new(sink.clone()),
+    );
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    // Renamed, so the warning has an agent name to carry that is not the default one.
+    set.agents[0].name = "builder".to_string();
+    set.agents[0].loop_detection = GgLoopDetection {
+        enabled: true,
+        window_words: Some(0),
+        ..GgLoopDetection::default()
+    };
+
+    assert_eq!(
+        run(&invocation(dir.path(), set), &emitter).await,
+        SessionOutcome::Ran
+    );
+
+    let warned = warn_messages(&sink.events()).join("\n");
+    assert!(
+        warned.contains("agent `builder`") && warned.contains("windowWords"),
+        "the warning names the agent and the knob:\n{warned}"
+    );
+}
+
+/// **A disarmed declaration warns about nothing**, however nonsensical its knobs are. Nothing is
+/// going to read them, and a warning about a value that will never be used is noise.
+#[tokio::test]
+async fn a_disarmed_loop_detection_declaration_warns_about_nothing() {
+    let dir = TempDir::new().unwrap();
+    let sink = CollectingSink::new();
+    let emitter = Emitter::with_sink(
+        Some("run-loopguard-off".to_string()),
+        Box::new(sink.clone()),
+    );
+    let mut set = GgCapabilitySet::minimal("mock/echo");
+    set.agents[0].loop_detection = GgLoopDetection {
+        enabled: false,
+        window_words: Some(0),
+        min_offenders: Some(0),
+        ..GgLoopDetection::default()
+    };
+
+    assert_eq!(
+        run(&invocation(dir.path(), set), &emitter).await,
+        SessionOutcome::Ran
+    );
+
+    let warned = warn_messages(&sink.events()).join("\n");
+    assert!(
+        !warned.contains("windowWords") && !warned.contains("minOffenders"),
+        "an unread knob is not worth a warning:\n{warned}"
+    );
+}
+
+/// **An agent's declaration reaches the client through its binding**, exactly as its prompt-cache
+/// lifetime does — which is what makes loop detection a per-agent (and therefore per-model) lever
+/// rather than a run-wide switch.
+#[test]
+fn a_profiles_loop_detection_travels_on_its_binding() {
+    let mut set = GgCapabilitySet::minimal("mock/primary");
+    set.agents[0].loop_detection = GgLoopDetection {
+        enabled: true,
+        window_words: Some(64),
+        ..GgLoopDetection::default()
+    };
+    set.agents.push(GgAgentConfig {
+        name: "quiet".to_string(),
+        model_id: "mock/secondary".to_string(),
+        ..GgAgentConfig::root()
+    });
+
+    let watched = profile_binding(&set, set.root_name()).expect("the root binds");
+    assert!(watched.loop_detection.is_armed());
+    assert_eq!(watched.loop_detection.window_words, Some(64));
+
+    let unwatched = profile_binding(&set, "quiet").expect("the second profile binds");
+    assert!(
+        !unwatched.loop_detection.is_armed(),
+        "a profile that declared nothing is not watched because another one is"
+    );
 }

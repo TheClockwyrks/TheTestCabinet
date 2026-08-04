@@ -12,6 +12,7 @@ import type {
   GgLimitBreach,
   GgLimitKind,
   GgTelemetryEvent,
+  GgTurnErrorKind,
 } from "@test-cabinet/run-record/gg";
 
 // How each execution ceiling reads in a breach line. Typed as a total record over
@@ -43,6 +44,56 @@ function limitBreachDetail(breach: GgLimitBreach): string {
   const window =
     breach.window === undefined ? "" : ` over ${breach.window} turns`;
   return `${LIMIT_LABELS[breach.limit]} ceiling: ${limitFigure(breach.observed)}${unit} of ${limitFigure(breach.threshold)}${unit}${window}`;
+}
+
+// Why a turn was an error, in the words a reader of the feed needs. Typed as a total
+// record over `GgTurnErrorKind` so a kind added to the contract is a compile error here
+// rather than a failed turn whose reason renders as a raw wire value — the same guard
+// `LIMIT_LABELS` above takes.
+const TURN_ERROR_REASONS: Record<GgTurnErrorKind, string> = {
+  model_api: "the model call failed",
+  transpile: "the program did not compile",
+  program_fault: "the program threw",
+  sandbox_limit: "the program hit a sandbox ceiling",
+  missing_completion: "the turn declared no work",
+};
+
+// How one turn ended, as one line — the event the error ceilings are enforced on, and so
+// the only place the feed says a turn *failed* rather than merely showing what it did.
+//
+// A turn that made progress says nothing beyond that: the feed already carries what the
+// turn did, and a "progressed" line on every turn of a clean run is noise that would bury
+// the failures this event exists to surface. An error, by contrast, states why it failed
+// and — once the same agent has failed more than once running — how long the streak is,
+// because a run alternating between working and failing and a run that has stopped
+// working entirely are the same single line until the streak is on it.
+function ggTurnOutcomeDetail(
+  event: Extract<GgTelemetryEvent, { type: "turn_outcome" }>,
+): string {
+  const parts: string[] = [];
+  if (event.error) {
+    parts.push(`turn failed: ${TURN_ERROR_REASONS[event.error]}`);
+    if (event.consecutiveErrors > 1) {
+      parts.push(`${event.consecutiveErrors} in a row`);
+    }
+  } else if (event.outcome === "fatal") {
+    // Not charged to the model's error budget — it is gg's own machinery failing — but
+    // it ends the session, so it is the most important line on the feed when it appears.
+    parts.push("turn ended fatally");
+  } else if (event.outcome === "finished") {
+    parts.push("turn finished the run");
+  } else {
+    parts.push("turn progressed");
+  }
+  // Money spent on nothing: replies loop detection abandoned mid-stream before this turn
+  // got one it could use. Omitted from the wire, and from this line, when there were none.
+  const aborts = event.loopAborts ?? 0;
+  if (aborts > 0) {
+    parts.push(
+      `${aborts} looping ${aborts === 1 ? "reply" : "replies"} discarded`,
+    );
+  }
+  return parts.join(" · ");
 }
 
 // A responses-as-code turn as one line: what gg had to do to the reply before it
@@ -119,6 +170,8 @@ function ggEventDetail(event: GgTelemetryEvent): string {
     }
     case "code_execution":
       return ggCodeExecutionDetail(event);
+    case "turn_outcome":
+      return ggTurnOutcomeDetail(event);
     case "limit_exceeded":
       return limitBreachDetail(event.breach);
     case "log":

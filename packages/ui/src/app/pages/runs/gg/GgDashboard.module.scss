@@ -148,9 +148,9 @@
 // breakpoint, where that grid does: below it the cards sit in a single-column track and a
 // span would grow the implicit grid rather than clamp to it (see `.cards`), so a card
 // carrying one simply takes a full row like every other. The top row pairs them to fill
-// twelve either way: status + turns + rate (4+4+4) on the live monitor, turns + rate
-// (6+6) where the page header carries the state. The clocks below it are not spans at
-// all — they are `.runtimeBlock`'s own grid.
+// twelve either way: status + turns + errors + rate (3+3+3+3) on the live monitor, turns
+// + errors + rate (4+4+4) where the page header carries the state. The clocks below it
+// are not spans at all — they are `.runtimeBlock`'s own grid.
 @media (min-width: 52rem) {
   .cardFull {
     grid-column: span 12;
@@ -160,6 +160,9 @@
   }
   .cardThird {
     grid-column: span 4;
+  }
+  .cardQuarter {
+    grid-column: span 3;
   }
 }
 
@@ -320,6 +323,49 @@
 .statSub {
   font-size: 0.72rem;
   color: t.$color-text-muted;
+}
+
+// --- The errors card ----------------------------------------------------------
+
+// The per-kind split of a run's errored turns: one row per kind that happened, the
+// reason on the left and its count hard against the right edge. Laid out like the
+// configuration card's agent bindings (`.slot`) rather than like the cost rows — this
+// tile is a quarter of the top row, and a label/bar/figure grid needs width the row
+// deliberately does not have, while a two-cell row degrades to nothing worse than a
+// wrapped label.
+.errorKinds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-2xs;
+  min-width: 0;
+}
+
+.errorKind {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: t.$space-xs;
+  font-size: t.$font-sm;
+  min-width: 0;
+}
+
+// The reason, in the muted caption weight the other per-row labels take: the count
+// beside it is the figure being read, and the reason is what qualifies it.
+.errorKindLabel {
+  color: t.$color-text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.72rem;
+  min-width: 0;
+}
+
+.errorKindCount {
+  color: t.$color-text;
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
 }
 
 // --- Split rings (input caching / output reasoning / input-vs-output cost) ----

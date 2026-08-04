@@ -1520,6 +1520,7 @@ async fn only_a_program_that_calls_finish_ends_the_session() {
                 finish_reason: FinishReason::Stop,
                 usage: TokenCounts::default(),
                 cost: None,
+                loop_aborts: 0,
             },
             // ...and only now does the run end, because the model wrote a program that says so.
             code_reply(FINISHING_PROGRAM),

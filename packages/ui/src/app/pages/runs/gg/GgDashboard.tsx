@@ -11,9 +11,14 @@ import type {
 } from "./useGgRunState";
 import {
   ROOT_ID,
+  TURN_ERROR_KINDS,
+  TURN_ERROR_LABELS,
+  addErrorTally,
+  emptyErrorTally,
   ggPeakContext,
   ggToolBreakdown,
   shortTokens,
+  type GgErrorTally,
 } from "./useGgRunState";
 import {
   pricedSlots,
@@ -174,12 +179,24 @@ export function GgDashboard({
     [perAgent],
   );
 
-  // The bento span the top row's stat tiles take. The row is three tiles beside the status
-  // card and two without it, so it fills twelve either way: thirds where the status card
-  // leads (4 + 4 + 4, the status card taking a third of its own — see `StatusCard`), halves
-  // where the page header carries the state instead (6 + 6). The runtime figures are no
-  // longer in this row at all; they have one of their own below it.
-  const statSpan = status ? styles.cardThird : styles.cardHalf;
+  // How those turns went, summed the same way — every agent's own error record folded
+  // into the run's. Summed off the per-agent slices rather than folded off the merged
+  // stream so the consecutive-error peak is the worst any ONE agent reached, which is
+  // the counter gg's own ceiling is enforced on; a streak counted across a parallel
+  // run's interleaved turns would be an artefact of scheduling.
+  const errors = useMemo(() => {
+    const total = emptyErrorTally();
+    for (const state of perAgent.values()) addErrorTally(total, state.errors);
+    return total;
+  }, [perAgent]);
+
+  // The bento span the top row's tiles take — the status card's included, so the row is
+  // sized in one place rather than by a card deciding its own width. The row is four tiles
+  // beside the status card and three without it, so it fills twelve either way: quarters
+  // where the status card leads (3 + 3 + 3 + 3), thirds where the page header carries the
+  // state instead (4 + 4 + 4). The runtime figures are no longer in this row at all; they
+  // have one of their own below it.
+  const statSpan = status ? styles.cardQuarter : styles.cardThird;
 
   return (
     <div className={styles.dashboard}>
@@ -190,19 +207,24 @@ export function GgDashboard({
       {children}
 
       <div className={styles.cards}>
-        {/* The top row: where the run is at — its phase, how many turns it has spent, and
-            how fast it is generating. The live monitor leads the row with the status card; a
-            finished run's gg tab has its state in the page's own header, so the two stat
-            tiles widen to split that row between them rather than leaving a hole where the
-            status card would have been — the rows below it are then identical on both
-            surfaces. How long the run has been going is the row underneath, which is four
-            figures rather than one and so earns its own. */}
-        {status && <StatusCard status={status} />}
+        {/* The top row: where the run is at — its phase, how many turns it has spent, how
+            many of those turns failed, and how fast it is generating. The live monitor leads
+            the row with the status card; a finished run's gg tab has its state in the page's
+            own header, so the three stat tiles widen to split that row between them rather
+            than leaving a hole where the status card would have been — the rows below it are
+            then identical on both surfaces. How long the run has been going is the row
+            underneath, which is four figures rather than one and so earns its own.
+
+            Errors sits directly beside Turns because it is read against it: a count of
+            failures is meaningless without the count of attempts, and the two adjacent is
+            what makes "seven" read as "seven of two hundred" rather than as a lot. */}
+        {status && <StatusCard status={status} className={statSpan} />}
         <TurnsCard
           turns={totalTurns}
           agents={perAgent.size}
           className={statSpan}
         />
+        <ErrorsCard errors={errors} className={statSpan} />
         <ThroughputCard throughput={throughput} className={statSpan} />
 
         {/* The clocks row, laid out as its own block for the reason the money row below
@@ -482,6 +504,81 @@ function TurnsCard({
   );
 }
 
+// The run's error record: how many of its turns failed, how hard they clustered, and
+// why. It sits directly beside the turn count because it is read against it — a count of
+// failures without the count of attempts is not a figure anyone can act on — and gg
+// already makes this judgement on every turn, since it is the judgement its error
+// ceilings are enforced on. Without this card, that judgement was thrown away the moment
+// an agent's loop ended, and a run that failed a third of its turns and finished anyway
+// looked exactly like one that never failed a turn.
+//
+// The headline is the error COUNT rather than the rate: a rate is a derived figure, and
+// putting it in the tile's big slot invites reading "0%" on a run that has taken two
+// turns as though it meant something. The rate is on the line under it, beside the
+// denominator it was taken against, so the two can never be read apart.
+//
+// The per-kind split is shown only once there is something to split — five zeroed rows
+// under a clean run's "0" would be five lines saying nothing — and the loop-abort line
+// only on a run that armed loop detection at all, since for every other run it is
+// permanently zero.
+function ErrorsCard({
+  errors,
+  className,
+}: {
+  errors: GgErrorTally;
+  /** The bento span the card takes — see {@link TurnsCard}. */
+  className: string | undefined;
+}) {
+  const { turns, errors: failed, maxConsecutive, loopAborts } = errors;
+  // Only the kinds that actually happened, in the contract's declaration order. A run's
+  // failures are usually all of one kind, so listing the empty buckets would bury the one
+  // row that matters.
+  const kinds = TURN_ERROR_KINDS.filter((kind) => errors.byKind[kind] > 0);
+  return (
+    <div className={`${styles.card} ${className}`}>
+      <span className={styles.cardLabel}>Errors</span>
+      <span className={styles.metricValue}>
+        {turns === 0 ? "—" : numberFmt.format(failed)}
+      </span>
+      {/* The denominator travels with the rate, always. A percentage on its own is the
+          one read-out here that could mislead: 50% of two turns and 50% of two hundred
+          are not the same claim about a configuration. A stream with no outcomes on it at
+          all (a run recorded before gg published them, or one that has not finished its
+          first turn) says so rather than claiming a clean record. */}
+      <span className={styles.metricUnit}>
+        {turns === 0
+          ? "no turn outcomes reported yet"
+          : failed === 0
+            ? `no errored turns of ${numberFmt.format(turns)}`
+            : `${formatPercent(failed / turns)} of ${numberFmt.format(turns)} turns · ${numberFmt.format(maxConsecutive)} in a row at worst`}
+      </span>
+      {kinds.length > 0 && (
+        <ul className={styles.errorKinds}>
+          {kinds.map((kind) => (
+            <li key={kind} className={styles.errorKind}>
+              <span className={styles.errorKindLabel}>
+                {TURN_ERROR_LABELS[kind]}
+              </span>
+              <span className={styles.errorKindCount}>
+                {numberFmt.format(errors.byKind[kind])}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* Not an error — the retry succeeded — but money and wall-clock spent on nothing,
+          which is the figure that says whether arming loop detection paid for itself.
+          Absent on every run that left it disarmed, which is the default. */}
+      {loopAborts > 0 && (
+        <span className={styles.metricUnit}>
+          {numberFmt.format(loopAborts)} looping{" "}
+          {loopAborts === 1 ? "reply" : "replies"} discarded
+        </span>
+      )}
+    </div>
+  );
+}
+
 // The run's generation rate: the tokens its models produced per second of the time it
 // spent inside their calls, across every model it used (see `ggThroughput`). It joins the
 // status and the turn count on the top row as the third answer to "where is this run at" —
@@ -666,7 +763,14 @@ function RuntimeRow({
   );
 }
 
-function StatusCard({ status }: { status: GgDashboardStatus }) {
+function StatusCard({
+  status,
+  className,
+}: {
+  status: GgDashboardStatus;
+  /** The bento span the card takes — see {@link TurnsCard}. Sized by the row, not here. */
+  className: string | undefined;
+}) {
   const toneClass =
     status.tone === "ok"
       ? styles.pillOk
@@ -676,13 +780,14 @@ function StatusCard({ status }: { status: GgDashboardStatus }) {
           ? styles.pillStopped
           : styles.pillLive;
   return (
-    // A third of the row, not all of it: the turn count and the generation rate take a
-    // third each beside it. The kill control rides on the label's row at the card's trailing
-    // edge rather than in the line below: at the quarter-width this card used to take it
-    // wrapped under the pill, which both cost a row and moved the control depending on how
-    // long the phase's detail ran. Level with "Status" it is always in the same corner, and
-    // the pill and its detail get the full line back.
-    <div className={`${styles.card} ${styles.cardThird}`}>
+    // One tile of the top row, not all of it: the turn count, the error count and the
+    // generation rate take the rest, and the row hands every tile its span (see
+    // `statSpan`). The kill control rides on the label's row at the card's trailing edge
+    // rather than in the line below: at a quarter of the row it wrapped under the pill,
+    // which both cost a row and moved the control depending on how long the phase's detail
+    // ran. Level with "Status" it is always in the same corner, and the pill and its detail
+    // get the full line back — which is what lets this card take a quarter again.
+    <div className={`${styles.card} ${className}`}>
       <div className={styles.cardHeader}>
         <span className={styles.cardLabel}>Status</span>
         {/* Rendered only when the host supplies one — a finished run has nothing to kill,

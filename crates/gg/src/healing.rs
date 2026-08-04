@@ -64,6 +64,10 @@ pub enum HealingStrategy {
     StripFences,
     /// Remove explanatory lines from before and after the program body.
     StripProse,
+    /// Delete the second half of a reply that is one completion concatenated with a byte-identical
+    /// copy of itself — the transport-level doubling, as opposed to a model that wrote its program
+    /// out twice.
+    DropDoubledResponse,
     /// Delete an exact repeated trailing copy of the program — the fence-free shape of a model that
     /// sent the same program twice.
     DropDuplicateProgram,
@@ -77,9 +81,10 @@ impl HealingStrategy {
     /// Every strategy, in the order [`heal`] applies them — which is also the order the capability's
     /// config table, the docs page and the session summary list them in, so those four listings
     /// cannot drift apart.
-    pub const ALL: [HealingStrategy; 5] = [
+    pub const ALL: [HealingStrategy; 6] = [
         Self::StripFences,
         Self::StripProse,
+        Self::DropDoubledResponse,
         Self::DropDuplicateProgram,
         Self::DropImports,
         Self::UnwrapAsync,
@@ -90,9 +95,39 @@ impl HealingStrategy {
         match self {
             Self::StripFences => "strip-fences",
             Self::StripProse => "strip-prose",
+            Self::DropDoubledResponse => "drop-doubled-response",
             Self::DropDuplicateProgram => "drop-duplicate-program",
             Self::DropImports => "drop-imports",
             Self::UnwrapAsync => "unwrap-async",
+        }
+    }
+
+    /// Whether a run that says nothing about this strategy gets it.
+    ///
+    /// **The rule: a strategy is armed by default when repairing is strictly safer than not
+    /// repairing.** For five of the six it is, and the warrant is the same in each case — the reply
+    /// the strategy deletes from *could not have run as sent*. A fenced reply is not JavaScript; a
+    /// reply with prose around it is not JavaScript; a reply that redeclares a top-level `const` is
+    /// refused before a statement of it executes; an `import` has no module loader to resolve it; a
+    /// called `async` wrapper cannot resolve its own `await`s in a synchronous sandbox. Declining to
+    /// repair any of those costs the turn outright, so the default that loses least is *on*.
+    ///
+    /// [`DropDoubledResponse`](Self::DropDoubledResponse) is the exception, and the asymmetry is
+    /// real rather than an abundance of caution: the half it deletes is **valid code under any
+    /// reading other than "the transport duplicated this"**. A reply that runs its program twice is
+    /// a reply that runs — so where every other strategy turns a dead reply into a live one, this
+    /// one changes what a live reply does. That is a repair only for the models observed to emit
+    /// the defect, so it is armed **deliberately**, per run, by an operator who has seen it. See the
+    /// strategy's own documentation for why its match rule is nonetheless safe with almost no
+    /// guards.
+    pub const fn default_armed(self) -> bool {
+        match self {
+            Self::StripFences
+            | Self::StripProse
+            | Self::DropDuplicateProgram
+            | Self::DropImports
+            | Self::UnwrapAsync => true,
+            Self::DropDoubledResponse => false,
         }
     }
 
@@ -107,29 +142,37 @@ impl HealingStrategy {
 
 /// Which strategies are armed for a run.
 ///
-/// Five private bools rather than a set, because the set of strategies is closed and a bool per
-/// strategy is what makes [`enabled`](Self::enabled) total: there is no "unknown strategy" state to
-/// resolve at the point of use, only at the point of [configuration](resolve_healing).
+/// One private bool per strategy rather than a set, because the set of strategies is closed and a
+/// bool per strategy is what makes [`enabled`](Self::enabled) total: there is no "unknown strategy"
+/// state to resolve at the point of use, only at the point of [configuration](resolve_healing).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HealingConfig {
     strip_fences: bool,
     strip_prose: bool,
+    drop_doubled_response: bool,
     drop_duplicate_program: bool,
     drop_imports: bool,
     unwrap_async: bool,
 }
 
 impl Default for HealingConfig {
-    /// Every strategy **on**. A strategy absent from a run's `healing` param is armed, so a
-    /// configuration that says nothing gets all of them — the arm a study compares against.
+    /// Each strategy at [its own default](HealingStrategy::default_armed) — which is *not* the same
+    /// thing as "everything on".
+    ///
+    /// A strategy absent from a run's `healing` param takes this arm, so a configuration that says
+    /// nothing gets the five repairs whose warrant holds unconditionally and does **not** get
+    /// [`drop-doubled-response`](HealingStrategy::DropDoubledResponse). This is the arm a study
+    /// compares against.
+    ///
+    /// Built by folding [`default_armed`](HealingStrategy::default_armed) over
+    /// [`ALL`](HealingStrategy::ALL) rather than by listing bools, so a strategy's default lives in
+    /// exactly one place and a new strategy cannot be added here with a silently different one.
     fn default() -> Self {
-        Self {
-            strip_fences: true,
-            strip_prose: true,
-            drop_duplicate_program: true,
-            drop_imports: true,
-            unwrap_async: true,
+        let mut config = Self::OFF;
+        for strategy in HealingStrategy::ALL {
+            config.set(strategy, strategy.default_armed());
         }
+        config
     }
 }
 
@@ -141,6 +184,7 @@ impl HealingConfig {
     pub const OFF: Self = Self {
         strip_fences: false,
         strip_prose: false,
+        drop_doubled_response: false,
         drop_duplicate_program: false,
         drop_imports: false,
         unwrap_async: false,
@@ -151,6 +195,7 @@ impl HealingConfig {
         match strategy {
             HealingStrategy::StripFences => self.strip_fences,
             HealingStrategy::StripProse => self.strip_prose,
+            HealingStrategy::DropDoubledResponse => self.drop_doubled_response,
             HealingStrategy::DropDuplicateProgram => self.drop_duplicate_program,
             HealingStrategy::DropImports => self.drop_imports,
             HealingStrategy::UnwrapAsync => self.unwrap_async,
@@ -198,6 +243,7 @@ impl HealingConfig {
         let field = match strategy {
             HealingStrategy::StripFences => &mut self.strip_fences,
             HealingStrategy::StripProse => &mut self.strip_prose,
+            HealingStrategy::DropDoubledResponse => &mut self.drop_doubled_response,
             HealingStrategy::DropDuplicateProgram => &mut self.drop_duplicate_program,
             HealingStrategy::DropImports => &mut self.drop_imports,
             HealingStrategy::UnwrapAsync => &mut self.unwrap_async,
@@ -226,14 +272,26 @@ pub struct ResolvedHealing {
 /// Resolve the [healing configuration](HealingConfig) from the
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) capability's `healing` param.
 ///
+/// The param names a **delta against the defaults**, not a whole configuration. Saying nothing means
+/// [the defaults](HealingConfig::default) — which is *not* "everything on", because
+/// [`drop-doubled-response`](HealingStrategy::DropDoubledResponse) is
+/// [armed deliberately](HealingStrategy::default_armed) rather than by omission. Every row below
+/// that reads "the defaults" therefore means "the other five on, `drop-doubled-response` off".
+///
 /// | `params.healing` | Meaning |
 /// | --- | --- |
-/// | absent / `null` / `true` / `{}` | every strategy **on** |
+/// | absent / `null` / `true` / `{}` | the **defaults** |
 /// | `false` | every strategy **off** — the master switch |
-/// | `{ "strip-prose": false }` | `strip-prose` off, the other four on |
-/// | `{ "strip-prose": 0 }` | `strip-prose` **on** (a non-boolean is not a toggle), and the key is reported |
-/// | `{ "stripProse": false }` | every strategy on, and `healing.stripProse` is reported |
-/// | `5`, `"off"`, `[]` | every strategy on, and `healing` is reported |
+/// | `{ "strip-prose": false }` | `strip-prose` off, the rest at their defaults |
+/// | `{ "drop-doubled-response": true }` | `drop-doubled-response` **on**, the rest at their defaults — the one strategy an operator has to ask for |
+/// | `{ "strip-prose": 0 }` | `strip-prose` at its default (a non-boolean is not a toggle), and the key is reported |
+/// | `{ "stripProse": false }` | the defaults, and `healing.stripProse` is reported |
+/// | `5`, `"off"`, `[]` | the defaults, and `healing` is reported |
+///
+/// Note the asymmetry the third and fourth rows describe: `false` is how a default-on strategy is
+/// turned off and `true` is how the default-off one is turned on, and **both** travel through the
+/// same `(Some(strategy), Some(on))` arm below. There is no second mechanism for arming a strategy,
+/// which is what keeps the table above a description of one line of code.
 ///
 /// Modelled on [`resolve_sandbox_limits`](crate::sandbox::resolve_sandbox_limits), including its
 /// reason for reading the param names literally: they are **contract-visible** — they are what the
@@ -259,15 +317,17 @@ pub fn resolve_healing(set: &GgAgentConfig) -> ResolvedHealing {
 
     match healing {
         // Three spellings of "say nothing", all meaning the default arm: a key that was written out
-        // as null, an explicit `true`, and an object that turns nothing off.
+        // as null, an explicit `true`, and an object that changes nothing.
         Value::Null | Value::Bool(true) => {}
         Value::Bool(false) => resolved.config = HealingConfig::OFF,
         Value::Object(toggles) => {
             for (key, value) in toggles {
                 match (HealingStrategy::from_id(key), value.as_bool()) {
+                    // The one arm that moves a strategy off its default, in either direction:
+                    // `false` disarms a default-on strategy and `true` arms `drop-doubled-response`.
                     (Some(strategy), Some(on)) => resolved.config.set(strategy, on),
-                    // A known id with a value that is not a toggle stays armed: guessing that `0`
-                    // meant `false` is exactly the silent reinterpretation the report exists to
+                    // A known id with a value that is not a toggle keeps its default: guessing that
+                    // `0` meant `false` is exactly the silent reinterpretation the report exists to
                     // prevent.
                     (Some(_), None) | (None, _) => {
                         resolved.unknown_params.push(format!("healing.{key}"));
@@ -454,6 +514,15 @@ pub enum HealingDetail {
         /// Non-blank lines removed after it.
         trailing: usize,
     },
+    /// The reply was one completion concatenated with a byte-identical copy of itself, and the
+    /// trailing copy was deleted.
+    DoubledResponse {
+        /// How many characters the deleted copy held. Carried because it is the only figure that
+        /// tells a doubling of a one-line first-turn program from a doubling of a two-hundred-line
+        /// one, and the two are worth telling apart when reading a run whose model exhibits this
+        /// defect — the first is the shape a length floor would have missed.
+        chars: usize,
+    },
     /// An exact repeated trailing copy of the program was deleted.
     DuplicateProgram,
     /// Whole `import`/`require` statements were removed.
@@ -508,19 +577,22 @@ pub enum AsyncWrapper {
 /// # The pipeline
 ///
 /// ```text
-/// trim  ->  [ strip-fences -> strip-prose -> drop-duplicate-program
-///             -> drop-imports -> unwrap-async ]*
-///               ^                            |
-///               +--- repeat until a pass applies nothing +
+/// trim  ->  [ strip-fences -> strip-prose -> drop-doubled-response
+///             -> drop-duplicate-program -> drop-imports -> unwrap-async ]*
+///               ^                                          |
+///               +--- repeat until a pass applies nothing ---+
 /// ```
 ///
 /// Fences first, because until the wrapper is off, "is this line prose?" and "is this line an
 /// import?" are questions about the wrong text. Prose before duplicates, so the two copies of a
-/// program are adjacent when they are compared. Duplicates before imports and async, so a doubled
-/// reply is halved before either of those looks at it. Imports before async, because a leading
-/// `import` line is exactly what makes `unwrap-async` decline — one strategy's output enabling
-/// another's match is the reason this is a fixpoint rather than a list. [`HealingStrategy::ALL`]
-/// **is** this order.
+/// program are adjacent when they are compared. `drop-doubled-response` before
+/// `drop-duplicate-program`, because it is the coarser, whole-reply test of the same defect: running
+/// it first means the finer one — which searches for a repeated *tail* and has a lexical-declaration
+/// guard to satisfy — only ever sees a reply that is not a clean doubling. Both before imports and
+/// async, so a doubled reply is halved before either of those looks at it. Imports before async,
+/// because a leading `import` line is exactly what makes `unwrap-async` decline — one strategy's
+/// output enabling another's match is the reason this is a fixpoint rather than a list.
+/// [`HealingStrategy::ALL`] **is** this order.
 ///
 /// If the fixpoint is not reached within [`MAX_PASSES`], **every repair is discarded**, the response
 /// is returned as it was sent, and [`did_not_converge`](Healed::did_not_converge) says so. That
@@ -658,6 +730,7 @@ fn apply(strategy: HealingStrategy, text: &str) -> StrategyOutcome {
     match strategy {
         HealingStrategy::StripFences => strip_fences(text),
         HealingStrategy::StripProse => strip_prose(text),
+        HealingStrategy::DropDoubledResponse => drop_doubled_response(text),
         HealingStrategy::DropDuplicateProgram => drop_duplicate_program(text),
         HealingStrategy::DropImports => drop_imports(text),
         HealingStrategy::UnwrapAsync => unwrap_async(text),
@@ -1073,6 +1146,95 @@ fn strip_prose(text: &str) -> StrategyOutcome {
     StrategyOutcome::Rewrote {
         text: text[start..end].trim().to_string(),
         detail: HealingDetail::Prose { leading, trailing },
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// drop-doubled-response
+// ---------------------------------------------------------------------------------------------
+
+/// Repair the reply that is one completion concatenated with a byte-identical copy of itself.
+///
+/// # The defect
+///
+/// A provider returns a completion whose text is literally `X + X` — `"foo();\nbar();foo();\nbar();"`
+/// where the model produced `"foo();\nbar();"`. Nothing separates the halves: no blank line, no
+/// fence, not so much as a space. It is a **transport** fault rather than a model one, and
+/// [`drop-duplicate-program`](drop_duplicate_program) cannot catch it, because that strategy insists
+/// the repeated tail declare a [lexical binding](LEXICAL_KEYWORDS) at its top level before it will
+/// delete anything — a doubled body of bare statements offers no such proof.
+///
+/// # The match rule
+///
+/// Let `t` be the text with trailing whitespace trimmed. **Matches** when `t.len()` is even and
+/// `t[..t.len()/2] == t[t.len()/2..]`; **rewrites** to the first half.
+///
+/// The comparison is of **exact bytes**, deliberately: whitespace is not normalised, no line
+/// structure is consulted and no token is parsed. The defect this repairs is a byte-exact
+/// concatenation, so an inexact "near doubling" is a *model* that wrote something twice, which is
+/// not this strategy's business.
+///
+/// # The decline ladder — and why it is this short
+///
+/// | # | Condition | Result |
+/// | --- | --- | --- |
+/// | **D1** | `t` has odd length | decline — a string of odd length cannot be `X + X` |
+/// | **D2** | the midpoint is not a `char` boundary | decline — see below; this is panic-safety, not a rule |
+/// | **D3** | the halves differ in any byte | decline |
+/// | **D4** | the half is empty | decline — the only size floor, and it exists so an empty or whitespace-only reply is not "repaired" into itself |
+/// | — | otherwise | keep the first half |
+///
+/// **D2 is panic-safety, not a heuristic.** Slicing a multi-byte UTF-8 sequence down the middle
+/// panics, so the boundary has to be checked before the slice is taken. It is not a tunable rule and
+/// it excludes nothing a rule would want to keep: a midpoint inside a character means the two halves
+/// contain different fragments of that character, so they could not have compared equal anyway. A
+/// later reader should not mistake it for a guard worth relaxing and delete it.
+///
+/// # Why almost no other guards — the separator argument
+///
+/// This is the one strategy whose warrant is not "the reply could not have run as sent" (it could —
+/// twice), so the reason it is safe has to be argued rather than asserted. It is the **separator**:
+///
+/// > A model that means to repeat a statement writes something between the two copies. `step();
+/// > step();` has a space; `step();\nstep();` has a newline. **Any odd-length separator makes the
+/// > whole reply odd-length**, so D1 declines on arithmetic alone, before a single byte is compared.
+/// > Two copies can only compare equal when the model emitted them with *no* separator at all —
+/// > `step();step();` — which is not a shape models produce. The defect, by contrast, is exactly
+/// > that: a concatenation with nothing between the copies, because nothing wrote a separator.
+///
+/// Two consequences follow, and both are load-bearing:
+///
+/// * **No minimum length.** The observed doubling frequently happens on a run's **first** turn,
+///   where the program is a line or two — so any floor worth the name would miss precisely the case
+///   this strategy exists for. D4's "not empty" is the whole size rule.
+/// * **No newline requirement and no minimum statement count.** A single-line reply that is an exact
+///   doubling is the defect and not the model's intent, for the separator reason above.
+///
+/// It applies **once** per pass. A quadrupled reply is therefore halved twice by the
+/// [fixpoint loop](to_fixpoint), one halving per pass, which is the same shape
+/// [`drop-duplicate-program`](without_repeated_tail) converges in.
+fn drop_doubled_response(text: &str) -> StrategyOutcome {
+    let trimmed = text.trim_end();
+    let middle = trimmed.len() / 2;
+    // D1, then D2 — the arithmetic and the panic-safety check, in that order, because the second is
+    // only meaningful once the first has produced a midpoint to test.
+    if !trimmed.len().is_multiple_of(2) || !trimmed.is_char_boundary(middle) {
+        return StrategyOutcome::Declined;
+    }
+    let (head, tail) = trimmed.split_at(middle);
+    // D4 before D3 in code (an empty head trivially equals an empty tail, so the emptiness test has
+    // to come first or a whitespace-only reply would be "repaired" into itself and counted).
+    if head.is_empty() || head != tail {
+        return StrategyOutcome::Declined;
+    }
+    // No further trim is needed and none is done: `head` ends with the same bytes `tail` does, and
+    // `tail` ends `trimmed`, which was trimmed — so the half cannot end in whitespace. Its *leading*
+    // whitespace is kept, for the reason [`trim_reply`] keeps the first line's indentation.
+    StrategyOutcome::Rewrote {
+        text: head.to_string(),
+        detail: HealingDetail::DoubledResponse {
+            chars: tail.chars().count(),
+        },
     }
 }
 

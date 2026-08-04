@@ -209,6 +209,7 @@ fn code_reply(text: &str) -> ModelResponse {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -522,6 +523,7 @@ fn looping_response() -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -534,6 +536,11 @@ enum FailureMode {
     Fatal,
     /// A refused credential — the class that must not be scored against the model.
     Auth,
+    /// Every attempt degenerated into a [generation loop](crate::loopguard) and was discarded, so
+    /// the client ran out of attempts with nothing to show for them. Retryable-exhausted like
+    /// [`Retryable`](Self::Retryable), and deliberately reported under its own name: "retries
+    /// exhausted" would send an operator looking for a provider outage that never happened.
+    Looping,
 }
 
 /// A [`ModelClient`] whose every turn fails, for asserting the loop surfaces model
@@ -561,6 +568,11 @@ impl ModelClient for FailingClient {
             FailureMode::Auth => Err(ModelError::Fatal {
                 status: 401,
                 message: r#"{"error":{"message":"User not found.","code":401}}"#.to_string(),
+            }),
+            FailureMode::Looping => Err(ModelError::ResponseLoop {
+                attempts: 3,
+                detail: "2 words repeated across 3000 consecutive words, 3065 words into the reply"
+                    .to_string(),
             }),
         }
     }
@@ -610,6 +622,7 @@ impl ModelClient for WriteThenFailClient {
                 finish_reason: FinishReason::ToolCalls,
                 usage: TokenCounts::default(),
                 cost: None,
+                loop_aborts: 0,
             })
         } else {
             Err(ModelError::Fatal {
@@ -1154,6 +1167,7 @@ fn ending_call(id: &str, name: &str, arguments: serde_json::Value) -> ModelRespo
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -2542,6 +2556,7 @@ fn read_skill_call(id: &str, name: &str) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -2560,6 +2575,7 @@ fn text_only_response() -> ModelResponse {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -2738,6 +2754,7 @@ fn write_memory_call(id: &str, name: &str, body: &str) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -2955,6 +2972,7 @@ fn create_memory_call(id: &str, name: &str, contents: &str) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -3275,6 +3293,7 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     };
     let client = MockClient::new(
         "mock/echo",
@@ -3423,6 +3442,7 @@ async fn drive_always_carries_the_task_list_in_the_window() {
                 finish_reason: FinishReason::ToolCalls,
                 usage: TokenCounts::default(),
                 cost: None,
+                loop_aborts: 0,
             },
             stop_response(),
         ],
@@ -3674,6 +3694,7 @@ fn balloon_turn(id: &str) -> ModelResponse {
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -3693,6 +3714,7 @@ fn compaction_script() -> Vec<ModelResponse> {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         },
         balloon_turn("c_ls"),
         stop_response(),
@@ -5550,6 +5572,7 @@ async fn spawn_is_refused_at_the_max_depth() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         };
         Box::new(MockClient::new(
             "mock/subagent",
@@ -5613,6 +5636,7 @@ async fn subagents_recurse_within_the_depth_cap() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         };
         let wait = ModelResponse {
             text: Some("Waiting for the worker.".to_string()),
@@ -5624,6 +5648,7 @@ async fn subagents_recurse_within_the_depth_cap() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         };
         Box::new(MockClient::new(
             "mock/subagent",
@@ -5706,6 +5731,7 @@ impl ModelClient for InboxProbeClient {
             finish_reason: FinishReason::Stop,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         })
     }
 
@@ -5736,6 +5762,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         };
         let message = ModelResponse {
             text: Some("Guiding the child.".to_string()),
@@ -5747,6 +5774,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         };
         let wait = ModelResponse {
             text: Some("Waiting for the child.".to_string()),
@@ -5758,6 +5786,7 @@ async fn send_message_reaches_a_running_subagent_and_affects_it() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         };
         Box::new(MockClient::new(
             "mock/primary",
@@ -5825,6 +5854,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         };
         let wait = ModelResponse {
             text: Some("wait".to_string()),
@@ -5836,6 +5866,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         };
         let msg_finished = ModelResponse {
             text: Some("message the finished child".to_string()),
@@ -5847,6 +5878,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         };
         let msg_unknown = ModelResponse {
             text: Some("message a stranger".to_string()),
@@ -5858,6 +5890,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         };
         Box::new(MockClient::new(
             "mock/primary",
@@ -5937,6 +5970,7 @@ fn counting_worker() -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send +
             finish_reason: FinishReason::ToolCalls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         };
         let finish = finish_call("call_part_done", &format!("part {n} built"));
         Box::new(MockClient::new("mock/worker", vec![write, finish]))
@@ -6282,6 +6316,7 @@ fn tool_call_response(id: &str, name: &str, args: serde_json::Value) -> ModelRes
         finish_reason: FinishReason::ToolCalls,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -9127,6 +9162,7 @@ impl ModelClient for VisionRefusingClient {
             tool_calls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         })
     }
 
@@ -9277,6 +9313,7 @@ impl ModelClient for ImageReadingClient {
             tool_calls,
             usage: TokenCounts::default(),
             cost: None,
+            loop_aborts: 0,
         })
     }
 

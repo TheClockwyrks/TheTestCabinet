@@ -184,6 +184,7 @@ describe("the gg Dashboard", () => {
     expect(cardLabels()).toEqual([
       "Status",
       "Turns",
+      "Errors",
       "Tokens / s",
       "Runtime",
       "Active",
@@ -202,6 +203,7 @@ describe("the gg Dashboard", () => {
     renderDashboard();
     expect(cardLabels()).toEqual([
       "Turns",
+      "Errors",
       "Tokens / s",
       "Runtime",
       "Active",
@@ -327,7 +329,7 @@ describe("the gg Dashboard", () => {
     expect(within(limit).getByText("—")).toBeInTheDocument();
     expect(within(limit).getByText("no limit resolved")).toBeInTheDocument();
     // And the row is still four tiles, in the same order.
-    expect(cardLabels().slice(3, 7)).toEqual([
+    expect(cardLabels().slice(4, 8)).toEqual([
       "Runtime",
       "Active",
       "Waiting",
@@ -369,5 +371,139 @@ describe("the gg Dashboard", () => {
     expect(within(cost).getByText("Per model")).toBeInTheDocument();
     expect(within(cost).getAllByText("vendor/big")).toHaveLength(2);
     expect(within(cost).getAllByText("vendor/small")).toHaveLength(2);
+  });
+});
+
+// One turn's outcome, as gg publishes it — the event the Errors card is folded from.
+function outcome(
+  agentId: string,
+  turns: number,
+  extra: Partial<Extract<GgTelemetryKind, { type: "turn_outcome" }>> = {},
+): HarnessEvent {
+  return gg(agentId, {
+    type: "turn_outcome",
+    outcome: "progressed",
+    consecutiveErrors: 0,
+    turns,
+    ...extra,
+  } as GgTelemetryKind);
+}
+
+// The Dashboard over the shared fixture plus whatever outcomes a test is about, which is
+// what the Errors card reads. Rendered without a status card so the assertions are about
+// the card rather than about which surface it is on.
+function renderErrors(...outcomes: HarnessEvent[]) {
+  const events = [...EVENTS, ...outcomes];
+  const derived = reduceGgEvents(events);
+  return render(
+    <GgDashboard
+      usage={derived.usage}
+      slotUsage={derived.slotUsage}
+      perAgent={reduceGgEventsPerAgent(events)}
+      agentForest={derived.agentForest}
+      capabilitySet={CAPABILITY_SET}
+      runtime={deriveGgRuntime(
+        derived.agentForest,
+        derived.firstTimestamp,
+        Date.parse(TS) + 90_000,
+        true,
+      )}
+      timeoutSeconds={4 * 3600}
+    />,
+  );
+}
+
+// The Errors card, reached from its label.
+function errorsCard(): HTMLElement {
+  return screen.getByText("Errors").parentElement!;
+}
+
+// A card's headline figure — the big slot, read apart from the per-kind counts under it,
+// which are the same shape of digits.
+function headline(card: HTMLElement): string {
+  return card.querySelector("[class*='metricValue']")?.textContent ?? "";
+}
+
+describe("the gg Dashboard's Errors card", () => {
+  it("states the failures with the denominator they were taken against", () => {
+    // Never a bare percentage: 50% of two turns and 50% of two hundred are not the same
+    // claim about a configuration, and the count of attempts is what tells them apart.
+    renderErrors(
+      outcome("root", 1),
+      outcome("root", 2, {
+        outcome: "error",
+        error: "transpile",
+        consecutiveErrors: 1,
+      }),
+      outcome("root", 3, {
+        outcome: "error",
+        error: "transpile",
+        consecutiveErrors: 2,
+      }),
+      outcome("root", 4),
+    );
+    const card = errorsCard();
+    expect(headline(card)).toBe("2");
+    expect(
+      within(card).getByText("50% of 4 turns · 2 in a row at worst"),
+    ).toBeInTheDocument();
+  });
+
+  it("splits the failures by kind, showing only the kinds that happened", () => {
+    // Five zeroed rows under a run that failed one way would bury the one row that matters.
+    renderErrors(
+      outcome("root", 1, {
+        outcome: "error",
+        error: "model_api",
+        consecutiveErrors: 1,
+      }),
+      outcome("root", 2, {
+        outcome: "error",
+        error: "missing_completion",
+        consecutiveErrors: 2,
+      }),
+    );
+    const card = errorsCard();
+    expect(within(card).getByText("model call")).toBeInTheDocument();
+    expect(within(card).getByText("no work declared")).toBeInTheDocument();
+    expect(within(card).queryByText("sandbox limit")).toBeNull();
+  });
+
+  it("says a clean run is clean, and says so against its turn count", () => {
+    renderErrors(outcome("root", 1), outcome("root", 2), outcome("agent-0", 1));
+    const card = errorsCard();
+    expect(headline(card)).toBe("0");
+    expect(within(card).getByText("no errored turns of 3")).toBeInTheDocument();
+    // Nothing to split, so no split — and no streak claim on a run that has no streak.
+    expect(within(card).queryByText("model call")).toBeNull();
+  });
+
+  it("claims nothing at all for a stream that carries no outcomes", () => {
+    // A run recorded before gg published outcomes, or one that has not finished its first
+    // turn. A "0" there would read as a clean record it has no evidence for.
+    renderErrors();
+    const card = errorsCard();
+    expect(headline(card)).toBe("—");
+    expect(
+      within(card).getByText("no turn outcomes reported yet"),
+    ).toBeInTheDocument();
+  });
+
+  it("reports the replies loop detection threw away, and only when there were any", () => {
+    // Not errors — the retry succeeded — but money spent on nothing, which is the whole
+    // figure that says whether arming the detector paid for itself.
+    renderErrors(outcome("root", 1, { loopAborts: 3 }), outcome("root", 2));
+    expect(
+      within(errorsCard()).getByText("looping", { exact: false }),
+    ).toBeInTheDocument();
+
+    // A run that left the detector disarmed — which is every run by default — says nothing.
+    renderErrors(outcome("root", 1));
+    expect(
+      within(screen.getAllByText("Errors")[1]!.parentElement!).queryByText(
+        "looping",
+        { exact: false },
+      ),
+    ).toBeNull();
   });
 });

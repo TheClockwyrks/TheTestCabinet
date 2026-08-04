@@ -598,3 +598,109 @@ describe("the skills capability's built-in skills", () => {
     expect(boxes.filter((box) => !box.checked)).toEqual([shell]);
   });
 });
+
+// Response healing's strategies are a `toggles` control whose members each sit at their
+// own default arm — five on, `drop-doubled-response` off. A subtractive control could not
+// express arming the last one at all, so what the checkbox does is only visible by
+// rendering it and clicking.
+describe("the responses-as-code agent's healing strategies", () => {
+  function healingBoxes(): HTMLInputElement[] {
+    const group = screen.getByRole("group", { name: "Response healing" });
+    return within(group).getAllByRole("checkbox") as HTMLInputElement[];
+  }
+
+  it("opens with the one default-off repair off and every other one on", () => {
+    render(<Harness initial={draftWith("responses-as-code", "", {}, "rac")} />);
+    const boxes = healingBoxes();
+    const doubled = boxes.find((box) =>
+      box.parentElement?.textContent?.includes("drop-doubled-response"),
+    )!;
+    expect(doubled.checked).toBe(false);
+    expect(boxes.filter((box) => !box.checked)).toEqual([doubled]);
+  });
+
+  it("arms the default-off repair, and says on the control that it is one", () => {
+    render(<Harness initial={draftWith("responses-as-code", "", {}, "rac")} />);
+    const doubled = healingBoxes().find((box) =>
+      box.parentElement?.textContent?.includes("drop-doubled-response"),
+    )!;
+    // The label carries the asymmetry, since every other member's default is the opposite.
+    expect(doubled.parentElement?.textContent).toContain("off by default");
+    fireEvent.click(doubled);
+    expect(doubled.checked).toBe(true);
+    // And nothing else moved with it.
+    expect(healingBoxes().every((box) => box.checked)).toBe(true);
+  });
+});
+
+// Loop detection is a per-agent, non-capability lever: it changes nothing about what the
+// agent can do, only how gg talks to its model. It is authored like a capability all the
+// same — a switch, a purpose, and a body of knobs revealed once it is on — and only
+// rendering it shows that the knobs appear when armed and survive being disarmed.
+describe("an agent's loop detection", () => {
+  function loopSwitch(): HTMLInputElement {
+    return within(
+      screen.getByText("Loop detection").closest("label")!,
+    ).getByRole("checkbox") as HTMLInputElement;
+  }
+
+  it("opens disarmed, with no knobs to tune on a detector that is not running", () => {
+    render(<Harness initial={emptyDraft()} />);
+    expect(loopSwitch().checked).toBe(false);
+    expect(screen.queryByLabelText(/Window \(words\)/)).toBeNull();
+  });
+
+  it("reveals its knobs when armed, each naming gg's own default", () => {
+    render(<Harness initial={emptyDraft()} />);
+    fireEvent.click(loopSwitch());
+    const window = screen.getByLabelText(
+      /Window \(words\)/,
+    ) as HTMLInputElement;
+    // Empty, not seeded: an empty field IS "take gg's default", and writing 256 into every
+    // stored configuration would freeze today's number into all of them.
+    expect(window.value).toBe("");
+    expect(window.placeholder).toContain("256");
+    expect(
+      (screen.getByLabelText(/Reply ceiling/) as HTMLInputElement).placeholder,
+    ).toContain("250,000");
+  });
+
+  it("keeps a tuned knob when the detector is switched back off", () => {
+    render(<Harness initial={emptyDraft()} />);
+    fireEvent.click(loopSwitch());
+    fireEvent.change(screen.getByLabelText(/Window \(words\)/), {
+      target: { value: "512" },
+    });
+    fireEvent.click(loopSwitch());
+    expect(loopSwitch().checked).toBe(false);
+    fireEvent.click(loopSwitch());
+    expect(
+      (screen.getByLabelText(/Window \(words\)/) as HTMLInputElement).value,
+    ).toBe("512");
+  });
+
+  it("says so on the form when the knobs describe a detector that could never trip", () => {
+    render(<Harness initial={emptyDraft()} />);
+    fireEvent.click(loopSwitch());
+    fireEvent.change(screen.getByLabelText(/Window \(words\)/), {
+      target: { value: "8" },
+    });
+    fireEvent.change(screen.getByLabelText(/Offenders to saturate/), {
+      target: { value: "20" },
+    });
+    expect(screen.getByText(/could never trip/)).toBeInTheDocument();
+  });
+
+  it("is absent under a machine, which takes no turns and so has no reply to watch", () => {
+    const draft = emptyDraft();
+    render(
+      <Harness
+        initial={{
+          ...draft,
+          agents: [{ ...draft.agents[0]!, mode: "fsm" }],
+        }}
+      />,
+    );
+    expect(screen.queryByText("Loop detection")).toBeNull();
+  });
+});

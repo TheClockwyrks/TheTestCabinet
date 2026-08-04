@@ -479,6 +479,14 @@ fn recorded_model_error(error: &GgReplayModelError, binding_model: &str) -> Mode
             message,
         },
         GgReplayModelErrorKind::Parse => ModelError::Parse(message),
+        // The recorded failure of a run whose [loop detection](crate::loopguard) abandoned every
+        // attempt. `attempts` is the count the live error carried; the recorded message becomes the
+        // detail, on the same terms as `RetryExhausted`'s `last` above — the record keeps the
+        // rendered sentence rather than its parts, and the class is what the loop branches on.
+        GgReplayModelErrorKind::ResponseLoop => ModelError::ResponseLoop {
+            attempts: error.attempts.unwrap_or(1),
+            detail: message,
+        },
     }
 }
 

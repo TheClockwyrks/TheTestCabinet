@@ -118,6 +118,7 @@ fn gg_record(id: &str) -> RunRecord {
         execution_mode: "tool_calling".to_string(),
         code_executions: 0,
         healing: Default::default(),
+        errors: Default::default(),
         issues_created: 2,
         issues_completed: 2,
         slot_costs: vec![GgSlotCost {

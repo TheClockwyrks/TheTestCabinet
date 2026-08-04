@@ -264,6 +264,162 @@ fn a_slot_binding_carries_the_prompt_cache_lifetime_it_was_given() {
     assert!(value.get("promptCacheTtl").is_none(), "{value}");
 }
 
+/// Loop detection is **off** until an operator arms it, and every knob under it is optional — an
+/// absent one takes gg's own default rather than zero, which is why the default value of the whole
+/// object has to be "nothing declared" rather than "a detector configured with zeroes".
+#[test]
+fn loop_detection_defaults_to_disarmed_with_every_knob_unset() {
+    let default = GgLoopDetection::default();
+    assert!(!default.enabled);
+    assert!(!default.is_armed());
+    assert!(default.is_default());
+    assert_eq!(default.window_words, None);
+    assert_eq!(default.repeat_threshold, None);
+    assert_eq!(default.min_offenders, None);
+    assert_eq!(default.min_saturated_run, None);
+    assert_eq!(default.max_response_chars, None);
+
+    // Arming it without tuning anything is the ordinary case: one key, and gg's defaults for the
+    // rest.
+    let armed = GgLoopDetection {
+        enabled: true,
+        ..GgLoopDetection::default()
+    };
+    assert!(armed.is_armed());
+    assert!(!armed.is_default());
+    assert_eq!(
+        serde_json::to_value(armed).expect("serialize"),
+        json!({ "enabled": true })
+    );
+}
+
+/// The knobs are camelCase like the rest of the contract, and one that is not set is **absent**
+/// rather than `null` — so "take gg's default" and "set to zero" can never be confused, which
+/// matters because `0` is a meaningful declaration for two of them.
+#[test]
+fn loop_detection_round_trips_camel_case_and_omits_every_unset_knob() {
+    let tuned = GgLoopDetection {
+        enabled: true,
+        window_words: Some(512),
+        repeat_threshold: Some(24),
+        min_offenders: Some(3),
+        min_saturated_run: Some(0),
+        max_response_chars: Some(0),
+    };
+    let value = serde_json::to_value(tuned).expect("serialize");
+    assert_eq!(
+        value,
+        json!({
+            "enabled": true,
+            "windowWords": 512,
+            "repeatThreshold": 24,
+            "minOffenders": 3,
+            "minSaturatedRun": 0,
+            "maxResponseChars": 0,
+        })
+    );
+    let back: GgLoopDetection = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(tuned, back);
+    assert_eq!(
+        back.min_saturated_run,
+        Some(0),
+        "an explicit zero is the unmodified frequency rule, not an absent knob"
+    );
+
+    // A partially tuned policy carries only what it declared.
+    let one_knob = GgLoopDetection {
+        enabled: true,
+        window_words: Some(128),
+        ..GgLoopDetection::default()
+    };
+    assert_eq!(
+        serde_json::to_value(one_knob).expect("serialize"),
+        json!({ "enabled": true, "windowWords": 128 })
+    );
+}
+
+/// The per-agent lever, on the wire: an agent that arms it says so, an agent that did not writes
+/// **no key at all**, and a configuration stored before loop detection existed round-trips byte for
+/// byte — so upgrading gg can never silently move a profile onto the streaming transport.
+#[test]
+fn loop_detection_is_per_agent_and_omitted_when_nothing_was_declared() {
+    let set = GgCapabilitySet {
+        agents: vec![
+            GgAgentConfig {
+                model_id: "openai/gpt-5.6".to_string(),
+                loop_detection: GgLoopDetection {
+                    enabled: true,
+                    min_saturated_run: Some(1_500),
+                    ..GgLoopDetection::default()
+                },
+                ..GgAgentConfig::root()
+            },
+            GgAgentConfig {
+                name: "scout".to_string(),
+                model_id: "anthropic/claude-haiku-4.5".to_string(),
+                ..GgAgentConfig::root()
+            },
+        ],
+        ..GgCapabilitySet::default()
+    };
+
+    let value = serde_json::to_value(&set).expect("serialize");
+    assert_eq!(
+        value["agents"][0]["loopDetection"],
+        json!({ "enabled": true, "minSaturatedRun": 1_500 })
+    );
+    assert!(
+        value["agents"][1].get("loopDetection").is_none(),
+        "an agent that declared nothing writes no key: {}",
+        value["agents"][1]
+    );
+
+    let back: GgCapabilitySet = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(set, back);
+    assert!(back.agents[0].loop_detection.is_armed());
+    assert!(back.agents[1].loop_detection.is_default());
+
+    // And the shape stored before the lever existed — including the legacy flat one — reads as
+    // disarmed rather than failing to parse.
+    let stored: GgCapabilitySet = serde_json::from_value(json!({
+        "agents": [{
+            "name": ROOT_AGENT,
+            "capabilities": [{ "id": CAPABILITY_SHELL, "enabled": true, "params": {} }],
+            "modelId": "openai/gpt-5.6",
+        }],
+    }))
+    .expect("deserialize");
+    assert!(stored.root().loop_detection.is_default());
+}
+
+/// The policy reaches the client through the [binding](GgSlotBinding) a profile is resolved into,
+/// exactly as the prompt-cache lifetime does — because the binding is what a client is built from,
+/// and this is what decides which *transport* that client uses.
+#[test]
+fn a_slot_binding_carries_the_loop_detection_it_was_given() {
+    let armed = GgLoopDetection {
+        enabled: true,
+        repeat_threshold: Some(16),
+        ..GgLoopDetection::default()
+    };
+    let binding = GgSlotBinding::new(PRIMARY_SLOT, "openai/gpt-5.6").with_loop_detection(armed);
+    assert_eq!(binding.loop_detection, armed);
+    assert!(binding.loop_detection.is_armed());
+    assert_eq!(
+        serde_json::to_value(&binding).expect("serialize")["loopDetection"],
+        json!({ "enabled": true, "repeatThreshold": 16 })
+    );
+
+    let plain = GgSlotBinding::new(PRIMARY_SLOT, "openai/gpt-5.6");
+    assert!(plain.loop_detection.is_default());
+    let value = serde_json::to_value(&plain).expect("serialize");
+    assert!(value.get("loopDetection").is_none(), "{value}");
+    assert_eq!(
+        serde_json::from_value::<GgSlotBinding>(value).expect("deserialize"),
+        plain
+    );
+}
+
 /// The guardrails are camelCase like the rest of the contract, and one that is off is **absent**
 /// rather than `null` — so a configuration that arms two of them says so in two keys, and "unset" and
 /// "set to nothing" can never be confused on the wire.
@@ -1174,12 +1330,196 @@ fn healing_strategy_ids_are_the_kebab_case_config_keys() {
         (GgHealingStrategy::StripProse, "strip-prose"),
         (GgHealingStrategy::DropImports, "drop-imports"),
         (
+            GgHealingStrategy::DropDoubledResponse,
+            "drop-doubled-response",
+        ),
+        (
             GgHealingStrategy::DropDuplicateProgram,
             "drop-duplicate-program",
         ),
         (GgHealingStrategy::UnwrapAsync, "unwrap-async"),
     ] {
         assert_eq!(serde_json::to_value(strategy).unwrap(), json!(id));
+        assert_eq!(
+            serde_json::from_value::<GgHealingStrategy>(json!(id)).unwrap(),
+            strategy,
+            "a stored telemetry value must read back as the strategy that wrote it"
+        );
+    }
+}
+
+/// The coarse whole-reply repair is a **new** wire value on a type stored runs already carry, so
+/// both directions have to hold at once: a run recorded before it existed must still read (its
+/// healing rollup simply reports zero applications of it), and a run that arms it must round-trip
+/// the counter rather than dropping it as an unknown key.
+#[test]
+fn the_doubled_response_strategy_is_readable_beside_the_runs_that_predate_it() {
+    let stored = json!({
+        "healed": 2,
+        "applications": 2,
+        "stripFences": 2,
+        "stripProse": 0,
+        "dropDuplicateProgram": 0,
+        "dropImports": 0,
+        "unwrapAsync": 0,
+        "enabled": ["strip-fences", "strip-prose"],
+    });
+    let summary: GgHealingSummary = serde_json::from_value(stored).expect("deserialize");
+    assert_eq!(
+        summary.drop_doubled_response, 0,
+        "a rollup recorded before the strategy existed reports none of it rather than failing"
+    );
+
+    let armed = GgHealingSummary {
+        healed: 1,
+        applications: 1,
+        drop_doubled_response: 1,
+        enabled: vec![
+            GgHealingStrategy::StripFences,
+            GgHealingStrategy::DropDoubledResponse,
+        ],
+        ..GgHealingSummary::default()
+    };
+    let value = serde_json::to_value(&armed).expect("serialize");
+    assert_eq!(value["dropDoubledResponse"], json!(1));
+    assert_eq!(
+        value["enabled"],
+        json!(["strip-fences", "drop-doubled-response"]),
+        "the armed set is what tells a zero counter apart from a disarmed strategy"
+    );
+    assert_eq!(
+        serde_json::from_value::<GgHealingSummary>(value).expect("deserialize"),
+        armed
+    );
+}
+
+/// The ordinary turn: the event is emitted for **every** turn, not only failing ones, because it is
+/// the denominator as much as the numerator — so a clean turn writes the outcome, a zeroed
+/// consecutive-error run and the agent's turn number, and nothing else.
+#[test]
+fn a_turn_outcome_event_reports_a_clean_turn_without_an_error_kind() {
+    let kind = GgTelemetryKind::TurnOutcome {
+        outcome: GgTurnOutcome::Progressed,
+        error: None,
+        consecutive_errors: 0,
+        turns: 7,
+        loop_aborts: 0,
+    };
+    let value = serde_json::to_value(&kind).expect("serialize");
+    assert_eq!(
+        value,
+        json!({
+            "type": "turn_outcome",
+            "outcome": "progressed",
+            "consecutiveErrors": 0,
+            "turns": 7,
+        }),
+        "a clean turn carries no error kind and no abort count"
+    );
+    let back: GgTelemetryKind = serde_json::from_value(value).expect("deserialize");
+    assert_eq!(kind, back);
+}
+
+/// The turn this event exists for: an error, its kind, and the agent's running streak — the same
+/// streak [`GgRunLimits::max_consecutive_errors`] is enforced on, carried per turn because the
+/// streak is per agent and the stream is run-wide.
+#[test]
+fn a_turn_outcome_event_carries_the_error_kind_and_the_agents_own_streak() {
+    let kind = GgTelemetryKind::TurnOutcome {
+        outcome: GgTurnOutcome::Error,
+        error: Some(GgTurnErrorKind::ProgramFault),
+        consecutive_errors: 3,
+        turns: 21,
+        loop_aborts: 0,
+    };
+    let value = serde_json::to_value(&kind).expect("serialize");
+    assert_eq!(
+        value,
+        json!({
+            "type": "turn_outcome",
+            "outcome": "error",
+            "error": "program_fault",
+            "consecutiveErrors": 3,
+            "turns": 21,
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
+        kind
+    );
+
+    // gg's own machinery failing is recorded — so the turn count never drifts from the number of
+    // model calls the run made — but is deliberately not an error, so it carries no kind.
+    let fatal = GgTelemetryKind::TurnOutcome {
+        outcome: GgTurnOutcome::Fatal,
+        error: None,
+        consecutive_errors: 0,
+        turns: 22,
+        loop_aborts: 0,
+    };
+    assert_eq!(
+        serde_json::to_value(&fatal).expect("serialize")["outcome"],
+        json!("fatal")
+    );
+}
+
+/// The one place a discarded looping attempt is published. It is not an error turn — the retry
+/// produced the reply this event judges — so it rides on the turn that eventually succeeded, and is
+/// absent from every turn (and every run) that discarded nothing, which is the default.
+#[test]
+fn a_turn_outcome_event_counts_the_looping_replies_it_discarded() {
+    let kind = GgTelemetryKind::TurnOutcome {
+        outcome: GgTurnOutcome::Progressed,
+        error: None,
+        consecutive_errors: 0,
+        turns: 4,
+        loop_aborts: 2,
+    };
+    let value = serde_json::to_value(&kind).expect("serialize");
+    assert_eq!(
+        value,
+        json!({
+            "type": "turn_outcome",
+            "outcome": "progressed",
+            "consecutiveErrors": 0,
+            "turns": 4,
+            "loopAborts": 2,
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
+        kind
+    );
+}
+
+/// Both taxonomies are closed and the console labels every value, so the snake_case spellings are
+/// pinned here rather than left to the derive.
+#[test]
+fn turn_outcome_and_error_kind_wire_values_are_snake_case() {
+    for (outcome, id) in [
+        (GgTurnOutcome::Progressed, "progressed"),
+        (GgTurnOutcome::Finished, "finished"),
+        (GgTurnOutcome::Error, "error"),
+        (GgTurnOutcome::Fatal, "fatal"),
+    ] {
+        assert_eq!(serde_json::to_value(outcome).unwrap(), json!(id));
+        assert_eq!(
+            serde_json::from_value::<GgTurnOutcome>(json!(id)).unwrap(),
+            outcome
+        );
+    }
+    for (kind, id) in [
+        (GgTurnErrorKind::ModelApi, "model_api"),
+        (GgTurnErrorKind::Transpile, "transpile"),
+        (GgTurnErrorKind::ProgramFault, "program_fault"),
+        (GgTurnErrorKind::SandboxLimit, "sandbox_limit"),
+        (GgTurnErrorKind::MissingCompletion, "missing_completion"),
+    ] {
+        assert_eq!(serde_json::to_value(kind).unwrap(), json!(id));
+        assert_eq!(
+            serde_json::from_value::<GgTurnErrorKind>(json!(id)).unwrap(),
+            kind
+        );
     }
 }
 
@@ -1323,6 +1663,7 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
             "applications": 4,
             "stripFences": 3,
             "stripProse": 1,
+            "dropDoubledResponse": 0,
             "dropDuplicateProgram": 0,
             "dropImports": 0,
             "unwrapAsync": 0,
@@ -1337,6 +1678,101 @@ fn a_session_summary_carries_the_healing_rollup_and_the_ceiling_that_stopped_the
 
     let back: GgSessionSummary = serde_json::from_value(value).expect("deserialize");
     assert_eq!(back, summary);
+}
+
+/// **The backward-compatibility proof for the error rollup.** Every gg run recorded before turn
+/// outcomes reached the wire wrote a summary with no `errors` key at all; those runs must still
+/// load, reporting **no turns** rather than failing the parse — and the rollup must then be present
+/// (all zeroes) when re-serialized, so a query never has to tell "zero" from "absent".
+#[test]
+fn a_session_summary_recorded_before_turn_outcomes_reads_with_an_empty_error_rollup() {
+    let recorded = json!({
+        "terminalStatus": "completed",
+        "agentsSpawned": 1,
+        "subagentCount": 0,
+        "maxSubagentDepth": 0,
+        "compactions": 0,
+        "ranOutOfContext": false,
+        "contextOverflowCount": 0,
+        "issueReviews": 0,
+        "reviewCycles": 0,
+        "issuesReopened": 0,
+        "speculations": 0,
+        "executionMode": "responses_as_code",
+        "codeExecutions": 5,
+        "issuesCreated": 0,
+        "issuesCompleted": 0,
+        "healing": {
+            "healed": 0,
+            "applications": 0,
+            "stripFences": 0,
+            "stripProse": 0,
+            "dropDuplicateProgram": 0,
+            "dropImports": 0,
+            "unwrapAsync": 0,
+            "enabled": [],
+        },
+    });
+    let summary: GgSessionSummary = serde_json::from_value(recorded).expect("deserialize");
+    assert_eq!(summary.errors, GgErrorSummary::default());
+    assert_eq!(
+        summary.errors.turns, 0,
+        "a run that predates the rollup reports no turns rather than a fabricated denominator"
+    );
+
+    let value = serde_json::to_value(&summary).expect("serialize");
+    assert_eq!(
+        value["errors"],
+        json!({
+            "turns": 0,
+            "errors": 0,
+            "maxConsecutive": 0,
+            "modelApi": 0,
+            "transpile": 0,
+            "programFault": 0,
+            "sandboxLimit": 0,
+            "missingCompletion": 0,
+            "loopAborts": 0,
+        })
+    );
+}
+
+/// The rollup a study slices on: the denominator, the numerator, the worst streak any one agent
+/// reached, and the per-kind split — with **no stored percentage**, because a rate recorded beside
+/// its own inputs is a figure that can disagree with them.
+#[test]
+fn the_error_rollup_carries_its_own_denominator_and_no_percentage() {
+    let errors = GgErrorSummary {
+        turns: 40,
+        errors: 9,
+        max_consecutive: 4,
+        model_api: 2,
+        transpile: 3,
+        program_fault: 3,
+        sandbox_limit: 1,
+        missing_completion: 0,
+        loop_aborts: 6,
+    };
+    assert_eq!(
+        errors.model_api
+            + errors.transpile
+            + errors.program_fault
+            + errors.sandbox_limit
+            + errors.missing_completion,
+        errors.errors,
+        "the per-kind counters must account for every error turn"
+    );
+
+    let value = serde_json::to_value(&errors).expect("serialize");
+    assert!(
+        value.get("errorRate").is_none() && value.get("rate").is_none(),
+        "the rate is `errors / turns`, computed by the reader, never stored: {value}"
+    );
+    assert_eq!(value["loopAborts"], json!(6));
+    assert_eq!(
+        serde_json::from_value::<GgErrorSummary>(value).expect("deserialize"),
+        errors
+    );
 }
 
 /// **The healing-off arm has to be visible on the wire**, and the assertion has to be made *on the

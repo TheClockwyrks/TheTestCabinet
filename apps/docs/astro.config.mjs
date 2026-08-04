@@ -523,6 +523,11 @@ export default defineConfig({
             // to every capability and to both execution modes, not a feature under
             // ablation.
             "gg/execution-limits",
+            // The other guardrail that is not a capability, and beside the ceilings
+            // for the same reason: it bounds one *reply* rather than a run, is armed
+            // per agent, and — unlike everything under Capabilities — changes gg's
+            // transport rather than what a model is offered.
+            "gg/loop-detection",
             // How gg's model-facing prose is authored (Handlebars templates) and
             // how the system prompt is assembled from the capability set. Not a
             // capability: it cuts across all of them.

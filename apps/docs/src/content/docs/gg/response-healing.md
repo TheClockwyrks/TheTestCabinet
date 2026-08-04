@@ -9,7 +9,9 @@ sentence onto the closing fence, they explain themselves above and below the cod
 `import` a surface that is already in scope, and they wrap everything in an
 `async function main()` whose `await`s buy nothing in a sandbox where every tool function
 is synchronous — and cost everything, because what follows the first one runs after the
-program has already returned.
+program has already returned. One shape on this page is not the model's doing at all: a
+provider that returns a completion which is literally the program **followed by a
+byte-identical copy of itself**, with nothing between the halves.
 
 **Healing** is the pass that turns those replies into the program the model meant. It is
 not a lenient parser and not a rescue mission — it is an instrument. Every repair is
@@ -66,8 +68,8 @@ pipeline.
 > whitespace removed.**
 
 One machine-checkable sentence that covers "never invents code" and "never reorders" for
-all five strategies at once. It is enforced as a property test over the whole fixture
-corpus — every captured real reply — under **every** configuration.
+all six strategies at once. It is enforced as a property test over the whole fixture
+corpus — every captured real reply — under **every** configuration, all 2⁶ of them.
 
 Where a strategy cannot apply cleanly it **declines**: silently, leaving the text exactly
 as it was. The asymmetry is deliberate. A missed repair costs one turn and a located
@@ -80,23 +82,27 @@ same program, so it is not counted. What is deliberately *kept* is the
 than a fence, so un-indenting it here would answer a question the fence scanner exists to
 ask.
 
-## The five strategies
+## The six strategies
 
 They run in this order, repeated to a fixpoint:
 
 ```text
-trim  ->  [ strip-fences -> strip-prose -> drop-duplicate-program
-            -> drop-imports -> unwrap-async ]*
-              ^                            |
+trim  ->  [ strip-fences -> strip-prose -> drop-doubled-response
+            -> drop-duplicate-program -> drop-imports -> unwrap-async ]*
+              ^                                         |
               +---- repeat until a pass applies nothing +
 ```
 
 Fences first, because until the wrapper is off, "is this line prose?" and "is this line
 an import?" are questions about the wrong text. Prose before duplicates, so the two
-copies of a program are adjacent when they are compared. Duplicates before imports and
-async, so a doubled reply is halved before either of those looks at it. Imports before
-async, because a leading `import` line is exactly what makes `unwrap-async` decline —
-one strategy's output enabling another's match is why this is a fixpoint and not a list.
+copies of a program are adjacent when they are compared. `drop-doubled-response` before
+`drop-duplicate-program`, because it is the coarser, whole-reply test of the same defect:
+running it first means the finer one — which searches for a repeated *tail* and has a
+lexical-declaration guard to satisfy — only ever sees a reply that is not a clean doubling.
+Both before imports and async, so a doubled reply is halved before either of those looks at
+it. Imports before async, because a leading `import` line is exactly what makes
+`unwrap-async` decline — one strategy's output enabling another's match is why this is a
+fixpoint and not a list.
 
 The fixpoint is bounded at four passes; measured, no real reply needs more than one and
 the deepest shape in the corpus (a fence nested in a fence) needs two. If that bound is
@@ -186,6 +192,74 @@ It is deliberately severe. A line is certainly prose only when it contains none 
 `.`, `!` or `?`). Real replies produced *no* bare-program-with-prose responses — every
 model fenced — so a strategy with no evidence behind it gets the setting where a false
 positive costs one turn and a false negative deletes the model's code.
+
+### `drop-doubled-response`
+
+The one strategy that is **off by default** — see
+[the one strategy you have to ask for](#the-one-strategy-you-have-to-ask-for).
+
+**Matches** a reply that is one completion concatenated with a byte-identical copy of
+itself. Let `t` be the text with trailing whitespace trimmed: if `t.len()` is even and
+`t[..t.len()/2] == t[t.len()/2..]`, it **rewrites** to the first half.
+
+```text
+"foo();\nbar();foo();\nbar();"   ->   "foo();\nbar();"
+```
+
+That is the whole rule. The comparison is of **exact bytes** — whitespace is not
+normalised, no line structure is consulted, no token is parsed — because the defect is a
+byte-exact concatenation performed by the transport, not a model that wrote something
+twice. An inexact "near doubling" is the model's own text and none of this strategy's
+business; where a doubling declares a top-level `const`, `let` or `class`,
+[`drop-duplicate-program`](#drop-duplicate-program) below is the one with a proof.
+
+| # | Condition | Result |
+| --- | --- | --- |
+| **D1** | `t` has odd length | decline — a string of odd length cannot be `X + X` |
+| **D2** | the midpoint is not a character boundary | decline — panic-safety, not a rule; see below |
+| **D3** | the halves differ in any byte | decline |
+| **D4** | the half is empty | decline — the only size floor there is |
+| — | otherwise | keep the first half |
+
+**D2 is panic-safety, not a heuristic.** Slicing a multi-byte UTF-8 sequence down the middle
+panics, so the boundary is checked before the slice is taken. It excludes nothing a rule
+would want to keep — a midpoint inside a character means the halves hold different fragments
+of it, so they could not have compared equal anyway — and a later reader should not mistake
+it for a guard worth relaxing.
+
+#### The separator argument, and why almost no other guards
+
+This is the one strategy whose warrant is *not* "the reply could not have run as sent". It
+could have run: twice. So the reason it is safe has to be argued rather than asserted, and
+the argument is the **separator**:
+
+> A model that means to repeat a statement writes something between the two copies.
+> `step(); step();` has a space; `step();\nstep();` has a newline. **Any odd-length
+> separator makes the whole reply odd-length**, so D1 declines on arithmetic alone, before a
+> single byte is compared. Two copies can only compare equal when the model emitted them
+> with *no* separator at all — `step();step();` — which is not a shape models produce. The
+> defect, by contrast, is exactly that: a concatenation with nothing between the copies,
+> because nothing wrote a separator.
+
+Two consequences follow and both are load-bearing:
+
+- **No minimum length.** The observed doubling frequently happens on a run's **first** turn,
+  where the program is a line or two — so any length floor worth the name would miss
+  precisely the case this exists for. D4's "not empty" is the whole size rule, and it is
+  there so a whitespace-only reply is not "repaired" into itself and counted.
+- **No newline requirement and no minimum statement count.** A single-line reply that is an
+  exact doubling is the defect, not the model's intent, for the same reason.
+
+There is a clean consequence of the arithmetic worth stating, because it is what keeps this
+strategy and the next one from ever fighting over the same reply: a doubling in which each
+copy ends with a newline has **odd** length once the trailing whitespace is trimmed — `2n`
+for two copies of `n` bytes, minus the final newline, is `2n - 1` — so
+`drop-doubled-response` structurally cannot fire on the shape
+`drop-duplicate-program` handles. The newline between the copies is what decides which
+strategy repairs it, and the two partition the space rather than racing for it.
+
+It applies **once** per pass, so a quadrupled reply is halved twice by the fixpoint loop —
+the same shape `drop-duplicate-program` converges in.
 
 ### `drop-duplicate-program`
 
@@ -311,22 +385,29 @@ from the transcript as well as from the counters.
 ## Configuration
 
 Healing is configured in the `responses-as-code` capability's params, as a `healing`
-object keyed by strategy id. **A strategy absent from the object is on.**
+object keyed by strategy id. The object is a **delta against the defaults**, not a whole
+configuration: **a strategy absent from it takes its own default.**
 
 ```jsonc
 { "id": "responses-as-code", "enabled": true,
   "params": { "timeoutSecs": 30, "maxMemoryBytes": 268435456,
-              "healing": { "strip-fences": false } } }
+              "healing": { "strip-fences": false, "drop-doubled-response": true } } }
 ```
 
 | `params.healing` | Meaning |
 | --- | --- |
-| absent / `null` / `true` / `{}` | every strategy **on** |
+| absent / `null` / `true` / `{}` | **the defaults** — the five on, `drop-doubled-response` off |
 | `false` | every strategy **off** — the master switch |
-| `{ "strip-prose": false }` | `strip-prose` off, the other four on |
-| `{ "strip-prose": 0 }` | `strip-prose` **on** — a non-boolean is not a toggle — and the key is reported |
-| `{ "stripProse": false }` | every strategy on, and `healing.stripProse` is reported as unreadable |
-| `5`, `"off"`, `[]` | every strategy on, and `healing` is reported as unreadable |
+| `{ "strip-prose": false }` | `strip-prose` off, the rest at their defaults |
+| `{ "drop-doubled-response": true }` | `drop-doubled-response` **on**, the rest at their defaults |
+| `{ "strip-prose": 0 }` | `strip-prose` at its default — a non-boolean is not a toggle — and the key is reported |
+| `{ "stripProse": false }` | the defaults, and `healing.stripProse` is reported as unreadable |
+| `5`, `"off"`, `[]` | the defaults, and `healing` is reported as unreadable |
+
+Rows three and four are the same mechanism read in two directions: `false` is how a
+default-on strategy is turned off and `true` is how the default-off one is turned on, and
+both travel through the same line of code. There is no second way to arm a strategy, which
+is what keeps that table a description of the implementation rather than a summary of it.
 
 An unreadable key is **reported at `warn` on the run's own stream**, before the first
 turn, rather than dropped: `{"stripFences": false}` would otherwise run the default arm
@@ -335,10 +416,35 @@ a measurement of the wrong thing. No such warning ever fails a launch — a swee
 shared configuration document has to stay interpretable by every arm.
 
 In the [configuration editor](/gg/configurations/) the strategies are switches on the
-capability, and only the ones switched **off** are written into the saved configuration:
-the underlying params are "on unless a configuration says otherwise", so writing out the
-untouched ones would turn every saved configuration into an explicit opt-in that a later
-default change could no longer reach.
+capability, and only the ones that **differ from their default** are written into the saved
+configuration: the underlying params are a delta, so writing out the untouched ones would
+turn every saved configuration into an explicit opt-in that a later default change could no
+longer reach.
+
+### The one strategy you have to ask for
+
+Five of the six are armed by default. The rule is **a strategy is armed by default when
+repairing is strictly safer than not repairing**, and for those five the warrant is the same
+each time: *the reply the strategy deletes from could not have run as sent*. A fenced reply
+is not JavaScript. A reply with prose around it is not JavaScript. A reply that redeclares a
+top-level `const` is refused before a statement of it executes. An `import` has no module
+loader to resolve it. A called `async` wrapper cannot resolve its own `await`s in a
+synchronous sandbox. Declining to repair any of those costs the turn outright, so the
+default that loses least is *on*.
+
+`drop-doubled-response` is the exception, and the asymmetry is real rather than an
+abundance of caution: **the half it deletes is valid code under any reading other than "the
+transport duplicated this."** A reply that runs its program twice is a reply that runs — so
+where every other strategy turns a dead reply into a live one, this one changes what a live
+reply *does*. The
+[separator argument](#the-separator-argument-and-why-almost-no-other-guards)
+is why the match rule is nonetheless safe with almost no guards; it is not a reason to arm a
+repair on every model when only some exhibit the defect. So it is armed **deliberately**,
+per run, by an operator who has seen it — and the default arm every study compares against
+stays the one gg has always had.
+
+Under the master switch (`"healing": false`) it is off with everything else. A master
+switch that armed a default-off strategy would not be a master switch.
 
 ### What switching one off actually does
 
@@ -351,6 +457,15 @@ The point of a toggle is the arm it creates, so each one's cost is stated plainl
 | `drop-duplicate-program` | A reply that sent the same program twice reaches the type-strip, which refuses it as an early error naming the redeclared identifier, its line and its column. That is a good diagnostic and a lost turn: this is the arm that measures whether a model recovers from it on its own. |
 | `drop-imports` | An `import` line reaches the type-strip, which refuses it and tells the model the sandbox has no module system. |
 | `unwrap-async` | An `async`-wrapped program runs to its first `await` and defers the rest past its own return. Nothing names the deferred half: a program that ran is told nothing at all, so the only sign the model gets is the notice a turn earns when the program put nothing in its context — and even that is absent for a program whose synchronous prefix managed to open a view. This is the arm that measures how long a model goes on wrapping. |
+
+`drop-doubled-response` is read the other way round, since its default is the off arm. **On**,
+a duplicated completion becomes the program the model wrote once and the turn proceeds
+normally. **Off** — which is what a run says by not mentioning it — the doubled reply is
+compiled whole: sometimes that is a type-strip error naming a redeclared identifier, and
+sometimes, for a body of bare statements, it is a program that runs and does every piece of
+its work **twice**. The second is the reason the strategy exists, and it is also why the
+arm it creates is worth measuring: the run does not obviously fail, it silently does
+everything twice.
 
 Under the master switch every reply is compiled exactly as the model sent it. Healing
 still runs — it canonicalises a byte-order mark and the blank lines around a reply, which
@@ -376,7 +491,7 @@ numerator and denominator can never come from different mechanisms:
 | --- | --- |
 | `healed` | Responses that had to be repaired **and then ran**. |
 | `applications` | Total strategy applications — at least `healed`, since one response may need several repairs. |
-| `stripFences`, `stripProse`, `dropDuplicateProgram`, `dropImports`, `unwrapAsync` | Applications of each strategy. |
+| `stripFences`, `stripProse`, `dropDoubledResponse`, `dropDuplicateProgram`, `dropImports`, `unwrapAsync` | Applications of each strategy. |
 | `enabled` | The strategies that were **armed** for the run, in application order. Empty means every one was off (for a code-mode run) — `executionMode` is what tells that apart from a tool-calling run, where healing never runs at all. |
 
 `enabled` is the field that makes an ablation legible from the telemetry alone. Every
@@ -385,13 +500,21 @@ whether its strategies were all armed or all disabled — so without it the two 
 study are indistinguishable in the data and the arm has to be recovered from the
 invocation files that produced the runs. It is therefore **always** written, empty list and
 all: a key that disappeared exactly when it meant "every strategy was off" would leave the
-healing-off arm indistinguishable all over again. The same resolved set is named on the run's
+healing-off arm indistinguishable all over again. `dropDoubledResponse` is written by every
+run that records a rollup at all, including the runs that predate it, which read it as the
+`0` those runs' pipelines really did apply. The same resolved set is named on the run's
 launch log, beside the ceilings:
 
 ```text
 response healing: strip-fences, strip-prose, drop-duplicate-program, drop-imports, unwrap-async
+response healing: strip-fences, strip-prose, drop-doubled-response, drop-duplicate-program, drop-imports, unwrap-async
 response healing: disabled — every strategy is off, so a reply is compiled exactly as the model sent it
 ```
+
+The first of those is the **default** arm, not "everything on" — a run that says nothing
+about healing prints exactly that line, and the second is what a run that armed the extra
+strategy prints. The two are one strategy apart on purpose: the difference between them is
+the whole ablation.
 
 A response is **healed** exactly when at least one repair was applied to it, since every
 healed reply then runs. The denominator for every rate is `codeExecutions`, which is one
@@ -410,19 +533,26 @@ rollup.
 
 ### Querying them
 
-[Result aggregation](/gg/result-aggregation/) exposes eight summary metrics —
-`responses_healed`, `healing_rate`, `healing_applications` and the five per-strategy
-counts. `healing_rate` is the computed one (`healed / code_executions`, absent for a run
-that took no code-shaped turn), so:
+The whole rollup is flattened into the [query language](/gg/analysis/query-language/)'s
+run document, so every **counter** above is a queryable name — `summary.healing.healed`,
+`summary.healing.applications`, and one per strategy — with no metric enum to extend when a
+strategy is added. (`enabled` is a list, and a list contributes only its length, as
+`summary.healing.enabled.count`; which strategies those were is a question for the run, not
+for an aggregate.)
 
-```jsonc
-{ "groupBy": [{ "kind": "slotModel", "slot": "primary" }],
-  "metrics": [{ "metric": { "kind": "summary", "field": "healing_rate" },
-                "agg": "avg" }] }
+```text
+has.summary:true | stats avg(summary.healing.healed) as healed by model
 ```
 
-answers "which models still need their replies repaired?" in one query. The ablation
-itself needs no new facet: a `capabilityParam` facet over
-`responses-as-code` / `healing.strip-fences` resolves a dotted path through the params,
-buckets a run that left the strategy at its default as **absent**, and buckets the rest
-as `"true"` / `"false"`.
+answers "which models still need their replies repaired?" in one query. The rate is
+`healed / codeExecutions` and is deliberately not stored as a third field, for the same
+reason [no error percentage is](/gg/telemetry/#the-run-rollup): a figure that can disagree
+with its own denominator is worse than one the reader divides.
+
+The ablation itself needs nothing new either. A capability's params are flattened into the
+same document, so each strategy's declaration is its own field under
+`cap.responses-as-code.healing.<strategy>` — and because absent means absent, a run that
+left the strategy at its default falls out of the comparison rather than being counted as a
+value it never declared. Note which arm that is: for the five default-on strategies the
+absent bucket is *on*, and for `drop-doubled-response` it is *off*. That inversion is the
+whole reason the strategy's default is worth stating twice.

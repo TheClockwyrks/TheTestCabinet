@@ -1335,7 +1335,7 @@ The capability is `responses-as-code`, under **Models & tools** in the
 | `timeoutSecs` | `30` | The per-program guest-execution timeout, in seconds. |
 | `maxMemoryBytes` | `268435456` | The per-program linear-memory cap. |
 | `imageViewCap` | unset — no ceiling | How many [image-carrying views](#the-caps-and-why-none-of-them-truncates) this agent may hold open at once. Labelled **Max open image views** in the editor. |
-| `healing` | every strategy on | Which [response-healing](/gg/response-healing/#configuration) repairs are armed. |
+| `healing` | each strategy at its own default | Which [response-healing](/gg/response-healing/#configuration) repairs are armed. Five of the six are on unless a run says otherwise; `drop-doubled-response` is [armed deliberately](/gg/response-healing/#the-one-strategy-you-have-to-ask-for). |
 
 The three numeric params each fall back to their default when absent, non-numeric, or
 non-positive — and `imageViewCap`'s default is **no ceiling at all**, because how many pictures

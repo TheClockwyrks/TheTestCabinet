@@ -62,6 +62,7 @@ fn stop_response(text: &str) -> ModelResponse {
         finish_reason: FinishReason::Stop,
         usage: TokenCounts::default(),
         cost: None,
+        loop_aborts: 0,
     }
 }
 
@@ -1318,6 +1319,13 @@ fn every_model_error_class_is_recorded_as_the_class_the_loop_branched_on() {
             ModelError::Parse("not json".to_string()),
             GgReplayModelErrorKind::Parse,
         ),
+        (
+            ModelError::ResponseLoop {
+                attempts: 4,
+                detail: "2 words repeated across 3000 consecutive words".to_string(),
+            },
+            GgReplayModelErrorKind::ResponseLoop,
+        ),
     ];
     for (error, expected) in cases {
         let recorded = replay_model_error(&error);
@@ -1341,6 +1349,16 @@ fn every_model_error_class_is_recorded_as_the_class_the_loop_branched_on() {
         .attempts,
         Some(4),
         "and the attempt count is what says how much of the run's clock the failure cost"
+    );
+    assert_eq!(
+        replay_model_error(&ModelError::ResponseLoop {
+            attempts: 3,
+            detail: "the reply passed 250001 characters without finishing".to_string(),
+        })
+        .attempts,
+        Some(3),
+        "for a loop the attempt count is the only surviving trace of the discarded replies — the \
+         replies themselves were never returned and so were never journalled"
     );
 }
 

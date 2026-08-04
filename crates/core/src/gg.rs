@@ -1630,6 +1630,12 @@ pub struct GgAgentConfig {
     /// spread far enough apart, to outlive five minutes.
     #[serde(default, skip_serializing_if = "GgPromptCacheTtl::is_standard")]
     pub prompt_cache_ttl: GgPromptCacheTtl,
+    /// Whether gg watches this agent's replies for a [generation loop](GgLoopDetection), and with
+    /// what knobs. Off unless an operator arms it, because arming it also moves this agent onto the
+    /// streaming transport — a per-agent choice, made for the profiles whose model is observed to
+    /// loop and left alone for the rest.
+    #[serde(default, skip_serializing_if = "GgLoopDetection::is_default")]
+    pub loop_detection: GgLoopDetection,
     /// The other agents this agent may put to work — its delegation **roster**. Each entry names
     /// a target agent (which may be this agent itself), the [scopes](GgSubagentRef::scopes) it may
     /// be used in (spawnable subagent, issue implementer, issue reviewer), and a caller-scoped
@@ -1655,6 +1661,7 @@ impl GgAgentConfig {
             custom_instructions: None,
             system_prompt_template: None,
             prompt_cache_ttl: GgPromptCacheTtl::default(),
+            loop_detection: GgLoopDetection::default(),
             subagents: Vec::new(),
         }
     }
@@ -1684,6 +1691,7 @@ impl GgAgentConfig {
             custom_instructions: None,
             system_prompt_template: None,
             prompt_cache_ttl: GgPromptCacheTtl::default(),
+            loop_detection: GgLoopDetection::default(),
             subagents: Vec::new(),
         }
     }
@@ -1952,6 +1960,106 @@ impl GgPromptCacheTtl {
     }
 }
 
+/// Whether one [agent](GgAgentConfig::loop_detection) has gg watch its replies for a **generation
+/// loop**, and the knobs of the detector if so.
+///
+/// Some models, on some turns, stop producing a reply and start producing a *period*: the same
+/// short fragment (`void 0;`, one line of a table, one call) emitted thousands of times until the
+/// provider's output cap stops it. The reply is paid for in full, takes minutes to arrive, is
+/// useless as a turn, and — worst — enters the context window, where it makes the next turn more
+/// likely to do the same thing.
+///
+/// Arming this is what switches that agent's model transport to **streaming**: the detector reads
+/// the reply as it arrives and abandons the request the moment the repetition is unmistakable,
+/// which is the only point at which any of the loss above is still avoidable. An agent that leaves
+/// it off keeps the non-streaming transport byte for byte, so this is an opt-in change of transport
+/// as much as it is a change of policy — which is exactly why it is off by default.
+///
+/// It is a **per-agent** (and therefore per-model) lever, like the
+/// [prompt-cache lifetime](GgPromptCacheTtl): looping is a property of a model, and a run whose
+/// root runs on a model that loops has no reason to pay the streaming path for a reviewer that
+/// does not. It is deliberately **not** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
+/// param — a tool-calling model loops in exactly the same way, inside a tool call's arguments.
+///
+/// Every knob is optional and an absent one takes gg's own default (documented per field). A knob
+/// set to a value that cannot bound anything is a startup **warning** and takes the default, never
+/// an error, on the same terms as [`GgRunLimits`].
+///
+/// See the [loop-detection](https://docs.testcabinet.ai/gg/loop-detection/) page for the algorithm
+/// these knobs parameterise.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgLoopDetection {
+    /// Whether the detector runs for this agent at all. `false` — the default — leaves the agent on
+    /// gg's ordinary non-streaming transport and no reply is ever discarded; `true` arms the
+    /// detector **and** switches the transport to streaming, because a detector that can only read a
+    /// completed reply has already let every cost it exists to avoid be paid.
+    pub enabled: bool,
+    /// `N` — how many of the most recent words the detector looks back over when deciding whether a
+    /// reply has become repetitive. Absent takes gg's default (**256**).
+    ///
+    /// A "word" is a whitespace-separated run of characters, plus a fixed-width slice whenever a run
+    /// exceeds gg's internal cap — which is what makes a whitespace-free loop (`a();a();a();…`)
+    /// detectable at all rather than one unbounded word.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub window_words: Option<u64>,
+    /// `P` — how many times a single word may occur within the window before it counts as an
+    /// *offender*. Absent takes gg's default (**32**, one word occupying more than an eighth of a
+    /// 256-word window).
+    ///
+    /// Strictly more than `P` occurrences makes an offender, so raising it tolerates more legitimate
+    /// repetition (a dense data literal, a long table) at the cost of catching a loop later.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub repeat_threshold: Option<u64>,
+    /// `M` — how many **distinct** offenders must be present at once for the window to count as
+    /// *saturated*. Absent takes gg's default (**2**).
+    ///
+    /// More than one is required because a single very common token (`the`, `0,`, a brace) is
+    /// ordinary; a loop repeats a whole fragment, so it saturates several words together.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub min_offenders: Option<u64>,
+    /// `R` — how many consecutive words must arrive while the window stays saturated before gg
+    /// abandons the reply. Absent takes gg's default (**3000**).
+    ///
+    /// This is the term that separates a loop from legitimately repetitive *content*: a tilemap
+    /// literal or a long table saturates the window and then **ends**, while a loop saturates it and
+    /// never stops. Requiring the saturation to be sustained is what lets the detector be aggressive
+    /// without discarding a reply that was merely dense. `0` means "trip as soon as the window is
+    /// saturated" — the unmodified frequency rule, and a deliberate choice rather than a mistake.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub min_saturated_run: Option<u64>,
+    /// A hard ceiling, in characters, on a single reply — the backstop for a runaway that is not
+    /// *repetitive* enough to trip the window rule. Absent takes gg's default (**250 000**); `0`
+    /// turns the backstop off and leaves only the repetition rule.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub max_response_chars: Option<u64>,
+}
+
+impl GgLoopDetection {
+    /// Whether this agent declares nothing about loop detection — the `skip_serializing_if`
+    /// predicate on [`GgAgentConfig::loop_detection`] and [`GgSlotBinding::loop_detection`], so a
+    /// configuration that never touched the knob omits the key entirely and every configuration
+    /// stored before loop detection existed round-trips byte for byte.
+    ///
+    /// Written against [`Default`] rather than field by field so a knob added later cannot be
+    /// forgotten here and silently start writing a `loopDetection` key onto every stored profile.
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Whether the detector is armed for this agent — the one question the client asks, and
+    /// therefore the one question that decides which transport it builds.
+    pub fn is_armed(&self) -> bool {
+        self.enabled
+    }
+}
+
 /// A single Root agent with the default capabilities — the [`Default`] and migration
 /// fallback for [`GgCapabilitySet::agents`].
 fn default_agents() -> Vec<GgAgentConfig> {
@@ -2127,6 +2235,15 @@ pub struct GgSlotBinding {
     /// binding was built for opts into the extended one.
     #[serde(default, skip_serializing_if = "GgPromptCacheTtl::is_standard")]
     pub prompt_cache_ttl: GgPromptCacheTtl,
+    /// The [loop detection](GgLoopDetection) the client built for this binding runs with — carried
+    /// here for the same reason the [prompt-cache lifetime](Self::prompt_cache_ttl) is: the binding
+    /// is what a client is resolved from, and whether replies are watched for a generation loop is a
+    /// property of the *agent* whose turns that client serves, not of the model it runs on.
+    ///
+    /// [Disarmed](GgLoopDetection::is_armed) unless the agent profile this binding was built for
+    /// armed it — which is also what decides whether the client uses the streaming transport.
+    #[serde(default, skip_serializing_if = "GgLoopDetection::is_default")]
+    pub loop_detection: GgLoopDetection,
 }
 
 impl GgSlotBinding {
@@ -2137,6 +2254,7 @@ impl GgSlotBinding {
             model_id: model_id.into(),
             model_slot: None,
             prompt_cache_ttl: GgPromptCacheTtl::default(),
+            loop_detection: GgLoopDetection::default(),
         }
     }
 
@@ -2148,6 +2266,7 @@ impl GgSlotBinding {
             model_id: String::new(),
             model_slot: Some(model_slot.into()),
             prompt_cache_ttl: GgPromptCacheTtl::default(),
+            loop_detection: GgLoopDetection::default(),
         }
     }
 
@@ -2155,6 +2274,14 @@ impl GgSlotBinding {
     /// for — how an agent profile's choice reaches the client resolved for it.
     pub fn with_prompt_cache_ttl(mut self, ttl: GgPromptCacheTtl) -> Self {
         self.prompt_cache_ttl = ttl;
+        self
+    }
+
+    /// This binding with `loop_detection` as the [generation-loop policy](GgLoopDetection) its
+    /// client runs under — how an agent profile's choice reaches the client resolved for it, and
+    /// therefore which transport that client is built with.
+    pub fn with_loop_detection(mut self, loop_detection: GgLoopDetection) -> Self {
+        self.loop_detection = loop_detection;
         self
     }
 
@@ -2426,6 +2553,83 @@ pub struct GgLimitBreach {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "contract", ts(optional))]
     pub window: Option<u64>,
+}
+
+/// How one agent turn ended — the wire mirror of gg's own `TurnOutcome`, which is the single
+/// definition of "was that turn an error?" the [execution ceilings](GgRunLimits) are enforced on.
+///
+/// Carried on the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) event so the *same* judgement the
+/// ceilings act on is visible on the stream. Without it, "how error-prone was this configuration?"
+/// is only answerable for the runs a ceiling actually stopped, and a run that failed a third of its
+/// turns and finished anyway is indistinguishable from one that never failed a turn at all.
+///
+/// A closed taxonomy, deliberately: the console labels each value and a study groups by them, so
+/// the set is fixed here rather than being a free string. The mapping from gg's enum to this one is
+/// written by hand on the gg side, so adding a variant there is a decision to publish it here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgTurnOutcome {
+    /// The turn did what its protocol asks: a program that ran to a value (however its individual
+    /// tool calls went), or a tool-calling turn whose requested calls were dispatched and answered.
+    /// The only outcome that clears an agent's
+    /// [consecutive-error run](GgTelemetryKind::TurnOutcome::consecutive_errors).
+    Progressed,
+    /// The turn ended the session — a program called `finish`, or a tool-calling turn requested no
+    /// tools. Terminal, and never an error: a session that ends on purpose has not failed.
+    Finished,
+    /// The turn's declared work could not be carried out as declared. The
+    /// [kind](GgTelemetryKind::TurnOutcome::error) says how, and this is the outcome the error
+    /// ceilings count.
+    Error,
+    /// gg's own machinery failed, so the session ends on the first occurrence. Recorded rather than
+    /// skipped — so the turn accounting never drifts from the number of model calls the run made —
+    /// and kept **apart** from [`Error`](Self::Error), because charging gg's defects to the model's
+    /// error budget would corrupt the one figure this event exists to publish.
+    Fatal,
+}
+
+/// Why a turn was an [error](GgTurnOutcome::Error) — the wire mirror of gg's own `TurnErrorKind`.
+///
+/// Four of the five are [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) shapes, and that
+/// asymmetry is real rather than an oversight: a tool-calling turn whose requested calls are all
+/// dispatched and answered cannot declare work that is then cut short.
+///
+/// # There is deliberately no `response_loop` kind
+///
+/// A reply abandoned by [loop detection](GgLoopDetection) is **not an error turn**: the attempt is
+/// discarded and the request retried, and the turn is judged on whatever the retry produced. A loop
+/// that survives every attempt does reach the turn loop, but it arrives as a model-client failure
+/// after that client exhausted its own retry budget — indistinguishable, at this seam, from any
+/// other exhausted retry — and is therefore reported as [`ModelApi`](Self::ModelApi). The discarded
+/// attempts are counted in their own right, on the
+/// [`loop_aborts`](GgTelemetryKind::TurnOutcome::loop_aborts) field of the same event and in
+/// [`GgErrorSummary::loop_aborts`], because they are money spent on nothing rather than a turn that
+/// failed. Adding a kind here that nothing could ever emit would put a bucket in every console and
+/// every aggregation that is permanently zero.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgTurnErrorKind {
+    /// The model call itself failed, after the client had already exhausted its own retry/backoff
+    /// budget. No turn happened at all. Also where a reply that
+    /// [looped](GgLoopDetection) on every attempt lands.
+    ModelApi,
+    /// The program did not type-strip — a syntax error, a module feature the sandbox has no
+    /// implementation of, or a program past the size/nesting guards. Nothing ran.
+    Transpile,
+    /// The program ran and threw an uncaught fault, so every statement after the throw never ran and
+    /// the model must re-declare the remainder.
+    ProgramFault,
+    /// The sandbox stopped the program at a ceiling — its execution timeout or memory — or the guest
+    /// trapped. The program ran and its landed calls stand, but the work it declared was cut short.
+    SandboxLimit,
+    /// A tool-calling turn ended with no tool call under an
+    /// explicit-call [completion signal](CAPABILITY_COMPLETION), where a text-only reply
+    /// is not a completion but a failure to end the run the one way this run allows. Counted as an
+    /// error so a model that keeps replying in prose trips the error ceilings instead of running to
+    /// its turn budget.
+    MissingCompletion,
 }
 
 /// The gg **launch contract**: the JSON document `core` writes and the `gg` binary
@@ -3301,9 +3505,14 @@ pub enum GgSpeculationPhase {
 /// name, and a telemetry value. Kebab-case rather than this module's usual snake_case for exactly
 /// that reason.
 ///
-/// Every strategy is on unless a configuration turns it off, and every application is disclosed to
-/// the model in its turn feedback — a repair the model is never told about teaches it nothing and
-/// corrupts the ablation, whose whole question is whether models learn the contract.
+/// Every application is disclosed to the model in its turn feedback — a repair the model is never
+/// told about teaches it nothing and corrupts the ablation, whose whole question is whether models
+/// learn the contract.
+///
+/// Most strategies are armed unless a configuration turns them off, because for those, repairing is
+/// strictly safer than not: the reply they delete from could not have run as sent. The exception is
+/// [`drop-doubled-response`](Self::DropDoubledResponse), which is **off** unless a configuration
+/// arms it — see its own documentation for why that asymmetry exists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
@@ -3316,6 +3525,19 @@ pub enum GgHealingStrategy {
     StripFences,
     /// Explanatory lines were removed from before and/or after the program body.
     StripProse,
+    /// The whole reply was one completion concatenated with a byte-identical copy of itself, and the
+    /// trailing copy was deleted. The shape a provider produces when it emits (or a proxy records)
+    /// the same completion twice: the reply's text is exactly `X + X`, with no fence, no blank line
+    /// and no declaration to separate the halves.
+    ///
+    /// The coarser, whole-reply sibling of
+    /// [`drop-duplicate-program`](Self::DropDuplicateProgram), applied **before** it so the finer
+    /// test only ever sees a reply that is not a clean doubling. It is the one strategy that is
+    /// **off unless a configuration arms it**: the half it deletes is valid code under any reading
+    /// other than "the transport duplicated this", so unlike every other repair here, applying it to
+    /// a model that genuinely meant to do the work twice changes behaviour rather than restoring it.
+    /// An operator arms it for the models observed to exhibit the defect.
+    DropDoubledResponse,
     /// The response was one program pasted after an identical copy of itself, and the trailing copy
     /// was deleted. The shape a model produces when it drafts two programs and sends both with no
     /// fence to separate them: the repeat redeclares every `const` in the first copy, so the reply
@@ -3406,6 +3628,13 @@ pub struct GgHealingSummary {
     pub strip_fences: u64,
     /// Applications of [`strip-prose`](GgHealingStrategy::StripProse).
     pub strip_prose: u64,
+    /// Applications of [`drop-doubled-response`](GgHealingStrategy::DropDoubledResponse) — how often
+    /// a reply arrived as a byte-exact doubling of itself.
+    ///
+    /// Zero for every run that did not **arm** the strategy, which is the default; read it together
+    /// with [`enabled`](Self::enabled) rather than as "this model never doubled a reply".
+    #[serde(default)]
+    pub drop_doubled_response: u64,
     /// Applications of
     /// [`drop-duplicate-program`](GgHealingStrategy::DropDuplicateProgram) — how often a model sent
     /// the same program twice in one reply.
@@ -3436,6 +3665,72 @@ pub struct GgHealingSummary {
     /// reads — as an empty armed set, which for those runs is the truth rather than a guess.
     #[serde(default)]
     pub enabled: Vec<GgHealingStrategy>,
+}
+
+/// The run's **error rollup**: how many of its turns failed, how badly they clustered, and how.
+///
+/// Folded from the [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events the run emitted — one per
+/// turn, on every agent — so [`turns`](Self::turns) is both this rollup's denominator and a count
+/// of the model calls the run actually made. Numerator and denominator come from the same event and
+/// therefore cannot drift.
+///
+/// This exists because gg already *judges* every turn — the same judgement the
+/// [error ceilings](GgRunLimits) are enforced on — and used to throw that judgement away when the
+/// agent's loop ended. A run that failed a third of its turns and finished anyway was, in the
+/// durable record, indistinguishable from one that never failed a turn.
+///
+/// # No percentage is stored
+///
+/// [`errors`](Self::errors) over [`turns`](Self::turns) is the error rate; it is deliberately not
+/// recorded as a third field. A stored percentage is a figure that can disagree with its own
+/// denominator — after a rounding change, a partially-recorded run, or a reader that sums two runs'
+/// rates — and the one thing a reader must be able to trust here is that the numbers add up.
+///
+/// # What this rollup deliberately does not count
+///
+/// - **Fatal turns.** A failure of gg's own machinery ends the session on the first occurrence and
+///   is never charged to the model's error budget, exactly as the ceilings never observe one.
+///   `turns` still counts it, so the accounting stays whole.
+/// - **A tool call that failed inside an otherwise successful program.** The program handled it,
+///   which is the entire point of the typed tool surface.
+/// - **Per-agent attribution.** These are run-wide totals; the per-agent breakdown lives on the
+///   stream, where each `TurnOutcome` rides on its own agent's id.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgErrorSummary {
+    /// Turns recorded across every agent, whatever their outcome — the denominator every rate here
+    /// is read against, and one per model call the run made.
+    pub turns: u64,
+    /// Turns whose outcome was an [error](GgTurnOutcome::Error). At most [`turns`](Self::turns), and
+    /// exactly the sum of the per-kind counters below.
+    pub errors: u64,
+    /// The longest **consecutive-error run any single agent reached** — the peak of the same
+    /// counter [`max_consecutive_errors`](GgRunLimits::max_consecutive_errors) is enforced on.
+    ///
+    /// A maximum over agents rather than a run-wide streak: the counter is per agent (turns from
+    /// two agents interleave arbitrarily on a parallel run, so a run-wide streak would be an
+    /// artefact of scheduling), which is why each `TurnOutcome` event carries its agent's running
+    /// count rather than leaving this to be re-derived here.
+    pub max_consecutive: u64,
+    /// Errors of kind [`model_api`](GgTurnErrorKind::ModelApi) — including a reply that
+    /// [looped](GgLoopDetection) on every attempt.
+    pub model_api: u64,
+    /// Errors of kind [`transpile`](GgTurnErrorKind::Transpile).
+    pub transpile: u64,
+    /// Errors of kind [`program_fault`](GgTurnErrorKind::ProgramFault).
+    pub program_fault: u64,
+    /// Errors of kind [`sandbox_limit`](GgTurnErrorKind::SandboxLimit).
+    pub sandbox_limit: u64,
+    /// Errors of kind [`missing_completion`](GgTurnErrorKind::MissingCompletion).
+    pub missing_completion: u64,
+    /// Responses discarded mid-stream by [loop detection](GgLoopDetection). **Not** an error turn —
+    /// a discarded attempt is retried, and the turn is judged on what the retry produced — and
+    /// counted here because it is money and wall-clock spent on nothing, which is the cost the
+    /// capability exists to bound and the figure that says whether arming it was worth it.
+    ///
+    /// Always `0` for a run whose agents all left loop detection disarmed, which is the default.
+    pub loop_aborts: u64,
 }
 
 /// One `(slot, model)` token+cost rollup in a [`GgSessionSummary`] — the aggregatable
@@ -3576,6 +3871,16 @@ pub struct GgSessionSummary {
     /// [`code_executions`](Self::code_executions) counts. All zeroes for a tool-calling run.
     #[serde(default)]
     pub healing: GgHealingSummary,
+    /// How many of the run's turns failed, how badly they clustered, and how — the run's
+    /// [error rollup](GgErrorSummary), folded from the
+    /// [`TurnOutcome`](GgTelemetryKind::TurnOutcome) events every agent emitted.
+    ///
+    /// Unlike [`healing`](Self::healing) this is meaningful in **both** execution modes: a
+    /// tool-calling turn fails too, just in fewer ways. All zeroes for a run recorded before turn
+    /// outcomes were on the wire, which is what the serde default preserves — those runs report no
+    /// turns rather than failing to load.
+    #[serde(default)]
+    pub errors: GgErrorSummary,
     /// How many distinct [issues](GgBoardIssue) the run ever created on its
     /// [board](GgTelemetryKind::BoardState) — the count of distinct issue ids observed across the
     /// run. `0` when the project-management capability was off.
@@ -4952,6 +5257,56 @@ pub enum GgTelemetryKind {
         #[serde(default, skip_serializing_if = "GgResponseHealing::is_clean")]
         #[cfg_attr(feature = "contract", ts(optional = nullable))]
         healing: GgResponseHealing,
+    },
+    /// How one agent turn ended, as gg judged it — the event that makes a run's **error rate**
+    /// observable.
+    ///
+    /// Emitted exactly once per turn, on the agent that took it, from the one seam where gg records
+    /// an outcome against that agent's [error ceilings](GgRunLimits) — so this event and the
+    /// ceilings can never disagree about what an error is, and every outcome is reported, including
+    /// the ones that used to be recorded silently. A run emits one of these per model call it made,
+    /// which makes [`turns`](Self::TurnOutcome::turns) the exact denominator for the run's
+    /// [error rollup](GgErrorSummary).
+    ///
+    /// Distinct from [`CodeExecution`](Self::CodeExecution), which reports what one *program* did
+    /// and only exists under [responses-as-code](CAPABILITY_RESPONSES_AS_CODE): this is the
+    /// mode-agnostic judgement of the **turn**, and a tool-calling run emits it too.
+    TurnOutcome {
+        /// How the turn ended. [`Error`](GgTurnOutcome::Error) is the only outcome the error
+        /// ceilings count.
+        outcome: GgTurnOutcome,
+        /// Why the turn was an error, on an [`Error`](GgTurnOutcome::Error) outcome. Absent on every
+        /// other outcome, so `error != null` and `outcome == "error"` are the same statement — the
+        /// kind is carried separately because a run that alternates between five ways of failing and
+        /// one that fails the same way five times are the same to a ceiling and very different to a
+        /// person reading the run.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<GgTurnErrorKind>,
+        /// This agent's consecutive-error run **after** this turn — `0` on any non-error turn, since
+        /// only a turn that carried out its declared work clears the count.
+        ///
+        /// Carried per turn rather than re-derived by a reader because the count is **per agent**
+        /// and a stream is run-wide: turns from concurrently running agents interleave arbitrarily,
+        /// so a reader folding the stream could only reconstruct a run-wide streak, which is an
+        /// artefact of scheduling rather than a fact about any agent. Taking the maximum of this
+        /// field is what makes [`GgErrorSummary::max_consecutive`] correct.
+        consecutive_errors: u64,
+        /// How many turns this agent has recorded, **including this one** — its own running total,
+        /// not the run's. The per-agent denominator, and the same figure the turn ceiling is
+        /// measured against.
+        turns: u64,
+        /// How many model responses [loop detection](GgLoopDetection) discarded before this turn
+        /// produced one, when any were. `0` — and omitted from the wire — for the ordinary turn, and
+        /// for every turn of every run that left the capability disarmed, which is the default.
+        ///
+        /// This is the **one** place discarded attempts are published. A discarded attempt is never
+        /// a turn of its own (it produced nothing, and the request was retried), so it has no
+        /// `TurnOutcome` event to be counted on; carrying it on the turn that eventually succeeded
+        /// keeps the count on the stream without inventing an event for a reply that does not exist,
+        /// and lets [`GgErrorSummary::loop_aborts`] be a plain sum over these.
+        #[serde(default, skip_serializing_if = "is_zero_u64")]
+        #[cfg_attr(feature = "contract", ts(optional = nullable))]
+        loop_aborts: u64,
     },
     /// An [execution ceiling](GgRunLimits) was breached and the agent's loop is ending on it.
     ///

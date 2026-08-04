@@ -34,7 +34,11 @@ import type {
   DerivedGgState,
   ModuleSnapshot,
 } from "./useGgRunState";
-import { callRatePhrase, shortTokens } from "./useGgRunState";
+import {
+  callRatePhrase,
+  shortTokens,
+  type GgErrorTally,
+} from "./useGgRunState";
 import type { GgAgentModuleSharing, GgAgentModuleSummary } from "./ggModules";
 import {
   moduleKindLabel,
@@ -1140,6 +1144,19 @@ function AgentStats({ agent }: { agent: GgAgentSummary }) {
         value={numberFmt.format(agent.turns)}
         sub={`${(agent.turns / count).toFixed(1)} per instance`}
       />
+      {/* How many of those turns the profile could not carry out — the same judgement
+          gg's error ceilings are enforced on, kept rather than discarded when each
+          instance's loop ended. Beside `turns` because it is read against it, and with
+          the streak in the sub, because a profile that fails a tenth of its turns
+          scattered and one that fails ten in a row and stops are the same percentage. */}
+      <Stat
+        label="errored turns"
+        value={
+          agent.errors.turns === 0 ? "—" : numberFmt.format(agent.errors.errors)
+        }
+        sub={errorRatePhrase(agent.errors)}
+        title="Turns whose declared work could not be carried out — a failed model call, a program that did not compile, threw, or hit a sandbox ceiling, or a turn that declared no work at all. A tool call that failed inside a program that carried on is not one."
+      />
       <Stat
         label="cost each"
         value={costEach != null ? formatCost(costEach) : "—"}
@@ -1210,6 +1227,19 @@ function Stat({
       {sub && <span className={dash.statSub}>{sub}</span>}
     </div>
   );
+}
+
+// A profile's error record as the sub-line under its errored-turn count: the rate with the
+// denominator it was taken against, and the worst streak any one of its instances reached.
+// Never a bare percentage — 50% of two turns and 50% of two hundred are not the same claim
+// about an arm of an ablation — and a profile with no reported outcomes says so rather than
+// showing a clean record it has no evidence for.
+function errorRatePhrase(errors: GgErrorTally): string {
+  if (errors.turns === 0) return "no turn outcomes reported";
+  if (errors.errors === 0) return `none of ${numberFmt.format(errors.turns)}`;
+  return `${formatPercent(errors.errors / errors.turns)} of ${numberFmt.format(
+    errors.turns,
+  )} · ${numberFmt.format(errors.maxConsecutive)} in a row at worst`;
 }
 
 // How an agent's instances ended, as a short phrase — "3 done · 1 failed" — so the instance

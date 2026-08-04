@@ -37,6 +37,7 @@ import type {
   GgTaskEntry,
   GgTelemetryEvent,
   GgTransitionModule,
+  GgTurnErrorKind,
   GgWorkflowPhase,
   GgAgentTransitionKind,
 } from "@test-cabinet/run-record/gg";
@@ -437,6 +438,93 @@ export interface TurnTiming {
 // The whole turn's wall-clock: the three phases sum to it by construction.
 export function turnTotalMs(t: TurnTiming): number {
   return t.promptMs + t.requestMs + t.responseMs;
+}
+
+// How each error kind reads on screen. A **total** record over the contract's
+// `GgTurnErrorKind`, so a kind added to gg is a compile error here rather than a bucket
+// that silently renders as a raw wire value — the same guard `LIMIT_LABELS` takes in the
+// event feed.
+export const TURN_ERROR_LABELS: Record<GgTurnErrorKind, string> = {
+  model_api: "model call",
+  transpile: "transpile",
+  program_fault: "program fault",
+  sandbox_limit: "sandbox limit",
+  missing_completion: "no work declared",
+};
+
+// The error kinds in the order they are shown, which is the contract's own declaration
+// order rather than a frequency sort: a split whose rows move as a run progresses cannot
+// be read at a glance, and the interesting comparison is between runs, not within one.
+export const TURN_ERROR_KINDS = Object.keys(
+  TURN_ERROR_LABELS,
+) as ReadonlyArray<GgTurnErrorKind>;
+
+// How badly a run — or one agent's partition of it — went, folded from the
+// `turn_outcome` events gg emits once per turn.
+//
+// gg already *judges* every turn, because that judgement is what its error ceilings are
+// enforced on; this is that judgement kept rather than thrown away when the agent's loop
+// ends. A run that failed a third of its turns and finished anyway is otherwise
+// indistinguishable from one that never failed a turn.
+//
+// The numerator and the denominator both come from the same event, so they cannot drift
+// — which is also why no percentage is held here. `errors / turns` is the error rate;
+// storing it as a third number would be a figure that could disagree with the two it is
+// derived from.
+export interface GgErrorTally {
+  // Turns that reported an outcome, whatever it was — the denominator. Deliberately NOT
+  // `DerivedGgState.turnCount`, which counts `turn_started`: a turn that is still in
+  // flight has started and has no outcome yet, and a stream recorded before gg published
+  // outcomes has turns and no outcomes at all. Zero here means "nothing to report",
+  // never "nothing went wrong".
+  turns: number;
+  // Turns whose outcome was an error — the sum of `byKind`.
+  errors: number;
+  // The longest consecutive-error run any single agent reached: the peak of the same
+  // counter the consecutive-error ceiling is enforced on. A maximum over the per-event
+  // figure rather than a streak counted here, because the streak is per agent and this
+  // fold spans a whole run — turns from concurrent agents interleave arbitrarily, so a
+  // streak counted off the merged stream would be an artefact of scheduling.
+  maxConsecutive: number;
+  // The errors split by why they were errors. A total record, so every kind has a row
+  // even at zero: "this run never failed to transpile" is a fact, and a bucket that
+  // appears only once it is non-empty makes two runs unreadable side by side.
+  byKind: Record<GgTurnErrorKind, number>;
+  // Model responses loop detection discarded mid-stream before a turn produced one.
+  // **Not** errors — the retry succeeded and the turn is judged on what it produced —
+  // counted because they are money and wall-clock spent on nothing, which is the whole
+  // figure that says whether arming the detector was worth it. Always 0 for a run that
+  // left loop detection disarmed, which is the default.
+  loopAborts: number;
+}
+
+// A tally with nothing in it — the base every fold starts from, and what a stream with
+// no `turn_outcome` events reduces to.
+export function emptyErrorTally(): GgErrorTally {
+  return {
+    turns: 0,
+    errors: 0,
+    maxConsecutive: 0,
+    byKind: {
+      model_api: 0,
+      transpile: 0,
+      program_fault: 0,
+      sandbox_limit: 0,
+      missing_completion: 0,
+    },
+    loopAborts: 0,
+  };
+}
+
+// Sum one tally into another, in place. Every figure adds except `maxConsecutive`, which
+// is a peak: two agents that each reached three errors in a row did not between them
+// reach six.
+export function addErrorTally(into: GgErrorTally, from: GgErrorTally): void {
+  into.turns += from.turns;
+  into.errors += from.errors;
+  into.loopAborts += from.loopAborts;
+  into.maxConsecutive = Math.max(into.maxConsecutive, from.maxConsecutive);
+  for (const kind of TURN_ERROR_KINDS) into.byKind[kind] += from.byKind[kind];
 }
 
 // One recorded revision of one memory — a `memory_revision` event, which gg emits for
@@ -980,6 +1068,11 @@ function ggFeedRow(
     // summary), not the feed, so they render no row.
     case "issue_review":
     case "speculation":
+    // How a turn ended drives the Errors card and the per-agent error record, not the
+    // feed: gg already logs *why* a turn failed in its own words (a `log` row, in the
+    // failure's own vocabulary), so a row here would say the same thing a second time in
+    // weaker terms — and a row on every turn of a clean run would bury the failures.
+    case "turn_outcome":
       return null;
     // What a responses-as-code program printed. `console.*` is not a channel into the
     // model's own window — what a program shows itself is a view, which arrives as its
@@ -1058,6 +1151,12 @@ export interface DerivedGgState {
   // is always available). Over the whole stream it is the run's total turns; over one
   // agent's partition it is that agent's own turn count.
   turnCount: number;
+  // How many of those turns failed, how badly they clustered, and how (see
+  // {@link GgErrorTally}). Over the whole stream it is the run's error record; over one
+  // agent's partition it is that agent's own — and because the consecutive-error streak
+  // is per agent, the per-agent slice is the only place `maxConsecutive` is a streak
+  // rather than a maximum over agents.
+  errors: GgErrorTally;
   usage: UsageTally;
   slotUsage: SlotUsage[];
   agents: Map<string, AgentNode>;
@@ -1510,6 +1609,10 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   let turn = 0;
   // One per `turn_started` — the partition's turn count (see `DerivedGgState.turnCount`).
   let turnCount = 0;
+  // One per `turn_outcome` — how the partition's turns actually went (see
+  // `GgErrorTally`). Kept apart from `turnCount` because they count different things:
+  // a turn in flight has started and has not ended.
+  const errors = emptyErrorTally();
 
   // Get the agent node for an id, creating a placeholder if the stream referenced it
   // before (or without) an `agent_spawned` — so an out-of-order status/return/merge
@@ -1603,6 +1706,30 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         // run's capabilities.
         turnCount += 1;
         break;
+      case "turn_outcome": {
+        // One model request/response cycle ended, and gg says how. This is the same
+        // judgement its error ceilings are enforced on, so folding it here is what makes
+        // "how error-prone was this configuration?" answerable for a run no ceiling
+        // stopped.
+        errors.turns += 1;
+        // `error` is present exactly when the outcome is an error, so the kind is what is
+        // keyed on rather than the outcome — that keeps `errors` equal to the sum of the
+        // per-kind counters by construction.
+        if (gg.error) {
+          errors.errors += 1;
+          errors.byKind[gg.error] += 1;
+        }
+        // A peak, not a sum: see `GgErrorTally.maxConsecutive`. gg publishes the streak
+        // the turn is part of, which is 0 on every non-error turn.
+        errors.maxConsecutive = Math.max(
+          errors.maxConsecutive,
+          gg.consecutiveErrors,
+        );
+        // Discarded looping replies ride on the turn that eventually produced one, and
+        // are omitted from the wire when there were none.
+        errors.loopAborts += gg.loopAborts ?? 0;
+        break;
+      }
       case "usage": {
         // Incremental deltas: sum them into the scope's running total, and — since gg
         // stamps each delta with the profile and model that spent it — into that pair's
@@ -2130,6 +2257,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     lastTimestamp,
     executionStartedAt,
     turnCount,
+    errors,
     usage,
     slotUsage,
     agents,
