@@ -1,8 +1,9 @@
-// The token and cost widgets shared by the two overview surfaces of a gg run: the
-// whole-run Dashboard and, scoped to one agent, that agent's Overview file in the
-// Instances explorer. Keeping them here — one Tokens widget, one Cost widget, one
-// generic two-segment ring — is what makes an agent's overview read as the same
-// dashboard, narrowed to that agent, rather than a different-looking panel.
+// The token, cost and error widgets shared by the overview surfaces of a gg run: the
+// whole-run Dashboard, a profile's row in the Agents section, and — scoped to one
+// instance — that instance's Overview file in the Instances explorer. Keeping them here
+// — one Tokens widget, one Cost widget, one Errors widget, one generic two-segment ring,
+// one error ranking — is what makes an agent's overview read as the same dashboard,
+// narrowed to that agent, rather than a different-looking panel.
 //
 // The Tokens widget shows the run's input and output totals (input = cached +
 // uncached, output = reasoning + output) and absorbs the two composition rings
@@ -13,10 +14,21 @@
 // the model that spent it, so the split holds for a run spanning any number of models —
 // and, on the whole-run Dashboard, so does the same widget's account of *where* the money
 // went: bars per slot (each naming the model bound to it) and per model.
+//
+// The Errors widget is the same tally the Dashboard's error row states, folded into one
+// card: an instance's own errored turns, its worst streak, and its ranked types. The
+// Dashboard keeps its three-tile row — it has a bento row to spend on the run's error
+// record and the ranking wants the width — but both surfaces rank through
+// {@link ErrorTypeRanking} and phrase the rate through {@link errorRatePhrase}, so what
+// "37% of 19 turns" or a missing per-type split means cannot come to differ between them.
 
 import {
   shortTokens,
+  topErrorTypes,
+  TURN_ERROR_LABELS,
   type ContextSnapshot,
+  type GgErrorTally,
+  type GgRankedError,
   type UsageTally,
 } from "./useGgRunState";
 import type { GgCostBreakdown, GgSpendBreakdown, SpendRow } from "./ggCost";
@@ -438,20 +450,184 @@ function Stat({
   value,
   sub,
   className,
+  title,
 }: {
   label: string;
   value: number | null;
   sub?: string;
   /** An extra class on the cell — the totals row's trailing placement. */
   className?: string;
+  /** What the figure counts, spelled out on hover — for the cells whose label cannot. */
+  title?: string;
 }) {
   return (
-    <div className={className ? `${styles.stat} ${className}` : styles.stat}>
+    <div
+      className={className ? `${styles.stat} ${className}` : styles.stat}
+      title={title}
+    >
       <span className={styles.statValue}>
         {value == null ? "—" : formatTokens(Math.round(value))}
       </span>
       <span className={styles.statLabel}>{label}</span>
       {sub && <span className={styles.statSub}>{sub}</span>}
+    </div>
+  );
+}
+
+// --- The error record ----------------------------------------------------------
+
+// How many error types a ranking names before it stops. Three, because the point of a
+// ranking is the narrowing: gg's taxonomy has nineteen specific types, and a scope whose
+// failures do not concentrate into a few of them is telling you that on its face.
+export const TOP_ERROR_TYPES_SHOWN = 3;
+
+/**
+ * A scope's error rate as a sub-line: the rate with the denominator it was taken against,
+ * and the worst streak within it.
+ *
+ * Never a bare percentage — 50% of two turns and 50% of two hundred are not the same claim
+ * about an arm of an ablation — and a scope with no reported outcomes says so rather than
+ * showing a clean record it has no evidence for.
+ *
+ * Shared by every scope that states an error rate (a profile's `errored turns` stat, an
+ * instance's Errors widget), so the one thing a reader must not have to check — whether
+ * "37% of 19" means the same on two panels of the same page — is not a thing two copies
+ * could answer differently.
+ */
+export function errorRatePhrase(errors: GgErrorTally): string {
+  if (errors.turns === 0) return "no turn outcomes reported";
+  if (errors.errors === 0) return `none of ${numberFmt.format(errors.turns)}`;
+  return `${formatPercent(errors.errors / errors.turns)} of ${numberFmt.format(
+    errors.turns,
+  )} · ${numberFmt.format(errors.maxConsecutive)} in a row at worst`;
+}
+
+/**
+ * A scope's errored turns ranked by specific type, most common first — or, where there is
+ * no ranking to draw, which of the three nothings it is.
+ *
+ * The ranking is over the SPECIFIC types (`byType`), not the five base kinds: "top error
+ * types" over five buckets is barely a narrowing, and the base each type rolls up into
+ * rides along on every row as a badge, so nothing the per-kind split said is lost.
+ *
+ * The three nothings stay three nothings, and conflating them would each time claim
+ * something the scope does not say. No outcomes at all is not evidence of a clean run; a
+ * clean run is not a run whose types went unrecorded; and a run recorded before gg typed
+ * its errors has errors this console cannot rank — rendering that as "no errors" would
+ * report the opposite of what happened.
+ */
+export function ErrorTypeRanking({ errors }: { errors: GgErrorTally }) {
+  const top = topErrorTypes(errors, TOP_ERROR_TYPES_SHOWN);
+  if (top.length === 0) {
+    return (
+      <span className={styles.metricUnit}>
+        {errors.turns === 0
+          ? "no turn outcomes reported yet"
+          : errors.errors === 0
+            ? "no errors to rank"
+            : "not recorded — this run predates per-type errors"}
+      </span>
+    );
+  }
+  return (
+    <ul className={styles.errorTypes}>
+      {top.map((row) => (
+        <ErrorTypeRow key={row.id} row={row} />
+      ))}
+    </ul>
+  );
+}
+
+// One row of the ranking: what failed, which base bucket it belongs to, and how often.
+//
+// The base kind rides as a badge because a specific type does not always name its own
+// family — "syntax error" and "unknown name" say nothing about being a transpile failure
+// and a program fault respectively, and that grouping is what the five error ceilings are
+// written against. It is withheld where it would only repeat the label beside it (a base
+// with a single type shares its wording), since a badge that restates its row is noise, and
+// on a type from a newer gg than this console, which has no base to claim.
+function ErrorTypeRow({ row }: { row: GgRankedError }) {
+  const base = row.kind == null ? null : TURN_ERROR_LABELS[row.kind];
+  return (
+    <li className={styles.errorType}>
+      <span className={styles.errorTypeLabel}>{row.label}</span>
+      {base != null && base !== row.label && (
+        <span className={styles.errorTypeBase}>{base}</span>
+      )}
+      <span className={styles.errorTypeCount}>
+        {numberFmt.format(row.count)}
+      </span>
+    </li>
+  );
+}
+
+/**
+ * The Errors widget: what the scope's turns failed at, in one card.
+ *
+ * Its errored-turn count against the turns that reported an outcome at all, the worst
+ * unbroken streak of them, and the ranked split of what they were. On an instance's
+ * Overview that is the instance's own record, folded from its own partition of the stream
+ * — so the streak really is a streak, where the whole-run figure beside it on the
+ * Dashboard is a peak over agents whose turns interleave (see
+ * `GgErrorTally.maxConsecutive`).
+ *
+ * The count leads and the rate follows it, never the other way round: a rate is a derived
+ * figure, and "50%" in the headline slot invites reading a run that has taken two turns as
+ * though it meant something. The denominator travels with the rate for the same reason.
+ */
+export function ErrorsWidget({
+  errors,
+  className,
+  bare = false,
+}: {
+  errors: GgErrorTally;
+  className?: string;
+  /** Drop the card chrome so the widget sits directly in its host — see {@link TokensWidget}. */
+  bare?: boolean;
+}) {
+  const { turns, errors: failed, maxConsecutive, loopAborts } = errors;
+  return (
+    <div className={cardClass(bare, className)}>
+      <span className={styles.cardLabel}>Errors</span>
+      <div className={styles.widgetTotals}>
+        {/* A stream with no outcomes on it at all — a record written before gg published
+            them, or a scope that has not finished its first turn — says so rather than
+            claiming a clean record, which is what a bare "0" would claim. */}
+        <Stat
+          label="errored turns"
+          value={turns === 0 ? null : failed}
+          sub={errorRatePhrase(errors)}
+          title="Turns whose declared work could not be carried out — a failed model call, a program that did not compile, threw, or hit a sandbox ceiling, or a turn that declared no work at all. A tool call that failed inside a program that carried on is not one."
+        />
+        {/* The counter gg's own consecutive-error ceiling is enforced on: a scope reading
+            "2 of 40 turns" is a different animal depending on whether those two were
+            adjacent. */}
+        <Stat
+          label="worst streak"
+          value={turns === 0 ? null : maxConsecutive}
+          sub={
+            turns === 0
+              ? "no turn outcomes reported"
+              : failed === 0
+                ? "no turn errored"
+                : "errored turns in a row"
+          }
+        />
+        {/* Not an error — the retry succeeded — but money and wall-clock spent on nothing,
+            which is the figure that says whether arming loop detection paid for itself.
+            Absent on every scope that left it disarmed, which is the default. */}
+        {loopAborts > 0 && (
+          <Stat
+            label="looping replies"
+            value={loopAborts}
+            sub="discarded, then retried"
+          />
+        )}
+      </div>
+      <div className={styles.spendGroup}>
+        <span className={styles.spendGroupLabel}>Top types</span>
+        <ErrorTypeRanking errors={errors} />
+      </div>
     </div>
   );
 }

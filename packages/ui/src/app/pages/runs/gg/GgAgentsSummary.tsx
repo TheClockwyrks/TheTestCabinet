@@ -29,11 +29,7 @@ import type {
   DerivedGgState,
   ModuleSnapshot,
 } from "./useGgRunState";
-import {
-  callRatePhrase,
-  shortTokens,
-  type GgErrorTally,
-} from "./useGgRunState";
+import { callRatePhrase, shortTokens } from "./useGgRunState";
 import type { GgAgentModuleSharing, GgAgentModuleSummary } from "./ggModules";
 import {
   moduleKindLabel,
@@ -49,6 +45,7 @@ import { MODULE_ICONS } from "./ggAgentEntries";
 import {
   CostWidget,
   TokensWidget,
+  errorRatePhrase,
   formatCost,
   formatPercent,
 } from "./GgOverviewWidgets";
@@ -380,13 +377,17 @@ function Figure({
 // One agent in full, behind its row: what it is configured as, what its instances spent, and
 // what filled their windows.
 //
-// The detail leads with the agent's *identity* — the capabilities it was granted, the surface
-// gg then resolved out of them, and the instances that came of it — because those say what
-// this arm of the experiment is, and every number below is read against them. The three are
-// one statement read in narrowing order: what was asked for, what was actually offered, and
-// who it was offered to. Then six content sections in one order: the summed figures, the two
-// spend widgets that take the money and token figures of that row apart, what those instances
-// hold, what filled their windows, and what they called. Each is a direct child of
+// The detail leads with the instances the profile actually spawned, and then with what they
+// were configured as — the capabilities the arm was granted and the surface gg resolved out
+// of them. The instances come first because they are the concrete thing the row was opened
+// to reach: every figure under here is a sum over them, each chip is the way into that one
+// instance's own explorer, and a reader who wants a specific instance should not have to
+// scroll past the arm's configuration to find it. The capability chips and the resolved
+// surface then annotate them — what this arm asked for, and what gg gave them of it — which
+// is the order the two are read in once you know how many there were. Then six content
+// sections in one order: the summed figures, the two spend widgets that take the money and
+// token figures of that row apart, what those instances hold, what filled their windows,
+// and what they called. Each is a direct child of
 // `.agentDetail`, so every boundary between them is the single gap that container sets — see
 // the stylesheet for why the uniformity is deliberate.
 // The tools this profile's chips mark as struck, and whether that marking is a finding or
@@ -416,6 +417,11 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
   const ablation = agentAblation(agent);
   return (
     <>
+      {/* Who actually ran, first — see the note above this component. It renders nothing at
+          all for a profile the run never spawned, so it needs no guard of its own: the
+          `never` line below is that case's whole answer. */}
+      <InstanceChips agent={agent} />
+
       {(agent.capabilities.length > 0 || ablation.tools.length > 0) && (
         <div className={styles.capabilities}>
           {agent.capabilities.map((id) => (
@@ -439,8 +445,8 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
         </div>
       )}
 
-      {/* Directly under the chips, because it is the same statement made one step later:
-          the capability chips are what the configuration asked for, this is what gg resolved
+      {/* Directly under the capability chips, because it is the same statement made one step
+          later: those chips are what the configuration asked for, this is what gg resolved
           out of them for the instances that actually ran — with the struck chips above
           already gg's own (see `agentAblation`). It renders nothing at all for a profile
           whose instances reported no surface — every record written before gg emitted one. */}
@@ -448,7 +454,6 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
 
       {ran ? (
         <>
-          <InstanceChips agent={agent} />
           {/* The summed figures lead the content: "how many ran, how they ended, what a
               typical one cost, how hard they leaned on the window" is the question the row
               was opened to ask, and everything under it is one of those figures taken
@@ -661,7 +666,12 @@ function SurfaceEntries({
             >
               <span>{entry.name}</span>
               {count != null && (
-                <span className={styles.surfaceEntryCalls}>{count}×</span>
+                // Grouped, like every other count on this panel and like the same figure
+                // on an instance's own surface file: a profile summing twelve instances'
+                // calls is exactly where a four-digit figure turns up.
+                <span className={styles.surfaceEntryCalls}>
+                  {numberFmt.format(count)}×
+                </span>
               )}
               {partial && (
                 <span className={styles.surfaceEntryPartial}>
@@ -1217,19 +1227,6 @@ function Stat({
       {sub && <span className={dash.statSub}>{sub}</span>}
     </div>
   );
-}
-
-// A profile's error record as the sub-line under its errored-turn count: the rate with the
-// denominator it was taken against, and the worst streak any one of its instances reached.
-// Never a bare percentage — 50% of two turns and 50% of two hundred are not the same claim
-// about an arm of an ablation — and a profile with no reported outcomes says so rather than
-// showing a clean record it has no evidence for.
-function errorRatePhrase(errors: GgErrorTally): string {
-  if (errors.turns === 0) return "no turn outcomes reported";
-  if (errors.errors === 0) return `none of ${numberFmt.format(errors.turns)}`;
-  return `${formatPercent(errors.errors / errors.turns)} of ${numberFmt.format(
-    errors.turns,
-  )} · ${numberFmt.format(errors.maxConsecutive)} in a row at worst`;
 }
 
 // How an agent's instances ended, as a short phrase — "3 done · 1 failed" — so the instance

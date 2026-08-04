@@ -894,6 +894,84 @@ describe("GgRunMonitorPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("reads an instance's own error record on its Overview", () => {
+    // The whole-run figure on the Dashboard is a sum: an instance that failed every turn
+    // it took and one that failed none are indistinguishable in it, and the run's
+    // consecutive-error peak names no agent. So each instance states its own — folded from
+    // its own partition of the stream, which is why the streak here is a real streak
+    // rather than a peak over agents whose turns interleave.
+    renderMonitor([
+      sessionStarted(),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      ggFrom("agent-0", "root", {
+        type: "agent_spawned",
+        slot: "Coder",
+        modelId: "mock/scripted-builder",
+        depth: 1,
+      }),
+      // The root took one turn and it went through; the child took three and failed two
+      // of them back to back.
+      ggFrom("root", undefined, {
+        type: "turn_outcome",
+        outcome: "progressed",
+        consecutiveErrors: 0,
+        turns: 1,
+      } as GgTelemetryKind),
+      ggFrom("agent-0", "root", {
+        type: "turn_outcome",
+        outcome: "error",
+        error: "program_fault",
+        errorType: "program_throw",
+        consecutiveErrors: 1,
+        turns: 1,
+      } as GgTelemetryKind),
+      ggFrom("agent-0", "root", {
+        type: "turn_outcome",
+        outcome: "error",
+        error: "program_fault",
+        errorType: "program_throw",
+        consecutiveErrors: 2,
+        turns: 2,
+      } as GgTelemetryKind),
+      ggFrom("agent-0", "root", {
+        type: "turn_outcome",
+        outcome: "progressed",
+        consecutiveErrors: 0,
+        turns: 3,
+      } as GgTelemetryKind),
+    ]);
+    openTab("Instances");
+    openFolder("agent agent-0");
+    openFile("agent-0 overview");
+    const errors = screen.getByText("Errors").parentElement!;
+    // Its errored turns against the turns it took, and the two that were adjacent.
+    expect(within(errors).getByText("errored turns")).toBeInTheDocument();
+    expect(
+      within(errors).getByText("67% of 3 · 2 in a row at worst"),
+    ).toBeInTheDocument();
+    expect(
+      within(errors).getByText("errored turns in a row"),
+    ).toBeInTheDocument();
+    // And what they were, ranked by specific type — the same ranking the Dashboard's row
+    // draws, narrowed to this instance.
+    expect(within(errors).getByText("uncaught throw")).toBeInTheDocument();
+    expect(within(errors).getByText("program fault")).toBeInTheDocument();
+
+    // The root's own record is its own: one turn, none of it errored. Reading the run's
+    // sum here would have said two errors on an agent that had none.
+    openFile("root overview");
+    const rootErrors = screen.getByText("Errors").parentElement!;
+    expect(within(rootErrors).getByText("none of 1")).toBeInTheDocument();
+    expect(
+      within(rootErrors).getByText("no errors to rank"),
+    ).toBeInTheDocument();
+  });
+
   it("renders the task DAG on an agent's tasks module", () => {
     renderMonitor();
     openTab("Instances");
@@ -1140,13 +1218,17 @@ describe("GgRunMonitorPage", () => {
     openFile("root tools");
 
     // Every tool it was given, whether or not it used one: the two calls it made, and
-    // the two it never made — dimmed and said in words, never dropped.
-    expect(surfaceRow("offered tools", "read_file")).toHaveTextContent("2×");
+    // the two it never made — a real zero, muted, never dropped. The count leads the name
+    // on every row, so the figures line up down the list rather than hanging off names of
+    // every length.
+    expect(surfaceRow("offered tools", "read_file")).toHaveTextContent(
+      /^2×read_file$/,
+    );
     expect(surfaceRow("offered tools", "read_file")).not.toHaveAttribute(
       "data-uncalled",
     );
     expect(surfaceRow("offered tools", "write_file")).toHaveTextContent(
-      "never called",
+      /^0×write_file$/,
     );
     expect(surfaceRow("offered tools", "write_file")).toHaveAttribute(
       "data-uncalled",
@@ -1252,22 +1334,24 @@ describe("GgRunMonitorPage", () => {
     expect(
       screen.getByText("Read and write the workspace."),
     ).toBeInTheDocument();
-    expect(surfaceRow("offered apis", "fs.readFile")).toHaveTextContent("1×");
+    expect(surfaceRow("offered apis", "fs.readFile")).toHaveTextContent(
+      /^1×fs\.readFile$/,
+    );
     expect(surfaceRow("offered apis", "fs.writeFile")).toHaveTextContent(
-      "never called",
+      /^0×fs\.writeFile$/,
     );
     // The call no tool backs — and the whole complaint this accounting answers. It was
     // written once, it reads as once, and the `read_file` it ran through is nowhere on the
     // page.
     const view = surfaceRow("offered apis", "view.openFile");
-    expect(view).toHaveTextContent("1×");
+    expect(view).toHaveTextContent(/^1×view\.openFile$/);
     expect(view).not.toHaveAttribute("data-uncalled");
     expect(view).toHaveAttribute("title", "view.openFile was called 1 time.");
     // `list` is bound on every object, and now reads as a real zero rather than as a blank:
     // "offered and never called" is an answer, "no count" was not.
     const list = surfaceRow("offered apis", "fs.list");
     expect(list).toHaveAttribute("data-uncalled");
-    expect(list).toHaveTextContent("never called");
+    expect(list).toHaveTextContent(/^0×fs\.list$/);
     expect(
       within(screen.getByRole("region", { name: "offered apis" })).getByText(
         "view.list",
@@ -1323,20 +1407,23 @@ describe("GgRunMonitorPage", () => {
     openFile("root apis");
 
     const called = surfaceRow("offered apis", "view.openFile");
-    expect(called).toHaveTextContent("1×");
+    expect(called).toHaveTextContent(/^1×view\.openFile$/);
     expect(called).toHaveAttribute("title", "view.openFile was called 1 time.");
     // The two the model did not write. Under the old tool-keyed join both read as called
     // once, because the read they share a core with had run.
     for (const name of ["fs.readFile", "fs.readTextFile"]) {
       const row = surfaceRow("offered apis", name);
       expect(row).toHaveAttribute("data-uncalled");
-      expect(row).toHaveTextContent("never called");
+      expect(row).toHaveTextContent(`0×${name}`);
     }
   });
 
-  it("says a function offered and never called was never called", () => {
+  it("counts a function offered and never called as a real zero", () => {
     // The never-called half of the contrast, which is the half an ablation is read for: it
-    // has to be a real finding about the model rather than an absence of measurement.
+    // has to be a real finding about the model rather than an absence of measurement. So it
+    // is stated as the measurement it is — `0×`, in the same column as every other figure —
+    // rather than in prose that cannot be compared against the row above it, with the
+    // muting and the tooltip carrying what the zero means.
     renderMonitor([
       sessionStarted(["filesystem"]),
       gg({
@@ -1365,11 +1452,14 @@ describe("GgRunMonitorPage", () => {
 
     const row = surfaceRow("offered apis", "fs.readTextFile");
     expect(row).toHaveAttribute("data-uncalled");
-    expect(row).toHaveTextContent("never called");
+    expect(row).toHaveTextContent(/^0×fs\.readTextFile$/);
     expect(row).toHaveAttribute(
       "title",
       "fs.readTextFile was offered and never called.",
     );
+    // And nothing on the page says it in words any more — the row is a figure, and the
+    // sentence lives where a reader asks for it.
+    expect(screen.queryByText("never called")).toBeNull();
   });
 
   it("offers no surface file to an instance that never reported one", () => {

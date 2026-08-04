@@ -390,6 +390,23 @@ describe("GgAgentsSummary detail", () => {
     ]);
   });
 
+  it("leads with the instances that ran, ahead of what they were configured as", () => {
+    // The instances are the concrete thing the row was opened to reach — every figure under
+    // them is a sum over them, and each chip is the way into that one instance's explorer —
+    // so they come before the capability chips that say what the arm asked for. Reading the
+    // configuration first left a reader scrolling past it to find the instance they came
+    // for.
+    const { detail } = openReviewer();
+    const instance = within(detail).getByRole("button", {
+      name: /^Open r1 ·/,
+    });
+    const capability = within(detail).getByText("memories");
+    expect(
+      instance.compareDocumentPosition(capability) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("opens the context spend on Views and tells the two kinds of view apart", () => {
     // The reading covers both kinds of view an agent can open — a file it asked to see and a
     // value it composed and showed itself — because both are material it CHOSE to keep

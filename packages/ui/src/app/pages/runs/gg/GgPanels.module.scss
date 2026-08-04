@@ -3412,15 +3412,6 @@ details[open] > summary .reqCaret {
   font-variant-numeric: tabular-nums;
 }
 
-// "read_file 3×" — the tool a figure several bound functions share belongs to, named beside
-// it. Without the name the count reads as the row's own, which is the one thing this file
-// must not say: gg records a call under the tool, and three functions can be behind one.
-.toolCallsGate {
-  font-family: monospace;
-  margin-right: 0.35em;
-  opacity: 0.8;
-}
-
 .toolBar {
   flex: 1 1 4rem;
   height: 0.4rem;
@@ -3449,11 +3440,41 @@ details[open] > summary .reqCaret {
 }
 
 // --- Offered surface (an instance's Tools / APIs file) ------------------------
-// What the instance was offered to call, over what it called. The rows are the tools
-// panel's rows above — an offered tool and a called one are the same kind of thing, and
-// two shapes for one kind of thing read as two kinds — so all this adds is the state a
-// usage list has no need for: a row for something never called, and a row for something
-// the run withheld.
+// What the instance was offered to call, over what it called. It is built out of the tools
+// panel's row above (`.toolRow`) and shares everything the two really have in common — the
+// row, the name, the figure's typography — and departs from it in exactly two places, both
+// because this file answers a different question. It puts the figure FIRST (see
+// `.toolCallCount`), and it carries the two states a usage list has no need for: a row for
+// something offered and never called, and a row for something the run withheld.
+//
+// Both files' rows read the same way *within* a file, which is the property that matters:
+// the Tools file and the APIs file are one component, so what an agent was offered reads
+// identically whether it was offered tools or API objects.
+
+// An offered row reads count-first — "12× read_file" — where a usage row reads name-first:
+// the usage panel lists only the tools an instance CALLED, so its names are the finding and
+// its counts qualify them, while every row here names something the instance was given and
+// the figure is the only thing that differs down the list. A leading, fixed, right-aligned
+// column is scannable straight down; a trailing one hangs off names of every length.
+//
+// The column is wide enough for four digits and a multiplication sign without the names
+// beside it stepping in and out as the counts grow, and it does not shrink: a row whose
+// count is squeezed out is a row that says nothing.
+.toolCallCount {
+  flex: 0 0 3.5rem;
+  text-align: right;
+  font-size: t.$font-sm;
+  color: t.$color-text-muted;
+  font-variant-numeric: tabular-nums;
+}
+
+// With the count leading, the name takes the row's spare width instead of the 12rem basis
+// the usage rows give it — there is no bar or token figure after it here, so a name clipped
+// at 12rem would be clipped with the rest of the row standing empty beside it. A namespaced
+// API function ("specifications.list") is exactly the length that costs.
+.surfaceRow .toolName {
+  flex: 1 1 auto;
+}
 
 // The file's sections stacked like the Overview's: the offered set, then the ablation.
 .surfaceFile {
@@ -3467,11 +3488,18 @@ details[open] > summary .reqCaret {
   margin-top: t.$space-2xs;
 }
 
-// Offered and never called. Dimmed rather than dropped, and never so far dimmed that it
-// stops being readable: the contrast between this row and the one above it is the whole
-// reason the file exists, and a row nobody can read cannot carry it.
-.toolRow[data-uncalled] {
-  opacity: 0.62;
+// Offered and never called. Muted rather than dropped, and muted with the palette's own
+// secondary text token rather than by fading the row out: the contrast between this row and
+// the one above it is the whole reason the file exists, and it has to survive being read.
+// (An opacity on top of a muted colour is what would not — the two compound, and the row
+// lands around 3.5:1 against the panel. The colour alone is the same step every other
+// secondary reading on this page takes, and stays over 8:1.)
+//
+// It is the row's NAME that mutes, not the count: `0×` is already set in the secondary
+// colour on every row, and re-muting it would leave the one figure the row exists to state
+// as the faintest thing on it.
+.toolRow[data-uncalled] .toolName {
+  color: t.$color-text-muted;
 }
 
 // Never offered at all — struck out as well as dimmed, because "the model ignored it"

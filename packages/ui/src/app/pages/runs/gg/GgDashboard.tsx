@@ -11,15 +11,12 @@ import type {
 } from "./useGgRunState";
 import {
   ROOT_ID,
-  TURN_ERROR_LABELS,
   addErrorTally,
   emptyErrorTally,
   ggPeakContext,
   ggToolBreakdown,
   shortTokens,
-  topErrorTypes,
   type GgErrorTally,
-  type GgRankedError,
 } from "./useGgRunState";
 import {
   pricedSlots,
@@ -34,7 +31,12 @@ import {
   type GgThroughput,
 } from "./ggThroughput";
 import { formatLimit, formatRuntime, type GgRuntime } from "./ggRuntime";
-import { CostWidget, TokensWidget, formatPercent } from "./GgOverviewWidgets";
+import {
+  CostWidget,
+  ErrorTypeRanking,
+  TokensWidget,
+  formatPercent,
+} from "./GgOverviewWidgets";
 import { useGgExplorerNav } from "./GgExplorerNav";
 import styles from "./GgDashboard.module.scss";
 
@@ -508,11 +510,6 @@ function TurnsCard({
   );
 }
 
-// How many error types the ranking names before it stops. Three, because the point of a
-// ranking is the narrowing: gg's taxonomy has nineteen specific types, and a run whose
-// failures do not concentrate into a few of them is telling you that on its face.
-const TOP_ERROR_TYPES_SHOWN = 3;
-
 // The error row: how many of the run's turns failed, how hard they clustered, and which
 // specific types they were — one tile each.
 //
@@ -536,10 +533,6 @@ const TOP_ERROR_TYPES_SHOWN = 3;
 // anyway indistinguishable from one that never failed a turn.
 function ErrorsRow({ errors }: { errors: GgErrorTally }) {
   const { turns, errors: failed, maxConsecutive, loopAborts } = errors;
-  // The ranking is over the SPECIFIC types (`byType`), not the five base kinds: "top error
-  // types" over five buckets is barely a narrowing, and the base each type rolls up into
-  // rides along on every row as a badge, so nothing the per-kind split said is lost.
-  const top = topErrorTypes(errors, TOP_ERROR_TYPES_SHOWN);
   return (
     <div className={styles.errorsBlock}>
       {/* The headline is the error COUNT rather than the rate: a rate is a derived figure,
@@ -599,53 +592,15 @@ function ErrorsRow({ errors }: { errors: GgErrorTally }) {
         </span>
       </div>
 
+      {/* The ranking itself is `ErrorTypeRanking`, which an instance's Overview draws too:
+          the run's split and one instance's split are the same reading at two scopes, and
+          a second copy here would be free to disagree with it about what a missing
+          per-type breakdown means. */}
       <div className={`${styles.card} ${styles.errorsRanking}`}>
         <span className={styles.cardLabel}>Top error types</span>
-        {top.length > 0 ? (
-          <ul className={styles.errorTypes}>
-            {top.map((row) => (
-              <ErrorTypeRow key={row.id} row={row} />
-            ))}
-          </ul>
-        ) : (
-          // Three distinct nothings, and conflating them would each time claim something
-          // the run does not say. No outcomes at all is not evidence of a clean run; a
-          // clean run is not a run whose types went unrecorded; and a run recorded before
-          // gg typed its errors has errors this console cannot rank — rendering that as
-          // "no errors" would report the opposite of what happened.
-          <span className={styles.metricUnit}>
-            {turns === 0
-              ? "no turn outcomes reported yet"
-              : failed === 0
-                ? "no errors to rank"
-                : "not recorded — this run predates per-type errors"}
-          </span>
-        )}
+        <ErrorTypeRanking errors={errors} />
       </div>
     </div>
-  );
-}
-
-// One row of the ranking: what failed, which base bucket it belongs to, and how often.
-//
-// The base kind rides as a badge because a specific type does not always name its own
-// family — "syntax error" and "unknown name" say nothing about being a transpile failure
-// and a program fault respectively, and that grouping is what the five error ceilings are
-// written against. It is withheld where it would only repeat the label beside it (a base
-// with a single type shares its wording), since a badge that restates its row is noise, and
-// on a type from a newer gg than this console, which has no base to claim.
-function ErrorTypeRow({ row }: { row: GgRankedError }) {
-  const base = row.kind == null ? null : TURN_ERROR_LABELS[row.kind];
-  return (
-    <li className={styles.errorType}>
-      <span className={styles.errorTypeLabel}>{row.label}</span>
-      {base != null && base !== row.label && (
-        <span className={styles.errorTypeBase}>{base}</span>
-      )}
-      <span className={styles.errorTypeCount}>
-        {numberFmt.format(row.count)}
-      </span>
-    </li>
   );
 }
 

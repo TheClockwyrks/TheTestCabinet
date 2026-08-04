@@ -32,13 +32,13 @@ per-agent `disabledTools` that strike a tool whose capability is on.
 So the console can state the difference this page exists to make. In the **Instances**
 explorer each agent gets a **tools** file (**apis**, for a
 [code-shaped](/gg/responses-as-code/) agent), and in the **Agents** panel each profile's
-detail leads with the same set unioned across its instances:
+detail carries the same set unioned across its instances:
 
-- a tool the model **called** carries its count — for a code agent that figure belongs to
-  the tool and is named with it, since one tool can gate several of the functions a program
-  may write;
-- a tool it was **offered and never called** stays in the list, dimmed — the model ignored
-  it, which is a result about the model;
+- a tool the model **called** leads with its count — and for a code agent that count is
+  the **function's own**, since gg records a model-facing call under the function the
+  program wrote rather than under whatever tool ran underneath it;
+- a tool it was **offered and never called** stays in the list, reading a real `0×` and
+  muted — the model ignored it, which is a result about the model;
 - a tool `disabledTools` **withheld** is listed apart and marked as such — the harness
   never offered it, which is a result about the run.
 

@@ -111,23 +111,24 @@ identically down to the order of the cards) reads a run through these surfaces:
   them, and the **context spend** described
   [below](#what-filled-the-window-and-what-it-cost). A profile the configuration
   declares but the run never instantiated still gets a row, because "the reviewer never
-  ran" is a result. The detail **leads** with what the profile was *offered* — headed
-  **Tools** or **APIs** by the mode its instances reported answering in — because that is
-  the same statement the capability chips above it make, one step later: the chips are
-  what the configuration asked for, this is what gg
-  [resolved out of them](#what-an-agent-is-offered). It is a **union** across the
+  ran" is a result. The detail **leads** with the profile's **instances** — one chip
+  each, opening that instance in the Instances explorer — because they are the concrete
+  thing the row was opened to reach: every figure under them is a sum over them, and a
+  reader after one particular instance should not have to scroll past the arm's
+  configuration to find it. What the profile *asked for* (the capability chips) and what
+  gg **resolved out of them** annotate those instances, in that order: the offered set,
+  headed **Tools** or **APIs** by the mode the instances reported answering in, is the
+  same statement the chips make one step later — see
+  [what an agent is offered](#what-an-agent-is-offered). It is a **union** across the
   profile's instances and pointedly not a sum: an offered set is not a quantity, and
   instances of one profile legitimately differ, since where an instance stands in its
   [machine](/gg/fsms/) gates what it may call — so an entry only some of them were
   offered carries the fraction that says so rather than being averaged away or dropped.
-  An entry the profile never called is dimmed rather than removed, which is the whole
-  contrast; the observed-usage section at the foot of the detail (**Tool calls**) is the
-  other half of it, and the two are deliberately separate read-outs. A figure that
-  several bound functions share is named with the **tool** it belongs to, for the reason
-  given [below](#what-an-agent-is-offered) — the count is the gate's, and a chip that
-  showed it bare would claim it for the one function it sits on.
-  Each instance is a chip that opens it in the Instances explorer.
-  Under those chips sits the one read-out on the panel that is **not** a sum: what this
+  An entry the profile never called reads a real `0×` and is muted rather than removed,
+  which is the whole contrast; the observed-usage section at the foot of the detail
+  (**Tool calls**) is the other half of it, and the two are deliberately separate
+  read-outs.
+  Under the offered set sits the one read-out on the panel that is **not** a sum: what this
   profile's instances *hold*. Module state does not fold — twelve instances may be reading
   one store or twelve, and which of those it is *is* the configuration under test — so
   each [module](/gg/modules/#the-agents-tab-what-a-profiles-instances-hold) kind states
@@ -187,31 +188,38 @@ identically down to the order of the cards) reads a run through these surfaces:
   and one name for both would misname whichever agent it was not written for. It is
   offered exactly when that instance reported a surface, because a stream recorded
   before gg reported one carries none at all and a file showing an empty toolset for
-  those runs would assert the very thing it exists to distinguish. It lists every tool
-  the instance was offered with its own call count — the ones it never reached for
-  **dimmed rather than dropped**, which is the entire point of the file — and, beside
-  them, the tools this instance's [ablation](/gg/toolset-ablation/) withheld, marked as
-  such rather than merely absent. That withheld list is gg's own, reported on the same
+  those runs would assert the very thing it exists to distinguish. Every row reads
+  **count first** — `12× read_file` — because every row names something the instance was
+  *given*, so the names are the column that repeats and the figures are the column that
+  differs, and a figure in a fixed leading column can be read straight down the list. A
+  tool the instance never reached for reads a real `0×` and is **muted rather than
+  dropped**, which is the entire point of the file; the sentence behind the figure
+  ("offered and never called") is on the row's hover text. Beside them sit the tools this
+  instance's [ablation](/gg/toolset-ablation/) withheld, marked as such rather than
+  merely absent. That withheld list is gg's own, reported on the same
   event rather than re-read from the configuration, so a `disabledTools` entry that
   names nothing gg offers is never shown here as an applied ablation. A code agent reads
   the same thing through its
   objects: one card per object, carrying the one-line description its own system prompt
-  introduced the object by, over the functions this instance bound, each joined to its
-  count through the gg **tool** behind it — a view call, an ending call, a
-  [program-library](/gg/program-library/) call, and the `list` every object ends with
-  have no tool behind them, so they carry no
-  figure at all rather than a zero that would read as ignored. Where one tool backs
-  several of the functions an agent bound — `read_file` is behind `fs.readFile`,
-  `fs.readTextFile` *and* `view.openFile` — the figure is the **tool's** and is named
-  with it, because gg records a call under the tool and nothing says which function
-  wrote it; claiming it for each of them in turn would report a function the model never
-  wrote as one it used. A gate nothing ran through needs no such care: zero means none of
-  the functions behind it ran, which is true of each of them on its own.
+  introduced the object by, over the functions this instance bound, each carrying **its
+  own** count. No gg tool name appears anywhere on that file: gg records a model-facing
+  call under the function the model wrote, so a view call, a documentation lookup, an
+  ending call, a [program-library](/gg/program-library/) call and the `list` every object
+  ends with are counted exactly as a file read is, and three functions over one core
+  (`fs.readFile`, `fs.readTextFile` and `view.openFile` all run a `read_file`) are three
+  figures rather than one shared between them. The only row with no figure at all is one
+  read off a record written **before** gg counted per function — a fact about the record,
+  said as one on hover, since a zero there would accuse the model of ignoring everything
+  it was given.
   The **Overview** also carries the agent's own
   **Tool calls** breakdown — the itemized version of the Dashboard row's tool chips:
   every tool it *called*, how many times, and how much each tool's results added to its
   window (what it was *offered* is the file above; the two are named apart because they
-  are the two halves of one question, not one read-out twice) — its **working
+  are the two halves of one question, not one read-out twice) — its own **Errors**
+  widget (its errored turns against the turns it took, its worst *unbroken* streak of
+  them, and its ranked [error types](#the-taxonomy-has-two-levels): the run-wide figures
+  on the Dashboard are a sum, in which an instance that failed every turn it took and one
+  that failed none are indistinguishable) — its **working
   directory** (the isolated
   [worktree](/gg/project-management/) checkout its tools are rooted at, or the shared
   workspace), and, while it is blocked, **what it is waiting on**: `blocked` on its

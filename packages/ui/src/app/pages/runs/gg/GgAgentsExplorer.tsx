@@ -62,6 +62,7 @@ import { agentThroughput } from "./ggThroughput";
 import {
   ContextUsageRing,
   CostWidget,
+  ErrorsWidget,
   TokensWidget,
   formatPercent,
 } from "./GgOverviewWidgets";
@@ -100,6 +101,11 @@ import { LinkIcon, ModulesIcon } from "./ggIcons";
 // instances and could not say so. A module file therefore leads with the store's
 // identity — who else holds it, how this holder came by it, whether it reaches the
 // prompt, what it costs the windows it is in — and only then shows the contents.
+
+// Grouped digits for the counts this explorer states as bare figures (an offered
+// entry's call count), so an instance that called one tool four thousand times reads
+// as "4,000×" rather than "4000×".
+const numberFmt = new Intl.NumberFormat("en-US");
 
 // One gg telemetry row as a shared feed line. The tone doubles as the palette key
 // (the stylesheet maps gg's tones onto the same `--ttc-event-*` tokens the harness
@@ -858,9 +864,10 @@ function ActivityFeed({ feed, live }: { feed: FeedRow[]; live: boolean }) {
 
 // An agent's Overview file: the same read-out the whole-run Dashboard gives, scoped
 // to this one agent. Its identity card, how full its context window is, its own
-// Tokens and Cost widgets (the very components the Dashboard uses, fed this agent's
-// usage) — so a subagent's cost is legible in the same shape as the run's, not a
-// different-looking summary — and its tool-usage breakdown (the itemized version of
+// Tokens, Cost and Errors widgets (the very components the Dashboard uses, fed this
+// agent's own partition of the stream) — so a subagent's spend and its failures are
+// legible in the same shape as the run's, not a different-looking summary — and its
+// tool-usage breakdown (the itemized version of
 // the Dashboard row's tool chips). The run's process structure is a whole-run fact,
 // so it hangs off the root agent only; a
 // session-scoped card (status, the agent overview, the configuration) has no place on
@@ -930,6 +937,14 @@ function OverviewFile({
         <div className={dash.overviewCards}>
           <TokensWidget usage={state.usage} throughput={throughput} bare />
           <CostWidget usage={state.usage} breakdown={costBreakdown} bare />
+          {/* What this instance's turns FAILED at, beside what they spent — the same
+              widget the Dashboard's error row is folded from, narrowed to one instance.
+              It belongs on the Overview and not only on the Dashboard because the
+              whole-run figure is a sum: an instance that failed every turn it took and
+              one that failed none are indistinguishable in it, and the run's own
+              consecutive-error peak names no agent. Here the streak is a real streak —
+              one instance's turns are sequential, where the run's interleave. */}
+          <ErrorsWidget errors={state.errors} bare />
         </div>
         {tools.tools.length > 0 && (
           <AgentToolsPanel breakdown={tools} responses={state.turnCount} />
@@ -1213,7 +1228,20 @@ function WithheldTools({ tools }: { tools: readonly string[] }) {
       </div>
       <ul className={panels.toolList}>
         {tools.map((tool) => (
-          <li key={tool} className={panels.toolRow} data-withheld="">
+          <li
+            key={tool}
+            className={`${panels.toolRow} ${panels.surfaceRow}`}
+            data-withheld=""
+          >
+            {/* The count column, held open with a dash: these rows sit under the offered
+                ones in the same file, and a name that starts where the counts do above it
+                would read as a fourth column rather than as the same list continued. The
+                dash is the honest figure — there is no count, because there was nothing to
+                call — and it is hidden from assistive tech, which gets the struck name and
+                the word after it instead. */}
+            <span className={panels.toolCallCount} aria-hidden="true">
+              —
+            </span>
             <span className={panels.toolName}>{tool}</span>
             <span className={panels.toolCalls}>withheld</span>
           </li>
@@ -1223,27 +1251,39 @@ function WithheldTools({ tools }: { tools: readonly string[] }) {
   );
 }
 
-// One offered thing and what became of it. Two states, and keeping them visually distinct
-// is the feature: called (its count), and offered and never called (dimmed, and said in
-// words — a bare "0×" reads as a measurement rather than as the finding it is).
+// One offered thing and what became of it: how often it was called, then what it was.
+//
+// The count leads because the count is what the file is read down. Every row here names
+// something the agent was given, so the names are the column that repeats and the figures
+// are the column that differs — and a figure in a fixed leading column can be scanned
+// straight down the list, where a trailing one hangs off names of every length and has to
+// be hunted along each row.
+//
+// Two states, and keeping them visually distinct is the feature: called (its count), and
+// offered and never called — a real `0×`, dimmed. It used to say "never called" in words,
+// on the argument that a bare zero reads as a measurement rather than as a finding. It IS
+// a measurement, and now an exact one: gg records every model-facing call under its own
+// identity, so a zero here is the same kind of fact as a three, taken the same way, and
+// spelling one of them out in prose made the two rows impossible to compare down a column
+// they now share. The dimming carries the finding, and the tooltip carries the sentence.
 //
 // There is deliberately no third state for "nothing counts this". Every model-facing call
 // is recorded under its own identity, tool or no tool, so a view call and an ending call
 // have figures exactly as a file read does. The only null left is a RECORD too old to
 // carry a function's identity, which is a fact about the record rather than about the
-// agent — and is said as one, because a zero there would accuse a model of ignoring
-// everything it was given.
+// agent — its cell is left empty and its tooltip says why, because a zero there would
+// accuse a model of ignoring everything it was given.
 function SurfaceRow({ name, count }: { name: string; count: number | null }) {
   return (
     <li
-      className={panels.toolRow}
+      className={`${panels.toolRow} ${panels.surfaceRow}`}
       data-uncalled={count === 0 ? "" : undefined}
       title={surfaceCallPhrase(name, count)}
     >
-      <span className={panels.toolName}>{name}</span>
-      <span className={panels.toolCalls}>
-        {count == null ? "" : count === 0 ? "never called" : `${count}×`}
+      <span className={panels.toolCallCount}>
+        {count == null ? "" : `${numberFmt.format(count)}×`}
       </span>
+      <span className={panels.toolName}>{name}</span>
     </li>
   );
 }
