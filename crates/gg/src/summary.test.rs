@@ -3,10 +3,15 @@
 //! carried it. The end-to-end "summary matches a scripted run's stream" coverage lives in
 //! `agent.test.rs`, driving the real emitter.
 
+use std::collections::BTreeMap;
+
 use super::*;
 // `GgTurnOutcome` is the one contract type these tests construct that the module under test never
 // names: the fold keys on the error *kind*, which is what keeps `errors` the sum of its parts.
-use test_cabinet_core::gg::{GgBoardIssue, GgContextSourceUsage, GgLimitKind, GgTurnOutcome};
+use test_cabinet_core::gg::{
+    GgBoardIssue, GgContextSourceUsage, GgLimitKind, GgToolFailure, GgTurnErrorKind,
+    GgTurnErrorType, GgTurnOutcome,
+};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 /// A board issue with the given id and status (the scope/description fields are irrelevant to
@@ -78,13 +83,17 @@ fn healed(strategies: &[GgHealingStrategy]) -> GgResponseHealing {
 /// mistakenly read it would be caught.
 fn turn(
     outcome: GgTurnOutcome,
-    error: Option<GgTurnErrorKind>,
+    error_type: Option<GgTurnErrorType>,
     consecutive_errors: u64,
     loop_aborts: u64,
 ) -> GgTelemetryKind {
     GgTelemetryKind::TurnOutcome {
         outcome,
-        error,
+        // Derived from the type rather than passed in, exactly as gg emits it: the two halves of a
+        // recorded error come from one value, so a fixture that could set them independently could
+        // assert a shape gg cannot produce.
+        error: error_type.map(GgTurnErrorType::kind),
+        error_type,
         consecutive_errors,
         turns: 999,
         loop_aborts,
@@ -96,9 +105,24 @@ fn progressed() -> GgTelemetryKind {
     turn(GgTurnOutcome::Progressed, None, 0, 0)
 }
 
-/// An error turn of `kind`, arriving `consecutive_errors` deep into that agent's streak.
-fn errored(kind: GgTurnErrorKind, consecutive_errors: u64) -> GgTelemetryKind {
-    turn(GgTurnOutcome::Error, Some(kind), consecutive_errors, 0)
+/// An error turn of `error_type`, arriving `consecutive_errors` deep into that agent's streak.
+fn errored(error_type: GgTurnErrorType, consecutive_errors: u64) -> GgTelemetryKind {
+    turn(
+        GgTurnOutcome::Error,
+        Some(error_type),
+        consecutive_errors,
+        0,
+    )
+}
+
+/// One dispatched tool call's result, as the call-failure rollup reads it.
+fn tool_result(ok: bool, failure: Option<GgToolFailure>) -> GgTelemetryKind {
+    GgTelemetryKind::ToolResult {
+        name: "read_file".to_string(),
+        ok,
+        summary: None,
+        failure,
+    }
 }
 
 /// A breach of `limit`, attributed to `agent_id`. The figures are the shape a real breach carries
@@ -568,10 +592,10 @@ fn a_subagents_breach_is_not_reported_as_the_runs_outcome() {
 fn the_error_rollup_counts_every_turn_and_splits_the_errors_by_kind() {
     let tracker = SessionSummaryTracker::new();
     tracker.observe(&progressed());
-    tracker.observe(&errored(GgTurnErrorKind::Transpile, 1));
-    tracker.observe(&errored(GgTurnErrorKind::ProgramFault, 2));
+    tracker.observe(&errored(GgTurnErrorType::TranspileSyntax, 1));
+    tracker.observe(&errored(GgTurnErrorType::ProgramToolError, 2));
     tracker.observe(&progressed());
-    tracker.observe(&errored(GgTurnErrorKind::SandboxLimit, 1));
+    tracker.observe(&errored(GgTurnErrorType::SandboxTimeout, 1));
     tracker.observe(&turn(GgTurnOutcome::Fatal, None, 1, 0));
     tracker.observe(&turn(GgTurnOutcome::Finished, None, 0, 0));
 
@@ -588,6 +612,12 @@ fn the_error_rollup_counts_every_turn_and_splits_the_errors_by_kind() {
             sandbox_limit: 1,
             missing_completion: 0,
             loop_aborts: 0,
+            by_type: BTreeMap::from([
+                ("transpile_syntax".to_string(), 1),
+                ("program_tool_error".to_string(), 1),
+                ("sandbox_timeout".to_string(), 1),
+            ]),
+            tool_failures: BTreeMap::new(),
         }
     );
     assert_eq!(
@@ -605,6 +635,96 @@ fn the_error_rollup_counts_every_turn_and_splits_the_errors_by_kind() {
     );
 }
 
+/// The per-**type** breakdown rides alongside the per-kind counters and sums to the same total —
+/// the invariant a *"top error types"* ranking is read against.
+///
+/// The stream is the shape that used to be unreadable: five failures that the old record showed as
+/// `model_api: 2, program_fault: 3`, which said nothing about a run whose model was rejected once,
+/// looped once, and spent three turns fighting a call it could not make.
+#[test]
+fn the_error_rollup_breaks_the_same_errors_down_by_specific_type() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(&errored(GgTurnErrorType::ModelRejected, 1));
+    tracker.observe(&errored(GgTurnErrorType::ModelResponseLoop, 2));
+    tracker.observe(&errored(GgTurnErrorType::ProgramToolError, 3));
+    tracker.observe(&errored(GgTurnErrorType::ProgramToolError, 4));
+    tracker.observe(&errored(GgTurnErrorType::ProgramUnknownName, 5));
+    tracker.observe(&progressed());
+
+    let errors = tracker.finalize("completed").errors;
+    assert_eq!(
+        errors.by_type,
+        BTreeMap::from([
+            ("model_rejected".to_string(), 1),
+            ("model_response_loop".to_string(), 1),
+            ("program_tool_error".to_string(), 2),
+            ("program_unknown_name".to_string(), 1),
+        ])
+    );
+    assert_eq!(
+        errors.by_type.values().sum::<u64>(),
+        errors.errors,
+        "the breakdown sums to the total error count"
+    );
+    // ...and regrouping it by base gives the named counters back, so the two readings of one run
+    // can never disagree.
+    assert_eq!(errors.model_api, 2);
+    assert_eq!(errors.program_fault, 3);
+    assert_eq!(
+        errors.transpile + errors.sandbox_limit + errors.missing_completion,
+        0
+    );
+}
+
+/// A stream recorded before gg published types still lands in the named counters, and contributes
+/// nothing to the breakdown — which is exactly why an empty `byType` must never be read as "no
+/// errors of any type".
+#[test]
+fn an_untyped_error_turn_still_counts_towards_its_kind() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(&GgTelemetryKind::TurnOutcome {
+        outcome: GgTurnOutcome::Error,
+        error: Some(GgTurnErrorKind::Transpile),
+        error_type: None,
+        consecutive_errors: 1,
+        turns: 999,
+        loop_aborts: 0,
+    });
+
+    let errors = tracker.finalize("completed").errors;
+    assert_eq!(errors.errors, 1);
+    assert_eq!(errors.transpile, 1);
+    assert!(errors.by_type.is_empty());
+}
+
+/// A **call** that failed is counted by class, and is deliberately kept out of the turn figures: a
+/// program that caught a `not-found` and carried on did not fail its turn, and charging it would
+/// make the one capability that expects failures the one that cannot survive them.
+#[test]
+fn failed_calls_are_counted_by_class_without_touching_the_turn_figures() {
+    let tracker = SessionSummaryTracker::new();
+    tracker.observe(&tool_result(true, None));
+    tracker.observe(&tool_result(false, Some(GgToolFailure::NotFound)));
+    tracker.observe(&tool_result(false, Some(GgToolFailure::NotFound)));
+    tracker.observe(&tool_result(false, Some(GgToolFailure::InvalidArgument)));
+    // A failure raised outside a tool implementation, which has no class of its own.
+    tracker.observe(&tool_result(false, Some(GgToolFailure::Other)));
+    tracker.observe(&progressed());
+
+    let errors = tracker.finalize("completed").errors;
+    assert_eq!(
+        errors.tool_failures,
+        BTreeMap::from([
+            ("not-found".to_string(), 2),
+            ("invalid-argument".to_string(), 1),
+            ("other".to_string(), 1),
+        ])
+    );
+    assert_eq!(errors.turns, 1, "only the turn event is a turn");
+    assert_eq!(errors.errors, 0, "no turn failed");
+    assert!(errors.by_type.is_empty());
+}
+
 /// The longest streak is a **maximum over the per-turn counts**, not a streak the tracker keeps.
 ///
 /// This is what makes the figure correct on a parallel run: two agents' turns interleave
@@ -617,7 +737,7 @@ fn the_longest_streak_is_the_peak_any_one_agent_reported() {
     // Read as two agents' turns arriving interleaved: one never gets past its second failure, the
     // other reaches three in a row.
     for consecutive in [1_u64, 1, 2, 1, 3] {
-        tracker.observe(&errored(GgTurnErrorKind::ModelApi, consecutive));
+        tracker.observe(&errored(GgTurnErrorType::ModelRetryExhausted, consecutive));
     }
     // ...and a later recovery must not lower the peak already observed.
     tracker.observe(&progressed());
@@ -641,7 +761,7 @@ fn discarded_looping_replies_are_counted_without_being_charged_as_errors() {
     // A later turn looped once more and then failed for an unrelated reason.
     tracker.observe(&turn(
         GgTurnOutcome::Error,
-        Some(GgTurnErrorKind::Transpile),
+        Some(GgTurnErrorType::TranspileSyntax),
         1,
         1,
     ));
@@ -664,7 +784,7 @@ fn discarded_looping_replies_are_counted_without_being_charged_as_errors() {
 fn a_run_that_never_armed_loop_detection_reports_no_aborts() {
     let tracker = SessionSummaryTracker::new();
     tracker.observe(&progressed());
-    tracker.observe(&errored(GgTurnErrorKind::MissingCompletion, 1));
+    tracker.observe(&errored(GgTurnErrorType::MissingCompletionNoCall, 1));
 
     let summary = tracker.finalize("completed");
     assert_eq!(summary.errors.loop_aborts, 0);
@@ -687,8 +807,8 @@ fn a_tool_calling_run_still_reports_its_error_rate() {
     let tracker = SessionSummaryTracker::new();
     tracker.record_execution_mode("tool_calling");
     tracker.observe(&progressed());
-    tracker.observe(&errored(GgTurnErrorKind::MissingCompletion, 1));
-    tracker.observe(&errored(GgTurnErrorKind::MissingCompletion, 2));
+    tracker.observe(&errored(GgTurnErrorType::MissingCompletionNoCall, 1));
+    tracker.observe(&errored(GgTurnErrorType::MissingCompletionNoCall, 2));
     tracker.observe(&turn(GgTurnOutcome::Finished, None, 0, 0));
 
     let summary = tracker.finalize("completed");

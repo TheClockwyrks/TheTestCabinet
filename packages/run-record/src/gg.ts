@@ -1758,24 +1758,37 @@ export type GgHookOutcomeKind =
 export type GgTurnOutcome = "progressed" | "finished" | "error" | "fatal";
 
 /**
- * Why a turn was an [error](GgTurnOutcome::Error) — the wire mirror of gg's own `TurnErrorKind`.
+ * Why a turn was an [error](GgTurnOutcome::Error), at the **base** level of the two-level error
+ * taxonomy — the wire mirror of gg's own `TurnErrorKind`.
+ *
+ * This is the coarse bucket: *whose layer* failed. The **specific** type under it —
+ * authentication versus a rejected request, a syntax error versus an unsupported feature, an
+ * uncaught tool failure versus an uncaught throw — is [`GgTurnErrorType`], carried beside this on
+ * the same event and derivable back to this by [`GgTurnErrorType::kind`]. Read this to compare
+ * runs at a glance and to reason about ceilings; read the type to say what actually went wrong.
  *
  * Four of the five are [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) shapes, and that
  * asymmetry is real rather than an oversight: a tool-calling turn whose requested calls are all
  * dispatched and answered cannot declare work that is then cut short.
  *
- * # There is deliberately no `response_loop` kind
+ * # There is deliberately no `response_loop` kind *here*
  *
  * A reply abandoned by [loop detection](GgLoopDetection) is **not an error turn**: the attempt is
  * discarded and the request retried, and the turn is judged on whatever the retry produced. A loop
  * that survives every attempt does reach the turn loop, but it arrives as a model-client failure
- * after that client exhausted its own retry budget — indistinguishable, at this seam, from any
- * other exhausted retry — and is therefore reported as [`ModelApi`](Self::ModelApi). The discarded
- * attempts are counted in their own right, on the
+ * after that client exhausted its own retry budget — so it belongs in [`ModelApi`](Self::ModelApi)
+ * for every ceiling, every rate and every side-by-side comparison, which is what this level is
+ * for.
+ *
+ * What it is *not* is indistinguishable. gg knows exactly which of the two happened, and now
+ * publishes it: a surviving loop is
+ * [`ModelResponseLoop`](GgTurnErrorType::ModelResponseLoop) and an exhausted retry is
+ * [`ModelRetryExhausted`](GgTurnErrorType::ModelRetryExhausted), under the one base kind. That is
+ * the whole reason the taxonomy has two levels — the distinction was being computed and thrown
+ * away. The discarded attempts are *additionally* counted in their own right, on the
  * [`loop_aborts`](GgTelemetryKind::TurnOutcome::loop_aborts) field of the same event and in
  * [`GgErrorSummary::loop_aborts`], because they are money spent on nothing rather than a turn that
- * failed. Adding a kind here that nothing could ever emit would put a bucket in every console and
- * every aggregation that is permanently zero.
+ * failed.
  */
 export type GgTurnErrorKind =
   | "model_api"
@@ -1783,6 +1796,96 @@ export type GgTurnErrorKind =
   | "program_fault"
   | "sandbox_limit"
   | "missing_completion";
+
+/**
+ * Why a turn was an [error](GgTurnOutcome::Error), **specifically** — the leaf level of the
+ * two-level error taxonomy, under the base [kind](GgTurnErrorKind) each variant reports through
+ * [`kind`](Self::kind).
+ *
+ * # Why two levels rather than one wider enum
+ *
+ * The base kind answers "which layer failed?", which is what an error ceiling acts on and what a
+ * cross-run comparison groups by; it is a closed set of five that persisted run data, saved
+ * queries and stored dashboards already key on. This answers "what actually went wrong?", which is
+ * what a person reading one run needs and what a *"top error types"* ranking has to be able to
+ * distinguish — a run that failed twelve turns on a rejected credential and a run that failed
+ * twelve turns on a syntax error are the same `model_api`/`transpile` story only at the coarse
+ * level. Adding these as more variants of the base would have widened a wire value every stored
+ * record and every ceiling reads; adding them beneath it costs the base nothing.
+ *
+ * # Every variant names a real producer
+ *
+ * A bucket that is permanently zero in every console is a defect, so each variant below documents
+ * the exact site that raises it. The set is exactly the distinctions gg *already makes internally*
+ * and used to discard at the recording seam: seven shapes of `ModelError`, four of `PrepareError`,
+ * three of the sandbox's own ceilings, the three classes the guest already types an uncaught throw
+ * with over WIT, and the two structurally different ways a turn can end without declaring work.
+ *
+ * # Names carry their base
+ *
+ * Every variant is prefixed with its base's noun (`model_`, `transpile_`, `program_`, `sandbox_`,
+ * `missing_completion_`) because these are ranked in one flat list, one row per type, where a bare
+ * `syntax` or `timeout` would not say which layer it came from.
+ *
+ * [`ModelRejected`](Self::ModelRejected) is deliberately *not* named `fatal`, even though gg's
+ * `ModelError::Fatal` is what raises it: `fatal` already means [gg's own machinery
+ * broke](GgTurnOutcome::Fatal) on the field immediately beside this one, and two meanings of one
+ * word on adjacent fields of one event is a misreading waiting to happen.
+ */
+export type GgTurnErrorType =
+  | "model_auth"
+  | "model_rejected"
+  | "model_retry_exhausted"
+  | "model_response_loop"
+  | "model_vision_unsupported"
+  | "model_parse"
+  | "model_playback"
+  | "transpile_syntax"
+  | "transpile_semantic"
+  | "transpile_lowering"
+  | "transpile_unsupported"
+  | "program_tool_error"
+  | "program_unknown_name"
+  | "program_throw"
+  | "sandbox_timeout"
+  | "sandbox_out_of_memory"
+  | "sandbox_trap"
+  | "missing_completion_no_call"
+  | "missing_completion_compaction";
+
+/**
+ * Why one call failed, in the class the caller branches on — the wire mirror of gg's own
+ * `ToolFailure`, and of the membrane's `error-code`.
+ *
+ * It rides on both halves of a failed call's record: the
+ * [`ToolResult`](GgTelemetryKind::ToolResult) that says what *ran*, and the
+ * [`ApiResult`](GgTelemetryKind::ApiResult) that says what the *model wrote*. Those are two
+ * surfaces over one core (see [`ApiCall`](GgTelemetryKind::ApiCall)), and a failure is classified
+ * on each because only one of them exists for a given call: a membrane refusal and a call no tool
+ * backs have an `ApiResult` and no `ToolResult`, and a tool-calling agent has the reverse.
+ *
+ * Without this, a failed call recorded nothing at all about *why*: the class was computed where
+ * the failure was raised, handed to the program to branch on, and then dropped at the telemetry
+ * seam. A model fighting the same `not-found` forty times is among the most actionable facts a run
+ * has, and it was not in the record.
+ *
+ * # Its spelling is kebab-case, on purpose
+ *
+ * Every other enum in this module is snake_case. This one is `"invalid-argument"`, because the
+ * class is *already* spelled that way in the three places a reader meets it — gg's own
+ * `ToolFailure` serde, the membrane's WIT `error-code`, and the `code` field of the `ToolError` a
+ * program catches. One deviation from this module's convention is a smaller cost than three
+ * spellings of one fact.
+ */
+export type GgToolFailure =
+  | "invalid-argument"
+  | "not-found"
+  | "conflict"
+  | "refused"
+  | "unavailable"
+  | "limit-exceeded"
+  | "io-error"
+  | "other";
 
 /**
  * One [response-healing](https://docs.testcabinet.ai/gg/response-healing/) strategy — a named,
@@ -1972,8 +2075,12 @@ export type GgHealingSummary = {
  * - **Fatal turns.** A failure of gg's own machinery ends the session on the first occurrence and
  *   is never charged to the model's error budget, exactly as the ceilings never observe one.
  *   `turns` still counts it, so the accounting stays whole.
- * - **A tool call that failed inside an otherwise successful program.** The program handled it,
- *   which is the entire point of the typed tool surface.
+ * - **A tool call that failed inside an otherwise successful program**, in [`errors`](Self::errors)
+ *   or in any per-kind or per-type counter. The program handled it, which is the entire point of
+ *   the typed tool surface, and charging it to the model's error budget would make the one
+ *   capability that *expects* failures the one that cannot survive them. It is counted — see
+ *   [`tool_failures`](Self::tool_failures), which is a rollup of calls, not of turns — because a
+ *   model fighting the same `not-found` forty times is among the most actionable facts a run has.
  * - **Per-agent attribution.** These are run-wide totals; the per-agent breakdown lives on the
  *   stream, where each `TurnOutcome` rides on its own agent's id.
  */
@@ -2028,6 +2135,48 @@ export type GgErrorSummary = {
    * Always `0` for a run whose agents all left loop detection disarmed, which is the default.
    */
   loopAborts: number;
+  /**
+   * The same errors split by their **specific** [type](GgTurnErrorType) rather than by base kind
+   * — the breakdown a *"top error types"* ranking is built from, keyed by
+   * [`GgTurnErrorType::wire_id`].
+   *
+   * Two invariants hold for any run this gg writes: it sums to [`errors`](Self::errors), and
+   * regrouping it by [`GgTurnErrorType::kind`] reproduces the five named counters above exactly.
+   * The named counters stay because persisted records, stored queries and the console's
+   * side-by-side split all read them; this joins them rather than replacing them.
+   *
+   * # Why a string key rather than the enum
+   *
+   * A map keyed by `GgTurnErrorType` would fail to deserialize *the whole summary* the first
+   * time a newer gg wrote a type an older backend or console had never heard of — a run recorded
+   * today must still read back tomorrow, which is exactly what an open breakdown is for. With a
+   * string key an unknown type degrades to one unlabelled row in a ranking instead. The
+   * compile-time totality this codebase normally insists on is not lost, only moved: the
+   * producing side is the enum, and the generated label table is total over it, so a type cannot
+   * be added without being labelled.
+   *
+   * Empty — and omitted from the wire — for a run with no errors, and for one recorded before
+   * gg published types at all. A reader must therefore not read an empty map as "no errors of
+   * any type"; [`errors`](Self::errors) is what says whether there were any.
+   */
+  byType?: { [key in string]: number };
+  /**
+   * **Calls** that failed, by [failure class](GgToolFailure) — a different population from
+   * everything above, which counts *turns*.
+   *
+   * Folded from the [`ToolResult`](GgTelemetryKind::ToolResult) events the run emitted, so it
+   * counts every failed tool dispatch in either execution mode, whether or not the program that
+   * made it caught the failure and carried on. Keyed by [`GgToolFailure::wire_id`], and open for
+   * the reason [`by_type`](Self::by_type) is.
+   *
+   * It counts **dispatches**, so a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) call that
+   * never reached a tool is not here: a carve-out no tool backs, and a call the membrane refused
+   * before dispatch, have an [`ApiResult`](GgTelemetryKind::ApiResult) carrying their class and
+   * no `ToolResult` at all. Those are on the stream and a console folds them from there; they
+   * are deliberately not summed into this map, because a rollup whose population is "some of one
+   * surface plus some of another" is a number nobody can check.
+   */
+  toolFailures?: { [key in string]: number };
 };
 
 /**
@@ -2327,6 +2476,18 @@ export type GgTelemetryKind =
        * A short human-readable summary of the result, when one is available.
        */
       summary?: string;
+      /**
+       * Why it failed, when it failed — the [class](GgToolFailure) the tool itself raised, never
+       * one inferred afterwards from the summary's prose.
+       *
+       * Present on exactly the results whose [`ok`](Self::ToolResult::ok) is `false`, with
+       * [`Other`](GgToolFailure::Other) for a failure raised outside a tool implementation;
+       * absent on every success, and on a stream recorded before gg published the class, which is
+       * the only case a reader must tolerate `ok == false` with no class.
+       *
+       * `ok` stays the authoritative "did it fail?". This says how.
+       */
+      failure?: GgToolFailure;
     }
   | {
       type: "api_call";
@@ -2355,6 +2516,17 @@ export type GgTelemetryKind =
        * Whether the call returned a value to the program rather than throwing into it.
        */
       ok: boolean;
+      /**
+       * The [class](GgToolFailure) of the `ToolError` thrown into the program, on a call that
+       * threw. Present on exactly the results whose [`ok`](Self::ApiResult::ok) is `false`.
+       *
+       * This is the **model's** view of why its call failed — the same `code` the program itself
+       * branches on in a `catch` — and it is the only record of it for the calls that never
+       * reach a tool: a carve-out no tool backs, and a call the membrane refused before dispatch
+       * (a spent wall-clock budget, a name this run does not offer) which has no `ToolResult` to
+       * carry a class on.
+       */
+      failure?: GgToolFailure;
     }
   | {
       type: "usage";
@@ -3159,6 +3331,20 @@ export type GgTelemetryKind =
        * person reading the run.
        */
       error?: GgTurnErrorKind;
+      /**
+       * Why it was an error **specifically** — the [type](GgTurnErrorType) under the base
+       * [kind](Self::TurnOutcome::error) beside it.
+       *
+       * Present on exactly the turns `error` is present on, and `error_type.kind() == error` by
+       * construction: gg holds one value and derives both halves from it when it emits this
+       * event, for the same reason the outcome and the kind are settled together — a reader that
+       * could be handed a base and a type from two different mechanisms could be handed two that
+       * disagree.
+       *
+       * Absent on a stream recorded before gg published the type, which is the only case a reader
+       * must tolerate `error != null && errorType == null`.
+       */
+      errorType?: GgTurnErrorType;
       /**
        * This agent's consecutive-error run **after** this turn — `0` on any non-error turn, since
        * only a turn that carried out its declared work clears the count.
@@ -3323,6 +3509,18 @@ export type GgTelemetryEvent = {
        * A short human-readable summary of the result, when one is available.
        */
       summary?: string;
+      /**
+       * Why it failed, when it failed — the [class](GgToolFailure) the tool itself raised, never
+       * one inferred afterwards from the summary's prose.
+       *
+       * Present on exactly the results whose [`ok`](Self::ToolResult::ok) is `false`, with
+       * [`Other`](GgToolFailure::Other) for a failure raised outside a tool implementation;
+       * absent on every success, and on a stream recorded before gg published the class, which is
+       * the only case a reader must tolerate `ok == false` with no class.
+       *
+       * `ok` stays the authoritative "did it fail?". This says how.
+       */
+      failure?: GgToolFailure;
     }
   | {
       type: "api_call";
@@ -3351,6 +3549,17 @@ export type GgTelemetryEvent = {
        * Whether the call returned a value to the program rather than throwing into it.
        */
       ok: boolean;
+      /**
+       * The [class](GgToolFailure) of the `ToolError` thrown into the program, on a call that
+       * threw. Present on exactly the results whose [`ok`](Self::ApiResult::ok) is `false`.
+       *
+       * This is the **model's** view of why its call failed — the same `code` the program itself
+       * branches on in a `catch` — and it is the only record of it for the calls that never
+       * reach a tool: a carve-out no tool backs, and a call the membrane refused before dispatch
+       * (a spent wall-clock budget, a name this run does not offer) which has no `ToolResult` to
+       * carry a class on.
+       */
+      failure?: GgToolFailure;
     }
   | {
       type: "usage";
@@ -4155,6 +4364,20 @@ export type GgTelemetryEvent = {
        * person reading the run.
        */
       error?: GgTurnErrorKind;
+      /**
+       * Why it was an error **specifically** — the [type](GgTurnErrorType) under the base
+       * [kind](Self::TurnOutcome::error) beside it.
+       *
+       * Present on exactly the turns `error` is present on, and `error_type.kind() == error` by
+       * construction: gg holds one value and derives both halves from it when it emits this
+       * event, for the same reason the outcome and the kind are settled together — a reader that
+       * could be handed a base and a type from two different mechanisms could be handed two that
+       * disagree.
+       *
+       * Absent on a stream recorded before gg published the type, which is the only case a reader
+       * must tolerate `error != null && errorType == null`.
+       */
+      errorType?: GgTurnErrorType;
       /**
        * This agent's consecutive-error run **after** this turn — `0` on any non-error turn, since
        * only a turn that carried out its declared work clears the count.
@@ -4484,4 +4707,119 @@ export type GgConfigInput = {
    * The capability set to save.
    */
   capabilitySet: GgCapabilitySet;
+};
+
+/**
+ * How each **base** error kind reads on screen — the coarse bucket, which is what the
+ * error ceilings act on and what a cross-run comparison groups by.
+ *
+ * Generated from the Rust taxonomy, so it is total by construction and cannot drift from
+ * the values a record carries.
+ */
+export const GG_TURN_ERROR_KIND_LABELS: Readonly<
+  Record<GgTurnErrorKind, string>
+> = {
+  model_api: "model call",
+  transpile: "transpile",
+  program_fault: "program fault",
+  sandbox_limit: "sandbox limit",
+  missing_completion: "no work declared",
+};
+
+/**
+ * How each **specific** error type reads on screen — one row per type in a ranking, so
+ * every label stands alone and names the layer it came from without a heading.
+ */
+export const GG_TURN_ERROR_TYPE_LABELS: Readonly<
+  Record<GgTurnErrorType, string>
+> = {
+  model_auth: "model auth rejected",
+  model_rejected: "model call rejected",
+  model_retry_exhausted: "model retries exhausted",
+  model_response_loop: "model looped every attempt",
+  model_vision_unsupported: "model cannot see images",
+  model_parse: "unparseable model response",
+  model_playback: "playback diverged",
+  transpile_syntax: "syntax error",
+  transpile_semantic: "semantic error",
+  transpile_lowering: "lowering failed",
+  transpile_unsupported: "unsupported program feature",
+  program_tool_error: "uncaught call failure",
+  program_unknown_name: "unknown name",
+  program_throw: "uncaught throw",
+  sandbox_timeout: "execution timeout",
+  sandbox_out_of_memory: "out of memory",
+  sandbox_trap: "sandbox trap",
+  missing_completion_no_call: "no work declared",
+  missing_completion_compaction: "compaction ignored",
+};
+
+/**
+ * Each specific type's base kind, so a ranked row can be badged with the bucket it belongs
+ * to, and a per-type breakdown can be regrouped into the per-kind counters beside it.
+ */
+export const GG_TURN_ERROR_TYPE_BASE: Readonly<
+  Record<GgTurnErrorType, GgTurnErrorKind>
+> = {
+  model_auth: "model_api",
+  model_rejected: "model_api",
+  model_retry_exhausted: "model_api",
+  model_response_loop: "model_api",
+  model_vision_unsupported: "model_api",
+  model_parse: "model_api",
+  model_playback: "model_api",
+  transpile_syntax: "transpile",
+  transpile_semantic: "transpile",
+  transpile_lowering: "transpile",
+  transpile_unsupported: "transpile",
+  program_tool_error: "program_fault",
+  program_unknown_name: "program_fault",
+  program_throw: "program_fault",
+  sandbox_timeout: "sandbox_limit",
+  sandbox_out_of_memory: "sandbox_limit",
+  sandbox_trap: "sandbox_limit",
+  missing_completion_no_call: "missing_completion",
+  missing_completion_compaction: "missing_completion",
+};
+
+/**
+ * Every specific type, grouped by base in the contract's own declaration order — the
+ * reading order for a full split, as opposed to the frequency order a *top N* ranking
+ * sorts into.
+ */
+export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = [
+  "model_auth",
+  "model_rejected",
+  "model_retry_exhausted",
+  "model_response_loop",
+  "model_vision_unsupported",
+  "model_parse",
+  "model_playback",
+  "transpile_syntax",
+  "transpile_semantic",
+  "transpile_lowering",
+  "transpile_unsupported",
+  "program_tool_error",
+  "program_unknown_name",
+  "program_throw",
+  "sandbox_timeout",
+  "sandbox_out_of_memory",
+  "sandbox_trap",
+  "missing_completion_no_call",
+  "missing_completion_compaction",
+];
+
+/**
+ * How each call-failure class reads on screen — the class a failed tool call or a failed
+ * model-facing API call is recorded with.
+ */
+export const GG_TOOL_FAILURE_LABELS: Readonly<Record<GgToolFailure, string>> = {
+  "invalid-argument": "invalid argument",
+  "not-found": "not found",
+  conflict: "conflict",
+  refused: "refused",
+  unavailable: "unavailable",
+  "limit-exceeded": "limit exceeded",
+  "io-error": "I/O error",
+  other: "unclassified",
 };

@@ -448,6 +448,7 @@ async fn an_undeclared_target_is_refused_and_the_machine_carries_on() {
                 name,
                 ok: false,
                 summary,
+                ..
             } if name == TRANSITION_STATE_TOOL => summary.clone(),
             _ => None,
         })

@@ -16,6 +16,8 @@
 use serde::{Deserialize, Serialize};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
+use crate::limits::TurnErrorType;
+
 /// The role a [`Message`] plays in the conversation sent to a model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -281,16 +283,24 @@ pub struct ModelResponse {
 
 /// A failure running a model turn.
 ///
-/// The variants let the [turn loop](crate::agent) decide what to do: a
-/// [`RetryExhausted`](Self::RetryExhausted) means the client already retried a
-/// transient condition (a `429`, a `5xx`, or a transport error) up to its policy and
-/// gave up — a later turn might still succeed. Everything else is **fatal**: a
-/// [`Fatal`](Self::Fatal) HTTP status (auth or another non-retryable `4xx`), a
-/// [`MissingApiKey`](Self::MissingApiKey), or a [`Parse`](Self::Parse) failure of an
-/// otherwise-successful response. The retry loop itself lives inside
-/// [`OpenRouterClient`](crate::client::OpenRouterClient), so by the time the loop
-/// sees a `ModelError` the decision is only "retry the whole turn later?" (retryable)
-/// versus "this configuration/response cannot work" (fatal).
+/// The retry loop itself lives inside [`OpenRouterClient`](crate::client::OpenRouterClient), so a
+/// `ModelError` reaching the [turn loop](crate::agent) means every attempt within one turn already
+/// failed and the session ends on it. Two decisions are then made from the variant, and they are the
+/// only two:
+///
+/// * **how the run is scored** — [`is_auth_failure`](Self::is_auth_failure) says the run's
+///   credential was refused, so no model ever ran and the run is a harness error rather than a
+///   result;
+/// * **how the failure is recorded** — [`turn_error_type`](Self::turn_error_type) maps all seven
+///   shapes onto the run's error taxonomy, which is what makes "the provider was down" and "the
+///   provider answered and gg threw every answer away" different rows in a study instead of one
+///   `model_api` bucket.
+///
+/// There is deliberately no "is this retryable?" predicate left. There was one, and by the end it
+/// answered a question nobody asked: the client had already exhausted its own budget, gg does not
+/// re-attempt the turn, and the only thing the answer was still used for was choosing a word for a
+/// log line. That word now comes from the recorded type, so the sentence in the log and the row in
+/// the console cannot describe one failure two different ways.
 #[derive(Debug, thiserror::Error)]
 pub enum ModelError {
     /// The OpenRouter credential is not present in the environment. Fatal — no request
@@ -338,16 +348,19 @@ pub enum ModelError {
     /// [loop detection](crate::loopguard): the model answered with a repetition rather than a
     /// reply, and kept doing so until the retry policy ran out.
     ///
-    /// **Retryable at the turn level**, exactly like
-    /// [`RetryExhausted`](Self::RetryExhausted) — see
-    /// [`is_retryable_exhausted`](Self::is_retryable_exhausted). It is not a host fault and not a
-    /// misconfiguration: the request was well-formed and the provider answered it, the answer was
-    /// just worthless. A later turn, on a shorter context, routinely succeeds.
+    /// The same shape of failure as [`RetryExhausted`](Self::RetryExhausted) — the client's own
+    /// retry budget ran out — and, like it, neither a host fault nor a misconfiguration: the
+    /// request was well-formed and the provider answered it, the answer was just worthless. A later
+    /// turn, on a shorter context, routinely succeeds.
     ///
     /// It exists as its own variant rather than folding into `RetryExhausted` because the two say
     /// completely different things to an operator reading the run's log. `RetryExhausted` means
     /// the provider would not serve the request; this means the provider served it several times
     /// and gg threw every answer away. Only one of those is worth changing a model binding over.
+    /// That distinction is now durable rather than only readable: they are recorded as
+    /// [`ModelResponseLoop`](TurnErrorType::ModelResponseLoop) and
+    /// [`ModelRetryExhausted`](TurnErrorType::ModelRetryExhausted) — see
+    /// [`turn_error_type`](Self::turn_error_type).
     #[error("model looped: {detail}; discarded {attempts} response(s)")]
     ResponseLoop {
         /// How many streamed replies were read and discarded before the client gave up — the
@@ -379,23 +392,6 @@ pub enum ModelError {
 }
 
 impl ModelError {
-    /// Whether this error is a transient failure the client already retried to its policy (as
-    /// opposed to a fatal one). The loop uses this to decide whether re-attempting the turn later
-    /// is worthwhile.
-    ///
-    /// Two variants qualify, and they are the two where the *request* was fine:
-    /// [`RetryExhausted`](Self::RetryExhausted), where the provider never served it, and
-    /// [`ResponseLoop`](Self::ResponseLoop), where the provider served it and every answer was a
-    /// [generation loop](crate::loopguard). Both end the run as `model_error` if they survive the
-    /// turn loop's own patience, and neither says anything is wrong with the configuration. Every
-    /// other variant is fatal.
-    pub fn is_retryable_exhausted(&self) -> bool {
-        matches!(
-            self,
-            ModelError::RetryExhausted { .. } | ModelError::ResponseLoop { .. }
-        )
-    }
-
     /// Whether this error means the run's **credential** was refused: a
     /// [`MissingApiKey`](Self::MissingApiKey), or a [`Fatal`](Self::Fatal) `401`/`403`
     /// from the provider.
@@ -411,6 +407,30 @@ impl ModelError {
             ModelError::MissingApiKey => true,
             ModelError::Fatal { status, .. } => matches!(status, 401 | 403),
             _ => false,
+        }
+    }
+
+    /// The [turn error type](TurnErrorType) this failure is recorded as — the one place
+    /// `ModelError`'s seven shapes are mapped onto the taxonomy the run's error record publishes.
+    ///
+    /// Exhaustive on purpose: a variant added above has to declare how it is *recorded*, not just
+    /// how it reads. Every one of these lands under
+    /// [`ModelApi`](crate::limits::TurnErrorKind::ModelApi) at the base level, which is why the
+    /// error ceilings and every cross-run rate are unaffected by the split — what changes is that
+    /// "the provider was down" and "the provider answered and gg threw every answer away" stop being
+    /// the same row in a console.
+    pub fn turn_error_type(&self) -> TurnErrorType {
+        match self {
+            ModelError::MissingApiKey => TurnErrorType::ModelAuth,
+            ModelError::Fatal { status, .. } => match status {
+                401 | 403 => TurnErrorType::ModelAuth,
+                _ => TurnErrorType::ModelRejected,
+            },
+            ModelError::RetryExhausted { .. } => TurnErrorType::ModelRetryExhausted,
+            ModelError::ResponseLoop { .. } => TurnErrorType::ModelResponseLoop,
+            ModelError::VisionUnsupported { .. } => TurnErrorType::ModelVisionUnsupported,
+            ModelError::Parse(_) => TurnErrorType::ModelParse,
+            ModelError::Playback(_) => TurnErrorType::ModelPlayback,
         }
     }
 

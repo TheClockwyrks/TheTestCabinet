@@ -1226,6 +1226,7 @@ fn a_code_execution_omits_finished_and_healing_when_the_turn_was_clean() {
             "type": "code_execution",
             "ok": true,
             "toolCalls": 3,
+            "apiCalls": 3,
             "durationMs": 24_000,
         })
     );
@@ -1262,6 +1263,7 @@ fn a_code_execution_carries_the_completion_and_the_healing_record() {
             "type": "code_execution",
             "ok": true,
             "toolCalls": 1,
+            "apiCalls": 1,
             "durationMs": 9_100,
             "finished": "Built the game and wrote MANIFEST.md.",
             "healing": { "strategies": ["strip-fences", "drop-imports"] },
@@ -1448,6 +1450,7 @@ fn a_turn_outcome_event_reports_a_clean_turn_without_an_error_kind() {
     let kind = GgTelemetryKind::TurnOutcome {
         outcome: GgTurnOutcome::Progressed,
         error: None,
+        error_type: None,
         consecutive_errors: 0,
         turns: 7,
         loop_aborts: 0,
@@ -1475,6 +1478,7 @@ fn a_turn_outcome_event_carries_the_error_kind_and_the_agents_own_streak() {
     let kind = GgTelemetryKind::TurnOutcome {
         outcome: GgTurnOutcome::Error,
         error: Some(GgTurnErrorKind::ProgramFault),
+        error_type: Some(GgTurnErrorType::ProgramToolError),
         consecutive_errors: 3,
         turns: 21,
         loop_aborts: 0,
@@ -1486,6 +1490,7 @@ fn a_turn_outcome_event_carries_the_error_kind_and_the_agents_own_streak() {
             "type": "turn_outcome",
             "outcome": "error",
             "error": "program_fault",
+            "errorType": "program_tool_error",
             "consecutiveErrors": 3,
             "turns": 21,
         })
@@ -1500,6 +1505,7 @@ fn a_turn_outcome_event_carries_the_error_kind_and_the_agents_own_streak() {
     let fatal = GgTelemetryKind::TurnOutcome {
         outcome: GgTurnOutcome::Fatal,
         error: None,
+        error_type: None,
         consecutive_errors: 0,
         turns: 22,
         loop_aborts: 0,
@@ -1518,6 +1524,7 @@ fn a_turn_outcome_event_counts_the_looping_replies_it_discarded() {
     let kind = GgTelemetryKind::TurnOutcome {
         outcome: GgTurnOutcome::Progressed,
         error: None,
+        error_type: None,
         consecutive_errors: 0,
         turns: 4,
         loop_aborts: 2,
@@ -1805,6 +1812,15 @@ fn the_error_rollup_carries_its_own_denominator_and_no_percentage() {
         sandbox_limit: 1,
         missing_completion: 0,
         loop_aborts: 6,
+        by_type: BTreeMap::from([
+            ("model_auth".to_string(), 1),
+            ("model_retry_exhausted".to_string(), 1),
+            ("transpile_syntax".to_string(), 3),
+            ("program_tool_error".to_string(), 2),
+            ("program_throw".to_string(), 1),
+            ("sandbox_timeout".to_string(), 1),
+        ]),
+        tool_failures: BTreeMap::from([("not-found".to_string(), 12)]),
     };
     assert_eq!(
         errors.model_api
@@ -1823,8 +1839,228 @@ fn the_error_rollup_carries_its_own_denominator_and_no_percentage() {
     );
     assert_eq!(value["loopAborts"], json!(6));
     assert_eq!(
+        errors.by_type.values().sum::<u64>(),
+        errors.errors,
+        "the per-type breakdown must account for every error turn too"
+    );
+    assert_eq!(
         serde_json::from_value::<GgErrorSummary>(value).expect("deserialize"),
         errors
+    );
+}
+
+/// The two levels agree by arithmetic, not by assertion: regrouping the per-**type** breakdown by
+/// each type's base reproduces the five named per-**kind** counters exactly, and both readings sum
+/// to `errors`.
+///
+/// This is the property a *"top error types"* widget rests on. Without it a console could rank types
+/// that add up to a different number from the split beside them, and the reader would have no way to
+/// tell which one was lying.
+#[test]
+fn regrouping_the_per_type_breakdown_by_base_reproduces_the_per_kind_counters() {
+    // One of every type, so the regrouping is exercised over the whole taxonomy rather than over
+    // the handful a hand-written fixture would name.
+    let by_type: BTreeMap<String, u64> = GgTurnErrorType::ALL
+        .iter()
+        .map(|error| (error.wire_id().to_string(), 1))
+        .collect();
+    let errors = GgErrorSummary {
+        turns: 40,
+        errors: GgTurnErrorType::ALL.len() as u64,
+        max_consecutive: 3,
+        model_api: 7,
+        transpile: 4,
+        program_fault: 3,
+        sandbox_limit: 3,
+        missing_completion: 2,
+        loop_aborts: 0,
+        by_type,
+        tool_failures: BTreeMap::new(),
+    };
+
+    assert_eq!(
+        errors.by_type.values().sum::<u64>(),
+        errors.errors,
+        "the breakdown sums to the total error count"
+    );
+
+    let mut regrouped: BTreeMap<&str, u64> = BTreeMap::new();
+    for (id, count) in &errors.by_type {
+        let error = GgTurnErrorType::ALL
+            .iter()
+            .find(|error| error.wire_id() == id)
+            .unwrap_or_else(|| panic!("`{id}` is not a published type"));
+        *regrouped.entry(error.kind().wire_id()).or_default() += count;
+    }
+    assert_eq!(
+        regrouped,
+        BTreeMap::from([
+            ("model_api", errors.model_api),
+            ("transpile", errors.transpile),
+            ("program_fault", errors.program_fault),
+            ("sandbox_limit", errors.sandbox_limit),
+            ("missing_completion", errors.missing_completion),
+        ])
+    );
+}
+
+/// Both open breakdowns are omitted from the wire when empty, and both read back from a record
+/// written before they existed — the whole reason they are maps keyed by a stable id rather than by
+/// an enum, since an unknown enum key would fail the *whole* summary rather than one row.
+#[test]
+fn the_open_breakdowns_are_omitted_when_empty_and_tolerate_an_unknown_key() {
+    let empty = GgErrorSummary::default();
+    let value = serde_json::to_value(&empty).expect("serialize");
+    assert!(
+        value.get("byType").is_none() && value.get("toolFailures").is_none(),
+        "an empty breakdown costs nothing on the wire: {value}"
+    );
+
+    // A run recorded by a *newer* gg, carrying a type this build has never heard of. It must read,
+    // and the unknown row must survive — degrading to one unlabelled row in a ranking is the point.
+    let newer = json!({
+        "turns": 3,
+        "errors": 1,
+        "maxConsecutive": 1,
+        "modelApi": 0,
+        "transpile": 0,
+        "programFault": 0,
+        "sandboxLimit": 0,
+        "missingCompletion": 1,
+        "loopAborts": 0,
+        "byType": { "missing_completion_something_new": 1 },
+        "toolFailures": { "brand-new-class": 2 },
+    });
+    let decoded: GgErrorSummary = serde_json::from_value(newer).expect("deserialize");
+    assert_eq!(
+        decoded.by_type.get("missing_completion_something_new"),
+        Some(&1)
+    );
+    assert_eq!(decoded.tool_failures.get("brand-new-class"), Some(&2));
+}
+
+/// Every published type is stable, labelled, and lands under exactly one base kind — and every base
+/// kind has at least one type under it, so no console shows a bucket nothing can fall into.
+#[test]
+fn every_error_type_has_a_stable_id_a_label_and_exactly_one_base() {
+    let mut ids = std::collections::BTreeSet::new();
+    let mut labels = std::collections::BTreeSet::new();
+    for error in GgTurnErrorType::ALL {
+        assert!(
+            ids.insert(error.wire_id()),
+            "{error:?}: duplicate id `{}`",
+            error.wire_id()
+        );
+        assert!(
+            labels.insert(error.label()),
+            "{error:?}: duplicate label `{}` — a ranking would show two identical rows",
+            error.label()
+        );
+        // The id is what a persisted record carries, so it has to be the serde spelling rather
+        // than a second string that merely looks like it.
+        assert_eq!(
+            serde_json::to_value(error).expect("serialize"),
+            json!(error.wire_id()),
+            "{error:?}: the id and the serde spelling must be one value"
+        );
+        assert!(
+            error.wire_id().starts_with(match error.kind() {
+                GgTurnErrorKind::ModelApi => "model_",
+                GgTurnErrorKind::Transpile => "transpile_",
+                GgTurnErrorKind::ProgramFault => "program_",
+                GgTurnErrorKind::SandboxLimit => "sandbox_",
+                GgTurnErrorKind::MissingCompletion => "missing_completion_",
+            }),
+            "{error:?}: a type's id names its base, because a ranking shows it without one"
+        );
+    }
+
+    for kind in GgTurnErrorKind::ALL {
+        assert_eq!(
+            serde_json::to_value(kind).expect("serialize"),
+            json!(kind.wire_id())
+        );
+        assert!(
+            GgTurnErrorType::ALL
+                .iter()
+                .any(|error| error.kind() == kind),
+            "{kind:?} has no type under it"
+        );
+    }
+
+    // The five wire values persisted run data already depends on are unchanged by the split.
+    assert_eq!(GgTurnErrorKind::Transpile.wire_id(), "transpile");
+    assert_eq!(GgTurnErrorKind::ModelApi.wire_id(), "model_api");
+}
+
+/// The failure class every failed call is recorded with: kebab-case on purpose, so one class is
+/// spelled one way in the telemetry, in the membrane's WIT and in the `ToolError` a program catches.
+#[test]
+fn every_tool_failure_class_keeps_its_kebab_case_spelling() {
+    for failure in GgToolFailure::ALL {
+        assert_eq!(
+            serde_json::to_value(failure).expect("serialize"),
+            json!(failure.wire_id())
+        );
+        assert!(!failure.label().is_empty());
+    }
+    assert_eq!(
+        GgToolFailure::InvalidArgument.wire_id(),
+        "invalid-argument",
+        "the class a program branches on is spelled the same on the wire"
+    );
+    assert_eq!(
+        GgToolFailure::ALL.len(),
+        8,
+        "seven raised classes plus `other` for a failure raised outside a tool"
+    );
+}
+
+/// A failed call says **why** on both of its records — the tool's and the model's — and a successful
+/// one says nothing, so a reader can tell a run recorded before the class existed from one whose
+/// calls all succeeded.
+#[test]
+fn a_failed_call_carries_its_class_on_both_of_its_records() {
+    let failed = GgTelemetryKind::ToolResult {
+        name: "read_file".to_string(),
+        ok: false,
+        summary: Some("no such file".to_string()),
+        failure: Some(GgToolFailure::NotFound),
+    };
+    let value = serde_json::to_value(&failed).expect("serialize");
+    assert_eq!(value["failure"], json!("not-found"));
+    assert_eq!(
+        serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
+        failed
+    );
+
+    let ok = GgTelemetryKind::ToolResult {
+        name: "read_file".to_string(),
+        ok: true,
+        summary: None,
+        failure: None,
+    };
+    assert!(
+        serde_json::to_value(&ok)
+            .expect("serialize")
+            .get("failure")
+            .is_none(),
+        "a success carries no class"
+    );
+
+    // The model-facing half. It exists for the calls that have no tool record at all — a carve-out,
+    // and a call the membrane refused before dispatch — which is why the class rides here too.
+    let refused = GgTelemetryKind::ApiResult {
+        object: "fs".to_string(),
+        function: "read_file".to_string(),
+        ok: false,
+        failure: Some(GgToolFailure::LimitExceeded),
+    };
+    let value = serde_json::to_value(&refused).expect("serialize");
+    assert_eq!(value["failure"], json!("limit-exceeded"));
+    assert_eq!(
+        serde_json::from_value::<GgTelemetryKind>(value).expect("deserialize"),
+        refused
     );
 }
 

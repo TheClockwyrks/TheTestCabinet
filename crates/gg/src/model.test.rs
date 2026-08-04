@@ -1,6 +1,8 @@
 use super::*;
 use serde_json::json;
 
+use crate::limits::TurnErrorKind;
+
 /// The role constructors populate the fields their role expects and leave the rest
 /// empty.
 #[test]
@@ -86,37 +88,103 @@ fn model_response_deserializes_minimal_form() {
     assert_eq!(decoded.loop_aborts, 0);
 }
 
-/// The two errors where the *request* was fine are retryable: the provider never served it
-/// (`RetryExhausted`), or it served it and every answer was a generation loop (`ResponseLoop`).
-/// Every other variant is fatal.
+/// Every shape a `ModelError` comes in is recorded as its own turn error **type**, and every one of
+/// them sits under the one `model_api` **base kind** — which is the whole point of the two levels:
+/// the ceilings and the cross-run rates are untouched, and an operator can still tell "the provider
+/// never served the request" from "the provider served it and gg threw every answer away".
+///
+/// The seven cases below are the seven variants. It is written as a table rather than a `match` so
+/// that a variant added without a mapping fails on the count assertion at the end.
 #[test]
-fn model_error_classifies_retryable_versus_fatal() {
-    assert!(
-        ModelError::RetryExhausted {
-            attempts: 4,
-            last: "HTTP 503".to_string()
-        }
-        .is_retryable_exhausted()
-    );
-    assert!(
+fn every_model_error_is_recorded_as_its_own_type_under_one_base_kind() {
+    let cases = [
+        (ModelError::MissingApiKey, TurnErrorType::ModelAuth),
+        (
+            ModelError::Fatal {
+                status: 401,
+                message: "unauthorized".to_string(),
+            },
+            TurnErrorType::ModelAuth,
+        ),
+        (
+            ModelError::Fatal {
+                status: 403,
+                message: "forbidden".to_string(),
+            },
+            TurnErrorType::ModelAuth,
+        ),
+        (
+            // Not an auth failure: the credential was accepted and the *request* was refused.
+            ModelError::Fatal {
+                status: 404,
+                message: "unknown model".to_string(),
+            },
+            TurnErrorType::ModelRejected,
+        ),
+        (
+            ModelError::RetryExhausted {
+                attempts: 4,
+                last: "HTTP 503".to_string(),
+            },
+            TurnErrorType::ModelRetryExhausted,
+        ),
+        (
+            ModelError::ResponseLoop {
+                attempts: 4,
+                detail: "2 words repeated across 3000 consecutive words".to_string(),
+            },
+            TurnErrorType::ModelResponseLoop,
+        ),
+        (
+            ModelError::VisionUnsupported {
+                model_id: "z-ai/glm-5.2".to_string(),
+                message: "no endpoints support image input".to_string(),
+            },
+            TurnErrorType::ModelVisionUnsupported,
+        ),
+        (
+            ModelError::Parse("bad json".to_string()),
+            TurnErrorType::ModelParse,
+        ),
+        (
+            ModelError::Playback("recorded turns exhausted".to_string()),
+            TurnErrorType::ModelPlayback,
+        ),
+    ];
+
+    for (error, expected) in &cases {
+        assert_eq!(error.turn_error_type(), *expected, "{error:?}");
+        assert_eq!(
+            expected.kind(),
+            TurnErrorKind::ModelApi,
+            "{error:?}: every model failure is a `model_api` error at the base level"
+        );
+    }
+
+    // A `ResponseLoop` and a `RetryExhausted` used to be one recorded value and two words in a log
+    // line. They are now two recorded values, which is the fix.
+    assert_ne!(
         ModelError::ResponseLoop {
             attempts: 4,
-            detail: "2 words repeated across 3000 consecutive words".to_string(),
+            detail: "looped".to_string(),
         }
-        .is_retryable_exhausted(),
-        "a reply that looped on every attempt ends the run the way retry exhaustion does"
+        .turn_error_type(),
+        ModelError::RetryExhausted {
+            attempts: 4,
+            last: "HTTP 503".to_string(),
+        }
+        .turn_error_type()
     );
 
-    for fatal in [
-        ModelError::MissingApiKey,
-        ModelError::Fatal {
-            status: 401,
-            message: "unauthorized".to_string(),
-        },
-        ModelError::Parse("bad json".to_string()),
-    ] {
-        assert!(!fatal.is_retryable_exhausted(), "{fatal:?} should be fatal");
-    }
+    let distinct: std::collections::BTreeSet<&str> = cases
+        .iter()
+        .map(|(_, expected)| expected.wire().wire_id())
+        .collect();
+    assert_eq!(
+        distinct.len(),
+        7,
+        "all seven `ModelError` shapes have their own type: {distinct:?}"
+    );
 }
 
 /// A `ResponseLoop` says both halves of what happened — what the detector saw and how many replies

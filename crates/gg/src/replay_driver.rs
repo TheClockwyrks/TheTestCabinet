@@ -360,6 +360,11 @@ pub(crate) fn reconstruct_with_sink(
                     name: call.name.clone(),
                     ok: outcome.ok,
                     summary: outcome.summary.clone(),
+                    // Re-read off the recorded outcome, which round-trips the class it was captured
+                    // with. Deriving it here rather than leaving it unset is what keeps a
+                    // reconstruction's error record equal to the recorded run's instead of
+                    // reporting every failure as unclassified.
+                    failure: outcome.wire_failure(),
                 });
                 steps[pending.step_index]
                     .tool_results

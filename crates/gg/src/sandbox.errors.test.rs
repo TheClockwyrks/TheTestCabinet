@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use super::*;
 use crate::ending::EndingRole;
+use crate::limits::{TurnErrorKind, TurnErrorType};
 use crate::sandbox::fake::{CallLog, FakeToolApi, process_isolated, typescript};
 
 /// **A program that does not compile never touches the engine.** It is the only failure that costs
@@ -185,6 +186,117 @@ fn every_sandbox_failure_maps_to_exactly_one_turn_disposition() {
             declared_disposition(error),
             "the loop's algorithm and the declared classification disagree about {error:?}"
         );
+    }
+}
+
+/// **The recorded turn error type is a partition of the same taxonomy**: exactly the failures the
+/// two predicates disclaim have one, and every one of those is distinct.
+///
+/// The distinctness is the fix. The turn loop used to reach the sandbox ceilings through an
+/// `Err(_)` arm that had already matched the error and then never looked at the variant, so a
+/// runaway loop, a program that allocated past its cap and a guest trap were one `sandbox_limit`
+/// row — three different defects, one bucket, and no way to tell from a run's record which had
+/// happened.
+#[test]
+fn exactly_the_failures_the_model_owns_carry_a_recorded_type() {
+    let mut recorded = Vec::new();
+    for error in every_sandbox_error() {
+        let error_type = error.turn_error_type();
+        let owned_by_the_model = !error.is_artifact_defect() && !error.is_host_fault();
+        assert_eq!(
+            error_type.is_some(),
+            owned_by_the_model,
+            "{error:?}: a type is recorded for exactly the failures charged to the model"
+        );
+        if let Some(error_type) = error_type {
+            // ...and under the base kind the disposition says it is.
+            let expected = match declared_disposition(&error) {
+                Disposition::ModelsPrepareError => TurnErrorKind::Transpile,
+                Disposition::ModelsSandboxLimit => TurnErrorKind::SandboxLimit,
+                other => panic!("{error:?} is {other:?} and should carry no type"),
+            };
+            assert_eq!(error_type.kind(), expected, "{error:?}");
+            recorded.push(error_type);
+        }
+    }
+
+    let distinct: std::collections::BTreeSet<&str> = recorded
+        .iter()
+        .map(|error| error.wire().wire_id())
+        .collect();
+    assert_eq!(
+        distinct.len(),
+        recorded.len(),
+        "the four recordable failures must not share a type: {distinct:?}"
+    );
+    assert!(
+        distinct.is_superset(&std::collections::BTreeSet::from([
+            "sandbox_timeout",
+            "sandbox_out_of_memory",
+            "sandbox_trap",
+        ])),
+        "the three ceilings are three types: {distinct:?}"
+    );
+}
+
+/// The four prepare failures are four recorded types, because they have four different causes: a
+/// syntax error is a typo, a semantic error is almost always two programs in one reply, a lowering
+/// failure is a defect in gg's own pipeline, and a refusal is gg declining a feature.
+///
+/// The enum's own rustdoc has always claimed that "telling them apart in the telemetry is how each
+/// shows up as a rate rather than as anecdote". Until now the telemetry did not tell them apart.
+#[test]
+fn every_prepare_failure_is_recorded_as_its_own_type() {
+    let cases = [
+        (
+            PrepareError::Syntax("unexpected token".into()),
+            TurnErrorType::TranspileSyntax,
+        ),
+        (
+            PrepareError::Semantic("`x` declared twice".into()),
+            TurnErrorType::TranspileSemantic,
+        ),
+        (
+            PrepareError::Lowering("could not lower".into()),
+            TurnErrorType::TranspileLowering,
+        ),
+        (
+            PrepareError::Unsupported("no module loader".into()),
+            TurnErrorType::TranspileUnsupported,
+        ),
+    ];
+    for (prepare, expected) in cases {
+        assert_eq!(prepare.turn_error_type(), expected, "{prepare:?}");
+        assert_eq!(expected.kind(), TurnErrorKind::Transpile, "{prepare:?}");
+        // The whole `SandboxError` wrapping it must agree, since that is what the turn loop holds.
+        assert_eq!(
+            SandboxError::Prepare(prepare.clone()).turn_error_type(),
+            Some(expected)
+        );
+    }
+}
+
+/// The three classes the guest already types an uncaught throw with are three recorded types.
+///
+/// `program_tool_error` is the one worth having: it says the model is fighting a call it could not
+/// make, rather than mis-writing its own program, and it was previously indistinguishable from a
+/// `TypeError`.
+#[test]
+fn every_uncaught_throw_class_is_recorded_as_its_own_type() {
+    let cases = [
+        (
+            ProgramErrorKind::ToolFailure,
+            TurnErrorType::ProgramToolError,
+        ),
+        (
+            ProgramErrorKind::UnknownName,
+            TurnErrorType::ProgramUnknownName,
+        ),
+        (ProgramErrorKind::Other, TurnErrorType::ProgramThrow),
+    ];
+    for (kind, expected) in cases {
+        assert_eq!(kind.turn_error_type(), expected, "{kind:?}");
+        assert_eq!(expected.kind(), TurnErrorKind::ProgramFault, "{kind:?}");
     }
 }
 

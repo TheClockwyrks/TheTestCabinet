@@ -37,7 +37,14 @@ import type {
   GgTelemetryEvent,
   GgTransitionModule,
   GgTurnErrorKind,
+  GgTurnErrorType,
   GgAgentTransitionKind,
+} from "@test-cabinet/run-record/gg";
+import {
+  GG_TOOL_FAILURE_LABELS,
+  GG_TURN_ERROR_KIND_LABELS,
+  GG_TURN_ERROR_TYPE_BASE,
+  GG_TURN_ERROR_TYPE_LABELS,
 } from "@test-cabinet/run-record/gg";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
 
@@ -419,17 +426,15 @@ export function turnTotalMs(t: TurnTiming): number {
   return t.promptMs + t.requestMs + t.responseMs;
 }
 
-// How each error kind reads on screen. A **total** record over the contract's
-// `GgTurnErrorKind`, so a kind added to gg is a compile error here rather than a bucket
-// that silently renders as a raw wire value — the same guard `LIMIT_LABELS` takes in the
-// event feed.
-export const TURN_ERROR_LABELS: Record<GgTurnErrorKind, string> = {
-  model_api: "model call",
-  transpile: "transpile",
-  program_fault: "program fault",
-  sandbox_limit: "sandbox limit",
-  missing_completion: "no work declared",
-};
+// How each **base** error kind reads on screen.
+//
+// Re-exported from the contract rather than written here: the labels are generated from
+// the Rust taxonomy that defines the kinds, so a kind added to gg arrives already
+// labelled instead of rendering as a raw wire value, and no second table can drift from
+// the first. (The generated tables are total records over the contract enums, so an
+// omission on the Rust side is a TypeScript error at generation time.)
+export const TURN_ERROR_LABELS: Readonly<Record<GgTurnErrorKind, string>> =
+  GG_TURN_ERROR_KIND_LABELS;
 
 // The error kinds in the order they are shown, which is the contract's own declaration
 // order rather than a frequency sort: a split whose rows move as a run progresses cannot
@@ -437,6 +442,49 @@ export const TURN_ERROR_LABELS: Record<GgTurnErrorKind, string> = {
 export const TURN_ERROR_KINDS = Object.keys(
   TURN_ERROR_LABELS,
 ) as ReadonlyArray<GgTurnErrorKind>;
+
+// One row of a ranked error breakdown: what to show, how many, and which base bucket it
+// belongs to.
+export interface GgRankedError {
+  // The recorded id — a `GgTurnErrorType` wire value, or a `GgToolFailure` class for a
+  // call-failure row.
+  id: string;
+  // What to render. Never empty: an id from a newer gg than this console falls back to a
+  // prettified form of the id itself (see `errorTypeLabel`).
+  label: string;
+  // The base kind this row rolls up into, for a badge beside it. `null` for a
+  // call-failure row, which is not a turn error and has no base kind, and for a turn
+  // error type this console has never heard of.
+  kind: GgTurnErrorKind | null;
+  count: number;
+}
+
+// How one **specific** error type reads on screen.
+//
+// The fallback is the point, and it is why this is a function rather than an index into
+// the generated record: a run recorded by a newer gg can carry a type this console was
+// never built against, and dropping that row would quietly under-report the very run
+// whose failures are novel. A prettified id says less than a real label and far more than
+// nothing.
+export function errorTypeLabel(id: string): string {
+  return (
+    GG_TURN_ERROR_TYPE_LABELS[id as GgTurnErrorType] ?? id.replace(/_/g, " ")
+  );
+}
+
+// The base kind a specific type rolls up into, or `null` for one this console has never
+// heard of — the same forward-compatibility allowance `errorTypeLabel` makes.
+export function errorTypeKind(id: string): GgTurnErrorKind | null {
+  return GG_TURN_ERROR_TYPE_BASE[id as GgTurnErrorType] ?? null;
+}
+
+// How one call-failure class reads on screen, with the same fallback for a class this
+// console does not know.
+export function toolFailureLabel(id: string): string {
+  return (
+    GG_TOOL_FAILURE_LABELS[id as keyof typeof GG_TOOL_FAILURE_LABELS] ?? id
+  );
+}
 
 // How badly a run — or one agent's partition of it — went, folded from the
 // `turn_outcome` events gg emits once per turn.
@@ -465,10 +513,36 @@ export interface GgErrorTally {
   // fold spans a whole run — turns from concurrent agents interleave arbitrarily, so a
   // streak counted off the merged stream would be an artefact of scheduling.
   maxConsecutive: number;
-  // The errors split by why they were errors. A total record, so every kind has a row
-  // even at zero: "this run never failed to transpile" is a fact, and a bucket that
-  // appears only once it is non-empty makes two runs unreadable side by side.
+  // The errors split by why they were errors, at the BASE level. A total record, so every
+  // kind has a row even at zero: "this run never failed to transpile" is a fact, and a
+  // bucket that appears only once it is non-empty makes two runs unreadable side by side.
   byKind: Record<GgTurnErrorKind, number>;
+  // The same errors split by their SPECIFIC type — what a "top error types" ranking is
+  // built from, keyed by the recorded `GgTurnErrorType` wire id.
+  //
+  // Sparse, unlike `byKind`, and for the opposite reason: nineteen rows at zero is not a
+  // readable side-by-side, and the ranking this feeds shows the top few rather than the
+  // whole set. Sums to `errors` for any stream gg wrote; a stream recorded before gg
+  // published types leaves it empty while `errors` is non-zero, which a reader must
+  // render as "not recorded" rather than as "nothing went wrong".
+  byType: Record<string, number>;
+  // CALLS that failed, keyed by failure class — a different population from everything
+  // above, which counts turns.
+  //
+  // A call that failed inside a program the model then handled is not a turn error and is
+  // deliberately absent from `errors`: the typed surface working is not the turn failing.
+  // It is counted because a model fighting the same `not-found` forty times is one of the
+  // most actionable facts a run has, and it was previously recorded nowhere.
+  //
+  // `toolFailures` is the EXECUTION surface — every dispatched tool call that failed, in
+  // either execution mode. `apiFailures` is the MODEL-facing surface under
+  // responses-as-code — what the program itself was thrown, which is the only record for
+  // the calls that never reached a tool (a carve-out no tool backs, and a call the
+  // membrane refused). The two overlap for a bridged call, deliberately and for the same
+  // reason `CodeExecution`'s two call counts do: they are two surfaces over one core, and
+  // neither is derived from the other. Do not add them together.
+  toolFailures: Record<string, number>;
+  apiFailures: Record<string, number>;
   // Model responses loop detection discarded mid-stream before a turn produced one.
   // **Not** errors — the retry succeeded and the turn is judged on what it produced —
   // counted because they are money and wall-clock spent on nothing, which is the whole
@@ -491,8 +565,21 @@ export function emptyErrorTally(): GgErrorTally {
       sandbox_limit: 0,
       missing_completion: 0,
     },
+    byType: {},
+    toolFailures: {},
+    apiFailures: {},
     loopAborts: 0,
   };
+}
+
+// Sum one open, sparse breakdown into another, in place.
+function addBreakdown(
+  into: Record<string, number>,
+  from: Record<string, number>,
+): void {
+  for (const [id, count] of Object.entries(from)) {
+    into[id] = (into[id] ?? 0) + count;
+  }
 }
 
 // Sum one tally into another, in place. Every figure adds except `maxConsecutive`, which
@@ -504,6 +591,56 @@ export function addErrorTally(into: GgErrorTally, from: GgErrorTally): void {
   into.loopAborts += from.loopAborts;
   into.maxConsecutive = Math.max(into.maxConsecutive, from.maxConsecutive);
   for (const kind of TURN_ERROR_KINDS) into.byKind[kind] += from.byKind[kind];
+  addBreakdown(into.byType, from.byType);
+  addBreakdown(into.toolFailures, from.toolFailures);
+  addBreakdown(into.apiFailures, from.apiFailures);
+}
+
+// The most common error types in a tally, ranked, with the counts a reader sees.
+//
+// Ranked by count and then — for a stable order when two rows tie — by label, so a widget
+// re-rendering as a live run progresses does not shuffle equal rows past each other.
+//
+// It ranks TURN error types only. The call-failure breakdowns beside them are a different
+// population (calls, not turns) measured against a different denominator, and mixing the
+// two into one ranking without saying so would put two meanings of "error" in one list.
+export function topErrorTypes(
+  errors: GgErrorTally,
+  limit: number,
+): GgRankedError[] {
+  return Object.entries(errors.byType)
+    .filter(([, count]) => count > 0)
+    .map(([id, count]) => ({
+      id,
+      label: errorTypeLabel(id),
+      kind: errorTypeKind(id),
+      count,
+    }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, limit);
+}
+
+// The most common call-failure classes in a tally, ranked the same way.
+//
+// `surface` picks which of the two records to rank: `"tool"` is what ran, `"api"` is what
+// the model wrote. They are asked for separately because a caller has to choose — see
+// `GgErrorTally.toolFailures`.
+export function topCallFailures(
+  errors: GgErrorTally,
+  surface: "tool" | "api",
+  limit: number,
+): GgRankedError[] {
+  const source = surface === "tool" ? errors.toolFailures : errors.apiFailures;
+  return Object.entries(source)
+    .filter(([, count]) => count > 0)
+    .map(([id, count]) => ({
+      id,
+      label: toolFailureLabel(id),
+      kind: null,
+      count,
+    }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+    .slice(0, limit);
 }
 
 // One recorded revision of one memory — a `memory_revision` event, which gg emits for
@@ -1675,6 +1812,13 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           errors.errors += 1;
           errors.byKind[gg.error] += 1;
         }
+        // The specific type rides on the same event as the base kind and is emitted from
+        // one value, so it is folded from `errorType` alone rather than re-derived: a
+        // stream recorded before gg published types leaves this empty while `byKind` is
+        // not, which is the honest reading of a record that never carried the figure.
+        if (gg.errorType) {
+          errors.byType[gg.errorType] = (errors.byType[gg.errorType] ?? 0) + 1;
+        }
         // A peak, not a sum: see `GgErrorTally.maxConsecutive`. gg publishes the streak
         // the turn is part of, which is 0 on every non-error turn.
         errors.maxConsecutive = Math.max(
@@ -1893,6 +2037,26 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         apiCalls.set(key, (apiCalls.get(key) ?? 0) + 1);
         break;
       }
+      case "api_result":
+        // ...and the CLOSING half is where a failed call says why. It is the only record
+        // of the class for a call that never reached a tool — a carve-out, or one the
+        // membrane refused — which is exactly the population a `tool_result` fold cannot
+        // see. Absent on a success, and on a stream recorded before gg published it.
+        if (gg.failure) {
+          errors.apiFailures[gg.failure] =
+            (errors.apiFailures[gg.failure] ?? 0) + 1;
+        }
+        break;
+      case "tool_result":
+        // What ran, as opposed to what the model wrote. Counted on its own surface for
+        // the reason `GgErrorTally.toolFailures` gives: the two overlap for a bridged
+        // call and neither is derived from the other, so they are kept apart rather than
+        // summed into a figure whose population nobody could state.
+        if (gg.failure) {
+          errors.toolFailures[gg.failure] =
+            (errors.toolFailures[gg.failure] ?? 0) + 1;
+        }
+        break;
       case "turn_timing":
         // The turn's phase split, emitted as the last event of the turn it describes.
         // Keyed to the turn it closes — the `turn_started` already counted — so the

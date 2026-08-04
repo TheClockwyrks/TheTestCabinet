@@ -56,6 +56,8 @@
 
 use test_cabinet_core::gg::{CAPABILITY_RESPONSES_AS_CODE, GgAgentConfig, GgProgramLanguage};
 
+use crate::limits::TurnErrorType;
+
 use super::signatures::SignatureCatalogue;
 
 #[path = "language/typescript.rs"]
@@ -615,6 +617,24 @@ pub enum PrepareError {
     /// no event loop, a nesting depth the host's parser is not given room for.
     #[error("{0}")]
     Unsupported(String),
+}
+
+impl PrepareError {
+    /// The [turn error type](TurnErrorType) this failure is recorded as.
+    ///
+    /// It lives here, beside the enum, rather than in the turn loop's `match`: the four causes this
+    /// type exists to keep apart are this module's knowledge, and a caller re-deriving them would be
+    /// a second place for them to be got wrong. Every one lands under
+    /// [`Transpile`](crate::limits::TurnErrorKind::Transpile) at the base level, so the wire value
+    /// persisted run data reads is untouched.
+    pub fn turn_error_type(&self) -> TurnErrorType {
+        match self {
+            Self::Syntax(_) => TurnErrorType::TranspileSyntax,
+            Self::Semantic(_) => TurnErrorType::TranspileSemantic,
+            Self::Lowering(_) => TurnErrorType::TranspileLowering,
+            Self::Unsupported(_) => TurnErrorType::TranspileUnsupported,
+        }
+    }
 }
 
 /// What one language's guest component needs from the host linker.

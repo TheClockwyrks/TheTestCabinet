@@ -98,8 +98,8 @@ use test_cabinet_core::gg::{
     GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCapabilitySet, GgContextAction,
     GgContextSource, GgHealingStrategy, GgHookAgentKind, GgHookEvent, GgIssueReviewPhase,
     GgLimitBreach, GgLimitKind, GgProgramLanguage, GgResponseHealing, GgReviewer, GgRunLimits,
-    GgSlotBinding, GgSubagentScope, GgTelemetryKind, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
-    SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
+    GgSlotBinding, GgSubagentScope, GgTelemetryKind, GgToolFailure,
+    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
 };
 use test_cabinet_core::gg_replay::{
     GgReplayAgent, GgReplayAgentOrigin, GgReplayFidelity, GgReplayModalities,
@@ -129,7 +129,7 @@ use crate::git;
 use crate::healing::{self, AssistantMessageMode, Healed, HealingConfig, HealingStrategy, plural};
 use crate::hooks::{HookAgent, HookFailure, HookRuntime};
 use crate::limits::{
-    AgentLimits, FatalFault, RunLimits, RunSpend, TurnErrorKind, TurnOutcome, resolve_run_limits,
+    AgentLimits, FatalFault, RunLimits, RunSpend, TurnErrorType, TurnOutcome, resolve_run_limits,
 };
 use crate::loopguard::LoopGuardConfig;
 use crate::memories::{MemoriesRuntime, MemoryRegistry, MemoryScope, MemoryStrategy};
@@ -5887,18 +5887,16 @@ impl Agent {
                     // operator looking at the provider for an outage that never happened. What
                     // actually happened is that the model kept writing the same thing and gg kept
                     // throwing it away.
-                    let kind = if matches!(err, ModelError::ResponseLoop { .. }) {
-                        "generation loop (every attempt looped)"
-                    } else if err.is_retryable_exhausted() {
-                        "transient failure (retries exhausted)"
-                    } else if err.is_auth_failure() {
-                        "authentication failure"
-                    } else {
-                        "fatal error"
-                    };
+                    //
+                    // The classification is made ONCE, as the value that is recorded, and the log
+                    // line's phrase is read back off it. It used to be the other way round — a
+                    // four-way `match` that built a string, next to a `record_turn` that wrote an
+                    // undifferentiated `model_api` — so the distinction existed only in prose and
+                    // no aggregate could see it.
+                    let error_type = err.turn_error_type();
                     emitter.emit(log(
                         "error",
-                        format!("model turn {turn} failed — {kind}: {err}"),
+                        format!("model turn {turn} failed — {}: {err}", error_type.phrase()),
                     ));
                     // The turn is recorded before the loop leaves, so the accounting never drifts
                     // from the number of model calls the run made — and it can never breach a
@@ -5908,14 +5906,15 @@ impl Agent {
                     // again would be a second, undocumented retry layer with a worse backoff and no
                     // jitter.
                     //
-                    // A loop that survived every attempt is recorded as the `ModelApi` error it
-                    // arrives as (the contract has no separate kind for it, deliberately), and the
-                    // replies it discarded on the way are carried on the event so the money spent on
-                    // them is still counted — this is the one error path that can have any.
+                    // A loop that survived every attempt keeps the `ModelApi` **base kind** it
+                    // arrives as (the contract has no separate kind for it, deliberately) and is
+                    // published under its own type, `model_response_loop`; the replies it discarded
+                    // on the way are carried on the event too, so the money spent on them is still
+                    // counted — this is the one error path that can have any.
                     let _ = self.record_turn(
                         &mut agent_limits,
                         emitter,
-                        TurnOutcome::Error(TurnErrorKind::ModelApi),
+                        TurnOutcome::Error(error_type),
                         match &err {
                             ModelError::ResponseLoop { attempts, .. } => *attempts,
                             _ => 0,
@@ -6559,7 +6558,7 @@ impl Agent {
                 let breach = self.record_turn(
                     &mut agent_limits,
                     emitter,
-                    TurnOutcome::Error(TurnErrorKind::MissingCompletion),
+                    TurnOutcome::Error(TurnErrorType::MissingCompletionCompaction),
                     loop_aborts,
                 );
                 context.push(
@@ -6592,7 +6591,7 @@ impl Agent {
                 let breach = self.record_turn(
                     &mut agent_limits,
                     emitter,
-                    TurnOutcome::Error(TurnErrorKind::MissingCompletion),
+                    TurnOutcome::Error(TurnErrorType::MissingCompletionNoCall),
                     loop_aborts,
                 );
                 context.push(
@@ -6849,6 +6848,7 @@ impl Agent {
                     name: call.name.clone(),
                     ok: outcome.ok,
                     summary: outcome.summary.clone(),
+                    failure: outcome.wire_failure(),
                 });
                 for event in managed_events {
                     emitter.emit(event);
@@ -7136,10 +7136,11 @@ impl Agent {
         loop_aborts: u32,
     ) -> Option<GgLimitBreach> {
         let breach = agent_limits.record(outcome, &self.id);
-        let (wire_outcome, error) = outcome.wire();
+        let (wire_outcome, error, error_type) = outcome.wire();
         emitter.emit(GgTelemetryKind::TurnOutcome {
             outcome: wire_outcome,
             error,
+            error_type,
             // The streak **this turn is part of**, which is why a turn that is not an error
             // publishes zero rather than the raw counter. The two only differ on a terminal turn:
             // the accounting neither raises nor clears the count for one (the session is over

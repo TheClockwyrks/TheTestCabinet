@@ -57,6 +57,7 @@
 //! lines) saturates rather than wrapping into a small, plausible, wrong number.
 
 use serde::{Deserialize, Serialize};
+use test_cabinet_core::gg::GgToolFailure;
 
 use crate::model::Role;
 
@@ -489,6 +490,26 @@ impl ToolFailure {
         match err.kind() {
             std::io::ErrorKind::NotFound => Self::NotFound,
             _ => Self::IoError,
+        }
+    }
+
+    /// This class as the contract publishes it on a failed call's telemetry.
+    ///
+    /// Written out by hand rather than through a `From`, for the reason
+    /// [`TurnOutcome::wire`](crate::limits::TurnOutcome::wire) gives: gg's vocabulary and the
+    /// published one must not become interchangeable, and the contract carries an eighth value
+    /// ([`Other`](GgToolFailure::Other)) that this enum deliberately does not — an unclassified
+    /// failure is an *absent* `ToolFailure` here and a present `other` there, because the wire has
+    /// to distinguish "this call failed and nobody said why" from "this call did not fail".
+    pub fn wire(self) -> GgToolFailure {
+        match self {
+            Self::InvalidArgument => GgToolFailure::InvalidArgument,
+            Self::NotFound => GgToolFailure::NotFound,
+            Self::Conflict => GgToolFailure::Conflict,
+            Self::Refused => GgToolFailure::Refused,
+            Self::Unavailable => GgToolFailure::Unavailable,
+            Self::LimitExceeded => GgToolFailure::LimitExceeded,
+            Self::IoError => GgToolFailure::IoError,
         }
     }
 }

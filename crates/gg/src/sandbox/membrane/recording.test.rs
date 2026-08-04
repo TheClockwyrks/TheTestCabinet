@@ -35,6 +35,8 @@ use super::super::test_cabinet::gg::tasks::{Host as TasksHost, TaskInput, TaskPa
 use super::super::test_cabinet::gg::types::TextEdit;
 use super::super::test_cabinet::gg::views::Host as ViewsHost;
 use super::*;
+use test_cabinet_core::gg::GgToolFailure;
+
 use crate::sandbox::MODEL_FACING_CALLS;
 use crate::sandbox::fake::{ApiLog, CallLog, FakeToolApi, membrane_from};
 
@@ -304,6 +306,13 @@ fn a_refused_call_is_recorded_as_a_failed_api_call() {
 
     assert_eq!(recorded.names(), vec!["fs.list_dir"]);
     assert_eq!(recorded.calls()[0].ok, Some(false));
+    // ...and it says *why*. A refusal never dispatches, so this record is the only place the class
+    // exists at all: without it, the one call class that says "this run withheld what the model
+    // reached for" would be unrecorded anywhere.
+    assert_eq!(
+        recorded.calls()[0].failure,
+        Some(GgToolFailure::Unavailable)
+    );
     assert!(
         log.calls().is_empty(),
         "nothing reached the invoker, so the tool layer has nothing to record"
@@ -358,4 +367,70 @@ fn a_call_whose_result_could_not_be_converted_fails_the_api_record() {
         Some(false),
         "the API record takes the verdict the program saw"
     );
+    assert_eq!(
+        recorded.calls()[0].failure,
+        Some(GgToolFailure::IoError),
+        "and the class it was thrown with, which the `ToolResult` beside it cannot carry — that \
+         one streamed a success"
+    );
+}
+
+/// **Every failed API call says why**, in the class the program itself branches on — and a
+/// successful one says nothing, so a reader can tell a record written before the class existed from
+/// a surface whose calls all worked.
+///
+/// This is the seam the complaint was about: the bracket knew the `ToolError` it was closing over
+/// and recorded only that there *was* one, so an API call that failed forty times over a missing
+/// file was indistinguishable from one that failed forty times over a refused capability.
+#[test]
+fn a_failed_api_call_records_the_class_it_threw_with() {
+    let log = CallLog::default();
+    let api = FakeToolApi::with(&log, |tool, _| match tool {
+        "read_file" => crate::tools::ToolOutcome::failed(
+            crate::tools::ToolFailure::NotFound,
+            "no such file: missing.rs",
+        ),
+        _ => crate::tools::ToolOutcome::failed(
+            crate::tools::ToolFailure::InvalidArgument,
+            "the path climbs out of the workspace",
+        ),
+    });
+    let recorded = api.api_log();
+    let mut state = membrane_from(api);
+
+    let _ = state.read_file("missing.rs".to_string(), None, None);
+    let _ = state.write_file("../escape.txt".to_string(), "body".to_string());
+    let _ = state.list_functions("fs".to_string());
+
+    let calls = recorded.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| (call.function.as_str(), call.failure))
+            .collect::<Vec<_>>(),
+        vec![
+            ("read_file", Some(GgToolFailure::NotFound)),
+            ("write_file", Some(GgToolFailure::InvalidArgument)),
+            // A call that cannot fail records no class, because nothing threw.
+            ("list", None),
+        ]
+    );
+}
+
+/// A failure raised outside a tool implementation is recorded as `other` rather than as nothing.
+///
+/// "This call failed and nobody said why" and "this call did not fail" are different facts, and a
+/// shared absence would make them the same one.
+#[test]
+fn an_unclassified_failure_is_recorded_as_the_unclassified_class() {
+    let log = CallLog::default();
+    let api = FakeToolApi::with(&log, |_, _| {
+        crate::tools::ToolOutcome::error("the bridge degraded")
+    });
+    let recorded = api.api_log();
+    let mut state = membrane_from(api);
+
+    let _ = state.read_file("src/main.rs".to_string(), None, None);
+
+    assert_eq!(recorded.calls()[0].failure, Some(GgToolFailure::Other));
 }

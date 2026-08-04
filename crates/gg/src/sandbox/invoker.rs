@@ -20,6 +20,8 @@
 
 use std::time::Duration;
 
+use test_cabinet_core::gg::GgToolFailure;
+
 use crate::board::IssueStatus;
 use crate::context::{OpenViewInfo, TurnRange, ViewKind};
 use crate::memories::MemoryCode;
@@ -177,12 +179,19 @@ pub trait ToolApi: Send + 'static {
 
     /// That call returned — the **closing** half, with the verdict the *program* saw.
     ///
-    /// `ok` is settled after the outcome has been converted into what the program is handed, so it
-    /// can legitimately disagree with the `ToolResult` beside it: a tool that answered `ok` with a
-    /// payload the typed function could not use failed the program, and the API layer is the one the
-    /// model experienced. There is no default body, deliberately — an api that forgot to record
-    /// would report a model as having ignored its whole surface.
-    fn end_api_call(&mut self, object: &str, function: &str, ok: bool);
+    /// The verdict is settled after the outcome has been converted into what the program is handed,
+    /// so it can legitimately disagree with the `ToolResult` beside it: a tool that answered `ok`
+    /// with a payload the typed function could not use failed the program, and the API layer is the
+    /// one the model experienced. There is no default body, deliberately — an api that forgot to
+    /// record would report a model as having ignored its whole surface.
+    ///
+    /// `failure` is `None` when the call returned a value and `Some` when it threw, carrying the
+    /// [class](GgToolFailure) of the `ToolError` the program was thrown — the same `code` a `catch`
+    /// site branches on. It is the verdict *and* the reason in one argument rather than an `ok` flag
+    /// beside an optional class, so a caller cannot record a failure with no reason or a reason on a
+    /// call that succeeded. For the calls that never reach a tool — a carve-out no tool backs, and a
+    /// call the membrane refused before dispatch — this is the **only** record of why they failed.
+    fn end_api_call(&mut self, object: &str, function: &str, failure: Option<GgToolFailure>);
 
     fn shell(&mut self, command: String, timeout: Duration) -> ToolOutcome;
     fn read_file(

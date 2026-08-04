@@ -96,7 +96,8 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use test_cabinet_core::gg::{
-    GgCapabilitySet, GgLimitBreach, GgLimitKind, GgRunLimits, GgTurnErrorKind, GgTurnOutcome,
+    GgCapabilitySet, GgLimitBreach, GgLimitKind, GgRunLimits, GgTurnErrorKind, GgTurnErrorType,
+    GgTurnOutcome,
 };
 use test_cabinet_core::metrics::Cost;
 
@@ -130,7 +131,14 @@ pub enum TurnOutcome {
     /// tools. Terminal, and never an error: a session that ends on purpose has not failed.
     Finished,
     /// The turn's declared work could not be carried out as declared.
-    Error(TurnErrorKind),
+    ///
+    /// It carries the **specific** [type](TurnErrorType), not the base [kind](TurnErrorKind), and
+    /// that is the whole enforcement mechanism behind "every error is attributable": the base is
+    /// derived from the type ([`TurnErrorType::kind`]), so a site that records an error cannot omit
+    /// the specific reason — there is no constructor that takes only the coarse one. Making the
+    /// type an optional second argument instead would let every future error site quietly produce
+    /// an untyped error, which is precisely the defect this taxonomy exists to fix.
+    Error(TurnErrorType),
     /// gg's own machinery failed, so the session ends on the first occurrence.
     ///
     /// Recorded rather than skipped, so the accounting never drifts from the number of model calls
@@ -158,12 +166,14 @@ impl TurnOutcome {
 
     /// This outcome as the contract publishes it: the
     /// [wire outcome](test_cabinet_core::gg::GgTurnOutcome) and, on an error, the
-    /// [wire kind](test_cabinet_core::gg::GgTurnErrorKind) that says how.
+    /// [wire kind](test_cabinet_core::gg::GgTurnErrorKind) and the
+    /// [wire type](test_cabinet_core::gg::GgTurnErrorType) that say how.
     ///
-    /// Returned as one pair rather than two accessors so the pairing is unrepresentably wrong: the
-    /// contract states that `error != null` and `outcome == "error"` are the same statement, and a
-    /// caller that could ask for either half separately could publish an error with no kind or a
-    /// kind on a turn that progressed.
+    /// Returned as one triple rather than three accessors so the pairing is unrepresentably wrong:
+    /// the contract states that `error != null`, `errorType != null` and `outcome == "error"` are
+    /// one statement, and that the type's base *is* the kind — a caller that could ask for the
+    /// parts separately could publish an error with no kind, a kind on a turn that progressed, or a
+    /// type whose base contradicts the kind beside it. All three come from one value here.
     ///
     /// Written out by hand rather than derived through a `From`, and deliberately so: gg's enum is
     /// the loop's internal vocabulary and the contract's is a **published** wire value read by the
@@ -176,17 +186,32 @@ impl TurnOutcome {
     /// `fatal` says the session ended on gg's own machinery, which is the fact a study slices on,
     /// and *which* piece of gg's machinery broke is a defect report the `error` log already carries
     /// in full sentences.
-    pub fn wire(self) -> (GgTurnOutcome, Option<GgTurnErrorKind>) {
+    pub fn wire(
+        self,
+    ) -> (
+        GgTurnOutcome,
+        Option<GgTurnErrorKind>,
+        Option<GgTurnErrorType>,
+    ) {
         match self {
-            Self::Progressed => (GgTurnOutcome::Progressed, None),
-            Self::Finished => (GgTurnOutcome::Finished, None),
-            Self::Error(kind) => (GgTurnOutcome::Error, Some(kind.wire())),
-            Self::Fatal(_) => (GgTurnOutcome::Fatal, None),
+            Self::Progressed => (GgTurnOutcome::Progressed, None, None),
+            Self::Finished => (GgTurnOutcome::Finished, None, None),
+            Self::Error(error) => (
+                GgTurnOutcome::Error,
+                Some(error.kind().wire()),
+                Some(error.wire()),
+            ),
+            Self::Fatal(_) => (GgTurnOutcome::Fatal, None, None),
         }
     }
 }
 
-/// Why a turn was an error — a failure attributable to the model's turn.
+/// Why a turn was an error, at the **base** level — a failure attributable to the model's turn.
+///
+/// The coarse half of gg's two-level error taxonomy: *whose layer* failed. It is the ceilings' and
+/// the breach log's vocabulary, and it is what [`TurnErrorType::kind`] derives — a
+/// [`TurnOutcome::Error`] never carries one of these directly, so this type is only ever read, never
+/// constructed at an error site.
 ///
 /// Carried for diagnosis and for the breach log line; the ceilings themselves count errors without
 /// distinguishing kinds, because a run that alternates between five ways of failing is not
@@ -243,12 +268,14 @@ impl TurnErrorKind {
     /// This kind as the contract publishes it — written out by hand, for the reason
     /// [`TurnOutcome::wire`] gives.
     ///
-    /// The two taxonomies are one-to-one today, and the contract carries no sixth kind for a reply
-    /// abandoned by [loop detection](crate::loopguard): a discarded attempt is retried rather than
-    /// counted, and a loop that survives every attempt reaches the turn loop as a model-client
-    /// failure after that client exhausted its own retry budget — indistinguishable, at this seam,
-    /// from any other exhausted retry, and therefore reported as [`ModelApi`](Self::ModelApi). The
-    /// attempts it discarded on the way are published in their own right, on the
+    /// The two base taxonomies are one-to-one today, and the contract carries no sixth kind for a
+    /// reply abandoned by [loop detection](crate::loopguard): a discarded attempt is retried rather
+    /// than counted, and a loop that survives every attempt reaches the turn loop as a model-client
+    /// failure after that client exhausted its own retry budget, which is a
+    /// [`ModelApi`](Self::ModelApi) failure at this level. It is *not* lost, though — it is
+    /// published one level down, as
+    /// [`ModelResponseLoop`](test_cabinet_core::gg::GgTurnErrorType::ModelResponseLoop). The
+    /// attempts it discarded on the way are published in their own right besides, on the
     /// [`loop_aborts`](test_cabinet_core::gg::GgTelemetryKind::TurnOutcome) field of the same event.
     pub fn wire(self) -> GgTurnErrorKind {
         match self {
@@ -258,6 +285,130 @@ impl TurnErrorKind {
             Self::SandboxLimit => GgTurnErrorKind::SandboxLimit,
             Self::MissingCompletion => GgTurnErrorKind::MissingCompletion,
         }
+    }
+}
+
+/// Why a turn was an error, **specifically** — the leaf of gg's two-level error taxonomy, and the
+/// value every error site in the loop actually records.
+///
+/// Each variant is the distinction gg already had in hand at the moment it recorded the turn and
+/// used to discard: which `ModelError` the client returned, which `PrepareError` the language
+/// raised, which ceiling the sandbox enforced, which class the guest typed an uncaught throw with,
+/// and which of the two "no work declared" shapes the turn was. Nothing here needs new information
+/// to be computed — it needed only to stop being thrown away.
+///
+/// One-to-one with the contract's [`GgTurnErrorType`], and converted by hand
+/// ([`wire`](Self::wire)) for the reason [`TurnOutcome::wire`] gives: gg's vocabulary and the
+/// published one must not become interchangeable, so adding a type here is a decision to publish it
+/// there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnErrorType {
+    /// The run's credential was refused — no key in the environment, or a `401`/`403`.
+    ModelAuth,
+    /// The provider rejected the request for another non-retryable reason.
+    ModelRejected,
+    /// The client retried a transient condition to its policy and every attempt failed.
+    ModelRetryExhausted,
+    /// Every attempt was a [generation loop](crate::loopguard) and was discarded.
+    ModelResponseLoop,
+    /// The model cannot accept an image the request carried, and there was nothing left to strip.
+    ModelVisionUnsupported,
+    /// A successful response could not be parsed into a reply.
+    ModelParse,
+    /// A [playback](crate::playback) could not answer the call from the record.
+    ModelPlayback,
+    /// The program is not valid source in its language.
+    TranspileSyntax,
+    /// The program parses but breaks an early error the language enforces.
+    TranspileSemantic,
+    /// The program could not be lowered into what the guest evaluates.
+    TranspileLowering,
+    /// The program asks for something the sandbox will not run it with.
+    TranspileUnsupported,
+    /// The program's uncaught throw was a **failed call** — the class the guest types over the
+    /// membrane as `tool-failure`.
+    ProgramToolError,
+    /// The program referenced a name that is not in scope.
+    ProgramUnknownName,
+    /// The program threw for any other reason.
+    ProgramThrow,
+    /// The sandbox stopped the program at its execution timeout.
+    SandboxTimeout,
+    /// The guest's linear memory grew past its cap.
+    SandboxOutOfMemory,
+    /// The guest trapped for some other reason.
+    SandboxTrap,
+    /// A tool-calling turn ended with no call under an explicit-call completion signal.
+    MissingCompletionNoCall,
+    /// A turn replied with no call while a compaction was pending.
+    MissingCompletionCompaction,
+}
+
+impl TurnErrorType {
+    /// The [base kind](TurnErrorKind) this type falls under — the value the ceilings, the breach log
+    /// and the run's per-kind counters read.
+    ///
+    /// Exhaustive and hand-written, so a type added here has to declare its base rather than
+    /// defaulting into one.
+    pub fn kind(self) -> TurnErrorKind {
+        match self {
+            Self::ModelAuth
+            | Self::ModelRejected
+            | Self::ModelRetryExhausted
+            | Self::ModelResponseLoop
+            | Self::ModelVisionUnsupported
+            | Self::ModelParse
+            | Self::ModelPlayback => TurnErrorKind::ModelApi,
+            Self::TranspileSyntax
+            | Self::TranspileSemantic
+            | Self::TranspileLowering
+            | Self::TranspileUnsupported => TurnErrorKind::Transpile,
+            Self::ProgramToolError | Self::ProgramUnknownName | Self::ProgramThrow => {
+                TurnErrorKind::ProgramFault
+            }
+            Self::SandboxTimeout | Self::SandboxOutOfMemory | Self::SandboxTrap => {
+                TurnErrorKind::SandboxLimit
+            }
+            Self::MissingCompletionNoCall | Self::MissingCompletionCompaction => {
+                TurnErrorKind::MissingCompletion
+            }
+        }
+    }
+
+    /// This type as the contract publishes it — written out by hand, for the reason
+    /// [`TurnOutcome::wire`] gives.
+    pub fn wire(self) -> GgTurnErrorType {
+        match self {
+            Self::ModelAuth => GgTurnErrorType::ModelAuth,
+            Self::ModelRejected => GgTurnErrorType::ModelRejected,
+            Self::ModelRetryExhausted => GgTurnErrorType::ModelRetryExhausted,
+            Self::ModelResponseLoop => GgTurnErrorType::ModelResponseLoop,
+            Self::ModelVisionUnsupported => GgTurnErrorType::ModelVisionUnsupported,
+            Self::ModelParse => GgTurnErrorType::ModelParse,
+            Self::ModelPlayback => GgTurnErrorType::ModelPlayback,
+            Self::TranspileSyntax => GgTurnErrorType::TranspileSyntax,
+            Self::TranspileSemantic => GgTurnErrorType::TranspileSemantic,
+            Self::TranspileLowering => GgTurnErrorType::TranspileLowering,
+            Self::TranspileUnsupported => GgTurnErrorType::TranspileUnsupported,
+            Self::ProgramToolError => GgTurnErrorType::ProgramToolError,
+            Self::ProgramUnknownName => GgTurnErrorType::ProgramUnknownName,
+            Self::ProgramThrow => GgTurnErrorType::ProgramThrow,
+            Self::SandboxTimeout => GgTurnErrorType::SandboxTimeout,
+            Self::SandboxOutOfMemory => GgTurnErrorType::SandboxOutOfMemory,
+            Self::SandboxTrap => GgTurnErrorType::SandboxTrap,
+            Self::MissingCompletionNoCall => GgTurnErrorType::MissingCompletionNoCall,
+            Self::MissingCompletionCompaction => GgTurnErrorType::MissingCompletionCompaction,
+        }
+    }
+
+    /// The phrase this type is named by in gg's own `error` log line.
+    ///
+    /// Derived from the published [label](GgTurnErrorType::label) rather than written a second time
+    /// here, so the sentence an operator reads in the log and the row they read in the console
+    /// cannot describe one failure two different ways — which is exactly what happened while the
+    /// log line was the *only* place the distinction existed.
+    pub fn phrase(self) -> &'static str {
+        self.wire().label()
     }
 }
 

@@ -14,14 +14,22 @@ import type {
   GgTelemetryEvent,
   GgTelemetryKind,
   GgTurnErrorKind,
+  GgTurnErrorType,
+} from "@test-cabinet/run-record/gg";
+import {
+  GG_TURN_ERROR_TYPE_LABELS,
+  GG_TURN_ERROR_TYPES,
 } from "@test-cabinet/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import type { ModelNameLookup, ModelPriceLookup } from "./ggCost";
 import { deriveGgAgentSummaries } from "./ggAgentAggregate";
 import {
   emptyErrorTally,
+  errorTypeLabel,
   reduceGgEvents,
   reduceGgEventsPerAgent,
+  topCallFailures,
+  topErrorTypes,
 } from "./useGgRunState";
 
 const TS = "2026-08-03T00:00:00Z";
@@ -54,20 +62,48 @@ function progressed(agentId: string, turns: number): HarnessEvent {
   } as GgTelemetryKind);
 }
 
-/** A turn that failed, carrying the streak it is part of — as gg publishes it. */
+/**
+ * A turn that failed, carrying the streak it is part of — as gg publishes it.
+ *
+ * `errorType` is optional so a fixture can also stand in for a stream recorded before gg
+ * published types, which is the one shape a reader has to tolerate.
+ */
 function errored(
   agentId: string,
   turns: number,
   error: GgTurnErrorKind,
   consecutiveErrors: number,
+  errorType?: GgTurnErrorType,
 ): HarnessEvent {
   return gg(agentId, {
     type: "turn_outcome",
     outcome: "error",
     error,
+    errorType,
     consecutiveErrors,
     turns,
   } as GgTelemetryKind);
+}
+
+/** One dispatched tool call's result — the EXECUTION surface. */
+function toolResult(agentId: string, failure?: string): HarnessEvent {
+  return gg(agentId, {
+    type: "tool_result",
+    name: "read_file",
+    ok: failure == null,
+    failure,
+  } as unknown as GgTelemetryKind);
+}
+
+/** One model-facing API call's result — the MODEL surface, under responses-as-code. */
+function apiResult(agentId: string, failure?: string): HarnessEvent {
+  return gg(agentId, {
+    type: "api_result",
+    object: "fs",
+    function: "read_file",
+    ok: failure == null,
+    failure,
+  } as unknown as GgTelemetryKind);
 }
 
 describe("the error fold", () => {
@@ -285,5 +321,194 @@ describe("a profile's error record", () => {
     const [root, reviewer] = summarize([spawn("root", "Root")], SET);
     expect(root!.errors).toEqual(emptyErrorTally());
     expect(reviewer!.errors).toEqual(emptyErrorTally());
+  });
+});
+
+// The two-level taxonomy: a base kind for the ceilings and the side-by-side split, and a
+// specific type under it for "what actually went wrong?". The fold has to keep both, and
+// the ranking built on the specific types has to survive a type this console has never
+// heard of — a run recorded by a newer gg is exactly the run whose failures are novel.
+describe("the specific error type", () => {
+  it("splits the same errors by type without disturbing the split by kind", () => {
+    const state = reduceGgEvents([
+      errored("root", 1, "model_api", 1, "model_response_loop"),
+      errored("root", 2, "model_api", 2, "model_retry_exhausted"),
+      errored("root", 3, "program_fault", 3, "program_tool_error"),
+      errored("root", 4, "program_fault", 4, "program_tool_error"),
+      progressed("root", 5),
+    ]);
+
+    expect(state.errors.errors).toBe(4);
+    expect(state.errors.byKind.model_api).toBe(2);
+    expect(state.errors.byKind.program_fault).toBe(2);
+    expect(state.errors.byType).toEqual({
+      model_response_loop: 1,
+      model_retry_exhausted: 1,
+      program_tool_error: 2,
+    });
+    // The breakdown sums to the total error count, which is what a ranking is read
+    // against — a ranking that added up to a different number from the split beside it
+    // would leave the reader no way to tell which was lying.
+    const summed = Object.values(state.errors.byType).reduce(
+      (a, b) => a + b,
+      0,
+    );
+    expect(summed).toBe(state.errors.errors);
+  });
+
+  it("regroups by base to reproduce the per-kind counters exactly", () => {
+    const state = reduceGgEvents([
+      errored("root", 1, "transpile", 1, "transpile_syntax"),
+      errored("root", 2, "transpile", 2, "transpile_unsupported"),
+      errored("root", 3, "sandbox_limit", 3, "sandbox_timeout"),
+    ]);
+
+    const regrouped: Record<string, number> = {};
+    for (const row of topErrorTypes(state.errors, 99)) {
+      regrouped[row.kind!] = (regrouped[row.kind!] ?? 0) + row.count;
+    }
+    expect(regrouped).toEqual({ transpile: 2, sandbox_limit: 1 });
+  });
+
+  it("leaves the breakdown empty for a stream recorded before gg published types", () => {
+    // The trap this guards: an empty breakdown beside a non-zero error count means "not
+    // recorded", never "nothing went wrong".
+    const state = reduceGgEvents([errored("root", 1, "transpile", 1)]);
+
+    expect(state.errors.errors).toBe(1);
+    expect(state.errors.byKind.transpile).toBe(1);
+    expect(state.errors.byType).toEqual({});
+    expect(topErrorTypes(state.errors, 3)).toEqual([]);
+  });
+
+  it("ranks the three most common types, counts and all", () => {
+    const state = reduceGgEvents([
+      errored("root", 1, "program_fault", 1, "program_tool_error"),
+      errored("root", 2, "program_fault", 2, "program_tool_error"),
+      errored("root", 3, "program_fault", 3, "program_tool_error"),
+      errored("root", 4, "transpile", 4, "transpile_syntax"),
+      errored("root", 5, "transpile", 5, "transpile_syntax"),
+      errored("root", 6, "sandbox_limit", 6, "sandbox_timeout"),
+      errored("root", 7, "model_api", 7, "model_parse"),
+    ]);
+
+    expect(topErrorTypes(state.errors, 3)).toEqual([
+      {
+        id: "program_tool_error",
+        label: "uncaught call failure",
+        kind: "program_fault",
+        count: 3,
+      },
+      {
+        id: "transpile_syntax",
+        label: "syntax error",
+        kind: "transpile",
+        count: 2,
+      },
+      // Two rows tie at one; the label breaks the tie, so the order is stable as the run
+      // progresses rather than following whichever arrived first.
+      {
+        id: "sandbox_timeout",
+        label: "execution timeout",
+        kind: "sandbox_limit",
+        count: 1,
+      },
+    ]);
+  });
+
+  it("breaks a tie by label so a live run's ranking does not shuffle", () => {
+    const state = reduceGgEvents([
+      errored("root", 1, "sandbox_limit", 1, "sandbox_trap"),
+      errored("root", 2, "transpile", 2, "transpile_syntax"),
+    ]);
+    expect(topErrorTypes(state.errors, 2).map((row) => row.id)).toEqual([
+      "sandbox_trap",
+      "transpile_syntax",
+    ]);
+  });
+
+  it("keeps a type from a newer gg as a row rather than dropping it", () => {
+    // Dropping it would under-report precisely the run worth looking at, so the label
+    // falls back to a prettified id and the base badge honestly reports "unknown".
+    const state = reduceGgEvents([
+      gg("root", {
+        type: "turn_outcome",
+        outcome: "error",
+        error: "model_api",
+        errorType: "model_something_new",
+        consecutiveErrors: 1,
+        turns: 1,
+      } as unknown as GgTelemetryKind),
+    ]);
+
+    expect(topErrorTypes(state.errors, 3)).toEqual([
+      {
+        id: "model_something_new",
+        label: "model something new",
+        kind: null,
+        count: 1,
+      },
+    ]);
+    expect(errorTypeLabel("transpile_lowering")).toBe("lowering failed");
+  });
+
+  it("takes its labels from the contract, so every published type has one", () => {
+    // The guard against a second hand-written table: the labels are generated from the
+    // Rust taxonomy, so a type gg gained cannot arrive unlabelled.
+    for (const id of GG_TURN_ERROR_TYPES) {
+      expect(errorTypeLabel(id)).toBe(GG_TURN_ERROR_TYPE_LABELS[id]);
+      expect(errorTypeLabel(id)).not.toBe("");
+    }
+  });
+});
+
+// A call that failed is a different population from a turn that failed, and the fold has
+// to keep them apart: a program that caught a `not-found` and carried on did not fail its
+// turn.
+describe("the call-failure fold", () => {
+  it("counts failed calls by class without touching the turn figures", () => {
+    const state = reduceGgEvents([
+      toolResult("root"),
+      toolResult("root", "not-found"),
+      toolResult("root", "not-found"),
+      toolResult("root", "invalid-argument"),
+      progressed("root", 1),
+    ]);
+
+    expect(state.errors.toolFailures).toEqual({
+      "not-found": 2,
+      "invalid-argument": 1,
+    });
+    expect(state.errors.errors).toBe(0);
+    expect(state.errors.turns).toBe(1);
+    expect(topCallFailures(state.errors, "tool", 2)).toEqual([
+      { id: "not-found", label: "not found", kind: null, count: 2 },
+      {
+        id: "invalid-argument",
+        label: "invalid argument",
+        kind: null,
+        count: 1,
+      },
+    ]);
+  });
+
+  it("keeps the model's surface apart from the execution surface", () => {
+    // A refused call has an `api_result` and no `tool_result` at all — it never
+    // dispatched — which is why the two are recorded separately and never summed.
+    const state = reduceGgEvents([
+      apiResult("root", "unavailable"),
+      apiResult("root", "not-found"),
+      toolResult("root", "not-found"),
+      apiResult("root"),
+    ]);
+
+    expect(state.errors.apiFailures).toEqual({
+      unavailable: 1,
+      "not-found": 1,
+    });
+    expect(state.errors.toolFailures).toEqual({ "not-found": 1 });
+    expect(topCallFailures(state.errors, "api", 1)).toEqual([
+      { id: "not-found", label: "not found", kind: null, count: 1 },
+    ]);
   });
 });

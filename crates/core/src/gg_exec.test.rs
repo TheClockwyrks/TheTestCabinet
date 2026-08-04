@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use super::*;
 use crate::event::EventKind;
 use crate::execution::OutputStream;
-use crate::gg::{GgCapabilitySet, PRIMARY_SLOT};
+use crate::gg::{GgCapabilitySet, GgToolFailure, PRIMARY_SLOT};
 use crate::run_record::HarnessSlug;
 
 /// A real mock-session telemetry stream captured from the `gg` binary (mock provider,
@@ -225,6 +225,7 @@ fn bridge_maps_a_failed_tool_result_to_a_warning() {
             name: "write_file".to_string(),
             ok: false,
             summary: Some("permission denied".to_string()),
+            failure: Some(GgToolFailure::IoError),
         },
     );
     let events = bridge(&gg);
@@ -241,6 +242,7 @@ fn bridge_maps_a_failed_tool_result_to_a_warning() {
             name: "write_file".to_string(),
             ok: true,
             summary: None,
+            failure: None,
         },
     );
     assert_eq!(bridge(&ok).len(), 1);

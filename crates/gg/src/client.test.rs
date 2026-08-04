@@ -673,9 +673,12 @@ fn vision_unsupported_is_distinguishable_from_other_failures() {
     };
     assert_eq!(vision.vision_unsupported_model(), Some("z-ai/glm-5.2"));
     // It is not an auth failure, so it must not be scored as the credential being
-    // refused, and it is not "retry the whole turn later" either.
+    // refused, and it is recorded as its own turn error type rather than as a rejected request.
     assert!(!vision.is_auth_failure());
-    assert!(!vision.is_retryable_exhausted());
+    assert_eq!(
+        vision.turn_error_type(),
+        crate::limits::TurnErrorType::ModelVisionUnsupported
+    );
 
     let fatal = ModelError::Fatal {
         status: 404,

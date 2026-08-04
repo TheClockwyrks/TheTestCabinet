@@ -70,8 +70,8 @@ fn bare_limits() -> RunLimits {
     }
 }
 
-/// One error turn, of the kind that carries no special meaning to any ceiling.
-const ERROR: TurnOutcome = TurnOutcome::Error(TurnErrorKind::Transpile);
+/// One error turn, of the type that carries no special meaning to any ceiling.
+const ERROR: TurnOutcome = TurnOutcome::Error(TurnErrorType::TranspileSyntax);
 
 /// Feed `outcomes` in order, returning the breach each one produced.
 fn record_all(limits: RunLimits, outcomes: &[TurnOutcome]) -> Vec<Option<GgLimitBreach>> {
@@ -420,15 +420,17 @@ fn the_armed_summary_names_every_ceiling_in_force() {
 #[test]
 fn only_error_outcomes_count_as_errors() {
     // Exhaustive over `TurnOutcome`: the match below fails to compile if a variant is added, which
-    // is the point — a new outcome must be classified deliberately, not inherit an answer.
+    // is the point — a new outcome must be classified deliberately, not inherit an answer. The
+    // error arm is exhaustive over the *specific* type rather than the base kind, because the
+    // specific type is what an error outcome carries.
     let every_outcome = [
         TurnOutcome::Progressed,
         TurnOutcome::Finished,
-        TurnOutcome::Error(TurnErrorKind::ModelApi),
-        TurnOutcome::Error(TurnErrorKind::Transpile),
-        TurnOutcome::Error(TurnErrorKind::ProgramFault),
-        TurnOutcome::Error(TurnErrorKind::SandboxLimit),
-        TurnOutcome::Error(TurnErrorKind::MissingCompletion),
+        TurnOutcome::Error(TurnErrorType::ModelRetryExhausted),
+        TurnOutcome::Error(TurnErrorType::TranspileSyntax),
+        TurnOutcome::Error(TurnErrorType::ProgramToolError),
+        TurnOutcome::Error(TurnErrorType::SandboxTimeout),
+        TurnOutcome::Error(TurnErrorType::MissingCompletionNoCall),
         TurnOutcome::Fatal(FatalFault::ArtifactDefect),
         TurnOutcome::Fatal(FatalFault::HostFault),
     ];
@@ -436,20 +438,35 @@ fn only_error_outcomes_count_as_errors() {
     for outcome in every_outcome {
         let expected = match outcome {
             TurnOutcome::Progressed | TurnOutcome::Finished | TurnOutcome::Fatal(_) => false,
-            TurnOutcome::Error(kind) => match kind {
-                TurnErrorKind::ModelApi
-                | TurnErrorKind::Transpile
-                | TurnErrorKind::ProgramFault
-                | TurnErrorKind::SandboxLimit
-                | TurnErrorKind::MissingCompletion => true,
+            TurnOutcome::Error(error) => match error {
+                TurnErrorType::ModelAuth
+                | TurnErrorType::ModelRejected
+                | TurnErrorType::ModelRetryExhausted
+                | TurnErrorType::ModelResponseLoop
+                | TurnErrorType::ModelVisionUnsupported
+                | TurnErrorType::ModelParse
+                | TurnErrorType::ModelPlayback
+                | TurnErrorType::TranspileSyntax
+                | TurnErrorType::TranspileSemantic
+                | TurnErrorType::TranspileLowering
+                | TurnErrorType::TranspileUnsupported
+                | TurnErrorType::ProgramToolError
+                | TurnErrorType::ProgramUnknownName
+                | TurnErrorType::ProgramThrow
+                | TurnErrorType::SandboxTimeout
+                | TurnErrorType::SandboxOutOfMemory
+                | TurnErrorType::SandboxTrap
+                | TurnErrorType::MissingCompletionNoCall
+                | TurnErrorType::MissingCompletionCompaction => true,
             },
         };
         assert_eq!(outcome.is_error(), expected, "{outcome:?}");
     }
 }
 
-/// Every outcome publishes itself, and publishes its kind exactly when it has one — the invariant
-/// the contract states as "`error != null` and `outcome == "error"` are the same statement".
+/// Every outcome publishes itself, and publishes its kind **and its type** exactly when it has one
+/// — the invariant the contract states as "`error != null`, `errorType != null` and
+/// `outcome == "error"` are the same statement".
 ///
 /// Exhaustive over the taxonomy on purpose: a variant added here without a decision about what it
 /// looks like on the wire would otherwise be published as whatever the nearest arm happened to say.
@@ -460,32 +477,38 @@ fn every_outcome_publishes_itself_and_carries_a_kind_exactly_when_it_is_an_error
             TurnOutcome::Progressed,
             GgTurnOutcome::Progressed,
             None::<GgTurnErrorKind>,
+            None::<GgTurnErrorType>,
         ),
-        (TurnOutcome::Finished, GgTurnOutcome::Finished, None),
+        (TurnOutcome::Finished, GgTurnOutcome::Finished, None, None),
         (
-            TurnOutcome::Error(TurnErrorKind::ModelApi),
+            TurnOutcome::Error(TurnErrorType::ModelAuth),
             GgTurnOutcome::Error,
             Some(GgTurnErrorKind::ModelApi),
+            Some(GgTurnErrorType::ModelAuth),
         ),
         (
-            TurnOutcome::Error(TurnErrorKind::Transpile),
+            TurnOutcome::Error(TurnErrorType::TranspileSemantic),
             GgTurnOutcome::Error,
             Some(GgTurnErrorKind::Transpile),
+            Some(GgTurnErrorType::TranspileSemantic),
         ),
         (
-            TurnOutcome::Error(TurnErrorKind::ProgramFault),
+            TurnOutcome::Error(TurnErrorType::ProgramToolError),
             GgTurnOutcome::Error,
             Some(GgTurnErrorKind::ProgramFault),
+            Some(GgTurnErrorType::ProgramToolError),
         ),
         (
-            TurnOutcome::Error(TurnErrorKind::SandboxLimit),
+            TurnOutcome::Error(TurnErrorType::SandboxOutOfMemory),
             GgTurnOutcome::Error,
             Some(GgTurnErrorKind::SandboxLimit),
+            Some(GgTurnErrorType::SandboxOutOfMemory),
         ),
         (
-            TurnOutcome::Error(TurnErrorKind::MissingCompletion),
+            TurnOutcome::Error(TurnErrorType::MissingCompletionCompaction),
             GgTurnOutcome::Error,
             Some(GgTurnErrorKind::MissingCompletion),
+            Some(GgTurnErrorType::MissingCompletionCompaction),
         ),
         // Both faults publish the same `fatal`: *which* piece of gg's machinery broke is a defect
         // report the `error` log carries in sentences, not a dimension a study slices on.
@@ -493,29 +516,62 @@ fn every_outcome_publishes_itself_and_carries_a_kind_exactly_when_it_is_an_error
             TurnOutcome::Fatal(FatalFault::ArtifactDefect),
             GgTurnOutcome::Fatal,
             None,
+            None,
         ),
         (
             TurnOutcome::Fatal(FatalFault::HostFault),
             GgTurnOutcome::Fatal,
             None,
+            None,
         ),
     ];
 
-    for (outcome, expected_outcome, expected_kind) in cases {
-        let (published, kind) = outcome.wire();
+    for (outcome, expected_outcome, expected_kind, expected_type) in cases {
+        let (published, kind, error_type) = outcome.wire();
         assert_eq!(published, expected_outcome, "{outcome:?}");
         assert_eq!(kind, expected_kind, "{outcome:?}");
+        assert_eq!(error_type, expected_type, "{outcome:?}");
         assert_eq!(
             kind.is_some(),
             outcome.is_error(),
             "{outcome:?}: a kind is published exactly when the turn was an error"
+        );
+        assert_eq!(
+            error_type.is_some(),
+            outcome.is_error(),
+            "{outcome:?}: a type is published exactly when the turn was an error"
+        );
+    }
+}
+
+/// The two levels can never disagree, because they are derived from one value: whatever an outcome
+/// publishes as its type, that type's own base is what it publishes as its kind.
+///
+/// Asserted over **every** type rather than the handful the case table above spells out, so a type
+/// added to gg without a base — or with the wrong one — fails here rather than in a console that
+/// shows a `transpile` row under `model call`.
+#[test]
+fn a_published_type_always_agrees_with_the_kind_beside_it() {
+    for error in every_turn_error_type() {
+        let (outcome, kind, error_type) = TurnOutcome::Error(error).wire();
+        assert_eq!(outcome, GgTurnOutcome::Error, "{error:?}");
+        assert_eq!(
+            error_type.map(GgTurnErrorType::kind),
+            kind,
+            "{error:?}: the published type's base must be the published kind"
+        );
+        assert_eq!(
+            kind,
+            Some(error.kind().wire()),
+            "{error:?}: and gg's own base must be the one it publishes"
         );
     }
 }
 
 /// A reply abandoned by loop detection has **no** wire kind of its own, and that is a decision
 /// rather than an omission: it never reaches this taxonomy at all, because the attempt is discarded
-/// and retried, and a loop that survives every attempt arrives as an exhausted model call.
+/// and retried, and a loop that survives every attempt arrives as an exhausted model call — which
+/// is a `model_api` *kind*, published under its own `model_response_loop` **type**.
 ///
 /// Pinned as the set of kinds gg can publish, so adding a sixth is a deliberate act with a test to
 /// change rather than a silent widening of every console's bucket list.
@@ -542,6 +598,74 @@ fn the_published_kinds_are_exactly_the_five_gg_can_produce() {
             GgTurnErrorKind::MissingCompletion,
         ]
     );
+
+    // And every published kind is the base of at least one published type: a bucket a console
+    // shows and nothing can ever fall into is the defect this taxonomy is built to avoid, and it
+    // would be introduced by a base with no leaf just as surely as by a leaf with no producer.
+    for kind in GgTurnErrorKind::ALL {
+        assert!(
+            every_turn_error_type().any(|error| error.kind().wire() == kind),
+            "{kind:?} has no type under it"
+        );
+    }
+}
+
+/// gg's own type list, exhaustively — the compiler-checked source for the tests above.
+///
+/// Written as a `match` over a value rather than as a bare array so that adding a type to gg fails
+/// to compile here, which is what makes "every type is exercised" true rather than hoped for.
+fn every_turn_error_type() -> impl Iterator<Item = TurnErrorType> {
+    let all = [
+        TurnErrorType::ModelAuth,
+        TurnErrorType::ModelRejected,
+        TurnErrorType::ModelRetryExhausted,
+        TurnErrorType::ModelResponseLoop,
+        TurnErrorType::ModelVisionUnsupported,
+        TurnErrorType::ModelParse,
+        TurnErrorType::ModelPlayback,
+        TurnErrorType::TranspileSyntax,
+        TurnErrorType::TranspileSemantic,
+        TurnErrorType::TranspileLowering,
+        TurnErrorType::TranspileUnsupported,
+        TurnErrorType::ProgramToolError,
+        TurnErrorType::ProgramUnknownName,
+        TurnErrorType::ProgramThrow,
+        TurnErrorType::SandboxTimeout,
+        TurnErrorType::SandboxOutOfMemory,
+        TurnErrorType::SandboxTrap,
+        TurnErrorType::MissingCompletionNoCall,
+        TurnErrorType::MissingCompletionCompaction,
+    ];
+    // The exhaustiveness guard: this match has no wildcard, so a new variant breaks the build here.
+    for error in all {
+        match error {
+            TurnErrorType::ModelAuth
+            | TurnErrorType::ModelRejected
+            | TurnErrorType::ModelRetryExhausted
+            | TurnErrorType::ModelResponseLoop
+            | TurnErrorType::ModelVisionUnsupported
+            | TurnErrorType::ModelParse
+            | TurnErrorType::ModelPlayback
+            | TurnErrorType::TranspileSyntax
+            | TurnErrorType::TranspileSemantic
+            | TurnErrorType::TranspileLowering
+            | TurnErrorType::TranspileUnsupported
+            | TurnErrorType::ProgramToolError
+            | TurnErrorType::ProgramUnknownName
+            | TurnErrorType::ProgramThrow
+            | TurnErrorType::SandboxTimeout
+            | TurnErrorType::SandboxOutOfMemory
+            | TurnErrorType::SandboxTrap
+            | TurnErrorType::MissingCompletionNoCall
+            | TurnErrorType::MissingCompletionCompaction => {}
+        }
+    }
+    assert_eq!(
+        all.len(),
+        GgTurnErrorType::ALL.len(),
+        "gg's type list and the contract's must name the same number of types"
+    );
+    all.into_iter()
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -565,7 +689,7 @@ fn the_consecutive_count_is_readable_after_every_recorded_turn() {
 
     accounting.record(ERROR, AGENT);
     assert_eq!(accounting.consecutive_errors(), 1);
-    accounting.record(TurnOutcome::Error(TurnErrorKind::SandboxLimit), AGENT);
+    accounting.record(TurnOutcome::Error(TurnErrorType::SandboxTimeout), AGENT);
     assert_eq!(
         accounting.consecutive_errors(),
         2,
@@ -642,11 +766,11 @@ fn every_error_kind_counts_towards_the_consecutive_ceiling() {
     let breaches = record_all(
         limits,
         &[
-            TurnOutcome::Error(TurnErrorKind::Transpile),
-            TurnOutcome::Error(TurnErrorKind::ProgramFault),
-            TurnOutcome::Error(TurnErrorKind::SandboxLimit),
-            TurnOutcome::Error(TurnErrorKind::MissingCompletion),
-            TurnOutcome::Error(TurnErrorKind::ModelApi),
+            TurnOutcome::Error(TurnErrorType::TranspileSyntax),
+            TurnOutcome::Error(TurnErrorType::ProgramThrow),
+            TurnOutcome::Error(TurnErrorType::SandboxTimeout),
+            TurnOutcome::Error(TurnErrorType::MissingCompletionNoCall),
+            TurnOutcome::Error(TurnErrorType::ModelRetryExhausted),
         ],
     );
 

@@ -67,7 +67,7 @@ use test_cabinet_core::gg::{
     CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE, CAPABILITY_EXEC,
     CAPABILITY_FORK, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, GgAgentConfig,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, GgAgentConfig, GgToolFailure,
 };
 
 use crate::board::IssuePolicy;
@@ -488,6 +488,24 @@ impl ToolOutcome {
     pub fn with_data(mut self, data: ToolData) -> Self {
         self.data = Some(data);
         self
+    }
+
+    /// The [failure class](GgToolFailure) this outcome is recorded with on its
+    /// [`ToolResult`](test_cabinet_core::gg::GgTelemetryKind::ToolResult) telemetry — `None` on a
+    /// success, `Some` on every failure.
+    ///
+    /// A failure the raising tool did not classify becomes
+    /// [`Other`](GgToolFailure::Other) rather than `None`, which is the same decision the membrane's
+    /// `error_code` already makes for the program-facing `ToolError`: the two records of one failed
+    /// call say the same thing about it. It also keeps the wire invariant simple and checkable —
+    /// the class is present on exactly the results whose `ok` is `false` — where a `None` shared
+    /// between "succeeded" and "failed, unclassified" would leave a reader unable to tell a run
+    /// recorded before this field existed from a run full of unclassified failures.
+    pub fn wire_failure(&self) -> Option<GgToolFailure> {
+        if self.ok {
+            return None;
+        }
+        Some(self.failure.map_or(GgToolFailure::Other, ToolFailure::wire))
     }
 }
 

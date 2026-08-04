@@ -163,6 +163,13 @@ const REVIEW_DEFS: &[&str] = &[
 /// mismatch between the two would silently emit the types without the data.
 const CODE_METRICS_MODULE: &str = "code-metrics.ts";
 
+/// The generated module that carries the gg contract, and with it the **error-label tables**.
+///
+/// Named once for the reason [`CODE_METRICS_MODULE`] is: it is both the module's file name and the
+/// target of the appended tables, and a mismatch would silently emit the types without the labels a
+/// console needs to render them.
+const GG_MODULE: &str = "gg.ts";
+
 /// Render the `code.*` display catalog as a TypeScript value.
 ///
 /// The table is Rust's, verbatim: it is serialized with the same `serde` derive the
@@ -190,6 +197,96 @@ fn code_metrics_catalog() -> Result<String> {
         .context("serializing the code-metric catalog")?;
     Ok(format!(
         "{DOC}export const CODE_METRICS: readonly CodeMetricDef[] = {rows};\n"
+    ))
+}
+
+/// The error-taxonomy label tables, appended to the gg module.
+///
+/// Every specific error type, every base kind and every call-failure class has a stable id **and** a
+/// human-readable label, and both live in Rust beside the variant they name. Emitting them here is
+/// what keeps a console from carrying a second hand-written table: a type added to the taxonomy
+/// arrives with its label, its base and its ordering already in the contract, so the row it should
+/// occupy in a *"top error types"* ranking cannot be missing, mislabelled, or filed under the wrong
+/// base.
+///
+/// The maps are keyed by the *wire id* rather than by the enum, so they can be indexed with whatever
+/// a record actually carried — including, for the ranking's fallback path, a key from a newer gg
+/// than the console was built against. They are declared `Record<GgTurnErrorType, string>` all the
+/// same, which makes an omission a TypeScript error at generation time rather than a blank row at
+/// run time.
+fn gg_error_labels() -> Result<String> {
+    /// The JSDoc above each table, kept out of the format strings because the prose contains
+    /// `{@link …}`, which a Rust format string would read as an interpolation.
+    const KIND_DOC: &str = "/**\n\
+         * How each **base** error kind reads on screen — the coarse bucket, which is what the\n\
+         * error ceilings act on and what a cross-run comparison groups by.\n\
+         *\n\
+         * Generated from the Rust taxonomy, so it is total by construction and cannot drift from\n\
+         * the values a record carries.\n\
+         */\n";
+    const TYPE_DOC: &str = "/**\n\
+         * How each **specific** error type reads on screen — one row per type in a ranking, so\n\
+         * every label stands alone and names the layer it came from without a heading.\n\
+         */\n";
+    const BASE_DOC: &str = "/**\n\
+         * Each specific type's base kind, so a ranked row can be badged with the bucket it belongs\n\
+         * to, and a per-type breakdown can be regrouped into the per-kind counters beside it.\n\
+         */\n";
+    const ORDER_DOC: &str = "/**\n\
+         * Every specific type, grouped by base in the contract's own declaration order — the\n\
+         * reading order for a full split, as opposed to the frequency order a *top N* ranking\n\
+         * sorts into.\n\
+         */\n";
+    const FAILURE_DOC: &str = "/**\n\
+         * How each call-failure class reads on screen — the class a failed tool call or a failed\n\
+         * model-facing API call is recorded with.\n\
+         */\n";
+
+    let map = |rows: Vec<(&str, String)>| -> String {
+        let body: String = rows
+            .into_iter()
+            .map(|(key, value)| {
+                format!(
+                    "  {}: {},\n",
+                    serde_json::to_string(key).unwrap_or_default(),
+                    value
+                )
+            })
+            .collect();
+        format!("{{\n{body}}}")
+    };
+    let quoted = |value: &str| serde_json::to_string(value).unwrap_or_default();
+
+    let kinds = map(gg::GgTurnErrorKind::ALL
+        .iter()
+        .map(|kind| (kind.wire_id(), quoted(kind.label())))
+        .collect());
+    let types = map(gg::GgTurnErrorType::ALL
+        .iter()
+        .map(|error| (error.wire_id(), quoted(error.label())))
+        .collect());
+    let bases = map(gg::GgTurnErrorType::ALL
+        .iter()
+        .map(|error| (error.wire_id(), quoted(error.kind().wire_id())))
+        .collect());
+    let failures = map(gg::GgToolFailure::ALL
+        .iter()
+        .map(|failure| (failure.wire_id(), quoted(failure.label())))
+        .collect());
+    let order = serde_json::to_string(
+        &gg::GgTurnErrorType::ALL
+            .iter()
+            .map(|error| error.wire_id())
+            .collect::<Vec<_>>(),
+    )
+    .context("serializing the error-type order")?;
+
+    Ok(format!(
+        "\n{KIND_DOC}export const GG_TURN_ERROR_KIND_LABELS: Readonly<Record<GgTurnErrorKind, string>> = {kinds};\n\n\
+         {TYPE_DOC}export const GG_TURN_ERROR_TYPE_LABELS: Readonly<Record<GgTurnErrorType, string>> = {types};\n\n\
+         {BASE_DOC}export const GG_TURN_ERROR_TYPE_BASE: Readonly<Record<GgTurnErrorType, GgTurnErrorKind>> = {bases};\n\n\
+         {ORDER_DOC}export const GG_TURN_ERROR_TYPES: readonly GgTurnErrorType[] = {order};\n\n\
+         {FAILURE_DOC}export const GG_TOOL_FAILURE_LABELS: Readonly<Record<GgToolFailure, string>> = {failures};\n"
     ))
 }
 
@@ -251,7 +348,7 @@ fn main() -> Result<()> {
         // shapes (`/gg/configs`) live here too: a registered configuration is just a
         // named capability set, so it belongs beside the set it wraps.
         TsModule {
-            file: "gg.ts",
+            file: GG_MODULE,
             decls: ts_decls![&cfg;
                 gg::GgAgentConfig, gg::GgSubagentRef, gg::GgSubagentScope,
                 gg::GgPromptCacheTtl, gg::GgLoopDetection, gg::GgModelSlot,
@@ -274,7 +371,8 @@ fn main() -> Result<()> {
                 gg::GgRunLimits, gg::GgLimitKind, gg::GgLimitBreach,
                 gg::GgHook, gg::GgHookEvent, gg::GgHookAction, gg::GgHookAgentKind,
                 gg::GgHookOutcomeKind,
-                gg::GgTurnOutcome, gg::GgTurnErrorKind,
+                gg::GgTurnOutcome, gg::GgTurnErrorKind, gg::GgTurnErrorType,
+                gg::GgToolFailure,
                 gg::GgHealingStrategy, gg::GgProgramLanguage,
                 gg::GgResponseHealing, gg::GgHealingSummary,
                 gg::GgErrorSummary,
@@ -488,6 +586,12 @@ fn main() -> Result<()> {
         // rather than a literal in two places.
         if file == CODE_METRICS_MODULE {
             content.push_str(&code_metrics_catalog()?);
+        }
+        // The gg module carries the error taxonomy's labels for the same reason: a label is data,
+        // and a hand-kept copy of it in the console is exactly the drift the tables exist to
+        // prevent.
+        if file == GG_MODULE {
+            content.push_str(&gg_error_labels()?);
         }
         write_ts(&root, file, &content)?;
     }

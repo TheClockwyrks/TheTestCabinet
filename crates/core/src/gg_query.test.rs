@@ -391,6 +391,11 @@ fn session_summary() -> GgSessionSummary {
             sandbox_limit: 0,
             missing_completion: 0,
             loop_aborts: 4,
+            by_type: BTreeMap::from([
+                ("model_retry_exhausted".to_string(), 1),
+                ("program_tool_error".to_string(), 2),
+            ]),
+            tool_failures: BTreeMap::from([("not-found".to_string(), 5)]),
         },
         issues_created: 0,
         issues_completed: 0,
@@ -689,6 +694,18 @@ fn the_error_rollup_is_queryable_the_moment_it_exists_on_the_summary() {
         doc.get("summary.errors.loopAborts"),
         Some(&GgValue::Number(4.0)),
         "a discarded looping attempt is money spent on nothing and must be sliceable"
+    );
+    // And one level down again: the open per-type breakdown becomes a field per type
+    // without a line of query-layer work, which is the property that lets a type added to
+    // gg become queryable the moment a run records it.
+    assert_eq!(
+        doc.get("summary.errors.byType.program_tool_error"),
+        Some(&GgValue::Number(2.0)),
+        "\"which configurations spend their turns fighting a call?\" is one field away"
+    );
+    assert_eq!(
+        doc.get("summary.errors.toolFailures.not-found"),
+        Some(&GgValue::Number(5.0))
     );
 }
 

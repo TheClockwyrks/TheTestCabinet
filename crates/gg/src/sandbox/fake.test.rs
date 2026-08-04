@@ -15,7 +15,7 @@ use std::time::Instant;
 
 use serde_json::{Value, json};
 
-use test_cabinet_core::gg::GgProgramLanguage;
+use test_cabinet_core::gg::{GgProgramLanguage, GgToolFailure};
 
 use super::invoker::{SandboxViewOpened, ViewOpenOutcome, ViewRefusal};
 use super::language::ProgramLanguage;
@@ -166,6 +166,10 @@ pub(crate) struct RecordedApiCall {
     /// `None` until the call closed; `Some(ok)` once it did. A call still open when the program
     /// ended — impossible today, since the bracket is synchronous — would be visible as `None`.
     pub(crate) ok: Option<bool>,
+    /// The class the call threw with, on a call that threw — `None` on a success and on a call
+    /// that never closed. Recorded because the class is the only thing that says *why* an API call
+    /// the model made failed, and for the calls no tool backs it is the only record at all.
+    pub(crate) failure: Option<GgToolFailure>,
 }
 
 #[allow(dead_code)]
@@ -196,19 +200,21 @@ impl ApiLog {
                 object: object.to_string(),
                 function: function.to_string(),
                 ok: None,
+                failure: None,
             });
     }
 
     /// Close the most recent open record for `object.function` — the innermost one, so a call
     /// nested inside another closes its own bracket rather than its parent's.
-    fn end(&self, object: &str, function: &str, ok: bool) {
+    fn end(&self, object: &str, function: &str, failure: Option<GgToolFailure>) {
         let mut calls = self.0.lock().expect("the api log is never poisoned");
         if let Some(call) = calls
             .iter_mut()
             .rev()
             .find(|call| call.ok.is_none() && call.object == object && call.function == function)
         {
-            call.ok = Some(ok);
+            call.ok = Some(failure.is_none());
+            call.failure = failure;
         }
     }
 }
@@ -297,8 +303,8 @@ impl ToolApi for FakeToolApi {
         self.api.begin(object, function);
     }
 
-    fn end_api_call(&mut self, object: &str, function: &str, ok: bool) {
-        self.api.end(object, function, ok);
+    fn end_api_call(&mut self, object: &str, function: &str, failure: Option<GgToolFailure>) {
+        self.api.end(object, function, failure);
     }
 
     fn shell(&mut self, command: String, timeout: std::time::Duration) -> ToolOutcome {

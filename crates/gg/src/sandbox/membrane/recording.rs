@@ -42,7 +42,7 @@
 //! neither the api nor a tool and could therefore have skipped the bracket and still compiled.
 
 use super::test_cabinet::gg::types::ToolError;
-use super::{MembraneState, ToolApi};
+use super::{MembraneState, ToolApi, wire_failure};
 use crate::sandbox::language::SurfaceCall;
 
 /// Proof that a model-facing API call is being recorded around whatever is done with it.
@@ -121,7 +121,12 @@ impl<A: ToolApi> MembraneState<A> {
         self.api.api.begin_api_call(object, function);
         self.api_calls = self.api_calls.saturating_add(1);
         let result = body(self, Recording(()));
-        self.api.api.end_api_call(object, function, result.is_ok());
+        // The class the program is about to be thrown with, taken from the error itself. It is the
+        // API layer's own reason, not the tool's: a membrane refusal and a carve-out have no tool
+        // record at all, and a typed conversion that failed over a tool that answered `ok` is a
+        // failure here and a success there.
+        let failure = result.as_ref().err().map(|error| wire_failure(error.code));
+        self.api.api.end_api_call(object, function, failure);
         result
     }
 
@@ -150,7 +155,7 @@ impl<A: ToolApi> MembraneState<A> {
         self.api.api.begin_api_call(object, function);
         self.api_calls = self.api_calls.saturating_add(1);
         let value = body(self, Recording(()));
-        self.api.api.end_api_call(object, function, true);
+        self.api.api.end_api_call(object, function, None);
         value
     }
 

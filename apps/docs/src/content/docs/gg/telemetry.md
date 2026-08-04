@@ -484,13 +484,14 @@ model call it made:
 
 ```jsonc
 { "type": "turn_outcome", "outcome": "error", "error": "transpile",
-  "consecutiveErrors": 2, "turns": 31 }
+  "errorType": "transpile_syntax", "consecutiveErrors": 2, "turns": 31 }
 ```
 
 | Field | What it carries |
 | --- | --- |
 | `outcome` | `progressed` (the turn did its declared work), `finished` (the turn ended the session — never an error: a session that ends on purpose has not failed), `error`, or `fatal` (gg's own machinery broke, which is recorded so the turn accounting stays whole but is deliberately **not** charged to the model's error budget). |
-| `error` | Why, on an `error` outcome, and **absent on every other** — so `error != null` and `outcome == "error"` are the same statement. One of `model_api`, `transpile`, `program_fault`, `sandbox_limit`, `missing_completion`. |
+| `error` | Why, at the **base** level, on an `error` outcome, and **absent on every other** — so `error != null` and `outcome == "error"` are the same statement. One of `model_api`, `transpile`, `program_fault`, `sandbox_limit`, `missing_completion`. |
+| `errorType` | Why, **specifically** — the leaf of the two-level taxonomy. Present on exactly the turns `error` is, and its base *is* the `error` beside it: gg holds one value and derives both halves when it emits the event, so the two cannot drift. Absent only on a stream recorded before gg published types. |
 | `consecutiveErrors` | This agent's failing streak **after** this turn. |
 | `turns` | How many turns this agent has recorded, including this one — its own running total, not the run's, and the same figure its turn ceiling is measured against. |
 | `loopAborts` | How many replies [loop detection](/gg/loop-detection/) discarded before this turn produced one. Omitted when zero, which is every turn of every run that left the detector disarmed. |
@@ -518,6 +519,52 @@ turn that used to be silent entirely — a tool-calling turn that ends with no t
 an explicit-call [completion signal](/gg/ending-a-session/) — is reported here as
 `missing_completion`.
 
+### The taxonomy has two levels
+
+The five `error` values are the **base** kinds: *whose layer failed*. They are what an
+execution ceiling acts on, what a cross-run comparison groups by, and what every stored run
+already keys on — so they do not change, ever. `transpile` in particular keeps a name it
+outgrew (it dates from when every program was TypeScript and preparing one meant stripping
+its types), because the value is what persisted records carry.
+
+Underneath each of them sits an `errorType`, and that is where the failure is actually
+named. gg was already making these distinctions internally and discarding them at the
+recording seam — a four-way classification of a model failure was computed only to pick a
+word for a log line, a sandbox ceiling was reached through a branch that never looked at
+*which* ceiling, and the class the guest types every uncaught throw with was thrown away in
+favour of "the program faulted". Nineteen types, one per distinction gg already had:
+
+| Base kind | Types under it |
+| --- | --- |
+| `model_api` | `model_auth` (the credential was refused), `model_rejected` (another non-retryable `4xx`), `model_retry_exhausted` (the provider never served the request), `model_response_loop` (it served it and [loop detection](/gg/loop-detection/) discarded every answer), `model_vision_unsupported`, `model_parse`, `model_playback` (a [reconstruction](/gg/replay/) diverged) |
+| `transpile` | `transpile_syntax`, `transpile_semantic`, `transpile_lowering`, `transpile_unsupported` |
+| `program_fault` | `program_tool_error` (an **uncaught failed call** — the model is fighting the API rather than mis-writing it), `program_unknown_name`, `program_throw` |
+| `sandbox_limit` | `sandbox_timeout`, `sandbox_out_of_memory`, `sandbox_trap` |
+| `missing_completion` | `missing_completion_no_call`, `missing_completion_compaction` (a prose reply where a compaction was pending — a different failure, answered differently) |
+
+Every type's id names its base, because a *"top error types"* ranking shows one row per type
+with no heading over it. Each also carries a human-readable **label**, and the labels live in
+Rust beside the variants and are generated into the TypeScript contract — so a type gg gains
+arrives already labelled rather than rendering as a raw wire value in a console, and gg's own
+`error` log line names the failure in the same words the console does.
+
+### Why a failed call now says why
+
+The class a failed call was raised with — `not-found`, `invalid-argument`, `limit-exceeded`
+— was computed where the failure happened, handed to the program to branch on, and then
+dropped at the telemetry seam. Both halves of a call's record now carry it:
+
+- **`tool_result.failure`** — what *ran*. Present on exactly the results whose `ok` is
+  `false`, with `other` for a failure raised outside a tool implementation.
+- **`api_result.failure`** — what the *model wrote*. This is the **only** record of the class
+  for the calls that never reach a tool: a [carve-out](/gg/responses-as-code/) no tool backs,
+  and a call the membrane refused before dispatch (a spent wall-clock budget, a name this run
+  does not offer).
+
+The two overlap for a bridged call, deliberately, for the same reason `code_execution`'s
+`apiCalls` and `toolCalls` do: they are two surfaces over one core and neither is derived
+from the other. They are not summed.
+
 ### The run rollup
 
 Folded from those same events onto the session summary, so numerator and denominator can
@@ -527,7 +574,10 @@ never come from different mechanisms:
 "errors": { "turns": 96, "errors": 4, "maxConsecutive": 2,
             "modelApi": 1, "transpile": 2, "programFault": 1,
             "sandboxLimit": 0, "missingCompletion": 0,
-            "loopAborts": 7 }
+            "loopAborts": 7,
+            "byType": { "model_response_loop": 1, "transpile_syntax": 2,
+                        "program_tool_error": 1 },
+            "toolFailures": { "not-found": 12, "invalid-argument": 3 } }
 ```
 
 `turns` is the denominator and counts every turn whatever its outcome — a `fatal` one
@@ -542,23 +592,44 @@ stored rate is a figure that can disagree with its own denominator — after a r
 a partially recorded run, or a reader that averages two runs' rates — and the one thing that
 must be trustworthy here is that the numbers add up.
 
-What it deliberately does not count: a **tool call that failed inside a program that carried
-on** (the program handled it, which is the whole point of the typed surface), a **healed**
+`byType` is the same errors split by their **specific** type, keyed by the `errorType` wire
+id. Two things hold for any run this gg writes: it sums to `errors`, and regrouping it by
+each type's base reproduces the five named counters exactly. It is a **map keyed by a string**
+rather than by the enum on purpose — a run recorded by a newer gg must still read back in an
+older backend or console, and an unknown enum key would fail the whole summary where an
+unknown string degrades to one unlabelled row in a ranking. It is omitted from the wire when
+empty, which a reader must render as *not recorded* rather than as *nothing went wrong*;
+`errors` is what says whether there were any.
+
+`toolFailures` counts **calls**, not turns: every dispatched tool call that failed, by class,
+whether or not the program that made it caught the failure. It is a rollup of dispatches, so
+a code-mode call that never reached a tool is not in it — those are on the stream as
+`api_result` with their class, where a console folds them.
+
+What it deliberately does not count **as an error**: a **tool call that failed inside a
+program that carried on** (the program handled it, which is the whole point of the typed
+surface, and charging it would make the one capability that expects failures the one that
+cannot survive them — it is counted in `toolFailures` instead, because a model fighting the
+same `not-found` forty times is one of the most actionable facts a run has), a **healed**
 reply ([healing](/gg/response-healing/) repairs the message, not the turn), and **per-agent
 attribution** — these are run-wide totals, and the per-agent breakdown lives on the stream,
 where every `turn_outcome` rides on its own agent's id.
 
-The console reads it two ways: an **Errors** card on the Dashboard, deliberately beside the
-turn count it shares a denominator with, because "seven" and "seven of two hundred" are not
-the same claim — errored turns, the rate they are of, the longest streak, the per-kind
-split, and the replies [loop detection](/gg/loop-detection/) discarded when there were any —
-and a detail line on the live event feed, so an errored turn names its kind as it happens
-rather than only in a rollup at the end. Because the whole summary is flattened
-into the [query language](/gg/analysis/query-language/)'s document, every field above is
-directly queryable:
+The console folds the same figures off the live stream for its Dashboard, deliberately beside
+the turn count they share a denominator with, because "seven" and "seven of two hundred" are
+not the same claim: errored turns, the rate they are of, the longest streak, the per-kind
+split, the replies [loop detection](/gg/loop-detection/) discarded when there were any, and
+the most common error **types** with their counts. An errored turn renders no row of its own
+on the live event feed — gg already logs why a turn failed in its own words, in the recorded
+type's vocabulary, and a second row would say the same thing in weaker terms.
+
+Because the whole summary is flattened into the
+[query language](/gg/analysis/query-language/)'s document, every field above is directly
+queryable — including the open breakdowns, whose keys become fields of their own:
 
 ```text
 has.summary:true | stats avg(summary.errors.maxConsecutive) as streak by model
+has.summary:true | stats sum(summary.errors.byType.program_tool_error) as fighting by model
 ```
 
 ## Reading the metric graphs

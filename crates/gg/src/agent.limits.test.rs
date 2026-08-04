@@ -20,7 +20,9 @@
 use super::*;
 use crate::limits::DEFAULT_MAX_CONSECUTIVE_ERRORS;
 use crate::subagents::DEFAULT_MAX_PARALLEL;
-use test_cabinet_core::gg::{GgLoopDetection, GgProgramLanguage, GgTurnErrorKind, GgTurnOutcome};
+use test_cabinet_core::gg::{
+    GgLoopDetection, GgProgramLanguage, GgTurnErrorKind, GgTurnErrorType, GgTurnOutcome,
+};
 
 /// A reply that is not a program — the shape a model sends when it narrates a finished task instead
 /// of ending the run, and therefore an error turn under this protocol.
@@ -68,6 +70,11 @@ fn turns_started(events: &[GgTelemetryEvent]) -> usize {
 /// Every [`TurnOutcome`](GgTelemetryKind::TurnOutcome) on the stream, in emission order, as the
 /// tuple its assertions read: how the turn ended, why (on an error), the agent's streak after it,
 /// its running turn count, and the replies loop detection discarded on the way.
+///
+/// The specific [type](GgTurnErrorType) is asserted separately by [`turn_error_types`] rather than
+/// widened into this tuple: most of these assertions are about the *ceilings*, which act on the
+/// base kind, and threading a sixth element through every one of them would bury the figure under
+/// test.
 fn turn_outcomes(
     events: &[GgTelemetryEvent],
 ) -> Vec<(GgTurnOutcome, Option<GgTurnErrorKind>, u64, u64, u64)> {
@@ -80,7 +87,19 @@ fn turn_outcomes(
                 consecutive_errors,
                 turns,
                 loop_aborts,
+                ..
             } => Some((*outcome, *error, *consecutive_errors, *turns, *loop_aborts)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The specific error [type](GgTurnErrorType) of every errored turn on the stream, in order.
+fn turn_error_types(events: &[GgTelemetryEvent]) -> Vec<GgTurnErrorType> {
+    events
+        .iter()
+        .filter_map(|e| match &e.kind {
+            GgTelemetryKind::TurnOutcome { error_type, .. } => *error_type,
             _ => None,
         })
         .collect()
@@ -1088,6 +1107,18 @@ async fn an_error_turn_publishes_its_kind_and_the_streak_it_is_part_of() {
             (GgTurnOutcome::Finished, None, 0, 4, 0),
         ],
     );
+
+    // ...and each of those three carries the **specific** reason under that base kind. Prose is not
+    // valid source, so it is a syntax error rather than one of the other three prepare failures —
+    // which used to be one indistinguishable `transpile` bucket.
+    assert_eq!(
+        turn_error_types(&sink.events()),
+        vec![
+            GgTurnErrorType::TranspileSyntax,
+            GgTurnErrorType::TranspileSyntax,
+            GgTurnErrorType::TranspileSyntax,
+        ],
+    );
 }
 
 /// **A turn that ended with no tool call now says so.**
@@ -1141,15 +1172,27 @@ async fn a_turn_that_made_no_tool_call_publishes_a_missing_completion_error() {
         ],
         "a tool-calling run publishes the same judgement a code-shaped one does"
     );
+    // The two "no work declared" sites are structurally different failures — a prose reply where an
+    // ending was the only way out, and a prose reply where a compaction was pending — and they used
+    // to be one indistinguishable `missing_completion` bucket. This run is the first of the two.
+    assert_eq!(
+        turn_error_types(&sink.events()),
+        vec![
+            GgTurnErrorType::MissingCompletionNoCall,
+            GgTurnErrorType::MissingCompletionNoCall,
+        ],
+    );
 }
 
 /// **A model call that failed is published like any other error turn**, and it is the one error
 /// path that can carry discarded attempts.
 ///
 /// A reply that looped on every attempt reaches the loop as an exhausted model call — the contract
-/// has no separate kind for it, deliberately — so it lands as `model_api`. What is *not* lost is
-/// what it cost: the three replies the detector threw away ride on the same event, and the operator
-/// log names the loop rather than blaming a provider outage that never happened.
+/// has no separate base *kind* for it, deliberately — so it lands under `model_api`, and says which
+/// `model_api` failure it was: `model_response_loop`, not `model_retry_exhausted`. What is *not*
+/// lost is what it cost: the three replies the detector threw away ride on the same event, and the
+/// operator log names the loop rather than blaming a provider outage that never happened — in the
+/// recorded type's own words, so the two cannot describe one failure differently.
 #[tokio::test]
 async fn a_reply_that_looped_on_every_attempt_ends_the_run_on_its_own_message() {
     let dir = TempDir::new().unwrap();
@@ -1192,6 +1235,11 @@ async fn a_reply_that_looped_on_every_attempt_ends_the_run_on_its_own_message() 
         )],
         "the discarded attempts are counted even though no reply survived"
     );
+    assert_eq!(
+        turn_error_types(&events),
+        vec![GgTurnErrorType::ModelResponseLoop],
+        "the distinction the log line used to be the only home of is now recorded"
+    );
 
     let errors: Vec<String> = events
         .iter()
@@ -1202,8 +1250,8 @@ async fn a_reply_that_looped_on_every_attempt_ends_the_run_on_its_own_message() 
         .collect();
     let logged = errors.join("\n");
     assert!(
-        logged.contains("generation loop"),
-        "the log names what actually happened:\n{logged}"
+        logged.contains(GgTurnErrorType::ModelResponseLoop.label()),
+        "the log names what actually happened, in the recorded type's own words:\n{logged}"
     );
     assert!(
         !logged.contains("retries exhausted"),

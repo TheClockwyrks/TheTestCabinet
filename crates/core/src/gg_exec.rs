@@ -782,6 +782,7 @@ fn human_facing(gg: &GgTelemetryEvent) -> Option<HarnessEvent> {
             name,
             ok: false,
             summary,
+            ..
         } => EventKind::Warning {
             message: match summary {
                 Some(summary) => format!("gg tool `{name}` failed: {summary}"),

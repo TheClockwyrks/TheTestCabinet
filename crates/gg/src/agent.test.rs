@@ -38,7 +38,8 @@ use test_cabinet_core::gg::{
     CAPABILITY_TASKS, FSM_PARAM_STATES, GgAgentConfig, GgAgentStatus, GgCapabilityConfig,
     GgCapabilitySet, GgContextAction, GgContextSource, GgHook, GgHookAction, GgHookEvent,
     GgIssueReviewPhase, GgIssueStatus, GgProgramLanguage, GgPromptCacheTtl, GgSessionSummary,
-    GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind, ROOT_AGENT,
+    GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind,
+    GgTurnErrorType, ROOT_AGENT,
 };
 use test_cabinet_core::gg_replay::{
     GG_REPLAY_BLOB_REF_KEY, GgClientRole, GgReplayAgent, GgReplayAgentOrigin, GgReplayEntry,
@@ -855,7 +856,7 @@ async fn run_drives_the_mock_end_to_end_and_writes_the_file() {
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
+            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s), .. }
                 if name == "set_blocked_by" && s.contains("cycle")
         )),
         "the cycle-inducing edge must be refused with a cycle explanation"
@@ -1559,12 +1560,15 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
     assert_eq!(end.status, "auth_error");
     // Counted for the same reason a fatal turn is: one recorded outcome per model call made.
     assert_eq!(end.turns, 1);
-    // Still surfaced loudly, and named for what it is.
+    // Still surfaced loudly, and named for what it is — in the words of the turn error type it is
+    // recorded as, so the sentence in the log and the row in the console cannot describe one
+    // failure differently.
+    let named = GgTurnErrorType::ModelAuth.label();
     assert!(
         sink.events().iter().any(|e| matches!(
             &e.kind,
             GgTelemetryKind::Log { level, message } if level == "error"
-                && message.contains("authentication failure")
+                && message.contains(named)
         )),
         "an auth failure must be logged at error level and named"
     );
@@ -2893,7 +2897,7 @@ async fn drive_enforces_memory_caps_end_to_end() {
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
+            GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s), .. }
                 if name == "write_memory" && s.contains("delete_memory")
         )),
         "the cap breach must instruct the model to revise or evict"
@@ -4294,7 +4298,7 @@ async fn drive_manages_context_end_to_end() {
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: true, summary: Some(s) }
+            GgTelemetryKind::ToolResult { name, ok: true, summary: Some(s), .. }
                 if name == "search_archive" && s.contains("archive hit")
         )),
         "search_archive returned a hit"
@@ -5589,7 +5593,7 @@ async fn spawn_is_refused_at_the_max_depth() {
             .any(|e| e.agent_id.as_deref() == Some("agent-0")
                 && matches!(
                     &e.kind,
-                    GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s) }
+                    GgTelemetryKind::ToolResult { name, ok: false, summary: Some(s), .. }
                         if name == "spawn_subagent" && s.contains("maximum delegation depth")
                 )),
         "the deeper spawn is refused with a depth-cap message"
@@ -5899,6 +5903,7 @@ async fn send_message_refuses_unknown_and_finished_targets() {
                 name,
                 ok: false,
                 summary: Some(s),
+                ..
             } if name == "send_message" => Some(s.clone()),
             _ => None,
         })
@@ -6498,7 +6503,7 @@ async fn an_agent_can_wait_for_an_issue_until_it_completes() {
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
-            GgTelemetryKind::ToolResult { name, ok: true, summary: Some(s) }
+            GgTelemetryKind::ToolResult { name, ok: true, summary: Some(s), .. }
                 if name == "wait_for_issue" && s.contains("done")
         )),
         "the root's wait_for_issue resolved and reported the issue done"

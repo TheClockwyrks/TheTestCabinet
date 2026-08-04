@@ -17,6 +17,7 @@ use std::time::Duration;
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened};
 use super::language::{PrepareError, UnreachableTail};
 use crate::ending::Ending;
+use crate::limits::TurnErrorType;
 
 /// Everything one program produced — its effects, its exhaust, and how it ended.
 ///
@@ -236,6 +237,28 @@ pub enum ProgramErrorKind {
     Other,
 }
 
+impl ProgramErrorKind {
+    /// The [turn error type](TurnErrorType) an uncaught throw of this class is recorded as.
+    ///
+    /// The class already crosses the membrane on every uncaught throw — the guest types it, the
+    /// loop already picks its feedback from it — so recording it costs nothing and is the whole
+    /// difference between "the program faulted" and "the program was fighting a call it could not
+    /// make". All three land under [`ProgramFault`](crate::limits::TurnErrorKind::ProgramFault) at
+    /// the base level.
+    ///
+    /// What the class does **not** carry is *which* [failure class](test_cabinet_core::gg::GgToolFailure)
+    /// the failed call had: the guest renders that into the message's prose, and recovering it here
+    /// would mean matching on prose, which this codebase does not do. The class is on the call's own
+    /// [`ApiResult`](test_cabinet_core::gg::GgTelemetryKind::ApiResult) instead, where it was raised.
+    pub fn turn_error_type(self) -> TurnErrorType {
+        match self {
+            Self::ToolFailure => TurnErrorType::ProgramToolError,
+            Self::UnknownName => TurnErrorType::ProgramUnknownName,
+            Self::Other => TurnErrorType::ProgramThrow,
+        }
+    }
+}
+
 /// Why the sandbox could not run a program to a result. An ordinary program fault — a throw — is
 /// **not** here: it is carried in [`ProgramResult::error`].
 ///
@@ -324,5 +347,28 @@ impl SandboxError {
     /// variants are added.
     pub fn is_host_fault(&self) -> bool {
         matches!(self, Self::Engine(_) | Self::Host(_))
+    }
+
+    /// The [turn error type](TurnErrorType) this failure is recorded as, for the variants that are
+    /// the **model's** to fix — everything the two predicates above do not claim.
+    ///
+    /// `None` for [`Engine`](Self::Engine)/[`Host`](Self::Host) and
+    /// [`Compile`](Self::Compile)/[`Instantiate`](Self::Instantiate), which end the session as
+    /// fatal and are never charged to the model's error budget, so they have no turn error type at
+    /// all. `Some` for the other four, and exhaustive rather than a catch-all: the turn loop used
+    /// to reach the sandbox ceilings through an `Err(_)` arm that never looked at the variant, so
+    /// a timeout, an out-of-memory and a trap were one indistinguishable bucket. Adding a variant
+    /// now has to say which it is.
+    ///
+    /// `every_sandbox_failure_maps_to_exactly_one_turn_disposition` is what keeps this and the two
+    /// predicates a partition.
+    pub fn turn_error_type(&self) -> Option<TurnErrorType> {
+        match self {
+            Self::Prepare(prepare) => Some(prepare.turn_error_type()),
+            Self::Timeout { .. } => Some(TurnErrorType::SandboxTimeout),
+            Self::OutOfMemory { .. } => Some(TurnErrorType::SandboxOutOfMemory),
+            Self::Trap(_) => Some(TurnErrorType::SandboxTrap),
+            Self::Engine(_) | Self::Host(_) | Self::Compile(_) | Self::Instantiate(_) => None,
+        }
     }
 }

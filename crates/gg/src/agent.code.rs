@@ -95,8 +95,9 @@ pub(super) enum CodeTurnOutcome {
         /// [view](crate::context::ViewKind) — its own attributable, evictable context item — or not
         /// at all; a message from gg is gg's reporting, not a channel for workspace material.
         feedback: Vec<CodeFeedback>,
-        /// Why this turn was an error, or `None` for a turn that carried out its declared work.
-        error: Option<TurnErrorKind>,
+        /// Why this turn was an error — the **specific** [type](TurnErrorType), whose base kind is
+        /// derived from it — or `None` for a turn that carried out its declared work.
+        error: Option<TurnErrorType>,
         /// One line describing what this turn produced, in gg's own words.
         ///
         /// It is what an agent **stopped** before it could `finish` returns to its spawner. Under
@@ -197,8 +198,8 @@ impl CodeTurnOutcome {
             Self::Finished { .. } => TurnOutcome::Finished,
             Self::Continue { error: None, .. } => TurnOutcome::Progressed,
             Self::Continue {
-                error: Some(kind), ..
-            } => TurnOutcome::Error(*kind),
+                error: Some(error), ..
+            } => TurnOutcome::Error(*error),
             Self::Fatal { fault, .. } => TurnOutcome::Fatal(*fault),
         }
     }
@@ -432,9 +433,14 @@ pub(super) async fn run_code_turn(
         // The language's own diagnostic, with nothing wrapped around it. `SandboxError::Prepare`'s
         // `Display` prefixes it ("the program did not compile: …"), which the `Compiler error`
         // heading already says, so the inner error is what goes out.
-        Err(SandboxError::Prepare(prepare)) => CodeTurnOutcome::Continue {
+        Err(error @ SandboxError::Prepare(prepare)) => CodeTurnOutcome::Continue {
             feedback: vec![CodeFeedback::compiler(prepare.to_string())],
-            error: Some(TurnErrorKind::Transpile),
+            // Which of the four prepare failures it was, from the error itself rather than from a
+            // blanket "did not compile": a syntax error is a typo, a semantic error is almost
+            // always two programs in one reply, and a lowering failure is a defect in gg's own
+            // pipeline. They have different causes and want different responses, so the record says
+            // which one happened.
+            error: Some(sandbox_error_type(error)),
             report: "its last program did not compile".to_string(),
         },
         // A ceiling the sandbox enforced — a timeout, the memory cap, a trap. The program compiled
@@ -447,16 +453,23 @@ pub(super) async fn run_code_turn(
             ));
             CodeTurnOutcome::Continue {
                 feedback: with_error(&notices, CodeFeedback::runtime(error.to_string())),
-                error: Some(TurnErrorKind::SandboxLimit),
+                // Which ceiling stopped it. A runaway loop, a program that allocated past its cap
+                // and a guest trap are three different defects and were one bucket while this arm
+                // ignored the variant it had matched.
+                error: Some(sandbox_error_type(error)),
                 report: "its last program was stopped by a sandbox limit".to_string(),
             }
         }
         Ok(result) => {
             let report = program_report(&outcome, result);
+            // The class the guest already typed the throw with, rather than the bare fact that
+            // there was one: an uncaught *call failure* says the model is fighting the API, an
+            // unknown name says it is writing against a surface this run withheld, and a plain
+            // throw says its own program was wrong.
             let error = result
                 .error
-                .is_some()
-                .then_some(TurnErrorKind::ProgramFault);
+                .as_ref()
+                .map(|error| error.kind.turn_error_type());
             CodeTurnOutcome::Continue {
                 feedback: match result.error.as_ref() {
                     Some(error) => with_error(&notices, program_error_feedback(error)),
@@ -468,6 +481,23 @@ pub(super) async fn run_code_turn(
         }
     };
     (decision, state)
+}
+
+/// The [turn error type](TurnErrorType) a sandbox failure the **model** owns is recorded as.
+///
+/// A thin wrapper over [`SandboxError::turn_error_type`] for the two arms above, which reach it only
+/// after the fatal ones have already been claimed by `is_artifact_defect`/`is_host_fault` — so the
+/// `None` those four return is unreachable here. It is answered rather than `expect`ed because a
+/// panic inside the turn loop would cost a run that is otherwise fine, and because
+/// [`ProgramThrow`](TurnErrorType::ProgramThrow) is the honest reading of "the program ran and
+/// something gg cannot classify ended it": the base kind it derives is `program_fault`, which is the
+/// one bucket that never charges the failure to a ceiling it did not cause. If it is ever reached,
+/// the arms above have stopped being a partition and
+/// `every_sandbox_failure_maps_to_exactly_one_turn_disposition` says so first.
+fn sandbox_error_type(error: &SandboxError) -> TurnErrorType {
+    error
+        .turn_error_type()
+        .unwrap_or(TurnErrorType::ProgramThrow)
 }
 
 /// The one line a **spawner** is given for a turn whose program ran — what it said, or failed to, in
@@ -1757,6 +1787,7 @@ impl LoopToolApi {
             name: call.name.clone(),
             ok: outcome.ok,
             summary: outcome.summary.clone(),
+            failure: outcome.wire_failure(),
         });
         for event in managed {
             self.emitter.emit(event);
@@ -2194,12 +2225,14 @@ impl ToolApi for LoopToolApi {
         });
     }
 
-    /// Stream the closing half, with the verdict the program saw.
-    fn end_api_call(&mut self, object: &str, function: &str, ok: bool) {
+    /// Stream the closing half, with the verdict the program saw and — when it threw — the class it
+    /// was thrown with.
+    fn end_api_call(&mut self, object: &str, function: &str, failure: Option<GgToolFailure>) {
         self.emitter.emit(GgTelemetryKind::ApiResult {
             object: object.to_string(),
             function: function.to_string(),
-            ok,
+            ok: failure.is_none(),
+            failure,
         });
     }
 

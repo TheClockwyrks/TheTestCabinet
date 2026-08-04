@@ -64,6 +64,8 @@
 use std::collections::{BTreeSet, VecDeque};
 use std::time::{Duration, Instant};
 
+use test_cabinet_core::gg::GgToolFailure;
+
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened, ToolApi};
 use super::limits::{MemoryLimiter, SandboxLimits};
 use super::{ProgramCompletion, ProgramError, ProgramErrorKind};
@@ -628,6 +630,28 @@ impl<A: ToolApi> MembraneState<A> {
             tool: tool.to_string(),
             message,
         }
+    }
+}
+
+/// The membrane's `error-code` as the contract publishes it on an
+/// [`ApiResult`](test_cabinet_core::gg::GgTelemetryKind::ApiResult).
+///
+/// The two enums are one-to-one, and the conversion is written out by hand rather than derived: the
+/// WIT enum is the guest's vocabulary and the contract's is a published wire value, and a `From`
+/// that made them interchangeable would let a change to either travel silently to the other. It is
+/// taken from the `ToolError` the program was actually thrown, rather than from the outcome behind
+/// it, so a refusal — which has no outcome at all — is classified by the same function as everything
+/// else.
+pub(super) fn wire_failure(code: ErrorCode) -> GgToolFailure {
+    match code {
+        ErrorCode::InvalidArgument => GgToolFailure::InvalidArgument,
+        ErrorCode::NotFound => GgToolFailure::NotFound,
+        ErrorCode::Conflict => GgToolFailure::Conflict,
+        ErrorCode::Refused => GgToolFailure::Refused,
+        ErrorCode::Unavailable => GgToolFailure::Unavailable,
+        ErrorCode::LimitExceeded => GgToolFailure::LimitExceeded,
+        ErrorCode::IoError => GgToolFailure::IoError,
+        ErrorCode::Other => GgToolFailure::Other,
     }
 }
 

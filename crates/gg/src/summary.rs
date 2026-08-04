@@ -44,7 +44,7 @@ use std::sync::Mutex;
 use test_cabinet_core::gg::{
     GgErrorSummary, GgHealingStrategy, GgHealingSummary, GgIssueReviewPhase, GgIssueStatus,
     GgLimitBreach, GgProgramLanguage, GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost,
-    GgTelemetryKind, GgTurnErrorKind,
+    GgTelemetryKind, GgToolFailure, GgTurnErrorKind, GgTurnErrorType,
 };
 
 /// Accumulates a running session's aggregatable outcome from the telemetry stream it
@@ -219,10 +219,17 @@ impl SummaryState {
     /// those, a total that still agrees with its own parts is the better answer.
     ///
     /// The per-kind `match` is exhaustive on purpose: a kind added to the contract is a compile
-    /// error here rather than an error silently missing from every run's rollup.
+    /// error here rather than an error silently missing from every run's rollup. The per-**type**
+    /// breakdown beside it is keyed by [`GgTurnErrorType::wire_id`] and is therefore additive
+    /// instead: a type added to the contract joins it without an edit here, which is the property
+    /// that lets a *"top error types"* ranking gain a row without a schema change. The type is
+    /// preferred over the kind when both are present, and the kind is the fallback — so a stream
+    /// gg did not write still lands in the named counters even if it carried no type at all, and
+    /// `errors == by_type.values().sum()` holds for every stream gg *did* write.
     fn fold_turn_outcome(
         &mut self,
         error: Option<GgTurnErrorKind>,
+        error_type: Option<GgTurnErrorType>,
         consecutive_errors: u64,
         loop_aborts: u64,
     ) {
@@ -231,7 +238,7 @@ impl SummaryState {
         rollup.max_consecutive = rollup.max_consecutive.max(consecutive_errors);
         rollup.loop_aborts += loop_aborts;
 
-        let Some(kind) = error else {
+        let Some(kind) = error.or_else(|| error_type.map(GgTurnErrorType::kind)) else {
             return;
         };
         rollup.errors += 1;
@@ -243,6 +250,38 @@ impl SummaryState {
             GgTurnErrorKind::MissingCompletion => &mut rollup.missing_completion,
         };
         *count += 1;
+        if let Some(error_type) = error_type {
+            *rollup
+                .by_type
+                .entry(error_type.wire_id().to_string())
+                .or_default() += 1;
+        }
+    }
+
+    /// Fold one [tool result](GgTelemetryKind::ToolResult) into the run's
+    /// [call-failure rollup](GgErrorSummary::tool_failures).
+    ///
+    /// A **different population** from everything `fold_turn_outcome` counts, and deliberately kept
+    /// out of `errors`: a call that failed inside a program the model then handled is the typed
+    /// surface working, not a turn failing, and charging it to the error budget would make the one
+    /// capability that expects failures the one that cannot survive them. It is counted here
+    /// because it was previously counted nowhere at all — a model fighting the same `not-found`
+    /// forty times produced forty telemetry events that said only "something went wrong".
+    ///
+    /// Folded from the **telemetry stream** rather than from the membrane's own roster of composed
+    /// calls, and that matters: the roster is capped (it exists to be shown back to a model, not to
+    /// be counted), while every dispatched call streams its result pair whatever the cap says. A
+    /// count taken off the roster would silently undercount exactly the runaway programs worth
+    /// counting.
+    fn fold_tool_result(&mut self, failure: Option<GgToolFailure>) {
+        let Some(failure) = failure else {
+            return;
+        };
+        *self
+            .errors
+            .tool_failures
+            .entry(failure.wire_id().to_string())
+            .or_default() += 1;
     }
 }
 
@@ -395,10 +434,14 @@ impl SessionSummaryTracker {
             // was even when no ceiling ever stopped it.
             GgTelemetryKind::TurnOutcome {
                 error,
+                error_type,
                 consecutive_errors,
                 loop_aborts,
                 ..
-            } => state.fold_turn_outcome(*error, *consecutive_errors, *loop_aborts),
+            } => state.fold_turn_outcome(*error, *error_type, *consecutive_errors, *loop_aborts),
+            // One event per dispatched tool call, in either execution mode — the population the
+            // call-failure rollup counts, which is calls rather than turns.
+            GgTelemetryKind::ToolResult { failure, .. } => state.fold_tool_result(*failure),
             GgTelemetryKind::BoardState { issues, .. } => {
                 for issue in issues {
                     state.issues_created.insert(issue.id.clone());
