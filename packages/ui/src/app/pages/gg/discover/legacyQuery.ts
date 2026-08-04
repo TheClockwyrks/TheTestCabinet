@@ -240,7 +240,7 @@ function aggregation(raw: string): string | null {
 }
 
 /** A dotted field name with every segment quoted as the grammar requires — a capability
- *  id like `speculative-execution` or a tool name with a dash does not lex as one bare
+ *  id like `agent-persistence` or a tool name with a dash does not lex as one bare
  *  word, and the formatter is the one place that decision is made. */
 function path(...segments: string[]): string {
   return segments.map(formatIdentifier).join(".");

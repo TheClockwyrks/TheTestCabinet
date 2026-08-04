@@ -19,8 +19,6 @@ import type {
   FsmVisit,
   GgToolBreakdown,
   ModuleSnapshot,
-  SpeculationState,
-  Workflow,
 } from "./useGgRunState";
 import {
   ROOT_ID,
@@ -75,13 +73,9 @@ import {
 import {
   AgentIdentity,
   FsmPathStrip,
-  SpeculationPanel,
-  WorkflowStrip,
   arrivalTag,
   classifyArrivals,
-  classifySpeculationRoles,
   isSuccession,
-  type SpeculationRole,
 } from "./AgentTreeView";
 import { ContextFillGraph } from "./ContextFillGraph";
 import { PromptView } from "./PromptView";
@@ -141,16 +135,10 @@ interface GgAgentsExplorerProps {
   // Cross-agent by construction (a store two agents share has ONE content), so it comes
   // off the whole-run reduction rather than out of any one agent's slice.
   moduleSnapshots: Map<string, ModuleSnapshot>;
-  // Run-level delegation structure, shown on the root agent's Overview: declared
-  // workflows and best-of-K speculations. (Per-slot spend is a whole-run cost fact,
-  // so it reads inside the Dashboard's Cost widget, not here.) Empty when the run had
-  // none.
-  workflows: Workflow[];
   /** The states an FSM agent walked, and the successions between them. Empty for a
       run that drives no machine, which is almost all of them. */
   fsmPath: FsmVisit[];
   transitions: AgentTransition[];
-  speculations: SpeculationState[];
   // Whether the stream is still arriving — a live activity feed auto-follows its
   // newest row and says it is waiting on telemetry; a finished one does neither.
   live: boolean;
@@ -183,10 +171,8 @@ export function GgAgentsExplorer({
   perAgent,
   capabilitySet,
   moduleSnapshots,
-  workflows,
   fsmPath,
   transitions,
-  speculations,
   live,
   focusAgent,
   focusEntry,
@@ -203,13 +189,6 @@ export function GgAgentsExplorer({
     forest.forEach(walk);
     return map;
   }, [forest]);
-
-  // Winner/loser marking for the tree (empty when no speculation ran), so the
-  // sidebar can star a chosen best-of-K attempt and dim its losing co-attempts.
-  const roles = useMemo(
-    () => classifySpeculationRoles(forest, speculations),
-    [forest, speculations],
-  );
 
   // How each instance arrived, for the instances that arrived by a succession rather
   // than by a spawn (empty for the great majority of runs). It decides both how a node
@@ -302,7 +281,6 @@ export function GgAgentsExplorer({
   const ctx: ExplorerCtx = {
     capabilitySet,
     modules,
-    roles,
     arrivals,
     folders,
     selection,
@@ -339,13 +317,10 @@ export function GgAgentsExplorer({
             node={selectedNode}
             state={selectedState}
             file={selectedEntry.file}
-            role={roles.get(selectedNode.id)}
             arrival={arrivals.get(selectedNode.id)}
             capabilitySet={capabilitySet}
-            workflows={workflows}
             fsmPath={fsmPath}
             transitions={transitions}
-            speculations={speculations}
             live={live}
           />
         )
@@ -362,7 +337,6 @@ interface ExplorerCtx {
   capabilitySet: GgCapabilitySet | null;
   /** The run read by module instance — what each agent holds, and with whom. */
   modules: GgModuleIndex;
-  roles: Map<string, SpeculationRole>;
   /** How each instance arrived, for the ones that arrived by a succession. */
   arrivals: Map<string, AgentTransition>;
   /** The tree's open/closed bookkeeping, shared by every folder in it. */
@@ -416,7 +390,6 @@ function FolderNode({
   const openByDefault = isRoot;
   const open = ctx.folders.isOpen(folderKey, openByDefault);
   const label = isRoot ? "root" : node.id;
-  const role = ctx.roles.get(node.id);
   const arrival = ctx.arrivals.get(node.id);
 
   return (
@@ -441,11 +414,6 @@ function FolderNode({
       name={label}
       meta={
         <>
-          {role === "winner" && (
-            <span className={panels.fsWinner} title="chosen best-of-K attempt">
-              ★
-            </span>
-          )}
           {/* How this instance arrived, when it arrived by a succession: the state it
               entered, or the move that produced it. Without it a lineage is N unrelated
               ids, which is the one thing about a machine (or an exec) nobody can infer. */}
@@ -757,28 +725,22 @@ function FileContent({
   node,
   state,
   file,
-  role,
   arrival,
   capabilitySet,
-  workflows,
   fsmPath,
   transitions,
-  speculations,
   live,
 }: {
   node: AgentNode;
   state: DerivedGgState;
   file: AgentFileKind;
-  role?: SpeculationRole;
   /** The succession this instance arrived by, when it arrived by one. */
   arrival?: AgentTransition;
   capabilitySet: GgCapabilitySet | null;
-  workflows: Workflow[];
   /** The states an FSM agent walked, and the successions between them. Empty for a
       run that drives no machine, which is almost all of them. */
   fsmPath: FsmVisit[];
   transitions: AgentTransition[];
-  speculations: SpeculationState[];
   live: boolean;
 }) {
   // Only the main agent carries the run-level delegation structure on its Overview; a
@@ -794,13 +756,10 @@ function FileContent({
         <OverviewFile
           node={node}
           state={state}
-          role={role}
           arrival={arrival}
           isRoot={isRoot}
-          workflows={workflows}
           fsmPath={fsmPath}
           transitions={transitions}
-          speculations={speculations}
         />
       );
     case "prompt":
@@ -907,8 +866,8 @@ function ActivityFeed({ feed, live }: { feed: FeedRow[]; live: boolean }) {
 // Tokens and Cost widgets (the very components the Dashboard uses, fed this agent's
 // usage) — so a subagent's cost is legible in the same shape as the run's, not a
 // different-looking summary — and its tool-usage breakdown (the itemized version of
-// the Dashboard row's tool chips). The run's delegation structure (workflows,
-// speculations) is a whole-run fact, so it hangs off the root agent only; a
+// the Dashboard row's tool chips). The run's process structure is a whole-run fact,
+// so it hangs off the root agent only; a
 // session-scoped card (status, the agent overview, the configuration) has no place on
 // one agent, so none appears here — those read on the Dashboard, as does the whole
 // run's spend per slot and per model (this agent is one slot on one model, so the same
@@ -916,26 +875,20 @@ function ActivityFeed({ feed, live }: { feed: FeedRow[]; live: boolean }) {
 function OverviewFile({
   node,
   state,
-  role,
   arrival,
   isRoot,
-  workflows,
   fsmPath,
   transitions,
-  speculations,
 }: {
   node: AgentNode;
   state: DerivedGgState;
-  role?: SpeculationRole;
   /** The succession this instance arrived by, when it arrived by one. */
   arrival?: AgentTransition;
   isRoot: boolean;
-  workflows: Workflow[];
   /** The states an FSM agent walked, and the successions between them. Empty for a
       run that drives no machine, which is almost all of them. */
   fsmPath: FsmVisit[];
   transitions: AgentTransition[];
-  speculations: SpeculationState[];
 }) {
   // Price this agent's own usage: its own per-(profile, model) tallies, summed from the
   // attributed `usage` deltas on its own stream, falling back to its aggregate tally at
@@ -965,7 +918,6 @@ function OverviewFile({
       <div className={panels.overview}>
         <AgentIdentity
           node={node}
-          role={role}
           turns={state.turnCount}
           arrival={arrival}
         />
@@ -995,12 +947,6 @@ function OverviewFile({
             whole-run fact, not one subagent's, so it reads on the root. */}
         {isRoot && fsmPath.length > 0 && (
           <FsmPathStrip path={fsmPath} transitions={transitions} />
-        )}
-        {isRoot && workflows.length > 0 && (
-          <WorkflowStrip workflows={workflows} />
-        )}
-        {isRoot && speculations.length > 0 && (
-          <SpeculationPanel speculations={speculations} />
         )}
       </div>
     </div>

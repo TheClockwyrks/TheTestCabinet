@@ -2,7 +2,7 @@
 title: "FSM-driven processes"
 ---
 
-A structured alternative to [workflows](/gg/workflows/) built on a **finite state
+A structured alternative to ad-hoc delegation built on a **finite state
 machine**. Where a workflow is a fan-out plus sequencing the agent assembles, an FSM
 is a **process the agent is driven through**.
 

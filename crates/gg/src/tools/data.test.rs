@@ -84,17 +84,6 @@ fn one_of_each() -> Vec<ToolData> {
             status: Some(AgentStatusData::Completed),
             summary: "done".to_string(),
         }]),
-        ToolData::Workflow(WorkflowData {
-            workflow_id: "wf-1".to_string(),
-            stages: 2,
-            results: vec!["a".to_string(), "b".to_string()],
-        }),
-        ToolData::Speculation(SpeculationData {
-            winner_id: "agent-3".to_string(),
-            attempts: 3,
-            rationale: Some("cleanest diff".to_string()),
-            summary: "merged agent-3".to_string(),
-        }),
     ]
 }
 

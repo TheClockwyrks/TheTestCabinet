@@ -97,25 +97,11 @@ pub enum RunEnding {
     None,
 }
 
-impl RunEnding {
-    /// How many attempts a [judge](EndingRole::Judge)'s `select_winner` may pick between — zero for
-    /// every other role, and for a run that binds no ending at all.
-    fn attempts(self) -> u32 {
-        match self {
-            Self::Role(role) => role.attempts(),
-            Self::None => 0,
-        }
-    }
-}
-
-/// The judge's attempt count does not cross into the guest: it has no use for it (its own check is
-/// only that the number is a positive integer) and the range is the host's to enforce, at the call.
 impl From<RunEnding> for EndingKind {
     fn from(ending: RunEnding) -> Self {
         match ending {
             RunEnding::Role(EndingRole::Standard) => Self::Standard,
             RunEnding::Role(EndingRole::Review) => Self::Review,
-            RunEnding::Role(EndingRole::Judge { .. }) => Self::Judge,
             RunEnding::None => Self::None,
         }
     }
@@ -223,10 +209,6 @@ pub(crate) struct MembraneState<A: ToolApi> {
     /// [`revoked_completion`](Self::revoked_completion) is: a model whose replacement program simply
     /// never ran, with nothing said about it, would sit waiting for a turn that already happened.
     revoked_rerun: bool,
-    /// Which ending calls the guest was given, and (for a
-    /// judge) how many attempts its pick is bounded by. The guest is handed the same value, so the
-    /// only ending calls that can reach this host are the ones it bound.
-    role: RunEnding,
 }
 
 /// Everything one program accumulated, reclaimed from the store on the way out.
@@ -276,12 +258,15 @@ pub(crate) struct MembraneParts {
 }
 
 impl<A: ToolApi> MembraneState<A> {
-    /// The state for one program: bridged through `api`, offering `enabled`'s tools and `role`'s
-    /// ending calls, bounded by `limits`, and stopping at `deadline`.
+    /// The state for one program: bridged through `api`, offering `enabled`'s tools, bounded by
+    /// `limits`, and stopping at `deadline`.
+    ///
+    /// Which ending calls the program may make is not a host-side check: the
+    /// [ending group](RunEnding) is handed to the *guest*, which binds only that group's names, so
+    /// an ending call outside it is not in scope to be made. The host therefore keeps no copy.
     pub(crate) fn new(
         api: A,
         enabled: &[String],
-        role: RunEnding,
         limits: SandboxLimits,
         deadline: Option<Instant>,
     ) -> Self {
@@ -313,7 +298,6 @@ impl<A: ToolApi> MembraneState<A> {
             program_error: None,
             rerun: None,
             revoked_rerun: false,
-            role,
         }
     }
 
@@ -495,12 +479,6 @@ impl<A: ToolApi> MembraneState<A> {
         Ok(())
     }
 
-    /// How many attempts a [judge](crate::ending::EndingRole::Judge) may pick between — the range
-    /// `select-winner` is checked against. Zero for every other role, which has no such call bound.
-    pub(crate) fn judged_attempts(&self) -> u32 {
-        self.role.attempts()
-    }
-
     /// Bridge one call to the invoker, guarded and recorded.
     ///
     /// The order here is the design, and every guarantee the membrane makes lives in it: the
@@ -661,8 +639,6 @@ fn data_kind(data: &ToolData) -> &'static str {
         ToolData::ArchiveSearch(_) => "archiveSearch",
         ToolData::SubagentSpawned(_) => "subagentSpawned",
         ToolData::SubagentResults(_) => "subagentResults",
-        ToolData::Workflow(_) => "workflow",
-        ToolData::Speculation(_) => "speculation",
     }
 }
 

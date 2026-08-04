@@ -224,36 +224,6 @@ fn crossings() -> Vec<Crossing> {
             expected: || json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }),
         },
         Crossing {
-            tool: "run_workflow",
-            program: "agents.runWorkflow([{ prompt: \"look at {{item}}\", agent: \"subagent\", items: [\"a.ts\"] }]);",
-            expected: || {
-                json!({
-                    "stages": [{
-                        // The membrane resolves a stage's optional `name` before the call:
-                        // an absent name becomes the empty string (the loop still names it `stage-N`)
-
-                        "name": "",
-                        "prompt": "look at {{item}}",
-                        "items": ["a.ts"],
-                        "agent": "subagent",
-                    }],
-                })
-            },
-        },
-        Crossing {
-            tool: "speculate",
-            program: "agents.speculate({ agent: \"attempt\", issueId: \"i1\", attempts: 3, approaches: [\"be bold\"] });",
-            expected: || {
-                json!({
-                    "agent": "attempt",
-                    "prompt": null,
-                    "issueId": "i1",
-                    "attempts": 3,
-                    "approaches": ["be bold"],
-                })
-            },
-        },
-        Crossing {
             tool: "transition_state",
             program: "agents.transitionState(\"verify\", \"the build is green\");",
             expected: || json!({ "state": "verify", "note": "the build is green" }),

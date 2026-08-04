@@ -90,7 +90,7 @@ An issue moves through:
 **An issue is finished exactly when the agent implementing it finishes.** There is no
 "complete issue" tool: an agent that ended successfully has, by definition, said its
 work is done, and how it says so is its own
-[completion rule](/gg/completion/) — a plain-text reply, an explicit `finish` call, or
+[completion rule](/gg/ending-a-session/) — a plain-text reply, an explicit `finish` call, or
 either of those gated behind validation commands. An assigned agent that ends any
 other way — a spent turn ceiling, a breached [execution ceiling](/gg/execution-limits/), a model
 error — has **not** finished, so gg **re-dispatches** the issue up to `maxRetries`

@@ -48,7 +48,7 @@ use crate::memories::MemoryCode;
 use crate::programs::{ProgramLibrary, ProgramRefusal, ProgramSummary};
 use crate::sandbox::{
     ProgramError, ProgramLanguage, ProgramScope, RunEnding, SandboxViewOpened, ToolApi,
-    UnreachableTail, ViewOpenOutcome, ViewRefusal, WorkflowStageInput,
+    UnreachableTail, ViewOpenOutcome, ViewRefusal,
 };
 use crate::tasks::TaskStatus;
 use crate::tools::{
@@ -495,8 +495,7 @@ fn program_report(outcome: &SandboxOutcome, result: &ProgramResult) -> String {
 
 /// The longest one-line report [`CodeTurnOutcome::Continue::report`] carries before truncating.
 ///
-/// A report is a *status line* handed to a spawner, a run record and a speculation judge's brief,
-/// so it is bounded independently of the feedback the model sees: a program that returns a large
+/// A report is a *status line* handed to a spawner and a run record, so it is bounded independently of the feedback the model sees: a program that returns a large
 /// structure has already had that structure rendered (and capped) for the model's own feedback, and
 /// repeating it into a status line would put the same payload in front of a reader who asked for a
 /// sentence.
@@ -851,8 +850,6 @@ pub(super) struct CodeTurn<'a> {
     /// same servicing tail the recorder does, so a reconstruction compares a program's tool
     /// outcomes exactly as it compares a tool-calling turn's.
     pub(super) observer: Option<&'a Arc<dyn SessionObserver>>,
-    /// Whether `speculate` is routed through the best-of-K routine this run.
-    pub(super) speculative_active: bool,
     /// The [compaction](crate::compaction) the loop is waiting for this agent to perform, when one
     /// is in flight. While it is set the program's calls are narrowed to the one family that
     /// satisfies it — everything else is refused, because everything else adds to a window that is
@@ -1016,7 +1013,6 @@ async fn run_code_program(
         replay: turn.replay.cloned(),
         observer: turn.observer.cloned(),
         handle: Handle::current(),
-        speculative_active: turn.speculative_active,
         pending_compaction: turn.pending_compaction,
         serviced: 0,
         view_ops: 0,
@@ -1548,7 +1544,6 @@ pub(super) struct LoopToolApi {
     /// composed calls are compared against the record exactly as a native call's are.
     observer: Option<Arc<dyn SessionObserver>>,
     handle: Handle,
-    speculative_active: bool,
     pending_compaction: Option<PendingCompaction>,
     serviced: u64,
     /// How many view operations this program has made, against
@@ -1836,41 +1831,6 @@ impl LoopToolApi {
         let emitter = &self.emitter;
         let outcome = match self.subagents.as_mut() {
             Some(sub) => run(&handle, sub, spawner, emitter, &call),
-            None => ToolOutcome::failed(
-                ToolFailure::Unavailable,
-                format!("`{name}` is not available: this run has no delegation runtime."),
-            ),
-        };
-        self.complete(call, outcome, Vec::new())
-    }
-
-    /// Delegation servicing for the two handlers that also need the [board](BoardRuntime) —
-    /// [`speculate`](handle_speculate) — with an
-    /// extra `&BoardRuntime` handed to the `run` closure.
-    fn delegated_board(
-        &mut self,
-        name: &str,
-        args: Value,
-        run: impl FnOnce(
-            &Handle,
-            &mut SubagentContext,
-            &Agent,
-            &BoardRuntime,
-            &Emitter,
-            &ToolCall,
-        ) -> ToolOutcome,
-    ) -> ToolOutcome {
-        let refused = self.gate(name);
-        let call = self.begin(name, args);
-        if let Some(refused) = refused {
-            return self.complete(call, refused, Vec::new());
-        }
-        let handle = self.handle.clone();
-        let spawner = &self.spawner;
-        let board = &self.board;
-        let emitter = &self.emitter;
-        let outcome = match self.subagents.as_mut() {
-            Some(sub) => run(&handle, sub, spawner, board, emitter, &call),
             None => ToolOutcome::failed(
                 ToolFailure::Unavailable,
                 format!("`{name}` is not available: this run has no delegation runtime."),
@@ -2693,48 +2653,6 @@ impl ToolApi for LoopToolApi {
                     .block_on(handle_subagent_call(sub, spawner, emitter, call))
             },
         )
-    }
-    fn run_workflow(&mut self, stages: Vec<WorkflowStageInput>) -> ToolOutcome {
-        let json_stages: Vec<Value> = stages
-            .iter()
-            .map(|s| {
-                json!({ "name": s.name, "prompt": s.prompt, "items": s.items, "agent": s.agent })
-            })
-            .collect();
-        self.delegated(
-            RUN_WORKFLOW_TOOL,
-            json!({ "stages": json_stages }),
-            |h, sub, spawner, emitter, call| {
-                h.clone()
-                    .block_on(handle_subagent_call(sub, spawner, emitter, call))
-            },
-        )
-    }
-    fn speculate(
-        &mut self,
-        agent: String,
-        prompt: Option<String>,
-        issue_id: Option<String>,
-        attempts: u8,
-        approaches: Vec<String>,
-    ) -> ToolOutcome {
-        let args = json!({ "agent": agent, "prompt": prompt, "issueId": issue_id, "attempts": attempts, "approaches": approaches });
-        // Route through the best-of-K routine only when speculation is actually active this run
-        // (the capability is on *and* the delegation machinery exists). Otherwise the tool is a
-        // loop-handled declaration that reached the api by mistake — answer it exactly as the native
-        // path's `registry.dispatch` → `SpeculateTool::invoke` does, with `handled_by_loop`.
-        if self.speculative_active && self.subagents.is_some() {
-            self.delegated_board(
-                SPECULATE_TOOL,
-                args,
-                |h, sub, spawner, board, emitter, call| {
-                    h.clone()
-                        .block_on(handle_speculate(sub, spawner, board, emitter, call))
-                },
-            )
-        } else {
-            self.serviced(SPECULATE_TOOL, args, |_api| handled_by_loop(SPECULATE_TOOL))
-        }
     }
     fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary> {
         self.docs.list(object)

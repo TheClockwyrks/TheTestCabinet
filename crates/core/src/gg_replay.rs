@@ -995,7 +995,18 @@ pub enum GgShellOrigin {
     /// `system.shell(…)`.
     Program,
     /// A completion gate's validation command.
+    ///
+    /// Retained for the records captured before the [completion](crate::gg::CAPABILITY_COMPLETION)
+    /// capability became an [agent-stop hook](crate::gg::GgHookEvent::AgentStop); a live run stamps
+    /// the same command [`Hook`](Self::Hook) now.
     CompletionValidation,
+    /// A [hook](crate::gg::GgHook) — a command hook's command line, or the script gg materialized
+    /// for a script hook and ran with the event as its argument.
+    ///
+    /// Its own origin rather than folded into [`Tool`](Self::Tool) because a hook's command is the
+    /// one gg runs *without the model asking*, and a reconstruction that replayed it onto the
+    /// model's own queue would hand some later `shell` call a result it never produced.
+    Hook,
 }
 
 /// One subprocess gg ran, with its bulky streams pooled.

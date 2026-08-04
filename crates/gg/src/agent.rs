@@ -91,15 +91,15 @@ use std::time::Instant;
 
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{
-    AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AUTOLOAD_SPECS,
-    CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_PROGRAM_LIBRARY,
-    CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL,
-    CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS,
-    GgAgentApi, GgAgentApiFunction, GgAgentConfig, GgAgentStatus, GgAgentTransitionKind,
-    GgCapabilitySet, GgContextAction, GgContextSource, GgHealingStrategy, GgIssueReviewPhase,
+    ALL_HOOK_EVENTS, AUTOLOAD_LOCKED_IMPL, CAPABILITY_AGENT_MANAGED_CONTEXT,
+    CAPABILITY_AUTOLOAD_SPECS, CAPABILITY_COMPACTION, CAPABILITY_CONTEXT_WINDOW_OVERRIDE,
+    CAPABILITY_PROGRAM_LIBRARY, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_RESPONSES_AS_CODE,
+    CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS, GgAgentApi, GgAgentApiFunction,
+    GgAgentConfig, GgAgentStatus, GgAgentTransitionKind, GgCapabilitySet, GgContextAction,
+    GgContextSource, GgHealingStrategy, GgHookAgentKind, GgHookEvent, GgIssueReviewPhase,
     GgLimitBreach, GgLimitKind, GgProgramLanguage, GgResponseHealing, GgReviewer, GgRunLimits,
-    GgSlotBinding, GgSpeculationPhase, GgSubagentScope, GgTelemetryKind, GgWorkflowPhase,
-    PROJECT_MANAGEMENT_PARAM_MERGE_AGENT, SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
+    GgSlotBinding, GgSubagentScope, GgTelemetryKind, PROJECT_MANAGEMENT_PARAM_MERGE_AGENT,
+    SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_MODES,
 };
 use test_cabinet_core::gg_replay::{
     GgReplayAgent, GgReplayAgentOrigin, GgReplayFidelity, GgReplayModalities,
@@ -116,7 +116,7 @@ use crate::client::{AgentIdentity, ClientFactory, DefaultClientFactory, provider
 use crate::compaction::{
     self, CompactionRequest, CompactionSetup, PendingCompaction, RestoredFile,
 };
-use crate::completion::{self, CompletionSetup};
+use crate::completion;
 use crate::config::GgInvocation;
 use crate::context::{
     BpeTokenEstimator, ContextModel, FileRegion, PromptItem, Retention, TokenEstimator, TurnRange,
@@ -127,6 +127,7 @@ use crate::ending::{Ending, EndingRole};
 use crate::fsm::{FsmPosition, FsmSpec};
 use crate::git;
 use crate::healing::{self, AssistantMessageMode, Healed, HealingConfig, HealingStrategy, plural};
+use crate::hooks::{HookAgent, HookFailure, HookRuntime};
 use crate::limits::{
     AgentLimits, FatalFault, RunLimits, RunSpend, TurnErrorKind, TurnOutcome, resolve_run_limits,
 };
@@ -141,10 +142,10 @@ use crate::modules::{
 use crate::observer::SessionObserver;
 use crate::persistence::{self, AgentPersistence, PersistenceSetup};
 use crate::prompts::{
-    self, ApiView, AssignedIssueView, AttemptBriefContext, AutoloadView, BoardView,
-    CodeHeadingView, EndingView, FixBriefContext, JudgeAttemptView, JudgeBriefContext,
-    MemoriesView, MergeBriefContext, NumberedItem, ReadFileView, ReviewBriefContext,
-    ReviewChangesView, ReviewRecordView, ShellView, SpawnableAgentView, SystemContext, TasksView,
+    self, ApiView, AssignedIssueView, AutoloadView, BoardView, CodeHeadingView, EndingView,
+    FixBriefContext, MemoriesView, MergeBriefContext, NumberedItem, ReadFileView,
+    ReviewBriefContext, ReviewChangesView, ReviewRecordView, ShellView, SpawnableAgentView,
+    SystemContext, TasksView,
 };
 use crate::replay::{GgRecorder, RecordedSeed, RecordingClient};
 use crate::sandbox::{
@@ -161,13 +162,12 @@ use crate::tools::VisionContext;
 use crate::tools::{
     ARCHIVE_THREAD_TOOL, AgentFacts, AgentStatusData, COMPACT_TOOL, CREATE_ISSUE_TOOL,
     EVICT_FILE_VIEW_TOOL, EXEC_TOOL, FORK_TOOL, OffloadPolicy, READ_FILE_TOOL, READ_SKILL_TOOL,
-    RUN_WORKFLOW_TOOL, ReadFileTool, ReadPolicy, ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL,
-    SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, ShellRunner, SpeculationData, SubagentHandleData,
-    SubagentResultData, TRANSITION_STATE_TOOL, Tool, ToolContext, ToolData, ToolFailure,
-    ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData,
-    handled_by_loop, is_board_tool, is_context_reclaim_tool, is_memory_tool, is_subagent_tool,
-    is_task_tool, parse_archive_ranges, parse_compact_request, parse_evict_path, read_policy,
-    real_shell, saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
+    ReadFileTool, ReadPolicy, ReclaimData, SEND_MESSAGE_TOOL, SHELL_TOOL, SPAWN_SUBAGENT_TOOL,
+    ShellRunner, SubagentHandleData, SubagentResultData, TRANSITION_STATE_TOOL, Tool, ToolContext,
+    ToolData, ToolFailure, ToolOutcome, ToolRegistry, WAIT_FOR_ISSUE_TOOL, WAIT_FOR_SUBAGENTS_TOOL,
+    is_board_tool, is_context_reclaim_tool, is_memory_tool, is_subagent_tool, is_task_tool,
+    parse_archive_ranges, parse_compact_request, parse_evict_path, read_policy, real_shell,
+    saturating_u32, saturating_u64, shell_offload, unknown_disabled_tools,
 };
 use crate::turn_timing::TurnTimer;
 use crate::vision::VisionSupport;
@@ -196,8 +196,8 @@ const COMPACTION_SLOT: &str = "compaction";
 /// [`finish`](FINISH_FUNCTION).
 ///
 /// Named rather than spelled out at each of its sites because it is also what the issue-review
-/// verdict and the speculation candidate filter test a child agent against: one string with several
-/// readers is one string that must not be typed once per reader.
+/// verdict tests a child agent against: one string with several readers is one string that must not
+/// be typed once per reader.
 const STATUS_COMPLETED: &str = "completed";
 
 /// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for an agent that took every turn its
@@ -243,10 +243,20 @@ const STATUS_MODEL_ERROR: &str = "model_error";
 /// [`SessionOutcome`]).
 const STATUS_AUTH_ERROR: &str = "auth_error";
 
+/// The [`SessionEnded`](GgTelemetryKind::SessionEnded) status for a session one of the run's
+/// [hooks](crate::hooks) broke in — a script that exited non-zero, or printed a decision gg could
+/// not read.
+///
+/// A failure of the operator's own machinery rather than of the model or of gg, and the only tool-
+/// layer condition that stops a run outright. It has to: a gate that did not judge cannot be
+/// treated as having passed or failed, and there is nobody to hand the question to — the model
+/// never asked for the hook and cannot fix it.
+const STATUS_HOOK_ERROR: &str = "hook_error";
+
 /// Whether a terminal loop status means the agent failed (as opposed to finishing,
-/// exhausting its turns, or timing out) — the two error statuses above.
+/// exhausting its turns, or timing out) — the error statuses above.
 pub(crate) fn is_failure_status(status: &str) -> bool {
-    status == STATUS_MODEL_ERROR || status == STATUS_AUTH_ERROR
+    status == STATUS_MODEL_ERROR || status == STATUS_AUTH_ERROR || status == STATUS_HOOK_ERROR
 }
 
 /// Whether one gg session launched at all.
@@ -274,20 +284,6 @@ pub enum SessionOutcome {
 /// single-agent run has only this agent; Phase 4B gives spawned subagents generated ids
 /// beneath it.
 pub const ROOT_AGENT_ID: &str = "root";
-
-/// The [speculative-execution](CAPABILITY_SPECULATIVE) capability param naming the
-/// [agent profile](GgAgentConfig) a [speculation](handle_speculate)'s judge runs under. Absent
-/// means the run's [root](GgCapabilitySet::root).
-const PARAM_JUDGE_AGENT: &str = "judgeAgent";
-
-/// The default number of parallel attempts a [`speculate`](handle_speculate) call makes when it names
-/// no `attempts` count.
-const DEFAULT_SPECULATION_ATTEMPTS: u64 = 2;
-
-/// The maximum number of parallel attempts a [`speculate`](handle_speculate) call may make. Best-of-K
-/// multiplies token cost by K, and the attempts share the one global parallelism cap, so a generous
-/// but firm ceiling keeps a single call from fanning out unboundedly.
-const MAX_SPECULATION_ATTEMPTS: u64 = 6;
 
 /// One node in gg's [subagent tree](https://docs.testcabinet.ai/gg/subagents/): the unit the
 /// [turn loop](Self::drive) drives.
@@ -857,7 +853,7 @@ pub(crate) async fn run_with_seams(
     };
 
     // Resolve worktree isolation before building the orchestrator: when the run can produce a
-    // worktree (a board issue's, or a speculation attempt's), make the workspace a git repo and
+    // worktree (a board issue's), make the workspace a git repo and
     // commit its baseline, reporting any git-absent/failure loudly on the root's stream so a later
     // issue that has to fall back to the shared tree does so with a reason on the record.
     let worktrees = resolve_worktrees(set, &invocation.workspace_dir, &root_emitter).await;
@@ -1079,6 +1075,31 @@ pub(crate) async fn run_with_seams(
         report_replay_capture(recorder, &root_emitter);
     }
 
+    // The last hook of the run. It can neither block nor insert — there is no session left to
+    // affect — so what it is *for* is the reporting that has to happen after the work: a
+    // notification, an upload, a teardown. Its own failure is logged and otherwise ignored, which
+    // is the one place gg forgives a broken hook: stopping a run that has already finished would
+    // change a completed run's recorded status over a check that was only ever going to observe it.
+    if orch.hooks.has(GgHookEvent::SessionEnd) {
+        let session_ctx = ToolContext::new(invocation.workspace_dir.clone())
+            .with_agent(ROOT_AGENT_ID)
+            .with_shell(orch.shell_for(&invocation.workspace_dir));
+        if let Err(failure) = orch
+            .hooks
+            .fire(
+                GgHookEvent::SessionEnd,
+                &HookAgent::new(ROOT_AGENT_ID, set.root_name()).of_kind(GgHookAgentKind::Root),
+                json!({ "status": end.status }),
+                &session_ctx,
+                &OffloadPolicy::default(),
+                &root_emitter,
+            )
+            .await
+        {
+            root_emitter.emit(log("warn", failure.to_string()));
+        }
+    }
+
     // Compute and emit the run's aggregatable session summary from the telemetry the run emitted
     // (the per-slot rollups above are now folded in), right before the terminal `SessionEnded`, so
     // `core` can lift it onto the run record and result aggregation need not re-parse the stream.
@@ -1150,8 +1171,8 @@ fn record_replay_seed(orch: &Orchestrator, invocation: &GgInvocation, warnings: 
     recorder.record_seed(RecordedSeed {
         prompt: &orch.prompt,
         // gg's own observation of the workspace, kept alongside — not merged with — the host-side
-        // `RunRecord::seed_commit`. `None` for a run that never needed a repository (no board, no
-        // speculation), which is the honest answer rather than one committed for the record's sake.
+        // `RunRecord::seed_commit`. `None` for a run that never needed a repository (no board),
+        // which is the honest answer rather than one committed for the record's sake.
         baseline_commit: orch.baseline_commit.as_deref(),
         model_windows: replay_model_windows(orch, invocation),
         model_modalities: replay_model_modalities(orch, invocation),
@@ -1346,14 +1367,9 @@ struct Orchestrator {
     /// actionable issue to a freshly spawned top-level agent. A run with it on is multi-agent even
     /// with [`subagents`](CAPABILITY_SUBAGENTS) off (see [`multi_agent`](Self::multi_agent)).
     project_management_enabled: bool,
-    /// Whether the [workflows](CAPABILITY_WORKFLOWS) capability is on — gates the `run_workflow`
-    /// tool. Workflows are built on the subagent machinery, so a run with workflows on (even if
-    /// [`subagents`](CAPABILITY_SUBAGENTS) is off) still gets the per-agent delegation context and
-    /// the agent-tree telemetry (see [`delegation_enabled`](Self::delegation_enabled)).
-    workflows_enabled: bool,
     /// Where [worktree](Worktree) checkouts are created (a sibling of the workspace),
     /// `Some` only when worktree isolation is usable (git present, baseline committed, root
-    /// created). `None` means issues run in the shared workspace and `speculate` is refused.
+    /// created). `None` means issues run in the shared workspace.
     worktrees_root: Option<PathBuf>,
     /// The run's **baseline commit** — the seeded workspace committed at session start when gg made
     /// the workspace a git repo. The first [worktree](Worktree) branches from it (later ones branch
@@ -1365,11 +1381,6 @@ struct Orchestrator {
     /// [`mergeAgent`](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) the capability requires. `None` only
     /// when project management is off (launch validation refuses a board without one).
     merge_agent: Option<String>,
-    /// Whether the [speculative-execution](CAPABILITY_SPECULATIVE) capability is on — gates the
-    /// `speculate` tool (best-of-K). It needs the delegation machinery (to fan out
-    /// the attempts and run the judge), so it only engages when
-    /// [`delegation_enabled`](Self::delegation_enabled); worktree isolation is checked at call time.
-    speculative_enabled: bool,
     /// The **root agent's** code setup: whether its turns are conducted as
     /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE), the per-program sandbox ceilings, and the
     /// armed [healing](crate::healing) strategies. Since responses-as-code is now a **per-agent**
@@ -1542,9 +1553,8 @@ struct Orchestrator {
     tasks: Mutex<Vec<JoinHandle<()>>>,
     /// A monotonic counter minting unique subagent ids.
     next_seq: AtomicU64,
-    /// A monotonic counter minting unique [workflow](run_workflow) ids, so each `run_workflow`
-    /// invocation's stages group under one id in the telemetry.
-    next_workflow_seq: AtomicU64,
+    /// The run's [hooks](crate::hooks), resolved once at launch and shared by every agent.
+    hooks: Arc<HookRuntime>,
     /// The per-key ordinals a [replay agent origin](GgReplayAgentOrigin) is keyed by: a spawn's
     /// position within its parent, a review round within its issue, a merge within its issue.
     ///
@@ -1668,6 +1678,19 @@ impl Orchestrator {
         // misconfiguration a model can never report — it simply never makes the call, and the run
         // reads as one where the agent chose not to.
         warnings.extend(transitions::launch_warnings(set));
+        // The run's hooks, resolved once. A built-in id gg does not ship is the only way this
+        // fails, and it is reported as a warning with the hooks dropped rather than refusing the
+        // launch: a run that cannot start says nothing about the model, and an operator reading
+        // "gg ships: trace, refuse-empty-write, …" on the first line of the log has what they need
+        // to fix it. Every other hook misconfiguration is the script's own to report, at the
+        // firing.
+        let hooks = Arc::new(match HookRuntime::resolve(set, &invocation.workspace_dir) {
+            Ok(runtime) => runtime,
+            Err(errors) => {
+                warnings.extend(errors);
+                HookRuntime::default()
+            }
+        });
         let deadline = limits.max_runtime.map(|budget| Instant::now() + budget);
         // The Root agent's code setup: responses-as-code is per-agent, but the Root's is what the
         // run-level launch log and the sandbox warm-up decision key on.
@@ -1795,14 +1818,12 @@ impl Orchestrator {
             provided_files: invocation.provided_files.clone(),
             subagents_enabled: set.is_enabled(CAPABILITY_SUBAGENTS),
             project_management_enabled: board_owner(set).is_some(),
-            workflows_enabled: set.is_enabled(CAPABILITY_WORKFLOWS),
             worktrees_root: worktrees.root,
             baseline_commit: worktrees.baseline_commit,
             merge_agent: board_owner(set)
                 .is_some()
                 .then(|| merge_agent_name(set))
                 .flatten(),
-            speculative_enabled: set.is_enabled(CAPABILITY_SPECULATIVE),
             code: CodeSetup {
                 enabled: set.root().is_enabled(CAPABILITY_RESPONSES_AS_CODE),
                 language: sandbox::resolve_program_language(set.root()).language,
@@ -1847,7 +1868,7 @@ impl Orchestrator {
             },
             tasks: Mutex::new(Vec::new()),
             next_seq: AtomicU64::new(0),
-            next_workflow_seq: AtomicU64::new(0),
+            hooks,
             ordinals: Mutex::new(BTreeMap::new()),
             // Capture is always on. `None` here means the journal could not be opened, never that
             // the run declined to be recorded.
@@ -1918,22 +1939,12 @@ impl Orchestrator {
             .unwrap_or(0)
     }
 
-    /// Mint the next unique [workflow](run_workflow) id, so a `run_workflow` invocation's stage
-    /// telemetry groups under one handle.
-    fn next_workflow_id(&self) -> String {
-        format!(
-            "workflow-{}",
-            self.next_workflow_seq.fetch_add(1, Ordering::SeqCst)
-        )
-    }
-
-    /// Whether **delegation** is active this run — the [subagents](CAPABILITY_SUBAGENTS) capability
-    /// or the [workflows](CAPABILITY_WORKFLOWS) capability (which is built on the same machinery).
-    /// When it is, each agent gets a [delegation context](SubagentContext) and the agent-tree
-    /// [telemetry](GgAgentStatus) (running/blocked/done/failed transitions and returns) is emitted,
-    /// so a workflow's fanned-out agents animate the live tree exactly like ad-hoc subagents.
+    /// Whether **delegation** is active this run — the [subagents](CAPABILITY_SUBAGENTS)
+    /// capability. When it is, each agent gets a [delegation context](SubagentContext) and the
+    /// agent-tree [telemetry](GgAgentStatus) (running/blocked/done/failed transitions and returns)
+    /// is emitted.
     fn delegation_enabled(&self) -> bool {
-        self.subagents_enabled || self.workflows_enabled
+        self.subagents_enabled
     }
 
     /// Whether the run is **multi-agent** — either [delegation](Self::delegation_enabled) is on, or
@@ -1950,22 +1961,6 @@ impl Orchestrator {
     /// unavailable.
     fn baseline_commit(&self) -> Option<&str> {
         self.baseline_commit.as_deref()
-    }
-
-    /// Whether isolated [worktrees](Worktree) can actually be created this run: git was available,
-    /// a baseline was committed, and the checkout root exists. `false` degrades issues to the shared
-    /// workspace and refuses `speculate`.
-    fn worktrees_usable(&self) -> bool {
-        self.worktrees_root.is_some() && self.baseline_commit.is_some()
-    }
-
-    /// Whether [speculative execution](handle_speculate) can actually run this run: the
-    /// [speculative-execution](CAPABILITY_SPECULATIVE) capability **and** the delegation machinery a
-    /// best-of-K fan-out + judge needs. Worktree isolation is a further requirement checked at call
-    /// time (with a clear refusal), so a speculation without worktrees is a runtime refusal, not a
-    /// silently-withheld tool.
-    fn speculative_active(&self) -> bool {
-        self.speculative_enabled && self.delegation_enabled()
     }
 
     /// The [agent profile](GgAgentConfig) an agent named `profile` runs under: the declared profile,
@@ -1986,24 +1981,6 @@ impl Orchestrator {
         persistence::exclusive_key(self.profile_or_root(profile))
     }
 
-    /// The name of an [agent profile](GgAgentConfig) a run-level capability points a helper agent at:
-    /// the string `param` on the [root](GgCapabilitySet::root)'s config for capability `cap_id`, when
-    /// it names a declared profile, else the root itself. This knob (the speculation judge) is
-    /// read off the root because it governs the run as a whole, not one agent's turn. An
-    /// [issue](crate::board)'s agent and reviewers are deliberately **not** among them: an issue
-    /// names its own when it is filed.
-    fn helper_profile(&self, cap_id: &str, param: &str) -> String {
-        self.caps
-            .root()
-            .capability(cap_id)
-            .and_then(|cfg| cfg.params.get(param))
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|name| !name.is_empty() && self.caps.agent(name).is_some())
-            .unwrap_or_else(|| self.caps.root_name())
-            .to_string()
-    }
-
     /// The [agent profile](GgAgentConfig) an auto-dispatched [issue](crate::board)'s agent runs
     /// under — the [assignee](crate::board::Issue::agent) named when the issue was filed. A
     /// profile this run does not declare (or an issue from a board recorded before issues carried
@@ -2014,14 +1991,6 @@ impl Orchestrator {
             .issue_agent(issue_id)
             .filter(|name| self.caps.agent(name).is_some())
             .unwrap_or_else(|| self.caps.root_name().to_string())
-    }
-
-    /// The [agent profile](GgAgentConfig) a [speculative execution](handle_speculate)'s **judge** runs
-    /// under — the [speculative-execution](CAPABILITY_SPECULATIVE) capability's
-    /// [`judgeAgent`](PARAM_JUDGE_AGENT) param, defaulting to the
-    /// [root](GgCapabilitySet::root).
-    fn judge_profile(&self) -> String {
-        self.helper_profile(CAPABILITY_SPECULATIVE, PARAM_JUDGE_AGENT)
     }
 
     /// The per-agent [code setup](CodeSetup) for `profile`: whether its turns run as
@@ -2623,14 +2592,11 @@ enum AgentRole {
         /// The board issue this subagent was dispatched against, when any (scopes its telemetry).
         issue_id: Option<String>,
         /// The isolated [worktree](Worktree) this subagent's tools are rooted in, when it was
-        /// dispatched into one — an issue's reviewer (which reads the tree its issue is working in)
-        /// or a [speculation](handle_speculate) attempt (which gets a fresh one). `None` runs the
-        /// subagent in the shared main tree.
+        /// dispatched into one — an issue's reviewer, which reads the tree its issue is working
+        /// in. `None` runs the subagent in the shared main tree.
         ///
         /// The worktree is **not** reconciled here: whoever created it owns its fate — an issue's
-        /// is merged when the issue is accepted, a speculation's when its judge picks a winner —
-        /// because a reviewer and its issue share one tree, and an attempt that merged itself would
-        /// defeat best-of-K.
+        /// is merged when the issue is accepted — because a reviewer and its issue share one tree.
         worktree: Option<Worktree>,
         /// Which [ending calls](EndingRole) this subagent was dispatched with — how it declares the
         /// result its dispatcher is waiting for. A reviewer returns a verdict, a judge names a
@@ -2664,11 +2630,10 @@ enum AgentRole {
 /// An isolated git worktree an agent runs in: its branch, its checkout path, and the commit it
 /// branched from.
 ///
-/// Two things create one. An [issue](crate::board) gets a worktree on its first dispatch
+/// An [issue](crate::board) gets a worktree on its first dispatch
 /// ([`ensure_issue_worktree`](Orchestrator::ensure_issue_worktree)) that every later agent touching
 /// that issue — a retry, a review round's re-dispatch, its reviewers — shares, and which is merged
-/// back into the main tree when the issue is accepted. A [speculation](handle_speculate) gives each
-/// of its K attempts its own, of which only the winner's is merged.
+/// back into the main tree when the issue is accepted.
 ///
 /// [`base`](Self::base) is kept because it is what a diff of the work is taken against: the tree's
 /// own `HEAD` moves as the agent commits, and the run baseline is too early once earlier issues have
@@ -2807,8 +2772,8 @@ async fn run_agent(
         AgentRole::Root => None,
     };
     // The isolated worktree this agent's tools are rooted in, when it has one: an issue agent takes
-    // its issue's, a reviewer or speculation attempt is handed one at dispatch, and everything else
-    // works in the shared main tree.
+    // its issue's, a reviewer is handed one at dispatch, and everything else works in the shared
+    // main tree.
     let worktree = match &role {
         AgentRole::Sub { worktree, .. } => worktree.clone(),
         AgentRole::Issue { issue_id, .. } => orch.issue_worktree(issue_id),
@@ -3143,10 +3108,17 @@ async fn run_agent(
             .with_agent(&agent.id)
             .with_shell(orch.shell_for(&workspace_dir));
 
-        // What gates this agent's ending, when anything does: the validation commands its own
-        // profile configures. *How* it ends is not a profile's business — that is its dispatched
-        // [role](EndingRole)'s, and it is an explicit call either way.
-        let completion = CompletionSetup::resolve(&profile);
+        // Who this agent is to the run's [hooks](crate::hooks): its instance id, the profile it
+        // runs, the role it was dispatched in, and the isolated worktree it works in when it has
+        // one. Built once here because every hook this agent fires carries the same identity, and
+        // a hook that had to be told separately at each firing site would eventually be told wrong.
+        let hook_agent = HookAgent::new(&agent.id, &profile.name)
+            .of_kind(hook_agent_kind(&role, agent.parent_id.is_none()))
+            .in_worktree(
+                worktree
+                    .as_ref()
+                    .map(|tree| (tree.branch.clone(), tree.path.clone())),
+            );
 
         // Announce the run's configuration once, on the root's stream, so the console shows the
         // enabled capabilities from the start; subagents inherit the same configuration and stay
@@ -3158,9 +3130,8 @@ async fn run_agent(
                 emitter,
                 &registry,
                 modules.caps(),
-                orch.speculative_active(),
                 code.enabled.then_some(code.language),
-                &completion,
+                &orch.hooks,
             );
             // Record the run's effective toolset on the session summary — the exact set of tool
             // names offered to the root agent after capability gating and per-tool overrides — so
@@ -3310,9 +3281,9 @@ async fn run_agent(
             ));
         }
 
-        // When delegation is enabled (subagents or workflows), this agent gets a delegation context
-        // so its loop can spawn/wait/message and run declared workflows; off, it is a single agent
-        // with no such context (and the tools were never offered).
+        // When delegation is enabled, this agent gets a delegation context so its loop can
+        // spawn/wait/message; off, it is a single agent with no such context (and the tools were
+        // never offered).
         //
         // Built once and then *updated*, never rebuilt: it owns the inbox this agent's parent
         // messages it through and the handles of the children it has already spawned, and a
@@ -3401,9 +3372,11 @@ async fn run_agent(
                     persistence,
                     read_policy: read_policy(&profile),
                     shell_offload: shell_offload(&profile),
-                    speculative: orch.speculative_active(),
                     code,
-                    completion,
+                    hooks: HooksSetup {
+                        runtime: Arc::clone(&orch.hooks),
+                        agent: hook_agent,
+                    },
                     ending_role,
                     opening,
                     turn_base: turns_taken,
@@ -3604,10 +3577,9 @@ async fn run_agent(
                 .unwrap_or_else(|| format!("(subagent ended: {})", end.status));
 
             // A worktree this subagent ran in is deliberately left untouched: whoever created it
-            // owns its fate. A reviewer shares its issue's tree, which the issue's own reconciliation
-            // merges; a speculation attempt's tree is judged and then merged or discarded by the
-            // `speculate` routine that fanned it out. Reconciling here would merge a reviewer's read
-            // as if it were work, and would defeat best-of-K by merging every attempt.
+            // owns its fate. A reviewer shares its issue's tree, which the issue's own
+            // reconciliation merges. Reconciling here would merge a reviewer's read as if it were
+            // work.
             let _ = &worktree;
 
             // Gated on the run being multi-agent rather than on delegation specifically: a
@@ -3658,9 +3630,8 @@ fn announce_configuration(
     emitter: &Emitter,
     registry: &ToolRegistry,
     modules: &CapabilityModules,
-    speculative: bool,
     program_language: Option<GgProgramLanguage>,
-    completion: &CompletionSetup,
+    hooks: &HookRuntime,
 ) {
     if registry.is_empty() {
         emitter.emit(log(
@@ -3744,15 +3715,6 @@ fn announce_configuration(
             ),
         ));
     }
-    if speculative {
-        emitter.emit(log(
-            "info",
-            "speculative execution enabled; the model can call `speculate` to make K parallel \
-             attempts at the same task (each in its own worktree), after which a judge picks the \
-             best one to merge and the rest are discarded (requires the `worktrees` capability to \
-             isolate the attempts).",
-        ));
-    }
     if let Some(language) = program_language {
         emitter.emit(log(
             "info",
@@ -3767,16 +3729,22 @@ fn announce_configuration(
         ));
     }
 
-    if completion.has_validation() {
-        emitter.emit(log(
-            "info",
-            format!(
-                "completion validation enabled: gg runs {} command(s) when an agent signals it is \
-                 done, and only ends its session if every one exits 0 (a failure's output is fed \
-                 back and the session continues).",
-                completion.validation().len()
-            ),
-        ));
+    for event in ALL_HOOK_EVENTS {
+        let count = hooks.count(event);
+        if count > 0 {
+            emitter.emit(log(
+                "info",
+                format!(
+                    "{count} hook(s) bound to `{}`; they run in declaration order{}.",
+                    event.as_str(),
+                    if event.can_block() {
+                        " and the first to block stops the operation"
+                    } else {
+                        ""
+                    },
+                ),
+            ));
+        }
     }
 }
 
@@ -3830,7 +3798,6 @@ async fn handle_subagent_call(
         SPAWN_SUBAGENT_TOOL => spawn_subagent(sub, spawner, &call.arguments),
         WAIT_FOR_SUBAGENTS_TOOL => wait_for_subagents(sub, emitter, &call.arguments).await,
         SEND_MESSAGE_TOOL => send_message(sub, &call.arguments),
-        RUN_WORKFLOW_TOOL => run_workflow(sub, spawner, emitter, &call.arguments).await,
         // `is_subagent_tool` admits only the four arms above.
         other => ToolOutcome::error(format!("`{other}` is not a delegation tool.")),
     }
@@ -3860,8 +3827,8 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
         Err(refusal) => return refusal,
     };
     // Ad-hoc subagents carry no board issue (issues auto-dispatch to their own top-level agents)
-    // and share the spawner's tree — isolation belongs to issues and speculations, which own the
-    // worktree's whole lifecycle.
+    // and share the spawner's tree — isolation belongs to issues, which own the worktree's whole
+    // lifecycle.
     match dispatch_child(sub, spawner, ChildSpec::new(&profile, brief)) {
         Ok(child) => {
             ToolOutcome::ok(
@@ -3889,8 +3856,8 @@ fn spawn_subagent(sub: &mut SubagentContext, spawner: &Agent, args: &Value) -> T
     }
 }
 
-/// A subagent that [`dispatch_child`] scheduled — the facts its dispatcher (`spawn_subagent` or a
-/// [workflow](run_workflow) stage) reports back.
+/// A subagent that [`dispatch_child`] scheduled — the facts its dispatcher (`spawn_subagent`)
+/// reports back.
 struct DispatchedChild {
     /// The child's minted id (also the `wait`/`collect` handle in the spawner's children).
     id: String,
@@ -3938,7 +3905,7 @@ impl From<DispatchError> for ToolOutcome {
 }
 
 /// Resolve and validate the `agent` argument of a model-invoked delegation call
-/// (`spawn_subagent`/`speculate`/`run_workflow`) against the spawner's
+/// (`spawn_subagent`) against the spawner's
 /// [allowlist](GgAgentConfig::subagents), returning the target profile name or a model-facing
 /// refusal that names the agents this agent may spawn. An agent may name itself.
 // The `Err` is a `ToolOutcome` — the model-facing refusal — which is deliberately the same
@@ -3986,16 +3953,16 @@ fn resolve_delegation_target(
     }
 }
 
-/// Dispatch one child agent — the shared spawn path behind both `spawn_subagent` and each
-/// [workflow](run_workflow) stage's fan-out.
+/// Dispatch one child agent — the spawn path behind `spawn_subagent` and every review
+/// dispatch.
 ///
 /// Enforces the [depth cap](SubagentConfig::max_depth) (a structural refusal, not a queue),
 /// resolves the child's [effective slot](effective_slot) and client, optionally creates an isolated
 /// [worktree](make_worktree) (refused with guidance when the capability is off or git is
 /// unavailable), then builds the child's identity/wiring/role, schedules its task on the scheduler,
 /// and registers it in the spawner's [children](AgentCtx::children) so it can be waited on and
-/// messaged. Returns the [dispatched child](DispatchedChild) or a model-facing error. Every child —
-/// ad-hoc or workflow — reaches [`run_agent`] through here, so the two paths stay uniform.
+/// messaged. Returns the [dispatched child](DispatchedChild) or a model-facing error. Every child
+/// reaches [`run_agent`] through here, so every dispatch path stays uniform.
 fn dispatch_child(
     sub: &mut SubagentContext,
     spawner: &Agent,
@@ -4170,24 +4137,6 @@ impl ChildSpec {
         }
     }
 
-    /// This child, dispatched against board issue `issue_id`.
-    fn on_issue(mut self, issue_id: Option<String>) -> Self {
-        self.issue_id = issue_id;
-        self
-    }
-
-    /// This child, rooted in an isolated `worktree` rather than the shared main tree.
-    fn in_worktree(mut self, worktree: Worktree) -> Self {
-        self.worktree = Some(worktree);
-        self
-    }
-
-    /// This child, dispatched with the ending calls of `ending` rather than the standard pair.
-    fn ending(mut self, ending: EndingRole) -> Self {
-        self.ending = ending;
-        self
-    }
-
     /// This child as a **fork**: an id already minted and handed to its forker, and the clone of
     /// everything the forker held for it to open on.
     fn forked(mut self, id: String, seed: Succession) -> Self {
@@ -4195,49 +4144,6 @@ impl ChildSpec {
         self.seed = Some(Box::new(seed));
         self
     }
-}
-
-/// Create a fresh isolated [worktree](Worktree) named `name`, or a model-facing error when
-/// isolation is unavailable.
-///
-/// Used by [speculative execution](handle_speculate), whose attempts each need their own copy of the
-/// workspace. (An [issue](crate::board)'s worktree is created by
-/// [`ensure_issue_worktree`](Orchestrator::ensure_issue_worktree) instead, which is keyed by issue
-/// rather than by agent and degrades to the shared tree rather than refusing.) The branch is based
-/// at the main tree's current `HEAD`, so an attempt starts from everything already landed. The git
-/// call is serialized on the shared [git lock](Orchestrator::git_lock).
-async fn make_worktree(orch: &Orchestrator, name: &str) -> Result<Worktree, DispatchError> {
-    let Some(root) = &orch.worktrees_root else {
-        return Err(DispatchError::new(
-            ToolFailure::Unavailable,
-            "worktree isolation is unavailable this run (git could not initialize a workspace \
-             baseline at startup), so this work cannot be run in an isolated copy of the workspace.",
-        ));
-    };
-    let _guard = orch.git_lock.lock().await;
-    let capture = orch.git_capture(ROOT_AGENT_ID);
-    let base = git::head_commit(&capture, &orch.workspace_dir)
-        .await
-        .map_err(|err| {
-            DispatchError::new(
-                ToolFailure::IoError,
-                format!(
-                    "could not read the workspace `HEAD` to branch an isolated worktree from: {err}"
-                ),
-            )
-        })?;
-    let slug = worktree_slug(name);
-    let branch = format!("gg/{slug}");
-    let path = root.join(&slug);
-    git::add_worktree(&capture, &orch.workspace_dir, &path, &branch, &base)
-        .await
-        .map_err(|err| {
-            DispatchError::new(
-                ToolFailure::IoError,
-                format!("could not create an isolated worktree: {err}"),
-            )
-        })?;
-    Ok(Worktree { branch, path, base })
 }
 
 /// A filesystem- and git-safe slug for a worktree branch/directory built from `name`.
@@ -4388,10 +4294,9 @@ async fn wait_for_subagents(
 /// [`Blocked`](GgAgentStatus::Blocked)→[`Running`](GgAgentStatus::Running) transitions only when it
 /// actually blocks.
 ///
-/// The one wait-and-collect primitive shared by [`wait_for_subagents`] and each
-/// [workflow](run_workflow) stage, so both free the slot and resume identically through the
-/// scheduler. Every id is expected to name one of this agent's children; an unknown id collects as
-/// `None`.
+/// The one wait-and-collect primitive behind `wait_for_subagents`, so every wait frees the slot and
+/// resumes identically through the scheduler. Every id is expected to name one of this agent's
+/// children; an unknown id collects as `None`.
 async fn await_children(
     sub: &mut SubagentContext,
     emitter: &Emitter,
@@ -5172,554 +5077,18 @@ fn issue_review_event(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Speculative execution: best-of-K over isolated worktrees + a judge
-// ---------------------------------------------------------------------------
-
-/// One of the K attempts a [speculative execution](handle_speculate) fanned out — the facts the
-/// routine needs to judge it, then merge or discard it.
-struct SpeculationAttempt {
-    /// The attempt subagent's agent id (also the [`winner`](GgTelemetryKind::Speculation) id when it
-    /// wins).
-    id: String,
-    /// The isolated [worktree](Worktree) branch the attempt's work lives on.
-    branch: String,
-    /// The attempt's worktree checkout path — where its diff is read from and, if it wins, its work
-    /// is committed and merged from.
-    path: PathBuf,
-    /// The commit the attempt's branch was created from — what its diff is taken against.
-    base: String,
-    /// How the attempt's loop ended (`"completed"`, `"model_error"`, `"timed_out"`, …). Only a
-    /// cleanly `"completed"` attempt that produced changes is a candidate to win.
-    status: String,
-    /// The attempt's return value (its final message), shown to the judge for context.
-    summary: String,
-    /// The attempt's diff against the commit its branch was cut from — what the judge
-    /// scores and what is merged if it wins. Empty when the attempt produced no changes.
-    diff: String,
-}
-
-/// The judge's verdict for a [speculative execution](handle_speculate): which candidate attempt won,
-/// and why — read from the [`Winner`](Ending::Winner) the judge declared, never from its prose.
-struct JudgeVerdict {
-    /// The 1-based index of the winning attempt **among the candidates the judge was shown** (not the
-    /// original attempt index).
-    winner: usize,
-    /// The judge's one-line rationale for the pick.
-    rationale: String,
-}
-
-/// Handle an intercepted `speculate` call ([speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/)):
-/// run a **best-of-K** attempt of a task and merge the best result.
-///
-/// The routine — `fan-out → judge → merge/discard`:
-///
-/// 1. requires worktree isolation (each attempt runs in its own [worktree](Worktree) so they do not
-///    collide) — refused clearly when unavailable — and resolves the task (a board
-///    [issue](BoardRuntime::issue_brief) or a free-form `prompt`) and `K`;
-/// 2. **fans out** K [attempt subagents](dispatch_child), each in an isolated worktree left in place
-///    for judging ([`Speculative`](WorktreeDisposition::Speculative) disposition), optionally on
-///    per-attempt [slots](GgSlotBinding) or with per-attempt approach hints, over the same
-///    [scheduler](Scheduler) (honoring the global parallelism + depth caps), emitting
-///    [`Speculation`](GgSpeculationPhase::FannedOut);
-/// 3. [waits](await_children) for them, computes each attempt's [diff](git::diff_since) against the
-///    baseline, and takes the **candidates** (attempts that completed and produced changes);
-/// 4. **judges** the candidates — a [judge subagent](dispatch_judge) scores their diffs against the
-///    task's completion criteria and picks a [winner](JudgeVerdict) (a lone candidate needs no judge)
-///    — emitting [`Speculation`](GgSpeculationPhase::Judged);
-/// 5. **merges** the winner's worktree back into the main tree and **discards** every attempt's
-///    worktree (the losers' unmerged branches and the winner's now-merged one), emitting
-///    [`Speculation`](GgSpeculationPhase::Merged) — so the main tree ends with exactly the winning
-///    attempt applied.
-///
-/// A speculation that produces no usable work, or whose judge does not render a verdict, discards
-/// every attempt and returns an error with the workspace **unchanged** (best-of-K never merges an
-/// unjudged or empty attempt). The attempts and the judge are ordinary subagents scoped to the issue
-/// (when any), so they animate the agent tree normally.
-async fn handle_speculate(
-    sub: &mut SubagentContext,
-    spawner: &Agent,
-    board: &BoardRuntime,
-    emitter: &Emitter,
-    call: &ToolCall,
-) -> ToolOutcome {
-    // Clone the orchestrator Arc out so `sub` stays free to be borrowed mutably by dispatch/await.
-    let orch = Arc::clone(&sub.orch);
-
-    // Best-of-K runs each attempt in an isolated worktree so they cannot collide; refuse clearly when
-    // worktree isolation is unavailable (git absent, or no baseline could be committed).
-    if !orch.worktrees_usable() {
-        return ToolOutcome::failed(
-            ToolFailure::Unavailable,
-            "cannot speculate: best-of-K runs each attempt in an isolated worktree, but worktree \
-             isolation is unavailable this run (git could not establish a workspace baseline at \
-             startup). Do the work with a single attempt instead.",
-        );
-    }
-
-    // The task: a dispatched board issue (its structured brief) or a free-form prompt.
-    let (base_brief, issue_id) = match call.arguments.get("issueId").and_then(Value::as_str) {
-        Some(id) if !id.trim().is_empty() => {
-            let id = id.trim().to_string();
-            match board.issue_brief(&id) {
-                Some(brief) => (brief, Some(id)),
-                None => {
-                    return ToolOutcome::failed(
-                        ToolFailure::NotFound,
-                        format!(
-                            "cannot speculate on issue `{id}`: no such issue is on your board (or \
-                             you have no board). Create it with `create_issue`, or pass a `prompt` \
-                             instead."
-                        ),
-                    );
-                }
-            }
-        }
-        _ => match call.arguments.get("prompt").and_then(Value::as_str) {
-            Some(prompt) if !prompt.trim().is_empty() => (prompt.trim().to_string(), None),
-            _ => {
-                return ToolOutcome::failed(
-                    ToolFailure::InvalidArgument,
-                    "speculate needs a non-empty `prompt` (the task to attempt K times) or an \
-                     `issueId` to speculate on.",
-                );
-            }
-        },
-    };
-
-    // The agent profile every attempt runs under, validated against this agent's allowlist.
-    let attempt_profile = match resolve_delegation_target(&orch, spawner, &call.arguments) {
-        Ok(profile) => profile,
-        Err(refusal) => return refusal,
-    };
-    // K — clamped into [2, MAX]; fewer than two would not be best-of-anything.
-    let attempts = call
-        .arguments
-        .get("attempts")
-        .and_then(Value::as_u64)
-        .unwrap_or(DEFAULT_SPECULATION_ATTEMPTS)
-        .clamp(2, MAX_SPECULATION_ATTEMPTS);
-    let approaches = parse_string_array(&call.arguments, "approaches");
-
-    // Depth cap up front: every attempt is `spawner.depth + 1`, so an agent at the max depth cannot
-    // speculate at all — refuse rather than failing on the first attempt's dispatch.
-    if spawner.depth >= orch.config.max_depth {
-        return ToolOutcome::failed(
-            ToolFailure::LimitExceeded,
-            format!(
-                "cannot speculate: you are at the maximum delegation depth ({}), so the parallel \
-                 attempts (which run one level deeper) cannot be spawned. Do this work yourself.",
-                orch.config.max_depth
-            ),
-        );
-    }
-
-    // The speculation lifecycle rides on this agent's stream, scoped to the issue when there is one.
-    let spec_emitter = match &issue_id {
-        Some(id) => emitter.with_issue(id),
-        None => emitter.clone(),
-    };
-    spec_emitter.emit(speculation_event(
-        attempts,
-        GgSpeculationPhase::FannedOut,
-        None,
-        None,
-    ));
-
-    // Fan out K attempts, each in its own isolated worktree left in place for judging.
-    let mut fanned: Vec<SpeculationAttempt> = Vec::with_capacity(attempts as usize);
-    for i in 0..attempts as usize {
-        let brief = build_attempt_brief(&base_brief, i, attempts as usize, approaches.get(i));
-        // Each attempt gets a fresh worktree of its own, left in place for judging: only the
-        // winner's is merged, so an attempt must not be able to reach another's files.
-        let worktree = match make_worktree(&orch, &format!("spec-{}-{}", spawner.id, i)).await {
-            Ok(worktree) => worktree,
-            Err(err) => {
-                abort_speculation(sub, &orch, emitter, &fanned).await;
-                let failure = err.failure;
-                return ToolOutcome::failed(
-                    failure,
-                    format!(
-                        "cannot speculate: attempt {} of {attempts} could not be given an isolated \
-                         worktree: {err} The speculation was aborted and the workspace left \
-                         unchanged.",
-                        i + 1
-                    ),
-                );
-            }
-        };
-        let branch = worktree.branch.clone();
-        let path = worktree.path.clone();
-        let base = worktree.base.clone();
-        match dispatch_child(
-            sub,
-            spawner,
-            ChildSpec::new(&attempt_profile, brief)
-                .on_issue(issue_id.clone())
-                .in_worktree(worktree),
-        ) {
-            Ok(child) => fanned.push(SpeculationAttempt {
-                id: child.id,
-                branch,
-                path,
-                base,
-                status: String::new(),
-                summary: String::new(),
-                diff: String::new(),
-            }),
-            Err(err) => {
-                abort_speculation(sub, &orch, emitter, &fanned).await;
-                let failure = err.failure;
-                return ToolOutcome::failed(
-                    failure,
-                    format!(
-                        "cannot speculate: attempt {} of {attempts} could not be dispatched: {err} \
-                         The speculation was aborted and the workspace left unchanged.",
-                        i + 1
-                    ),
-                );
-            }
-        }
-    }
-
-    // Wait for every attempt (freeing this agent's slot while they run under the cap), then record
-    // each attempt's outcome and its diff against the baseline.
-    let ids: Vec<String> = fanned.iter().map(|a| a.id.clone()).collect();
-    let collected = await_children(sub, emitter, &ids).await;
-    let mut returns: BTreeMap<String, AgentReturn> = collected
-        .into_iter()
-        .filter_map(|(id, ret)| ret.map(|ret| (id, ret)))
-        .collect();
-    for attempt in &mut fanned {
-        match returns.remove(&attempt.id) {
-            Some(ret) => {
-                attempt.status = ret.status.to_string();
-                attempt.summary = ret.summary;
-            }
-            None => attempt.status = "(no result)".to_string(),
-        }
-        attempt.diff = {
-            let _guard = orch.git_lock.lock().await;
-            // Attributed to the **spawner**: this patch exists because that agent called
-            // `speculate`, and it is the patch its judge will be shown.
-            git::diff_since(&orch.git_capture(&spawner.id), &attempt.path, &attempt.base)
-                .await
-                .unwrap_or_default()
-        };
-    }
-
-    // Candidates: attempts that completed cleanly AND produced real changes to merge.
-    let candidates: Vec<usize> = fanned
-        .iter()
-        .enumerate()
-        .filter(|(_, a)| a.status == STATUS_COMPLETED && !a.diff.trim().is_empty())
-        .map(|(i, _)| i)
-        .collect();
-
-    if candidates.is_empty() {
-        discard_attempts(&orch, &fanned).await;
-        spec_emitter.emit(speculation_event(
-            attempts,
-            GgSpeculationPhase::Judged,
-            None,
-            Some("no attempt produced usable work to merge".to_string()),
-        ));
-        return ToolOutcome::failed(
-            ToolFailure::Conflict,
-            format!(
-                "The speculation ran {attempts} attempt(s) but none produced usable work to merge \
-                 (each failed, timed out, or made no changes). The workspace is unchanged."
-            ),
-        );
-    }
-
-    // Judge the candidates and pick the winner. A lone candidate needs no judge.
-    let (winner_index, rationale) = if candidates.len() == 1 {
-        (
-            candidates[0],
-            "only one attempt produced usable work".to_string(),
-        )
-    } else {
-        let judge_slot = orch.judge_profile();
-        let judge_brief = build_judge_brief(&base_brief, &fanned, &candidates);
-        match dispatch_judge(
-            sub,
-            spawner,
-            emitter,
-            issue_id.clone(),
-            judge_brief,
-            &judge_slot,
-            candidates.len() as u32,
-        )
-        .await
-        {
-            Ok(verdict) => {
-                // The judge numbers the candidates 1..N; map back to the attempt index, clamping a
-                // stray index into range so a well-formed-but-out-of-bounds pick still merges a real
-                // candidate rather than aborting the whole speculation.
-                let picked = verdict.winner.clamp(1, candidates.len());
-                (candidates[picked - 1], verdict.rationale)
-            }
-            Err(err) => {
-                // The judge could not render a verdict: abort rather than merge an unjudged attempt.
-                discard_attempts(&orch, &fanned).await;
-                emitter.emit(log(
-                    "warn",
-                    format!(
-                        "the speculation judge did not complete: {err}; no attempt was merged."
-                    ),
-                ));
-                spec_emitter.emit(speculation_event(
-                    attempts,
-                    GgSpeculationPhase::Judged,
-                    None,
-                    Some(format!("the judge did not complete: {err}")),
-                ));
-                return ToolOutcome::failed(
-                    ToolFailure::IoError,
-                    format!(
-                        "The speculation's judge did not render a verdict ({err}), so no attempt \
-                         was merged. The workspace is unchanged."
-                    ),
-                );
-            }
-        }
-    };
-
-    let winner_id = fanned[winner_index].id.clone();
-    spec_emitter.emit(speculation_event(
-        attempts,
-        GgSpeculationPhase::Judged,
-        Some(winner_id.clone()),
-        Some(rationale.clone()),
-    ));
-
-    // Merge the winner's worktree back into the main tree, then discard every attempt's worktree (the
-    // winner's now-merged branch and the losers' unmerged branches alike). The main tree, untouched
-    // while the attempts ran in isolation, now holds exactly the winning attempt's changes.
-    let merged = merge_speculation_winner(&orch, &fanned[winner_index]).await;
-    discard_attempts(&orch, &fanned).await;
-
-    match merged {
-        Ok(()) => {
-            spec_emitter.emit(speculation_event(
-                attempts,
-                GgSpeculationPhase::Merged,
-                Some(winner_id.clone()),
-                None,
-            ));
-            let summary = format!(
-                "Ran best-of-{attempts}: attempt `{winner_id}` won ({rationale}) and its work was \
-                 merged into your workspace; the other attempts were discarded. Continue from the \
-                 merged result."
-            );
-            ToolOutcome::ok(
-                summary.clone(),
-                format!("speculation merged winner `{winner_id}` of {attempts}"),
-            )
-            // The structured half: `speculate` never reaches a [`Tool`](crate::tools::Tool), so
-            // this is its only producer. `attempts` is the clamped count that actually ran, not
-            // the one that was asked for.
-            .with_data(ToolData::Speculation(SpeculationData {
-                winner_id,
-                attempts: u8::try_from(attempts).unwrap_or(u8::MAX),
-                rationale: Some(rationale),
-                summary,
-            }))
-        }
-        Err(err) => {
-            emitter.emit(log(
-                "warn",
-                format!("the speculation winner `{winner_id}` could not be merged back: {err}."),
-            ));
-            ToolOutcome::failed(
-                ToolFailure::Conflict,
-                format!(
-                    "The speculation chose attempt `{winner_id}`, but its work could not be merged \
-                     back into your workspace: {err}. The workspace is unchanged."
-                ),
-            )
-        }
-    }
-}
-
-/// Wind a partially fanned-out speculation down after a dispatch failure: wait for the attempts
-/// already running (so none is leaked) then discard their worktrees. Shared by the two abort paths in
-/// [`handle_speculate`].
-async fn abort_speculation(
-    sub: &mut SubagentContext,
-    orch: &Orchestrator,
-    emitter: &Emitter,
-    fanned: &[SpeculationAttempt],
-) {
-    let ids: Vec<String> = fanned.iter().map(|a| a.id.clone()).collect();
-    let _ = await_children(sub, emitter, &ids).await;
-    discard_attempts(orch, fanned).await;
-}
-
-/// Build one [attempt](SpeculationAttempt)'s brief for a [speculative execution](handle_speculate):
-/// the shared task, a note that it is one of K independent attempts (judged best-of-K), and the
-/// attempt's assigned approach hint when one was given.
-///
-/// `code` swaps the ending clause, because an attempt that does not reach `completed` is filtered
-/// out of the candidate set entirely — a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)
-/// speculation told to "stop" would produce K attempts and no candidates.
-fn build_attempt_brief(base: &str, index: usize, k: usize, approach: Option<&String>) -> String {
-    prompts::render_attempt_brief(&AttemptBriefContext {
-        base: base.to_string(),
-        index: index + 1,
-        count: k,
-        approach: approach
-            .map(String::as_str)
-            .filter(|approach| !approach.is_empty())
-            .map(str::to_string),
-    })
-}
-
-/// Build the **judge**'s brief for a [speculative execution](handle_speculate): the task, each
-/// candidate attempt's summary and diff, and the verdict protocol [`parse_judge_verdict`] expects.
-/// The candidates are renumbered 1..N (the judge does not see the discarded attempts), and the caller
-/// maps the judge's pick back to the original attempt index.
-///
-/// `code` swaps the ending clause: a judge that never reaches `completed` renders no verdict, and a
-/// speculation with no verdict merges nothing at all.
-fn build_judge_brief(task: &str, attempts: &[SpeculationAttempt], candidates: &[usize]) -> String {
-    prompts::render_judge_brief(&JudgeBriefContext {
-        task: task.to_string(),
-        attempts: candidates
-            .iter()
-            .enumerate()
-            .map(|(label, &idx)| {
-                let attempt = &attempts[idx];
-                JudgeAttemptView {
-                    number: label + 1,
-                    summary: (!attempt.summary.trim().is_empty())
-                        .then(|| attempt.summary.trim().to_string()),
-                }
-            })
-            .collect(),
-        count: candidates.len(),
-    })
-}
-
-/// Dispatch one **judge** subagent against `judge_brief` on `judge_slot`, await it, and read the
-/// [verdict](JudgeVerdict) it declared — the [speculative execution](handle_speculate) analogue of an
-/// issue's reviewer (a judge that *selects among* K attempts rather than approving one diff).
-///
-/// Returns the verdict, or a model-facing error when the judge could not be dispatched or ended
-/// without declaring one; the caller then merges nothing (best-of-K never merges an unjudged
-/// attempt). The judge is an ordinary [subagent](dispatch_child) scoped to `issue_id` (when any) and
-/// runs in the shared tree (it only reads the summaries in its brief). It is dispatched in the
-/// [judge role](EndingRole::Judge), carrying `candidates` so a pick outside the range it was shown is
-/// refused at the call rather than clamped into a merge of the wrong attempt.
-async fn dispatch_judge(
-    sub: &mut SubagentContext,
-    spawner: &Agent,
-    emitter: &Emitter,
-    issue_id: Option<String>,
-    judge_brief: String,
-    judge_slot: &str,
-    candidates: u32,
-) -> Result<JudgeVerdict, String> {
-    let judge = dispatch_child(
-        sub,
-        spawner,
-        ChildSpec::new(judge_slot, judge_brief)
-            .on_issue(issue_id)
-            .ending(EndingRole::Judge {
-                attempts: candidates,
-            }),
-    )
-    .map_err(|err| format!("the judge could not be dispatched: {err}"))?;
-    let collected = await_children(sub, emitter, std::slice::from_ref(&judge.id)).await;
-    match collected.into_iter().next() {
-        Some((_, Some(ret))) if ret.status == STATUS_COMPLETED => match ret.ending {
-            Some(Ending::Winner { attempt, rationale }) => Ok(JudgeVerdict {
-                winner: attempt as usize,
-                rationale,
-            }),
-            _ => Err("the judge ended without naming a winner".to_string()),
-        },
-        Some((_, Some(ret))) => Err(format!("the judge {} without a verdict", ret.status)),
-        _ => Err("the judge produced no result".to_string()),
-    }
-}
-
-/// Merge a [speculative execution](handle_speculate)'s winning attempt back into the main tree:
-/// commit its worktree's work onto its branch (its index was reset by the earlier
-/// [diff](git::diff_since)), then [merge that branch](git::merge_branch) into the workspace with an
-/// explicit merge commit. Returns an error (leaving the main tree unchanged) on a conflict or git
-/// failure. Serialized on the shared [git lock](Orchestrator::git_lock).
-async fn merge_speculation_winner(
-    orch: &Orchestrator,
-    winner: &SpeculationAttempt,
-) -> Result<(), String> {
-    let _guard = orch.git_lock.lock().await;
-    let capture = orch.git_capture(ROOT_AGENT_ID);
-    git::commit_worktree(
-        &capture,
-        &winner.path,
-        &format!("gg speculation winner {}", winner.id),
-    )
-    .await
-    .map_err(|err| format!("committing the winning attempt failed: {err}"))?;
-    match git::merge_branch(
-        &capture,
-        &orch.workspace_dir,
-        &winner.branch,
-        git::ConflictPolicy::Abort,
-    )
-    .await
-    {
-        Ok(git::MergeOutcome::Merged) => Ok(()),
-        Ok(git::MergeOutcome::Conflict(reason)) => Err(format!(
-            "the merge conflicted with the main tree: {}",
-            first_line(&reason)
-        )),
-        Err(err) => Err(err.to_string()),
-    }
-}
-
-/// Tear down every [attempt](SpeculationAttempt)'s worktree and branch — run after a speculation
-/// merges its winner, or aborts — so no isolated copy or dangling branch is left behind. Cleanup must
-/// not fail the run, so per-worktree failures are ignored (a stray worktree is only noise).
-/// Serialized on the shared [git lock](Orchestrator::git_lock).
-async fn discard_attempts(orch: &Orchestrator, attempts: &[SpeculationAttempt]) {
-    let _guard = orch.git_lock.lock().await;
-    for attempt in attempts {
-        let _ = git::remove_worktree(
-            &orch.git_capture(ROOT_AGENT_ID),
-            &orch.workspace_dir,
-            &attempt.path,
-            &attempt.branch,
-        )
-        .await;
-    }
-}
-
 /// Read an intercepted **ending call**'s arguments into the [`Ending`] it declares.
 ///
 /// It is the tool-calling counterpart of the [sandbox membrane](crate::sandbox)'s session host, and
 /// it deliberately goes through the very same [`Ending`] constructors: an empty change list is
 /// refused in one sentence, written once, whichever execution mode the reviewer that produced it was
 /// running in. Nothing here re-reads prose — the arguments *are* the verdict.
-fn parse_ending_call(name: &str, args: &Value, role: EndingRole) -> Result<Ending, String> {
+fn parse_ending_call(name: &str, args: &Value, _role: EndingRole) -> Result<Ending, String> {
     match name {
         completion::APPROVE_TOOL => Ok(Ending::Approved),
         completion::REQUEST_CHANGES_TOOL => {
             Ending::changes_requested(parse_string_array(args, "items"))
         }
-        completion::SELECT_WINNER_TOOL => Ending::winner(
-            args.get("attempt")
-                .and_then(Value::as_u64)
-                .and_then(|attempt| u32::try_from(attempt).ok())
-                .unwrap_or_default(),
-            args.get("rationale")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string(),
-            role.attempts(),
-        ),
         // `finish`, and — defensively — anything else the role claimed to own.
         _ => Ending::finished(
             args.get("summary")
@@ -5740,375 +5109,6 @@ fn parse_string_array(args: &Value, key: &str) -> Vec<String> {
             .map(|value| value.as_str().unwrap_or_default().trim().to_string())
             .collect(),
         _ => Vec::new(),
-    }
-}
-
-/// A [`Speculation`](GgTelemetryKind::Speculation) telemetry event for one lifecycle transition. The
-/// issue under speculation (when any) rides on the emitter's [issue scope](Emitter::with_issue), not
-/// the payload.
-fn speculation_event(
-    attempts: u64,
-    phase: GgSpeculationPhase,
-    winner: Option<String>,
-    rationale: Option<String>,
-) -> GgTelemetryKind {
-    GgTelemetryKind::Speculation {
-        attempts,
-        phase,
-        winner,
-        rationale,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Declared workflows: fan-out + sequencing over the subagent scheduler
-// ---------------------------------------------------------------------------
-
-/// One parsed stage of a declared [workflow](run_workflow): its name, per-item brief template, the
-/// items it fans out over (or `None` to fan over the prior stage's results), and the agent profile
-/// its subagents run under.
-struct WorkflowStageSpec {
-    /// The stage's name, for the [`WorkflowStage`](GgTelemetryKind::WorkflowStage) timeline label.
-    name: String,
-    /// The per-item brief template (`{{item}}` / `{{prior}}` placeholders are substituted per item).
-    prompt: String,
-    /// The explicit items to fan out over, or `None` to fan out over the prior stage's results (one
-    /// subagent per result). The first stage must supply items.
-    items: Option<Vec<String>>,
-    /// The requested [model slot](GgSlotBinding) for this stage's subagents (default primary).
-    slot: String,
-}
-
-/// Handle `run_workflow`: execute a **declared** multi-stage subagent fan-out as one unit, driving
-/// the [same scheduler](Scheduler) ad-hoc subagents use — so a workflow honors the one global
-/// parallelism cap and the depth cap and gets no separate budget.
-///
-/// Each stage [fans out](dispatch_child) one subagent per item (each brief rendered from the stage
-/// template with `{{item}}`/`{{prior}}` substituted), [waits](await_children) for all of them
-/// (freeing this agent's slot while it waits, exactly like `wait_for_subagents`), collects their
-/// results in dispatch order, and feeds them to the next stage. The first stage lists its items; a
-/// later stage with no items fans out over the prior stage's results. The fanned-out agents are
-/// ordinary subagents — they animate the tree with the usual spawn/status/return telemetry — and
-/// the workflow's own structure is streamed as [`WorkflowStage`](GgTelemetryKind::WorkflowStage)
-/// start/finish boundaries. Returns the final stage's collected results to the caller. A malformed
-/// declaration or a stage-dispatch failure ends the workflow with a model-facing error (after
-/// waiting for any already-dispatched agents of the failing stage so none are leaked).
-async fn run_workflow(
-    sub: &mut SubagentContext,
-    spawner: &Agent,
-    emitter: &Emitter,
-    args: &Value,
-) -> ToolOutcome {
-    let stages = match parse_workflow_stages(args) {
-        Ok(stages) => stages,
-        Err(err) => return ToolOutcome::failed(ToolFailure::InvalidArgument, err),
-    };
-
-    // Every stage names an agent to run its subagents, and each must be one this agent may spawn.
-    let spawner_profile = sub.orch.profile_or_root(&spawner.slot);
-    for stage in &stages {
-        if !spawner_profile.can_spawn(&stage.slot) {
-            let allowed = if spawner_profile.subagents.is_empty() {
-                "none".to_string()
-            } else {
-                spawner_profile
-                    .subagents
-                    .iter()
-                    .map(|reference| format!("`{}`", reference.agent))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            };
-            return ToolOutcome::failed(
-                ToolFailure::InvalidArgument,
-                format!(
-                    "workflow stage `{}` names agent `{}`, which is not one you may spawn. Use one \
-                     of: {allowed}.",
-                    stage.name, stage.slot
-                ),
-            );
-        }
-    }
-
-    // Depth cap up front: every fanned-out agent is `spawner.depth + 1`, so an agent already at the
-    // max depth cannot run a workflow at all — refuse the whole thing rather than failing on the
-    // first stage's first dispatch.
-    if spawner.depth >= sub.orch.config.max_depth {
-        return ToolOutcome::failed(
-            ToolFailure::LimitExceeded,
-            format!(
-                "cannot run a workflow: you are at the maximum delegation depth ({}), so a \
-                 workflow's subagents (which run one level deeper) cannot be spawned. Do this work \
-                 yourself.",
-                sub.orch.config.max_depth
-            ),
-        );
-    }
-
-    let workflow_id = sub.orch.next_workflow_id();
-    // The previous stage's collected results, fed into the next stage. Empty before the first stage.
-    let mut prior_results: Vec<String> = Vec::new();
-
-    for (index, stage) in stages.iter().enumerate() {
-        // The items this stage fans out over: its explicit list, or (for a later stage) the prior
-        // stage's results, one subagent each.
-        let items: Vec<String> = match &stage.items {
-            Some(items) => items.clone(),
-            None => {
-                if index == 0 {
-                    return ToolOutcome::failed(
-                        ToolFailure::InvalidArgument,
-                        format!(
-                            "workflow stage `{}` (the first stage) has no `items` to fan out over; \
-                             the first stage must list its items.",
-                            stage.name
-                        ),
-                    );
-                }
-                prior_results.clone()
-            }
-        };
-        if items.is_empty() {
-            return ToolOutcome::failed(
-                ToolFailure::InvalidArgument,
-                format!(
-                    "workflow stage `{}` has no items to fan out over (the previous stage produced \
-                     no results to feed it).",
-                    stage.name
-                ),
-            );
-        }
-
-        // The prior stage's results, rendered once for this stage's `{{prior}}` substitutions.
-        let prior_block = join_prior_results(&prior_results);
-
-        emitter.emit(workflow_stage_event(
-            &workflow_id,
-            &stage.name,
-            index,
-            items.len(),
-            GgWorkflowPhase::Started,
-        ));
-
-        // Fan out: dispatch one subagent per item, each with its own rendered brief.
-        let mut ids = Vec::with_capacity(items.len());
-        for item in &items {
-            let brief = render_template(&stage.prompt, item, &prior_block);
-            match dispatch_child(sub, spawner, ChildSpec::new(&stage.slot, brief)) {
-                Ok(child) => ids.push(child.id),
-                Err(err) => {
-                    // A dispatch failure aborts the workflow, but the already-dispatched agents of
-                    // this stage are running — wait for them so none is leaked, close the stage
-                    // boundary, and report the failure.
-                    let _ = await_children(sub, emitter, &ids).await;
-                    emitter.emit(workflow_stage_event(
-                        &workflow_id,
-                        &stage.name,
-                        index,
-                        items.len(),
-                        GgWorkflowPhase::Finished,
-                    ));
-                    let failure = err.failure;
-                    return ToolOutcome::failed(
-                        failure,
-                        format!(
-                            "workflow stage `{}` could not dispatch a subagent: {err}",
-                            stage.name
-                        ),
-                    );
-                }
-            }
-        }
-
-        // Wait for the whole stage and collect its results in dispatch order to feed the next stage.
-        let collected = await_children(sub, emitter, &ids).await;
-        prior_results = collected
-            .into_iter()
-            .map(|(id, returned)| match returned {
-                Some(ret) => ret.summary,
-                None => format!("(subagent `{id}` returned no result)"),
-            })
-            .collect();
-
-        emitter.emit(workflow_stage_event(
-            &workflow_id,
-            &stage.name,
-            index,
-            items.len(),
-            GgWorkflowPhase::Finished,
-        ));
-    }
-
-    let final_block = prior_results
-        .iter()
-        .enumerate()
-        .map(|(i, result)| format!("[result {}]\n{result}", i + 1))
-        .collect::<Vec<_>>()
-        .join("\n\n");
-    ToolOutcome::ok(
-        format!(
-            "Workflow `{workflow_id}` completed {} stage(s). The final stage produced {} \
-             result(s):\n\n{final_block}",
-            stages.len(),
-            prior_results.len(),
-        ),
-        format!("ran workflow `{workflow_id}` ({} stage(s))", stages.len()),
-    )
-    // The structured half: the workflow driver is the only producer of it, since `run_workflow`
-    // never reaches a [`Tool`](crate::tools::Tool). The final stage's results are handed over as a
-    // list so a [code program](crate::sandbox) can feed them straight into whatever it does next,
-    // instead of re-parsing the `[result N]` blocks out of the prose.
-    .with_data(ToolData::Workflow(WorkflowData {
-        workflow_id,
-        stages: saturating_u32(stages.len()),
-        results: prior_results,
-    }))
-}
-
-/// Parse `run_workflow`'s `stages` argument into [`WorkflowStageSpec`]s, or a model-facing error
-/// naming the problem. Each stage needs a non-empty `prompt`; `name` defaults to `stage-N`, `items`
-/// is optional (an array of non-empty strings), and `slot` defaults to [`PRIMARY_SLOT`].
-fn parse_workflow_stages(args: &Value) -> Result<Vec<WorkflowStageSpec>, String> {
-    let raw = match args.get("stages") {
-        Some(Value::Array(stages)) => stages,
-        Some(_) => return Err("run_workflow's `stages` must be an array of stage objects.".into()),
-        None => {
-            return Err(
-                "run_workflow needs a `stages` array (the ordered workflow stages).".into(),
-            );
-        }
-    };
-    if raw.is_empty() {
-        return Err("run_workflow needs at least one stage.".into());
-    }
-
-    let mut stages = Vec::with_capacity(raw.len());
-    for (index, stage) in raw.iter().enumerate() {
-        let name = stage
-            .get("name")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| format!("stage-{}", index + 1));
-
-        let prompt = stage
-            .get("prompt")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|prompt| !prompt.is_empty())
-            .ok_or_else(|| format!("workflow stage `{name}` needs a non-empty `prompt` template."))?
-            .to_string();
-
-        let items = match stage.get("items") {
-            None | Some(Value::Null) => None,
-            Some(Value::Array(raw_items)) => {
-                let mut items = Vec::with_capacity(raw_items.len());
-                for entry in raw_items {
-                    match entry.as_str().map(str::trim) {
-                        Some(item) if !item.is_empty() => items.push(item.to_string()),
-                        Some(_) => {
-                            return Err(format!(
-                                "workflow stage `{name}`: every `items` entry must be a non-empty \
-                                 string."
-                            ));
-                        }
-                        None => {
-                            return Err(format!(
-                                "workflow stage `{name}`: every `items` entry must be a string."
-                            ));
-                        }
-                    }
-                }
-                Some(items)
-            }
-            Some(_) => {
-                return Err(format!(
-                    "workflow stage `{name}`: `items` must be an array of strings."
-                ));
-            }
-        };
-
-        let slot = stage
-            .get("agent")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|agent| !agent.is_empty())
-            .ok_or_else(|| {
-                format!(
-                    "workflow stage `{name}` needs an `agent` — the agent to run its subagents."
-                )
-            })?
-            .to_string();
-        stages.push(WorkflowStageSpec {
-            name,
-            prompt,
-            items,
-            slot,
-        });
-    }
-    Ok(stages)
-}
-
-/// Render a workflow stage's per-item brief by substituting the `{{item}}` and `{{prior}}`
-/// placeholders in `template` (whitespace inside the braces is tolerated). An unknown placeholder is
-/// left verbatim so a template that legitimately contains `{{…}}` is not mangled.
-fn render_template(template: &str, item: &str, prior: &str) -> String {
-    let mut out = String::with_capacity(template.len());
-    let mut rest = template;
-    while let Some(open) = rest.find("{{") {
-        out.push_str(&rest[..open]);
-        let after = &rest[open + 2..];
-        match after.find("}}") {
-            Some(close) => {
-                match after[..close].trim() {
-                    "item" => out.push_str(item),
-                    "prior" => out.push_str(prior),
-                    // Not a known placeholder — keep the original braces verbatim.
-                    _ => {
-                        out.push_str("{{");
-                        out.push_str(&after[..close]);
-                        out.push_str("}}");
-                    }
-                }
-                rest = &after[close + 2..];
-            }
-            // An unterminated `{{` — emit it literally and stop scanning.
-            None => {
-                out.push_str("{{");
-                rest = after;
-            }
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
-/// Render a stage's collected results into the block a later stage's `{{prior}}` placeholder
-/// expands to — each result labeled and separated so a consolidating subagent can tell them apart.
-/// Empty before the first stage has run.
-fn join_prior_results(results: &[String]) -> String {
-    results
-        .iter()
-        .enumerate()
-        .map(|(i, result)| format!("[result {}]\n{result}", i + 1))
-        .collect::<Vec<_>>()
-        .join("\n\n")
-}
-
-/// A [`WorkflowStage`](GgTelemetryKind::WorkflowStage) boundary event for a stage.
-fn workflow_stage_event(
-    workflow_id: &str,
-    name: &str,
-    index: usize,
-    item_count: usize,
-    phase: GgWorkflowPhase,
-) -> GgTelemetryKind {
-    GgTelemetryKind::WorkflowStage {
-        workflow_id: workflow_id.to_string(),
-        stage: name.to_string(),
-        stage_index: index as u64,
-        item_count: item_count as u64,
-        phase,
     }
 }
 
@@ -6233,9 +5233,8 @@ impl Agent {
             persistence,
             read_policy,
             shell_offload,
-            speculative,
             code,
-            completion,
+            hooks,
             ending_role,
             opening,
             turn_base,
@@ -6259,10 +5258,6 @@ impl Agent {
         // error/cost ceiling, or the deadline — never by falling through the loop.
         let max_turns = limits.limits.max_turns;
         let turn_bound = max_turns.unwrap_or(usize::MAX);
-        // Speculative execution (`speculate`) likewise needs the delegation machinery to fan out the
-        // attempts and run the judge; with it off, the tool (if offered) falls through to a defensive
-        // refusal rather than engaging.
-        let speculative_active = speculative && subagents.is_some();
         // The full offered toolset — every turn offers all of it, so the tool schemas are a stable
         // prefix a provider can cache.
         let all_tools = registry.definitions();
@@ -6322,7 +5317,6 @@ impl Agent {
             read_policy,
             shell_offload: &shell_offload,
             vision: &tool_ctx.vision,
-            speculative: speculative_active,
             program_language: code.enabled.then_some(code.language),
             program_library: programs.is_enabled(),
             // Whether this agent's opening context is pre-seeded with the test case's specs and
@@ -6373,6 +5367,64 @@ impl Agent {
             // the same task, and the handoff note at the tail says what changed.
             Opening::Carried { .. } => true,
         };
+
+        // The two **opening** hooks, in the order a run happens: the session's, once ever and
+        // before anything else, then this agent's. Both may insert into the window they are firing
+        // into, which is the whole reason they fire *here* — after the build prompt is seeded and
+        // before the first turn, so what they add is part of the opening context rather than an
+        // interruption of it. A carried window is deliberately not re-seeded with either: a
+        // successor is the same agent continuing, and "the session started" is not news to it.
+        //
+        // A hook failure here stops the run before a single turn is taken, which is the cheapest
+        // moment to discover that a gate is broken.
+        if !carried {
+            let mut opening_notes = Vec::new();
+            // The session's own event, so: the run's root, on its first incarnation. An `exec`'d
+            // successor of the root is the same session continuing and does not fire it again.
+            let opens_session =
+                matches!(hooks.agent.kind, Some(GgHookAgentKind::Root)) && turn_base == 0;
+            if opens_session && hooks.runtime.has(GgHookEvent::SessionStart) {
+                match hooks
+                    .runtime
+                    .fire(
+                        GgHookEvent::SessionStart,
+                        &hooks.agent,
+                        json!({}),
+                        tool_ctx,
+                        &shell_offload,
+                        emitter,
+                    )
+                    .await
+                {
+                    Ok(run) => opening_notes.extend(run.insertion()),
+                    Err(failure) => return hook_failed(self, emitter, failure, turn_base),
+                }
+            }
+            if hooks.runtime.has(GgHookEvent::AgentStart) {
+                match hooks
+                    .runtime
+                    .fire(
+                        GgHookEvent::AgentStart,
+                        &hooks.agent,
+                        json!({}),
+                        tool_ctx,
+                        &shell_offload,
+                        emitter,
+                    )
+                    .await
+                {
+                    Ok(run) => opening_notes.extend(run.insertion()),
+                    Err(failure) => return hook_failed(self, emitter, failure, turn_base),
+                }
+            }
+            for note in opening_notes {
+                context.push(
+                    GgContextSource::System,
+                    Retention::Ephemeral,
+                    Message::user(note),
+                );
+            }
+        }
 
         // Autoload the specifications: when this agent's profile enables the capability, seed the
         // test case's provided files (its specs and reference images) into the opening context as
@@ -6618,6 +5670,17 @@ impl Agent {
                 let retained = caps.retained_counts();
                 match compaction.strategy.pending() {
                     None => {
+                        if let Err(failure) = fire_pre_compact(
+                            &hooks,
+                            compaction.strategy.id(),
+                            tool_ctx,
+                            &shell_offload,
+                            emitter,
+                        )
+                        .await
+                        {
+                            return hook_failed(self, emitter, failure, turn);
+                        }
                         let (request, fallback) =
                             compaction::condense_out_of_band(context, client, &compaction).await;
                         let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
@@ -6632,6 +5695,18 @@ impl Agent {
                             files,
                             fallback,
                         ));
+                        if let Err(failure) = fire_post_compact(
+                            &hooks,
+                            compaction.strategy.id(),
+                            context,
+                            tool_ctx,
+                            &shell_offload,
+                            emitter,
+                        )
+                        .await
+                        {
+                            return hook_failed(self, emitter, failure, turn);
+                        }
                     }
                     Some(pending) => {
                         emitter.emit(log(
@@ -6970,8 +6045,20 @@ impl Agent {
                         compaction::fallback_request()
                     }
                 };
-                apply_pending_compaction(context, &compaction, caps, &request, tool_ctx, emitter)
-                    .await;
+                if let Err(failure) = apply_pending_compaction(
+                    context,
+                    &compaction,
+                    caps,
+                    &request,
+                    tool_ctx,
+                    &hooks,
+                    &shell_offload,
+                    emitter,
+                )
+                .await
+                {
+                    return hook_failed(self, emitter, failure, turn + 1);
+                }
                 // The turn did exactly the work it was asked for, so it counts as progress — not as
                 // an error, and not as the completion a tool-less reply would otherwise be.
                 if let Some(breach) = self.record_turn(
@@ -7026,7 +6113,6 @@ impl Agent {
                     emitter,
                     replay: replay.as_ref(),
                     observer: observer.as_ref(),
-                    speculative_active,
                     pending_compaction,
                     ending_role,
                     exec_roster: &profile.subagents,
@@ -7060,23 +6146,46 @@ impl Agent {
                 // which the arm below reclaims the turn's state for, pushes, and loops on — the same
                 // path an ordinary error turn takes.
                 let decision = match decision {
-                    CodeTurnOutcome::Finished { ending } if completion.has_validation() => {
-                        match completion::run_validation(
-                            completion.validation(),
-                            tool_ctx,
-                            &shell_offload,
-                            emitter,
-                        )
-                        .await
+                    CodeTurnOutcome::Finished { ending }
+                        if hooks.runtime.has(GgHookEvent::AgentStop) =>
+                    {
+                        match hooks
+                            .runtime
+                            .fire(
+                                GgHookEvent::AgentStop,
+                                &hooks.agent,
+                                json!({ "call": sandbox::FINISH_FUNCTION }),
+                                tool_ctx,
+                                &shell_offload,
+                                emitter,
+                            )
+                            .await
                         {
-                            None => CodeTurnOutcome::Finished { ending },
+                            Err(failure) => {
+                                emitter.emit(log("error", failure.to_string()));
+                                return LoopEnd {
+                                    status: STATUS_HOOK_ERROR,
+                                    turns: turn + 1,
+                                    tokens: total_tokens,
+                                    cost: total_cost,
+                                    slot: self.slot.clone(),
+                                    final_text: Some(failure.to_string()),
+                                    ending: None,
+                                    limit: None,
+                                    handoff: None,
+                                };
+                            }
+                            Ok(run) if run.allowed() => CodeTurnOutcome::Finished { ending },
                             // A process notice, not an error message: the program itself did not
                             // fail — it ran, it declared an ending, and the *session* was refused
-                            // one because the run's validation commands did not pass.
-                            Some(feedback) => CodeTurnOutcome::Continue {
-                                feedback: vec![CodeFeedback::notice(feedback)],
+                            // one because a hook on the ending refused it.
+                            Ok(run) => CodeTurnOutcome::Continue {
+                                feedback: vec![CodeFeedback::notice(ending_blocked_feedback(
+                                    run.blocked.as_deref().unwrap_or_default(),
+                                    run.insertion(),
+                                ))],
                                 error: None,
-                                report: "its ending was rejected by validation".to_string(),
+                                report: "its ending was blocked by a hook".to_string(),
                             },
                         }
                     }
@@ -7301,15 +6410,20 @@ impl Agent {
                         match (request, pending_compaction) {
                             (Some(request), _) => {
                                 pending_compaction = None;
-                                apply_pending_compaction(
+                                if let Err(failure) = apply_pending_compaction(
                                     context,
                                     &compaction,
                                     caps,
                                     &request,
                                     tool_ctx,
+                                    &hooks,
+                                    &shell_offload,
                                     emitter,
                                 )
-                                .await;
+                                .await
+                                {
+                                    return hook_failed(self, emitter, failure, turn + 1);
+                                }
                             }
                             // Not satisfied: the compaction stays pending and the next program is
                             // asked again. The instruction is re-stated rather than left to the one
@@ -7459,6 +6573,13 @@ impl Agent {
             // a separate child, so a turn may declare several and every one of them runs.
             let mut declared_forks: Vec<PendingFork> = Vec::new();
 
+            // A [hook](crate::hooks) whose own machinery failed, which stops the run rather than
+            // being fed back to the model — a broken gate has judged nothing, and both ways of
+            // guessing what it meant are a lie about a check an operator is relying on. Set inside
+            // the dispatch loop and acted on the moment that loop breaks, so the turn's already-
+            // recorded results are not left dangling.
+            let mut hook_failure: Option<HookFailure> = None;
+
             // Dispatch each requested tool call against the workspace and feed the result
             // back so the model can proceed on its next turn.
             for call in &response.tool_calls {
@@ -7512,29 +6633,44 @@ impl Agent {
                     match parse_ending_call(&call.name, &call.arguments, ending_role) {
                         Err(message) => ToolOutcome::failed(ToolFailure::InvalidArgument, message),
                         Ok(declared) => {
-                            let rejected = if completion.has_validation() {
-                                completion::run_validation(
-                                    completion.validation(),
+                            // The [agent-stop](GgHookEvent::AgentStop) hooks are the ending's gate
+                            // — what the `completion` capability's validation commands became. A
+                            // blocking hook hands its reason back as a refused tool result and the
+                            // session goes on, so the model fixes the problem and declares again;
+                            // a hook that only had something to say has it inserted alongside.
+                            let fired = hooks
+                                .runtime
+                                .fire(
+                                    GgHookEvent::AgentStop,
+                                    &hooks.agent,
+                                    json!({ "call": call.name }),
                                     tool_ctx,
                                     &shell_offload,
                                     emitter,
                                 )
-                                .await
-                            } else {
-                                None
-                            };
-                            match rejected {
-                                Some(feedback) => {
-                                    ToolOutcome::failed(ToolFailure::Refused, feedback)
+                                .await;
+                            match fired {
+                                Err(failure) => {
+                                    hook_failure = Some(failure);
+                                    break;
                                 }
-                                None => {
-                                    declared_ending = Some(declared);
-                                    ToolOutcome::ok(
-                                        "Your session will end once this turn's tool results are \
-                                         recorded.",
-                                        format!("{} accepted", call.name),
-                                    )
-                                }
+                                Ok(run) => match run.blocked.clone() {
+                                    Some(reason) => ToolOutcome::failed(
+                                        ToolFailure::Refused,
+                                        ending_blocked_feedback(&reason, run.insertion()),
+                                    ),
+                                    None => {
+                                        declared_ending = Some(declared);
+                                        let mut message = "Your session will end once this turn's \
+                                                           tool results are recorded."
+                                            .to_string();
+                                        if let Some(insertion) = run.insertion() {
+                                            message.push_str("\n\n");
+                                            message.push_str(&insertion);
+                                        }
+                                        ToolOutcome::ok(message, format!("{} accepted", call.name))
+                                    }
+                                },
                             }
                         }
                     }
@@ -7589,17 +6725,34 @@ impl Agent {
                 } else if let Some(sub) = subagents.as_mut() {
                     if is_subagent_tool(&call.name) {
                         handle_subagent_call(sub, self, emitter, call).await
-                    } else if speculative_active && call.name == SPECULATE_TOOL {
-                        // Speculative execution: `speculate` is intercepted here (like the
-                        // delegation tools) so gg runs the best-of-K fan-out → judge → merge
-                        // routine against the orchestrator, scheduler, and worktree machinery,
-                        // which the tool itself cannot reach.
-                        handle_speculate(sub, self, caps.board(), emitter, call).await
                     } else {
-                        registry.dispatch(call, tool_ctx).await
+                        match dispatch_hooked(
+                            registry,
+                            call,
+                            tool_ctx,
+                            &hooks,
+                            &shell_offload,
+                            emitter,
+                        )
+                        .await
+                        {
+                            Ok(outcome) => outcome,
+                            Err(failure) => {
+                                hook_failure = Some(failure);
+                                break;
+                            }
+                        }
                     }
                 } else {
-                    registry.dispatch(call, tool_ctx).await
+                    match dispatch_hooked(registry, call, tool_ctx, &hooks, &shell_offload, emitter)
+                        .await
+                    {
+                        Ok(outcome) => outcome,
+                        Err(failure) => {
+                            hook_failure = Some(failure);
+                            break;
+                        }
+                    }
                 };
 
                 // Agent-managed context: `evict_file_view`/`archive_thread` act on the live
@@ -7633,7 +6786,7 @@ impl Agent {
                 // Replay capture: this is the one point every dispatched tool call funnels through
                 // with its final outcome (after any agent-managed-context reclaim rewrote it), so
                 // recording here pins ordinary registry dispatch and the intercepted
-                // delegation/speculate/review/advance tools alike — a decorator at the choke point,
+                // delegation/review/advance tools alike — a decorator at the choke point,
                 // not a call scattered per tool. Recorded before the outcome is moved into the
                 // context.
                 if let Some(recorder) = &replay {
@@ -7674,6 +6827,30 @@ impl Agent {
                 }
 
                 record_tool_result(context, caps, call, outcome, emitter);
+            }
+
+            // A hook that failed stops the run here, before anything this turn declared is acted
+            // on: a fork this turn asked for is work the run is no longer going to do, and an
+            // ending it declared was gated by the very machinery that just broke.
+            if let Some(failure) = hook_failure {
+                emitter.emit(log("error", failure.to_string()));
+                let _ = self.record_turn(
+                    &mut agent_limits,
+                    emitter,
+                    TurnOutcome::Finished,
+                    loop_aborts,
+                );
+                return LoopEnd {
+                    status: STATUS_HOOK_ERROR,
+                    turns: turn + 1,
+                    tokens: total_tokens,
+                    cost: total_cost,
+                    slot: self.slot.clone(),
+                    final_text: Some(failure.to_string()),
+                    ending: None,
+                    limit: None,
+                    handoff: None,
+                };
             }
 
             // The copies this turn declared: every tool result is recorded, so the window they
@@ -7745,15 +6922,20 @@ impl Agent {
             match (compaction_request, pending_compaction) {
                 (Some(request), _) => {
                     pending_compaction = None;
-                    apply_pending_compaction(
+                    if let Err(failure) = apply_pending_compaction(
                         context,
                         &compaction,
                         caps,
                         &request,
                         tool_ctx,
+                        &hooks,
+                        &shell_offload,
                         emitter,
                     )
-                    .await;
+                    .await
+                    {
+                        return hook_failed(self, emitter, failure, turn + 1);
+                    }
                 }
                 (None, Some(pending)) => context.push(
                     GgContextSource::System,
@@ -8070,8 +7252,7 @@ fn ended_text(
 /// [responses-as-code](CAPABILITY_RESPONSES_AS_CODE).
 ///
 /// Every assistant message on that path is a program, so the loop's `last_text` would
-/// hand a subagent's spawner — and the run record, and a speculation judge's brief — a page of
-/// source instead of an answer. This is the answer gg can honestly give instead: how the agent
+/// hand a subagent's spawner — and the run record — a page of source instead of an answer. This is the answer gg can honestly give instead: how the agent
 /// ended, and what its last turn actually produced.
 fn stopped_text(status: &str, report: Option<&str>) -> Option<String> {
     Some(match report {
@@ -8268,6 +7449,328 @@ struct CodeSetup {
     assistant_messages: AssistantMessageMode,
 }
 
+/// Fire the [pre-compact](GgHookEvent::PreCompact) hooks and report whether the run may continue.
+///
+/// Separated from its `post` twin rather than wrapping the compaction in one call because the two
+/// sit on opposite sides of a rewrite of the very window a hook might insert into — there is no
+/// scope that holds both. The `pre` side can neither block nor insert (see [`GgHookEvent`]), so all
+/// it can return is whether its own machinery survived.
+async fn fire_pre_compact(
+    hooks: &HooksSetup,
+    strategy: &str,
+    tool_ctx: &ToolContext,
+    offload: &OffloadPolicy,
+    emitter: &Emitter,
+) -> Result<(), HookFailure> {
+    if !hooks.runtime.has(GgHookEvent::PreCompact) {
+        return Ok(());
+    }
+    hooks
+        .runtime
+        .fire(
+            GgHookEvent::PreCompact,
+            &hooks.agent,
+            json!({ "strategy": strategy }),
+            tool_ctx,
+            offload,
+            emitter,
+        )
+        .await
+        .map(|_| ())
+}
+
+/// Fire the [post-compact](GgHookEvent::PostCompact) hooks and push whatever they said into the
+/// freshly rewritten window.
+///
+/// The insertion goes in **pinned**, unlike every other hook's: this is the one event whose whole
+/// point is to put back something the compaction just dropped, and an ephemeral note would be
+/// dropped again by the next one.
+async fn fire_post_compact(
+    hooks: &HooksSetup,
+    strategy: &str,
+    context: &mut ContextModel,
+    tool_ctx: &ToolContext,
+    offload: &OffloadPolicy,
+    emitter: &Emitter,
+) -> Result<(), HookFailure> {
+    if !hooks.runtime.has(GgHookEvent::PostCompact) {
+        return Ok(());
+    }
+    let run = hooks
+        .runtime
+        .fire(
+            GgHookEvent::PostCompact,
+            &hooks.agent,
+            json!({ "strategy": strategy }),
+            tool_ctx,
+            offload,
+            emitter,
+        )
+        .await?;
+    if let Some(insertion) = run.insertion() {
+        context.push(
+            GgContextSource::System,
+            Retention::Pinned,
+            Message::user(insertion),
+        );
+    }
+    Ok(())
+}
+
+/// End this agent's loop because one of the run's [hooks](crate::hooks) broke.
+///
+/// A single exit written once, because a hook can fail at four points in the loop (an opening hook,
+/// a dispatch hook, an ending hook, a compaction hook) and every one of them has to produce the
+/// same terminal shape: the failure named on the operator log, and a [`LoopEnd`] carrying
+/// [`STATUS_HOOK_ERROR`] so the run is recorded as stopped by its own machinery rather than by the
+/// model.
+fn hook_failed(agent: &Agent, emitter: &Emitter, failure: HookFailure, turns: usize) -> LoopEnd {
+    emitter.emit(log("error", failure.to_string()));
+    LoopEnd {
+        status: STATUS_HOOK_ERROR,
+        turns,
+        tokens: TokenCounts::default(),
+        cost: None,
+        slot: agent.slot.clone(),
+        final_text: Some(failure.to_string()),
+        ending: None,
+        limit: None,
+        handoff: None,
+    }
+}
+
+/// What the model is told when an [agent-stop](GgHookEvent::AgentStop) hook refuses its ending.
+///
+/// The hook's reason leads, because it is the actionable half — what to fix. The sentence gg adds
+/// after it is the part the hook cannot know: that the session is *not* over and declaring again is
+/// how it ends. Without that, a model handed a bare refusal reasonably concludes it has been stopped.
+fn ending_blocked_feedback(reason: &str, insertion: Option<String>) -> String {
+    let mut message = format!(
+        "{reason}\n\nYour session is NOT over. Fix what is described above and declare you are \
+         done again."
+    );
+    if let Some(insertion) = insertion {
+        message.push_str("\n\n");
+        message.push_str(&insertion);
+    }
+    message
+}
+
+/// Dispatch one tool call with the run's [hooks](crate::hooks) around it — the `pre`/`post` pairs
+/// for a file write and a shell command.
+///
+/// Fired **here**, at the loop's dispatch choke point, rather than inside the tools themselves, for
+/// the same reason replay capture is: it is the one place every dispatched call passes through with
+/// its arguments and its outcome, so one decorator covers `write_file`, `edit_file` and `shell`
+/// alike — and covers them identically on the [responses-as-code](crate::sandbox) path, whose
+/// programs funnel into the same registry. A hook fired from inside a tool would also have no
+/// emitter, no offloading policy and no agent identity to report with, all of which live out here.
+///
+/// A `pre-` hook that blocks turns the call into a **refusal**, in the model's own error vocabulary:
+/// nothing runs, and the reason the hook gave is what the model reads. That is deliberately
+/// indistinguishable from any other refusal — a hook is the operator's, and explaining gg's
+/// configuration to the model would teach it to argue with it.
+async fn dispatch_hooked(
+    registry: &ToolRegistry,
+    call: &ToolCall,
+    tool_ctx: &ToolContext,
+    hooks: &HooksSetup,
+    offload: &OffloadPolicy,
+    emitter: &Emitter,
+) -> Result<ToolOutcome, HookFailure> {
+    let Some(shape) = HookedCall::of(call, tool_ctx) else {
+        return Ok(registry.dispatch(call, tool_ctx).await);
+    };
+    if hooks.runtime.has(shape.pre) {
+        let run = hooks
+            .runtime
+            .fire(
+                shape.pre,
+                &hooks.agent,
+                shape.payload.clone(),
+                tool_ctx,
+                offload,
+                emitter,
+            )
+            .await?;
+        if let Some(reason) = run.blocked.clone() {
+            return Ok(ToolOutcome::failed(
+                ToolFailure::Refused,
+                match run.insertion() {
+                    Some(insertion) => format!("{reason}\n\n{insertion}"),
+                    None => reason,
+                },
+            ));
+        }
+        if let Some(insertion) = run.insertion() {
+            // An insertion from a `pre-` hook rides out on the call it preceded, which is the only
+            // message this turn has left to carry it: the call is about to run, and a separate
+            // message would arrive after its result.
+            let mut outcome = registry.dispatch(call, tool_ctx).await;
+            outcome.output = format!("{}\n\n{insertion}", outcome.output);
+            return post_hooked(outcome, &shape, hooks, tool_ctx, offload, emitter).await;
+        }
+    }
+    let outcome = registry.dispatch(call, tool_ctx).await;
+    post_hooked(outcome, &shape, hooks, tool_ctx, offload, emitter).await
+}
+
+/// Fire the `post-` half of a [hooked call](HookedCall) and fold whatever it said into `outcome`.
+///
+/// A `post-` hook cannot block — the operation already happened — so its only effect is on what the
+/// model reads, which is why this returns the outcome rather than a verdict.
+async fn post_hooked(
+    mut outcome: ToolOutcome,
+    shape: &HookedCall,
+    hooks: &HooksSetup,
+    tool_ctx: &ToolContext,
+    offload: &OffloadPolicy,
+    emitter: &Emitter,
+) -> Result<ToolOutcome, HookFailure> {
+    if !hooks.runtime.has(shape.post) {
+        return Ok(outcome);
+    }
+    // The post payload carries how the operation went alongside what it was, so a hook watching a
+    // shell command can tell a passing build from a failing one without re-running it.
+    let mut payload = shape.payload.clone();
+    if let Some(fields) = payload.as_object_mut() {
+        fields.insert("ok".into(), json!(outcome.ok));
+    }
+    let run = hooks
+        .runtime
+        .fire(
+            shape.post,
+            &hooks.agent,
+            payload,
+            tool_ctx,
+            offload,
+            emitter,
+        )
+        .await?;
+    if let Some(insertion) = run.insertion() {
+        outcome.output = format!("{}\n\n{insertion}", outcome.output);
+    }
+    Ok(outcome)
+}
+
+/// A tool call gg has hooks for, reduced to the pair of events it fires and the payload they carry.
+///
+/// The mapping from a tool to an event lives here, in one `match`, rather than being spread across
+/// the tools: "a file write of any kind" is a claim about gg's whole toolset, and a new writing tool
+/// that forgot to fire its hook would be a gate quietly not applying to one of the ways a file gets
+/// written.
+struct HookedCall {
+    /// The event that fires before the call.
+    pre: GgHookEvent,
+    /// The event that fires after it.
+    post: GgHookEvent,
+    /// What the call is about: the path and contents for a write, the command line for a shell call.
+    payload: Value,
+}
+
+impl HookedCall {
+    /// The events and payload for `call`, or `None` for a tool gg has no hooks around.
+    ///
+    /// An `edit_file` is a **write**, and its payload is the contents the file will end up with
+    /// rather than the patch that gets it there — because a hook asked "may this be written?" needs
+    /// the answer to be about the file, and a patch is only about the file if you already have it.
+    /// gg reads the file and applies the replacement to answer that, which is a read the write was
+    /// about to do anyway.
+    fn of(call: &ToolCall, ctx: &ToolContext) -> Option<Self> {
+        let arg = |key: &str| {
+            call.arguments
+                .get(key)
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string()
+        };
+        match call.name.as_str() {
+            SHELL_TOOL => Some(Self {
+                pre: GgHookEvent::PreShell,
+                post: GgHookEvent::PostShell,
+                payload: json!({ "command": arg("command") }),
+            }),
+            "write_file" => {
+                let path = arg("path");
+                Some(Self {
+                    pre: GgHookEvent::PreWrite,
+                    post: GgHookEvent::PostWrite,
+                    payload: json!({
+                        "path": absolute_workspace_path(ctx, &path),
+                        "contents": arg("contents"),
+                    }),
+                })
+            }
+            "edit_file" => {
+                let path = arg("path");
+                let absolute = absolute_workspace_path(ctx, &path);
+                // Best-effort: an unreadable file, or a replacement that does not apply, is a call
+                // the tool is about to refuse anyway. The hook is shown what gg knows — the path,
+                // and the contents when they can be computed — rather than nothing at all.
+                let contents = std::fs::read_to_string(&absolute)
+                    .ok()
+                    .map(|body| body.replacen(&arg("old"), &arg("new"), 1));
+                Some(Self {
+                    pre: GgHookEvent::PreWrite,
+                    post: GgHookEvent::PostWrite,
+                    payload: json!({ "path": absolute, "contents": contents }),
+                })
+            }
+            _ => None,
+        }
+    }
+}
+
+/// A tool's workspace-relative `path` argument as the absolute path a hook is promised.
+///
+/// Absolute because a hook is a run-level declaration and a path is only meaningful with the tree it
+/// is in: two agents working the same issue in different worktrees write the same relative path to
+/// different files, and a hook shown `src/main.rs` could not tell them apart.
+fn absolute_workspace_path(ctx: &ToolContext, path: &str) -> String {
+    let path = Path::new(path);
+    if path.is_absolute() {
+        path.to_string_lossy().into_owned()
+    } else {
+        ctx.workspace_dir.join(path).to_string_lossy().into_owned()
+    }
+}
+
+/// The run's [hooks](crate::hooks) as one agent sees them: the shared runtime, and this
+/// instance's identity within it.
+///
+/// Two fields rather than a bare runtime because a hook's payload is half run-level (which hooks
+/// are declared) and half instance-level (who is writing the file). Pairing them here is what makes
+/// every firing site a two-argument call that cannot be given a mismatched pair.
+struct HooksSetup {
+    /// The run's declared hooks, grouped by event. Shared by every agent — the declaration is the
+    /// run's, not a profile's.
+    runtime: Arc<HookRuntime>,
+    /// Who this instance is: its id, its profile, the role it was dispatched in, and its worktree.
+    agent: HookAgent,
+}
+
+/// Which [kind](GgHookAgentKind) of agent an instance is, from the role it was dispatched in.
+///
+/// The role rather than the profile, because that is the distinction a hook author actually wants:
+/// the same profile implements an issue in one dispatch and reviews one in the next, and "block a
+/// reviewer that approves without reading the diff" is meaningless if it also fires on the
+/// implementer. A parentless [`Sub`](AgentRole::Sub) cannot occur — a subagent has a spawner — so
+/// the root test is only asked of the roles that can be either.
+fn hook_agent_kind(role: &AgentRole, is_root: bool) -> GgHookAgentKind {
+    match role {
+        AgentRole::Root => GgHookAgentKind::Root,
+        AgentRole::Issue { .. } => GgHookAgentKind::IssueImplementer,
+        // A reviewer is dispatched as a subagent carrying the review [ending role](EndingRole), so
+        // that — not its position in the tree — is what tells the two apart.
+        AgentRole::Sub {
+            ending: EndingRole::Review,
+            ..
+        } => GgHookAgentKind::IssueReviewer,
+        AgentRole::Sub { .. } if is_root => GgHookAgentKind::Root,
+        AgentRole::Sub { .. } => GgHookAgentKind::Subagent,
+    }
+}
+
 /// Everything the [turn loop](Agent::drive) is *configured* by, as opposed to everything it holds.
 ///
 /// The distinction it draws is the one the [module model](crate::modules) rests on. A
@@ -8299,13 +7802,15 @@ struct DriveSetup {
     read_policy: ReadPolicy,
     /// How much of a command's output one `shell` call returns.
     shell_offload: OffloadPolicy,
-    /// Whether `speculate` is routed through the best-of-K routine this run.
-    speculative: bool,
     /// Whether this agent answers with programs rather than tool calls, and the sandbox ceilings
     /// and [healing](crate::healing) behind that.
     code: CodeSetup,
-    /// What gates this agent's ending — the validation commands its profile configures.
-    completion: CompletionSetup,
+    /// The run's [hooks](crate::hooks), and who this agent is to them.
+    ///
+    /// Carried on the setup rather than reached through the orchestrator because the loop fires
+    /// them at points the orchestrator never sees — around one tool call, around one compaction —
+    /// and because a fired hook has to name the *instance*, which only the loop knows.
+    hooks: HooksSetup,
     /// Which [ending calls](EndingRole) this agent is given, from the role it was dispatched in.
     ending_role: EndingRole,
     /// How this incarnation's window is [opened](Opening) — seeded fresh, or continued from the
@@ -8775,29 +8280,22 @@ fn resolve_board(set: &GgCapabilitySet, ids: &ModuleIds) -> BoardRuntime {
 /// Resolve the run's git-backed [isolation and baseline](WorktreesSetup) at session start, reporting
 /// on `emitter`.
 ///
-/// Isolation is wanted whenever the run can produce a worktree: the
-/// [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability (every issue works in its own) or
-/// the [speculative-execution](CAPABILITY_SPECULATIVE) capability (every attempt does). When neither
-/// is on, git is left alone entirely — no baseline, no root.
+/// Isolation is wanted whenever the run can produce a worktree — the
+/// [project-management](CAPABILITY_PROJECT_MANAGEMENT) capability, every issue of which works in its
+/// own. With it off, git is left alone entirely — no baseline, no root.
 ///
 /// Any problem — git absent, a failed baseline, or an uncreatable worktree root — is logged
 /// **loudly** at error level and leaves isolation unusable (issues run in the shared workspace and
-/// merge nothing; a `speculate` call is refused) rather than crashing the run.
+/// merge nothing) rather than crashing the run.
 async fn resolve_worktrees(
     set: &GgCapabilitySet,
     workspace_dir: &Path,
     emitter: &Emitter,
 ) -> WorktreesSetup {
     let issues = board_owner(set).is_some();
-    let speculative = set.is_enabled(CAPABILITY_SPECULATIVE);
     // A short, accurate description of why git is needed, for the diagnostics.
-    let reason = match (issues, speculative) {
-        (true, true) => "issues and speculation attempts each work in an isolated git worktree",
-        (true, false) => "every issue works in an isolated git worktree",
-        (false, true) => "every speculation attempt works in an isolated git worktree",
-        (false, false) => "",
-    };
-    if !issues && !speculative {
+    let reason = "every issue works in an isolated git worktree";
+    if !issues {
         return WorktreesSetup {
             baseline_commit: None,
             root: None,
@@ -8809,8 +8307,8 @@ async fn resolve_worktrees(
             "error",
             format!(
                 "{reason}, but the `git` binary is not available; worktree isolation is disabled. \
-                 Issues run directly in the shared workspace (nothing is merged, and reviews see an \
-                 empty diff) and `speculate` is refused. (The rest of the run is unaffected.)"
+                 Issues run directly in the shared workspace (nothing is merged, and reviews see \
+                 an empty diff). (The rest of the run is unaffected.)"
             ),
         ));
         return WorktreesSetup {
@@ -8862,13 +8360,8 @@ async fn resolve_worktrees(
         format!(
             "committed the seeded workspace as the baseline `{}`. {}",
             short_sha(&baseline),
-            if issues {
-                "Each issue is dispatched into its own worktree, merged back into the main tree \
-                 once it is accepted."
-            } else {
-                "Each speculation attempt runs in its own worktree; only the winner is merged \
-                 back."
-            },
+            "Each issue is dispatched into its own worktree, merged back into the main tree once \
+             it is accepted.",
         ),
     ));
     WorktreesSetup {
@@ -8924,8 +8417,6 @@ struct PromptInputs<'a> {
     /// This agent's model and the run's vision registry, so the prompt can state whether a
     /// reference image can actually be shown to it.
     vision: &'a VisionContext,
-    /// Whether `speculate` is available this run.
-    speculative: bool,
     /// The [language](GgProgramLanguage) this agent writes its programs in, or `None` when it
     /// answers with native tool calls instead.
     ///
@@ -9036,13 +8527,11 @@ fn api_surface(
             "review",
             "return your verdict on the work you are reviewing",
         ),
-        ("judge", "name the attempt that wins"),
     ];
     let enabled: BTreeSet<String> = scope_tools(registry).into_iter().collect();
     let ending = match role {
         EndingRole::Standard => "standard",
         EndingRole::Review => "review",
-        EndingRole::Judge { .. } => "judge",
     };
     // Grouped by object rather than filtered per object, so the catalogue is walked once and the
     // gating predicate is written once.
@@ -9265,7 +8754,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
         read_policy,
         shell_offload,
         vision,
-        speculative,
         program_language,
         program_library,
         autoload_specs,
@@ -9430,7 +8918,6 @@ fn system_prompt(inputs: PromptInputs<'_>) -> String {
             // whatever its own capabilities are, since being told what it is working on has
             // nothing to do with whether it may author the board.
             assigned_issue: assigned_issue.map(|id| AssignedIssueView { id: id.to_string() }),
-            speculative,
             // On → a section telling the model the whole brief is already in its window; the
             // `locked` flag decides whether it also promises the material stays across compaction.
             autoload_specs: autoload_specs.map(|locked| AutoloadView { locked }),
@@ -9466,11 +8953,9 @@ fn ending_view(role: EndingRole, program_language: Option<GgProgramLanguage>) ->
     EndingView {
         standard: matches!(role, EndingRole::Standard),
         review: matches!(role, EndingRole::Review),
-        judge: matches!(role, EndingRole::Judge { .. }),
         finish: call(sandbox::FINISH, completion::FINISH_TOOL),
         approve: call(sandbox::APPROVE, completion::APPROVE_TOOL),
         request_changes: call(sandbox::REQUEST_CHANGES, completion::REQUEST_CHANGES_TOOL),
-        select_winner: call(sandbox::SELECT_WINNER, completion::SELECT_WINNER_TOOL),
     }
 }
 
@@ -9672,14 +9157,18 @@ fn refresh_boundary_blocks(context: &mut ContextModel, modules: &CapabilityModul
 /// rewrites the window, emits the boundary's telemetry, and says on the operator's stream what was
 /// reclaimed. Every caller has already decided *that* a compaction happens; this is the one place
 /// it does.
+#[allow(clippy::too_many_arguments)]
 async fn apply_pending_compaction(
     context: &mut ContextModel,
     setup: &CompactionSetup,
     modules: &CapabilityModules,
     request: &CompactionRequest,
     tool_ctx: &ToolContext,
+    hooks: &HooksSetup,
+    offload: &OffloadPolicy,
     emitter: &Emitter,
-) {
+) -> Result<(), HookFailure> {
+    fire_pre_compact(hooks, setup.strategy.id(), tool_ctx, offload, emitter).await?;
     let retained = modules.retained_counts();
     refresh_boundary_blocks(context, modules);
     let files = restore_compact_files(&request.files, tool_ctx, emitter).await;
@@ -9705,6 +9194,15 @@ async fn apply_pending_compaction(
             }
         ),
     ));
+    fire_post_compact(
+        hooks,
+        setup.strategy.id(),
+        context,
+        tool_ctx,
+        offload,
+        emitter,
+    )
+    .await
 }
 
 /// Record one tool call's outcome into the context, giving the memory-curation tools and

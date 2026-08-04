@@ -17,11 +17,10 @@
 //! descriptions themselves are not: they describe the *run*, not the model's options.
 
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AGENT_TRANSITIONS, CAPABILITY_COMPACTION,
-    CAPABILITY_EDIT_FILE, CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE, CAPABILITY_EXEC,
+    CAPABILITY_FORK, CAPABILITY_FSM, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
-    CAPABILITY_WRITE_FILE,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE,
 };
 
 /// What buys one tool.
@@ -220,27 +219,13 @@ pub(super) const TOOL_GATES: &[ToolGate] = &[
         "wait_for_subagents",
         CAPABILITY_SUBAGENTS,
         "Offered to an agent that can have children at all — either a non-empty roster or the \
-         `fork` its agent-transitions capability buys it."
+         `fork` its own capability buys it."
     ),
     gate!(
         "send_message",
         CAPABILITY_SUBAGENTS,
         "Offered to an agent that can have children at all — either a non-empty roster or the \
-         `fork` its agent-transitions capability buys it."
-    ),
-    gate!(
-        "run_workflow",
-        CAPABILITY_WORKFLOWS,
-        "Only when the agent's roster is non-empty. Offered independently of `subagents` — a run \
-         may declare workflows without ad-hoc spawning. The description enumerates the roster, so \
-         it is per run."
-    ),
-    gate!(
-        "speculate",
-        CAPABILITY_SPECULATIVE,
-        "Only when the agent's roster is non-empty, and it engages only when the delegation runtime \
-         is built and worktree isolation is available; the loop refuses it otherwise. The \
-         description enumerates the roster, so it is per run."
+         `fork` its own capability buys it."
     ),
     gate!(
         "transition_state",
@@ -252,14 +237,14 @@ pub(super) const TOOL_GATES: &[ToolGate] = &[
     ),
     gate!(
         "exec",
-        CAPABILITY_AGENT_TRANSITIONS,
+        CAPABILITY_EXEC,
         "Only when the agent's roster is non-empty, and never for an agent standing in a machine \
          state — there, where the run goes next is the machine's decision and `transition_state` is \
          how it is made. The description enumerates the roster, so it is per run."
     ),
     gate!(
         "fork",
-        CAPABILITY_AGENT_TRANSITIONS,
+        CAPABILITY_FORK,
         "Also requires the `subagents` capability, which is what buys the `wait_for_subagents` and \
          `send_message` calls that collect the copy; a fork nobody can collect is a leak rather \
          than a second worker."

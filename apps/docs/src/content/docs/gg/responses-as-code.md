@@ -76,11 +76,11 @@ itself can render is not a counter-example — it illustrates a message the mode
   returned something goes to the run's [operator](#what-the-operator-is-told-instead) and
   not to the model — see
   [the rule that replaced a family of rules](#a-returned-value-is-discarded) below.
-- **An [ending call](/gg/completion/#ending-calls) ends the session** — and nothing else
+- **An [ending call](/gg/ending-a-session/#ending-calls) ends the session** — and nothing else
   does. Which one an agent has depends on the role it was dispatched in:
   `harness.finish(summary)` for an agent doing work, `review.approve()` /
-  `review.requestChanges(items)` for a reviewer, `judge.selectWinner(attempt, rationale)`
-  for a judge. Only that role's group is bound, so a call another role would make is an
+  `review.requestChanges(items)` for a reviewer. Only that role's group is bound, so a
+  call another role would make is an
   undefined identifier here, exactly as a withheld tool is. Each is a real membrane
   function, not a rule about text: it **sets a flag** in the agent's host-side context and
   returns, the program runs on, and the loop reads the flag once the program has ended.
@@ -253,7 +253,7 @@ an SDK has to keep. The spellings below are TypeScript's:
 (see [below](#every-tool-is-bound)) — plus one
 convenience helper, `fs.readTextFile(path, options?)`, for the overwhelmingly common case
 of wanting a file's text rather than its metadata, and the
-[ending calls](/gg/completion/#ending-calls) and the
+[ending calls](/gg/ending-a-session/#ending-calls) and the
 [`view` object](#showing-yourself-things), which are membrane functions like any other but
 not tools: no capability offers them, they dispatch nothing, and each is declared in its
 **own** WIT interface precisely so the one-to-one correspondence between the tool
@@ -570,8 +570,8 @@ delegation, telemetry and replay behaviour unchanged.
 The sandbox is synchronous and CPU-bound, so it runs on a blocking thread while each
 call it makes is serviced **on the async loop** over a channel. That is not an
 optimisation: a program's `spawnSubagent` still goes through the
-[scheduler](/gg/subagents/), a `speculate` still runs its
-[best-of-K](/gg/speculative-execution/) attempts, and a `context.evictFileView` is still
+[scheduler](/gg/subagents/), a `waitForSubagents` still blocks on its
+delegated children, and a `context.evictFileView` is still
 applied against the live window and told what it really freed. The
 [`view` calls](#showing-yourself-things) are the one thing on that path that reaches no
 tool at all: they are applied to the agent's **own** window, and applied *immediately*,
@@ -1105,7 +1105,7 @@ names. A model cannot act on gg's internals, and a trace full of them is a trace
 read past to find the one line it can.
 
 `Notice` is the `System` band, and it is where the small population of things gg genuinely has
-to say lives: an ending a [validation command](/gg/completion/) rejected; the results of a deferred `wait_for_issue`;
+to say lives: an ending a [validation command](/gg/ending-a-session/) rejected; the results of a deferred `wait_for_issue`;
 [statements after a top-level `return`](#statements-that-cannot-run) that could not run; and
 the one notice a *working* program can earn, [below](#a-program-that-worked-earns-no-message).
 When a turn produces both a notice and an error, the notices come first and the error last —

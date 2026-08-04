@@ -1087,7 +1087,7 @@
         "type": "object"
       },
       "capability": "subagents",
-      "note": "Offered to an agent that can have children at all — either a non-empty roster or the `fork` its agent-transitions capability buys it."
+      "note": "Offered to an agent that can have children at all — either a non-empty roster or the `fork` its own capability buys it."
     },
     {
       "name": "send_message",
@@ -1109,91 +1109,7 @@
         "type": "object"
       },
       "capability": "subagents",
-      "note": "Offered to an agent that can have children at all — either a non-empty roster or the `fork` its agent-transitions capability buys it."
-    },
-    {
-      "name": "run_workflow",
-      "category": "gg-delegation",
-      "description": "Run a declared, multi-stage workflow of subagents as a single unit — fan-out plus sequencing — instead of spawning and waiting on subagents by hand. You provide an ordered list of `stages`; gg runs them in order, and this call returns only when the whole workflow is done, with the final stage's results. Each stage FANS OUT one subagent per item and runs them in parallel (under the same global concurrency and depth limits as ad-hoc subagents — a workflow gets no extra budget), waits for all of them, then feeds their results into the next stage (SEQUENCING). Each stage names the `agent` to run its subagents as (which configures their model, tools, and instructions); the agents you may use: `<agent>`. A stage's `prompt` is a template applied once per item to form that subagent's brief: write `{item}` where the item text should go, and `{prior}` where the previous stage's collected results should go. The FIRST stage must list its `items` explicitly; a later stage that omits `items` fans out over the previous stage's results (one subagent per result, each seeing its result as `{item}`) — or give it a single item and reference `{prior}` to have one subagent consolidate all of the previous stage's results. Use a workflow when the work has a clear map-then-reduce or pipeline shape; use `spawn_subagent` for ad-hoc delegation.",
-      "parameters": {
-        "additionalProperties": false,
-        "properties": {
-          "stages": {
-            "description": "The workflow's stages, run in order; each fans out over its items and feeds the next stage.",
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "agent": {
-                  "description": "The name of the agent to run this stage's subagents as (one of the agents you may spawn).",
-                  "type": "string"
-                },
-                "items": {
-                  "description": "The items to fan out over (one subagent each). Required on the first stage; on a later stage, omit it to fan out over the previous stage's results.",
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "name": {
-                  "description": "A short name for the stage (used in the timeline; defaults to `stage-N`).",
-                  "type": "string"
-                },
-                "prompt": {
-                  "description": "The per-item brief template. `{{item}}` is replaced with the item; `{{prior}}` with the previous stage's collected results.",
-                  "type": "string"
-                }
-              },
-              "required": ["prompt", "agent"],
-              "type": "object"
-            },
-            "minItems": 1,
-            "type": "array"
-          }
-        },
-        "required": ["stages"],
-        "type": "object"
-      },
-      "capability": "workflows",
-      "note": "Only when the agent's roster is non-empty. Offered independently of `subagents` — a run may declare workflows without ad-hoc spawning. The description enumerates the roster, so it is per run."
-    },
-    {
-      "name": "speculate",
-      "category": "gg-delegation",
-      "description": "Attempt the same piece of work several times in parallel and keep only the BEST result (best-of-K). Provide an `agent` — the agent to run every attempt as (which configures their model, tools, and instructions; you may use: `<agent>`) — and a `prompt` (a self-contained brief for the task) OR an `issueId` to speculate on one of your board issues (its scope and completion criteria become the task), and `attempts` (K, the number of parallel tries, 2–6). gg fans out K subagents at the SAME task, EACH IN ITS OWN ISOLATED WORKTREE so they cannot collide, runs them in parallel under the same concurrency and depth limits as ordinary subagents (no extra budget), then a JUDGE scores their work against the task's completion criteria and picks a winner. gg MERGES the winner's worktree back into your workspace and DISCARDS the losing attempts — so when this call returns, your workspace holds exactly the winning attempt's changes. Optionally pass `approaches` (an array of hints, one per attempt, to steer the tries in different directions). Requires git in the run environment (for the isolation); refused without it. Use this for a hard or open-ended piece of work where one careful attempt may not be enough and you can afford K× the tokens for a better result; use `spawn_subagent` for ordinary single-attempt delegation. This call returns only when the winner has been merged.",
-      "parameters": {
-        "additionalProperties": false,
-        "properties": {
-          "agent": {
-            "description": "The name of the agent to run every attempt as (one of the agents you may spawn).",
-            "type": "string"
-          },
-          "approaches": {
-            "description": "Optional per-attempt approach hints, one per attempt, to steer the tries in different directions (extra attempts beyond the list get no hint).",
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "attempts": {
-            "description": "K — how many parallel attempts to make (2–6). Defaults to 2.",
-            "maximum": 6,
-            "minimum": 2,
-            "type": "integer"
-          },
-          "issueId": {
-            "description": "The id of a board issue to speculate on; its scope and completion criteria become the task.",
-            "type": "string"
-          },
-          "prompt": {
-            "description": "A self-contained brief for the task to attempt K times (what to do and how it will be judged done). Provide this or `issueId`.",
-            "type": "string"
-          }
-        },
-        "required": ["agent"],
-        "type": "object"
-      },
-      "capability": "speculative-execution",
-      "note": "Only when the agent's roster is non-empty, and it engages only when the delegation runtime is built and worktree isolation is available; the loop refuses it otherwise. The description enumerates the roster, so it is per run."
+      "note": "Offered to an agent that can have children at all — either a non-empty roster or the `fork` its own capability buys it."
     },
     {
       "name": "transition_state",
@@ -1236,7 +1152,7 @@
         "required": ["agent"],
         "type": "object"
       },
-      "capability": "agent-transitions",
+      "capability": "exec",
       "note": "Only when the agent's roster is non-empty, and never for an agent standing in a machine state — there, where the run goes next is the machine's decision and `transition_state` is how it is made. The description enumerates the roster, so it is per run."
     },
     {
@@ -1254,7 +1170,7 @@
         "required": ["prompt"],
         "type": "object"
       },
-      "capability": "agent-transitions",
+      "capability": "fork",
       "note": "Also requires the `subagents` capability, which is what buys the `wait_for_subagents` and `send_message` calls that collect the copy; a fork nobody can collect is a leak rather than a second worker."
     }
   ],
@@ -1289,17 +1205,6 @@
       "signature": "requestChanges(items: string[]): void",
       "doc": "Reject the work you are reviewing, listing every change that must be made before it can be accepted. Each item says what is wrong and what to change; the list may not be empty. This ends your session, and does not stop your program.",
       "ending": "review",
-      "library": false,
-      "types": []
-    },
-    {
-      "object": "judge",
-      "name": "selectWinner",
-      "category": "gg-session",
-      "summary": "Name the attempt that wins, by the number it was presented under, and say why in a sentence.",
-      "signature": "selectWinner(attempt: number, rationale: string): void",
-      "doc": "Name the attempt that wins, by the number it was presented under, and say why in a sentence. This ends your session, and does not stop your program.",
-      "ending": "judge",
       "library": false,
       "types": []
     },
@@ -1900,38 +1805,6 @@
       "gate": "send_message",
       "library": false,
       "types": []
-    },
-    {
-      "object": "agents",
-      "name": "runWorkflow",
-      "category": "gg-delegation",
-      "summary": "Run a declared multi-stage fan-out as one unit and return the final stage's results.",
-      "signature": "runWorkflow(stages: { name?: string; prompt: string; items?: string[]; agent: string; }[]): WorkflowReport",
-      "doc": "Run a declared multi-stage fan-out as one unit and return the final stage's results. Each stage names the `agent` to run its children as (one of the agents you may spawn), and its `prompt` is a template in which `{{item}}` is the item being worked and `{{prior}}` is the previous stage's collected results; the first stage must supply `items`, and a later stage that omits them fans out over the previous stage's results instead. Blocks until every stage is done.",
-      "gate": "run_workflow",
-      "library": false,
-      "types": [
-        {
-          "name": "WorkflowReport",
-          "declaration": "interface WorkflowReport { workflowId: string; stages: number; results: string[]; }"
-        }
-      ]
-    },
-    {
-      "object": "agents",
-      "name": "speculate",
-      "category": "gg-delegation",
-      "summary": "Attempt the same task K times in parallel isolated worktrees, judge the attempts, then merge the winner and discard the losers.",
-      "signature": "speculate(request: { agent: string; } & ({ prompt: string; } | { issueId: string; }) & { attempts?: number; approaches?: string[]; }): SpeculationReport",
-      "doc": "Attempt the same task K times in parallel isolated worktrees, judge the attempts, then merge the winner and discard the losers. Name the `agent` to run every attempt as (one of the agents you may spawn). `attempts` is clamped to 2–6 and defaults to 2; `approaches` are positional per-attempt hints, and attempts past the end of the list get none. Blocks until the winner is merged.",
-      "gate": "speculate",
-      "library": false,
-      "types": [
-        {
-          "name": "SpeculationReport",
-          "declaration": "interface SpeculationReport { winnerId: string; attempts: number; rationale: string | undefined; summary: string; }"
-        }
-      ]
     },
     {
       "object": "agents",

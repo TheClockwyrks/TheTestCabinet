@@ -60,7 +60,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
-use crate::completion::{APPROVE_TOOL, FINISH_TOOL, REQUEST_CHANGES_TOOL, SELECT_WINNER_TOOL};
+use crate::completion::{APPROVE_TOOL, FINISH_TOOL, REQUEST_CHANGES_TOOL};
 use crate::ending::EndingRole;
 use crate::tools::ALL_TOOL_NAMES;
 
@@ -277,17 +277,12 @@ fn anchored_to_gg(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagree
         }
     }
 
-    // The session section is gg's ending vocabulary, exactly: the same four names the tool-calling
+    // The session section is gg's ending vocabulary, exactly: the same three names the tool-calling
     // arm dispatches, which is what makes an ending comparable across the two execution modes as
     // well as across languages.
-    let ending_vocabulary: BTreeSet<&str> = [
-        FINISH_TOOL,
-        APPROVE_TOOL,
-        REQUEST_CHANGES_TOOL,
-        SELECT_WINNER_TOOL,
-    ]
-    .into_iter()
-    .collect();
+    let ending_vocabulary: BTreeSet<&str> = [FINISH_TOOL, APPROVE_TOOL, REQUEST_CHANGES_TOOL]
+        .into_iter()
+        .collect();
     let session: BTreeSet<&str> = catalogue.session.iter().map(|e| e.key.as_str()).collect();
     for missing in ending_vocabulary.difference(&session) {
         complain(format!("the ending call `{missing}` is not catalogued"));
@@ -316,7 +311,6 @@ fn anchored_to_gg(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagree
     for (role, ending) in [
         (EndingRole::Standard, "standard"),
         (EndingRole::Review, "review"),
-        (EndingRole::Judge { attempts: 0 }, "judge"),
     ] {
         for tool in role.tools() {
             if let Some(entry) = catalogue.session.iter().find(|e| e.key == *tool)

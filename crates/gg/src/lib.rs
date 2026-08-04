@@ -56,6 +56,7 @@ mod ending;
 mod fsm;
 mod git;
 mod healing;
+mod hooks;
 mod knowledge;
 mod limits;
 mod loopguard;

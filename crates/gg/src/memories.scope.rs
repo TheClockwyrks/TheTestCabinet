@@ -14,8 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_MEMORIES, CAPABILITY_SUBAGENTS, CAPABILITY_WORKFLOWS, GgAgentConfig,
-    GgCapabilitySet, MEMORY_PARAM_SCOPE,
+    CAPABILITY_MEMORIES, CAPABILITY_SUBAGENTS, GgAgentConfig, GgCapabilitySet, MEMORY_PARAM_SCOPE,
 };
 
 use super::{LoggedRevision, MemoryCaps, MemoryChange, MemoryScope, MemoryStore, MemoryStrategy};
@@ -141,10 +140,7 @@ pub fn run_inherits_memories(set: &GgCapabilitySet) -> bool {
 /// The delegation check is what keeps the warning off an agent that has no way of producing the
 /// child that would inherit from it.
 pub fn links(profile: &GgAgentConfig, scope: MemoryScope, ctx: &ModuleResolveCtx<'_>) -> bool {
-    scope.may_link()
-        || (ctx.inheritable
-            && (profile.is_enabled(CAPABILITY_SUBAGENTS)
-                || profile.is_enabled(CAPABILITY_WORKFLOWS)))
+    scope.may_link() || (ctx.inheritable && profile.is_enabled(CAPABILITY_SUBAGENTS))
 }
 
 /// The scopes, as a prose list — the vocabulary every scope diagnostic offers back.

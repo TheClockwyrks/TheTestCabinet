@@ -392,12 +392,6 @@
       },
       "type": "array"
     },
-    "speculations": {
-      "description": "How many [speculative execution](GgTelemetryKind::Speculation) best-of-K rounds the run ran\n— one per [`FannedOut`](GgSpeculationPhase::FannedOut) phase. `0` when the capability was\noff.",
-      "format": "uint64",
-      "minimum": 0,
-      "type": "integer"
-    },
     "subagentCount": {
       "description": "The number of **subagents** the run spawned — [`agents_spawned`](Self::agents_spawned)\nminus the root. `0` for a single-agent run. Recorded alongside the total so a query need\nnot subtract.",
       "format": "uint64",
@@ -420,7 +414,6 @@
     "issueReviews",
     "reviewCycles",
     "issuesReopened",
-    "speculations",
     "codeExecutions",
     "issuesCreated",
     "issuesCompleted"

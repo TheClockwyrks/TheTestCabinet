@@ -32,7 +32,7 @@
 use super::test_cabinet::gg::session::Host as SessionHost;
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
-use crate::completion::{APPROVE_TOOL, FINISH_TOOL, REQUEST_CHANGES_TOOL, SELECT_WINNER_TOOL};
+use crate::completion::{APPROVE_TOOL, FINISH_TOOL, REQUEST_CHANGES_TOOL};
 use crate::ending::Ending;
 
 impl<A: ToolApi> SessionHost for MembraneState<A> {
@@ -52,16 +52,6 @@ impl<A: ToolApi> SessionHost for MembraneState<A> {
     /// that has to fix the work, and an empty one would give it nothing to do.
     fn request_changes(&mut self, items: Vec<String>) -> Result<(), ToolError> {
         self.declare(Ending::changes_requested(items), REQUEST_CHANGES_TOOL)
-    }
-
-    /// Declare which attempt won. The range is the host's to know — the guest was never told how
-    /// many attempts there are — so it is checked here.
-    fn select_winner(&mut self, attempt: u32, rationale: String) -> Result<(), ToolError> {
-        let attempts = self.judged_attempts();
-        self.declare(
-            Ending::winner(attempt, rationale, attempts),
-            SELECT_WINNER_TOOL,
-        )
     }
 }
 

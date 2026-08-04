@@ -16,7 +16,7 @@ use crate::client::{
     ClientFactory, DEFAULT_MOCK_MEMORY, DEFAULT_MOCK_SKILL, DEFAULT_MOCK_TASK_MOVEMENT,
     DEFAULT_MOCK_TASK_SCAFFOLD, MOCK_CODE_LEVEL_FILES, MOCK_ISSUE_REVIEW_PREFIX, MOCK_MEMORY_CHILD,
     MOCK_MEMORY_PARENT, MOCK_REVIEW_FIX_FILE, MOCK_REVIEW_FIX_SENTINEL, MOCK_REVIEW_WORKER_FILE,
-    MOCK_SPECULATE_ATTEMPT_PREFIX, MOCK_SUBAGENT_FILE, MOCK_SUBAGENT_RETURN,
+    MOCK_SUBAGENT_FILE, MOCK_SUBAGENT_RETURN,
 };
 use crate::compaction::{CompactionSetup, CompactionStrategy};
 use crate::config::GgInvocation;
@@ -34,12 +34,11 @@ use test_cabinet_core::gg::{
     ALL_SUBAGENT_SCOPES, CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION,
     CAPABILITY_CONTEXT_WINDOW_OVERRIDE, CAPABILITY_FSM, CAPABILITY_MEMORIES,
     CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_READ_FILE, CAPABILITY_REPLAY,
-    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SPECULATIVE,
-    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS, FSM_PARAM_STATES, GgAgentConfig,
-    GgAgentStatus, GgCapabilityConfig, GgCapabilitySet, GgContextAction, GgContextSource,
+    CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS, CAPABILITY_SUBAGENTS,
+    CAPABILITY_TASKS, FSM_PARAM_STATES, GgAgentConfig, GgAgentStatus, GgCapabilityConfig,
+    GgCapabilitySet, GgContextAction, GgContextSource, GgHook, GgHookAction, GgHookEvent,
     GgIssueReviewPhase, GgIssueStatus, GgProgramLanguage, GgPromptCacheTtl, GgSessionSummary,
-    GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind,
-    GgWorkflowPhase, ROOT_AGENT,
+    GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind, ROOT_AGENT,
 };
 use test_cabinet_core::gg_replay::{
     GG_REPLAY_BLOB_REF_KEY, GgClientRole, GgReplayAgent, GgReplayAgentOrigin, GgReplayEntry,
@@ -170,10 +169,36 @@ fn no_code() -> CodeSetup {
     }
 }
 
-/// The default [`CompletionSetup`] — a plain-text signal and no validation, the historical
-/// tool-calling completion rule every `drive` test in this file runs under unless it says otherwise.
-fn no_completion() -> CompletionSetup {
-    CompletionSetup::resolve(&GgAgentConfig::root())
+/// A run with **no hooks** — what almost every test drives, since a hook is an operator's addition
+/// and the loop's behavior without one is the control every other case is read against.
+fn no_hooks() -> HooksSetup {
+    HooksSetup {
+        runtime: Arc::new(HookRuntime::default()),
+        agent: HookAgent::new(ROOT_AGENT_ID, ROOT_AGENT),
+    }
+}
+
+/// A run whose only hook runs `command` when an agent tries to end its session — the
+/// [agent-stop](GgHookEvent::AgentStop) gate the `completion` capability's validation commands
+/// became.
+fn stop_hook(command: &str) -> HooksSetup {
+    let set = GgCapabilitySet {
+        hooks: vec![GgHook {
+            event: GgHookEvent::AgentStop,
+            action: GgHookAction::Command {
+                command: command.to_string(),
+                cwd: None,
+                timeout_secs: None,
+                output: None,
+            },
+            name: "the gate".to_string(),
+        }],
+        ..GgCapabilitySet::minimal("mock/x")
+    };
+    HooksSetup {
+        runtime: Arc::new(HookRuntime::resolve(&set, Path::new(".")).unwrap()),
+        agent: HookAgent::new(ROOT_AGENT_ID, ROOT_AGENT),
+    }
 }
 
 /// A newtype letting a [`ScriptedFactory`] hand out clones of **one** shared [`MockClient`], so a
@@ -251,9 +276,8 @@ async fn drive_root(
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code,
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -988,9 +1012,8 @@ async fn drive_exhausts_the_turn_ceiling_when_the_model_never_stops() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -1048,9 +1071,8 @@ async fn drive_times_out_at_a_passed_deadline() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -1109,9 +1131,8 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -1143,20 +1164,6 @@ async fn drive_ends_model_error_loudly_on_a_fatal_turn() {
 // `agent.sandbox.test.rs`.
 // ---------------------------------------------------------------------------------------------
 
-/// Resolve a [`CompletionSetup`] from a Root profile carrying an enabled `completion` capability
-/// with the given `validation` params.
-fn completion_setup(params: serde_json::Value) -> CompletionSetup {
-    use test_cabinet_core::gg::{CAPABILITY_COMPLETION, GgCapabilityConfig};
-    let mut profile = GgAgentConfig::root();
-    profile.capabilities.push(GgCapabilityConfig {
-        id: CAPABILITY_COMPLETION.to_string(),
-        enabled: true,
-        implementation: None,
-        params,
-    });
-    CompletionSetup::resolve(&profile)
-}
-
 /// A model turn that calls one of the [ending](EndingRole) tools with `arguments`.
 fn ending_call(id: &str, name: &str, arguments: serde_json::Value) -> ModelResponse {
     ModelResponse {
@@ -1182,13 +1189,13 @@ fn finish_call(id: &str, summary: &str) -> ModelResponse {
 /// validated ending or a role that ends with something other than `finish`. The profile stays a bare
 /// Root — how an agent ends is its dispatched role's business, never its profile's.
 #[allow(clippy::too_many_arguments)]
-async fn drive_completion(
+async fn drive_hooked(
     client: &dyn ModelClient,
     dir: &Path,
     registry: &ToolRegistry,
     emitter: &Emitter,
     limits: LimitsSetup,
-    completion: CompletionSetup,
+    hooks: HooksSetup,
     ending_role: EndingRole,
 ) -> LoopEnd {
     let ctx = ToolContext::new(dir);
@@ -1212,9 +1219,8 @@ async fn drive_completion(
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion,
+                hooks,
                 ending_role,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -1242,13 +1248,13 @@ async fn a_session_ends_on_an_ending_call_and_not_on_text() {
         "mock/x",
         vec![text_only_response(), finish_call("f1", "all done")],
     );
-    let end = drive_completion(
+    let end = drive_hooked(
         &client,
         dir.path(),
         &registry,
         &emitter,
         no_limits(5),
-        CompletionSetup::default(),
+        no_hooks(),
         EndingRole::Standard,
     )
     .await;
@@ -1282,13 +1288,13 @@ async fn repeated_text_only_replies_trip_the_error_ceiling() {
             text_only_response(),
         ],
     );
-    let end = drive_completion(
+    let end = drive_hooked(
         &client,
         dir.path(),
         &registry,
         &emitter,
         limits,
-        CompletionSetup::default(),
+        no_hooks(),
         EndingRole::Standard,
     )
     .await;
@@ -1314,13 +1320,13 @@ async fn a_reviewer_ends_with_a_verdict_and_has_no_finish() {
     let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
 
     let client = MockClient::new("mock/x", vec![ending_call("a1", "approve", json!({}))]);
-    let end = drive_completion(
+    let end = drive_hooked(
         &client,
         dir.path(),
         &registry,
         &emitter,
         no_limits(5),
-        CompletionSetup::default(),
+        no_hooks(),
         EndingRole::Review,
     )
     .await;
@@ -1360,13 +1366,13 @@ async fn a_reviewer_cannot_request_changes_without_naming_any() {
             ),
         ],
     );
-    let end = drive_completion(
+    let end = drive_hooked(
         &client,
         dir.path(),
         &registry,
         &emitter,
         no_limits(5),
-        CompletionSetup::default(),
+        no_hooks(),
         EndingRole::Review,
     )
     .await;
@@ -1380,77 +1386,22 @@ async fn a_reviewer_cannot_request_changes_without_naming_any() {
     );
 }
 
-/// A judge is offered only `select_winner`, and a pick outside the range it was shown is refused
-/// rather than clamped into a merge of some other attempt.
+/// An ending whose [agent-stop](GgHookEvent::AgentStop) hook passes ends the session — the
+/// unchanged control the blocking case below is read against.
 #[tokio::test]
-async fn a_judge_must_pick_one_of_the_attempts_it_was_shown() {
-    let dir = TempDir::new().unwrap();
-    let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
-    let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
-
-    let client = MockClient::new(
-        "mock/x",
-        vec![
-            ending_call(
-                "j1",
-                "select_winner",
-                json!({ "attempt": 7, "rationale": "it is the best" }),
-            ),
-            ending_call(
-                "j2",
-                "select_winner",
-                json!({ "attempt": 2, "rationale": "it handles the empty case" }),
-            ),
-        ],
-    );
-    let end = drive_completion(
-        &client,
-        dir.path(),
-        &registry,
-        &emitter,
-        no_limits(5),
-        CompletionSetup::default(),
-        EndingRole::Judge { attempts: 3 },
-    )
-    .await;
-
-    assert_eq!(
-        end.turns, 2,
-        "the out-of-range pick did not end the session"
-    );
-    assert_eq!(
-        end.ending,
-        Some(Ending::Winner {
-            attempt: 2,
-            rationale: "it handles the empty case".to_string(),
-        })
-    );
-    let offered = client.last_tool_names();
-    assert_eq!(
-        offered
-            .iter()
-            .filter(|name| ["finish", "approve", "request_changes"].contains(&name.as_str()))
-            .count(),
-        0,
-        "a judge is offered no ending but its own: {offered:?}",
-    );
-}
-
-/// An ending whose validation commands all pass ends the session.
-#[tokio::test]
-async fn an_ending_passes_validation() {
+async fn an_ending_passes_its_stop_hook() {
     let dir = TempDir::new().unwrap();
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
     let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
 
     let client = MockClient::new("mock/x", vec![finish_call("f1", "all done")]);
-    let end = drive_completion(
+    let end = drive_hooked(
         &client,
         dir.path(),
         &registry,
         &emitter,
         no_limits(5),
-        completion_setup(json!({ "validation": ["true"] })),
+        stop_hook("true"),
         EndingRole::Standard,
     )
     .await;
@@ -1459,10 +1410,13 @@ async fn an_ending_passes_validation() {
     assert_eq!(end.turns, 1);
 }
 
-/// An ending whose validation fails does NOT end the session: the failure is fed back and the run
-/// continues, so a run that can never satisfy validation stops on its turn ceiling instead.
+/// An ending a hook blocks does NOT end the session: the refusal is fed back and the run continues,
+/// so a run that can never satisfy the gate stops on its turn ceiling instead.
+///
+/// This is the one property of the old `completion` capability worth keeping, asserted through its
+/// replacement.
 #[tokio::test]
-async fn an_ending_is_blocked_by_failing_validation() {
+async fn an_ending_is_blocked_by_a_failing_stop_hook() {
     let dir = TempDir::new().unwrap();
     let registry = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/x").root());
     let emitter = Emitter::with_sink(None, Box::new(CollectingSink::new()));
@@ -1471,20 +1425,20 @@ async fn an_ending_is_blocked_by_failing_validation() {
         "mock/x",
         vec![finish_call("f1", "all done"), finish_call("f2", "all done")],
     );
-    let end = drive_completion(
+    let end = drive_hooked(
         &client,
         dir.path(),
         &registry,
         &emitter,
         no_limits(2),
-        completion_setup(json!({ "validation": ["false"] })),
+        stop_hook("false"),
         EndingRole::Standard,
     )
     .await;
 
     assert_eq!(
         end.status, "exhausted",
-        "failing validation never lets the session end"
+        "a blocking stop hook never lets the session end"
     );
     assert_eq!(end.turns, 2);
     assert_eq!(
@@ -1528,9 +1482,8 @@ async fn drive_ends_model_error_on_exhausted_retries() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -1586,9 +1539,8 @@ async fn drive_ends_auth_error_when_the_credential_is_refused() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -2211,7 +2163,6 @@ impl DisabledRuntimes {
             read_policy: ReadPolicy::default(),
             shell_offload: &self.shell_offload,
             vision: &self.vision,
-            speculative: false,
             program_language: None,
             program_library: false,
             autoload_specs: None,
@@ -2706,9 +2657,8 @@ async fn drive_pins_a_read_skill_once_across_repeat_reads() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -2905,9 +2855,8 @@ async fn drive_enforces_memory_caps_end_to_end() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -3077,9 +3026,8 @@ async fn drive_pins_only_the_index_under_the_markdown_strategy() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -3167,9 +3115,8 @@ async fn the_memory_block_costs_nothing_until_the_boundary() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -3370,9 +3317,8 @@ async fn drive_builds_a_dag_and_rejects_a_cycle_end_to_end() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -3503,9 +3449,8 @@ async fn drive_always_carries_the_task_list_in_the_window() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -3815,9 +3760,8 @@ async fn drive_compacts_at_the_threshold_and_retains_pinned_state() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -3985,9 +3929,8 @@ async fn drive_never_compacts_when_capability_off() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -4079,9 +4022,8 @@ async fn board_band_driving(profile: &GgAgentConfig, board: BoardRuntime) -> u64
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -4287,9 +4229,8 @@ async fn drive_manages_context_end_to_end() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -4484,9 +4425,8 @@ async fn drive_without_amc_offers_no_context_management() {
                 persistence: no_persistence(),
                 read_policy: ReadPolicy::default(),
                 shell_offload: OffloadPolicy::default(),
-                speculative: false,
                 code: no_code(),
-                completion: no_completion(),
+                hooks: no_hooks(),
                 ending_role: EndingRole::Standard,
                 opening: Opening::Fresh,
                 turn_base: 0,
@@ -5977,343 +5917,6 @@ async fn send_message_refuses_unknown_and_finished_targets() {
 // ---------------------------------------------------------------------------
 // Phase 4d: declared workflows — fan-out + sequencing over the same scheduler
 // ---------------------------------------------------------------------------
-
-/// [`subagent_set`], plus the (opt-in) workflows capability enabled — a declared-workflow run.
-fn workflow_set(max_parallel: u64, max_depth: u64, extra_slots: &[&str]) -> GgCapabilitySet {
-    let mut set = subagent_set(max_parallel, max_depth, extra_slots);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS));
-    set
-}
-
-/// A `worker`-slot client producer whose n-th client (minted in dispatch order) writes `part-N.txt`
-/// and returns the distinctive value `part N built` — so a fan-out over N items leaves N distinct
-/// files and N distinct return values, and a later stage's `{{prior}}` brief can be checked to
-/// contain them (the sequencing proof). The counter increments when the factory mints the client,
-/// which happens synchronously in dispatch order, so `N` is deterministic per dispatched agent
-/// regardless of when the agents actually run.
-fn counting_worker() -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static {
-    let counter = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    move |_b: &GgSlotBinding| {
-        let n = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let write = ModelResponse {
-            text: Some(format!("building part {n}")),
-            tool_calls: vec![ToolCall {
-                id: format!("call_part_{n}"),
-                name: "write_file".to_string(),
-                arguments: json!({
-                    "path": format!("part-{n}.txt"),
-                    "contents": format!("component {n}\n"),
-                }),
-            }],
-            finish_reason: FinishReason::ToolCalls,
-            usage: TokenCounts::default(),
-            cost: None,
-            loop_aborts: 0,
-        };
-        let finish = finish_call("call_part_done", &format!("part {n} built"));
-        Box::new(MockClient::new("mock/worker", vec![write, finish]))
-    }
-}
-
-/// Every `WorkflowStage` in the stream, as `(workflowId, stage, stageIndex, itemCount, phase)`.
-type StageEvent = (String, String, u64, u64, GgWorkflowPhase);
-fn workflow_stages(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<StageEvent> {
-    events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::WorkflowStage {
-                workflow_id,
-                stage,
-                stage_index,
-                item_count,
-                phase,
-            } => Some((
-                workflow_id.clone(),
-                stage.clone(),
-                *stage_index,
-                *item_count,
-                *phase,
-            )),
-            _ => None,
-        })
-        .collect()
-}
-
-/// The `run_workflow` tool is only offered when the workflows capability is on — the ablation off
-/// arm. It is gated independently of subagents (a run may declare workflows without ad-hoc spawn).
-#[test]
-fn run_workflow_tool_is_gated_on_the_workflows_capability() {
-    // Off (minimal has no workflows): not offered.
-    let off = ToolRegistry::from_capabilities(GgCapabilitySet::minimal("mock/echo").root());
-    assert!(
-        !off.definitions().iter().any(|d| d.name == "run_workflow"),
-        "run_workflow must not be offered when workflows is off"
-    );
-
-    // On (with an agent it may run stages as): offered — even without the subagents capability,
-    // since workflows carries its own runtime.
-    let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS));
-    set.agents[0].subagents.push(GgSubagentRef {
-        agent: ROOT_AGENT.to_string(),
-        description: String::new(),
-        scopes: ALL_SUBAGENT_SCOPES.to_vec(),
-    });
-    let on = ToolRegistry::from_capabilities(set.root());
-    assert!(
-        on.definitions().iter().any(|d| d.name == "run_workflow"),
-        "run_workflow must be offered when workflows is on"
-    );
-}
-
-/// The headline declared-workflow e2e: a two-stage workflow fans a subagent out over two items in
-/// stage one, then **sequences** their results into a single consolidating subagent in stage two —
-/// all driven over the same subagent scheduler. Proves fan-out (three depth-1 agents ran and left
-/// three distinct files), sequencing (the stage-two brief carries stage one's two results), the
-/// stage-boundary telemetry, and the final results returned to the caller.
-#[tokio::test]
-async fn run_workflow_fans_out_then_sequences_and_returns_final_results() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-wf".to_string()), Box::new(sink.clone()));
-    // Cap of 2 so stage one's two subagents genuinely run in parallel under the global cap.
-    let inv = invocation(dir.path(), workflow_set(2, 3, &["worker"]));
-    let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
-            Box::new(MockClient::with_workflow_parent_script(&b.model_id))
-        })
-        .slot("worker", counting_worker());
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    let events = sink.events();
-
-    // Fan-out + sequencing left three distinct files: two from stage one, one from stage two.
-    for n in 0..3 {
-        assert!(
-            dir.path().join(format!("part-{n}.txt")).exists(),
-            "each workflow subagent (fan-out + the sequencing stage) ran and wrote its file"
-        );
-    }
-
-    // Four agents spawned: the root plus three workflow subagents, all at depth 1 under the root.
-    let spawns = agent_spawns(&events);
-    assert_eq!(spawns.len(), 4, "the root and three workflow subagents");
-    let depth_one: Vec<&Spawn> = spawns.iter().filter(|(_, _, _, d, _)| *d == 1).collect();
-    assert_eq!(depth_one.len(), 3, "three fanned-out subagents at depth 1");
-    assert!(
-        depth_one
-            .iter()
-            .all(
-                |(_, parent, slot, _, brief)| parent.as_deref() == Some(ROOT_AGENT_ID)
-                    && slot == "worker"
-                    && brief.is_some()
-            ),
-        "every workflow subagent is a depth-1 child of the root on the worker slot with a brief"
-    );
-
-    // Sequencing: the stage-two ("assemble") subagent's brief carries both stage-one results, so
-    // stage A's results fed stage B.
-    let assemble_brief = depth_one
-        .iter()
-        .find_map(|(_, _, _, _, brief)| {
-            brief
-                .clone()
-                .filter(|b| b.contains("Assemble the finished components"))
-        })
-        .expect("the sequencing (assemble) subagent was dispatched");
-    assert!(
-        assemble_brief.contains("part 0 built") && assemble_brief.contains("part 1 built"),
-        "the sequencing stage's brief threads stage one's results in (got: {assemble_brief:?})"
-    );
-
-    // Stage-boundary telemetry: each stage emits a Started and a Finished under one workflow id, in
-    // order, with the right names and fan-out counts.
-    let stages = workflow_stages(&events);
-    assert_eq!(stages.len(), 4, "two stages, each a Started and a Finished");
-    let workflow_id = &stages[0].0;
-    assert!(
-        stages.iter().all(|(id, ..)| id == workflow_id),
-        "all stage events share one workflow id"
-    );
-    assert_eq!(
-        stages[0],
-        (
-            workflow_id.clone(),
-            "generate".to_string(),
-            0,
-            2,
-            GgWorkflowPhase::Started
-        )
-    );
-    assert_eq!(
-        stages[1],
-        (
-            workflow_id.clone(),
-            "generate".to_string(),
-            0,
-            2,
-            GgWorkflowPhase::Finished
-        )
-    );
-    assert_eq!(
-        stages[2],
-        (
-            workflow_id.clone(),
-            "assemble".to_string(),
-            1,
-            1,
-            GgWorkflowPhase::Started
-        )
-    );
-    assert_eq!(
-        stages[3],
-        (
-            workflow_id.clone(),
-            "assemble".to_string(),
-            1,
-            1,
-            GgWorkflowPhase::Finished
-        )
-    );
-    // The stage events all ride on the invoking (root) agent's stream.
-    assert!(
-        events
-            .iter()
-            .all(|e| !matches!(e.kind, GgTelemetryKind::WorkflowStage { .. })
-                || e.agent_id.as_deref() == Some(ROOT_AGENT_ID)),
-        "workflow stage events are attributed to the agent that ran the workflow"
-    );
-
-    // Ordering: stage one starts before its subagents spawn, and stage one finishes before stage
-    // two starts (sequencing).
-    let generate_started = events
-        .iter()
-        .position(|e| matches!(&e.kind, GgTelemetryKind::WorkflowStage { stage, phase: GgWorkflowPhase::Started, .. } if stage == "generate"))
-        .unwrap();
-    let first_child_spawn = events
-        .iter()
-        .position(|e| {
-            e.agent_id.as_deref() == Some("agent-0")
-                && matches!(e.kind, GgTelemetryKind::AgentSpawned { .. })
-        })
-        .unwrap();
-    let generate_finished = events
-        .iter()
-        .position(|e| matches!(&e.kind, GgTelemetryKind::WorkflowStage { stage, phase: GgWorkflowPhase::Finished, .. } if stage == "generate"))
-        .unwrap();
-    let assemble_started = events
-        .iter()
-        .position(|e| matches!(&e.kind, GgTelemetryKind::WorkflowStage { stage, phase: GgWorkflowPhase::Started, .. } if stage == "assemble"))
-        .unwrap();
-    assert!(
-        generate_started < first_child_spawn,
-        "stage starts before its fan-out"
-    );
-    assert!(
-        generate_finished < assemble_started,
-        "stage one finishes before stage two begins"
-    );
-
-    // The workflow returned the final stage's result to the caller (a successful run_workflow whose
-    // output names the consolidating subagent's return value).
-    let workflow_result = events
-        .iter()
-        .find_map(|e| match &e.kind {
-            GgTelemetryKind::ToolResult { name, ok, summary } if name == "run_workflow" => {
-                Some((*ok, summary.clone()))
-            }
-            _ => None,
-        })
-        .expect("run_workflow returned a result");
-    assert!(workflow_result.0, "the workflow completed successfully");
-
-    // Per-slot accounting spans both models (primary parent + worker subagents).
-    let slots: Vec<String> = events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::SlotUsage { slot, .. } => Some(slot.clone()),
-            _ => None,
-        })
-        .collect();
-    assert!(slots.iter().any(|s| s == ROOT_AGENT));
-    assert!(slots.iter().any(|s| s == "worker"));
-
-    assert!(matches!(
-        &events.last().unwrap().kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
-    ));
-}
-
-/// A workflow reuses the **same** global scheduler cap — it gets no separate pool. Under a global
-/// cap of **1**, the two stage-one subagents cannot run while the root holds the only slot; the
-/// workflow completes only because the root frees its slot when it waits on each stage (exactly like
-/// `wait_for_subagents`). A passing run proves both the cap reuse and the blocked-frees-slot rule.
-#[tokio::test]
-async fn workflow_reuses_the_global_cap_and_completes_under_cap_one() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-wf1".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), workflow_set(1, 3, &["worker"]));
-    let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
-            Box::new(MockClient::with_workflow_parent_script(&b.model_id))
-        })
-        .slot("worker", counting_worker());
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    let events = sink.events();
-
-    // The whole workflow still ran to completion under cap=1 (all three subagents' files exist).
-    for n in 0..3 {
-        assert!(
-            dir.path().join(format!("part-{n}.txt")).exists(),
-            "under cap=1 every workflow subagent still ran (the parent freed its slot per stage)"
-        );
-    }
-    // Never more than one agent running at a time: the root blocks (frees its slot) before its
-    // stage-one subagents can spawn.
-    let root_blocked = events
-        .iter()
-        .position(|e| {
-            e.agent_id.as_deref() == Some(ROOT_AGENT_ID)
-                && matches!(
-                    e.kind,
-                    GgTelemetryKind::AgentStatus {
-                        status: GgAgentStatus::Blocked,
-                        ..
-                    }
-                )
-        })
-        .expect("the root blocked while waiting on a stage");
-    let first_child_spawn = events
-        .iter()
-        .position(|e| {
-            e.agent_id.as_deref() == Some("agent-0")
-                && matches!(e.kind, GgTelemetryKind::AgentSpawned { .. })
-        })
-        .expect("the first stage subagent spawned");
-    assert!(
-        root_blocked < first_child_spawn,
-        "under cap=1 a workflow subagent starts only after the root frees its slot by blocking"
-    );
-
-    assert!(matches!(
-        &events.last().unwrap().kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
-    ));
-}
 
 // ---------------------------------------------------------------------------
 // Issue reviews: reviewers gate acceptance, and the worktree merges on approval
@@ -7922,9 +7525,8 @@ async fn run_emits_a_session_summary_immediately_before_session_ended() {
         summary.final_fullness.is_some(),
         "a fullness was reported by the default context visibility"
     );
-    // No board, reviews, or speculation in a minimal run.
+    // No board or reviews in a minimal run.
     assert_eq!(summary.issue_reviews, 0);
-    assert_eq!(summary.speculations, 0);
     assert_eq!(summary.issues_created, 0);
     assert_eq!(summary.issues_completed, 0);
     // The per-slot rollup matches the SlotUsage the run streamed (one `primary` slot).
@@ -8062,7 +7664,6 @@ async fn session_summary_counts_match_an_issue_review_run_stream() {
     );
 
     // No speculation in this run.
-    assert_eq!(summary.speculations, 0);
 
     // Per-slot rollup matches the SlotUsage rollups the run streamed.
     let slot_keys = slot_usage_keys(&events);
@@ -8083,379 +7684,6 @@ async fn session_summary_counts_match_an_issue_review_run_stream() {
 // ---------------------------------------------------------------------------
 // Phase 5c: speculative execution — best-of-K over isolated worktrees + a judge
 // ---------------------------------------------------------------------------
-
-/// [`subagent_set`] (subagents + multi-model), plus the speculative-execution capability — a
-/// best-of-K run. Every attempt runs in its own worktree, which the capability sets up itself.
-fn speculative_set(extra_slots: &[&str]) -> GgCapabilitySet {
-    let mut set = subagent_set(4, 3, extra_slots);
-    // The judge runs under a dedicated `judge` agent (these e2es script it separately); the
-    // attempts run under the `attempt` agent named in the `speculate` call.
-    set.agents[0].capabilities.push(GgCapabilityConfig {
-        params: json!({ "judgeAgent": "judge" }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE)
-    });
-    set
-}
-
-/// Every `Speculation` event in the stream, as `(agentId, attempts, phase, winner, rationale)`.
-type Speculation = (
-    Option<String>,
-    u64,
-    GgSpeculationPhase,
-    Option<String>,
-    Option<String>,
-);
-fn speculations(events: &[test_cabinet_core::gg::GgTelemetryEvent]) -> Vec<Speculation> {
-    events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::Speculation {
-                attempts,
-                phase,
-                winner,
-                rationale,
-            } => Some((
-                e.agent_id.clone(),
-                *attempts,
-                *phase,
-                winner.clone(),
-                rationale.clone(),
-            )),
-            _ => None,
-        })
-        .collect()
-}
-
-/// An `attempt`-slot producer whose Nth dispatch writes `attempt-N.txt` then finishes — so each
-/// parallel attempt leaves a distinct, countable trace in its own worktree and the judge's diff of
-/// each has real content.
-fn speculation_attempt_producer(
-    counter: Arc<AtomicUsize>,
-) -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static {
-    move |b| {
-        let n = counter.fetch_add(1, Ordering::SeqCst);
-        Box::new(MockClient::new(
-            &b.model_id,
-            vec![
-                tool_call_response(
-                    "write",
-                    "write_file",
-                    json!({ "path": format!("attempt-{n}.txt"), "contents": format!("attempt {n}\n") }),
-                ),
-                finish_call("call_attempt_done", &format!("Attempt {n} complete.")),
-            ],
-        ))
-    }
-}
-
-/// A `judge`-slot producer that picks the given 1-based candidate as the winner.
-fn judge_producer(
-    winner: usize,
-) -> impl Fn(&GgSlotBinding) -> Box<dyn ModelClient> + Send + Sync + 'static {
-    move |b| {
-        Box::new(MockClient::new(
-            &b.model_id,
-            vec![ending_call(
-                "verdict",
-                "select_winner",
-                json!({ "attempt": winner, "rationale": "it is the most complete" }),
-            )],
-        ))
-    }
-}
-
-/// The headline best-of-K proof: `speculate` fans out K attempts, EACH IN ITS OWN WORKTREE (so they
-/// cannot collide), a judge picks a winner against the task, and ONLY the winner's changes are merged
-/// back into the main tree — the losers are discarded. The full `fan-out → judge → merge` lifecycle
-/// streams as `Speculation` telemetry, and the K attempts + the judge appear in the agent tree.
-#[tokio::test]
-async fn speculate_runs_best_of_k_over_worktrees_and_merges_only_the_winner() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-spec".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), speculative_set(&["attempt", "judge"]));
-
-    // The root speculates: two attempts on the `attempt` slot, then stops.
-    let attempt_counter = Arc::new(AtomicUsize::new(0));
-    let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
-            Box::new(MockClient::new(
-                &b.model_id,
-                vec![
-                    tool_call_response(
-                        "spec",
-                        "speculate",
-                        json!({
-                            "prompt": "Implement the widget as well as you can.",
-                            "attempts": 2,
-                            "agent": "attempt",
-                        }),
-                    ),
-                    stop_response(),
-                ],
-            ))
-        })
-        .slot("attempt", speculation_attempt_producer(Arc::clone(&attempt_counter)))
-        // The judge picks the 2nd candidate — so the winner is the second attempt (agent-1), which
-        // wrote attempt-1.txt.
-        .slot("judge", judge_producer(2));
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    let events = sink.events();
-
-    // Speculation made the workspace a git repo (the baseline its attempts branch from).
-    assert!(
-        dir.path().join(".git").exists(),
-        "best-of-K commits a baseline and runs each attempt in a worktree"
-    );
-
-    // Two attempts, each in its OWN isolated worktree (a distinct branch), plus one judge — all
-    // subagents at depth 1.
-    let spawns = agent_spawns(&events);
-    let attempt_branches: Vec<Option<String>> = events
-        .iter()
-        .filter_map(|e| match &e.kind {
-            GgTelemetryKind::AgentSpawned {
-                slot,
-                worktree,
-                depth,
-                ..
-            } if slot == "attempt" && *depth == 1 => Some(worktree.clone()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(attempt_branches.len(), 2, "two attempts were fanned out");
-    assert_eq!(
-        attempt_branches,
-        vec![
-            Some("gg/spec-root-0".to_string()),
-            Some("gg/spec-root-1".to_string())
-        ],
-        "each attempt ran in its own isolated worktree branch, named for the speculation"
-    );
-    let judge_spawns: Vec<_> = spawns
-        .iter()
-        .filter(|(_, _, slot, _, _)| slot == "judge")
-        .collect();
-    assert_eq!(judge_spawns.len(), 1, "one judge was dispatched");
-
-    // The judge was given each candidate's own account of what it built (so it judged the real work
-    // against the task).
-    let judge_brief = judge_spawns[0].4.as_deref().unwrap();
-    assert!(
-        judge_brief.contains("Attempt 0 complete.") && judge_brief.contains("Attempt 1 complete."),
-        "the judge sees both attempts' summaries to compare"
-    );
-    assert!(
-        judge_brief.contains("Implement the widget"),
-        "the judge is given the task the attempts were judged against"
-    );
-
-    // The lifecycle: fanned_out → judged(winner) → merged(winner), all on the speculating (root) stream.
-    let specs = speculations(&events);
-    let phases: Vec<GgSpeculationPhase> = specs.iter().map(|(_, _, p, _, _)| *p).collect();
-    assert_eq!(
-        phases,
-        vec![
-            GgSpeculationPhase::FannedOut,
-            GgSpeculationPhase::Judged,
-            GgSpeculationPhase::Merged,
-        ],
-        "a speculation streams fanned_out → judged → merged"
-    );
-    assert!(
-        specs
-            .iter()
-            .all(|(agent, attempts, _, _, _)| agent.as_deref() == Some("root") && *attempts == 2),
-        "every Speculation event names the speculating agent and K=2"
-    );
-    // The winner (the 2nd attempt, agent-1) is named on judged and merged, with a rationale on judged.
-    let (_, _, _, judged_winner, rationale) = specs
-        .iter()
-        .find(|(_, _, p, _, _)| *p == GgSpeculationPhase::Judged)
-        .expect("a judged phase");
-    assert_eq!(
-        judged_winner.as_deref(),
-        Some("agent-1"),
-        "the judge's pick (candidate 2 = the second attempt) is the winner"
-    );
-    assert!(
-        rationale.is_some(),
-        "the judged phase carries the judge's rationale"
-    );
-    let (_, _, _, merged_winner, _) = specs
-        .iter()
-        .find(|(_, _, p, _, _)| *p == GgSpeculationPhase::Merged)
-        .expect("a merged phase");
-    assert_eq!(
-        merged_winner.as_deref(),
-        Some("agent-1"),
-        "the merged winner matches the judged winner"
-    );
-
-    // ONLY the winner's changes are in the main tree: attempt-1.txt (the winner) is present, and
-    // attempt-0.txt (the discarded loser) is not.
-    assert!(
-        dir.path().join("attempt-1.txt").exists(),
-        "the winning attempt's work is merged into the main tree"
-    );
-    assert!(
-        !dir.path().join("attempt-0.txt").exists(),
-        "the losing attempt's work is discarded, not merged"
-    );
-
-    // Every attempt's worktree checkout was torn down (nothing left behind).
-    let root = worktrees_root_for(dir.path());
-    assert!(
-        !root.join("agent-0").exists() && !root.join("agent-1").exists(),
-        "the attempts' worktree checkouts are removed after the speculation"
-    );
-
-    assert!(matches!(
-        &events.last().unwrap().kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
-    ));
-}
-
-/// The `speculate` tool is only offered when the capability is on — the ablation off arm. With it
-/// off, best-of-K is unavailable and the run does ordinary single-attempt work (no fan-out).
-#[test]
-fn speculate_tool_is_gated_on_the_capability() {
-    // Off (subagents on, but not speculative): not offered.
-    let mut off = GgCapabilitySet::minimal("mock/echo");
-    off.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    assert!(
-        !ToolRegistry::from_capabilities(off.root())
-            .definitions()
-            .iter()
-            .any(|d| d.name == "speculate"),
-        "`speculate` must not be offered when speculative-execution is off"
-    );
-
-    // On (with an agent it may run attempts as): offered.
-    let mut on = off.clone();
-    on.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE));
-    on.agents[0].subagents.push(GgSubagentRef {
-        agent: ROOT_AGENT.to_string(),
-        description: String::new(),
-        scopes: ALL_SUBAGENT_SCOPES.to_vec(),
-    });
-    assert!(
-        ToolRegistry::from_capabilities(on.root())
-            .definitions()
-            .iter()
-            .any(|d| d.name == "speculate"),
-        "`speculate` is offered when speculative-execution is on"
-    );
-}
-
-/// Best-of-K driven **offline through the real binary path** (the `DefaultClientFactory` + the
-/// `mock/…` model-id scripts): three attempts each write a distinctly-named file in their own
-/// worktree, the judge picks the first, and only that attempt's file is merged.
-#[tokio::test]
-async fn speculate_offline_e2e_through_the_default_factory() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-spec-offline".to_string()), Box::new(sink.clone()));
-
-    let mut root = GgAgentConfig {
-        model_id: "mock/x-speculate-parent".to_string(),
-        // The `speculate` call names the `attempt` agent, so it must be in the caller's allowlist.
-        subagents: vec![GgSubagentRef {
-            agent: "attempt".to_string(),
-            description: String::new(),
-            scopes: ALL_SUBAGENT_SCOPES.to_vec(),
-        }],
-        ..GgAgentConfig::root()
-    };
-    root.capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
-    // The judge runs under a dedicated `judge` agent (default would be Root).
-    root.capabilities.push(GgCapabilityConfig {
-        params: json!({ "judgeAgent": "judge" }),
-        ..GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE)
-    });
-    let attempt = GgAgentConfig {
-        name: "attempt".to_string(),
-        model_id: "mock/x-speculate-attempt".to_string(),
-        ..GgAgentConfig::root()
-    };
-    let judge = GgAgentConfig {
-        name: "judge".to_string(),
-        model_id: "mock/x-speculate-judge".to_string(),
-        ..GgAgentConfig::root()
-    };
-    let set = GgCapabilitySet {
-        agents: vec![root, attempt, judge],
-        ..GgCapabilitySet::default()
-    };
-    let inv = invocation(dir.path(), set);
-
-    // The real production path: `run` with the DefaultClientFactory, selecting scripts by model id.
-    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
-
-    let events = sink.events();
-
-    // Three attempts (each in its own worktree) plus one judge.
-    let spawns = agent_spawns(&events);
-    assert_eq!(
-        spawns
-            .iter()
-            .filter(|(_, _, slot, _, _)| slot == "attempt")
-            .count(),
-        3,
-        "three attempts were fanned out"
-    );
-    assert_eq!(
-        spawns
-            .iter()
-            .filter(|(_, _, slot, _, _)| slot == "judge")
-            .count(),
-        1,
-        "one judge was dispatched"
-    );
-
-    // The judge picked the first attempt (WINNER 1), whose brief said "attempt 1 of 3" → it wrote
-    // speculate-attempt-1.txt. Only that file is merged; the other two attempts are discarded.
-    assert!(
-        dir.path()
-            .join(format!("{MOCK_SPECULATE_ATTEMPT_PREFIX}1.txt"))
-            .exists(),
-        "the winning attempt's file is merged into the workspace"
-    );
-    for loser in [2, 3] {
-        assert!(
-            !dir.path()
-                .join(format!("{MOCK_SPECULATE_ATTEMPT_PREFIX}{loser}.txt"))
-                .exists(),
-            "the losing attempts' files are discarded"
-        );
-    }
-
-    // The lifecycle completed with a merged winner.
-    let specs = speculations(&events);
-    assert!(
-        specs
-            .iter()
-            .any(|(_, attempts, phase, winner, _)| *attempts == 3
-                && *phase == GgSpeculationPhase::Merged
-                && winner.is_some()),
-        "the offline speculation merged a winner of the three attempts"
-    );
-
-    assert!(matches!(
-        &events.last().unwrap().kind,
-        GgTelemetryKind::SessionEnded { status } if status == "completed"
-    ));
-}
 
 // ---------------------------------------------------------------------------
 // Replay capture (Phase 7a) — recording the non-deterministic inputs

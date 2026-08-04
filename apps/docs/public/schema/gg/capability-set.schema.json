@@ -81,6 +81,143 @@
       "required": ["id", "enabled"],
       "type": "object"
     },
+    "GgHook": {
+      "description": "One **hook**: a command or a script gg runs at a [point](GgHookEvent) in a run's lifecycle,\nable to stop the operation it precedes and to put text in front of the model.\n\nA hook is the operator reaching into a run from outside it, which is exactly what makes it not a\n[capability](GgCapabilityConfig): the model is never told a hook exists, is offered no tool for\nit, and cannot decline one. It is also why hooks are declared once for the whole run\n([`GgCapabilitySet::hooks`]) rather than per profile — \"check every file before it is written\"\nis a property of the run, and repeating it on each profile would be a way to get it wrong.\n\nEvery hook fires on exactly one [event](Self::event) and runs exactly one [action](Self::action).\nSeveral hooks may name the same event; they run **in declaration order**, and the first one to\nblock stops both the operation and the rest of that event's hooks — a later hook's opinion of an\noperation that is not going to happen is not worth the wall clock.",
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/GgHookAction",
+          "description": "What it runs, and how gg reads what came back."
+        },
+        "event": {
+          "$ref": "#/$defs/GgHookEvent",
+          "description": "Which point of the run this hook fires at."
+        },
+        "name": {
+          "description": "An operator's label for this hook, shown wherever gg reports one running or blocking. Empty\nfalls back to a description of the action, so a hook is always nameable in a diagnostic.",
+          "type": "string"
+        }
+      },
+      "required": ["event", "action"],
+      "type": "object"
+    },
+    "GgHookAction": {
+      "description": "What a [hook](GgHook) actually runs — the three kinds, as a tagged union so a hook carries\nexactly the fields its kind needs and no others.\n\nThe split is between a hook that is a **command** and one that is a **script**. A command is the\nsimple case: gg runs a command line, learns nothing but its exit status and its output, and\ntreats a non-zero exit as a block. A script is the expressive case: gg hands it the event as\nJSON and reads a structured [decision](GgHookOutcomeKind) back, so a script can say \"let this\nthrough but tell the model X\" — which an exit code cannot express.\n\n[`BuiltIn`](Self::BuiltIn) and [`Custom`](Self::Custom) are the same execution path and the same\ncontract, differing only in where the source comes from: gg's own catalogue, or the\nconfiguration. That is deliberate — a built-in is meant to be a worked example an operator can\nread, copy into a custom hook, and change.",
+      "oneOf": [
+        {
+          "description": "Run an arbitrary command line, exactly as the [shell tool](CAPABILITY_SHELL) runs one.\n\nIt receives **no input** — not the event payload, not anything on stdin. A command hook is\nfor the check that is already a command (\"does it build?\", \"does it lint?\"), and such a\ncheck reads the workspace rather than being told about it. A hook that needs to know what is\nbeing written wants a [script](Self::Custom).\n\nA **non-zero exit blocks** (on an event that can block), and either way the command's output\nis inserted into the agent's prompt as hook output. The output goes through the agent's own\n[offloading policy](SHELL_OUTPUT_MODES), so a failing test suite that prints a megabyte is\nhandled the way a megabyte of `shell` output is: the tail inline, the whole of it on disk to\ngrep.",
+          "properties": {
+            "command": {
+              "description": "The command line, run through `sh -c`.",
+              "type": "string"
+            },
+            "cwd": {
+              "description": "Where to run it — relative to gg's working directory, or absolute. Absent runs it in the\nagent's workspace root, which for an agent working in an isolated\n[worktree](CAPABILITY_PROJECT_MANAGEMENT) is that worktree.",
+              "type": ["string", "null"]
+            },
+            "output": {
+              "description": "How much of the output comes back inline and what happens to the rest — one of\n[`SHELL_OUTPUT_MODES`]. Absent follows the agent's own `shell` configuration, which is\nalmost always what an operator means.",
+              "type": ["string", "null"]
+            },
+            "timeoutSecs": {
+              "description": "How long it may run before it is killed. Absent uses gg's default, which is generous\nbecause a hook command is typically a build or a test suite.",
+              "format": "double",
+              "type": ["number", "null"]
+            },
+            "type": {
+              "const": "command",
+              "type": "string"
+            }
+          },
+          "required": ["type", "command"],
+          "type": "object"
+        },
+        {
+          "description": "Run one of gg's own hook scripts, by [id](GG_BUILTIN_HOOKS).\n\nSame contract as [`Custom`](Self::Custom) in every respect — the JSON argument, the JSON\ndecision on stdout, the exit-0 requirement — with the source coming from gg instead of the\nconfiguration. An id gg does not ship **fails the launch**, rather than being skipped: a\nhook that silently does not run is a gate an operator believes they have.",
+          "properties": {
+            "script": {
+              "description": "The script's id, one of [`GG_BUILTIN_HOOKS`].",
+              "type": "string"
+            },
+            "type": {
+              "const": "built-in",
+              "type": "string"
+            }
+          },
+          "required": ["type", "script"],
+          "type": "object"
+        },
+        {
+          "description": "Run a script the configuration carries verbatim.\n\ngg writes [`source`](Self::Custom::source) to a file in the run's own directory, makes it\nexecutable, and runs it with the event payload as its **sole argument** — a JSON string, not\na stream, so a script reads its input without a parser for the reading. A leading `#!` line\nchooses the interpreter, and a script without one is run by `sh`.\n\nThe script must exit `0` and print one [decision object](GgHookOutcomeKind) on stdout.\n**A non-zero exit is the script itself failing**, not a block — the distinction matters\nenough to be structural: a gate whose own machinery is broken has not judged anything, so\nletting the operation through would be pretending it passed and blocking it would be\npretending it failed. gg **stops the run**.",
+          "properties": {
+            "source": {
+              "description": "The script's source, run as described above.",
+              "type": "string"
+            },
+            "type": {
+              "const": "custom",
+              "type": "string"
+            }
+          },
+          "required": ["type", "source"],
+          "type": "object"
+        }
+      ]
+    },
+    "GgHookEvent": {
+      "description": "The point of a run's lifecycle a [hook](GgHook) fires at.\n\nTen events in four pairs plus two singles, and the pairing is the whole design: a `pre-` event\nruns **before** its operation and is the only kind that can stop it, while a `post-` event runs\nafter and can only add to what the model is told. An operator reading a configuration can\ntherefore answer \"can this hook block?\" from the event's name alone, without knowing what the\nhook does — which is the property a gate has to have to be trustworthy.\n\nThe two exceptions are named rather than implied, because both are cases where the obvious\nreading is wrong:\n\n- [`PreCompact`](Self::PreCompact) is a `pre-` event that **cannot** block. Compaction happens\n  because the window is full; refusing it would leave the agent with no room to do anything at\n  all, so the only honest thing a hook can do there is observe.\n- [`SessionEnd`](Self::SessionEnd) fires after the root agent is finished, so there is nothing\n  left to block — and, unlike the other `post-` events, no prompt left to insert into either.\n  It is where a run reports on itself.",
+      "oneOf": [
+        {
+          "const": "pre-write",
+          "description": "Before a file write of any kind — `write_file`, `edit_file`, or a program's `fs.writeFile` /\n`fs.editFile`. The payload carries the absolute path and the **contents that would be\nwritten**, so a hook sees the finished file rather than an edit's patch. **Can block**, in\nwhich case nothing touches the disk.",
+          "type": "string"
+        },
+        {
+          "const": "post-write",
+          "description": "After a file write of any kind has updated the file, with the absolute path and the contents\nthat were written. Cannot block — the write already happened — but may insert.",
+          "type": "string"
+        },
+        {
+          "const": "pre-shell",
+          "description": "Before a shell command runs, with the command line about to be executed. **Can block**, in\nwhich case no process is started.",
+          "type": "string"
+        },
+        {
+          "const": "post-shell",
+          "description": "After a shell command has run, with the command line and how it finished. Cannot block; may\ninsert, which is how a run comments on what a command did.",
+          "type": "string"
+        },
+        {
+          "const": "pre-compact",
+          "description": "Before a [compaction](CAPABILITY_COMPACTION) condenses an agent's window. Cannot block (see\nthe type's own note) and cannot insert — the window it would insert into is the one being\nrewritten. It exists to observe, and to let a run save state elsewhere before the thread is\ncondensed.",
+          "type": "string"
+        },
+        {
+          "const": "post-compact",
+          "description": "After a compaction has rewritten an agent's window. Cannot block, but **may insert** — into\nthe rebuilt context, which is the one moment a run can put back something the compaction\ndropped.",
+          "type": "string"
+        },
+        {
+          "const": "agent-start",
+          "description": "When any agent instance starts running, with the [kind](GgHookAgentKind) of agent it is.\nCannot block — an agent that was dispatched is going to run — but may insert into the\nopening context.",
+          "type": "string"
+        },
+        {
+          "const": "agent-stop",
+          "description": "When any agent attempts to end its session, with the [kind](GgHookAgentKind) of agent it is.\n**Can block**, in which case the agent is told why and its session continues. This is the\nevent the old `completion` capability's validation commands became: a command hook here that\nexits non-zero is exactly the ending gate it used to be, and it now applies to a reviewer\nand a subagent as readily as to the root.",
+          "type": "string"
+        },
+        {
+          "const": "session-start",
+          "description": "Before the root agent takes its first turn — once per run, ahead of everything. Cannot\nblock, but **may insert** into the root's opening prompt, which is how a run is seeded with\nsomething gg itself has no way to know.",
+          "type": "string"
+        },
+        {
+          "const": "session-end",
+          "description": "After the root agent has finished — once per run, last. Cannot block and cannot insert;\nthere is no session left to affect.",
+          "type": "string"
+        }
+      ]
+    },
     "GgLoopDetection": {
       "description": "Whether one [agent](GgAgentConfig::loop_detection) has gg watch its replies for a **generation\nloop**, and the knobs of the detector if so.\n\nSome models, on some turns, stop producing a reply and start producing a *period*: the same\nshort fragment (`void 0;`, one line of a table, one call) emitted thousands of times until the\nprovider's output cap stops it. The reply is paid for in full, takes minutes to arrive, is\nuseless as a turn, and — worst — enters the context window, where it makes the next turn more\nlikely to do the same thing.\n\nArming this is what switches that agent's model transport to **streaming**: the detector reads\nthe reply as it arrives and abandons the request the moment the repetition is unmistakable,\nwhich is the only point at which any of the loss above is still avoidable. An agent that leaves\nit off keeps the non-streaming transport byte for byte, so this is an opt-in change of transport\nas much as it is a change of policy — which is exactly why it is off by default.\n\nIt is a **per-agent** (and therefore per-model) lever, like the\n[prompt-cache lifetime](GgPromptCacheTtl): looping is a property of a model, and a run whose\nroot runs on a model that loops has no reason to pay the streaming path for a reviewer that\ndoes not. It is deliberately **not** a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE)\nparam — a tool-calling model loops in exactly the same way, inside a tool call's arguments.\n\nEvery knob is optional and an absent one takes gg's own default (documented per field). A knob\nset to a value that cannot bound anything is a startup **warning** and takes the default, never\nan error, on the same terms as [`GgRunLimits`].\n\nSee the [loop-detection](https://docs.testcabinet.ai/gg/loop-detection/) page for the algorithm\nthese knobs parameterise.",
       "properties": {
@@ -178,7 +315,7 @@
           "type": ["number", "null"]
         },
         "maxParallel": {
-          "description": "How many of the run's agents may **run at once**, counting the root and every subagent,\nissue implementer, reviewer and speculation attempt alike. **Absent means gg's default of\n16**; set it explicitly to widen or tighten the pool, and `0` is read as \"no cap declared\"\n(a run with no agent able to run could not start at all).\n\nUnlike every other field here it **stops nothing** — it *queues*. An agent spawned while the\npool is full is created normally and waits for a slot, so a configuration cannot lose work by\nsetting this low, only serialize it. An agent that **suspends** itself (blocking on its\nsubagents or on an [issue](CAPABILITY_PROJECT_MANAGEMENT)) frees its slot while it waits and\ndoes not count against the cap, and takes priority over any not-yet-started agent when a slot\nfrees — a suspended agent is holding work that is already half-done, and starting a new agent\nahead of it is how a fleet fills its pool with agents that are all waiting on each other.\n\nIt is run-level rather than per-agent because it bounds the *run's* concurrency: a cap each\nprofile declared for itself would not add up to a number the operator could reason about. The\none per-agent exception is [agent-persistence](CAPABILITY_AGENT_PERSISTENCE), which caps a\nsingle profile at one instance *within* this pool.",
+          "description": "How many of the run's agents may **run at once**, counting the root and every subagent,\nissue implementer and reviewer alike. **Absent means gg's default of\n16**; set it explicitly to widen or tighten the pool, and `0` is read as \"no cap declared\"\n(a run with no agent able to run could not start at all).\n\nUnlike every other field here it **stops nothing** — it *queues*. An agent spawned while the\npool is full is created normally and waits for a slot, so a configuration cannot lose work by\nsetting this low, only serialize it. An agent that **suspends** itself (blocking on its\nsubagents or on an [issue](CAPABILITY_PROJECT_MANAGEMENT)) frees its slot while it waits and\ndoes not count against the cap, and takes priority over any not-yet-started agent when a slot\nfrees — a suspended agent is holding work that is already half-done, and starting a new agent\nahead of it is how a fleet fills its pool with agents that are all waiting on each other.\n\nIt is run-level rather than per-agent because it bounds the *run's* concurrency: a cap each\nprofile declared for itself would not add up to a number the operator could reason about. The\none per-agent exception is [agent-persistence](CAPABILITY_AGENT_PERSISTENCE), which caps a\nsingle profile at one instance *within* this pool.",
           "format": "uint64",
           "minimum": 0,
           "type": ["integer", "null"]
@@ -233,7 +370,7 @@
       "oneOf": [
         {
           "const": "subagent",
-          "description": "General delegation: `spawn_subagent`, a [workflow](CAPABILITY_WORKFLOWS) stage, and a\n[speculation](CAPABILITY_SPECULATIVE)'s attempts and judge may all name this target.\nReachable only when the [subagents](CAPABILITY_SUBAGENTS) capability (or the workflow\nmachinery built on it) is on.",
+          "description": "General delegation: `spawn_subagent` may name this target.\nReachable only when the [subagents](CAPABILITY_SUBAGENTS) capability (or the workflow\nmachinery built on it) is on.",
           "type": "string"
         },
         {
@@ -305,6 +442,13 @@
       "description": "The agent profiles this run is configured with, each with its own capabilities,\nmodel binding, and delegation graph. **The first is the [root](Self::root)** — it\ndrives the top-level session and is the default profile for issue dispatch and\nhelper agents — whatever it happens to be *called*: the root is a position, not a\nname, so a configuration may rename it or promote another profile to it. Never\nempty: the migration and [`Default`] both guarantee at least one profile.",
       "items": {
         "$ref": "#/$defs/GgAgentConfig"
+      },
+      "type": "array"
+    },
+    "hooks": {
+      "description": "The **hooks** this run is scripted with — the operator-authored commands and scripts gg\nruns at the ten [points](GgHookEvent) of a run's lifecycle, each able to block the operation\nit precedes and to put text in front of the model.\n\nRun-level rather than per-agent, and deliberately not a [capability](GgCapabilityConfig),\nfor the same reason the [ceilings](Self::limits) are neither: a capability is a feature the\n*model* is given and a study ablates, while a hook is the operator reaching into the run\nfrom outside it. Several of the events are not an agent's at all — a session starting, a\ncompaction — and the ones that are fire for **every** agent, so hanging them off one\nprofile's capability list would have made \"run this before every write\" a thing an operator\nhad to remember to repeat.\n\nA set that declares none omits the key entirely, so every configuration stored before hooks\nexisted round-trips unchanged.",
+      "items": {
+        "$ref": "#/$defs/GgHook"
       },
       "type": "array"
     },

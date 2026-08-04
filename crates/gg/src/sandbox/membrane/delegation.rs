@@ -1,22 +1,19 @@
-//! The membrane's delegation family: spawning child agents, waiting for them, messaging them, and
-//! the two declarative fan-outs (`run_workflow`, `speculate`).
+//! The membrane's delegation family: spawning child agents, waiting for them, and messaging them.
 //!
-//! These five are the reason the [api](super::ToolApi) behind this membrane is the loop's own
+//! These three are the reason the [api](super::ToolApi) behind this membrane is the loop's own
 //! `LoopToolApi` and not a self-contained tool: a delegation call is serviced by the **subagent
 //! scheduler**, which the api reaches (from the blocking sandbox thread) with a
 //! [`Handle`](tokio::runtime::Handle)`::block_on`, with the agent tree and the parallelism cap it
 //! owns. A program's `spawnSubagent` therefore behaves exactly as a native `spawn_subagent` does,
 //! including its depth cap — the only difference is that a program can compose the results.
 //!
-//! Two lowerings live here. A brief is a **variant**, so "neither a prompt nor an issue" — which
+//! One lowering lives here: a brief is a **variant**, so "neither a prompt nor an issue" — which
 //! today's JSON schema allows and rejects only at run time, wasting a call — cannot be expressed at
-//! all. And `attempts` is clamped into 2–6 here as well as in the loop, because the WIT's `u8`
-//! admits values the loop would otherwise have to reject after the model had already committed to
-//! them.
+//! all.
 //!
-//! # These four sidecars are produced by the loop, not by a tool
+//! # These sidecars are produced by the loop, not by a tool
 //!
-//! `spawn_subagent`, `wait_for_subagents`, `run_workflow` and `speculate` never reach a
+//! `spawn_subagent` and `wait_for_subagents` never reach a
 //! [`Tool`](crate::tools::Tool) at all: the `LoopToolApi` recognises them and routes them to the
 //! subagent scheduler, so the [`ToolData`] each of them reads back is attached **there**. Until that
 //! routing attaches it, every one of these functions reports `missing_data` — and the tests below
@@ -24,29 +21,16 @@
 //! green suite here as "the conversion is right", never as "the producer exists".
 
 use super::test_cabinet::gg::delegation::{
-    AgentStatus, Host as DelegationHost, SpawnRequest, SpeculateRequest, SpeculationReport,
-    SubagentBrief, SubagentHandle, SubagentResult, WorkflowReport, WorkflowStage,
+    AgentStatus, Host as DelegationHost, SpawnRequest, SubagentBrief, SubagentHandle,
+    SubagentResult,
 };
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
-use crate::sandbox::WorkflowStageInput;
 use crate::tools::{
-    AgentStatusData, EXEC_TOOL, FORK_TOOL, RUN_WORKFLOW_TOOL, SEND_MESSAGE_TOOL,
-    SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL, SpeculationData, SubagentHandleData, SubagentResultData,
-    TRANSITION_STATE_TOOL, ToolData, WAIT_FOR_SUBAGENTS_TOOL, WorkflowData,
+    AgentStatusData, EXEC_TOOL, FORK_TOOL, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL,
+    SubagentHandleData, SubagentResultData, TRANSITION_STATE_TOOL, ToolData,
+    WAIT_FOR_SUBAGENTS_TOOL,
 };
-
-/// How many attempts a `speculate` with no count makes — the loop's own default, restated because
-/// the membrane resolves the option before the loop ever sees the call.
-const DEFAULT_SPECULATION_ATTEMPTS: u8 = 2;
-
-/// The fewest attempts that are best-of-anything.
-const MIN_SPECULATION_ATTEMPTS: u8 = 2;
-
-/// The most attempts one `speculate` may fan out to — the loop's ceiling, applied here so a program
-/// that asks for twenty gets six rather than an argument error.
-const MAX_SPECULATION_ATTEMPTS: u8 = 6;
-
 impl<A: ToolApi> DelegationHost for MembraneState<A> {
     fn spawn_subagent(&mut self, request: SpawnRequest) -> Result<SubagentHandle, ToolError> {
         let (prompt, issue_id) = brief(request.task);
@@ -96,62 +80,6 @@ impl<A: ToolApi> DelegationHost for MembraneState<A> {
     fn send_message(&mut self, agent_id: String, message: String) -> Result<(), ToolError> {
         self.call(SEND_MESSAGE_TOOL, |api| api.send_message(agent_id, message))?;
         Ok(())
-    }
-
-    fn run_workflow(&mut self, stages: Vec<WorkflowStage>) -> Result<WorkflowReport, ToolError> {
-        // A stage's optional `name` is resolved to a string here — the loop names an empty one
-        // `stage-N` exactly as it does a missing one. The `items` option is preserved as it stands:
-        // `none` (fan out over the previous stage's results) and an EMPTY list (an error) are
-        // different requests.
-        let stages: Vec<WorkflowStageInput> = stages
-            .into_iter()
-            .map(|stage| WorkflowStageInput {
-                name: stage.name.unwrap_or_default(),
-                prompt: stage.prompt,
-                items: stage.items,
-                agent: stage.agent,
-            })
-            .collect();
-        let outcome = self.call(RUN_WORKFLOW_TOOL, |api| api.run_workflow(stages))?;
-        match outcome.data {
-            Some(ToolData::Workflow(WorkflowData {
-                workflow_id,
-                stages,
-                results,
-            })) => Ok(WorkflowReport {
-                workflow_id,
-                stages,
-                results,
-            }),
-            other => Err(self.missing_data(RUN_WORKFLOW_TOOL, other.as_ref())),
-        }
-    }
-
-    fn speculate(&mut self, request: SpeculateRequest) -> Result<SpeculationReport, ToolError> {
-        let (prompt, issue_id) = brief(request.task);
-        let attempts = request
-            .attempts
-            .unwrap_or(DEFAULT_SPECULATION_ATTEMPTS)
-            .clamp(MIN_SPECULATION_ATTEMPTS, MAX_SPECULATION_ATTEMPTS);
-        let agent = request.agent;
-        let approaches = request.approaches;
-        let outcome = self.call(SPECULATE_TOOL, |api| {
-            api.speculate(agent, prompt, issue_id, attempts, approaches)
-        })?;
-        match outcome.data {
-            Some(ToolData::Speculation(SpeculationData {
-                winner_id,
-                attempts,
-                rationale,
-                summary,
-            })) => Ok(SpeculationReport {
-                winner_id,
-                attempts,
-                rationale,
-                summary,
-            }),
-            other => Err(self.missing_data(SPECULATE_TOOL, other.as_ref())),
-        }
     }
 
     /// Declare a move to another state of the machine driving this agent.

@@ -12,13 +12,20 @@ import { familyOf } from "../../../data/families";
 import {
   AGENT_MODES,
   AGENT_MODE_HINT,
+  BLOCKING_HOOK_EVENTS,
   CAP_GROUPS,
   FSM_CAP,
+  GG_BUILTIN_HOOK_HINTS,
+  GG_BUILTIN_HOOK_IDS,
+  HOOK_DECISION_CONTRACT,
+  HOOK_EVENTS,
+  HOOK_KINDS,
   LOOP_DETECTION_HINT,
   LOOP_DETECTION_SPECS,
   RESPONSES_AS_CODE_CAP,
   RESPONSES_AS_CODE_CAP_ID,
   RUN_LIMIT_SPECS,
+  SHELL_OUTPUT_OPTIONS,
   SUBAGENT_SCOPES,
   capabilitiesForMode,
   type CapGroup,
@@ -37,6 +44,7 @@ import {
   agentParamErrors,
   agentStates,
   blankAgentDraft,
+  blankHookDraft,
   blankCapabilityDraft,
   blankModelSlot,
   capabilityActive,
@@ -52,6 +60,7 @@ import {
   type GgAgentDraft,
   type GgCapabilityDraft,
   type GgConfigDraft,
+  type GgHookDraft,
   type GgModelSlotDraft,
 } from "./ggConfigDraft";
 import runExec from "../RunExec.module.scss";
@@ -249,6 +258,32 @@ export function GgConfigEditor({
     onChange({ ...value, limits: { ...value.limits, [key]: limit } });
   }
 
+  // --- Hooks ----------------------------------------------------------------
+  //
+  // Run-level, like the ceilings above and for the same reason: a hook is the operator
+  // reaching into the run from outside it, not a feature the model is offered. It never
+  // appears among an agent's capabilities because there is no agent it belongs to — the
+  // session's two events are nobody's, and the rest fire for every agent at once.
+  function patchHook(id: string, patch: Partial<GgHookDraft>) {
+    onChange({
+      ...value,
+      hooks: value.hooks.map((hook) =>
+        hook.id === id ? { ...hook, ...patch } : hook,
+      ),
+    });
+  }
+
+  function addHook() {
+    onChange({
+      ...value,
+      hooks: [...value.hooks, blankHookDraft()],
+    });
+  }
+
+  function removeHook(id: string) {
+    onChange({ ...value, hooks: value.hooks.filter((h) => h.id !== id) });
+  }
+
   if (editingAgentId === null) {
     const referenced = referencedModelSlots(value);
     return (
@@ -282,6 +317,44 @@ export function GgConfigEditor({
             <p className={gg.fieldError}>{limitsError}</p>
           ) : (
             limitsWarning && <p className={gg.limitWarning}>{limitsWarning}</p>
+          )}
+        </section>
+
+        {/* Hooks — the operator's seam into the run's lifecycle. Beside the ceilings
+            rather than among the capabilities because a hook is not a capability: the
+            model is never told one exists, is offered no tool for it, and cannot decline
+            one. Several of its events are not an agent's at all. */}
+        <section className={gg.limitsWidget}>
+          <p className={runExec.sectionLabel}>
+            Hooks
+            <HelpTip text="Commands and scripts gg runs at ten points of a run — around a file write, around a shell command, around a compaction, as an agent starts or tries to stop, and at the session's two ends. A hook can stop the operation it precedes and put text in front of the model. The model is never told a hook exists." />
+          </p>
+          {value.hooks.length === 0 ? (
+            <p className={runExec.muted}>
+              No hooks. A run without them behaves exactly as it always has — this
+              is the control arm every hooked run is read against.
+            </p>
+          ) : (
+            <div className={gg.subagentList}>
+              {value.hooks.map((hook) => (
+                <HookRow
+                  key={hook.id}
+                  hook={hook}
+                  readOnly={readOnly}
+                  onPatch={(patch) => patchHook(hook.id, patch)}
+                  onRemove={() => removeHook(hook.id)}
+                />
+              ))}
+            </div>
+          )}
+          {!readOnly && (
+            <button
+              type="button"
+              className={runExec.secondary}
+              onClick={addHook}
+            >
+              Add hook
+            </button>
           )}
         </section>
 
@@ -365,8 +438,8 @@ export function GgConfigEditor({
         </div>
 
         {/* Agents — the per-agent profiles. One of them is flagged as the root: it
-            drives the run's top-level session and is the default for the merge agent
-            and speculation judging. Any profile may be it, and any profile may be
+            drives the run's top-level session and is the default for the merge agent.
+            Any profile may be it, and any profile may be
             removed — including the root, which passes the flag on. */}
         <p
           className={`${runExec.sectionLabel} ${runExec.sectionLabelBackdrop}`}
@@ -617,7 +690,7 @@ export function GgConfigEditor({
     <>
       {/* Every agent's name is editable, the root's included: the root is a flag on the
           configuration, not a name, and renaming one here carries every reference to it
-          (rosters, the merge agent, the speculation judge) along. */}
+          (rosters, the merge agent) along. */}
       <div className={gg.agentHeading}>
         <label className={`${runExec.field} ${gg.slotNameField}`}>
           <span className={runExec.fieldLabel}>
@@ -955,8 +1028,7 @@ export function GgConfigEditor({
             <p className={runExec.muted}>
               The agents this one may put to work, and what for:{" "}
               <strong>Subagent</strong> (spawnable with{" "}
-              <code>spawn_subagent</code>, <code>speculate</code>, or{" "}
-              <code>run_workflow</code>), <strong>Implementer</strong>{" "}
+              <code>spawn_subagent</code>), <strong>Implementer</strong>{" "}
               (assignable as an issue&rsquo;s agent), and{" "}
               <strong>Reviewer</strong> (namable among an issue&rsquo;s
               reviewers). The three are independent. Describe when to use a
@@ -1078,5 +1150,210 @@ export function GgConfigEditor({
         </>
       )}
     </>
+  );
+}
+
+/**
+ * One hook's row: the event it fires at, which of the three kinds it is, and the fields
+ * that kind needs.
+ *
+ * Every kind's fields are held in the draft at once and only the current kind's are
+ * rendered, so switching kind and switching back does not lose what was typed. The
+ * blocking note under the event picker is read off a table rather than off the `pre-`
+ * prefix, because `pre-compact` is a `pre-` event that deliberately cannot block — and a
+ * gate an operator believes they have is worse than no gate at all.
+ */
+function HookRow({
+  hook,
+  readOnly,
+  onPatch,
+  onRemove,
+}: {
+  hook: GgHookDraft;
+  readOnly: boolean;
+  onPatch: (patch: Partial<GgHookDraft>) => void;
+  onRemove: () => void;
+}) {
+  const event = HOOK_EVENTS.find((e) => e.value === hook.event);
+  const kind = HOOK_KINDS.find((k) => k.value === hook.kind);
+  const blocks = BLOCKING_HOOK_EVENTS.includes(hook.event);
+  return (
+    <div className={gg.subagentRow}>
+      <div className={gg.agentHeading}>
+        <label className={`${runExec.field} ${gg.slotNameField}`}>
+          <FieldLabel
+            label="Event"
+            hint={event?.hint ?? "Which point of the run this hook fires at."}
+          />
+          <select
+            className={runExec.input}
+            value={hook.event}
+            disabled={readOnly}
+            onChange={(e) =>
+              onPatch({ event: e.target.value as GgHookDraft["event"] })
+            }
+          >
+            {HOOK_EVENTS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={`${runExec.field} ${gg.slotNameField}`}>
+          <FieldLabel
+            label="Kind"
+            hint={kind?.hint ?? "What this hook runs, and how gg reads what came back."}
+          />
+          <select
+            className={runExec.input}
+            value={hook.kind}
+            disabled={readOnly}
+            onChange={(e) =>
+              onPatch({ kind: e.target.value as GgHookDraft["kind"] })
+            }
+          >
+            {HOOK_KINDS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={`${runExec.field} ${gg.slotNameField}`}>
+          <FieldLabel
+            label="Name"
+            hint="An operator's label, shown wherever gg reports this hook running or blocking. Optional — gg falls back to describing what it runs."
+          />
+          <input
+            className={runExec.input}
+            value={hook.name}
+            disabled={readOnly}
+            placeholder="e.g. build must pass"
+            onChange={(e) => onPatch({ name: e.target.value })}
+          />
+        </label>
+        {!readOnly && (
+          <button type="button" className={runExec.secondary} onClick={onRemove}>
+            Remove
+          </button>
+        )}
+      </div>
+
+      <p className={runExec.muted}>
+        {blocks
+          ? "This event can be blocked: a hook that refuses stops the operation, and the reason it gives is what the model reads."
+          : "This event cannot be blocked — whatever the hook says, the operation goes ahead."}
+      </p>
+
+      {hook.kind === "command" && (
+        <div className={gg.limitGrid}>
+          <label className={gg.capParamField}>
+            <FieldLabel
+              label="Command"
+              hint="The command line, run through `sh -c`. It receives no input from gg."
+            />
+            <input
+              className={runExec.input}
+              value={hook.command}
+              disabled={readOnly}
+              placeholder="e.g. npm test"
+              onChange={(e) => onPatch({ command: e.target.value })}
+            />
+          </label>
+          <label className={gg.capParamField}>
+            <FieldLabel
+              label="Working directory"
+              hint="Relative to gg's working directory, or absolute. Blank runs it in the agent's workspace root — which for an agent working in an isolated worktree is that worktree."
+            />
+            <input
+              className={runExec.input}
+              value={hook.cwd}
+              disabled={readOnly}
+              placeholder="the workspace root"
+              onChange={(e) => onPatch({ cwd: e.target.value })}
+            />
+          </label>
+          <label className={gg.capParamField}>
+            <FieldLabel
+              label="Timeout (seconds)"
+              hint="How long it may run before it is killed. Blank uses gg's default, which is generous because a hook command is typically a build or a test suite."
+            />
+            <input
+              className={runExec.input}
+              type="number"
+              min={0}
+              value={hook.timeoutSecs}
+              disabled={readOnly}
+              placeholder="300"
+              onChange={(e) => onPatch({ timeoutSecs: e.target.value })}
+            />
+          </label>
+          <label className={gg.capParamField}>
+            <FieldLabel
+              label="Output mode"
+              hint="How much of the output comes back inline and what happens to the rest. Blank follows the agent's own shell configuration, which is almost always what you mean."
+            />
+            <select
+              className={runExec.input}
+              value={hook.output}
+              disabled={readOnly}
+              onChange={(e) => onPatch({ output: e.target.value })}
+            >
+              {SHELL_OUTPUT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.value === "" ? "Follow the agent" : option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
+      {hook.kind === "built-in" && (
+        <label className={gg.capParamField}>
+          <FieldLabel
+            label="Script"
+            hint={
+              GG_BUILTIN_HOOK_HINTS[hook.script] ??
+              "One of gg's own hook scripts."
+            }
+          />
+          <select
+            className={runExec.input}
+            value={hook.script}
+            disabled={readOnly}
+            onChange={(e) => onPatch({ script: e.target.value })}
+          >
+            {GG_BUILTIN_HOOK_IDS.map((id) => (
+              <option key={id} value={id}>
+                {id}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {hook.kind === "custom" && (
+        <label className={gg.capParamField}>
+          <FieldLabel
+            label="Script"
+            hint="Run with the event as its sole argument, a JSON string. A `#!` line chooses the interpreter; without one it is run by `sh`. It must exit 0 and print one decision object on stdout — a non-zero exit or unreadable output is the hook itself failing, which stops the run."
+          />
+          <textarea
+            className={runExec.input}
+            rows={8}
+            value={hook.source}
+            disabled={readOnly}
+            placeholder={"#!/bin/sh\n# $1 is the event, as JSON.\necho '{\"action\":\"continue\"}'"}
+            onChange={(e) => onPatch({ source: e.target.value })}
+          />
+          <p className={runExec.muted}>
+            Print exactly one of:
+            <code className={gg.hookContract}>{HOOK_DECISION_CONTRACT}</code>
+          </p>
+        </label>
+      )}
+    </div>
   );
 }

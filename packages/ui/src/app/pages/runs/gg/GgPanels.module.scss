@@ -1106,10 +1106,10 @@ $context-palette: (
   overflow: auto;
 }
 
-// --- Agents (identity card + per-slot usage + workflows + speculation) -------
+// --- Agents (identity card + the run's process structure) --------------------
 
 // A captioned block used on an agent's Overview file: the per-slot usage breakdown,
-// the workflow strip, or the speculation summary, each a caption over its content.
+// or the FSM path strip, each a caption over its content.
 .agentSection {
   display: flex;
   flex-direction: column;
@@ -1400,26 +1400,6 @@ $context-palette: (
 
 // --- Workflow strip ----------------------------------------------------------
 
-.workflowStrip {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-sm;
-}
-
-.workflow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: t.$space-sm;
-  min-width: 0;
-}
-
-.workflowId {
-  font-family: monospace;
-  font-size: t.$font-sm;
-  color: t.$color-text-muted;
-}
-
 .workflowStages {
   list-style: none;
   margin: 0;
@@ -1473,137 +1453,6 @@ $context-palette: (
 .workflowStageItems {
   font-variant-numeric: tabular-nums;
   opacity: 0.8;
-}
-
-// --- Speculation (best-of-K) (Phase 5) ---------------------------------------
-
-// The chosen best-of-K winner reads in a distinct trophy hue (gold), held fixed so
-// it stands apart from the status greens/ambers on both console themes; the losing
-// attempts are de-emphasized so the kept one pops.
-$spec-winner-hue: #f5c451;
-
-// The winning attempt's tree node: a gold ring + faint wash lift it out of its
-// sibling attempts, so "this attempt won" reads at a glance next to the dimmed
-// losers. Layered over the status left-rule the node already carries.
-.agentRow[data-spec-role="winner"] {
-  border-color: color-mix(in srgb, #{$spec-winner-hue} 55%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, #{$spec-winner-hue} 45%, transparent);
-  background: color-mix(in srgb, #{$spec-winner-hue} 8%, #{s.$panel-bg});
-}
-
-// A losing attempt: discarded by the judge, so its node recedes (its worktree
-// already reads "discarded").
-.agentRow[data-spec-role="loser"] {
-  opacity: 0.55;
-}
-
-// The "winner" badge on the winning attempt's node — a filled gold chip, the one
-// glanceable "this is the kept attempt" cue.
-.winnerBadge {
-  flex: 0 0 auto;
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: t.$space-2xs t.$space-xs;
-  border-radius: t.$radius-sm;
-  font-weight: 700;
-  color: t.$color-bg;
-  background: $spec-winner-hue;
-}
-
-// The speculation summary rows: each best-of-K speculation's K, lifecycle phase, and
-// winning attempt (see gg/speculative-execution), above the tree where the attempts
-// are drawn. The left rule tracks the lifecycle — fanning out is in flight (accent),
-// judged has a pick (gold), merged is folded back in (positive).
-.specList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-}
-
-.specRow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: t.$space-xs t.$space-sm;
-  font-size: t.$font-sm;
-  padding: t.$space-xs t.$space-sm;
-  border: t.$border-hairline solid
-    color-mix(in srgb, t.$color-border 40%, transparent);
-  border-left-width: 2px;
-  border-radius: t.$radius-md;
-  background: s.$panel-bg;
-  color: t.$color-text-muted;
-
-  &[data-phase="fanned_out"] {
-    border-left-color: t.$color-accent;
-  }
-  &[data-phase="judged"] {
-    border-left-color: $spec-winner-hue;
-  }
-  &[data-phase="merged"] {
-    border-left-color: t.$color-positive;
-  }
-}
-
-.specAttempts {
-  font-weight: 700;
-  color: t.$color-text;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 0.72rem;
-}
-
-.specPhase {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 0.72rem;
-
-  .specRow[data-phase="fanned_out"] & {
-    color: t.$color-accent;
-  }
-  .specRow[data-phase="judged"] & {
-    color: $spec-winner-hue;
-  }
-  .specRow[data-phase="merged"] & {
-    color: t.$color-positive;
-  }
-}
-
-.specWinner {
-  display: inline-flex;
-  align-items: baseline;
-  gap: t.$space-xs;
-}
-
-.specWinnerLabel {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 0.68rem;
-  color: t.$color-text-muted;
-}
-
-.specWinnerId {
-  font-family: monospace;
-  font-weight: 600;
-  color: $spec-winner-hue;
-}
-
-.specNoWinner {
-  font-style: italic;
-  color: t.$color-text-muted;
-}
-
-.specRationale {
-  color: t.$color-text-muted;
-  min-width: 0;
-  flex: 1 1 12rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 // --- Module instances (the `modules` folder's files) -------------------------
@@ -2659,13 +2508,6 @@ $fs-caret-glyph: 0.75rem;
   width: 0.8rem;
   height: 0.8rem;
   color: t.$color-accent;
-}
-
-// The chosen best-of-K attempt, starred on its folder.
-.fsWinner {
-  flex: 0 0 auto;
-  color: t.$color-accent;
-  font-size: 0.8rem;
 }
 
 // A small status dot tinted by the node's lifecycle status, so a tree reads who is

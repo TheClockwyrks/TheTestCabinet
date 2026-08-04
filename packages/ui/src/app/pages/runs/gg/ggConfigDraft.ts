@@ -29,6 +29,8 @@ import type {
   GgAgentConfig,
   GgCapabilityConfig,
   GgCapabilitySet,
+  GgHook,
+  GgHookEvent,
   GgLoopDetection,
   GgModelSlot,
   GgModuleKind,
@@ -40,6 +42,7 @@ import type {
 import {
   BYTES_PER_MIB,
   CAPABILITIES,
+  GG_BUILTIN_HOOK_IDS,
   DEFAULT_CAP_IDS,
   FILESYSTEM_CAP_IDS,
   FSM_CAP_ID,
@@ -220,7 +223,42 @@ export interface GgConfigDraft {
   rootAgentId: string;
   modelSlots: GgModelSlotDraft[];
   limits: GgRunLimitsDraft;
+  // The run's [hooks](GgHook) — the commands and scripts gg runs at the ten points of a
+  // run's lifecycle. Run-level like the ceilings and for the same reason: a hook is the
+  // operator reaching into the run from outside it, not a feature the model is offered,
+  // so it is declared once rather than per profile.
+  hooks: GgHookDraft[];
 }
+
+/**
+ * One hook as the editor holds it: an id the list keys on, the event it fires at, which
+ * of the three kinds it is, and a field per kind.
+ *
+ * Every kind's fields are held at once rather than in a discriminated union, so switching
+ * a hook's kind and switching back does not lose what was typed — the same reason a
+ * capability draft keeps the params of implementations it is not currently running.
+ * [`capabilitySetFromDraft`] narrows it to the wire union on the way out.
+ */
+export interface GgHookDraft {
+  id: string;
+  event: GgHookEvent;
+  kind: GgHookKind;
+  /** An operator's label, shown wherever gg reports this hook running or blocking. */
+  name: string;
+  /** `command` only: the command line, its working directory, and its ceilings. */
+  command: string;
+  cwd: string;
+  timeoutSecs: string;
+  /** `command` only: an output-mode override, or empty to follow the agent's own. */
+  output: string;
+  /** `built-in` only: which of gg's own scripts to run. */
+  script: string;
+  /** `custom` only: the script's source. */
+  source: string;
+}
+
+/** Which of the three shapes a [hook](GgHookDraft) is. */
+export type GgHookKind = "command" | "built-in" | "custom";
 
 /** The agent a draft flags as its root, or `undefined` when it has no agents. */
 export function rootAgent(draft: GgConfigDraft): GgAgentDraft | undefined {
@@ -561,10 +599,8 @@ function builtIn(
 // allows, and the only one under which "one agent, everything on" means anything.
 const ROSTER_CAP_IDS = [
   "subagents",
-  "workflows",
-  "speculative-execution",
   "project-management",
-  "agent-transitions",
+  "exec",
 ] as const;
 
 /**
@@ -600,6 +636,7 @@ function singleAgentDraft(agent: GgAgentDraft): GgConfigDraft {
     rootAgentId: root.id,
     modelSlots: [slot],
     limits: seededRunLimits(),
+    hooks: [],
   };
 }
 
@@ -657,6 +694,7 @@ export function cloneDraft(draft: GgConfigDraft): GgConfigDraft {
     rootAgentId: draft.rootAgentId,
     modelSlots: draft.modelSlots.map((s) => ({ ...s })),
     limits: { ...draft.limits },
+    hooks: draft.hooks.map((h) => ({ ...h })),
   };
 }
 
@@ -1458,7 +1496,96 @@ export function draftFromCapabilitySet(set: GgCapabilitySet): GgConfigDraft {
     rootAgentId,
     modelSlots,
     limits: runLimitsDraft(set.limits),
+    hooks: (set.hooks ?? []).map(hookDraft),
   };
+}
+
+/**
+ * A stored hook as the editor holds it — every kind's fields present, with the ones this
+ * hook's kind does not use left blank.
+ */
+function hookDraft(hook: GgHook, index: number): GgHookDraft {
+  const action = hook.action;
+  return {
+    id: `hook-${index}`,
+    event: hook.event,
+    kind: action.type,
+    name: hook.name ?? "",
+    command: action.type === "command" ? action.command : "",
+    cwd: action.type === "command" ? (action.cwd ?? "") : "",
+    timeoutSecs:
+      action.type === "command" && action.timeoutSecs !== undefined
+        ? String(action.timeoutSecs)
+        : "",
+    output: action.type === "command" ? (action.output ?? "") : "",
+    script: action.type === "built-in" ? action.script : "",
+    source: action.type === "custom" ? action.source : "",
+  };
+}
+
+/** A fresh hook: a command on the event an operator reaches for most. */
+export function blankHookDraft(): GgHookDraft {
+  return {
+    id: localId("hook"),
+    event: "agent-stop",
+    kind: "command",
+    name: "",
+    command: "",
+    cwd: "",
+    timeoutSecs: "",
+    output: "",
+    script: GG_BUILTIN_HOOK_IDS[0]!,
+    source: "",
+  };
+}
+
+/**
+ * The wire form of the editor's hooks — the union narrowed to the kind each one is, with
+ * every blank optional dropped.
+ *
+ * A hook with nothing to run is **dropped** rather than serialized: a `command` hook with
+ * an empty command line and a `custom` one with no source are both editing states, and
+ * writing them out would put a hook on the run that fires and does nothing.
+ */
+function hooksFromDraft(hooks: GgHookDraft[]): GgHook[] {
+  return hooks.flatMap((hook): GgHook[] => {
+    const name = hook.name.trim();
+    const base = name ? { name } : {};
+    if (hook.kind === "command") {
+      const command = hook.command.trim();
+      if (!command) return [];
+      const cwd = hook.cwd.trim();
+      const timeout = Number(hook.timeoutSecs.trim());
+      const output = hook.output.trim();
+      return [
+        {
+          ...base,
+          event: hook.event,
+          action: {
+            type: "command" as const,
+            command,
+            ...(cwd ? { cwd } : {}),
+            ...(hook.timeoutSecs.trim() && Number.isFinite(timeout)
+              ? { timeoutSecs: timeout }
+              : {}),
+            ...(output ? { output } : {}),
+          },
+        },
+      ];
+    }
+    if (hook.kind === "built-in") {
+      const script = hook.script.trim();
+      if (!script) return [];
+      return [
+        { ...base, event: hook.event, action: { type: "built-in" as const, script } },
+      ];
+    }
+    const source = hook.source.trim();
+    if (!source) return [];
+    return [
+      { ...base, event: hook.event, action: { type: "custom" as const, source } },
+    ];
+  });
 }
 
 /**
@@ -2076,6 +2203,7 @@ export function capabilitySetFromDraft(
   const agentName = (agentId: string) => nameById.get(agentId) ?? agentId;
   const slotName = (slotId: string) => slotNameById.get(slotId) ?? slotId;
   const limits = runLimitsFromDraft(draft.limits);
+  const hooks = hooksFromDraft(draft.hooks);
   return {
     ...(preset ? { preset } : {}),
     agents: agentsInWireOrder(draft).map((agent) =>
@@ -2083,6 +2211,7 @@ export function capabilitySetFromDraft(
     ),
     ...(modelSlots.length ? { modelSlots } : {}),
     ...(limits ? { limits } : {}),
+    ...(hooks.length ? { hooks } : {}),
   };
 }
 

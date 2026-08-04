@@ -691,7 +691,7 @@ fn unknown_disabled_tools_flags_only_typos() {
     let mut set = set_with(Vec::new());
     set.disabled_tools = vec![
         "edit_file".to_string(), // a real tool (not offered here, but valid) — not flagged
-        "speculate".to_string(), // a real tool — not flagged
+        "fork".to_string(),      // a real tool — not flagged
         "edti_file".to_string(), // a typo — flagged
         "frobnicate".to_string(), // not a tool at all — flagged
     ];
@@ -798,7 +798,7 @@ fn a_terminal_state_is_offered_no_transition_tool() {
 #[test]
 fn the_agent_transition_tools_are_offered_on_their_own_terms() {
     use test_cabinet_core::gg::{
-        CAPABILITY_AGENT_TRANSITIONS, CAPABILITY_SUBAGENTS, GgSubagentRef, ROOT_AGENT,
+        CAPABILITY_EXEC, CAPABILITY_FORK, CAPABILITY_SUBAGENTS, GgSubagentRef, ROOT_AGENT,
     };
 
     let offered = |set: &GgAgentConfig, position: Option<&crate::fsm::FsmPosition>| {
@@ -810,15 +810,16 @@ fn the_agent_transition_tools_are_offered_on_their_own_terms() {
         (registry.offers(EXEC_TOOL), registry.offers(FORK_TOOL))
     };
 
-    // The capability off: neither, whatever else is on.
+    // Both capabilities off: neither call, whatever else is on.
     let mut off = set_with(vec![GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS)]);
     off.subagents.push(GgSubagentRef::any(ROOT_AGENT));
     assert_eq!(offered(&off, None), (false, false));
 
-    // The capability on, but nothing to become and nothing to collect a copy with.
-    let bare = set_with(vec![GgCapabilityConfig::enabled(
-        CAPABILITY_AGENT_TRANSITIONS,
-    )]);
+    // Both on, but nothing to become and nothing to collect a copy with.
+    let bare = set_with(vec![
+        GgCapabilityConfig::enabled(CAPABILITY_EXEC),
+        GgCapabilityConfig::enabled(CAPABILITY_FORK),
+    ]);
     assert_eq!(offered(&bare, None), (false, false));
 
     // A roster alone buys `exec`; the delegation capability alone buys `fork`.
@@ -831,6 +832,31 @@ fn the_agent_transition_tools_are_offered_on_their_own_terms() {
         .capabilities
         .push(GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS));
     assert_eq!(offered(&with_delegation, None), (false, true));
+
+    // **The two are independent capabilities, not one with a per-tool ablation.** Enabling either
+    // alone, with everything each needs beside it, offers that call and not the other — which is
+    // the arm the split exists to make expressible.
+    let mut exec_only = set_with(vec![
+        GgCapabilityConfig::enabled(CAPABILITY_EXEC),
+        GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
+    ]);
+    exec_only.subagents.push(GgSubagentRef::any(ROOT_AGENT));
+    assert_eq!(offered(&exec_only, None), (true, false));
+
+    let mut fork_only = set_with(vec![
+        GgCapabilityConfig::enabled(CAPABILITY_FORK),
+        GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
+    ]);
+    fork_only.subagents.push(GgSubagentRef::any(ROOT_AGENT));
+    assert_eq!(offered(&fork_only, None), (false, true));
+
+    // And a set stored under the old `agent-transitions` id still enables the pair it enabled then.
+    let mut legacy = set_with(vec![
+        GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_AGENT_TRANSITIONS),
+        GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
+    ]);
+    legacy.subagents.push(GgSubagentRef::any(ROOT_AGENT));
+    assert_eq!(offered(&legacy, None), (true, true));
 
     // **And an agent whose only child can be a copy of itself is given the calls that collect
     // one.** The roster is what `spawn_subagent` needs, not what `fork` needs, so gating waiting
@@ -869,9 +895,8 @@ fn all_tool_names_matches_a_maximal_registry() {
     use crate::memories::{MemoryCaps, MemoryStrategy};
     use std::collections::BTreeSet;
     use test_cabinet_core::gg::{
-        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AGENT_TRANSITIONS, CAPABILITY_COMPACTION,
-        CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SPECULATIVE,
-        CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
+        CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_MEMORIES,
+        CAPABILITY_PROJECT_MANAGEMENT, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS,
         COMPACTION_STRATEGY_SELF_COMPACTION, GgSubagentRef, ROOT_AGENT,
     };
 
@@ -892,9 +917,8 @@ fn all_tool_names_matches_a_maximal_registry() {
         GgCapabilityConfig::enabled(CAPABILITY_PROJECT_MANAGEMENT),
         GgCapabilityConfig::enabled(CAPABILITY_AGENT_MANAGED_CONTEXT),
         GgCapabilityConfig::enabled(CAPABILITY_SUBAGENTS),
-        GgCapabilityConfig::enabled(CAPABILITY_WORKFLOWS),
-        GgCapabilityConfig::enabled(CAPABILITY_SPECULATIVE),
-        GgCapabilityConfig::enabled(CAPABILITY_AGENT_TRANSITIONS),
+        GgCapabilityConfig::enabled(CAPABILITY_EXEC),
+        GgCapabilityConfig::enabled(CAPABILITY_FORK),
     ]);
     // `compact` is the one tool a *strategy* rather than a capability alone contributes: compaction
     // offers it only when the working model is the one that performs the compaction.

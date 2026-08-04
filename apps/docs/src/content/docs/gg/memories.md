@@ -261,7 +261,7 @@ scopes read differently at each of the places gg starts one. This is the whole t
 | --- | --- | --- | --- | --- |
 | **The run's root** | its own | the profile's instance | its own (nothing spawned it) | its own, and **writable** |
 | **An issue's implementer** ([auto-dispatched](/gg/project-management/#auto-dispatch)) | its own | the profile's instance | its own (it is top-level, not a subagent) | its own, and **writable** |
-| **A [subagent](/gg/subagents/)** — an ad-hoc spawn, a [workflow](/gg/workflows/) stage, a [speculation](/gg/speculative-execution/) attempt | its own | the profile's instance | its **spawner's**, read/write — or its own, if the spawner keeps no memories | its spawner's, **read-only** |
+| **A [subagent](/gg/subagents/)** — an ad-hoc spawn | its own | the profile's instance | its **spawner's**, read/write — or its own, if the spawner keeps no memories | its spawner's, **read-only** |
 | **A reviewer, judge or merge agent** | its own | the profile's instance | its own — gg dispatches these directly, not through a spawner | its own, and **writable** |
 | **A [`fork`](/gg/fork-and-exec/)** | an independent copy | the same instance (already one) | its forker's, read/write | its forker's, read-only |
 | **A successor** ([`exec`](/gg/fork-and-exec/) or an [FSM transition](/gg/fsms/)) | the predecessor's instance, transferred | **its own profile's** instance, re-bound | the predecessor's instance, transferred | transferred, with access from the **successor's** own scope |

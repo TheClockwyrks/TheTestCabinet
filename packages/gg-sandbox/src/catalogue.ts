@@ -65,7 +65,7 @@ export interface CatalogueEntry {
  * epic/issue board, `agents` for delegation, `harness` for the calls that are about the session
  * itself rather than the workspace (today just `finish`).
  *
- * The two role-shaped ending objects — `review` and `judge` — are named on {@link SESSION_ENTRIES}
+ * The role-shaped ending object — `review` — is named on {@link SESSION_ENTRIES}
  * instead, because they are grouped by *role* rather than by module: all three groups are exported
  * by the one `session` module.
  *
@@ -136,8 +136,6 @@ export const TOOL_CATALOGUE: readonly CatalogueEntry[] = [
   { tool: "spawn_subagent", js: "spawnSubagent", module: "delegation" },
   { tool: "wait_for_subagents", js: "waitForSubagents", module: "delegation" },
   { tool: "send_message", js: "sendMessage", module: "delegation" },
-  { tool: "run_workflow", js: "runWorkflow", module: "delegation" },
-  { tool: "speculate", js: "speculate", module: "delegation" },
   { tool: "transition_state", js: "transitionState", module: "delegation" },
   { tool: "exec", js: "exec", module: "delegation" },
   { tool: "fork", js: "fork", module: "delegation" },
@@ -162,7 +160,7 @@ export const HELPER_CATALOGUE: readonly HelperEntry[] = [
  * session over, and the way that is made true is the way every withheld call is: the name is not in
  * its scope. No {@link SESSION_ENTRIES} entry carries it, so the loop that binds them binds nothing.
  */
-export type EndingKind = "standard" | "review" | "judge" | "none";
+export type EndingKind = "standard" | "review" | "none";
 
 /** One model-facing ending function: what it is called, where it is grouped, and which role has it. */
 export interface SessionEntry {
@@ -184,7 +182,7 @@ export interface SessionEntry {
  * component is checked against.
  *
  * An ending is a **result**, and a role's result has a shape: work reports what was done, a review
- * returns a verdict, a judgement names a winner. So there is one function per shape, each carrying
+ * returns a verdict. So there is one function per shape, each carrying
  * exactly what that result is made of, and the shim binds only the group matching the `ending` the
  * host passed to `run`. A reviewer's program has no `finish` in scope at all — not a `finish` the
  * host refuses — which is the same capability model the tools use.
@@ -197,7 +195,6 @@ export const SESSION_ENTRIES: readonly SessionEntry[] = [
   { key: "finish", js: "finish", object: "harness", ending: "standard" },
   { key: "approve", js: "approve", object: "review", ending: "review" },
   { key: "request_changes", js: "requestChanges", object: "review", ending: "review" },
-  { key: "select_winner", js: "selectWinner", object: "judge", ending: "judge" },
 ];
 
 /** The module every {@link SESSION_ENTRIES} function is exported by. */

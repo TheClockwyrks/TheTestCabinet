@@ -131,10 +131,10 @@ describe("GgConfigEditPage", () => {
     renderPage();
     await screen.findByText("Agents");
     openFirstAgent();
-    // "Workflows" lives in the Delegation group, which starts collapsed.
-    expect(screen.queryByText("Workflows")).not.toBeInTheDocument();
+    // "Fork" lives in the Delegation group, which starts collapsed.
+    expect(screen.queryByText("Fork")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Delegation/i }));
-    expect(screen.getByText("Workflows")).toBeInTheDocument();
+    expect(screen.getByText("Fork")).toBeInTheDocument();
   });
 
   it("requires a name, then saves the capability set under it", async () => {

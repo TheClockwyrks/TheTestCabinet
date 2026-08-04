@@ -64,9 +64,9 @@ stored once under a content address and referenced by **index**.
 - The **text pool** holds every large string payload — a tool outcome's output, a
   `git` invocation's stdout, a probe body. It exists because the two largest
   unpooled payloads are *duplicates of pooled material*: a tool's output is quoted
-  verbatim into the `tool` message that carries it into the window, and
-  [speculation](/gg/speculative-execution/)'s `git diff` patch is quoted verbatim
-  into the judge's prompt. Interning both against one table collapses each pair.
+  verbatim into the `tool` message that carries it into the window, and an
+  [issue review](/gg/project-management/)'s diff is quoted verbatim into the
+  reviewer's prompt. Interning both against one table collapses each pair.
 - The **blob pool** holds each image's base64 bytes.
 
 **The input log** is a flat, ordered list of entries, each carrying the agent that
@@ -181,11 +181,9 @@ Streaming capture means the journal now grows *inside the model's working tree
 during the run*, which is a new interaction with gg's own git plumbing that v1
 never had. Left alone, the consequences are all real:
 
-- [Speculation's](/gg/speculative-execution/) judge scores a `git diff` that stages
-  the whole tree — the journal would be **in the diff the judge reads**, growing it
-  every attempt;
 - an [issue's](/gg/project-management/) reviewers are handed a per-file diff stat
-  built the same way;
+  built by staging the whole tree — the journal would be **in the diff they read**,
+  growing it every round;
 - a worktree commit would commit it;
 - and the model has a shell and its own `git add -A`, so a mid-run model commit
   would push the journal to the **public per-run repository**. A publish-time

@@ -64,7 +64,7 @@ const OPERATORS = ["!=", ">=", "<="] as const;
  * Whether `ch` may appear **inside** a bare word.
  *
  * Deliberately wide. Field names carry every one of these in practice:
- * `cap.speculative-execution` (dots and hyphens), `tool.edit_file` (underscores) and
+ * `cap.agent-persistence` (dots and hyphens), `tool.edit_file` (underscores) and
  * `model.anthropic/claude-a.tokens` (a slash, because a model id is part of the field
  * name). `*` is included so `model:anthropic/*` lexes as one literal rather than a word
  * followed by a bare star, and `+`/`-` so a relative date (`now-30d`) and a signed

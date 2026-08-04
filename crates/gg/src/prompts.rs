@@ -152,12 +152,6 @@ const FIX_BRIEF_TEMPLATE: &str = include_str!("../templates/fix-brief.hbs");
 /// The brief the merge agent is dispatched with when an issue's branch conflicts.
 const MERGE_BRIEF_TEMPLATE: &str = include_str!("../templates/merge-brief.hbs");
 
-/// The brief one attempt of a [speculative execution](crate::agent) is dispatched with.
-const ATTEMPT_BRIEF_TEMPLATE: &str = include_str!("../templates/attempt-brief.hbs");
-
-/// The brief the judge of a [speculative execution](crate::agent) is dispatched with.
-const JUDGE_BRIEF_TEMPLATE: &str = include_str!("../templates/judge-brief.hbs");
-
 /// The instruction that opens an in-loop [compaction](crate::compaction) — the message the model
 /// reads at the top of the turn that must satisfy it. Also included as a partial by
 /// [the unsatisfied feedback](COMPACTION_UNSATISFIED_TEMPLATE), which is the same instruction
@@ -200,10 +194,6 @@ const COMPACTION_MEMORY_SUMMARY_TEMPLATE: &str =
 /// error rather than an [ending](crate::ending).
 const COMPLETION_MISSING_TEMPLATE: &str = include_str!("../templates/completion-missing.hbs");
 
-/// The feedback for an ending a [validation command](crate::completion) rejected.
-const COMPLETION_VALIDATION_FAILURE_TEMPLATE: &str =
-    include_str!("../templates/completion-validation-failure.hbs");
-
 /// The per-turn [context-pressure](crate::context) signal: how full the window is, what is filling
 /// it, and how the agent can reclaim space itself.
 const CONTEXT_PRESSURE_TEMPLATE: &str = include_str!("../templates/context-pressure.hbs");
@@ -227,8 +217,6 @@ const TEMPLATES: &[(&str, &str)] = &[
     ("review-brief", REVIEW_BRIEF_TEMPLATE),
     ("fix-brief", FIX_BRIEF_TEMPLATE),
     ("merge-brief", MERGE_BRIEF_TEMPLATE),
-    ("attempt-brief", ATTEMPT_BRIEF_TEMPLATE),
-    ("judge-brief", JUDGE_BRIEF_TEMPLATE),
     ("compaction-instruction", COMPACTION_INSTRUCTION_TEMPLATE),
     ("compaction-unsatisfied", COMPACTION_UNSATISFIED_TEMPLATE),
     ("compaction-refusal", COMPACTION_REFUSAL_TEMPLATE),
@@ -247,10 +235,6 @@ const TEMPLATES: &[(&str, &str)] = &[
         COMPACTION_MEMORY_SUMMARY_TEMPLATE,
     ),
     ("completion-missing", COMPLETION_MISSING_TEMPLATE),
-    (
-        "completion-validation-failure",
-        COMPLETION_VALIDATION_FAILURE_TEMPLATE,
-    ),
     ("context-pressure", CONTEXT_PRESSURE_TEMPLATE),
 ];
 
@@ -424,7 +408,7 @@ pub struct SystemContext {
     /// The agents this one may spawn as subagents (its roster's
     /// [`subagent`](test_cabinet_core::gg::GgSubagentScope::Subagent) scope), each with the
     /// caller-scoped description that tells this agent when to use it. Enumerated in the prompt so
-    /// the model knows which names `spawn_subagent`/`speculate`/`run_workflow` accept. Rendered only
+    /// the model knows which names `spawn_subagent` accepts. Rendered only
     /// when [`subagents`](Self::subagents) is on.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub spawnable_agents: Vec<SpawnableAgentView>,
@@ -456,8 +440,6 @@ pub struct SystemContext {
     /// normally configured without the authoring capability, so this is usually the *only* board
     /// section such an agent is shown.
     pub assigned_issue: Option<AssignedIssueView>,
-    /// Whether speculative execution (`speculate`) is available this run.
-    pub speculative: bool,
     /// Whether this agent's opening context was pre-seeded with the test case's specifications and
     /// reference images, and if so whether they are locked into the window. `None` renders no
     /// section — the model was told nothing about a feature it does not have.
@@ -493,16 +475,12 @@ pub struct EndingView {
     pub standard: bool,
     /// [`Review`](crate::ending::EndingRole::Review): the agent returns a verdict.
     pub review: bool,
-    /// [`Judge`](crate::ending::EndingRole::Judge): the agent names a winning attempt.
-    pub judge: bool,
     /// The finish call, as this execution mode writes it (`finish` / `harness.finish`).
     pub finish: String,
     /// The approval call (`approve` / `review.approve`).
     pub approve: String,
     /// The change-request call (`request_changes` / `review.requestChanges`).
     pub request_changes: String,
-    /// The winner call (`select_winner` / `judge.selectWinner`).
-    pub select_winner: String,
 }
 
 /// The [autoload-specifications](test_cabinet_core::gg::CAPABILITY_AUTOLOAD_SPECS) section's state:
@@ -1183,53 +1161,6 @@ pub fn render_merge_brief(context: &MergeBriefContext) -> String {
     render("merge-brief", context)
 }
 
-/// The variables `attempt-brief.hbs` may reference.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AttemptBriefContext {
-    /// The shared task every attempt is given.
-    pub base: String,
-    /// This attempt's 1-based number.
-    pub index: usize,
-    /// How many attempts are running.
-    pub count: usize,
-    /// This attempt's assigned approach hint, when one was given.
-    pub approach: Option<String>,
-}
-
-/// Render one attempt's brief for a [speculative execution](crate::agent).
-pub fn render_attempt_brief(context: &AttemptBriefContext) -> String {
-    render("attempt-brief", context)
-}
-
-/// The variables `judge-brief.hbs` may reference.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct JudgeBriefContext {
-    /// The task every attempt was given.
-    pub task: String,
-    /// The candidates, renumbered 1..N — the judge never sees the attempts that were discarded, and
-    /// the caller maps its pick back to the original attempt index.
-    pub attempts: Vec<JudgeAttemptView>,
-    /// How many candidates there are.
-    pub count: usize,
-}
-
-/// One candidate as the judge's brief presents it.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct JudgeAttemptView {
-    /// The candidate's 1-based number, as the judge names it in its verdict.
-    pub number: usize,
-    /// The attempt's own closing summary, or `None` when it gave none.
-    pub summary: Option<String>,
-}
-
-/// Render the judge's brief for a [speculative execution](crate::agent).
-pub fn render_judge_brief(context: &JudgeBriefContext) -> String {
-    render("judge-brief", context)
-}
-
 // ---------------------------------------------------------------------------
 // Compaction
 // ---------------------------------------------------------------------------
@@ -1348,25 +1279,6 @@ struct EndingCallsContext<'a> {
 /// an error rather than an ending.
 pub fn render_completion_missing(ending_calls: &[&str]) -> String {
     render("completion-missing", &EndingCallsContext { ending_calls })
-}
-
-/// The variables `completion-validation-failure.hbs` may reference.
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ValidationFailureContext<'a> {
-    /// Which command failed, 1-based.
-    pub index: usize,
-    /// How many commands gate completion.
-    pub total: usize,
-    /// The command as it reads in the prompt.
-    pub command: &'a str,
-    /// What it printed.
-    pub output: &'a str,
-}
-
-/// Render the feedback for a completion a [validation command](crate::completion) rejected.
-pub fn render_completion_validation_failure(context: &ValidationFailureContext<'_>) -> String {
-    render("completion-validation-failure", context)
 }
 
 // ---------------------------------------------------------------------------

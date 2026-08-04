@@ -130,7 +130,6 @@ fn empty_tracker_finalizes_to_a_zeroed_summary() {
     assert_eq!(summary.issue_reviews, 0);
     assert_eq!(summary.review_cycles, 0);
     assert_eq!(summary.issues_reopened, 0);
-    assert_eq!(summary.speculations, 0);
     assert_eq!(summary.issues_created, 0);
     assert_eq!(summary.issues_completed, 0);
     assert!(summary.slot_costs.is_empty());
@@ -281,25 +280,6 @@ fn counts_code_review_phases() {
     // Two approvals + one changes-requested = three verdicts.
     assert_eq!(summary.review_cycles, 3);
     assert_eq!(summary.issues_reopened, 1);
-}
-
-/// Only a speculation's `FannedOut` phase counts a best-of-K round, so the later `Judged`/
-/// `Merged` phases of the same round are not double-counted.
-#[test]
-fn counts_speculations_once_per_round() {
-    let tracker = SessionSummaryTracker::new();
-    let spec = |p| GgTelemetryKind::Speculation {
-        attempts: 3,
-        phase: p,
-        winner: None,
-        rationale: None,
-    };
-    tracker.observe(&spec(GgSpeculationPhase::FannedOut));
-    tracker.observe(&spec(GgSpeculationPhase::Judged));
-    tracker.observe(&spec(GgSpeculationPhase::Merged));
-    tracker.observe(&spec(GgSpeculationPhase::FannedOut));
-
-    assert_eq!(tracker.finalize("completed").speculations, 2);
 }
 
 /// A board re-emitted every mutation contributes each issue once (created) and each completed

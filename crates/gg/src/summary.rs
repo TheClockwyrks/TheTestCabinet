@@ -44,7 +44,7 @@ use std::sync::Mutex;
 use test_cabinet_core::gg::{
     GgErrorSummary, GgHealingStrategy, GgHealingSummary, GgIssueReviewPhase, GgIssueStatus,
     GgLimitBreach, GgProgramLanguage, GgResponseHealing, GgRunLimits, GgSessionSummary, GgSlotCost,
-    GgSpeculationPhase, GgTelemetryKind, GgTurnErrorKind,
+    GgTelemetryKind, GgTurnErrorKind,
 };
 
 /// Accumulates a running session's aggregatable outcome from the telemetry stream it
@@ -85,8 +85,6 @@ struct SummaryState {
     /// One per [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase (an issue reopened
     /// for fixes).
     issues_reopened: u64,
-    /// One per speculation [`FannedOut`](GgSpeculationPhase::FannedOut) phase (a best-of-K round).
-    speculations: u64,
     /// One per [`CodeExecution`](GgTelemetryKind::CodeExecution) event (a code-shaped turn).
     code_executions: u64,
     /// The run's [response-healing](GgHealingSummary) rollup, folded from the healing record on
@@ -385,11 +383,6 @@ impl SessionSummaryTracker {
                 }
                 GgIssueReviewPhase::Approved => state.review_cycles += 1,
             },
-            GgTelemetryKind::Speculation { phase, .. } => {
-                if matches!(phase, GgSpeculationPhase::FannedOut) {
-                    state.speculations += 1;
-                }
-            }
             // One event per code-shaped *turn*, including a turn whose reply did not compile — so
             // this count is the exact denominator for the healing rates folded alongside it, and
             // the two are incremented by the same statement.
@@ -428,7 +421,7 @@ impl SessionSummaryTracker {
             // Every other event carries no aggregatable figure of its own: session/turn
             // lifecycle, assistant text and tool call/result, per-turn usage deltas, the
             // knowledge-state snapshots (skills/memories/tasks), agent-status/worktree/
-            // workflow transitions, diagnostic logs, and the terminal summary/ended events
+            // succession transitions, diagnostic logs, and the terminal summary/ended events
             // this summary itself precedes.
             //
             // `LimitExceeded` is here **deliberately** rather than by omission: it carries exactly
@@ -463,7 +456,6 @@ impl SessionSummaryTracker {
             issue_reviews: state.issue_reviews,
             review_cycles: state.review_cycles,
             issues_reopened: state.issues_reopened,
-            speculations: state.speculations,
             execution_mode: state
                 .execution_mode
                 .clone()

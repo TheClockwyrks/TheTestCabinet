@@ -5,7 +5,7 @@ use serde_json::json;
 use test_cabinet_core::gg::ROOT_AGENT;
 
 use super::*;
-use crate::sandbox::fake::{CallLog, all_tools, canned_outcome, membrane, membrane_with};
+use crate::sandbox::fake::{CallLog, all_tools, membrane, membrane_with};
 use crate::tools::ToolOutcome;
 
 /// A brief is exactly one of a prompt or an issue — the variant makes "neither" unrepresentable,
@@ -120,129 +120,6 @@ fn send_message_carries_the_agent_id_and_text() {
     assert_eq!(
         log.args("send_message"),
         Some(json!({ "agentId": "agent-1", "message": "prefer the simpler parser" }))
-    );
-}
-
-/// **An absent `items` and an empty one are different stages.** Absent means "fan out over the
-/// previous stage's results"; empty is an error the loop reports. Lowering both the same way would
-/// turn a mistake into a silent second fan-out.
-#[test]
-fn absent_items_and_empty_items_are_different_workflow_stages() {
-    let log = CallLog::default();
-    let mut state = membrane(&log);
-
-    let report = state
-        .run_workflow(vec![
-            WorkflowStage {
-                name: Some("survey".to_string()),
-                prompt: "look at {{item}}".to_string(),
-                items: Some(vec!["a.ts".to_string(), "b.ts".to_string()]),
-                agent: ROOT_AGENT.to_string(),
-            },
-            WorkflowStage {
-                name: None,
-                prompt: "summarise {{prior}}".to_string(),
-                items: None,
-                agent: "subagent".to_string(),
-            },
-            WorkflowStage {
-                name: Some("empty".to_string()),
-                prompt: "never runs".to_string(),
-                items: Some(Vec::new()),
-                agent: ROOT_AGENT.to_string(),
-            },
-        ])
-        .expect("ran");
-
-    assert_eq!(report.workflow_id, "wf-1");
-    assert_eq!(report.stages, 2);
-    assert_eq!(report.results, ["first", "second"]);
-
-    let stages = log
-        .args("run_workflow")
-        .and_then(|args| args.get("stages").cloned())
-        .expect("the stages were sent");
-    assert_eq!(
-        stages,
-        // `items` still distinguishes absent (`null`, fan out) from empty (`[]`, an error) — that is
-        // this test's point. The membrane now resolves each stage's optional `name` before
-        // the call: an absent name becomes `""` (still named `stage-N` by the loop) and an absent
-        json!([
-            {
-                "name": "survey",
-                "prompt": "look at {{item}}",
-                "items": ["a.ts", "b.ts"],
-                "agent": ROOT_AGENT,
-            },
-            {
-                "name": "",
-                "prompt": "summarise {{prior}}",
-                "items": null,
-                "agent": "subagent",
-            },
-            {
-                "name": "empty",
-                "prompt": "never runs",
-                "items": [],
-                "agent": ROOT_AGENT,
-            },
-        ])
-    );
-}
-
-/// K is clamped into 2–6 at the membrane, as the loop clamps it: a program that asks for twenty
-/// gets six rather than an argument error after it has committed to the call.
-#[test]
-fn attempts_is_clamped_to_the_two_to_six_range() {
-    let cases = [(None, 2), (Some(1), 2), (Some(4), 4), (Some(200), 6)];
-
-    for (requested, expected) in cases {
-        let log = CallLog::default();
-        let mut state = membrane_with(&log, &all_tools(), None, canned_outcome);
-        state
-            .speculate(SpeculateRequest {
-                agent: ROOT_AGENT.to_string(),
-                task: SubagentBrief::Prompt("try it".to_string()),
-                attempts: requested,
-                approaches: vec!["be bold".to_string()],
-            })
-            .expect("speculated");
-        assert_eq!(
-            log.args("speculate")
-                .and_then(|args| args.get("attempts").and_then(serde_json::Value::as_u64)),
-            Some(expected),
-            "requesting {requested:?} attempts"
-        );
-    }
-}
-
-/// The speculation report names the winner and how many attempts really ran.
-#[test]
-fn a_speculation_reports_its_winner_and_rationale() {
-    let log = CallLog::default();
-    let mut state = membrane(&log);
-
-    let report = state
-        .speculate(SpeculateRequest {
-            agent: "subagent".to_string(),
-            task: SubagentBrief::Issue("i1".to_string()),
-            attempts: Some(2),
-            approaches: Vec::new(),
-        })
-        .expect("speculated");
-
-    assert_eq!(report.winner_id, "agent-2");
-    assert_eq!(report.attempts, 2);
-    assert_eq!(report.rationale.as_deref(), Some("it was tidier"));
-    assert_eq!(
-        log.args("speculate"),
-        Some(json!({
-            "agent": "subagent",
-            "prompt": null,
-            "issueId": "i1",
-            "attempts": 2,
-            "approaches": [],
-        }))
     );
 }
 

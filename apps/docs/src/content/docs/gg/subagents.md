@@ -13,7 +13,7 @@ hand.
 Agents are spawned **by name**. Every profile carries a
 [roster](/gg/configurations/#agents) — the other agent profiles it may put to work,
 each scoped to what it may be used **for** — and `spawn_subagent` (like
-[`speculate`](/gg/speculative-execution/) and [`run_workflow`](/gg/workflows/), which
+[`fork`](/gg/fork-and-exec/), which
 also name their target) **refuses a name the roster does not list with the
 `subagent` scope**. The other two scopes (`implementer` and `reviewer`) govern
 [issue assignment](/gg/project-management/#assigning-an-issue) instead, and are
@@ -46,8 +46,7 @@ Requirements:
 
 The agent tree this produces — who spawned whom, who is running versus blocked — is
 exactly what the [telemetry](/gg/telemetry/) capability streams to the console for
-live visualization. Subagents also underpin [workflows](/gg/workflows/) and
-[speculative execution](/gg/speculative-execution/). A spawned agent runs under a
+live visualization. A spawned agent runs under a
 different [agent profile](/gg/configurations/#agents) — its own model and
 capabilities — than its parent, and shares its parent's workspace; isolated git
 worktrees belong to [issues](/gg/project-management/) and speculation attempts, which
@@ -89,7 +88,7 @@ like anything else. The only difference is where it starts: a subagent opens on 
 somebody had to write, a copy opens already holding everything its forker worked out.
 
 That is also why `fork` is offered **only** to a profile that has this capability or
-[workflows](/gg/workflows/). A copy nobody can wait on or message is a leak rather than a
+its own capability. A copy nobody can wait on or message is a leak rather than a
 second worker.
 
 An [`exec`](/gg/fork-and-exec/) is the opposite case and is deliberately **not** a spawn: it

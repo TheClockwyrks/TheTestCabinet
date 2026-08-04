@@ -889,31 +889,11 @@ pub const PROJECT_MANAGEMENT_PARAM_MERGE_AGENT: &str = "mergeAgent";
 /// [scheduler]: https://docs.testcabinet.ai/gg/subagents/#scheduling
 pub const CAPABILITY_SUBAGENTS: &str = "subagents";
 
-/// The stable id of the Phase 4B [workflows] capability: **declared** subagent fan-outs plus
-/// sequencing — the structured, deterministic cousin of ad-hoc [subagents](CAPABILITY_SUBAGENTS).
-///
-/// Where raw subagents are imperative (spawn these, wait, spawn more), a workflow is a single
-/// declared unit of ordered **stages**: each stage fans a subagent out over a list of items and
-/// the stage's results feed the next stage. When enabled, the agent is offered the `run_workflow`
-/// tool, which gg executes deterministically by driving the **same** subagent
-/// [scheduler](CAPABILITY_SUBAGENTS) — honoring the one global parallelism cap and the depth cap
-/// (a workflow gets no separate pool). The fanned-out agents are ordinary subagents: they appear in
-/// the [agent tree](https://docs.testcabinet.ai/gg/subagents/) with the same
-/// [`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentStatus`](GgTelemetryKind::AgentStatus)/[`AgentReturned`](GgTelemetryKind::AgentReturned)
-/// telemetry, each run under a named [agent profile](GgAgentConfig) (on that profile's own model);
-/// the workflow's own structure is streamed as
-/// [`WorkflowStage`](GgTelemetryKind::WorkflowStage) stage-boundary events. Off (its default — it is
-/// opt-in), the tool vanishes. [FSM-driven processes] push declared control flow further still.
-///
-/// [workflows]: https://docs.testcabinet.ai/gg/workflows/
-/// [FSM-driven processes]: https://docs.testcabinet.ai/gg/fsms/
-pub const CAPABILITY_WORKFLOWS: &str = "workflows";
-
 /// The stable id of the Phase 5 [FSM-driven processes] capability: driving a run through a
 /// **finite state machine** so the *order* of the work is a property of the process, not the
 /// model's discretion.
 ///
-/// Where a [workflow](CAPABILITY_WORKFLOWS) is a fan-out the agent assembles, an FSM is a state
+/// Where a subagent fan-out is assembled by the agent, an FSM is a state
 /// table the agent is *driven through*: each [state](GgFsmState) binds an
 /// [agent profile](GgAgentConfig), and a [transition](GgFsmTransition) replaces the running agent
 /// instance with the next state's, carrying exactly the [modules](GgModuleKind) the transition
@@ -1025,71 +1005,61 @@ where
         .collect())
 }
 
-/// The stable id of the [agent transitions] capability: an agent's ability to **replace itself**
-/// (`exec`) and to **clone itself** (`fork`).
+/// The stable id of the [exec] capability: an agent's ability to **replace itself** with one
+/// running another [profile](GgAgentConfig).
 ///
-/// Both are the same operation over [modules](GgModuleKind) an [FSM](CAPABILITY_FSM) transition
+/// `exec` is the same operation over [modules](GgModuleKind) an [FSM](CAPABILITY_FSM) transition
 /// performs, with the *model* rather than a declared machine choosing when it happens and what it
-/// becomes:
+/// becomes. The successor is named from the caller's own [delegation
+/// roster](GgAgentConfig::subagents), the same allowlist spawning is validated against. Every
+/// module both profiles have is carried live, so the successor opens on its predecessor's whole
+/// conversation; a capability the successor does not have is dropped, and one only it has starts
+/// empty. It is one agent throughout: one id in the tree per incarnation, one scheduler slot, one
+/// return value to whoever put it to work. Naming an FSM shell **enters that machine** at its entry
+/// state, which is how a plain agent hands its work to a declared process.
 ///
-/// - **`exec`** replaces the running instance with one running another [profile](GgAgentConfig) —
-///   named from the caller's own [delegation roster](GgAgentConfig::subagents), the same allowlist
-///   spawning is validated against. Every module both profiles have is carried live, so the
-///   successor opens on its predecessor's whole conversation; a capability the successor does not
-///   have is dropped, and one only it has starts empty. It is one agent throughout: one id in the
-///   tree per incarnation, one scheduler slot, one return value to whoever put it to work. Naming
-///   an FSM shell **enters that machine** at its entry state, which is how a plain agent hands its
-///   work to a declared process.
-/// - **`fork`** clones the running instance into a **child**: same profile, its own id, one level
-///   deeper, its own scheduler slot, and a deep copy of everything the forker holds — the window
-///   above all, so the copy opens knowing everything its parent knew. Memories are the exception,
-///   and follow the forker's [scope](GgMemoryScope): a linked one stays linked, an
-///   [isolated](GgMemoryScope::Isolated) one is copied. The copy is an ordinary subagent from
-///   there: it is waited on and messaged like any other, so it needs the delegation machinery
-///   ([subagents](CAPABILITY_SUBAGENTS) or [workflows](CAPABILITY_WORKFLOWS)) to be collectable at
-///   all, and it counts against the same depth and parallelism caps.
+/// The call is **turn-final**: it is declared during a turn and applied once every tool result of
+/// that turn is recorded, because a window rewritten mid-turn would strand an assistant message
+/// whose results had not been written yet. A turn that declares two successions keeps the first and
+/// refuses the second — a silently replaced successor identity is a change the model cannot see. An
+/// agent standing in an [FSM](CAPABILITY_FSM) state is **not** offered `exec` at all: where the run
+/// goes next is the machine's decision there, and `transition_state` is how it is made.
 ///
-/// Both calls are **turn-final**: they are declared during a turn and applied once every tool
-/// result of that turn is recorded, because a window rewritten mid-turn would strand an assistant
-/// message whose results had not been written yet. A turn that declares two successions keeps the
-/// first and refuses the second — a silently replaced successor identity is a change the model
-/// cannot see. An agent standing in an [FSM](CAPABILITY_FSM) state is **not** offered `exec` at
-/// all: where the run goes next is the machine's decision there, and `transition_state` is how it
-/// is made. `fork` stays available — the copy is an ordinary child, not a second driver of the
-/// machine.
+/// Opt-in, like every Phase 2+ capability, and independent of [`fork`](CAPABILITY_FORK): the two
+/// used to share one `agent-transitions` capability with a per-tool ablation apiece, which made the
+/// interesting arm ("can it become something else, but not duplicate itself?") a toggle *inside* a
+/// capability rather than a capability of its own. A configuration stored under the old id still
+/// enables both.
 ///
-/// Opt-in, like every Phase 2+ capability, and ablatable per tool — `disabledTools: ["fork"]`
-/// leaves an agent able to become something else but not to duplicate itself.
-///
-/// [agent transitions]: https://docs.testcabinet.ai/gg/fork-and-exec/
-pub const CAPABILITY_AGENT_TRANSITIONS: &str = "agent-transitions";
+/// [exec]: https://docs.testcabinet.ai/gg/fork-and-exec/
+pub const CAPABILITY_EXEC: &str = "exec";
 
-/// The stable id of the Phase 5 [speculative execution] capability: **best-of-K** — attempting the
-/// same piece of work several times in parallel and keeping only the best result.
+/// The stable id of the [fork] capability: an agent's ability to **clone itself** into a child.
 ///
-/// When enabled, the model can call `speculate` with a task (a free-form prompt or an
-/// [issue](CAPABILITY_PROJECT_MANAGEMENT)) and a count `K`: gg fans out `K`
-/// [subagents](CAPABILITY_SUBAGENTS) at the same task — under a named [agent profile](GgAgentConfig),
-/// optionally with different approach hints — **each in its own isolated git worktree** so the
-/// attempts do not collide, driven by the same
-/// [scheduler](CAPABILITY_SUBAGENTS) (honoring the one global parallelism cap and the depth cap — no
-/// separate budget). Once the attempts finish, a **judge** subagent scores their diffs against the
-/// task's completion
-/// criteria and picks a winner; gg then **merges the winner's worktree back** into the main tree and
-/// **discards the losers'** branches, so the main tree ends with exactly the winning attempt applied.
-/// The lifecycle (`fan-out → judge → merge`) is streamed as
-/// [`Speculation`](GgTelemetryKind::Speculation) telemetry, and the `K` attempts and the judge appear
-/// in the [agent tree](CAPABILITY_SUBAGENTS) as ordinary subagents.
+/// A `fork` mints a copy of the running instance: same profile, its own id, one level deeper, its
+/// own scheduler slot, and a deep copy of everything the forker holds — the window above all, so
+/// the copy opens knowing everything its parent knew. Memories are the exception, and follow the
+/// forker's [scope](GgMemoryScope): a linked one stays linked, an [isolated](GgMemoryScope::Isolated)
+/// one is copied. The copy is an ordinary subagent from there: it is waited on and messaged like any
+/// other, so it needs the [subagents](CAPABILITY_SUBAGENTS) capability to be collectable at all, and
+/// it counts against the same depth and parallelism caps.
 ///
-/// gg includes speculative execution **so its effectiveness can be measured empirically** — toggled
-/// against single-attempt work, it answers "does best-of-K beat one careful attempt at a fixed
-/// budget?" with data. Opt-in; it needs the delegation machinery to run the attempts and the judge
-/// (so it engages only when [subagents](CAPABILITY_SUBAGENTS) — or [workflows](CAPABILITY_WORKFLOWS)
-/// — is also on) and a usable git workspace to isolate them in (a `speculate` call is refused when
-/// worktree isolation is unavailable).
+/// Like [`exec`](CAPABILITY_EXEC) the call is **turn-final**, and it stays available to an agent
+/// standing in an [FSM](CAPABILITY_FSM) state — the copy is an ordinary child, not a second driver
+/// of the machine.
 ///
-/// [speculative execution]: https://docs.testcabinet.ai/gg/speculative-execution/
-pub const CAPABILITY_SPECULATIVE: &str = "speculative-execution";
+/// Opt-in, and independent of [`exec`](CAPABILITY_EXEC). A configuration stored under the old
+/// `agent-transitions` id still enables both.
+///
+/// [fork]: https://docs.testcabinet.ai/gg/fork-and-exec/
+pub const CAPABILITY_FORK: &str = "fork";
+
+/// The id the [`exec`](CAPABILITY_EXEC) and [`fork`](CAPABILITY_FORK) capabilities were split out
+/// of — a single capability whose two tools were ablated individually.
+///
+/// Retained only as the legacy alias both fall back to, so a capability set stored before the
+/// split still enables the pair it enabled then. Nothing offers or configures it.
+pub const CAPABILITY_AGENT_TRANSITIONS: &str = "agent-transitions";
 
 /// The stable id of the Phase 6 [responses-as-code] capability: an **alternative to traditional
 /// tool calling** in which the agent emits a *program over the available tools* — loops,
@@ -1231,7 +1201,7 @@ pub const CAPABILITY_REPLAY: &str = "replay";
 /// to the seeded repository's `.git/info/exclude`
 /// ([`crate::seeding`]). That is load-bearing rather than tidy: the journal grows *inside the
 /// model's working tree while the session runs*, so without the exclusion it would show up in
-/// a speculation judge's diff, in an issue reviewer's per-file diff stat, in a worktree
+/// an issue reviewer's per-file diff stat, in a worktree
 /// commit, and — through the model's own `git add -A` — in the **public per-run repository**,
 /// where it would publish a verbatim transcript of every model call. It must be excluded at
 /// seed time because no publish-time filter can undo a commit the model already made.
@@ -1248,25 +1218,13 @@ pub const GG_WORKSPACE_DIR: &str = ".gg";
 /// itself, for the stored records captured before the change; it is removed with that type.
 pub const GG_REPLAY_ARTIFACT_PATH: &str = ".gg/replay.json";
 
-/// The stable id of the **completion** capability: the external check that gates a run's ending.
+/// The stable id the **completion** capability used to be configured under.
 ///
-/// **How an agent signals it is done is not configurable.** Every agent, in either execution mode,
-/// ends its session with an explicit call whose shape is fixed by the role it was dispatched in — an
-/// implementer calls `finish`, a reviewer `approve`/`request_changes`, a judge `select_winner`. A
-/// tool-calling reply that requests no tools, and a responses-as-code reply that is not a program,
-/// are both **errors** fed back to the model, so an agent that never learns to end its session trips
-/// the run's error ceilings rather than looping to its turn budget.
-///
-/// What this capability adds is the one thing that genuinely varies between studies: its
-/// [`validation`](Self) param (an array of commands, each an object with a required `command` string
-/// and an optional `cwd` — relative to gg's working directory, or absolute — and an optional
-/// `timeoutSecs`) gates the ending behind an **external check**. When the model signals it is done,
-/// gg runs the commands in order; the session only ends if every one exits `0`. If one fails, its
-/// output is handed back to the model and the run continues so it can fix the problem and finish
-/// again. An empty or absent `validation`, or an absent capability, leaves the ending ungated.
-///
-/// gg makes that gate configurable **so its effect can be measured empirically** — a validated
-/// ending versus an unchecked one — the same ablation discipline every other capability follows.
+/// Retained only so a stored capability set that still mentions it round-trips and so the
+/// [query catalog](crate::gg_query::GG_CAPABILITY_CATALOG) stays total over the runs that recorded
+/// it. Nothing offers or reads it any more: the validation commands it gated an ending with are now
+/// an [agent-stop hook](GgHookEvent::AgentStop), which does the same job for every agent, alongside
+/// the nine other points a run can be scripted at — see [`GgHook`].
 pub const CAPABILITY_COMPLETION: &str = "completion";
 
 /// The name a fresh capability set's **root agent** is seeded with.
@@ -1335,6 +1293,22 @@ pub struct GgCapabilitySet {
     /// before ceilings existed round-trips unchanged.
     #[serde(default, skip_serializing_if = "GgRunLimits::is_empty")]
     pub limits: GgRunLimits,
+    /// The **hooks** this run is scripted with — the operator-authored commands and scripts gg
+    /// runs at the ten [points](GgHookEvent) of a run's lifecycle, each able to block the operation
+    /// it precedes and to put text in front of the model.
+    ///
+    /// Run-level rather than per-agent, and deliberately not a [capability](GgCapabilityConfig),
+    /// for the same reason the [ceilings](Self::limits) are neither: a capability is a feature the
+    /// *model* is given and a study ablates, while a hook is the operator reaching into the run
+    /// from outside it. Several of the events are not an agent's at all — a session starting, a
+    /// compaction — and the ones that are fire for **every** agent, so hanging them off one
+    /// profile's capability list would have made "run this before every write" a thing an operator
+    /// had to remember to repeat.
+    ///
+    /// A set that declares none omits the key entirely, so every configuration stored before hooks
+    /// existed round-trips unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hooks: Vec<GgHook>,
 }
 
 impl Default for GgCapabilitySet {
@@ -1347,6 +1321,7 @@ impl Default for GgCapabilitySet {
             agents: default_agents(),
             model_slots: Vec::new(),
             limits: GgRunLimits::default(),
+            hooks: Vec::new(),
         }
     }
 }
@@ -1366,6 +1341,7 @@ impl GgCapabilitySet {
             }],
             model_slots: Vec::new(),
             limits: GgRunLimits::default(),
+            hooks: Vec::new(),
         }
     }
 
@@ -1524,6 +1500,8 @@ struct GgCapabilitySetRaw {
     model_slots: Vec<GgModelSlot>,
     #[serde(default)]
     limits: GgRunLimits,
+    #[serde(default)]
+    hooks: Vec<GgHook>,
     // --- legacy flat fields (pre per-agent) -----------------------------------
     #[serde(default)]
     capabilities: Option<Vec<GgCapabilityConfig>>,
@@ -1561,6 +1539,7 @@ impl From<GgCapabilitySetRaw> for GgCapabilitySet {
             agents,
             model_slots: raw.model_slots,
             limits: raw.limits,
+            hooks: raw.hooks,
         }
     }
 }
@@ -1575,7 +1554,7 @@ impl From<GgCapabilitySetRaw> for GgCapabilitySet {
 /// [custom prompt](Self::custom_instructions) / [full template override](Self::system_prompt_template),
 /// and the set of other agents it may spawn as [subagents](Self::subagents).
 ///
-/// An agent is put to work **by name**: `spawn_subagent`, `speculate`, and `run_workflow`
+/// An agent is put to work **by name**: `spawn_subagent` and `exec`
 /// all name the target agent, which must appear in the caller's [roster](Self::subagents) with the
 /// [`subagent`](GgSubagentScope::Subagent) scope — as must an [issue](GgBoardIssue)'s implementer
 /// (the [`implementer`](GgSubagentScope::Implementer) scope) and its reviewers (the
@@ -1895,8 +1874,7 @@ fn default_subagent_scopes() -> Vec<GgSubagentScope> {
 #[serde(rename_all = "snake_case")]
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub enum GgSubagentScope {
-    /// General delegation: `spawn_subagent`, a [workflow](CAPABILITY_WORKFLOWS) stage, and a
-    /// [speculation](CAPABILITY_SPECULATIVE)'s attempts and judge may all name this target.
+    /// General delegation: `spawn_subagent` may name this target.
     /// Reachable only when the [subagents](CAPABILITY_SUBAGENTS) capability (or the workflow
     /// machinery built on it) is on.
     Subagent,
@@ -2071,10 +2049,17 @@ fn default_agents() -> Vec<GgAgentConfig> {
 
 /// The capability a legacy umbrella id stands in for `id`, when `id` is one that was split
 /// out of it. Drives [`GgCapabilitySet::effective_capability`].
+///
+/// Two splits are covered: the four [filesystem tools](FILESYSTEM_TOOL_CAPABILITIES) out of the
+/// `filesystem` umbrella, and [`exec`](CAPABILITY_EXEC)/[`fork`](CAPABILITY_FORK) out of
+/// [`agent-transitions`](CAPABILITY_AGENT_TRANSITIONS). In both cases a set stored before the split
+/// mentions only the umbrella, and reading the umbrella is what keeps that set running the tools it
+/// was configured with.
 fn legacy_alias(id: &str) -> Option<&'static str> {
-    FILESYSTEM_TOOL_CAPABILITIES
-        .contains(&id)
-        .then_some(CAPABILITY_FILESYSTEM)
+    if FILESYSTEM_TOOL_CAPABILITIES.contains(&id) {
+        return Some(CAPABILITY_FILESYSTEM);
+    }
+    (id == CAPABILITY_EXEC || id == CAPABILITY_FORK).then_some(CAPABILITY_AGENT_TRANSITIONS)
 }
 
 /// The default enabled capabilities: the shell and the four
@@ -2327,6 +2312,320 @@ pub struct GgModelSlot {
     pub default_model_id: Option<String>,
 }
 
+// ---------------------------------------------------------------------------
+// Hooks: the operator's seam into a run's lifecycle
+// ---------------------------------------------------------------------------
+
+/// One **hook**: a command or a script gg runs at a [point](GgHookEvent) in a run's lifecycle,
+/// able to stop the operation it precedes and to put text in front of the model.
+///
+/// A hook is the operator reaching into a run from outside it, which is exactly what makes it not a
+/// [capability](GgCapabilityConfig): the model is never told a hook exists, is offered no tool for
+/// it, and cannot decline one. It is also why hooks are declared once for the whole run
+/// ([`GgCapabilitySet::hooks`]) rather than per profile — "check every file before it is written"
+/// is a property of the run, and repeating it on each profile would be a way to get it wrong.
+///
+/// Every hook fires on exactly one [event](Self::event) and runs exactly one [action](Self::action).
+/// Several hooks may name the same event; they run **in declaration order**, and the first one to
+/// block stops both the operation and the rest of that event's hooks — a later hook's opinion of an
+/// operation that is not going to happen is not worth the wall clock.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgHook {
+    /// Which point of the run this hook fires at.
+    pub event: GgHookEvent,
+    /// What it runs, and how gg reads what came back.
+    pub action: GgHookAction,
+    /// An operator's label for this hook, shown wherever gg reports one running or blocking. Empty
+    /// falls back to a description of the action, so a hook is always nameable in a diagnostic.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+}
+
+/// The point of a run's lifecycle a [hook](GgHook) fires at.
+///
+/// Ten events in four pairs plus two singles, and the pairing is the whole design: a `pre-` event
+/// runs **before** its operation and is the only kind that can stop it, while a `post-` event runs
+/// after and can only add to what the model is told. An operator reading a configuration can
+/// therefore answer "can this hook block?" from the event's name alone, without knowing what the
+/// hook does — which is the property a gate has to have to be trustworthy.
+///
+/// The two exceptions are named rather than implied, because both are cases where the obvious
+/// reading is wrong:
+///
+/// - [`PreCompact`](Self::PreCompact) is a `pre-` event that **cannot** block. Compaction happens
+///   because the window is full; refusing it would leave the agent with no room to do anything at
+///   all, so the only honest thing a hook can do there is observe.
+/// - [`SessionEnd`](Self::SessionEnd) fires after the root agent is finished, so there is nothing
+///   left to block — and, unlike the other `post-` events, no prompt left to insert into either.
+///   It is where a run reports on itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgHookEvent {
+    /// Before a file write of any kind — `write_file`, `edit_file`, or a program's `fs.writeFile` /
+    /// `fs.editFile`. The payload carries the absolute path and the **contents that would be
+    /// written**, so a hook sees the finished file rather than an edit's patch. **Can block**, in
+    /// which case nothing touches the disk.
+    PreWrite,
+    /// After a file write of any kind has updated the file, with the absolute path and the contents
+    /// that were written. Cannot block — the write already happened — but may insert.
+    PostWrite,
+    /// Before a shell command runs, with the command line about to be executed. **Can block**, in
+    /// which case no process is started.
+    PreShell,
+    /// After a shell command has run, with the command line and how it finished. Cannot block; may
+    /// insert, which is how a run comments on what a command did.
+    PostShell,
+    /// Before a [compaction](CAPABILITY_COMPACTION) condenses an agent's window. Cannot block (see
+    /// the type's own note) and cannot insert — the window it would insert into is the one being
+    /// rewritten. It exists to observe, and to let a run save state elsewhere before the thread is
+    /// condensed.
+    PreCompact,
+    /// After a compaction has rewritten an agent's window. Cannot block, but **may insert** — into
+    /// the rebuilt context, which is the one moment a run can put back something the compaction
+    /// dropped.
+    PostCompact,
+    /// When any agent instance starts running, with the [kind](GgHookAgentKind) of agent it is.
+    /// Cannot block — an agent that was dispatched is going to run — but may insert into the
+    /// opening context.
+    AgentStart,
+    /// When any agent attempts to end its session, with the [kind](GgHookAgentKind) of agent it is.
+    /// **Can block**, in which case the agent is told why and its session continues. This is the
+    /// event the old `completion` capability's validation commands became: a command hook here that
+    /// exits non-zero is exactly the ending gate it used to be, and it now applies to a reviewer
+    /// and a subagent as readily as to the root.
+    AgentStop,
+    /// Before the root agent takes its first turn — once per run, ahead of everything. Cannot
+    /// block, but **may insert** into the root's opening prompt, which is how a run is seeded with
+    /// something gg itself has no way to know.
+    SessionStart,
+    /// After the root agent has finished — once per run, last. Cannot block and cannot insert;
+    /// there is no session left to affect.
+    SessionEnd,
+}
+
+/// Every [hook event](GgHookEvent), in the order the editor and the documentation list them:
+/// the four `pre`/`post` pairs, then the session boundary.
+pub const ALL_HOOK_EVENTS: [GgHookEvent; 10] = [
+    GgHookEvent::PreWrite,
+    GgHookEvent::PostWrite,
+    GgHookEvent::PreShell,
+    GgHookEvent::PostShell,
+    GgHookEvent::PreCompact,
+    GgHookEvent::PostCompact,
+    GgHookEvent::AgentStart,
+    GgHookEvent::AgentStop,
+    GgHookEvent::SessionStart,
+    GgHookEvent::SessionEnd,
+];
+
+impl GgHookEvent {
+    /// The event's wire name — the string a configuration spells it with.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::PreWrite => "pre-write",
+            Self::PostWrite => "post-write",
+            Self::PreShell => "pre-shell",
+            Self::PostShell => "post-shell",
+            Self::PreCompact => "pre-compact",
+            Self::PostCompact => "post-compact",
+            Self::AgentStart => "agent-start",
+            Self::AgentStop => "agent-stop",
+            Self::SessionStart => "session-start",
+            Self::SessionEnd => "session-end",
+        }
+    }
+
+    /// Whether a hook on this event can **stop** the operation it fires around.
+    ///
+    /// Read here rather than inferred from the `pre-` prefix, because
+    /// [`PreCompact`](Self::PreCompact) is a `pre-` event that deliberately cannot. gg consults this
+    /// before it even looks at what a hook returned, so a `block` from a hook on a non-blocking
+    /// event is reported to the operator as a misconfiguration rather than silently dropped.
+    pub fn can_block(self) -> bool {
+        matches!(self, Self::PreWrite | Self::PreShell | Self::AgentStop)
+    }
+
+    /// Whether a hook on this event can put text in front of the model.
+    ///
+    /// False for the two events with no prompt to insert into: [`PreCompact`](Self::PreCompact),
+    /// whose window is about to be rewritten, and [`SessionEnd`](Self::SessionEnd), which fires
+    /// after the last turn anybody could read it on.
+    pub fn can_insert(self) -> bool {
+        !matches!(self, Self::PreCompact | Self::SessionEnd)
+    }
+}
+
+/// What a [hook](GgHook) actually runs — the three kinds, as a tagged union so a hook carries
+/// exactly the fields its kind needs and no others.
+///
+/// The split is between a hook that is a **command** and one that is a **script**. A command is the
+/// simple case: gg runs a command line, learns nothing but its exit status and its output, and
+/// treats a non-zero exit as a block. A script is the expressive case: gg hands it the event as
+/// JSON and reads a structured [decision](GgHookOutcomeKind) back, so a script can say "let this
+/// through but tell the model X" — which an exit code cannot express.
+///
+/// [`BuiltIn`](Self::BuiltIn) and [`Custom`](Self::Custom) are the same execution path and the same
+/// contract, differing only in where the source comes from: gg's own catalogue, or the
+/// configuration. That is deliberate — a built-in is meant to be a worked example an operator can
+/// read, copy into a custom hook, and change.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase"
+)]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgHookAction {
+    /// Run an arbitrary command line, exactly as the [shell tool](CAPABILITY_SHELL) runs one.
+    ///
+    /// It receives **no input** — not the event payload, not anything on stdin. A command hook is
+    /// for the check that is already a command ("does it build?", "does it lint?"), and such a
+    /// check reads the workspace rather than being told about it. A hook that needs to know what is
+    /// being written wants a [script](Self::Custom).
+    ///
+    /// A **non-zero exit blocks** (on an event that can block), and either way the command's output
+    /// is inserted into the agent's prompt as hook output. The output goes through the agent's own
+    /// [offloading policy](SHELL_OUTPUT_MODES), so a failing test suite that prints a megabyte is
+    /// handled the way a megabyte of `shell` output is: the tail inline, the whole of it on disk to
+    /// grep.
+    Command {
+        /// The command line, run through `sh -c`.
+        command: String,
+        /// Where to run it — relative to gg's working directory, or absolute. Absent runs it in the
+        /// agent's workspace root, which for an agent working in an isolated
+        /// [worktree](CAPABILITY_PROJECT_MANAGEMENT) is that worktree.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "contract", ts(optional))]
+        cwd: Option<String>,
+        /// How long it may run before it is killed. Absent uses gg's default, which is generous
+        /// because a hook command is typically a build or a test suite.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "contract", ts(optional))]
+        timeout_secs: Option<f64>,
+        /// How much of the output comes back inline and what happens to the rest — one of
+        /// [`SHELL_OUTPUT_MODES`]. Absent follows the agent's own `shell` configuration, which is
+        /// almost always what an operator means.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "contract", ts(optional))]
+        output: Option<String>,
+    },
+    /// Run one of gg's own hook scripts, by [id](GG_BUILTIN_HOOKS).
+    ///
+    /// Same contract as [`Custom`](Self::Custom) in every respect — the JSON argument, the JSON
+    /// decision on stdout, the exit-0 requirement — with the source coming from gg instead of the
+    /// configuration. An id gg does not ship **fails the launch**, rather than being skipped: a
+    /// hook that silently does not run is a gate an operator believes they have.
+    BuiltIn {
+        /// The script's id, one of [`GG_BUILTIN_HOOKS`].
+        script: String,
+    },
+    /// Run a script the configuration carries verbatim.
+    ///
+    /// gg writes [`source`](Self::Custom::source) to a file in the run's own directory, makes it
+    /// executable, and runs it with the event payload as its **sole argument** — a JSON string, not
+    /// a stream, so a script reads its input without a parser for the reading. A leading `#!` line
+    /// chooses the interpreter, and a script without one is run by `sh`.
+    ///
+    /// The script must exit `0` and print one [decision object](GgHookOutcomeKind) on stdout.
+    /// **A non-zero exit is the script itself failing**, not a block — the distinction matters
+    /// enough to be structural: a gate whose own machinery is broken has not judged anything, so
+    /// letting the operation through would be pretending it passed and blocking it would be
+    /// pretending it failed. gg **stops the run**.
+    Custom {
+        /// The script's source, run as described above.
+        source: String,
+    },
+}
+
+/// The ids of the hook scripts gg ships, for [`GgHookAction::BuiltIn`].
+///
+/// Deliberately a short list. A built-in exists where the thing being asked for is genuinely gg's
+/// to know — the shape of its own event payloads — rather than to save an operator from writing a
+/// script; anything workspace-specific belongs in a [custom](GgHookAction::Custom) one.
+pub const GG_BUILTIN_HOOKS: &[&str] = &[
+    // Report every event it receives to the operator log, and let it through. The one to reach for
+    // when the question is "does this event fire, and with what?" — which is the question every
+    // other hook starts from.
+    "trace",
+    // Block a write whose contents are empty or whitespace, on the reasoning that a model that
+    // truncates a file to nothing has lost the file rather than emptied it. Lets every other write
+    // through, and lets every non-write event through untouched.
+    "refuse-empty-write",
+    // Block a shell command that would run `git push`, `git reset --hard`, or `rm -rf` outside the
+    // workspace — the three commands that reach past the run. A worked example of reading the event
+    // payload, and useful as it stands.
+    "guard-destructive-shell",
+];
+
+/// What kind of agent a [hook](GgHook) is firing for, on the two events that fire per agent
+/// ([`AgentStart`](GgHookEvent::AgentStart) and [`AgentStop`](GgHookEvent::AgentStop)).
+///
+/// It is the **role the instance was dispatched in**, not its profile: the same profile implements
+/// an issue in one dispatch and reviews one in the next, and a hook that gates completion almost
+/// always means to gate one of those and not the other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgHookAgentKind {
+    /// The run's root agent — the one that drives the top-level session.
+    Root,
+    /// An agent the [board](CAPABILITY_PROJECT_MANAGEMENT) dispatched to implement an issue.
+    IssueImplementer,
+    /// An agent dispatched to review an issue's finished work.
+    IssueReviewer,
+    /// An agent another agent spawned with `spawn_subagent`, or forked from itself.
+    Subagent,
+}
+
+impl GgHookAgentKind {
+    /// The kind's wire name — what a script reads out of the payload's `agentKind`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Root => "root",
+            Self::IssueImplementer => "issue-implementer",
+            Self::IssueReviewer => "issue-reviewer",
+            Self::Subagent => "subagent",
+        }
+    }
+}
+
+/// The **decision** a [script hook](GgHookAction::Custom) prints on stdout — gg's side of the
+/// contract, as a tagged union keyed on `action`.
+///
+/// A tagged union rather than a bag of optional fields because the three outcomes are genuinely
+/// exclusive and a script that meant one of them should not be able to express two. `{"action":
+/// "block"}` with a `message` beside it would leave gg guessing whether the message was the reason
+/// for the block or an insertion the author also wanted; there is no such object.
+///
+/// Unparseable stdout is treated exactly as a non-zero exit is: the script did not judge, so gg
+/// stops the run rather than guessing which way it meant to fall.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "action", rename_all = "kebab-case")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub enum GgHookOutcomeKind {
+    /// Let the operation proceed and say nothing. The overwhelmingly common answer, and what a
+    /// script that has nothing to report should print.
+    Continue,
+    /// Stop the operation, for this reason.
+    ///
+    /// The reason is not decoration: it is what the model is told, and it is the only thing the
+    /// model has to go on when deciding what to do instead. A block on an event that
+    /// [cannot block](GgHookEvent::can_block) is a misconfiguration gg reports and does not honor.
+    Block {
+        /// Why the operation was refused, in the words the model reads.
+        reason: String,
+    },
+    /// Let the operation proceed, and put this message in front of the model.
+    Message {
+        /// The text inserted into the agent's prompt, labelled as hook output so the model can tell
+        /// it from something it produced itself.
+        message: String,
+    },
+}
+
 /// The **run-level guardrails** a gg run is bounded by: the [execution ceilings](GgLimitKind) that
 /// stop a session and record which one stopped it, plus the
 /// [parallelism cap](Self::max_parallel) that bounds how much of the run happens at once.
@@ -2361,7 +2660,7 @@ pub struct GgModelSlot {
 #[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
 pub struct GgRunLimits {
     /// How many of the run's agents may **run at once**, counting the root and every subagent,
-    /// issue implementer, reviewer and speculation attempt alike. **Absent means gg's default of
+    /// issue implementer and reviewer alike. **Absent means gg's default of
     /// 16**; set it explicitly to widen or tighten the pool, and `0` is read as "no cap declared"
     /// (a run with no agent able to run could not start at all).
     ///
@@ -3387,26 +3686,6 @@ pub enum GgAgentStatus {
     Failed,
 }
 
-/// The boundary a [`WorkflowStage`](GgTelemetryKind::WorkflowStage) event marks — the
-/// [start or finish](https://docs.testcabinet.ai/gg/workflows/) of one stage of a declared
-/// [workflow](CAPABILITY_WORKFLOWS).
-///
-/// A workflow stage emits one event as it [starts](Self::Started) (right before it fans its
-/// subagents out) and one as it [finishes](Self::Finished) (once every fanned-out agent has
-/// returned and its results are collected to feed the next stage), so the console can render the
-/// workflow's structure and each stage's duration on the timeline. The per-agent
-/// [`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentStatus`](GgTelemetryKind::AgentStatus)/[`AgentReturned`](GgTelemetryKind::AgentReturned)
-/// events carry the detail of the agents that ran within the stage.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum GgWorkflowPhase {
-    /// The stage is about to fan its subagents out over its items.
-    Started,
-    /// Every subagent the stage fanned out has returned and its results are collected.
-    Finished,
-}
-
 /// How one agent instance came to be replaced by (or cloned into) another — the discriminator on an
 /// [`AgentTransition`](GgTelemetryKind::AgentTransition) event.
 ///
@@ -3475,32 +3754,6 @@ pub struct GgReviewer {
     pub agent_id: String,
     /// The [agent profile](GgBoardIssue::reviewers) the reviewer ran under.
     pub profile: String,
-}
-
-/// The phase of a [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) a
-/// [`Speculation`](GgTelemetryKind::Speculation) event reports — the `fan-out → judge → merge`
-/// lifecycle of a best-of-K attempt.
-///
-/// A speculation [fans out](Self::FannedOut) K attempts at the same task (each in its own worktree),
-/// then a judge [scores and picks a winner](Self::Judged) among the attempts that produced work, and
-/// finally the winner's worktree is [merged](Self::Merged) back into the main tree while the losers'
-/// branches are discarded. A speculation that produced no usable work emits [`Judged`](Self::Judged)
-/// with no winner and no [`Merged`](Self::Merged).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
-pub enum GgSpeculationPhase {
-    /// The K attempts have been fanned out — one subagent per attempt, each in its own isolated
-    /// worktree, running the same task in parallel under the scheduler.
-    FannedOut,
-    /// The attempts finished and a judge scored their work and selected the winner (carried on the
-    /// event's [`winner`](GgTelemetryKind::Speculation) field, with the judge's
-    /// [`rationale`](GgTelemetryKind::Speculation)). Emitted with no winner when no attempt produced
-    /// usable work to merge.
-    Judged,
-    /// The winning attempt's worktree was merged back into the main tree and the losing attempts'
-    /// branches were discarded, so the main tree now holds exactly the winning attempt's changes.
-    Merged,
 }
 
 /// One [response-healing](https://docs.testcabinet.ai/gg/response-healing/) strategy — a named,
@@ -3971,10 +4224,6 @@ pub struct GgSessionSummary {
     /// [`ChangesRequested`](GgIssueReviewPhase::ChangesRequested) phase. `0` when every review
     /// approved on the first pass (or no issue named reviewers).
     pub issues_reopened: u64,
-    /// How many [speculative execution](GgTelemetryKind::Speculation) best-of-K rounds the run ran
-    /// — one per [`FannedOut`](GgSpeculationPhase::FannedOut) phase. `0` when the capability was
-    /// off.
-    pub speculations: u64,
     /// Which **execution mode** the run's agents used — the durable record of whether the run was
     /// driven with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) (`"responses_as_code"`, the
     /// model emitted programs gg ran in the wasmtime sandbox) or traditional tool calling
@@ -4912,8 +5161,7 @@ pub enum GgTelemetryKind {
         brief: Option<String>,
         /// The isolated git worktree this agent runs in — its branch — when it was dispatched into
         /// one: an [issue](CAPABILITY_PROJECT_MANAGEMENT) agent (and the reviewers of that issue,
-        /// which read the same tree) runs on the issue's branch, and each
-        /// [speculation](CAPABILITY_SPECULATIVE) attempt runs on its own. The console renders this
+        /// which read the same tree) runs on the issue's branch. The console renders this
         /// as a worktree indicator on the tree node. Absent for an agent running in the shared main
         /// tree (the root, an ad-hoc subagent, the merge agent), whose edits land directly in the
         /// workspace. A worktree's result is later merged or discarded — observe which with
@@ -5105,9 +5353,8 @@ pub enum GgTelemetryKind {
     /// makes a **merge vs discard** observable.
     ///
     /// Emitted once per worktree as it is torn down: for an accepted (or failed)
-    /// [issue](CAPABILITY_PROJECT_MANAGEMENT), on the issue's own stream, and for a
-    /// [speculation](CAPABILITY_SPECULATIVE)'s attempts as the winner is merged and the losers
-    /// discarded. The three states are distinguishable: an **accepted** branch merges back
+    /// [issue](CAPABILITY_PROJECT_MANAGEMENT), on the issue's own stream. The three states are
+    /// distinguishable: an **accepted** branch merges back
     /// (`merged: true`, with [`conflicts`](Self::WorktreeMerged::conflicts) recording whether the
     /// [merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) had to resolve a clash on the way); a
     /// **conflict the merge agent could not resolve** leaves the main tree unchanged
@@ -5125,36 +5372,6 @@ pub enum GgTelemetryKind {
         /// when it could not (`merged: false`, main tree left unchanged), so the two are told apart
         /// by `merged`. Always `false` on a clean merge or a discard.
         conflicts: bool,
-    },
-    /// A stage boundary of a declared [workflow](https://docs.testcabinet.ai/gg/workflows/) — the
-    /// light structural marker that lets the console draw a workflow's stages (and their durations)
-    /// on the timeline while the per-agent tree events carry the detail.
-    ///
-    /// Emitted (when the [workflows](CAPABILITY_WORKFLOWS) capability is enabled) on the agent that
-    /// invoked `run_workflow` — so it rides on that agent's own
-    /// [`agent_id`](GgTelemetryEvent::agent_id) — twice per stage: once with
-    /// [`Started`](GgWorkflowPhase::Started) right before the stage fans its subagents out, and once
-    /// with [`Finished`](GgWorkflowPhase::Finished) after every fanned-out agent has returned and
-    /// its results are collected to feed the next stage. The fanned-out agents themselves are
-    /// ordinary [subagents](CAPABILITY_SUBAGENTS): they emit the usual
-    /// [`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)
-    /// events (nested under the invoking agent), driven by the same scheduler as any other subagent.
-    /// A run with the capability off emits none.
-    WorkflowStage {
-        /// The id of the workflow this stage belongs to, unique within the run — so the console can
-        /// group a single `run_workflow` invocation's stages together (an agent may run several
-        /// workflows over its life).
-        workflow_id: String,
-        /// The stage's name (the model's `name` for it, or a `stage-N` fallback), for the timeline
-        /// label.
-        stage: String,
-        /// The stage's zero-based index within the workflow, so the console can order the stages.
-        stage_index: u64,
-        /// How many subagents this stage fans out — one per item it runs over (the prior stage's
-        /// results when the stage declares no explicit items).
-        item_count: u64,
-        /// Whether this event marks the stage's [start or finish](GgWorkflowPhase).
-        phase: GgWorkflowPhase,
     },
     /// An [FSM](CAPABILITY_FSM) agent entered a state — the event that makes a machine's path
     /// through its own state table observable.
@@ -5266,38 +5483,6 @@ pub enum GgTelemetryKind {
         /// branched from. Absent when no git baseline could be established for the run.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         baseline: Option<String>,
-    },
-    /// A [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) lifecycle
-    /// transition — the event that makes a **best-of-K** attempt (the K parallel tries, the judge's
-    /// pick, and the merge) observable.
-    ///
-    /// Emitted (when the [speculative-execution](CAPABILITY_SPECULATIVE) capability is enabled) on the
-    /// agent that called `speculate`: once as [`FannedOut`](GgSpeculationPhase::FannedOut) when the K
-    /// attempts are dispatched, once as [`Judged`](GgSpeculationPhase::Judged) once a judge has scored
-    /// them and picked the [`winner`](Self::Speculation::winner) (with the judge's
-    /// [`rationale`](Self::Speculation::rationale)), and once as
-    /// [`Merged`](GgSpeculationPhase::Merged) after the winner's worktree is merged back and the
-    /// losers are discarded. A speculation that produced no usable work emits `Judged` with no winner
-    /// and no `Merged`. The K attempts and the judge are ordinary
-    /// [subagents](CAPABILITY_SUBAGENTS) — they emit the usual
-    /// [`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)
-    /// events (each attempt's `AgentSpawned` carrying its isolated worktree branch) — so the console
-    /// can show the K attempts and the chosen winner. A run with the capability off emits none.
-    Speculation {
-        /// How many attempts were fanned out at the task (the `K` of best-of-K).
-        attempts: u64,
-        /// Which phase of the speculation lifecycle this transition is.
-        phase: GgSpeculationPhase,
-        /// The winning attempt's agent id, on [`Judged`](GgSpeculationPhase::Judged) (once a winner is
-        /// picked) and [`Merged`](GgSpeculationPhase::Merged). Absent on
-        /// [`FannedOut`](GgSpeculationPhase::FannedOut), and on a `Judged` where no attempt produced
-        /// usable work.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        winner: Option<String>,
-        /// The judge's one-line rationale for its pick, on [`Judged`](GgSpeculationPhase::Judged).
-        /// Absent on the other phases (and when the judge gave none).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        rationale: Option<String>,
     },
     /// A [responses-as-code](https://docs.testcabinet.ai/gg/responses-as-code/) **turn** — the
     /// event that makes a code-shaped turn observable: what gg had to do to the model's reply

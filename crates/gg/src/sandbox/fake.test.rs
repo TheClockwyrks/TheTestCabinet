@@ -19,8 +19,8 @@ use test_cabinet_core::gg::GgProgramLanguage;
 
 use super::invoker::{SandboxViewOpened, ViewOpenOutcome, ViewRefusal};
 use super::language::ProgramLanguage;
-use super::membrane::{MembraneState, RunEnding};
-use super::{FunctionSummary, SandboxLimits, ToolApi, WorkflowStageInput};
+use super::membrane::MembraneState;
+use super::{FunctionSummary, SandboxLimits, ToolApi};
 use crate::board::IssueStatus;
 use crate::context::{FileRegion, OpenViewInfo, ViewKind};
 use crate::ending::EndingRole;
@@ -31,8 +31,7 @@ use crate::tasks::TaskStatus;
 use crate::tools::{
     ArchiveHitData, ArchiveSearchData, BoardNodeData, BoardUsageData, DirEntryData, DirEntryKind,
     FileImageData, FileTextData, MemoryHitData, MemoryUsageData, ReclaimData, ShellData,
-    SpeculationData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure, ToolOutcome,
-    UsagePair, WorkflowData,
+    SubagentHandleData, SubagentResultData, ToolData, ToolFailure, ToolOutcome, UsagePair,
 };
 
 /// The [program language](ProgramLanguage) the sandbox's own tests drive: **TypeScript**.
@@ -464,28 +463,6 @@ impl ToolApi for FakeToolApi {
             json!({ "agentId": agent_id, "message": message }),
         )
     }
-    fn run_workflow(&mut self, stages: Vec<WorkflowStageInput>) -> ToolOutcome {
-        let json_stages: Vec<Value> = stages
-            .iter()
-            .map(|s| {
-                json!({ "name": s.name, "prompt": s.prompt, "items": s.items, "agent": s.agent })
-            })
-            .collect();
-        self.call("run_workflow", json!({ "stages": json_stages }))
-    }
-    fn speculate(
-        &mut self,
-        agent: String,
-        prompt: Option<String>,
-        issue_id: Option<String>,
-        attempts: u8,
-        approaches: Vec<String>,
-    ) -> ToolOutcome {
-        self.call(
-            "speculate",
-            json!({ "agent": agent, "prompt": prompt, "issueId": issue_id, "attempts": attempts, "approaches": approaches }),
-        )
-    }
 
     /// The fake does not model the catalogue: it echoes the object so a test can assert the request
     /// reached the host, and otherwise stays out of the way. Documentation lookups are not tool
@@ -750,21 +727,6 @@ pub(crate) fn canned_outcome(name: &str, args: &Value) -> ToolOutcome {
             ]))
         }
         "send_message" => ToolOutcome::ok("delivered", "messaged"),
-        "run_workflow" => {
-            ToolOutcome::ok("ran", "workflow").with_data(ToolData::Workflow(WorkflowData {
-                workflow_id: "wf-1".to_string(),
-                stages: 2,
-                results: vec!["first".to_string(), "second".to_string()],
-            }))
-        }
-        "speculate" => ToolOutcome::ok("merged", "speculated").with_data(ToolData::Speculation(
-            SpeculationData {
-                winner_id: "agent-2".to_string(),
-                attempts: 2,
-                rationale: Some("it was tidier".to_string()),
-                summary: "merged the winner".to_string(),
-            },
-        )),
         other => ToolOutcome::failed(
             ToolFailure::Unavailable,
             format!("unknown tool `{other}`; it is not offered by this run's capability set"),
@@ -825,13 +787,17 @@ pub(crate) fn membrane(log: &CallLog) -> MembraneState<FakeToolApi> {
     membrane_as(log, EndingRole::Standard)
 }
 
-/// A membrane state as [`membrane`], in `role`'s [ending group](EndingRole) — what a reviewer's or a
-/// judge's program is answered by.
-pub(crate) fn membrane_as(log: &CallLog, role: EndingRole) -> MembraneState<FakeToolApi> {
+/// A membrane state as [`membrane`], in `role`'s [ending group](EndingRole) — what a reviewer's
+/// program is answered by.
+///
+/// The role no longer crosses into the host: the *guest* binds only its own group's names, so which
+/// ending calls a program can make is settled before one reaches here. The parameter is kept
+/// because the tests read as statements about a role, and dropping it would make them read as
+/// statements about nothing.
+pub(crate) fn membrane_as(log: &CallLog, _role: EndingRole) -> MembraneState<FakeToolApi> {
     MembraneState::new(
         FakeToolApi::new(log),
         &all_tools(),
-        RunEnding::Role(role),
         SandboxLimits::default(),
         None,
     )
@@ -847,7 +813,6 @@ pub(crate) fn membrane_with(
     MembraneState::new(
         FakeToolApi::with(log, responder),
         enabled,
-        RunEnding::Role(EndingRole::Standard),
         SandboxLimits::default(),
         deadline,
     )
@@ -856,13 +821,7 @@ pub(crate) fn membrane_with(
 /// A membrane state over an already-prepared `api` — the one the program-library tests need, since
 /// what they vary is the api's own state (which programs it holds) rather than how it answers a call.
 pub(crate) fn membrane_from(api: FakeToolApi) -> MembraneState<FakeToolApi> {
-    MembraneState::new(
-        api,
-        &all_tools(),
-        RunEnding::Role(EndingRole::Standard),
-        SandboxLimits::default(),
-        None,
-    )
+    MembraneState::new(api, &all_tools(), SandboxLimits::default(), None)
 }
 
 /// The board budget the fake reports on every board mutation.

@@ -575,7 +575,11 @@ export type GgShellCwd =
  * [completion](https://docs.testcabinet.ai/gg/completion/) gate's validation commands
  * (which bypass the recorder entirely today) off the agent's ordinary queue.
  */
-export type GgShellOrigin = "tool" | "program" | "completion_validation";
+export type GgShellOrigin =
+  | "tool"
+  | "program"
+  | "completion_validation"
+  | "hook";
 
 /**
  * One subprocess gg ran, with its bulky streams pooled.

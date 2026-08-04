@@ -254,7 +254,7 @@ export function positive(fn: string, name: string, value: unknown): number | und
  * does not arrive as an empty list: it arrives as `undefined` and the lowering code trips over it
  * with a message that names neither the tool nor the field.
  *
- * The element type is a parameter because most lists are lists of ids but one — a workflow's stages
+ * The element type is a parameter because most lists are lists of ids but some — a reviewer's items
  * — is a list of records; the check itself is the same, and it is deliberately shallow, because the
  * bindings already reject a wrong element with a message that names the offending case.
  */

@@ -121,7 +121,7 @@ function lexesAsWord(text: string): boolean {
 }
 
 /** Render a field name, quoting only the segments that need it. Splitting on `.` first
- *  is what keeps `cap."speculative-execution"` readable instead of quoting the whole
+ *  is what keeps `cap."agent-persistence"` readable instead of quoting the whole
  *  dotted path. */
 export function formatField(field: FieldRef): string {
   return field.name.split(".").map(formatIdentifier).join(".");

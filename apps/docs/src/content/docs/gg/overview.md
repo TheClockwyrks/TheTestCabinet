@@ -100,13 +100,20 @@ the capability set, and the harness becomes a laboratory. It must be:
   [configuration](/gg/configurations/): registered on an operator's account, then
   picked by name when a run is launched.
 
-The set carries one thing that is _not_ a capability: the run's
+The set carries two things that are _not_ capabilities. The first is the run's
 [**execution limits**](/gg/execution-limits/) — the ceilings on turns, wall clock,
 consecutive errors, recent error rate and cost that stop a run and record which one
 stopped it. They live here rather than among the capabilities because a capability is a
 feature under ablation while a ceiling is an operator's guardrail over all of them, and
 because the set is what a run _records_, so a run stopped by a ceiling carries both the
 breach and the ceiling that produced it.
+
+The second is the run's [**hooks**](/gg/hooks/) — the commands and scripts gg runs at ten
+points of a run's lifecycle, each able to block the operation it precedes and to put text
+in front of the model. They are the operator reaching into the run from *outside* it: the
+model is never told a hook exists, is offered no tool for one, and cannot decline one. So
+they are declared once for the whole run rather than per agent, and several of their
+events — a session starting, a compaction — belong to no agent at all.
 
 The individual **agent profiles** carry two more settings that are not capabilities
 either, for the same reason and at a finer grain — they are properties of the *model* a
@@ -270,23 +277,20 @@ saved, launched, and analyzed in the console is
 
 - [Subagents](/gg/subagents/) — spawn, parallelize, block on, and message other
   agents.
-- [Workflows](/gg/workflows/) — declared subagent fan-out plus sequencing.
-- [Speculative execution](/gg/speculative-execution/) — best-of-K attempts judged
-  to a winner.
 - [Agent persistence](/gg/agent-persistence/) — make one profile a single long-lived
   worker: one instance runs at a time, and each opens on the files the last one left
   open.
-- [Fork & exec](/gg/fork-and-exec/) — let an agent become a different agent, carrying
-  its conversation with it, or run a copy of itself that starts already knowing
-  everything it knows.
+- [Exec & fork](/gg/fork-and-exec/) — two independent capabilities: let an agent
+  become a different agent, carrying its conversation with it, or let it run a copy of
+  itself that starts already knowing everything it knows.
 
 **Process & quality**
 
 - [FSM-driven processes](/gg/fsms/) — a state table the agent is driven through, each
   state running an agent profile of your choosing and each transition naming the
   modules the next state inherits.
-- [Completion](/gg/completion/) — how a run decides it is finished: the completion
-  signal, and the optional validation commands that gate it.
+- [Ending a session](/gg/ending-a-session/) — how a run decides it is finished: the
+  typed ending call each role makes, which is not configurable.
 
 **Models & tools**
 

@@ -45,7 +45,7 @@ use super::*;
 use std::collections::BTreeSet;
 
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_TRANSITIONS, GgSubagentRef, GgSubagentScope, GgTelemetryKind,
+    CAPABILITY_EXEC, CAPABILITY_FORK, GgSubagentRef, GgSubagentScope, GgTelemetryKind,
 };
 
 use crate::tools::{EXEC_TOOL, FORK_TOOL};
@@ -688,9 +688,12 @@ fn describe_kinds(kinds: &[ModuleKind]) -> Option<String> {
 // Launch diagnostics
 // ---------------------------------------------------------------------------
 
-/// The launch **warnings** a capability set's [agent-transitions](CAPABILITY_AGENT_TRANSITIONS)
-/// configuration produces: the configurations that enable the capability and get less of it than
-/// they asked for.
+/// The launch **warnings** a capability set's [exec](CAPABILITY_EXEC) and [fork](CAPABILITY_FORK)
+/// configuration produces: the configurations that enable one of them and get less of it than they
+/// asked for.
+///
+/// Each warning names the capability that will come up short, so an agent that enables only `fork`
+/// is never told about a roster it has no use for.
 ///
 /// All warnings rather than failures, on the same terms as every other configuration gg can still
 /// run: none of them makes the run unrunnable, and each is a tool that will simply not be there.
@@ -714,7 +717,9 @@ pub(super) fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
         })
         .collect();
     for profile in &set.agents {
-        if !profile.is_enabled(CAPABILITY_AGENT_TRANSITIONS) {
+        let exec = profile.is_enabled(CAPABILITY_EXEC);
+        let fork = profile.is_enabled(CAPABILITY_FORK);
+        if !exec && !fork {
             continue;
         }
         if crate::fsm::is_shell(profile) {
@@ -722,31 +727,31 @@ pub(super) fn launch_warnings(set: &GgCapabilitySet) -> Vec<String> {
             // capabilities are ignored, and repeating it per capability would be noise.
             continue;
         }
-        if profile
-            .agents_in_scope(GgSubagentScope::Subagent)
-            .is_empty()
+        if exec
+            && profile
+                .agents_in_scope(GgSubagentScope::Subagent)
+                .is_empty()
         {
             warnings.push(format!(
-                "agent `{}`: it enables `{CAPABILITY_AGENT_TRANSITIONS}` but lists no agents it \
-                 may use, so there is nothing for `{EXEC_TOOL}` to become and the call is not \
-                 offered. Add the agents it may continue as to its roster.",
+                "agent `{}`: it enables `{CAPABILITY_EXEC}` but lists no agents it may use, so \
+                 there is nothing for `{EXEC_TOOL}` to become and the call is not offered. Add the \
+                 agents it may continue as to its roster.",
                 profile.name,
             ));
         }
-        if !profile.is_enabled(CAPABILITY_SUBAGENTS) {
+        if fork && !profile.is_enabled(CAPABILITY_SUBAGENTS) {
             warnings.push(format!(
-                "agent `{}`: it enables `{CAPABILITY_AGENT_TRANSITIONS}` but not \
-                 `{CAPABILITY_SUBAGENTS}`, which is what offers `wait_for_subagents` and \
-                 `send_message` — so a copy of it could never be waited on or messaged, and \
-                 `{FORK_TOOL}` is not offered.",
+                "agent `{}`: it enables `{CAPABILITY_FORK}` but not `{CAPABILITY_SUBAGENTS}`, \
+                 which is what offers `wait_for_subagents` and `send_message` — so a copy of it \
+                 could never be waited on or messaged, and `{FORK_TOOL}` is not offered.",
                 profile.name,
             ));
         }
-        if state_agents.contains(profile.name.trim()) {
+        if exec && state_agents.contains(profile.name.trim()) {
             warnings.push(format!(
-                "agent `{}`: it enables `{CAPABILITY_AGENT_TRANSITIONS}` and is run as the state \
-                 of a process, so it is not offered `{EXEC_TOOL}` — inside a machine the next move \
-                 is `{TRANSITION_STATE_TOOL}`'s. `{FORK_TOOL}` is unaffected.",
+                "agent `{}`: it enables `{CAPABILITY_EXEC}` and is run as the state of a process, \
+                 so it is not offered `{EXEC_TOOL}` — inside a machine the next move is \
+                 `{TRANSITION_STATE_TOOL}`'s. `{FORK_TOOL}` is unaffected.",
                 profile.name,
             ));
         }

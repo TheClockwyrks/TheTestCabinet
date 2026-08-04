@@ -12,7 +12,7 @@
  * reply that failed to be a program, not an ending.
  *
  * **Why there is more than one.** An ending is a *result*, and different roles produce different
- * results: an agent doing work reports what it did, a reviewer returns a verdict, a judge names a
+ * results: an agent doing work reports what it did, and a reviewer returns a
  * winner. Each is a different shape, so each is a different call whose signature carries exactly what
  * that result is made of, and the host binds one group per program. A role's ending is therefore the
  * only ending its program can express — and nothing has to be read back out of prose.
@@ -34,7 +34,6 @@ import { ToolError, call, typeName } from "./errors.js";
 /** The names this module reports its failures under. They are not tool names; nothing dispatches them. */
 const FINISH = "finish";
 const REQUEST_CHANGES = "requestChanges";
-const SELECT_WINNER = "selectWinner";
 
 /**
  * Reject a mistyped argument here in the guest, which is the only place that can see it: TypeScript
@@ -92,18 +91,3 @@ export function requestChanges(items: string[]): void {
   call(() => raw.requestChanges(listed));
 }
 
-/**
- * Name the attempt that wins, by the number it was presented under, and say why in a sentence. This
- * ends your session, and does not stop your program.
- */
-export function selectWinner(attempt: number, rationale: string): void {
-  if (typeof attempt !== "number" || !Number.isInteger(attempt) || attempt < 1) {
-    throw new ToolError(
-      SELECT_WINNER,
-      "invalid-argument",
-      `\`attempt\` must be an integer of 1 or more, got ${String(attempt)}`,
-    );
-  }
-  requireString(SELECT_WINNER, "a rationale string", rationale);
-  call(() => raw.selectWinner(attempt, rationale));
-}

@@ -379,6 +379,23 @@ export type GgCapabilitySet = {
    * before ceilings existed round-trips unchanged.
    */
   limits?: GgRunLimits;
+  /**
+   * The **hooks** this run is scripted with — the operator-authored commands and scripts gg
+   * runs at the ten [points](GgHookEvent) of a run's lifecycle, each able to block the operation
+   * it precedes and to put text in front of the model.
+   *
+   * Run-level rather than per-agent, and deliberately not a [capability](GgCapabilityConfig),
+   * for the same reason the [ceilings](Self::limits) are neither: a capability is a feature the
+   * *model* is given and a study ablates, while a hook is the operator reaching into the run
+   * from outside it. Several of the events are not an agent's at all — a session starting, a
+   * compaction — and the ones that are fire for **every** agent, so hanging them off one
+   * profile's capability list would have made "run this before every write" a thing an operator
+   * had to remember to repeat.
+   *
+   * A set that declares none omits the key entirely, so every configuration stored before hooks
+   * existed round-trips unchanged.
+   */
+  hooks?: Array<GgHook>;
 };
 
 /**
@@ -1287,20 +1304,6 @@ export type GgContextAction =
 export type GgAgentStatus = "running" | "blocked" | "done" | "failed";
 
 /**
- * The boundary a [`WorkflowStage`](GgTelemetryKind::WorkflowStage) event marks — the
- * [start or finish](https://docs.testcabinet.ai/gg/workflows/) of one stage of a declared
- * [workflow](CAPABILITY_WORKFLOWS).
- *
- * A workflow stage emits one event as it [starts](Self::Started) (right before it fans its
- * subagents out) and one as it [finishes](Self::Finished) (once every fanned-out agent has
- * returned and its results are collected to feed the next stage), so the console can render the
- * workflow's structure and each stage's duration on the timeline. The per-agent
- * [`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentStatus`](GgTelemetryKind::AgentStatus)/[`AgentReturned`](GgTelemetryKind::AgentReturned)
- * events carry the detail of the agents that ran within the stage.
- */
-export type GgWorkflowPhase = "started" | "finished";
-
-/**
  * How one agent instance came to be replaced by (or cloned into) another — the discriminator on an
  * [`AgentTransition`](GgTelemetryKind::AgentTransition) event.
  *
@@ -1353,19 +1356,6 @@ export type GgReviewer = {
 };
 
 /**
- * The phase of a [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) a
- * [`Speculation`](GgTelemetryKind::Speculation) event reports — the `fan-out → judge → merge`
- * lifecycle of a best-of-K attempt.
- *
- * A speculation [fans out](Self::FannedOut) K attempts at the same task (each in its own worktree),
- * then a judge [scores and picks a winner](Self::Judged) among the attempts that produced work, and
- * finally the winner's worktree is [merged](Self::Merged) back into the main tree while the losers'
- * branches are discarded. A speculation that produced no usable work emits [`Judged`](Self::Judged)
- * with no winner and no [`Merged`](Self::Merged).
- */
-export type GgSpeculationPhase = "fanned_out" | "judged" | "merged";
-
-/**
  * The **run-level guardrails** a gg run is bounded by: the [execution ceilings](GgLimitKind) that
  * stop a session and record which one stopped it, plus the
  * [parallelism cap](Self::max_parallel) that bounds how much of the run happens at once.
@@ -1399,7 +1389,7 @@ export type GgSpeculationPhase = "fanned_out" | "judged" | "merged";
 export type GgRunLimits = {
   /**
    * How many of the run's agents may **run at once**, counting the root and every subagent,
-   * issue implementer, reviewer and speculation attempt alike. **Absent means gg's default of
+   * issue implementer and reviewer alike. **Absent means gg's default of
    * 16**; set it explicitly to widen or tighten the pool, and `0` is read as "no cap declared"
    * (a run with no agent able to run could not start at all).
    *
@@ -1553,6 +1543,167 @@ export type GgLimitBreach = {
    */
   window?: number;
 };
+
+/**
+ * One **hook**: a command or a script gg runs at a [point](GgHookEvent) in a run's lifecycle,
+ * able to stop the operation it precedes and to put text in front of the model.
+ *
+ * A hook is the operator reaching into a run from outside it, which is exactly what makes it not a
+ * [capability](GgCapabilityConfig): the model is never told a hook exists, is offered no tool for
+ * it, and cannot decline one. It is also why hooks are declared once for the whole run
+ * ([`GgCapabilitySet::hooks`]) rather than per profile — "check every file before it is written"
+ * is a property of the run, and repeating it on each profile would be a way to get it wrong.
+ *
+ * Every hook fires on exactly one [event](Self::event) and runs exactly one [action](Self::action).
+ * Several hooks may name the same event; they run **in declaration order**, and the first one to
+ * block stops both the operation and the rest of that event's hooks — a later hook's opinion of an
+ * operation that is not going to happen is not worth the wall clock.
+ */
+export type GgHook = {
+  /**
+   * Which point of the run this hook fires at.
+   */
+  event: GgHookEvent;
+  /**
+   * What it runs, and how gg reads what came back.
+   */
+  action: GgHookAction;
+  /**
+   * An operator's label for this hook, shown wherever gg reports one running or blocking. Empty
+   * falls back to a description of the action, so a hook is always nameable in a diagnostic.
+   */
+  name?: string;
+};
+
+/**
+ * The point of a run's lifecycle a [hook](GgHook) fires at.
+ *
+ * Ten events in four pairs plus two singles, and the pairing is the whole design: a `pre-` event
+ * runs **before** its operation and is the only kind that can stop it, while a `post-` event runs
+ * after and can only add to what the model is told. An operator reading a configuration can
+ * therefore answer "can this hook block?" from the event's name alone, without knowing what the
+ * hook does — which is the property a gate has to have to be trustworthy.
+ *
+ * The two exceptions are named rather than implied, because both are cases where the obvious
+ * reading is wrong:
+ *
+ * - [`PreCompact`](Self::PreCompact) is a `pre-` event that **cannot** block. Compaction happens
+ *   because the window is full; refusing it would leave the agent with no room to do anything at
+ *   all, so the only honest thing a hook can do there is observe.
+ * - [`SessionEnd`](Self::SessionEnd) fires after the root agent is finished, so there is nothing
+ *   left to block — and, unlike the other `post-` events, no prompt left to insert into either.
+ *   It is where a run reports on itself.
+ */
+export type GgHookEvent =
+  | "pre-write"
+  | "post-write"
+  | "pre-shell"
+  | "post-shell"
+  | "pre-compact"
+  | "post-compact"
+  | "agent-start"
+  | "agent-stop"
+  | "session-start"
+  | "session-end";
+
+/**
+ * What a [hook](GgHook) actually runs — the three kinds, as a tagged union so a hook carries
+ * exactly the fields its kind needs and no others.
+ *
+ * The split is between a hook that is a **command** and one that is a **script**. A command is the
+ * simple case: gg runs a command line, learns nothing but its exit status and its output, and
+ * treats a non-zero exit as a block. A script is the expressive case: gg hands it the event as
+ * JSON and reads a structured [decision](GgHookOutcomeKind) back, so a script can say "let this
+ * through but tell the model X" — which an exit code cannot express.
+ *
+ * [`BuiltIn`](Self::BuiltIn) and [`Custom`](Self::Custom) are the same execution path and the same
+ * contract, differing only in where the source comes from: gg's own catalogue, or the
+ * configuration. That is deliberate — a built-in is meant to be a worked example an operator can
+ * read, copy into a custom hook, and change.
+ */
+export type GgHookAction =
+  | {
+      type: "command";
+      /**
+       * The command line, run through `sh -c`.
+       */
+      command: string;
+      /**
+       * Where to run it — relative to gg's working directory, or absolute. Absent runs it in the
+       * agent's workspace root, which for an agent working in an isolated
+       * [worktree](CAPABILITY_PROJECT_MANAGEMENT) is that worktree.
+       */
+      cwd?: string;
+      /**
+       * How long it may run before it is killed. Absent uses gg's default, which is generous
+       * because a hook command is typically a build or a test suite.
+       */
+      timeoutSecs?: number;
+      /**
+       * How much of the output comes back inline and what happens to the rest — one of
+       * [`SHELL_OUTPUT_MODES`]. Absent follows the agent's own `shell` configuration, which is
+       * almost always what an operator means.
+       */
+      output?: string;
+    }
+  | {
+      type: "built-in";
+      /**
+       * The script's id, one of [`GG_BUILTIN_HOOKS`].
+       */
+      script: string;
+    }
+  | {
+      type: "custom";
+      /**
+       * The script's source, run as described above.
+       */
+      source: string;
+    };
+
+/**
+ * What kind of agent a [hook](GgHook) is firing for, on the two events that fire per agent
+ * ([`AgentStart`](GgHookEvent::AgentStart) and [`AgentStop`](GgHookEvent::AgentStop)).
+ *
+ * It is the **role the instance was dispatched in**, not its profile: the same profile implements
+ * an issue in one dispatch and reviews one in the next, and a hook that gates completion almost
+ * always means to gate one of those and not the other.
+ */
+export type GgHookAgentKind =
+  | "root"
+  | "issue-implementer"
+  | "issue-reviewer"
+  | "subagent";
+
+/**
+ * The **decision** a [script hook](GgHookAction::Custom) prints on stdout — gg's side of the
+ * contract, as a tagged union keyed on `action`.
+ *
+ * A tagged union rather than a bag of optional fields because the three outcomes are genuinely
+ * exclusive and a script that meant one of them should not be able to express two. `{"action":
+ * "block"}` with a `message` beside it would leave gg guessing whether the message was the reason
+ * for the block or an insertion the author also wanted; there is no such object.
+ *
+ * Unparseable stdout is treated exactly as a non-zero exit is: the script did not judge, so gg
+ * stops the run rather than guessing which way it meant to fall.
+ */
+export type GgHookOutcomeKind =
+  | { action: "continue" }
+  | {
+      action: "block";
+      /**
+       * Why the operation was refused, in the words the model reads.
+       */
+      reason: string;
+    }
+  | {
+      action: "message";
+      /**
+       * The text inserted into the agent's prompt, labelled as hook output so the model can tell
+       * it from something it produced itself.
+       */
+      message: string;
+    };
 
 /**
  * How one agent turn ended — the wire mirror of gg's own `TurnOutcome`, which is the single
@@ -1972,12 +2123,6 @@ export type GgSessionSummary = {
    * approved on the first pass (or no issue named reviewers).
    */
   issuesReopened: number;
-  /**
-   * How many [speculative execution](GgTelemetryKind::Speculation) best-of-K rounds the run ran
-   * — one per [`FannedOut`](GgSpeculationPhase::FannedOut) phase. `0` when the capability was
-   * off.
-   */
-  speculations: number;
   /**
    * Which **execution mode** the run's agents used — the durable record of whether the run was
    * driven with [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) (`"responses_as_code"`, the
@@ -2579,8 +2724,7 @@ export type GgTelemetryKind =
       /**
        * The isolated git worktree this agent runs in — its branch — when it was dispatched into
        * one: an [issue](CAPABILITY_PROJECT_MANAGEMENT) agent (and the reviewers of that issue,
-       * which read the same tree) runs on the issue's branch, and each
-       * [speculation](CAPABILITY_SPECULATIVE) attempt runs on its own. The console renders this
+       * which read the same tree) runs on the issue's branch. The console renders this
        * as a worktree indicator on the tree node. Absent for an agent running in the shared main
        * tree (the root, an ad-hoc subagent, the merge agent), whose edits land directly in the
        * workspace. A worktree's result is later merged or discarded — observe which with
@@ -2728,33 +2872,6 @@ export type GgTelemetryKind =
       conflicts: boolean;
     }
   | {
-      type: "workflow_stage";
-      /**
-       * The id of the workflow this stage belongs to, unique within the run — so the console can
-       * group a single `run_workflow` invocation's stages together (an agent may run several
-       * workflows over its life).
-       */
-      workflowId: string;
-      /**
-       * The stage's name (the model's `name` for it, or a `stage-N` fallback), for the timeline
-       * label.
-       */
-      stage: string;
-      /**
-       * The stage's zero-based index within the workflow, so the console can order the stages.
-       */
-      stageIndex: number;
-      /**
-       * How many subagents this stage fans out — one per item it runs over (the prior stage's
-       * results when the stage declares no explicit items).
-       */
-      itemCount: number;
-      /**
-       * Whether this event marks the stage's [start or finish](GgWorkflowPhase).
-       */
-      phase: GgWorkflowPhase;
-    }
-  | {
       type: "fsm_state";
       /**
        * The machine: the name of the **FSM shell** [profile](GgAgentConfig) whose `states` table
@@ -2853,29 +2970,6 @@ export type GgTelemetryKind =
        * branched from. Absent when no git baseline could be established for the run.
        */
       baseline?: string;
-    }
-  | {
-      type: "speculation";
-      /**
-       * How many attempts were fanned out at the task (the `K` of best-of-K).
-       */
-      attempts: number;
-      /**
-       * Which phase of the speculation lifecycle this transition is.
-       */
-      phase: GgSpeculationPhase;
-      /**
-       * The winning attempt's agent id, on [`Judged`](GgSpeculationPhase::Judged) (once a winner is
-       * picked) and [`Merged`](GgSpeculationPhase::Merged). Absent on
-       * [`FannedOut`](GgSpeculationPhase::FannedOut), and on a `Judged` where no attempt produced
-       * usable work.
-       */
-      winner?: string;
-      /**
-       * The judge's one-line rationale for its pick, on [`Judged`](GgSpeculationPhase::Judged).
-       * Absent on the other phases (and when the judge gave none).
-       */
-      rationale?: string;
     }
   | {
       type: "code_execution";
@@ -3582,8 +3676,7 @@ export type GgTelemetryEvent = {
       /**
        * The isolated git worktree this agent runs in — its branch — when it was dispatched into
        * one: an [issue](CAPABILITY_PROJECT_MANAGEMENT) agent (and the reviewers of that issue,
-       * which read the same tree) runs on the issue's branch, and each
-       * [speculation](CAPABILITY_SPECULATIVE) attempt runs on its own. The console renders this
+       * which read the same tree) runs on the issue's branch. The console renders this
        * as a worktree indicator on the tree node. Absent for an agent running in the shared main
        * tree (the root, an ad-hoc subagent, the merge agent), whose edits land directly in the
        * workspace. A worktree's result is later merged or discarded — observe which with
@@ -3731,33 +3824,6 @@ export type GgTelemetryEvent = {
       conflicts: boolean;
     }
   | {
-      type: "workflow_stage";
-      /**
-       * The id of the workflow this stage belongs to, unique within the run — so the console can
-       * group a single `run_workflow` invocation's stages together (an agent may run several
-       * workflows over its life).
-       */
-      workflowId: string;
-      /**
-       * The stage's name (the model's `name` for it, or a `stage-N` fallback), for the timeline
-       * label.
-       */
-      stage: string;
-      /**
-       * The stage's zero-based index within the workflow, so the console can order the stages.
-       */
-      stageIndex: number;
-      /**
-       * How many subagents this stage fans out — one per item it runs over (the prior stage's
-       * results when the stage declares no explicit items).
-       */
-      itemCount: number;
-      /**
-       * Whether this event marks the stage's [start or finish](GgWorkflowPhase).
-       */
-      phase: GgWorkflowPhase;
-    }
-  | {
       type: "fsm_state";
       /**
        * The machine: the name of the **FSM shell** [profile](GgAgentConfig) whose `states` table
@@ -3856,29 +3922,6 @@ export type GgTelemetryEvent = {
        * branched from. Absent when no git baseline could be established for the run.
        */
       baseline?: string;
-    }
-  | {
-      type: "speculation";
-      /**
-       * How many attempts were fanned out at the task (the `K` of best-of-K).
-       */
-      attempts: number;
-      /**
-       * Which phase of the speculation lifecycle this transition is.
-       */
-      phase: GgSpeculationPhase;
-      /**
-       * The winning attempt's agent id, on [`Judged`](GgSpeculationPhase::Judged) (once a winner is
-       * picked) and [`Merged`](GgSpeculationPhase::Merged). Absent on
-       * [`FannedOut`](GgSpeculationPhase::FannedOut), and on a `Judged` where no attempt produced
-       * usable work.
-       */
-      winner?: string;
-      /**
-       * The judge's one-line rationale for its pick, on [`Judged`](GgSpeculationPhase::Judged).
-       * Absent on the other phases (and when the judge gave none).
-       */
-      rationale?: string;
     }
   | {
       type: "code_execution";

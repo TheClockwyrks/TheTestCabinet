@@ -57,8 +57,6 @@ as the system prompt, so they live in the same place.
 | `review-brief.hbs`  | The [reviewer](/gg/project-management/)'s brief: the issue brief, earlier verdicts, and where the work is and what it touched.                       |
 | `fix-brief.hbs`     | The brief an issue's own agent is re-dispatched with after a review requested changes — the issue brief plus the reviewer's numbered items.          |
 | `merge-brief.hbs`   | The merge agent's brief when an issue's branch conflicts: which branch, and what git reported.                                                       |
-| `attempt-brief.hbs` | One attempt's brief in a [speculative execution](/gg/speculative-execution/) — the shared task and its assigned approach if any.                     |
-| `judge-brief.hbs`   | The judge's brief for a [speculative execution](/gg/speculative-execution/): the task and each candidate's own summary.                              |
 
 ### The rest of the loop's prose
 
@@ -72,8 +70,8 @@ as the system prompt, so they live in the same place.
 | `compaction-preface.hbs`                | The summary item a compacted thread is restarted from — the heading that frames it as a recap, then the summary itself.                         |
 | `compaction-fallback.hbs`               | The note used when the summarization call fails, so a failed summary never aborts the run it serves.                                            |
 | `compaction-memory-summary.hbs`         | What a `memory` compaction restarts the thread from: a bare note that a boundary was crossed, rather than a recap.                              |
-| `completion-missing.hbs`                | The feedback for a tool-calling turn that requested no tools, naming this agent's own [ending calls](/gg/completion/#ending-calls).             |
-| `completion-validation-failure.hbs`     | The feedback for an ending a [validation command](/gg/completion/) rejected: which command failed, and its output.                              |
+| `completion-missing.hbs`                | The feedback for a tool-calling turn that requested no tools, naming this agent's own [ending calls](/gg/ending-a-session/#ending-calls).             |
+| `completion-validation-failure.hbs`     | The feedback for an ending a [validation command](/gg/ending-a-session/) rejected: which command failed, and its output.                              |
 | `context-pressure.hbs`                  | The per-turn [context-pressure](/gg/agent-managed-context/) signal — how full the window is, what is filling it, and how to reclaim space.      |
 
 ## The system prompt is assembled from the capability set
@@ -231,8 +229,8 @@ otherwise know."* That is the reading order gg wants: a turn with no message fro
 is a turn that worked.
 
 Both arms then carry an **Ending your session** section naming this agent's own
-[ending calls](/gg/completion/#ending-calls) — `finish`, the two review verdicts, or
-`selectWinner` — spelled the way that execution mode writes them. It is the only place
+[ending calls](/gg/ending-a-session/#ending-calls) — `finish`, the two review verdicts, or
+`requestChanges` — spelled the way that execution mode writes them. It is the only place
 the ending is taught: the briefs gg dispatches with say nothing about it, because a brief
 that restated the contract would be a second authority on it, arriving later in the
 context and therefore winning any disagreement. That is how a code-mode reviewer once came

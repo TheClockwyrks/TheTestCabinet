@@ -55,7 +55,7 @@
 //! - **Tool results** are captured at the one point every dispatched call funnels through as its
 //!   outcome is finalized (the loop's per-call completion, and the responses-as-code program's
 //!   serviced-call completion), by calling [`GgRecorder::record_tool_result`] — so an intercepted
-//!   delegation/speculate/review tool and a code-program-composed call are all captured alongside
+//!   delegation/review tool and a code-program-composed call are all captured alongside
 //!   ordinary registry dispatch.
 //! - **The prompt frame** is captured at the one place the loop holds the turn's
 //!   [`PromptItem`] stream — the same call site that emits the telemetry

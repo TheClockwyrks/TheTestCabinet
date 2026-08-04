@@ -47,7 +47,6 @@ fn gg_record(id: &str, model: &str) -> RunRecord {
                 issue_reviews: 0,
                 review_cycles: 0,
                 issues_reopened: 0,
-                speculations: 0,
                 execution_mode: "tool_calling".to_string(),
                 program_language: None,
                 code_executions: 0,

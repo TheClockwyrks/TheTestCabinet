@@ -151,7 +151,7 @@ capability composes with the rest of the context machinery rather than fighting 
 ### Only on success
 
 The record is written **only** when an instance ends by signalling it is done (and passing
-whatever [completion](/gg/completion/) gate the profile sets). An instance stopped by an
+whatever [completion](/gg/ending-a-session/) gate the profile sets). An instance stopped by an
 [execution ceiling](/gg/execution-limits/), or by an error, leaves the previous instance's
 record standing — the desk of an agent that was cut off mid-thought is not a useful thing to
 inherit, and overwriting a good one with it would lose the profile's place.

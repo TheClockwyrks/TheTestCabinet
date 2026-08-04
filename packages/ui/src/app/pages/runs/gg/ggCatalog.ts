@@ -14,12 +14,14 @@ import type {
   GgAgentConfig,
   GgCapabilitySet,
   GgHealingStrategy,
+  GgHookEvent,
   GgLoopDetection,
   GgModuleKind,
   GgProgramLanguage,
   GgRunLimits,
   GgSubagentScope,
 } from "@test-cabinet/run-record/gg";
+import type { GgHookKind } from "./ggConfigDraft";
 
 // Whether a run's capability set has the named capability on. Capabilities are
 // per-agent now, so a run-level "is X on?" question is answered by the **Root** agent
@@ -397,6 +399,132 @@ export const DEFAULT_READ_LINE_CAP = 250;
 // default (adaptive). Both truncating modes write every command's stdout and stderr to a
 // file pair under `/tmp/gg-shell` and return only the configured tail, so a chatty build
 // cannot spend a large slice of the window in one call.
+// --- Hooks --------------------------------------------------------------------
+//
+// A hook is not a capability and deliberately does not appear in `CAPABILITIES`: the
+// model is never told one exists, is offered no tool for it, and cannot decline one.
+// These are the editor's vocabulary for the run-level Hooks section instead.
+
+// The ten points a run can be scripted at, in the order the editor lists them: the four
+// `pre`/`post` pairs, then the session's two ends. Mirrors `ALL_HOOK_EVENTS` in
+// `crates/core/src/gg.rs`.
+export const HOOK_EVENTS: ReadonlyArray<{
+  value: GgHookEvent;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "pre-write",
+    label: "Pre-write",
+    hint: "Before a file write of any kind (`write_file`, `edit_file`, or a program's equivalent), with the absolute path and the contents that would be written. Can block, in which case nothing touches the disk.",
+  },
+  {
+    value: "post-write",
+    label: "Post-write",
+    hint: "After a file write has updated the file, with the absolute path and the contents that were written. Cannot block; may insert.",
+  },
+  {
+    value: "pre-shell",
+    label: "Pre-shell",
+    hint: "Before a shell command runs, with the command line. Can block, in which case no process is started.",
+  },
+  {
+    value: "post-shell",
+    label: "Post-shell",
+    hint: "After a shell command has run, with the command line and whether it succeeded. Cannot block; may insert.",
+  },
+  {
+    value: "pre-compact",
+    label: "Pre-compact",
+    hint: "Before a compaction condenses an agent's window. Cannot block — the window is full, and refusing would leave the agent no room to work — and cannot insert, since the window it would insert into is the one being rewritten.",
+  },
+  {
+    value: "post-compact",
+    label: "Post-compact",
+    hint: "After a compaction has rewritten an agent's window. Cannot block, but may insert into the rebuilt context — the one moment a run can put back something the compaction dropped.",
+  },
+  {
+    value: "agent-start",
+    label: "Agent start",
+    hint: "When any agent instance starts, with the kind of agent it is (root, issue implementer, issue reviewer, subagent). Cannot block; may insert into the opening context.",
+  },
+  {
+    value: "agent-stop",
+    label: "Agent stop",
+    hint: "When any agent tries to end its session, with the kind of agent it is. Can block, in which case the agent is told why and carries on — this is the ending gate the Completion capability's validation commands became.",
+  },
+  {
+    value: "session-start",
+    label: "Session start",
+    hint: "Once per run, before the root agent's first turn. Cannot block, but may insert into the root's opening prompt.",
+  },
+  {
+    value: "session-end",
+    label: "Session end",
+    hint: "Once per run, after the root agent has finished. Cannot block and cannot insert — there is no session left to affect. This is where a run reports on itself.",
+  },
+];
+
+// The events a hook can actually stop, read off a table rather than off the `pre-`
+// prefix: `pre-compact` is a `pre-` event that deliberately cannot block, so the rule has
+// an exception and the exception has to be written down.
+export const BLOCKING_HOOK_EVENTS: ReadonlyArray<GgHookEvent> = [
+  "pre-write",
+  "pre-shell",
+  "agent-stop",
+];
+
+// The three shapes a hook takes. The split that matters is command-versus-script: a
+// command learns nothing but an exit status, while a script is handed the event as JSON
+// and answers with a decision — which is what buys "let this through, but tell the model
+// X", an outcome no exit code can express.
+export const HOOK_KINDS: ReadonlyArray<{
+  value: GgHookKind;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "command",
+    label: "Command",
+    hint: "Run a command line. It receives no input — the checks that are already commands read the workspace rather than being told about it. A non-zero exit blocks (on an event that can block), and the output is shown to the model either way, through the agent's own offloading policy.",
+  },
+  {
+    value: "built-in",
+    label: "Built-in",
+    hint: "Run one of gg's own hook scripts. Same contract as a custom script — the event as one JSON argument, a decision object on stdout, exit 0 — with the source coming from gg. Each is meant to be read and copied into a custom hook.",
+  },
+  {
+    value: "custom",
+    label: "Custom",
+    hint: "Run a script you provide. gg writes it to the run's workspace, makes it executable, and runs it with the event as its sole argument; a `#!` line chooses the interpreter and a script without one is run by `sh`. It must exit 0 and print one decision object on stdout — a non-zero exit or unreadable output is the hook itself failing, which stops the run.",
+  },
+];
+
+// The hook scripts gg ships, for the Built-in kind. Mirrors `GG_BUILTIN_HOOKS` in
+// `crates/core/src/gg.rs`; an id gg does not ship is a launch warning, not a silent skip.
+export const GG_BUILTIN_HOOK_IDS = [
+  "trace",
+  "refuse-empty-write",
+  "guard-destructive-shell",
+] as const;
+
+// What each built-in does, for the picker's help text.
+export const GG_BUILTIN_HOOK_HINTS: Readonly<Record<string, string>> = {
+  trace:
+    "Report every event it receives back as a message, and continue. The one to reach for when the question is \u201Cdoes this event fire, and with what?\u201D",
+  "refuse-empty-write":
+    "Block a write whose contents are empty or whitespace \u2014 a model that truncates a file to nothing has usually lost it rather than meant to empty it. Every other write, and every non-write event, passes.",
+  "guard-destructive-shell":
+    "Block a shell command that would `git push`, `git reset --hard`, or recursively remove a path outside the workspace. A guard rail, not a sandbox: it matches on the command text.",
+};
+
+// The one thing a hook's decision object is: a tagged union on `action`. Quoted in the
+// editor so an operator writing a custom script has the contract in front of them rather
+// than in the documentation.
+export const HOOK_DECISION_CONTRACT = `{"action":"continue"}
+{"action":"block","reason":"why the operation was refused"}
+{"action":"message","message":"text put in front of the model"}`;
+
 export const SHELL_OUTPUT_OPTIONS = [
   { value: "", label: "Adaptive (default)" },
   { value: "offload", label: "Offload to files" },
@@ -965,7 +1093,7 @@ export const SUBAGENT_SCOPES: ReadonlyArray<{
   {
     value: "subagent",
     label: "Subagent",
-    hint: "May be spawned with `spawn_subagent`, a workflow stage, or a speculation. Needs the Subagents capability to be reachable.",
+    hint: "May be spawned with `spawn_subagent`. Needs the Subagents capability to be reachable.",
   },
   {
     value: "implementer",
@@ -1513,33 +1641,22 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     defaultOn: false,
   },
   {
-    id: "workflows",
-    name: "Workflows",
+    id: "exec",
+    name: "Exec",
     group: "Delegation",
     purpose:
-      "Declared, ordered subagent fan-outs (stages feeding the next) driven by the same scheduler.",
-    tools: ["run_workflow"],
+      "Let this agent replace itself with one running another profile, carrying its whole conversation across.",
+    defaultOn: false,
+    tools: ["exec"],
   },
   {
-    id: "agent-transitions",
-    name: "Fork & exec",
+    id: "fork",
+    name: "Fork",
     group: "Delegation",
     purpose:
-      "Let this agent replace itself with another profile (`exec`) or run a copy of itself (`fork`).",
+      "Let this agent run a copy of itself — a child that opens knowing everything its parent knew.",
     defaultOn: false,
-    tools: ["exec", "fork"],
-    toolAblation: [
-      {
-        label: "Become another agent",
-        tools: ["exec"],
-        hint: "Off leaves forking only — the agent can duplicate itself but not hand its session to a different profile.",
-      },
-      {
-        label: "Run a copy of yourself",
-        tools: ["fork"],
-        hint: "Off leaves exec only — the agent can become another profile but cannot run a copy of itself.",
-      },
-    ],
+    tools: ["fork"],
   },
   {
     id: FSM_CAP_ID,
@@ -1582,23 +1699,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     // The ending calls are deliberately absent: they are loop-level tools gg appends
     // according to the agent's role and intercepts itself, not registry tools — and
     // withholding the only way to end a session is not an arm anyone would run.
-  },
-  {
-    id: "speculative-execution",
-    name: "Speculative execution",
-    group: "Process & quality",
-    purpose:
-      "Best-of-K — attempt a piece of work K times in parallel worktrees and keep the judged winner.",
-    params: [
-      {
-        key: "judgeAgent",
-        label: "Judge agent",
-        kind: "agent",
-        defaultValue: ROOT_AGENT,
-        hint: "Which agent profile judges the K attempts and picks the winner. A run-level knob read off the Root agent.",
-      },
-    ],
-    tools: ["speculate"],
   },
   // --- Debugging --------------------------------------------------------------
   {

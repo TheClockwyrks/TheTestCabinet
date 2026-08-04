@@ -1,14 +1,12 @@
 // The reusable pieces of a multi-agent gg run's read-out. gg is headless, so an
 // agent's identity (who it is, what it runs on, the worktree it works in, what it
-// returned) and the run's delegation structure (declared workflows, best-of-K
-// speculations) are the only window into its shape (see gg/subagents.md,
-// gg/multi-model.md, gg/workflows.md, gg/speculative-execution.md).
+// returned) and the run's delegation structure are the only window into its shape
+// (see gg/subagents.md, gg/multi-model.md).
 //
 // The subagent *tree* itself is drawn by the Instances explorer's filesystem sidebar
 // (see GgAgentsExplorer), so this module no longer renders it; it exports the
-// per-agent identity row the explorer shows on an agent's Overview, the run-level
-// structure panels (workflows / speculation) it shows on the root's Overview, and the
-// winner/loser classification the sidebar marks the tree with. Per-slot spend is not
+// per-agent identity row the explorer shows on an agent's Overview and the run-level
+// process strip it shows on the root's Overview. Per-slot spend is not
 // here either: it is part of the Dashboard's Cost widget, which accounts the whole
 // run's money per slot and per model (see GgOverviewWidgets).
 
@@ -17,65 +15,10 @@ import type {
   AgentTransition,
   AgentTreeNode,
   FsmVisit,
-  SpeculationState,
-  Workflow,
-  WorkflowStage,
 } from "./useGgRunState";
 import { ROOT_ID, moduleFate } from "./useGgRunState";
-import type {
-  GgAgentStatus,
-  GgSpeculationPhase,
-} from "@test-cabinet/run-record/gg";
+import type { GgAgentStatus } from "@test-cabinet/run-record/gg";
 import styles from "./GgPanels.module.scss";
-
-// A per-agent speculation role, derived from the speculations plus the tree: the
-// winning attempt (kept, merged) reads distinct, a losing attempt (discarded) is
-// de-emphasized. The judge and non-attempt nodes carry no role.
-export type SpeculationRole = "winner" | "loser";
-
-// The phase label for the speculation summary. `fanned_out` reads as the K attempts
-// still racing; `judged` as a winner picked; `merged` as the winner folded back in.
-const SPECULATION_PHASE_LABELS: Record<GgSpeculationPhase, string> = {
-  fanned_out: "fanned out",
-  judged: "judged",
-  merged: "merged",
-};
-
-// Classify each agent's role in a speculation, so the winning attempt can be marked
-// and the discarded losers de-emphasized on the tree. The `speculation` events name
-// only the winner (by agent id) and K, not the attempt ids, so the attempt set is
-// read off the tree: a winner's co-attempts are its siblings that ran in their own
-// worktree (each attempt fans out in isolation), the winner being the one that
-// merged and the rest the discarded losers. A sibling with no worktree — the judge —
-// carries no role, so it is neither marked a winner nor dimmed.
-export function classifySpeculationRoles(
-  forest: AgentTreeNode[],
-  speculations: SpeculationState[],
-): Map<string, SpeculationRole> {
-  const roles = new Map<string, SpeculationRole>();
-  const winnerIds = new Set(
-    speculations.map((s) => s.winner).filter((w): w is string => w != null),
-  );
-  if (winnerIds.size === 0) return roles;
-  const visit = (node: AgentTreeNode) => {
-    // A parent of a winning attempt is a speculation's fan-out point; among its
-    // children, the winner is the winner and the other worktree-bearing attempts are
-    // the discarded losers.
-    if (node.children.some((child) => winnerIds.has(child.id))) {
-      for (const child of node.children) {
-        if (winnerIds.has(child.id)) roles.set(child.id, "winner");
-        else if (
-          child.worktree != null ||
-          child.worktreeOutcome === "discarded"
-        )
-          roles.set(child.id, "loser");
-      }
-    }
-    node.children.forEach(visit);
-  };
-  forest.forEach(visit);
-  return roles;
-}
 
 // --- Successions (exec / fork / FSM transitions) ------------------------------
 
@@ -168,16 +111,13 @@ const WORKTREE_OUTCOME: Record<
 // return summary once it returned. Running / waiting / done / failed are the glanceable
 // states, so the status pill leads the top row beside the agent's instance id; the
 // agent's name and the model it ran on read on their own line beneath, so who the
-// agent is and what it ran on is a distinct pair from its lifecycle. `role` marks the
-// chosen best-of-K winner (its losing co-attempts read dimmed via `data-spec-role`).
+// agent is and what it ran on is a distinct pair from its lifecycle.
 export function AgentIdentity({
   node,
-  role,
   turns,
   arrival,
 }: {
   node: AgentNode;
-  role?: SpeculationRole;
   /**
    * How many turns this agent took — one per model request/response cycle. Shown as
    * a chip beside the depth when provided (on an agent's Overview, which knows the
@@ -200,7 +140,6 @@ export function AgentIdentity({
     <div
       className={styles.agentRow}
       data-status={node.status}
-      data-spec-role={role}
     >
       <div className={styles.agentHead}>
         <span className={styles.agentStatus} data-status={node.status}>
@@ -208,14 +147,6 @@ export function AgentIdentity({
           {STATUS_LABELS[node.status]}
         </span>
         <span className={styles.agentId}>{isRoot ? "root" : node.id}</span>
-        {/* The chosen best-of-K winner: the attempt that was kept and merged. A
-            losing attempt carries no badge — it is dimmed and shows its discarded
-            worktree — so "K tried, this one won" reads at a glance. */}
-        {role === "winner" && (
-          <span className={styles.winnerBadge} title="chosen best-of-K attempt">
-            ★ winner
-          </span>
-        )}
         {node.depth != null && (
           <span className={styles.agentDepth}>depth {node.depth}</span>
         )}
@@ -300,33 +231,9 @@ export function AgentIdentity({
   );
 }
 
-// The declared-workflow strip: each workflow's stages in order, a fan-out boundary
-// each. A stage reads as in-flight until its `finished` arrives; its item count is
-// how many subagents it fanned out (those agents show as nodes in the tree above,
-// so this just labels the stage structure).
-export function WorkflowStrip({ workflows }: { workflows: Workflow[] }) {
-  return (
-    <section className={styles.agentSection}>
-      <span className={styles.subPanelLabel}>Workflows</span>
-      <div className={styles.workflowStrip}>
-        {workflows.map((workflow) => (
-          <div key={workflow.workflowId} className={styles.workflow}>
-            <span className={styles.workflowId}>{workflow.workflowId}</span>
-            <ol className={styles.workflowStages}>
-              {workflow.stages.map((stage) => (
-                <StageChip key={stage.stageIndex} stage={stage} />
-              ))}
-            </ol>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 // The path an FSM agent walked (see gg/fsms): one chip per state entered, in order,
 // with the modules each transition carried between them. It is the run's process
-// structure the way the workflow strip is its fan-out structure — a whole-run fact,
+// structure — a whole-run fact,
 // so it reads on the main agent, and it is what turns N incarnations with N different
 // ids into one legible lineage.
 export function FsmPathStrip({
@@ -371,54 +278,3 @@ export function FsmPathStrip({
   );
 }
 
-function StageChip({ stage }: { stage: WorkflowStage }) {
-  return (
-    <li className={styles.workflowStage} data-phase={stage.phase}>
-      <span className={styles.workflowStageName}>{stage.stage}</span>
-      <span className={styles.workflowStageItems}>×{stage.itemCount}</span>
-    </li>
-  );
-}
-
-// The speculation summary: one row per best-of-K speculation (see
-// gg/speculative-execution). Each names its K (best-of-N), its lifecycle phase
-// (fanned out → judged → merged), and the winning attempt once picked — so the
-// "K tried, this one won and merged" shape is legible above the tree, where the
-// attempt nodes (winner marked, losers dimmed) are drawn.
-export function SpeculationPanel({
-  speculations,
-}: {
-  speculations: SpeculationState[];
-}) {
-  return (
-    <section className={styles.agentSection}>
-      <span className={styles.subPanelLabel}>Speculation</span>
-      <ul className={styles.specList}>
-        {speculations.map((spec) => (
-          <li key={spec.key} className={styles.specRow} data-phase={spec.phase}>
-            <span className={styles.specAttempts}>best-of-{spec.attempts}</span>
-            <span className={styles.specPhase}>
-              {SPECULATION_PHASE_LABELS[spec.phase]}
-            </span>
-            {spec.winner ? (
-              <span className={styles.specWinner}>
-                <span className={styles.specWinnerLabel}>winner</span>
-                <span className={styles.specWinnerId}>{spec.winner}</span>
-              </span>
-            ) : (
-              // A `judged` with no winner: no attempt produced usable work.
-              spec.phase !== "fanned_out" && (
-                <span className={styles.specNoWinner}>no winner</span>
-              )
-            )}
-            {spec.rationale && (
-              <span className={styles.specRationale} title={spec.rationale}>
-                {spec.rationale}
-              </span>
-            )}
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}

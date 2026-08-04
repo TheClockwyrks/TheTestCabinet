@@ -144,7 +144,7 @@ only by the host's clock"* when a configuration disables everything.
 ### `maxParallel` {#parallelism}
 
 How many of the run's agents may **run at once** — the root and every subagent, issue
-implementer, reviewer and [speculation](/gg/speculative-execution/) attempt, counted
+implementer and reviewer, counted
 together regardless of which profile or model each runs on. **The default is 16.**
 
 It is the only guardrail here that stops nothing. An agent spawned while the pool is full
@@ -232,9 +232,9 @@ their turns interleave nondeterministically, and a run-wide consecutive counter 
 counting a sequence that never happened, with a value depending on thread scheduling —
 not a knob, a race.
 
-It is also substantively right: a subagent's failures are its own.
-[Speculative execution](/gg/speculative-execution/) fans out K attempts precisely so that
-some may fail, and a thrashing fix agent must not take the run down with it. A breaching
+It is also substantively right: a subagent's failures are its own. A run fans work out to
+several agents precisely so that some may fail, and a thrashing fix agent must not take the
+run down with it. A breaching
 subagent ends **itself**, its parent is told through the ordinary agent-return channel,
 and the run carries on. When the breaching agent is the root, the run ends — the root
 ending has always ended the session.

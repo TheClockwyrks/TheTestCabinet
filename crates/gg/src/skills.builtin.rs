@@ -172,8 +172,6 @@ pub(crate) const FAMILIES: &[Family] = &[
             "spawn_subagent",
             "wait_for_subagents",
             "send_message",
-            "run_workflow",
-            "speculate",
             "transition_state",
             "exec",
             "fork",

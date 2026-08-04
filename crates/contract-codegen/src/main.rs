@@ -269,10 +269,11 @@ fn main() -> Result<()> {
                 gg::GgTaskStatus, gg::GgTaskEntry,
                 gg::GgIssueStatus, gg::GgBoardEpic, gg::GgBoardIssue,
                 gg::GgRetainedState, gg::GgContextAction,
-                gg::GgAgentStatus, gg::GgWorkflowPhase, gg::GgAgentTransitionKind,
+                gg::GgAgentStatus, gg::GgAgentTransitionKind,
                 gg::GgIssueReviewPhase, gg::GgReviewer,
-                gg::GgSpeculationPhase,
                 gg::GgRunLimits, gg::GgLimitKind, gg::GgLimitBreach,
+                gg::GgHook, gg::GgHookEvent, gg::GgHookAction, gg::GgHookAgentKind,
+                gg::GgHookOutcomeKind,
                 gg::GgTurnOutcome, gg::GgTurnErrorKind,
                 gg::GgHealingStrategy, gg::GgProgramLanguage,
                 gg::GgResponseHealing, gg::GgHealingSummary,
@@ -526,6 +527,12 @@ fn main() -> Result<()> {
                 "GgCapabilityConfig",
                 "GgModelSlot",
                 "GgRunLimits",
+                // The run's hooks are configured on the capability set, so they are owned
+                // by the same document its ceilings are — for the same reason: this is
+                // where an operator declares them.
+                "GgHook",
+                "GgHookEvent",
+                "GgHookAction",
             ],
             schema: root_schema::<gg::GgCapabilitySet>(),
         },
@@ -571,7 +578,6 @@ fn main() -> Result<()> {
                 "GgBoardIssue",
                 "GgRetainedState",
                 "GgContextAction",
-                "GgWorkflowPhase",
                 "GgAgentTransitionKind",
                 // The module model's vocabulary. These are *also* the documented shape of a
                 // capability's `ownership`/`scope` params and of an FSM transition's transfer
@@ -593,7 +599,6 @@ fn main() -> Result<()> {
                 "GgArchiveEntry",
                 "GgIssueReviewPhase",
                 "GgReviewer",
-                "GgSpeculationPhase",
                 // The per-turn healing record and its vocabulary ride on the
                 // `CodeExecution` event and appear nowhere else in the contract, so this
                 // document is their canonical home. The run-level rollup

@@ -1,5 +1,5 @@
 ---
-title: "Fork & exec"
+title: "Exec & fork"
 ---
 
 Two calls that let an agent change **what it is** and **how many of it there are**:
@@ -11,15 +11,20 @@ Two calls that let an agent change **what it is** and **how many of it there are
 - **`fork`** — run a copy of yourself. A child agent with your model, your tools and a
   private copy of your whole conversation, working a second line in parallel.
 
-Both come from the `agent-transitions` capability, and both are the same operation over
-[modules](/gg/modules/) that an [FSM transition](/gg/fsms/) performs — with the *model*
-choosing when it happens rather than a declared machine.
+They are **two capabilities**, `exec` and `fork`, enabled independently — and both are the
+same operation over [modules](/gg/modules/) that an [FSM transition](/gg/fsms/) performs,
+with the *model* choosing when it happens rather than a declared machine.
+
+They used to share one `agent-transitions` capability with a per-tool ablation apiece,
+which made the interesting arm — "can it become something else, but not duplicate itself?"
+— a toggle *inside* a capability rather than a capability of its own. A configuration
+stored under the old id still enables both.
 
 ## `exec` — become another agent
 
 ```jsonc
 {
-  "id": "agent-transitions",
+  "id": "exec",
   "enabled": true
 }
 ```
@@ -109,14 +114,19 @@ scheduler slot, the same depth and parallelism caps, `agent_spawned` telemetry, 
 same `wait_for_subagents` / `send_message` handles every other subagent has. The forker
 gets the copy's id back on the call, exactly as `spawn_subagent` returns one.
 
+```jsonc
+{
+  "id": "fork",
+  "enabled": true
+}
+```
+
 Because it is a child, `fork` needs a way to **collect** what it makes: it is offered only
 when the agent's profile also carries [subagents](/gg/subagents/), which is what contributes
 `wait_for_subagents` and `send_message`. A copy nobody can wait on or message is a leak
 rather than a second worker. The **roster** is not part of that test — a fork names no
 target — so an agent whose allowlist is empty can still fork itself, and gets those two
 collection calls on account of the fork even though it can spawn nobody.
-[Workflows](/gg/workflows/) do not qualify: gg drives their stages itself and the capability
-offers neither call.
 
 ### What a copy holds
 
@@ -169,11 +179,15 @@ work to somebody else and then ending your own session is not a retraction.
 
 ## Ablation
 
-The two calls are separately withholdable through
-[per-tool overrides](/gg/toolset-ablation/): `"disabledTools": ["fork"]` leaves an agent
-able to become something else but not to duplicate itself, and the reverse leaves it able
-to work two lines at once but not to change what it is. The capability itself is opt-in and
-off by default, so every configuration that predates it behaves exactly as it did.
+The two are **separate capabilities**, so each arm is a capability set rather than a
+per-tool override inside one: enabling `exec` alone leaves an agent able to become
+something else but not to duplicate itself, and `fork` alone leaves it able to work two
+lines at once but not to change what it is. Both are opt-in and off by default, so every
+configuration that predates them behaves exactly as it did.
+
+Each is still individually withholdable through
+[per-tool overrides](/gg/toolset-ablation/) as well, on the same terms as every other
+tool — but reaching for one to express "exec but not fork" is no longer necessary.
 
 ## What is warned at launch
 
@@ -181,12 +195,14 @@ None of these stops a run; each is a call that will simply not be there, which i
 misconfiguration a model can never report — it never makes the call, and the record reads
 as an agent that chose not to.
 
-- a profile enabling `agent-transitions` with an **empty roster** (nothing for `exec` to
-  become);
-- a profile enabling it without `subagents` (no `wait_for_subagents` and no `send_message`,
-  so there would be no way to collect a copy and `fork` is withheld);
-- a profile enabling it that a declared machine runs as one of its **states** (`exec` is
-  withheld there; `fork` is unaffected).
+- a profile enabling `exec` with an **empty roster** (nothing for it to become);
+- a profile enabling `fork` without `subagents` (no `wait_for_subagents` and no
+  `send_message`, so there would be no way to collect a copy and `fork` is withheld);
+- a profile enabling `exec` that a declared machine runs as one of its **states** (`exec`
+  is withheld there; `fork` is unaffected).
+
+Each warning names the capability that will come up short, so an agent that enables only
+`fork` is never told about a roster it has no use for.
 
 ## Telemetry
 

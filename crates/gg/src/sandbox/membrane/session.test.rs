@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use super::super::ErrorCode;
 use super::super::test_cabinet::gg::files::Host as FilesHost;
 use super::*;
-use crate::completion::{APPROVE_TOOL, REQUEST_CHANGES_TOOL, SELECT_WINNER_TOOL};
+use crate::completion::{APPROVE_TOOL, REQUEST_CHANGES_TOOL};
 use crate::ending::EndingRole;
 use crate::sandbox::FINISH_FUNCTION;
 use crate::sandbox::fake::{
@@ -335,40 +335,5 @@ fn a_rejection_with_no_changes_is_refused() {
         parts.completion.is_none(),
         "the reviewer is still working: {:?}",
         parts.completion
-    );
-}
-
-/// **A judge may only pick an attempt it was actually shown.**
-///
-/// The range is the host's to know — the guest was never told how many attempts there are — so it is
-/// checked here. An out-of-range pick used to be clamped, which merged *some* attempt's work under a
-/// rationale written about a different one.
-#[test]
-fn a_judge_declares_a_winner_within_range() {
-    let log = CallLog::default();
-    let mut state = membrane_as(&log, EndingRole::Judge { attempts: 3 });
-
-    for out_of_range in [0, 4] {
-        let refused = state
-            .select_winner(out_of_range, "it is the best".to_string())
-            .expect_err("a pick outside the range is not a verdict");
-        assert_eq!(refused.code, ErrorCode::InvalidArgument);
-        assert_eq!(refused.tool, SELECT_WINNER_TOOL);
-    }
-    let blank = state
-        .select_winner(2, "   ".to_string())
-        .expect_err("a pick with no reason is not a verdict");
-    assert_eq!(blank.code, ErrorCode::InvalidArgument);
-
-    state
-        .select_winner(2, "it handles the empty case".to_string())
-        .expect("an in-range pick with a rationale is accepted");
-    let parts = state.into_parts();
-    assert_eq!(
-        parts.completion.expect("a verdict stands").ending,
-        Ending::Winner {
-            attempt: 2,
-            rationale: "it handles the empty case".to_string(),
-        }
     );
 }

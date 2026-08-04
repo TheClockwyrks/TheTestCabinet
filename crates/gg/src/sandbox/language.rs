@@ -264,9 +264,6 @@ pub const APPROVE: SurfaceCall = SurfaceCall::new("review", "approve");
 /// The review role's change request.
 pub const REQUEST_CHANGES: SurfaceCall = SurfaceCall::new("review", "request_changes");
 
-/// The [judge](crate::ending::EndingRole::Judge) role's winner call.
-pub const SELECT_WINNER: SurfaceCall = SurfaceCall::new("judge", "select_winner");
-
 /// The call that closes a view — what the context-pressure block points an agent at when text views
 /// are holding window it could reclaim.
 pub const CLOSE_VIEW: SurfaceCall = SurfaceCall::new("view", "close");
@@ -288,11 +285,10 @@ pub const PROGRAM_RERUN: SurfaceCall = SurfaceCall::new("programs", "rerun");
 /// it to call something its scope does not hold, so the set is enumerated here and checked rather
 /// than trusted.
 #[cfg(test)]
-pub(crate) const QUOTED_CALLS: [SurfaceCall; 8] = [
+pub(crate) const QUOTED_CALLS: [SurfaceCall; 7] = [
     FINISH,
     APPROVE,
     REQUEST_CHANGES,
-    SELECT_WINNER,
     CLOSE_VIEW,
     OPEN_TEXT,
     PROGRAM_GET,

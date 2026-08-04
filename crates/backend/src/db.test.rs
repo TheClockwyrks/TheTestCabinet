@@ -114,7 +114,6 @@ fn gg_record(id: &str) -> RunRecord {
         issue_reviews: 1,
         review_cycles: 2,
         issues_reopened: 1,
-        speculations: 0,
         execution_mode: "tool_calling".to_string(),
         program_language: None,
         code_executions: 0,

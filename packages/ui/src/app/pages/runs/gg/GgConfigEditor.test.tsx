@@ -176,7 +176,7 @@ describe("an agent's type", () => {
     fireEvent.click(typeSegment("RaC"));
     expect(typeSegment("RaC")).toHaveAttribute("aria-checked", "true");
     expect(
-      screen.getByText(/one turn can make dozens of calls/),
+      screen.getByText(/One turn can make dozens of calls/),
     ).toBeInTheDocument();
   });
 

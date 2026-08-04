@@ -389,16 +389,25 @@ async fn a_program_compacts_its_own_context_window() {
 }
 
 #[tokio::test]
-async fn responses_as_code_completion_is_gated_by_validation() {
+async fn responses_as_code_completion_is_gated_by_an_agent_stop_hook() {
     let dir = TempDir::new().unwrap();
     let mut set = code_set("mock/primary", json!({}));
-    // Gate completion on a file the program must create before its `finish` is accepted.
-    let mut completion = GgCapabilityConfig::enabled(test_cabinet_core::gg::CAPABILITY_COMPLETION);
-    completion.params = json!({ "validation": ["test -f ready.txt"] });
-    set.agents[0].capabilities.push(completion);
+    // Gate the ending on a file the program must create before its `finish` is accepted — the same
+    // gate the `completion` capability used to provide, now an agent-stop hook, and asserted on the
+    // code path because that path applies it at a different point from the tool-calling one.
+    set.hooks.push(test_cabinet_core::gg::GgHook {
+        event: test_cabinet_core::gg::GgHookEvent::AgentStop,
+        action: test_cabinet_core::gg::GgHookAction::Command {
+            command: "test -f ready.txt".to_string(),
+            cwd: None,
+            timeout_secs: None,
+            output: None,
+        },
+        name: "ready".to_string(),
+    });
 
-    // Turn 1 finishes without creating the file (validation rejects it, the run continues); turn 2
-    // creates the file and finishes (validation passes, the run ends).
+    // Turn 1 finishes without creating the file (the hook blocks, the run continues); turn 2
+    // creates the file and finishes (the hook passes, the run ends).
     let script = vec![
         code_reply("harness.finish(\"attempt one\");"),
         code_reply("fs.writeFile(\"ready.txt\", \"x\");\nharness.finish(\"attempt two\");"),
@@ -412,21 +421,21 @@ async fn responses_as_code_completion_is_gated_by_validation() {
     assert_eq!(
         ended_with(&events),
         "completed",
-        "the second finish passed validation"
+        "the second finish passed its stop hook"
     );
     assert!(
         dir.path().join("ready.txt").exists(),
-        "the second program created the file validation checks for"
+        "the second program created the file the hook checks for"
     );
-    // The first `finish` was rejected: gg says so on the operator stream and the run took a second
-    // code turn rather than ending on the first.
+    // The first `finish` was rejected: gg names the hook that refused it on the operator stream,
+    // and the run took a second code turn rather than ending on the first.
     assert!(
         events.iter().any(|e| matches!(
             &e.kind,
             GgTelemetryKind::Log { level, message }
-                if level == "warn" && message.contains("validation") && message.contains("rejected")
+                if level == "warn" && message.contains("hook `ready` failed")
         )),
-        "a rejected completion is announced on the stream"
+        "a rejected completion names the hook that refused it"
     );
     let summary = session_summary(&events).expect("a session summary");
     assert_eq!(summary.code_executions, 2, "both code turns ran");
@@ -1884,87 +1893,6 @@ async fn a_code_mode_reviewer_declares_its_verdict() {
             "the brief teaches an ending (`{forbidden}`): {review_brief}"
         );
     }
-    assert_eq!(ended_with(&events), "completed");
-}
-
-/// **A code-mode speculation attempt is a candidate, and its worktree is merged.**
-///
-/// Two consumers of a child's terminal status at once: an attempt that never reaches `completed` is
-/// filtered out of the candidate set entirely, and a subagent whose worktree is merged is merged
-/// only on that same status. Both are driven here through programs that end with `finish`.
-#[tokio::test]
-async fn a_code_mode_speculation_merges_the_winners_worktree() {
-    let dir = TempDir::new().unwrap();
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-code-spec".to_string()), Box::new(sink.clone()));
-    let mut set = speculative_set(&["attempt", "judge"]);
-    for agent in &mut set.agents {
-        agent
-            .capabilities
-            .push(GgCapabilityConfig::enabled(CAPABILITY_RESPONSES_AS_CODE));
-    }
-    let inv = invocation(dir.path(), set);
-    let counter = Arc::new(AtomicUsize::new(0));
-    let attempts = Arc::clone(&counter);
-    let factory = ScriptedFactory::new()
-        .slot(ROOT_AGENT, |b| {
-            Box::new(MockClient::new(
-                &b.model_id,
-                vec![
-                    code_reply(
-                        "return agents.speculate({ agent: \"attempt\", prompt: \"Implement the widget.\", \
-                         attempts: 2 });",
-                    ),
-                    code_reply(FINISHING_PROGRAM),
-                ],
-            ))
-        })
-        .slot("attempt", move |b| {
-            let n = attempts.fetch_add(1, Ordering::SeqCst);
-            Box::new(MockClient::new(
-                &b.model_id,
-                vec![code_reply(&format!(
-                    "fs.writeFile(\"attempt-{n}.txt\", \"attempt {n}\\n\");\nharness.finish(\"attempt {n} \
-                     built the widget\");"
-                ))],
-            ))
-        })
-        .slot("judge", |b| {
-            Box::new(MockClient::new(
-                &b.model_id,
-                vec![code_reply(
-                    "judge.selectWinner(1, \"it is the most complete\");",
-                )],
-            ))
-        });
-
-    assert_eq!(
-        run_with_factory(&inv, &emitter, Arc::new(factory)).await,
-        SessionOutcome::Ran
-    );
-
-    let events = sink.events();
-    let phases: Vec<GgSpeculationPhase> = speculations(&events)
-        .iter()
-        .map(|(_, _, phase, _, _)| *phase)
-        .collect();
-    assert_eq!(
-        phases,
-        vec![
-            GgSpeculationPhase::FannedOut,
-            GgSpeculationPhase::Judged,
-            GgSpeculationPhase::Merged,
-        ],
-        "both attempts finished, so both were candidates and the judge's pick was merged"
-    );
-    assert!(
-        dir.path().join("attempt-0.txt").exists(),
-        "the winner's worktree was merged into the main tree"
-    );
-    assert!(
-        !dir.path().join("attempt-1.txt").exists(),
-        "the loser's was discarded"
-    );
     assert_eq!(ended_with(&events), "completed");
 }
 

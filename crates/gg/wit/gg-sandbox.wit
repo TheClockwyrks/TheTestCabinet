@@ -583,8 +583,6 @@ interface session {
         standard,
         /// `review.approve()` / `review.request-changes(items)` — an agent reviewing work.
         review,
-        /// `judge.select-winner(attempt, rationale)` — an agent choosing among attempts.
-        judge,
         /// NO ending group at all — the arm an on-use script runs under.
         ///
         /// An on-use script is the code a skill or a memory runs when the agent first reads it. It
@@ -631,14 +629,6 @@ interface session {
     /// Ends the session under the same flag rules as `finish`. Bound only under `ending-kind.review`.
     request-changes: func(items: list<string>) -> result<_, tool-error>;
 
-    /// Declare which attempt won. `attempt` is the 1-based number the attempts were presented under;
-    /// `rationale` says why in a sentence.
-    ///
-    /// A zero `attempt`, an out-of-range one, or a blank `rationale` is `invalid-argument`. The range
-    /// is the host's to know, so it is checked there.
-    ///
-    /// Ends the session under the same flag rules as `finish`. Bound only under `ending-kind.judge`.
-    select-winner: func(attempt: u32, rationale: string) -> result<_, tool-error>;
 }
 
 /// Documentation lookup — the second model-facing carve-out, and like `session` NOT a gg tool.
@@ -885,55 +875,6 @@ interface delegation {
         summary: string,
     }
 
-    /// One stage of a declared fan-out.
-    record workflow-stage {
-        /// A name for the stage; `none` names it `stage-N`.
-        name: option<string>,
-        /// The per-item prompt template. `{{item}}` is the item; `{{prior}}` is the previous
-        /// stage's collected results.
-        prompt: string,
-        /// The items to fan out over. `none` on a later stage means "fan out over the previous
-        /// stage's results"; an EMPTY list is an error. The first stage must supply items.
-        items: option<list<string>>,
-        /// The agent to run this stage's children as — one of the agents you may spawn.
-        agent: string,
-    }
-
-    /// What a completed workflow produced.
-    record workflow-report {
-        /// The workflow's id.
-        workflow-id: string,
-        /// How many stages ran.
-        stages: u32,
-        /// The final stage's collected results, in dispatch order.
-        results: list<string>,
-    }
-
-    /// A best-of-K request.
-    record speculate-request {
-        /// The agent to run every attempt as — one of the agents you may spawn.
-        agent: string,
-        /// What every attempt should do.
-        task: subagent-brief,
-        /// K — how many attempts. Clamped to 2–6 by the host, as the native path clamps it;
-        /// `none` means 2.
-        attempts: option<u8>,
-        /// Per-attempt approach hints, positional. Extra attempts get no hint.
-        approaches: list<string>,
-    }
-
-    /// What a speculation merged.
-    record speculation-report {
-        /// The winning attempt's agent id.
-        winner-id: string,
-        /// How many attempts ran.
-        attempts: u8,
-        /// The judge's one-sentence rationale, when it gave one.
-        rationale: option<string>,
-        /// The merge report.
-        summary: string,
-    }
-
     /// Delegate scoped work to a child agent. Returns immediately with its handle; the child runs
     /// in parallel.
     spawn-subagent: func(request: spawn-request) -> result<subagent-handle, tool-error>;
@@ -942,12 +883,6 @@ interface delegation {
     wait-for-subagents: func(ids: option<list<string>>) -> result<list<subagent-result>, tool-error>;
     /// Deliver a message to a running child's inbox; it receives it at its next turn.
     send-message: func(agent-id: string, message: string) -> result<_, tool-error>;
-    /// Run a declared multi-stage fan-out as one unit and return the final stage's results. This
-    /// blocks until the whole workflow is done.
-    run-workflow: func(stages: list<workflow-stage>) -> result<workflow-report, tool-error>;
-    /// Attempt the same task K times in isolated worktrees, judge them, merge the winner and
-    /// discard the losers. This blocks until the winner is merged.
-    speculate: func(request: speculate-request) -> result<speculation-report, tool-error>;
 
     /// Move the process you are running inside on to another of its states, naming the state the
     /// way you name an agent to spawn. `note` is the opening message the next state's agent sees.

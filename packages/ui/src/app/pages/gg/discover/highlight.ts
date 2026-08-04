@@ -146,7 +146,7 @@ function kindOf(
  * The indices of every token that is part of a **field name**.
  *
  * A field is a run of *adjacent* word/string tokens followed by an operator, which is how
- * the lexer's own rules leave it: `cap."speculative-execution"` is three tokens with no
+ * the lexer's own rules leave it: `cap."agent-persistence"` is three tokens with no
  * gaps, and the adjacency is the only thing distinguishing it from `cap. "x"` written
  * with a space. Found by scanning right-to-left from each operator, mirroring what the
  * completer does to answer "whose value am I typing?".

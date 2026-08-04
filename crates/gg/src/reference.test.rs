@@ -434,7 +434,7 @@ fn run_data_descriptions_are_built_from_placeholders() {
     };
 
     assert!(described("read_skill").contains(PLACEHOLDER_SKILL));
-    for name in ["spawn_subagent", "run_workflow", "speculate", "exec"] {
+    for name in ["spawn_subagent", "exec"] {
         assert!(
             described(name).contains(PLACEHOLDER_AGENT),
             "`{name}` does not name the placeholder roster"

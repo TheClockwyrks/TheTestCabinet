@@ -88,7 +88,6 @@ fn full_system() -> SystemContext {
         assigned_issue: Some(AssignedIssueView {
             id: "feat-1".to_string(),
         }),
-        speculative: true,
         autoload_specs: Some(AutoloadView { locked: true }),
         persistence: true,
         ending: ending_view(EndingRole::Standard, false),
@@ -108,11 +107,9 @@ fn ending_view(role: EndingRole, responses_as_code: bool) -> EndingView {
     EndingView {
         standard: matches!(role, EndingRole::Standard),
         review: matches!(role, EndingRole::Review),
-        judge: matches!(role, EndingRole::Judge { .. }),
         finish: call("harness", "finish", "finish"),
         approve: call("review", "approve", "approve"),
         request_changes: call("review", "requestChanges", "request_changes"),
-        select_winner: call("judge", "selectWinner", "select_winner"),
     }
 }
 
@@ -580,13 +577,12 @@ fn no_run_describes_compaction() {
 #[test]
 fn each_role_is_told_only_its_own_ending() {
     let cases = [
-        (EndingRole::Standard, "finish", ["approve", "select_winner"]),
-        (EndingRole::Review, "approve", ["finish", "select_winner"]),
         (
-            EndingRole::Judge { attempts: 3 },
-            "select_winner",
-            ["finish", "approve"],
+            EndingRole::Standard,
+            "finish",
+            ["approve", "request_changes"],
         ),
+        (EndingRole::Review, "approve", ["finish", "finish"]),
     ];
     for (role, present, absent) in cases {
         let prompt = render_system(
@@ -615,7 +611,6 @@ fn code_mode_names_the_grouped_ending_calls() {
     for (role, expected) in [
         (EndingRole::Standard, "harness.finish"),
         (EndingRole::Review, "review.approve"),
-        (EndingRole::Judge { attempts: 2 }, "judge.selectWinner"),
     ] {
         let prompt = render_system(
             &SystemContext {
@@ -1363,37 +1358,6 @@ fn every_generated_brief_renders() {
     assert!(merge.contains("gg/issue-auth-1"), "{merge}");
     assert!(merge.contains("CONFLICT (content): src/main.rs"), "{merge}");
     assert!(merge.contains("commit the merge"), "{merge}");
-
-    let attempt = render_attempt_brief(&AttemptBriefContext {
-        base: "Build it.".to_string(),
-        index: 2,
-        count: 3,
-        approach: Some("Use a state machine.".to_string()),
-    });
-    assert!(attempt.starts_with("Build it."), "{attempt}");
-    // The assigned approach is what makes one attempt's brief differ from another's — and what the
-    // offline attempt mock reads its own number out of.
-    assert!(attempt.contains("### Approach"), "{attempt}");
-    assert!(attempt.contains("Use a state machine."), "{attempt}");
-
-    let judge = render_judge_brief(&JudgeBriefContext {
-        task: "Build it.".to_string(),
-        attempts: vec![
-            JudgeAttemptView {
-                number: 1,
-                summary: Some("built it".to_string()),
-            },
-            JudgeAttemptView {
-                number: 2,
-                summary: None,
-            },
-        ],
-        count: 2,
-    });
-    assert!(judge.contains("### Attempt 1"), "{judge}");
-    assert!(judge.contains("built it"), "{judge}");
-    // An attempt that produced nothing says so rather than rendering an empty section.
-    assert!(judge.contains("(no summary)"), "{judge}");
 }
 
 /// The reviewer's brief degrades cleanly on a first review of a run with no git baseline: no
@@ -1546,15 +1510,6 @@ fn the_completion_prompts_render() {
         flat(&reviewer).contains("call `approve` or `request_changes`."),
         "{reviewer}"
     );
-
-    let failure = render_completion_validation_failure(&ValidationFailureContext {
-        index: 1,
-        total: 2,
-        command: "npm test",
-        output: "1 test failed",
-    });
-    assert!(failure.contains("Failed command: `npm test`"), "{failure}");
-    assert!(failure.contains("1 test failed"), "{failure}");
 }
 
 /// The context-usage block opens with its stable heading, lists each category as a share of the

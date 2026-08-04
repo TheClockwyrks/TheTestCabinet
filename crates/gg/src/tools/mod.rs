@@ -64,11 +64,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use test_cabinet_core::gg::{
-    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_AGENT_TRANSITIONS, CAPABILITY_COMPACTION,
-    CAPABILITY_EDIT_FILE, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
+    CAPABILITY_AGENT_MANAGED_CONTEXT, CAPABILITY_COMPACTION, CAPABILITY_EDIT_FILE, CAPABILITY_EXEC,
+    CAPABILITY_FORK, CAPABILITY_LIST_DIR, CAPABILITY_MEMORIES, CAPABILITY_PROJECT_MANAGEMENT,
     CAPABILITY_READ_FILE, CAPABILITY_RESPONSES_AS_CODE, CAPABILITY_SHELL, CAPABILITY_SKILLS,
-    CAPABILITY_SPECULATIVE, CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WORKFLOWS,
-    CAPABILITY_WRITE_FILE, GgAgentConfig,
+    CAPABILITY_SUBAGENTS, CAPABILITY_TASKS, CAPABILITY_WRITE_FILE, GgAgentConfig,
 };
 
 use crate::board::IssuePolicy;
@@ -95,8 +94,8 @@ pub use context::{
 pub use data::{
     AgentStatusData, ArchiveHitData, ArchiveSearchData, BoardNodeData, BoardUsageData,
     DirEntryData, DirEntryKind, FileImageData, FileTextData, MemoryHitData, MemoryUsageData,
-    ReclaimData, ShellData, SpeculationData, SubagentHandleData, SubagentResultData, ToolData,
-    ToolFailure, UsagePair, WorkflowData, saturating_u32, saturating_u64,
+    ReclaimData, ShellData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure,
+    UsagePair, saturating_u32, saturating_u64,
 };
 pub use filesystem::{
     EditFileTool, ListDirTool, READ_FILE_TOOL, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED,
@@ -113,8 +112,6 @@ pub use memories::{
     CreateMemoryTool, DeleteMemoryTool, EditMemoryTool, ReadMemoryTool, SearchMemoriesTool,
     UpdateMemoryTool, WriteMemoryTool, is_memory_tool, read_only_refusal,
 };
-#[cfg(test)]
-pub(crate) use shell::StubShellRunner;
 pub use shell::{OffloadPolicy, SHELL_TOOL};
 pub(crate) use shell::{
     ShellExecution, ShellRequest, ShellRunner, ShellStatus, real_shell, run_command,
@@ -122,8 +119,7 @@ pub(crate) use shell::{
 pub use skills::{READ_SKILL_TOOL, ReadSkillTool};
 pub(crate) use subagents::handled_by_loop;
 pub use subagents::{
-    RUN_WORKFLOW_TOOL, SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, SPECULATE_TOOL,
-    WAIT_FOR_SUBAGENTS_TOOL, is_subagent_tool,
+    SEND_MESSAGE_TOOL, SPAWN_SUBAGENT_TOOL, WAIT_FOR_SUBAGENTS_TOOL, is_subagent_tool,
 };
 pub(crate) use tasks::OwnedStructured;
 pub use tasks::{
@@ -173,8 +169,6 @@ pub const ALL_TOOL_NAMES: &[&str] = &[
     "spawn_subagent",
     "wait_for_subagents",
     "send_message",
-    "run_workflow",
-    "speculate",
     TRANSITION_STATE_TOOL,
     EXEC_TOOL,
     FORK_TOOL,
@@ -587,9 +581,8 @@ impl ToolRegistry {
     /// [`subagents`](CAPABILITY_SUBAGENTS) capability contributes the
     /// `spawn_subagent`/`wait_for_subagents`/`send_message` tools (stateless declarations — the
     /// loop intercepts and performs delegation against the scheduler and agent tree); and the
-    /// [`workflows`](CAPABILITY_WORKFLOWS) capability contributes the `run_workflow` tool (likewise
-    /// a declaration the loop intercepts to drive declared fan-out/sequencing over the same
-    /// scheduler). A disabled or absent capability contributes nothing.
+    /// [`exec`](CAPABILITY_EXEC) and [`fork`](CAPABILITY_FORK) capabilities contribute one
+    /// succession call apiece. A disabled or absent capability contributes nothing.
     pub fn from_run(
         capabilities: &GgAgentConfig,
         modules: &CapabilityModules,
@@ -745,7 +738,7 @@ impl ToolRegistry {
         // [fork](transitions::ForkTool) targets the agent itself, so it needs no roster entry. It
         // is what makes an agent with an empty allowlist a delegating agent all the same, and the
         // reason the collection calls below are not gated on the roster alone.
-        let can_fork = capabilities.is_enabled(CAPABILITY_AGENT_TRANSITIONS)
+        let can_fork = capabilities.is_enabled(CAPABILITY_FORK)
             && capabilities.is_enabled(CAPABILITY_SUBAGENTS);
 
         if capabilities.is_enabled(CAPABILITY_SUBAGENTS) {
@@ -767,23 +760,6 @@ impl ToolRegistry {
             }
         }
 
-        if capabilities.is_enabled(CAPABILITY_WORKFLOWS) && can_delegate {
-            // The `run_workflow` tool is declared like the subagent tools and intercepted by the
-            // loop, which drives the declared stages against the same subagent scheduler. It is
-            // offered independently of `subagents` (a run may declare workflows without ad-hoc
-            // spawning) — the loop builds the delegation runtime whenever either capability is on.
-            tools.push(Box::new(subagents::RunWorkflowTool::new(spawnable.clone())));
-        }
-
-        if capabilities.is_enabled(CAPABILITY_SPECULATIVE) && can_delegate {
-            // The `speculate` tool is declared like the subagent tools and intercepted by the loop,
-            // which runs the best-of-K fan-out → judge → merge routine against the same subagent
-            // scheduler and worktree machinery. It engages only when the delegation runtime is built
-            // (subagents or workflows on) and worktree isolation is available; the loop refuses it
-            // otherwise.
-            tools.push(Box::new(subagents::SpeculateTool::new(spawnable.clone())));
-        }
-
         // The transition call, offered from the agent's **position** in a machine rather than from
         // any capability on its own profile: the machine is declared on the FSM shell driving it,
         // and the state's agent is an ordinary profile that knows nothing about it. A terminal state
@@ -799,27 +775,25 @@ impl ToolRegistry {
             )));
         }
 
-        // The two [agent-transition](CAPABILITY_AGENT_TRANSITIONS) calls: becoming another agent,
-        // and running a copy of yourself. Both are the same succession machinery a machine
-        // transition uses, with the model choosing when rather than a declared table.
-        if capabilities.is_enabled(CAPABILITY_AGENT_TRANSITIONS) {
-            // `exec` needs somewhere to go — the roster it is validated against is the same one
-            // spawning uses — and is withheld from an agent standing in a machine state, where the
-            // run's next move is the machine's decision and `transition_state` is how it is made.
-            // Offering both would let a state walk out of its own process with nothing recording
-            // that it had.
-            if can_delegate && facts.fsm.is_none() {
-                tools.push(Box::new(transitions::ExecTool::new(spawnable.clone())));
-            }
-            // `fork` needs a way to *collect* the copy rather than a roster: it is a child, and an
-            // agent that cannot `wait_for_subagents` on it or `send_message` to it has produced a
-            // leak rather than a second worker. Those two calls come with the
-            // [subagents](CAPABILITY_SUBAGENTS) capability, so that — and not the roster, which a
-            // fork never reads, nor `workflows`, which drives declared stages and offers neither
-            // call — is exactly what it is gated on.
-            if can_fork {
-                tools.push(Box::new(transitions::ForkTool));
-            }
+        // The two succession calls: becoming another agent ([exec](CAPABILITY_EXEC)) and running a
+        // copy of yourself ([fork](CAPABILITY_FORK)). Both drive the same machinery a machine
+        // transition uses, with the model choosing when rather than a declared table — but each is
+        // its own capability, so a study can offer one without the other rather than reaching for a
+        // per-tool ablation inside a shared one.
+        //
+        // `exec` needs somewhere to go — the roster it is validated against is the same one
+        // spawning uses — and is withheld from an agent standing in a machine state, where the
+        // run's next move is the machine's decision and `transition_state` is how it is made.
+        if capabilities.is_enabled(CAPABILITY_EXEC) && can_delegate && facts.fsm.is_none() {
+            tools.push(Box::new(transitions::ExecTool::new(spawnable.clone())));
+        }
+        // `fork` needs a way to *collect* the copy rather than a roster: it is a child, and an
+        // agent that cannot `wait_for_subagents` on it or `send_message` to it has produced a
+        // leak rather than a second worker. Those two calls come with the
+        // [subagents](CAPABILITY_SUBAGENTS) capability, so that — and not the roster, which a
+        // fork never reads — is exactly what it is gated on.
+        if can_fork {
+            tools.push(Box::new(transitions::ForkTool));
         }
 
         // Apply the per-tool ablation overrides last: an individually

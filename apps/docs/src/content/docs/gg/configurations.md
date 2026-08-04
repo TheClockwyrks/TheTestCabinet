@@ -69,7 +69,7 @@ gg's capabilities are configured **per agent**, not once for the whole run. A
 configuration declares one or more **agent profiles**, exactly one of which is
 flagged as the **root agent** — the profile that drives the run's top-level session
 and the default for the [merge agent](/gg/project-management/) and
-[speculation judging](/gg/speculative-execution/). Adding more profiles is how a
+merge handling. Adding more profiles is how a
 study gives different agents different tools, models, prompts, or execution modes —
 a cheap-and-fast scout, a careful reviewer, a code-writing implementer.
 
@@ -106,8 +106,7 @@ carries:
 - a **roster** — the other profiles this agent may put to work, each with a
   caller-scoped description telling it when to use that target and one or more
   **scopes** saying what it may be used **for**: `subagent` (spawnable with
-  `spawn_subagent`, a [workflow](/gg/workflows/) stage, or a
-  [speculation](/gg/speculative-execution/)), `implementer` (assignable as a
+  `spawn_subagent`), `implementer` (assignable as a
   [board issue](/gg/project-management/)'s agent), and `reviewer` (namable among an
   issue's reviewers). The three are independent — a profile trusted to write code is
   not automatically trusted to review it, and an agent with no

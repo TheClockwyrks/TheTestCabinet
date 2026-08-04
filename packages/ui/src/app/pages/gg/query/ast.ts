@@ -28,7 +28,7 @@ export interface Diagnostic {
  *
  * `name` is the resolved dotted name — quoted segments unquoted, parts joined — because
  * that is what the evaluator looks up. `raw` is the source spelling, so the formatter
- * can re-emit `cap."speculative-execution"` rather than inventing its own quoting.
+ * can re-emit `cap."agent-persistence"` rather than inventing its own quoting.
  */
 export interface FieldRef {
   name: string;

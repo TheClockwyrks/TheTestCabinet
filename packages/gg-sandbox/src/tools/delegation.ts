@@ -1,8 +1,8 @@
 /**
  * The `delegation` family: handing scoped work to child agents.
  *
- * These are the calls that can dominate a turn's wall clock — `waitForSubagents`, `runWorkflow` and
- * `speculate` all block while real agents run — and the run's budget keeps ticking while they do.
+ * `waitForSubagents` can dominate a turn's wall clock — it blocks while real agents run — and the
+ * run's budget keeps ticking while it does.
  * A program should therefore spawn broadly and wait once, not spawn-and-wait in a loop.
  *
  * The brief is the one place the SDK enforces an "exactly one of" that the native tool-calling
@@ -12,14 +12,8 @@
 
 import * as raw from "test-cabinet:gg/delegation";
 import type { AgentStatus, SubagentBrief } from "test-cabinet:gg/delegation";
-import { ToolError, U8_MAX, call, list, uint } from "../errors.js";
-import type {
-  AgentEnding,
-  SpeculationReport,
-  SubagentHandle,
-  SubagentResult,
-  WorkflowReport,
-} from "../types.js";
+import { ToolError, call } from "../errors.js";
+import type { AgentEnding, SubagentHandle, SubagentResult } from "../types.js";
 
 /**
  * What a child agent is briefed with: written instructions, or a board issue.
@@ -115,57 +109,6 @@ export function waitForSubagents(ids?: string[]): SubagentResult[] {
  */
 export function sendMessage(agentId: string, message: string): void {
   call(() => raw.sendMessage(agentId, message));
-}
-
-/**
- * Run a declared multi-stage fan-out as one unit and return the final stage's results. Each stage
- * names the `agent` to run its children as (one of the agents you may spawn), and its `prompt` is a
- * template in which `{{item}}` is the item being worked and `{{prior}}` is the previous stage's
- * collected results; the first stage must supply `items`, and a later stage that omits them fans out
- * over the previous stage's results instead. Blocks until every stage is done.
- */
-export function runWorkflow(
-  stages: {
-    name?: string;
-    prompt: string;
-    items?: string[];
-    agent: string;
-  }[],
-): WorkflowReport {
-  return call(() =>
-    raw.runWorkflow(
-      list<(typeof stages)[number]>("runWorkflow", "stages", stages).map(
-        (stage) => ({
-          name: stage.name,
-          prompt: stage.prompt,
-          items: stage.items,
-          agent: stage.agent,
-        }),
-      ),
-    ),
-  );
-}
-
-/**
- * Attempt the same task K times in parallel isolated worktrees, judge the attempts, then merge the
- * winner and discard the losers. Name the `agent` to run every attempt as (one of the agents you may
- * spawn). `attempts` is clamped to 2–6 and defaults to 2; `approaches` are positional per-attempt
- * hints, and attempts past the end of the list get none. Blocks until the winner is merged.
- */
-export function speculate(
-  request: { agent: string } & ({ prompt: string } | { issueId: string }) & {
-      attempts?: number;
-      approaches?: string[];
-    },
-): SpeculationReport {
-  return call(() =>
-    raw.speculate({
-      agent: request.agent,
-      task: brief("speculate", request),
-      attempts: uint("speculate", "attempts", request.attempts, U8_MAX),
-      approaches: list("speculate", "approaches", request.approaches),
-    }),
-  );
 }
 
 /**

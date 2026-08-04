@@ -586,6 +586,22 @@
   }
 }
 
+// The decision object a custom hook script must print, quoted verbatim under the script
+// field. A block rather than an inline `code` because it is three alternatives on three
+// lines, and the whole point of quoting it is that an operator can read it as a shape.
+.hookContract {
+  display: block;
+  white-space: pre;
+  overflow-x: auto;
+  margin-top: t.$space-xs;
+  padding: t.$space-sm;
+  border-radius: t.$radius-sm;
+  background: t.$surface-sunken;
+  font-family: t.$font-mono;
+  font-size: t.$text-xs;
+  line-height: 1.6;
+}
+
 // A ceiling set that is well-formed but can never fire — armed, and worth saying so
 // without refusing the save, which is why it is the amber warning cue rather than
 // the negative one `.fieldError` uses.

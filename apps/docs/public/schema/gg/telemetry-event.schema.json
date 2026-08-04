@@ -972,26 +972,6 @@
       "required": ["name", "description", "read"],
       "type": "object"
     },
-    "GgSpeculationPhase": {
-      "description": "The phase of a [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) a\n[`Speculation`](GgTelemetryKind::Speculation) event reports — the `fan-out → judge → merge`\nlifecycle of a best-of-K attempt.\n\nA speculation [fans out](Self::FannedOut) K attempts at the same task (each in its own worktree),\nthen a judge [scores and picks a winner](Self::Judged) among the attempts that produced work, and\nfinally the winner's worktree is [merged](Self::Merged) back into the main tree while the losers'\nbranches are discarded. A speculation that produced no usable work emits [`Judged`](Self::Judged)\nwith no winner and no [`Merged`](Self::Merged).",
-      "oneOf": [
-        {
-          "const": "fanned_out",
-          "description": "The K attempts have been fanned out — one subagent per attempt, each in its own isolated\nworktree, running the same task in parallel under the scheduler.",
-          "type": "string"
-        },
-        {
-          "const": "judged",
-          "description": "The attempts finished and a judge scored their work and selected the winner (carried on the\nevent's [`winner`](GgTelemetryKind::Speculation) field, with the judge's\n[`rationale`](GgTelemetryKind::Speculation)). Emitted with no winner when no attempt produced\nusable work to merge.",
-          "type": "string"
-        },
-        {
-          "const": "merged",
-          "description": "The winning attempt's worktree was merged back into the main tree and the losing attempts'\nbranches were discarded, so the main tree now holds exactly the winning attempt's changes.",
-          "type": "string"
-        }
-      ]
-    },
     "GgTaskEntry": {
       "description": "One model-curated [task](https://docs.testcabinet.ai/gg/tasks/) — a node of the\nblocked-by DAG reported in a [`TasksState`](GgTelemetryKind::TasksState) event.\n\nThe model builds a lightweight to-do list with `add_task` (and revises it with\n`update_task` / `set_blocked_by` / `complete_task` / `remove_task`). Each task has a\nstable [`id`](Self::id) the model coins and references, a [`title`](Self::title), an\noptional [`description`](Self::description), a [`status`](Self::status), and the set of\ntask ids it is [`blocked_by`](Self::blocked_by). The blocking relation is a **DAG** —\ngg rejects any edge that would introduce a cycle — and the whole list is retained across\na [compaction] boundary verbatim, so the model never loses the plan it decomposed.\n\n[compaction]: https://docs.testcabinet.ai/gg/compaction/",
       "properties": {
@@ -1128,21 +1108,6 @@
         {
           "const": "fatal",
           "description": "gg's own machinery failed, so the session ends on the first occurrence. Recorded rather than\nskipped — so the turn accounting never drifts from the number of model calls the run made —\nand kept **apart** from [`Error`](Self::Error), because charging gg's defects to the model's\nerror budget would corrupt the one figure this event exists to publish.",
-          "type": "string"
-        }
-      ]
-    },
-    "GgWorkflowPhase": {
-      "description": "The boundary a [`WorkflowStage`](GgTelemetryKind::WorkflowStage) event marks — the\n[start or finish](https://docs.testcabinet.ai/gg/workflows/) of one stage of a declared\n[workflow](CAPABILITY_WORKFLOWS).\n\nA workflow stage emits one event as it [starts](Self::Started) (right before it fans its\nsubagents out) and one as it [finishes](Self::Finished) (once every fanned-out agent has\nreturned and its results are collected to feed the next stage), so the console can render the\nworkflow's structure and each stage's duration on the timeline. The per-agent\n[`AgentSpawned`](GgTelemetryKind::AgentSpawned)/[`AgentStatus`](GgTelemetryKind::AgentStatus)/[`AgentReturned`](GgTelemetryKind::AgentReturned)\nevents carry the detail of the agents that ran within the stage.",
-      "oneOf": [
-        {
-          "const": "started",
-          "description": "The stage is about to fan its subagents out over its items.",
-          "type": "string"
-        },
-        {
-          "const": "finished",
-          "description": "Every subagent the stage fanned out has returned and its results are collected.",
           "type": "string"
         }
       ]
@@ -1817,7 +1782,7 @@
           "type": "string"
         },
         "worktree": {
-          "description": "The isolated git worktree this agent runs in — its branch — when it was dispatched into\none: an [issue](CAPABILITY_PROJECT_MANAGEMENT) agent (and the reviewers of that issue,\nwhich read the same tree) runs on the issue's branch, and each\n[speculation](CAPABILITY_SPECULATIVE) attempt runs on its own. The console renders this\nas a worktree indicator on the tree node. Absent for an agent running in the shared main\ntree (the root, an ad-hoc subagent, the merge agent), whose edits land directly in the\nworkspace. A worktree's result is later merged or discarded — observe which with\n[`WorktreeMerged`](Self::WorktreeMerged).",
+          "description": "The isolated git worktree this agent runs in — its branch — when it was dispatched into\none: an [issue](CAPABILITY_PROJECT_MANAGEMENT) agent (and the reviewers of that issue,\nwhich read the same tree) runs on the issue's branch. The console renders this\nas a worktree indicator on the tree node. Absent for an agent running in the shared main\ntree (the root, an ad-hoc subagent, the merge agent), whose edits land directly in the\nworkspace. A worktree's result is later merged or discarded — observe which with\n[`WorktreeMerged`](Self::WorktreeMerged).",
           "type": ["string", "null"]
         }
       },
@@ -1958,7 +1923,7 @@
       "type": "object"
     },
     {
-      "description": "The outcome of reconciling an isolated worktree back into the main tree — the event that\nmakes a **merge vs discard** observable.\n\nEmitted once per worktree as it is torn down: for an accepted (or failed)\n[issue](CAPABILITY_PROJECT_MANAGEMENT), on the issue's own stream, and for a\n[speculation](CAPABILITY_SPECULATIVE)'s attempts as the winner is merged and the losers\ndiscarded. The three states are distinguishable: an **accepted** branch merges back\n(`merged: true`, with [`conflicts`](Self::WorktreeMerged::conflicts) recording whether the\n[merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) had to resolve a clash on the way); a\n**conflict the merge agent could not resolve** leaves the main tree unchanged\n(`merged: false, conflicts: true`) rather than dropping the work silently; a **failed or\ndiscarded** branch is removed unmerged (`merged: false, conflicts: false`). The worktree and\nits branch are removed in every case.",
+      "description": "The outcome of reconciling an isolated worktree back into the main tree — the event that\nmakes a **merge vs discard** observable.\n\nEmitted once per worktree as it is torn down: for an accepted (or failed)\n[issue](CAPABILITY_PROJECT_MANAGEMENT), on the issue's own stream. The three states are\ndistinguishable: an **accepted** branch merges back\n(`merged: true`, with [`conflicts`](Self::WorktreeMerged::conflicts) recording whether the\n[merge agent](PROJECT_MANAGEMENT_PARAM_MERGE_AGENT) had to resolve a clash on the way); a\n**conflict the merge agent could not resolve** leaves the main tree unchanged\n(`merged: false, conflicts: true`) rather than dropping the work silently; a **failed or\ndiscarded** branch is removed unmerged (`merged: false, conflicts: false`). The worktree and\nits branch are removed in every case.",
       "properties": {
         "branch": {
           "description": "The branch the worktree's work lived on (for example `gg/issue-3`).",
@@ -1978,48 +1943,6 @@
         }
       },
       "required": ["type", "branch", "merged", "conflicts"],
-      "type": "object"
-    },
-    {
-      "description": "A stage boundary of a declared [workflow](https://docs.testcabinet.ai/gg/workflows/) — the\nlight structural marker that lets the console draw a workflow's stages (and their durations)\non the timeline while the per-agent tree events carry the detail.\n\nEmitted (when the [workflows](CAPABILITY_WORKFLOWS) capability is enabled) on the agent that\ninvoked `run_workflow` — so it rides on that agent's own\n[`agent_id`](GgTelemetryEvent::agent_id) — twice per stage: once with\n[`Started`](GgWorkflowPhase::Started) right before the stage fans its subagents out, and once\nwith [`Finished`](GgWorkflowPhase::Finished) after every fanned-out agent has returned and\nits results are collected to feed the next stage. The fanned-out agents themselves are\nordinary [subagents](CAPABILITY_SUBAGENTS): they emit the usual\n[`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)\nevents (nested under the invoking agent), driven by the same scheduler as any other subagent.\nA run with the capability off emits none.",
-      "properties": {
-        "itemCount": {
-          "description": "How many subagents this stage fans out — one per item it runs over (the prior stage's\nresults when the stage declares no explicit items).",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "phase": {
-          "$ref": "#/$defs/GgWorkflowPhase",
-          "description": "Whether this event marks the stage's [start or finish](GgWorkflowPhase)."
-        },
-        "stage": {
-          "description": "The stage's name (the model's `name` for it, or a `stage-N` fallback), for the timeline\nlabel.",
-          "type": "string"
-        },
-        "stageIndex": {
-          "description": "The stage's zero-based index within the workflow, so the console can order the stages.",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "type": {
-          "const": "workflow_stage",
-          "type": "string"
-        },
-        "workflowId": {
-          "description": "The id of the workflow this stage belongs to, unique within the run — so the console can\ngroup a single `run_workflow` invocation's stages together (an agent may run several\nworkflows over its life).",
-          "type": "string"
-        }
-      },
-      "required": [
-        "type",
-        "workflowId",
-        "stage",
-        "stageIndex",
-        "itemCount",
-        "phase"
-      ],
       "type": "object"
     },
     {
@@ -2127,35 +2050,6 @@
         }
       },
       "required": ["type", "phase"],
-      "type": "object"
-    },
-    {
-      "description": "A [speculative execution](https://docs.testcabinet.ai/gg/speculative-execution/) lifecycle\ntransition — the event that makes a **best-of-K** attempt (the K parallel tries, the judge's\npick, and the merge) observable.\n\nEmitted (when the [speculative-execution](CAPABILITY_SPECULATIVE) capability is enabled) on the\nagent that called `speculate`: once as [`FannedOut`](GgSpeculationPhase::FannedOut) when the K\nattempts are dispatched, once as [`Judged`](GgSpeculationPhase::Judged) once a judge has scored\nthem and picked the [`winner`](Self::Speculation::winner) (with the judge's\n[`rationale`](Self::Speculation::rationale)), and once as\n[`Merged`](GgSpeculationPhase::Merged) after the winner's worktree is merged back and the\nlosers are discarded. A speculation that produced no usable work emits `Judged` with no winner\nand no `Merged`. The K attempts and the judge are ordinary\n[subagents](CAPABILITY_SUBAGENTS) — they emit the usual\n[`AgentSpawned`](Self::AgentSpawned)/[`AgentStatus`](Self::AgentStatus)/[`AgentReturned`](Self::AgentReturned)\nevents (each attempt's `AgentSpawned` carrying its isolated worktree branch) — so the console\ncan show the K attempts and the chosen winner. A run with the capability off emits none.",
-      "properties": {
-        "attempts": {
-          "description": "How many attempts were fanned out at the task (the `K` of best-of-K).",
-          "format": "uint64",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "phase": {
-          "$ref": "#/$defs/GgSpeculationPhase",
-          "description": "Which phase of the speculation lifecycle this transition is."
-        },
-        "rationale": {
-          "description": "The judge's one-line rationale for its pick, on [`Judged`](GgSpeculationPhase::Judged).\nAbsent on the other phases (and when the judge gave none).",
-          "type": ["string", "null"]
-        },
-        "type": {
-          "const": "speculation",
-          "type": "string"
-        },
-        "winner": {
-          "description": "The winning attempt's agent id, on [`Judged`](GgSpeculationPhase::Judged) (once a winner is\npicked) and [`Merged`](GgSpeculationPhase::Merged). Absent on\n[`FannedOut`](GgSpeculationPhase::FannedOut), and on a `Judged` where no attempt produced\nusable work.",
-          "type": ["string", "null"]
-        }
-      },
-      "required": ["type", "attempts", "phase"],
       "type": "object"
     },
     {

@@ -410,30 +410,6 @@ pub async fn head_commit(capture: &GitCapture, dir: &Path) -> Result<String, Git
     run_git(capture, dir, "git rev-parse HEAD", &["rev-parse", "HEAD"]).await
 }
 
-/// The full textual diff of the working tree at `dir` against commit `base` — what a
-/// [speculation](https://docs.testcabinet.ai/gg/speculative-execution/)'s judge scores.
-///
-/// Includes new, modified, and deleted files (not just tracked modifications): everything is
-/// staged (`git add -A`) so the `--cached` diff against `base` covers untracked additions too, then
-/// the index is reset back to `HEAD` so the staging is transient and the main tree is left as it
-/// was. Returns the (possibly empty) diff text. Runs three git calls; the caller serializes them on
-/// the shared git lock since staging mutates the shared index.
-pub async fn diff_since(capture: &GitCapture, dir: &Path, base: &str) -> Result<String, GitError> {
-    run_git(capture, dir, "git add", &["add", "-A"]).await?;
-    let diff = run_git(
-        capture,
-        dir,
-        "git diff --cached",
-        &["diff", "--cached", base],
-    )
-    .await?;
-    // Restore the index to HEAD so the transient staging does not linger (and cannot interfere with
-    // a concurrent worktree merge in the main tree). Best-effort: a failure here does not invalidate
-    // the diff we already captured.
-    let _ = run_git(capture, dir, "git reset", &["reset", "-q"]).await;
-    Ok(diff)
-}
-
 /// The **per-file summary** of the working tree at `dir` against commit `base` — one line per
 /// changed path with its added/removed line counts (`git diff --stat`) — which is what an issue's
 /// [review](https://docs.testcabinet.ai/gg/project-management/) hands its reviewers.

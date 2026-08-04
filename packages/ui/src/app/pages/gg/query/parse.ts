@@ -337,7 +337,7 @@ class Parser {
 
   /**
    * A dotted field name, whose segments may be quoted individually
-   * (`cap."speculative-execution"`).
+   * (`cap."agent-persistence"`).
    *
    * Segments are glued only when they are **adjacent in the source** — the next token
    * starts exactly where the last one ended — so `case: carom` never reads as a field

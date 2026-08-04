@@ -280,15 +280,6 @@ pub trait ToolApi: Send + 'static {
     ) -> ToolOutcome;
     fn wait_for_subagents(&mut self, ids: Option<Vec<String>>) -> ToolOutcome;
     fn send_message(&mut self, agent_id: String, message: String) -> ToolOutcome;
-    fn run_workflow(&mut self, stages: Vec<WorkflowStageInput>) -> ToolOutcome;
-    fn speculate(
-        &mut self,
-        agent: String,
-        prompt: Option<String>,
-        issue_id: Option<String>,
-        attempts: u8,
-        approaches: Vec<String>,
-    ) -> ToolOutcome;
     fn list_functions(&mut self, object: &str) -> Vec<FunctionSummary>;
     /// Open (or replace) the documentation view for the function called `name` — the whole of
     /// `view.openDocsView`.
@@ -338,13 +329,4 @@ pub trait ToolApi: Send + 'static {
     /// The source of one program this agent ran — `None` being the most recent — or the
     /// [refusal](ProgramRefusal) naming the turns the library holds.
     fn program_source(&mut self, turn: Option<u64>) -> Result<String, ProgramRefusal>;
-}
-
-/// One stage of a declared run_workflow, lowered from the WIT record to primitive fields.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WorkflowStageInput {
-    pub name: String,
-    pub prompt: String,
-    pub items: Option<Vec<String>>,
-    pub agent: String,
 }

@@ -33,12 +33,10 @@ import type {
   GgRetainedState,
   GgReviewer,
   GgSkillState,
-  GgSpeculationPhase,
   GgTaskEntry,
   GgTelemetryEvent,
   GgTransitionModule,
   GgTurnErrorKind,
-  GgWorkflowPhase,
   GgAgentTransitionKind,
 } from "@test-cabinet/run-record/gg";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
@@ -236,25 +234,6 @@ export interface SlotUsage {
   modelId: string;
   tokens: TokenMetrics;
   cost: CostMetrics | null;
-}
-
-// --- Declared workflows (Phase 4) --------------------------------------------
-
-// One stage of a declared workflow — a fan-out boundary. `phase` is the latest
-// transition seen ("started" until the stage's "finished" arrives), so a stage in
-// flight reads as running and a completed one as finished.
-export interface WorkflowStage {
-  stage: string;
-  stageIndex: number;
-  itemCount: number;
-  phase: GgWorkflowPhase;
-}
-
-// One declared workflow's stages, in stage order — the structured, sequenced
-// counterpart to ad-hoc subagents (see gg/workflows).
-export interface Workflow {
-  workflowId: string;
-  stages: WorkflowStage[];
 }
 
 // --- FSM agents (Phase 5) -----------------------------------------------------
@@ -662,27 +641,6 @@ export interface IssueReviewRound {
   approvals: GgReviewer[];
 }
 
-// --- Speculative execution (Phase 5) -----------------------------------------
-
-// One best-of-K speculation (see gg/speculative-execution): K attempt subagents
-// fan out at the same task — each in its own worktree — then a judge picks a winner
-// to merge and the losers are discarded. The `speculation` events are a lifecycle
-// (`fanned_out → judged → merged`) with no id of their own, so a new `fanned_out`
-// opens a new speculation and the following `judged`/`merged` advance the one it
-// opened; a run may speculate more than once, so these are kept as an ordered list.
-// `attempts` is the K; `phase` is the latest transition; `winner` is the winning
-// attempt's agent id (known from `judged` on, null while fanning out — or on a judge
-// that found no usable work); `rationale` is the judge's one-line pick reason once
-// given. The attempt/judge/winner agents all appear as nodes in the agent tree.
-export interface SpeculationState {
-  // A stable key (the opening event's index) for React lists.
-  key: string;
-  attempts: number;
-  phase: GgSpeculationPhase;
-  winner: string | null;
-  rationale: string | null;
-}
-
 // The reduced live state of a gg run. Every field is derived from the telemetry
 // stream except `status`/`error` (transport lifecycle) and `capabilitySet` (the
 // recorded configuration on a completed run's record).
@@ -742,14 +700,10 @@ export interface GgRunState {
   agents: Map<string, AgentNode>;
   agentForest: AgentTreeNode[];
 
-  // --- Declared workflows (Phase 4) ----------------------------------------
-  // The workflows run this session, in first-seen order, each with its stages in
-  // stage order; empty when no workflow ran.
-  workflows: Workflow[];
   // --- FSM agents (Phase 5) ------------------------------------------------
   // The states an FSM agent walked, in order, and the successions between them —
-  // the run's *process* structure the way `workflows` is its fan-out structure.
-  // Both empty for a run that drives no machine, which is almost all of them.
+  // the run's *process* structure. Both empty for a run that drives no machine,
+  // which is almost all of them.
   fsmPath: FsmVisit[];
   transitions: AgentTransition[];
 
@@ -788,11 +742,6 @@ export interface GgRunState {
   // empty when no issue named reviewers (no `issue_review` events).
   issueReviews: Map<string, IssueReviewState>;
 
-  // --- Speculative execution (Phase 5) -------------------------------------
-  // The best-of-K speculations run this session, in first-seen order, each with its
-  // K, latest phase, and winning attempt; empty when speculative execution is off
-  // (no `speculation` events).
-  speculations: SpeculationState[];
 
   // --- The run's configuration ---------------------------------------------
   // The capability set the run is (or was) configured with: gg announces it on the
@@ -1055,19 +1004,16 @@ function ggFeedRow(
     case "memory_revision":
     case "tasks_state":
     case "board_state":
-    // The Phase-4 agent/usage/workflow kinds drive the agent tree, the per-slot
-    // usage read-out, and the workflow view — not the feed — so they render no row.
+    // The Phase-4 agent/usage kinds drive the agent tree and the per-slot usage
+    // read-out — not the feed — so they render no row.
     case "agent_spawned":
     case "agent_status":
     case "agent_returned":
     case "worktree_merged":
     case "slot_usage":
-    case "workflow_stage":
     // The issue-review kind is surfaced on the board (per-issue badge +
-    // actionable items) and speculation on the agent tree (winner/attempts +
-    // summary), not the feed, so they render no row.
+    // actionable items), not the feed, so it renders no row.
     case "issue_review":
-    case "speculation":
     // How a turn ended drives the Errors card and the per-agent error record, not the
     // feed: gg already logs *why* a turn failed in its own words (a `log` row, in the
     // failure's own vocabulary), so a row here would say the same thing a second time in
@@ -1161,7 +1107,6 @@ export interface DerivedGgState {
   slotUsage: SlotUsage[];
   agents: Map<string, AgentNode>;
   agentForest: AgentTreeNode[];
-  workflows: Workflow[];
   // The states an FSM agent walked, in order, and the successions between them.
   // Both empty for the overwhelming majority of runs, which drive no machine.
   fsmPath: FsmVisit[];
@@ -1204,7 +1149,6 @@ export interface DerivedGgState {
   // point.
   moduleSnapshots: Map<string, ModuleSnapshot>;
   issueReviews: Map<string, IssueReviewState>;
-  speculations: SpeculationState[];
 }
 
 // --- Per-agent tool usage (derived) ------------------------------------------
@@ -1551,9 +1495,6 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   // When gg's own session ended, which is the root's end — and the end of any agent a
   // truncated stream stranded mid-flight.
   let sessionEndTimestamp: string | null = null;
-  // Per-workflow stages, keyed by stageIndex so a stage's "finished" updates the
-  // "started" it began at; the outer map preserves first-seen workflow order.
-  const workflowStages = new Map<string, Map<number, WorkflowStage>>();
   // The states a machine entered, in stream order — over the whole run, the path it
   // walked; over one agent's partition, the single state that agent stood in.
   const fsmPath: FsmVisit[] = [];
@@ -1602,10 +1543,6 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   const moduleMemoryHistory = new Map<string, Map<string, GgMemoryHistory>>();
   // Per-issue review lifecycle, keyed by the envelope's issueId.
   const issueReviews = new Map<string, IssueReviewState>();
-  // The best-of-K speculations, in first-seen order. The lifecycle carries no id, so
-  // a `fanned_out` opens a new speculation and the following `judged`/`merged`
-  // advance the one it opened (the last in the list).
-  const speculations: SpeculationState[] = [];
   let turn = 0;
   // One per `turn_started` — the partition's turn count (see `DerivedGgState.turnCount`).
   let turnCount = 0;
@@ -1835,21 +1772,6 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           : gg.conflicts
             ? "conflict"
             : "discarded";
-        break;
-      }
-      case "workflow_stage": {
-        let stages = workflowStages.get(gg.workflowId);
-        if (!stages) {
-          stages = new Map();
-          workflowStages.set(gg.workflowId, stages);
-        }
-        // Latest phase for the stage wins ("finished" supersedes "started").
-        stages.set(gg.stageIndex, {
-          stage: gg.stage,
-          stageIndex: gg.stageIndex,
-          itemCount: gg.itemCount,
-          phase: gg.phase,
-        });
         break;
       }
       case "fsm_state":
@@ -2127,29 +2049,6 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
         }
         break;
       }
-      case "speculation": {
-        // A `fanned_out` opens a new speculation; a later `judged`/`merged` advances
-        // the open (latest) one — latest phase wins, and the winner/rationale land on
-        // `judged` and carry into `merged`. A stray `judged`/`merged` with no open
-        // speculation (out-of-order/truncated stream) defensively opens one so it
-        // still surfaces.
-        const current = speculations[speculations.length - 1];
-        if (gg.phase === "fanned_out" || current == null) {
-          speculations.push({
-            key: `${index}`,
-            attempts: gg.attempts,
-            phase: gg.phase,
-            winner: gg.winner ?? null,
-            rationale: gg.rationale ?? null,
-          });
-        } else {
-          current.phase = gg.phase;
-          current.attempts = gg.attempts;
-          if (gg.winner != null) current.winner = gg.winner;
-          if (gg.rationale != null) current.rationale = gg.rationale;
-        }
-        break;
-      }
       default:
         break;
     }
@@ -2224,13 +2123,6 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     for (const s of slotUsageByKey.values()) addTokens(usage, s.tokens, s.cost);
   }
 
-  const workflows: Workflow[] = [...workflowStages.entries()].map(
-    ([workflowId, stages]) => ({
-      workflowId,
-      stages: [...stages.values()].sort((a, b) => a.stageIndex - b.stageIndex),
-    }),
-  );
-
   // Stitch the revision stream onto the latest snapshot. Kept separate through the
   // fold because the two have different lifetimes: a snapshot is replaced whole on
   // every mutation, while the history only ever grows.
@@ -2262,7 +2154,6 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     slotUsage,
     agents,
     agentForest: buildAgentForest(agents),
-    workflows,
     fsmPath,
     transitions,
     sawSession,
@@ -2284,7 +2175,6 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     modules,
     moduleSnapshots,
     issueReviews,
-    speculations,
   };
 }
 

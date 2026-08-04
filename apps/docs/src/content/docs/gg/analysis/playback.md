@@ -41,7 +41,7 @@ claim a fork that does not exist.
 
 **The shell** has no seam. Three call paths reach a command line — the `shell`
 tool, a [responses-as-code](/gg/responses-as-code/) program's `system.shell(…)`,
-and the [completion](/gg/completion/) gate's validation commands — and the only
+and the [completion](/gg/ending-a-session/) gate's validation commands — and the only
 thing all three share is the tool context. So the seam goes there, and it carries
 **the calling agent** and **which of the three paths it came from**: a runner given
 only a workspace path cannot know whose recorded commands to draw from, every shell
@@ -109,8 +109,8 @@ cannot be asked for one.
 than model-visible non-determinism, its results are a function of a workspace the
 playback reconstructs, and worktree/merge/conflict handling is *loop behaviour
 worth exercising* — a playback that stubbed it would prove nothing about the
-[issue-worktree](/gg/project-management/) or [speculation](/gg/speculative-execution/)
-paths, which are the hardest to test any other way.
+[issue-worktree](/gg/project-management/) paths, which are the hardest to test any
+other way.
 
 Real, but not invisible. Each real invocation **retires the recorded one it
 corresponds to**, and that retirement is load-bearing: an issue's
@@ -250,7 +250,7 @@ there are two kinds of creation:
 | Path | Bound by | Deterministic because |
 | --- | --- | --- |
 | Root | trivially | — |
-| Spawn — delegate, workflow, speculate, **fork** | recorded spawner + spawn ordinal | A parent's spawns are strictly ordered within its own turn loop |
+| Spawn — delegate, review, **fork** | recorded spawner + spawn ordinal | A parent's spawns are strictly ordered within its own turn loop |
 | Succession | recorded predecessor + ordinal | Same |
 | Issue attempt | issue + **dispatch ordinal** | A function of board state |
 | Reviewer | issue + round and position | A function of board state |

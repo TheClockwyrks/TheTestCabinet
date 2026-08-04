@@ -95,7 +95,6 @@ impl DocsRuntime {
             role: match role {
                 EndingRole::Standard => "standard",
                 EndingRole::Review => "review",
-                EndingRole::Judge { .. } => "judge",
             },
             library,
             language: language(program_language),

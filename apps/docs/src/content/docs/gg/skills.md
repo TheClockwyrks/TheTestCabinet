@@ -101,7 +101,7 @@ view does anyway.
 Three rules bound it, and each is the same statement from a different side: an on-use script
 is **not the agent's turn**.
 
-- It **cannot end the session**. No `finish`, no `approve`, no `selectWinner` is bound.
+- It **cannot end the session**. No `finish` and no `approve` is bound.
 - It has **no [program library](/gg/program-library/)** — a skill handing gg a replacement
   program would be a skill rewriting the model's turn.
 - It sees **its own module and no other**. It runs at a moment the agent did not choose, so
@@ -136,7 +136,7 @@ with nothing in it.
 | `gg-delegation` | [Delegating](/gg/subagents/) work to child agents, and [handing its session on](/gg/fork-and-exec/). |
 | `gg-views` | [Showing itself](/gg/responses-as-code/#showing-yourself-things) a file, a value, or a function's documentation. |
 | `gg-programs` | [Fetching a program it already ran](/gg/program-library/), and handing a patched copy back. |
-| `gg-session` | [Ending its session](/gg/completion/#ending-calls) — the one call that does. |
+| `gg-session` | [Ending its session](/gg/ending-a-session/#ending-calls) — the one call that does. |
 
 Three properties are what make them safe to ship:
 

@@ -51,8 +51,8 @@ export function queryExamples(interval: GgInterval): QueryExample[] {
         "cap.compaction:false and has.summary:true | stats avg(summary.ranOutOfContext) as overflow_rate by model",
     },
     {
-      question: "Score distribution, speculation on versus off",
-      query: '| stats dist(score) by cap."speculative-execution"',
+      question: "Score distribution, agent persistence on versus off",
+      query: '| stats dist(score) by cap."agent-persistence"',
     },
     {
       question: "Sessions over time",

@@ -69,7 +69,7 @@ Three consequences follow, and each is a rule the model is told:
   a [succession](/gg/fork-and-exec/) first-wins: a silently replaced program is a change
   the model cannot see.
 - **A program that then fails loses it.** An uncaught throw or a sandbox ceiling revokes
-  the hand-over exactly as it revokes an [ending](/gg/completion/), because a program that
+  the hand-over exactly as it revokes an [ending](/gg/ending-a-session/), because a program that
   did not run to its end did not decide what should run next either. The model is told the
   replacement was not run, rather than left waiting for a turn that already happened.
 

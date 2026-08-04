@@ -16,6 +16,7 @@ fn root_set(capabilities: Vec<GgCapabilityConfig>) -> GgCapabilitySet {
         }],
         model_slots: Vec::new(),
         limits: GgRunLimits::default(),
+        hooks: Vec::new(),
     }
 }
 
@@ -179,6 +180,7 @@ fn capability_set_round_trips_through_json() {
         ],
         model_slots: Vec::new(),
         limits: GgRunLimits::default(),
+        hooks: Vec::new(),
     };
     let value = serde_json::to_value(&set).expect("serialize");
     let back: GgCapabilitySet = serde_json::from_value(value).expect("deserialize");
@@ -592,6 +594,7 @@ fn a_deferred_agent_is_unresolved_until_a_launch_fills_its_model_slot() {
             default_model_id: Some("anthropic/claude-haiku-4.5".to_string()),
         }],
         limits: GgRunLimits::default(),
+        hooks: Vec::new(),
     };
     // A deferred agent names no model, so it binds nothing yet — and it is exactly what a
     // launch must fill in.
@@ -646,6 +649,7 @@ fn a_machine_is_neither_bound_to_a_model_nor_waiting_for_one() {
         ],
         model_slots: Vec::new(),
         limits: GgRunLimits::default(),
+        hooks: Vec::new(),
     };
     assert!(set.root().is_fsm_shell());
     // Nothing is outstanding, and the machine contributes no model to price or to size a
@@ -696,6 +700,7 @@ fn bound_model_ids_lists_each_resolved_model_once() {
         ],
         model_slots: Vec::new(),
         limits: GgRunLimits::default(),
+        hooks: Vec::new(),
     };
     assert_eq!(
         set.bound_model_ids(),

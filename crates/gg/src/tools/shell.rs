@@ -54,8 +54,6 @@ mod runner;
 /// The seam's [test double](runner::StubShellRunner), re-exported for the modules on the other two
 /// command-line paths — a [responses-as-code](crate::sandbox) program's and the
 /// [completion](crate::completion) gate's — whose tests substitute it.
-#[cfg(test)]
-pub(crate) use runner::StubShellRunner;
 pub(crate) use runner::{ShellExecution, ShellRequest, ShellRunner, ShellStatus, real_shell};
 
 /// The tool's name, matched during dispatch and offered to the model.
@@ -150,6 +148,31 @@ impl OffloadPolicy {
     /// unrecognized one, which is a misconfiguration rather than an instruction and so falls back to
     /// the same mode a config that said nothing would have got. `inline` and `offload` are the two
     /// explicit alternatives.
+    /// This policy under an explicit `mode` — one of [`SHELL_OUTPUT_MODES`] — keeping whatever
+    /// [limits](OffloadLimits) `fallback` carries.
+    ///
+    /// What a [hook](crate::hooks) reads its own `output` override through. The limits come from
+    /// the agent rather than from the hook because they are a property of the *window* the output
+    /// lands in, not of the command that produced it: an operator overriding the mode is saying
+    /// "keep this one inline", not "and size it differently from everything else".
+    pub fn for_mode(mode: &str, fallback: &Self) -> Self {
+        let limits = fallback.offload_limits().cloned().unwrap_or_default();
+        match mode.trim() {
+            SHELL_OUTPUT_INLINE => Self::Inline,
+            SHELL_OUTPUT_OFFLOAD => Self::Offload(limits),
+            _ => Self::Adaptive(limits),
+        }
+    }
+
+    /// The [limits](OffloadLimits) this policy carries, or `None` under
+    /// [`Inline`](Self::Inline), which has none to carry.
+    fn offload_limits(&self) -> Option<&OffloadLimits> {
+        match self {
+            Self::Inline => None,
+            Self::Offload(limits) | Self::Adaptive(limits) => Some(limits),
+        }
+    }
+
     pub fn resolve(implementation: Option<&str>, params: &Value) -> Self {
         match implementation.map(str::trim) {
             Some(SHELL_OUTPUT_INLINE) => Self::Inline,

@@ -451,12 +451,6 @@ declare module "test-cabinet:gg/session" {
    * blank item.
    */
   export function requestChanges(items: string[]): void;
-  /**
-   * Declare which 1-based attempt won, and why. Ends the session under the same flag rules.
-   * **Throws** `ToolErrorRecord` with code `invalid-argument` for an out-of-range attempt or a blank
-   * rationale.
-   */
-  export function selectWinner(attempt: number, rationale: string): void;
 }
 
 /**
@@ -600,62 +594,12 @@ declare module "test-cabinet:gg/delegation" {
     summary: string;
   }
 
-  /** One stage of a declared fan-out. */
-  export interface WorkflowStage {
-    /** A name for the stage; `undefined` names it `stage-N`. */
-    name: string | undefined;
-    /** The per-item prompt template. */
-    prompt: string;
-    /** The items to fan out over; `undefined` on a later stage reuses the prior results. */
-    items: string[] | undefined;
-    /** The agent to run this stage's children as — one of the agents you may spawn. */
-    agent: string;
-  }
-
-  /** What a completed workflow produced. */
-  export interface WorkflowReport {
-    /** The workflow's id. */
-    workflowId: string;
-    /** How many stages ran. */
-    stages: number;
-    /** The final stage's collected results, in dispatch order. */
-    results: string[];
-  }
-
-  /** A best-of-K request. */
-  export interface SpeculateRequest {
-    /** The agent to run every attempt as — one of the agents you may spawn. */
-    agent: string;
-    /** What every attempt should do. */
-    task: SubagentBrief;
-    /** K — how many attempts. Clamped to 2–6 by the host. */
-    attempts: number | undefined;
-    /** Per-attempt approach hints, positional. */
-    approaches: string[];
-  }
-
-  /** What a speculation merged. */
-  export interface SpeculationReport {
-    /** The winning attempt's agent id. */
-    winnerId: string;
-    /** How many attempts ran. */
-    attempts: number;
-    /** The judge's one-sentence rationale, when it gave one. */
-    rationale: string | undefined;
-    /** The merge report. */
-    summary: string;
-  }
-
   /** Delegate scoped work to a child agent; returns immediately with its handle. */
   export function spawnSubagent(request: SpawnRequest): SubagentHandle;
   /** Wait for the named children — or, with `undefined`, every outstanding child. */
   export function waitForSubagents(ids: string[] | undefined): SubagentResult[];
   /** Deliver a message to a running child's inbox. */
   export function sendMessage(agentId: string, message: string): void;
-  /** Run a declared multi-stage fan-out as one unit. */
-  export function runWorkflow(stages: WorkflowStage[]): WorkflowReport;
-  /** Attempt the same task K times, judge them, and merge the winner. */
-  export function speculate(request: SpeculateRequest): SpeculationReport;
   /** Declare a move to another state of the machine driving this agent; performed after the turn. */
   export function transitionState(state: string, note: string | undefined): void;
   /** Declare that this session continues as another agent; performed after the turn. */

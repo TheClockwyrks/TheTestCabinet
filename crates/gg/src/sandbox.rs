@@ -95,10 +95,10 @@ mod membrane;
 mod outcome;
 mod signatures;
 
-pub use invoker::{ToolApi, WorkflowStageInput};
+pub use invoker::ToolApi;
 pub use language::{
     APPROVE, CLOSE_VIEW, FINISH, FileWindow, OPEN_TEXT, PROGRAM_GET, PROGRAM_RERUN, PrepareError,
-    PreparedModule, PreparedProgram, ProgramLanguage, REQUEST_CHANGES, SELECT_WINNER, SurfaceCall,
+    PreparedModule, PreparedProgram, ProgramLanguage, REQUEST_CHANGES, SurfaceCall,
     UnreachableTail, WasiSurface, all_languages, language, resolve_program_language, spell,
 };
 
@@ -223,10 +223,7 @@ pub fn run_program<A: ToolApi>(
         Ok(linker) => linker,
         Err(error) => return (SandboxOutcome::before_start(error), api),
     };
-    let mut store = bounded_store(
-        MembraneState::new(api, enabled, ending, limits, deadline),
-        limits,
-    );
+    let mut store = bounded_store(MembraneState::new(api, enabled, limits, deadline), limits);
 
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
@@ -433,13 +430,7 @@ pub(crate) fn component_bound_tools(
     let log = fake::CallLog::default();
     // No tools are bound: the guest reports what it *can* bind, which does not depend on what this
     // particular store enables.
-    let state = MembraneState::new(
-        fake::FakeToolApi::new(&log),
-        &[],
-        RunEnding::Role(crate::ending::EndingRole::Standard),
-        limits,
-        None,
-    );
+    let state = MembraneState::new(fake::FakeToolApi::new(&log), &[], limits, None);
     let mut store = bounded_store(state, limits);
 
     let bound = Sandbox::instantiate(&mut store, component, &linker)

@@ -144,10 +144,6 @@ pub enum ToolData {
     SubagentSpawned(SubagentHandleData),
     /// The results a `wait_for_subagents` collected, in the order it reports them.
     SubagentResults(Vec<SubagentResultData>),
-    /// What a `run_workflow` fan-out produced.
-    Workflow(WorkflowData),
-    /// What a `speculate` best-of-K merged.
-    Speculation(SpeculationData),
 }
 
 /// What a completed process reported — the facts behind `shell`'s `"exit code: …"` prose.
@@ -445,32 +441,6 @@ pub struct SubagentResultData {
     /// How it finished; `None` when it produced no recognisable ending at all.
     pub status: Option<AgentStatusData>,
     /// Its final message.
-    pub summary: String,
-}
-
-/// What a completed `run_workflow` fan-out produced.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkflowData {
-    /// The workflow's id.
-    pub workflow_id: String,
-    /// How many stages ran.
-    pub stages: u32,
-    /// The final stage's collected results, in dispatch order.
-    pub results: Vec<String>,
-}
-
-/// What a `speculate` best-of-K attempt merged.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SpeculationData {
-    /// The winning attempt's agent id.
-    pub winner_id: String,
-    /// How many attempts ran, after the host clamped K.
-    pub attempts: u8,
-    /// The judge's one-sentence rationale, when it gave one.
-    pub rationale: Option<String>,
-    /// The merge report.
     pub summary: String,
 }
 

@@ -2085,14 +2085,6 @@ describe("GgRunMonitorPage", () => {
         },
         cost: { comparable: 0.0021, actual: 0.0021 },
       }),
-      gg({
-        type: "workflow_stage",
-        workflowId: "wf-1",
-        stage: "review",
-        stageIndex: 0,
-        itemCount: 3,
-        phase: "finished",
-      }),
     ];
     renderMonitor(events);
     // The Dashboard's agent overview lists all three agents.
@@ -2116,12 +2108,9 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("agent-0")).toBeInTheDocument();
     expect(screen.getByText("agent-1")).toBeInTheDocument();
 
-    // The root's Overview (the default) carries the run-level delegation structure —
-    // the declared workflow — and the root itself is waiting. (Per-slot usage no
-    // longer lives here; it reads on the Dashboard above.)
+    // The root's Overview (the default) shows the root itself waiting. (Per-slot usage
+    // no longer lives here; it reads on the Dashboard above.)
     expect(screen.getByText("waiting")).toBeInTheDocument();
-    expect(screen.getByText("review")).toBeInTheDocument();
-    expect(screen.getByText("×3")).toBeInTheDocument();
 
     // The reviewer subagent reads on its own Overview: slot/model, its worktree with
     // the merged outcome, its returned value, and its done status.
@@ -2875,73 +2864,6 @@ describe("GgRunMonitorPage", () => {
     expect(screen.getByText("every").tagName).toBe("STRONG");
     expect(screen.getByText("The win jingle").tagName).toBe("LI");
     expect(screen.getByText("api.audio()").tagName).toBe("CODE");
-  });
-
-  it("marks the chosen winner of a best-of-K speculation in the tree and summary", () => {
-    const attempt = (id: string) =>
-      ggFrom(id, "root", {
-        type: "agent_spawned",
-        slot: "primary",
-        modelId: "claude-sonnet-4-8",
-        depth: 1,
-        brief: "Attempt the win overlay.",
-        worktree: `gg/${id}`,
-      });
-    const events: HarnessEvent[] = [
-      sessionStarted(),
-      attempt("agent-0"),
-      attempt("agent-1"),
-      attempt("agent-2"),
-      ggFrom("agent-3", "root", {
-        type: "agent_spawned",
-        slot: "reviewer",
-        modelId: "claude-haiku-4-8",
-        depth: 1,
-        brief: "Judge the three attempts.",
-      }),
-      gg({ type: "speculation", attempts: 3, phase: "fanned_out" }),
-      gg({
-        type: "speculation",
-        attempts: 3,
-        phase: "judged",
-        winner: "agent-1",
-        rationale: "Cleanest overlay with a passing test.",
-      }),
-      gg({
-        type: "speculation",
-        attempts: 3,
-        phase: "merged",
-        winner: "agent-1",
-      }),
-      ggFrom("agent-1", "root", {
-        type: "worktree_merged",
-        branch: "gg/agent-1",
-        merged: true,
-        conflicts: false,
-      }),
-      ggFrom("agent-0", "root", {
-        type: "worktree_merged",
-        branch: "gg/agent-0",
-        merged: false,
-        conflicts: false,
-      }),
-      ggFrom("agent-2", "root", {
-        type: "worktree_merged",
-        branch: "gg/agent-2",
-        merged: false,
-        conflicts: false,
-      }),
-    ];
-    renderMonitor(events);
-    openTab("Instances");
-    // The speculation summary sits on the root's Overview (the default): best-of-3,
-    // with the judge's rationale.
-    expect(screen.getByText("best-of-3")).toBeInTheDocument();
-    expect(
-      screen.getByText("Cleanest overlay with a passing test."),
-    ).toBeInTheDocument();
-    // The winning attempt is starred in the sidebar tree.
-    expect(screen.getByTitle("chosen best-of-K attempt")).toBeInTheDocument();
   });
 
   // A run whose root is a **process**: the machine walks explore → build, the build

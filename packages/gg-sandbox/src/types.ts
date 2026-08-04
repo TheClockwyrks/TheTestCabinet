@@ -293,27 +293,6 @@ export interface SubagentResult {
   summary: string;
 }
 
-/** What a completed multi-stage fan-out produced. */
-export interface WorkflowReport {
-  /** The workflow's id. */
-  workflowId: string;
-  /** How many stages ran. */
-  stages: number;
-  /** The final stage's collected results, in dispatch order. */
-  results: string[];
-}
-
-/** What a best-of-K speculation merged. */
-export interface SpeculationReport {
-  /** The winning attempt's agent id. */
-  winnerId: string;
-  /** How many attempts ran. */
-  attempts: number;
-  /** The judge's one-sentence rationale, when it gave one. */
-  rationale: string | undefined;
-  /** The merge report. */
-  summary: string;
-}
 
 /**
  * One program you have already run, as `programs.history()` lists it.

@@ -1032,7 +1032,12 @@
         },
         {
           "const": "completion_validation",
-          "description": "A completion gate's validation command.",
+          "description": "A completion gate's validation command.\n\nRetained for the records captured before the [completion](crate::gg::CAPABILITY_COMPLETION)\ncapability became an [agent-stop hook](crate::gg::GgHookEvent::AgentStop); a live run stamps\nthe same command [`Hook`](Self::Hook) now.",
+          "type": "string"
+        },
+        {
+          "const": "hook",
+          "description": "A [hook](crate::gg::GgHook) — a command hook's command line, or the script gg materialized\nfor a script hook and ran with the event as its argument.\n\nIts own origin rather than folded into [`Tool`](Self::Tool) because a hook's command is the\none gg runs *without the model asking*, and a reconstruction that replayed it onto the\nmodel's own queue would hand some later `shell` call a result it never produced.",
           "type": "string"
         }
       ]

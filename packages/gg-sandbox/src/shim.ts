@@ -403,7 +403,7 @@ function documented(fn: ToolFn, name: string): ToolFn {
  * {@link docsMod} carve-out. The `view` object is present whatever a run enables: it is the only way
  * material reaches the model's context window at all, documentation included. The session-ending calls are bound
  * from `ending`, one group per role, so a program has exactly the ending its role produces — a
- * reviewer gets a `review` object and no `finish`, a judge a `judge` object and no `finish`.
+ * reviewer gets a `review` object and no `finish`.
  * Everything goes through {@link guard}, so a call made from deferred work — which lands after the
  * turn is over — is reported.
  */

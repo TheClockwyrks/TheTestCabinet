@@ -168,14 +168,6 @@ fn typescript_spells_its_ending_calls_as_its_sdk_declares_them() {
         "requestChanges(items: string[]): void"
     );
 
-    let select_winner = by_name("selectWinner");
-    assert_eq!(select_winner.object, "judge");
-    assert_eq!(select_winner.ending, "judge");
-    assert_eq!(
-        select_winner.signature,
-        "selectWinner(attempt: number, rationale: string): void"
-    );
-
     // Every entry documents itself: the doc is what a `.docs()` lookup renders verbatim.
     for entry in &catalogue().session {
         assert!(

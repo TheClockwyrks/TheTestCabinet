@@ -51,21 +51,16 @@ pub const SPAWN_SUBAGENT_TOOL: &str = "spawn_subagent";
 pub const WAIT_FOR_SUBAGENTS_TOOL: &str = "wait_for_subagents";
 /// The `send_message` tool name.
 pub const SEND_MESSAGE_TOOL: &str = "send_message";
-/// The `run_workflow` tool name.
-pub const RUN_WORKFLOW_TOOL: &str = "run_workflow";
-/// The `speculate` tool name.
-pub const SPECULATE_TOOL: &str = "speculate";
 
-/// Whether `name` is one of the delegation tools the [loop](crate::agent) **intercepts** — the
-/// ad-hoc subagent tools (`spawn_subagent`/`wait_for_subagents`/`send_message`) or the declared
-/// [`run_workflow`](RUN_WORKFLOW_TOOL) — routing the call to the
+/// Whether `name` is one of the delegation tools the [loop](crate::agent) **intercepts** —
+/// `spawn_subagent`/`wait_for_subagents`/`send_message` — routing the call to the
 /// [orchestrator](crate::agent) instead of ordinary [dispatch](super::ToolRegistry::dispatch).
 /// All of them act on the scheduler and the agent tree, which a self-contained [`Tool`] cannot
 /// reach.
 pub fn is_subagent_tool(name: &str) -> bool {
     matches!(
         name,
-        SPAWN_SUBAGENT_TOOL | WAIT_FOR_SUBAGENTS_TOOL | SEND_MESSAGE_TOOL | RUN_WORKFLOW_TOOL
+        SPAWN_SUBAGENT_TOOL | WAIT_FOR_SUBAGENTS_TOOL | SEND_MESSAGE_TOOL
     )
 }
 
@@ -214,190 +209,5 @@ impl Tool for SendMessageTool {
 
     async fn invoke(&self, _args: Value, _ctx: &ToolContext) -> ToolOutcome {
         handled_by_loop(SEND_MESSAGE_TOOL)
-    }
-}
-
-/// Declares `run_workflow` — run a declared, multi-stage subagent fan-out as one unit. Carries the
-/// spawning agent's [delegation allowlist](GgSubagentRef) so its stage `agent` description names the
-/// agents that may run a stage.
-pub struct RunWorkflowTool {
-    /// The agents this agent may run stages as.
-    agents: Vec<GgSubagentRef>,
-}
-
-impl RunWorkflowTool {
-    /// Declare `run_workflow` for an agent whose allowlist is `agents`.
-    pub fn new(agents: Vec<GgSubagentRef>) -> Self {
-        Self { agents }
-    }
-}
-
-#[async_trait]
-impl Tool for RunWorkflowTool {
-    fn name(&self) -> &str {
-        RUN_WORKFLOW_TOOL
-    }
-
-    fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            RUN_WORKFLOW_TOOL,
-            format!(
-                "Run a declared, multi-stage workflow of subagents as a single unit — fan-out plus \
-                 sequencing — instead of spawning and waiting on subagents by hand. You provide an \
-                 ordered list of `stages`; gg runs them in order, and this call returns only when \
-                 the whole workflow is done, with the final stage's results. Each stage FANS OUT \
-                 one subagent per item and runs them in parallel (under the same global concurrency \
-                 and depth limits as ad-hoc subagents — a workflow gets no extra budget), waits for \
-                 all of them, then feeds their results into the next stage (SEQUENCING). Each stage \
-                 names the `agent` to run its subagents as (which configures their model, tools, and \
-                 instructions); the agents you may use: {menu}. A stage's `prompt` is a template \
-                 applied once per item to form that subagent's brief: write `{{item}}` where the \
-                 item text should go, and `{{prior}}` where the previous stage's collected results \
-                 should go. The FIRST stage must list its `items` explicitly; a later stage that \
-                 omits `items` fans out over the previous stage's results (one subagent per result, \
-                 each seeing its result as `{{item}}`) — or give it a single item and reference \
-                 `{{prior}}` to have one subagent consolidate all of the previous stage's results. \
-                 Use a workflow when the work has a clear map-then-reduce \
-                 or pipeline shape; use `spawn_subagent` for ad-hoc delegation.",
-                menu = agent_menu(&self.agents),
-            ),
-            json!({
-                "type": "object",
-                "properties": {
-                    "stages": {
-                        "type": "array",
-                        "minItems": 1,
-                        "description": "The workflow's stages, run in order; each fans out over its \
-                                        items and feeds the next stage.",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "name": {
-                                    "type": "string",
-                                    "description": "A short name for the stage (used in the \
-                                                    timeline; defaults to `stage-N`)."
-                                },
-                                "prompt": {
-                                    "type": "string",
-                                    "description": "The per-item brief template. `{{item}}` is \
-                                                    replaced with the item; `{{prior}}` with the \
-                                                    previous stage's collected results."
-                                },
-                                "items": {
-                                    "type": "array",
-                                    "items": { "type": "string" },
-                                    "description": "The items to fan out over (one subagent each). \
-                                                    Required on the first stage; on a later stage, \
-                                                    omit it to fan out over the previous stage's \
-                                                    results."
-                                },
-                                "agent": {
-                                    "type": "string",
-                                    "description": "The name of the agent to run this stage's \
-                                                    subagents as (one of the agents you may spawn)."
-                                }
-                            },
-                            "required": ["prompt", "agent"],
-                            "additionalProperties": false
-                        }
-                    }
-                },
-                "required": ["stages"],
-                "additionalProperties": false
-            }),
-        )
-    }
-
-    async fn invoke(&self, _args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        handled_by_loop(RUN_WORKFLOW_TOOL)
-    }
-}
-
-/// Declares `speculate` — attempt the same task K times in parallel (best-of-K) and keep the best.
-/// Carries the spawning agent's [delegation allowlist](GgSubagentRef) so its `agent` description
-/// names the agents the attempts may run as.
-pub struct SpeculateTool {
-    /// The agents this agent may run the attempts as.
-    agents: Vec<GgSubagentRef>,
-}
-
-impl SpeculateTool {
-    /// Declare `speculate` for an agent whose allowlist is `agents`.
-    pub fn new(agents: Vec<GgSubagentRef>) -> Self {
-        Self { agents }
-    }
-}
-
-#[async_trait]
-impl Tool for SpeculateTool {
-    fn name(&self) -> &str {
-        SPECULATE_TOOL
-    }
-
-    fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            SPECULATE_TOOL,
-            format!(
-                "Attempt the same piece of work several times in parallel and keep only the BEST \
-                 result (best-of-K). Provide an `agent` — the agent to run every attempt as (which \
-                 configures their model, tools, and instructions; you may use: {menu}) — and a \
-                 `prompt` (a self-contained brief for the task) OR an `issueId` to speculate on one \
-                 of your board issues (its scope and completion criteria become the task), and \
-                 `attempts` (K, the number of parallel tries, 2–6). gg fans out K subagents at the \
-                 SAME task, EACH IN ITS OWN ISOLATED WORKTREE so they cannot collide, runs them in \
-                 parallel under the same concurrency and depth limits as ordinary subagents (no \
-                 extra budget), then a JUDGE scores their work against the task's completion \
-                 criteria and picks a winner. gg MERGES the winner's worktree back into your \
-                 workspace and DISCARDS the losing attempts — so when this call returns, your \
-                 workspace holds exactly the winning attempt's changes. Optionally pass `approaches` \
-                 (an array of hints, one per attempt, to steer the tries in different directions). \
-                 Requires git in the run environment (for the isolation); refused without it. Use this \
-                 for a hard or open-ended piece of work where one careful attempt may not be enough \
-                 and you can afford K× the tokens for a better result; use `spawn_subagent` for \
-                 ordinary single-attempt delegation. This call returns only when the winner has \
-                 been merged.",
-                menu = agent_menu(&self.agents),
-            ),
-            json!({
-                "type": "object",
-                "properties": {
-                    "agent": {
-                        "type": "string",
-                        "description": "The name of the agent to run every attempt as (one of the \
-                                        agents you may spawn)."
-                    },
-                    "prompt": {
-                        "type": "string",
-                        "description": "A self-contained brief for the task to attempt K times \
-                                        (what to do and how it will be judged done). Provide this \
-                                        or `issueId`."
-                    },
-                    "issueId": {
-                        "type": "string",
-                        "description": "The id of a board issue to speculate on; its scope and \
-                                        completion criteria become the task."
-                    },
-                    "attempts": {
-                        "type": "integer",
-                        "minimum": 2,
-                        "maximum": 6,
-                        "description": "K — how many parallel attempts to make (2–6). Defaults to 2."
-                    },
-                    "approaches": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "Optional per-attempt approach hints, one per attempt, to \
-                                        steer the tries in different directions (extra attempts \
-                                        beyond the list get no hint)."
-                    }
-                },
-                "required": ["agent"],
-                "additionalProperties": false
-            }),
-        )
-    }
-
-    async fn invoke(&self, _args: Value, _ctx: &ToolContext) -> ToolOutcome {
-        handled_by_loop(SPECULATE_TOOL)
     }
 }

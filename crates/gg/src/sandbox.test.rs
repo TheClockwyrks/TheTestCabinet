@@ -735,29 +735,6 @@ fn a_role_gets_only_its_own_ending_calls() {
         program_error(&outcome).message
     );
     assert!(outcome.completion.is_none());
-
-    // A judge: one call, bounded by the attempts it was shown.
-    let outcome = run_as(
-        "judge.selectWinner(2, \"it handles the empty case\");",
-        EndingRole::Judge { attempts: 3 },
-    );
-    assert_eq!(
-        completion(&outcome).ending,
-        Ending::Winner {
-            attempt: 2,
-            rationale: "it handles the empty case".to_string(),
-        }
-    );
-    let outcome = run_as(
-        "judge.selectWinner(9, \"whichever\");",
-        EndingRole::Judge { attempts: 3 },
-    );
-    assert_eq!(
-        program_error(&outcome).kind,
-        ProgramErrorKind::ToolFailure,
-        "an out-of-range pick is a typed failure, not a merge of the wrong work"
-    );
-    assert!(outcome.completion.is_none());
 }
 
 /// **The `view` object is bound to every program, and only `openFile` is gated.**

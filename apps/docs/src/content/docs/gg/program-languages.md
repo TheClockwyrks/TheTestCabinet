@@ -154,7 +154,7 @@ instantly in every gate that iterates languages.
 | Its **host requirements** | What that component needs from gg's linker. [Below](#the-linker-requirement). |
 | Its **signature catalogue** | The committed JSON reflected out of its own SDK — the signatures and documentation the model reads through `object.list()` and `view.openDocsView()`. |
 | A **healing dialect** | The language-shaped questions [response healing](/gg/response-healing/#the-skeleton-and-the-dialect) asks: which fence tags mean "this block is the program", which lines are certainly code and which are certainly prose, which bytes of a source are code rather than string or comment, what an import statement looks like, what makes a binding the language refuses to see twice, and what a whole-program concurrency wrapper looks like. |
-| A **prompt dialect** | Its own `system-code.<id>.hbs` and `code-nothing-shown.<id>.hbs` templates, and the handful of spellings gg itself has to quote back — the four [ending calls](/gg/completion/#ending-calls) and the call that closes a view. |
+| A **prompt dialect** | Its own `system-code.<id>.hbs` and `code-nothing-shown.<id>.hbs` templates, and the handful of spellings gg itself has to quote back — the four [ending calls](/gg/ending-a-session/#ending-calls) and the call that closes a view. |
 | **Healing fixtures** (tests only) | Replies its own dialect must survive, so that healing's delete-only invariant is re-earned per language rather than inherited. |
 
 Its two committed artifacts follow one convention:

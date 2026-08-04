@@ -29,7 +29,7 @@ The point is to make the experiments gg enables **analyzable in aggregate**:
   context?"
 - "which memory implementation produced fewer reopened issues?"
 - "how does subagent depth correlate with score?"
-- "does [speculative execution](/gg/speculative-execution/) beat single-attempt at a
+- "does [agent persistence](/gg/agent-persistence/) beat a fresh instance per dispatch at a
   fixed budget?"
 
 This is where the [capability set](/gg/overview/#the-capability-set) recorded on each
