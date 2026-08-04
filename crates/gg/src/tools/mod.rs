@@ -229,8 +229,8 @@ pub fn read_policy(capabilities: &GgAgentConfig) -> ReadPolicy {
 ///
 /// Read only from a capability that is **enabled**, because offloading is a bargain — you see less
 /// of the output, and you get the rest back by grepping the files — and an agent without the `shell`
-/// tool cannot hold up its end. (The policy also governs the run's
-/// [completion validation](crate::completion) commands, which gg runs on the agent's behalf whether
+/// tool cannot hold up its end. (The policy also governs the commands a
+/// [hook](crate::hooks) runs on the agent's behalf whether
 /// or not it offers the tool; truncating *those* for an agent that cannot grep the remainder would
 /// be a loss with no compensation.)
 ///
@@ -260,7 +260,7 @@ pub fn shell_offload(capabilities: &GgAgentConfig) -> OffloadPolicy {
 ///
 /// It is also where the **shell seam** lives. Three call paths reach a command line — the
 /// [`shell`](SHELL_TOOL) tool, a [responses-as-code](crate::sandbox) program's `system.shell(…)`,
-/// and the [completion](crate::completion) gate's validation commands — and the only thing all
+/// and a [hook's](crate::hooks) commands — and the only thing all
 /// three share is this type, so [`shell`](Self::shell) (what runs a command) and
 /// [`agent_id`](Self::agent_id) (whose command it is) ride here rather than being threaded through
 /// each path separately. See [`ShellRunner`].
@@ -279,8 +279,8 @@ pub struct ToolContext {
     ///
     /// Carried because a substituted [`shell`](Self::shell) is keyed **per agent**: a runner given
     /// only a workspace path cannot know whose recorded commands to draw from, and a
-    /// [completion](crate::completion) gate's commands in particular have to be attributed to the
-    /// agent whose ending they gate or they land on an unattributed queue.
+    /// [hook's](crate::hooks) commands in particular have to be attributed to the agent it fired
+    /// for or they land on an unattributed queue.
     pub agent_id: String,
     /// What actually starts a process for this call. [`RealShellRunner`] in a live run;
     /// substituted wholesale by a
@@ -340,7 +340,7 @@ impl ToolContext {
     /// [real shell](RealShellRunner).
     ///
     /// The defaults are what keep the seam free: every one of this constructor's call sites (the
-    /// loop's, the [completion](crate::completion) gate's, and every test's) predates it and is
+    /// loop's, the [hooks'](crate::hooks), and every test's) predates it and is
     /// unaffected, and a context that was never told otherwise runs real commands, which is the
     /// only safe direction for that default to fall.
     pub fn new(workspace_dir: impl Into<PathBuf>) -> Self {
@@ -379,7 +379,7 @@ impl ToolContext {
     /// shell runner) carried across unchanged.
     ///
     /// For a call that runs somewhere other than the agent's own root, which today means a
-    /// [validation command](crate::completion) declaring a `cwd`. Deriving rather than building a
+    /// [hook command](crate::hooks) declaring a `cwd`. Deriving rather than building a
     /// fresh context is what keeps that command on its agent's queue: a bare
     /// [`new`](Self::new) would silently hand it the real shell and no attribution.
     pub fn rooted_at(&self, workspace_dir: impl Into<PathBuf>) -> Self {
@@ -688,8 +688,8 @@ impl ToolRegistry {
         }
 
         // An agent gg dispatched to implement an issue needs no board tool of its own to hand its
-        // work back: the issue is finished exactly when that agent finishes, under its own
-        // [completion rule](crate::completion). So the board tools are gated on the authoring
+        // work back: the issue is finished exactly when that agent makes its own
+        // [ending call](crate::completion). So the board tools are gated on the authoring
         // capability alone — authoring the board and working an issue on it are separate jobs, and
         // an implementer profile is normally configured without the former.
         if modules.board().offers_board() && capabilities.is_enabled(CAPABILITY_PROJECT_MANAGEMENT)

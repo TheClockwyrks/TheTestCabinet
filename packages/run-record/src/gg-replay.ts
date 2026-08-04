@@ -571,9 +571,10 @@ export type GgShellCwd =
  * Which of gg's three command paths issued a recorded shell command.
  *
  * All three reach one command line, and the only thing they share is the tool context —
- * which is why the seam belongs there. Recording *which* path asked is what keeps a
- * [completion](https://docs.testcabinet.ai/gg/completion/) gate's validation commands
- * (which bypass the recorder entirely today) off the agent's ordinary queue.
+ * which is why the seam belongs there. Recording *which* path asked is what keeps the commands gg
+ * runs *without the model asking* — an [agent-stop hook](https://docs.testcabinet.ai/gg/hooks/)'s
+ * ending gate, say — off the agent's ordinary queue, where a reconstruction would hand some later
+ * `shell` call a result the model never produced.
  */
 export type GgShellOrigin =
   | "tool"

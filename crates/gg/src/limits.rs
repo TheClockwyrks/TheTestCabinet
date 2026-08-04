@@ -221,9 +221,9 @@ impl TurnOutcome {
 /// shapes, and that asymmetry is largely real rather than an oversight: a tool-calling turn whose
 /// requested calls are all dispatched and answered cannot declare work that is cut short. The one
 /// tool-calling error shape besides [`ModelApi`](Self::ModelApi) is
-/// [`MissingCompletion`](Self::MissingCompletion) — a turn under an
-/// [explicit-call](test_cabinet_core::gg::COMPLETION_SIGNAL_EXPLICIT_CALL) completion signal that
-/// ends without calling `finish` — which exists precisely so a model that loops emitting prose
+/// [`MissingCompletion`](Self::MissingCompletion) — a turn that ends without calling `finish`,
+/// which every agent must, because [ending a session](crate::completion) is always an explicit
+/// call and never configurable — which exists precisely so a model that loops emitting prose
 /// trips the run's error ceilings instead of running to its turn budget. The counting machinery is
 /// mode-agnostic; the error *shapes* are not, because the protocols are not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -255,10 +255,9 @@ pub enum TurnErrorKind {
     /// mostly working and occasionally too big — is exactly what [`error_rate`](RunLimits::error_rate)
     /// expresses and a consecutive counter cannot, which is *why* it needed an exemption at all.
     SandboxLimit,
-    /// A tool-calling turn ended with no tool call under an
-    /// [explicit-call](test_cabinet_core::gg::COMPLETION_SIGNAL_EXPLICIT_CALL) completion signal,
-    /// where a text-only reply is not a completion but a failure to end the run the one way this
-    /// run allows. Counted as an error so a model that keeps replying in prose instead of calling
+    /// A tool-calling turn ended with no tool call. [Ending a session](crate::completion) is always
+    /// an explicit call, so a text-only reply is not a completion but a failure to end the run the
+    /// one way gg allows. Counted as an error so a model that keeps replying in prose instead of calling
     /// `finish` trips the run's [error ceilings](RunLimits) and stops early. The only tool-calling
     /// error shape besides [`ModelApi`](Self::ModelApi).
     MissingCompletion,

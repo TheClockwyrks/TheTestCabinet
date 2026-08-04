@@ -11,8 +11,8 @@
 //! # Why the seam is here and not at the tool
 //!
 //! Three call paths reach a command line — the [`shell`](super::SHELL_TOOL) tool, a
-//! [responses-as-code](crate::sandbox) program's `system.shell(…)`, and the
-//! [completion](crate::completion) gate's validation commands — and the only thing all three share
+//! [responses-as-code](crate::sandbox) program's `system.shell(…)`, and a
+//! [hook's](crate::hooks) commands — and the only thing all three share
 //! is the [`ToolContext`](super::ToolContext). So the runner travels on the context, and both
 //! [`run_command`](super::run_command) and
 //! [`run_command_capturing`](super::run_command_capturing) reach it from there. Splitting the seam
@@ -58,7 +58,7 @@ pub struct ShellRequest {
     /// The command line, run as `sh -c <command>`.
     pub command: String,
     /// The directory to run it in. Already resolved: the calling agent's workspace root, or the
-    /// directory a [validation command](crate::completion) declared relative to it.
+    /// directory a [hook command](crate::hooks) declared relative to it.
     pub cwd: PathBuf,
     /// gg's per-command ceiling, after any budget clamp the caller applied.
     pub timeout: Duration,
@@ -66,18 +66,19 @@ pub struct ShellRequest {
     ///
     /// Carried because a recorded shell is keyed **per agent**: a runner given only a workspace
     /// path cannot know whose recorded commands to draw from, every shell divergence names an
-    /// agent, and the [completion](crate::completion) gate's commands in particular have to be
-    /// attributed to the agent whose ending they gate or they land on an unattributed queue.
+    /// agent, and a [hook's](crate::hooks) commands in particular have to be attributed to the
+    /// agent it fired for — an [agent-stop](test_cabinet_core::gg::GgHookEvent::AgentStop) gate to
+    /// the agent whose ending it holds — or they land on an unattributed queue.
     /// [`RealShellRunner`] has no use for it — a real process is a real process — so the only
     /// reader is a [playback](crate::playback)'s recorded runner.
     pub agent_id: String,
     /// **Which of gg's three command paths** this line came from: the [`shell`](super::SHELL_TOOL)
-    /// tool, a [responses-as-code](crate::sandbox) program's `system.shell(…)`, or the
-    /// [completion](crate::completion) gate's validation commands.
+    /// tool, a [responses-as-code](crate::sandbox) program's `system.shell(…)`, or a
+    /// [hook's](crate::hooks) commands.
     ///
     /// Carried on the request rather than derived at the recorder, because the seam is the *only*
     /// place all three meet and by the time a command reaches it the caller is gone. It is what
-    /// keeps a completion gate's command off the agent's ordinary queue — a validation command and
+    /// keeps a hook's command off the agent's ordinary queue — a hook command and
     /// a `shell` tool call are different inputs even when the text is identical — and it is the one
     /// field [`RealShellRunner`] ignores and a
     /// [recording](crate::replay::RecordingShellRunner) one exists for.
@@ -289,7 +290,7 @@ where
 ///
 /// The test double for the seam itself, kept beside the trait rather than in one test file because
 /// three of gg's modules need it — the seam is only meaningful if the `shell` tool, a
-/// [responses-as-code](crate::sandbox) program and the [completion](crate::completion) gate all
+/// [responses-as-code](crate::sandbox) program and a [hook](crate::hooks) all
 /// reach it, and proving that means substituting it from each of their tests. It is also the shape
 /// a playback's recorded runner takes, minus the queue: record what was asked, answer without
 /// touching the machine.

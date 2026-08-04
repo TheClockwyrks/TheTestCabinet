@@ -67,9 +67,9 @@
 //!
 //! # Completion is the agent's own, and acceptance is gg's
 //!
-//! An issue is finished exactly when **the agent implementing it finished** — under whatever
-//! [completion rule](crate::completion) that agent's profile configures, which is the one place a
-//! run says how an agent signals it is done. There is deliberately no separate "complete issue"
+//! An issue is finished exactly when **the agent implementing it finished** — with the
+//! [explicit ending call](crate::completion) its role gives it, held to whatever
+//! [agent-stop hook](crate::hooks) the run declares. There is deliberately no separate "complete issue"
 //! tool: an agent that ended successfully has, by definition, said its work is complete, and asking
 //! it to say so a second way only adds a step it can forget and lose its work to.
 //!

@@ -1129,7 +1129,7 @@ names. A model cannot act on gg's internals, and a trace full of them is a trace
 read past to find the one line it can.
 
 `Notice` is the `System` band, and it is where the small population of things gg genuinely has
-to say lives: an ending a [validation command](/gg/ending-a-session/) rejected; the results of a deferred `wait_for_issue`;
+to say lives: an ending an [agent-stop hook](/gg/hooks/#agent-stop) rejected; the results of a deferred `wait_for_issue`;
 [statements after a top-level `return`](#statements-that-cannot-run) that could not run; and
 the one notice a *working* program can earn, [below](#a-program-that-worked-earns-no-message).
 When a turn produces both a notice and an error, the notices come first and the error last —

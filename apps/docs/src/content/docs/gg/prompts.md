@@ -71,7 +71,6 @@ as the system prompt, so they live in the same place.
 | `compaction-fallback.hbs`               | The note used when the summarization call fails, so a failed summary never aborts the run it serves.                                            |
 | `compaction-memory-summary.hbs`         | What a `memory` compaction restarts the thread from: a bare note that a boundary was crossed, rather than a recap.                              |
 | `completion-missing.hbs`                | The feedback for a tool-calling turn that requested no tools, naming this agent's own [ending calls](/gg/ending-a-session/#ending-calls).             |
-| `completion-validation-failure.hbs`     | The feedback for an ending a [validation command](/gg/ending-a-session/) rejected: which command failed, and its output.                              |
 | `context-pressure.hbs`                  | The per-turn [context-pressure](/gg/agent-managed-context/) signal — how full the window is, what is filling it, and how to reclaim space.      |
 
 ## The system prompt is assembled from the capability set

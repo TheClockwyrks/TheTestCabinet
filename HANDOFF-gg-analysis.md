@@ -146,8 +146,9 @@ independently.
 **(f) `GgShellCwd { Workspace, Relative, Absolute }` / `GgShellOrigin`** — adopt,
 and use `GgShellCwd` for **both** the tool-result and the `Git` entry (replay's
 `Git { cwd: String }` has the identical absolute-path problem). Record
-completion-validation commands (they bypass the recorder today,
-`crates/gg/src/completion.rs`).
+[hook](../apps/docs/src/content/docs/gg/hooks.md) commands — including the
+`agent-stop` gate the old `completion` capability became, which is what runs a
+build before an ending is accepted.
 
 Everything else in the replay design stands unchanged: four pools, the NDJSON
 journal, host-side streaming assembly, the mandatory `End` line, seed-time `.gg/`
@@ -271,7 +272,7 @@ SQL pushdown.
 
 | Edge | Kind | Precisely on what |
 | --- | --- | --- |
-| replay → playback | **HARD, blocking** | `formatVersion` + `#[serde(default)]`; `GgTurnFingerprint` (now a pool-id fold); the `agents` provenance table covering all five creation paths; seed blobs; `GgClientRole`; `GgShellCwd`/`GgShellOrigin` + recorded completion commands; the invocation envelope (`prompt`, `model_windows`, **resolved** `model_modalities`); preserved global `seq`; the shared `gg_replay` index module |
+| replay → playback | **HARD, blocking** | `formatVersion` + `#[serde(default)]`; `GgTurnFingerprint` (now a pool-id fold); the `agents` provenance table covering all five creation paths; seed blobs; `GgClientRole`; `GgShellCwd`/`GgShellOrigin` + recorded hook commands; the invocation envelope (`prompt`, `model_windows`, **resolved** `model_modalities`); preserved global `seq`; the shared `gg_replay` index module |
 | code-analysis → query language | **SOFT, one-directional** | `code.*` becomes queryable only when TCQ lands. Ship order matters, correctness does not |
 | replay ↔ code-analysis | **none** — shared plumbing only | Replay establishes the artifact/route/mirror/gzip convention and `collect_file`; code analysis copies it. Whichever lands first sets it |
 | replay ↔ query language | **none** | Fields replay adds to the summary become queryable free, subject to §1.4 |
@@ -399,7 +400,7 @@ offers **both** `true` and `false` with non-zero counts, a long-run filter shows
 
 Wrap `compaction.handoff_client`; record `ModelError`, request shape, `Git`
 entries (stdout/stderr interned), the cancel probe, the deadline clock, and
-completion-validation shell commands with `GgShellCwd`. Rewrite `replay_driver`
+hook shell commands with `GgShellCwd`. Rewrite `replay_driver`
 onto the shared index (delete its pre-pass and the dead
 `ReplayClient`/`ReplayInvoker`). Add `crates/gg/src/replay_inputs.rs` with an
 **async, yielding** `await_turn`. Add gg's `replay` subcommand (keeping bare

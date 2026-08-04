@@ -1,5 +1,6 @@
 import {
   BLOCKING_HOOK_EVENTS,
+  DEFAULT_HOOK_TIMEOUT_SECS,
   GG_BUILTIN_HOOK_HINTS,
   GG_BUILTIN_HOOK_IDS,
   HOOK_DECISION_CONTRACT,
@@ -212,7 +213,7 @@ function HookRow({
               min={0}
               value={hook.timeoutSecs}
               disabled={readOnly}
-              placeholder="300"
+              placeholder={String(DEFAULT_HOOK_TIMEOUT_SECS)}
               onChange={(e) => onPatch({ timeoutSecs: e.target.value })}
             />
           </label>

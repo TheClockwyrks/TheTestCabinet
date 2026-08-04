@@ -3,8 +3,7 @@
 //! [epic/issue board](crate::board).
 //!
 //! There is no tool for *finishing* an issue: an issue is finished exactly when the agent gg
-//! dispatched to implement it finishes, under that agent's own
-//! [completion rule](crate::completion). See
+//! dispatched to implement it makes its own [ending call](crate::completion). See
 //! [the board's own docs](crate::board#completion-is-the-agents-own-and-acceptance-is-ggs).
 //!
 //! Each tool mutates the shared [`BoardStore`] (behind an `Arc<Mutex<…>>` the tool shares with

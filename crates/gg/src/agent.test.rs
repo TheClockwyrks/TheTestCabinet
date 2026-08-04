@@ -180,9 +180,8 @@ fn no_hooks() -> HooksSetup {
     }
 }
 
-/// A run whose only hook runs `command` when an agent tries to end its session — the
-/// [agent-stop](GgHookEvent::AgentStop) gate the `completion` capability's validation commands
-/// became.
+/// A run whose only hook runs `command` when an agent tries to end its session — an
+/// [agent-stop](GgHookEvent::AgentStop) gate on the ending.
 fn stop_hook(command: &str) -> HooksSetup {
     // On the agent, not on the run: `agent-stop` is one of the eight events that fire because a
     // particular agent did something, so an agent is the only place it can be declared.
@@ -1416,8 +1415,8 @@ async fn an_ending_passes_its_stop_hook() {
 /// An ending a hook blocks does NOT end the session: the refusal is fed back and the run continues,
 /// so a run that can never satisfy the gate stops on its turn ceiling instead.
 ///
-/// This is the one property of the old `completion` capability worth keeping, asserted through its
-/// replacement.
+/// The gate's whole point is that it is *survivable*: a blocked ending must be a message the model
+/// can act on, never a run-ending failure.
 #[tokio::test]
 async fn an_ending_is_blocked_by_a_failing_stop_hook() {
     let dir = TempDir::new().unwrap();
@@ -6285,7 +6284,7 @@ const CODER_AGENT: &str = "Coder";
 /// project-management capability of its own (it authors nothing; it is authored *at*).
 ///
 /// Every earlier board e2e has the Root implement its own issues, which quietly hid the whole
-/// division of labour: the Root has the board capability, so it always had the completion tool.
+/// division of labour: the Root has the board capability, so it always had the ending call.
 fn split_project_set() -> GgCapabilitySet {
     let mut set = GgCapabilitySet::minimal("mock/primary");
     set.agents[0].capabilities.push(GgCapabilityConfig {

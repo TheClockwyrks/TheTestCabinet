@@ -14,9 +14,6 @@ import { familyOf } from "../../../data/families";
 import { paramApplies, type CapSpec, type ParamSpec } from "./ggCatalog";
 import {
   blankCapabilityDraft,
-  blankCommandDraft,
-  commandsDraftValue,
-  commandsFromDraft,
   fsmStatesWarnings,
   isFsmShell,
   statesDraftValue,
@@ -24,7 +21,6 @@ import {
   togglesDraftValue,
   togglesOff,
   toolBundleOn,
-  type CommandDraft,
   type GgAgentDraft,
   type GgCapabilityDraft,
   type GgModelSlotDraft,
@@ -345,101 +341,6 @@ export function CapabilityBody({
                         <span>{o.label}</span>
                       </label>
                     ))}
-                  </div>
-                </div>
-              );
-            }
-            if (p.kind === "commands") {
-              const rows = commandsFromDraft(draft.params?.[p.key]);
-              const setRows = (next: ReadonlyArray<CommandDraft>) =>
-                onSetParam(p.key, commandsDraftValue(next));
-              return (
-                <div
-                  key={p.key}
-                  className={`${gg.capParamField} ${gg.commandField}`}
-                  role="group"
-                  aria-label={p.label}
-                >
-                  <FieldLabel label={p.label} hint={p.hint} />
-                  <div className={gg.commandList}>
-                    {rows.map((row, i) => (
-                      // Keyed by position: a row has no identity of its own, and
-                      // reordering is not offered — the commands run in the order they
-                      // are listed.
-                      <div key={i} className={gg.commandRow}>
-                        <input
-                          className={`${runExec.input} ${gg.commandLine}`}
-                          type="text"
-                          value={row.command}
-                          disabled={readOnly}
-                          aria-label={`Command ${i + 1}`}
-                          onChange={(e) =>
-                            setRows(
-                              rows.map((r, j) =>
-                                j === i ? { ...r, command: e.target.value } : r,
-                              ),
-                            )
-                          }
-                          placeholder="e.g. npm run build"
-                          spellCheck={false}
-                        />
-                        <input
-                          className={`${runExec.input} ${gg.commandCwd}`}
-                          type="text"
-                          value={row.cwd}
-                          disabled={readOnly}
-                          aria-label={`Command ${i + 1} working directory`}
-                          onChange={(e) =>
-                            setRows(
-                              rows.map((r, j) =>
-                                j === i ? { ...r, cwd: e.target.value } : r,
-                              ),
-                            )
-                          }
-                          placeholder="workspace root"
-                          spellCheck={false}
-                        />
-                        <input
-                          className={`${runExec.input} ${gg.commandTimeout}`}
-                          type="number"
-                          min={0}
-                          value={row.timeoutSecs}
-                          disabled={readOnly}
-                          aria-label={`Command ${i + 1} timeout (seconds)`}
-                          onChange={(e) =>
-                            setRows(
-                              rows.map((r, j) =>
-                                j === i
-                                  ? { ...r, timeoutSecs: e.target.value }
-                                  : r,
-                              ),
-                            )
-                          }
-                          placeholder="timeout s"
-                        />
-                        {!readOnly && (
-                          <button
-                            type="button"
-                            className={gg.slotRemove}
-                            aria-label={`Remove command ${i + 1}`}
-                            onClick={() =>
-                              setRows(rows.filter((_, j) => j !== i))
-                            }
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    {!readOnly && (
-                      <button
-                        type="button"
-                        className={runExec.secondary}
-                        onClick={() => setRows([...rows, blankCommandDraft()])}
-                      >
-                        + Add command
-                      </button>
-                    )}
                   </div>
                 </div>
               );

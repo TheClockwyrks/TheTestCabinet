@@ -52,8 +52,8 @@ use crate::model::ToolDefinition;
 mod runner;
 
 /// The seam's [test double](runner::StubShellRunner), re-exported for the modules on the other two
-/// command-line paths — a [responses-as-code](crate::sandbox) program's and the
-/// [completion](crate::completion) gate's — whose tests substitute it.
+/// command-line paths — a [responses-as-code](crate::sandbox) program's and a
+/// [hook's](crate::hooks) — whose tests substitute it.
 pub(crate) use runner::{ShellExecution, ShellRequest, ShellRunner, ShellStatus, real_shell};
 
 /// The tool's name, matched during dispatch and offered to the model.

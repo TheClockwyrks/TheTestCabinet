@@ -1018,7 +1018,7 @@
       ]
     },
     "GgShellOrigin": {
-      "description": "Which of gg's three command paths issued a recorded shell command.\n\nAll three reach one command line, and the only thing they share is the tool context —\nwhich is why the seam belongs there. Recording *which* path asked is what keeps a\n[completion](https://docs.testcabinet.ai/gg/completion/) gate's validation commands\n(which bypass the recorder entirely today) off the agent's ordinary queue.",
+      "description": "Which of gg's three command paths issued a recorded shell command.\n\nAll three reach one command line, and the only thing they share is the tool context —\nwhich is why the seam belongs there. Recording *which* path asked is what keeps the commands gg\nruns *without the model asking* — an [agent-stop hook](https://docs.testcabinet.ai/gg/hooks/)'s\nending gate, say — off the agent's ordinary queue, where a reconstruction would hand some later\n`shell` call a result the model never produced.",
       "oneOf": [
         {
           "const": "tool",

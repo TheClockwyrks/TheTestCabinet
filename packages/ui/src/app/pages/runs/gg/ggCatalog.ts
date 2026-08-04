@@ -108,7 +108,6 @@ export type CapGroup =
   | "Knowledge"
   | "Work tracking"
   | "Delegation"
-  | "Process & quality"
   | "Models & tools"
   | "Debugging";
 
@@ -122,7 +121,6 @@ export const CAP_GROUPS: ReadonlyArray<{
   { group: "Knowledge", startOpen: true },
   { group: "Work tracking", startOpen: true },
   { group: "Delegation", startOpen: false },
-  { group: "Process & quality", startOpen: false },
   { group: "Debugging", startOpen: false },
 ];
 
@@ -207,11 +205,6 @@ export interface ParamSpec {
   // per-feature tool-ablation sliders (the "Features" box) rather than in the param
   // grid, because what it varies is what an offered tool demands rather than a
   // number the tool reads.
-  // A `commands` param is a repeating list of shell commands (each with an optional
-  // working directory and timeout) rendered as its own row editor — the shape the
-  // completion capability's validation gate takes. Its draft value is the JSON text of
-  // the list, so it stays a plain string like every other control while still holding
-  // structure the form can lay out.
   // A `model` param names a model the same way an agent's own binding does: either a
   // model slot the launch form fills in, or a model id pinned here. It renders the same
   // two-field control the agent rows use, and writes to *two* keys — this one for a
@@ -219,8 +212,8 @@ export interface ParamSpec {
   // A `states` param is a whole finite-state machine: an ordered list of states, each
   // naming an agent profile and the transitions out of it, and each transition naming
   // the [modules](MODULE_KINDS) it carries to the successor. It renders as its own
-  // multi-row editor (see `GgFsmStatesField`) and, like `commands`, holds its rows as
-  // the JSON text of the list so the draft stays a flat string map.
+  // multi-row editor (see `GgFsmStatesField`) and holds its rows as the JSON text of
+  // the list, so the draft stays a flat string map.
   kind:
     | "fraction"
     | "number"
@@ -229,7 +222,6 @@ export interface ParamSpec {
     | "text"
     | "toggles"
     | "boolean"
-    | "commands"
     | "agent"
     | "model"
     | "states";
@@ -451,7 +443,7 @@ export const HOOK_EVENTS: ReadonlyArray<{
   {
     value: "agent-stop",
     label: "Agent stop",
-    hint: "When any agent tries to end its session, with the kind of agent it is. Can block, in which case the agent is told why and carries on — this is the ending gate the Completion capability's validation commands became.",
+    hint: "When any agent tries to end its session, with the kind of agent it is. Can block, in which case the agent is told why and carries on. This is the ending gate: a command hook here that exits non-zero holds the agent to a build or a test suite before it may stop.",
   },
   {
     value: "session-start",
@@ -1133,10 +1125,10 @@ export const SUBAGENT_SCOPES: ReadonlyArray<{
   },
 ];
 
-// The per-command timeout gg falls back to when a validation command declares none
-// (`DEFAULT_VALIDATION_TIMEOUT` in `crates/gg/src/completion.rs`). Generous, because a
-// validation command is typically a build or a test suite.
-export const DEFAULT_VALIDATION_TIMEOUT_SECS = 300;
+// The per-hook timeout gg falls back to when a hook declares none (`DEFAULT_HOOK_TIMEOUT`
+// in `crates/gg/src/hooks.rs`). Generous, because a hook command is typically a build or
+// a test suite rather than a quick check.
+export const DEFAULT_HOOK_TIMEOUT_SECS = 300;
 
 // The compaction strategies gg resolves at run time (`crates/gg/src/compaction.rs`),
 // in editor order — grouped by who condenses the thread: the working agent itself (the
@@ -1707,24 +1699,6 @@ export const CAPABILITIES: ReadonlyArray<CapSpec> = [
     tools: ["transition_state"],
     // No ablation slider: withholding `transition_state` leaves a machine that can
     // only ever sit in its entry state, which is not an arm anyone would run.
-  },
-  // --- Process & quality ------------------------------------------------------
-  {
-    id: "completion",
-    name: "Completion",
-    group: "Process & quality",
-    purpose: "Commands that must pass before this agent's ending is accepted.",
-    params: [
-      {
-        key: "validation",
-        label: "Validation commands",
-        kind: "commands",
-        hint: `Commands gg runs when the agent signals it is done, in order, in either execution mode. Its session only ends if every one exits 0; the first failure's output is handed back to the model and the run continues. Leave the list empty to take the model's word for it. A blank working directory is the agent's workspace root; a blank timeout is ${DEFAULT_VALIDATION_TIMEOUT_SECS}s.`,
-      },
-    ],
-    // The ending calls are deliberately absent: they are loop-level tools gg appends
-    // according to the agent's role and intercepts itself, not registry tools — and
-    // withholding the only way to end a session is not an arm anyone would run.
   },
   // --- Debugging --------------------------------------------------------------
   {

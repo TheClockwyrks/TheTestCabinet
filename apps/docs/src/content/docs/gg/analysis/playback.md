@@ -41,17 +41,18 @@ claim a fork that does not exist.
 
 **The shell** has no seam. Three call paths reach a command line — the `shell`
 tool, a [responses-as-code](/gg/responses-as-code/) program's `system.shell(…)`,
-and the [completion](/gg/ending-a-session/) gate's validation commands — and the only
+and a [hook](/gg/hooks/)'s commands — and the only
 thing all three share is the tool context. So the seam goes there, and it carries
 **the calling agent** and **which of the three paths it came from**: a runner given
 only a workspace path cannot know whose recorded commands to draw from, every shell
-divergence names an agent, and a validation command has to stay off the agent's
-ordinary queue. The completion path in particular must be attributed to the agent
-whose ending it gates, or its commands land on an unattributed queue.
+divergence names an agent, and a hook's command has to stay off the agent's
+ordinary queue. A hook in particular must be attributed to the agent it fired for —
+an [agent-stop](/gg/hooks/#agent-stop) gate to the agent whose ending it holds — or
+its commands land on an unattributed queue.
 
 Capture rides the same seam, as a decorator around whatever runner is installed.
 That is not an incidental symmetry: the seam is the only place all three paths meet,
-and a capture that sits above it — as the completion gate's briefly did, because that
+and a capture that sits above it — as the ending gate's briefly did, because that
 call site happened to hold a recorder — records one path and silently misses the
 other two. Recording *below* the seam also pins what the process did, before the
 output policy merged the streams and added gg's notes, which is the right side of
@@ -91,7 +92,7 @@ cannot be asked for one.
 | Side effect | Playback | Why |
 | --- | --- | --- |
 | Model requests | **stubbed** | The cost and ~all the wall clock |
-| `sh -c` — tool, program, completion validation | **stubbed** | Reaches the network, the clock, and the machine's toolchain |
+| `sh -c` — tool, program, hook | **stubbed** | Reaches the network, the clock, and the machine's toolchain |
 | `git` subprocesses, worktrees, merges | **real**, and *watched* | gg's own bookkeeping, and the hardest paths to test — but see the barrier below, which needs to know when a merge landed |
 | `write_file` / `edit_file` | **real**, into a scratch tree | An `edit_file` needs the file the previous `write_file` made |
 | `read_file` / `list_dir` / `read_skill` | **real**, compared against the record | Pure functions of workspace + args, so a difference is a regression signal |

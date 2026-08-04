@@ -392,9 +392,9 @@ async fn a_program_compacts_its_own_context_window() {
 async fn responses_as_code_completion_is_gated_by_an_agent_stop_hook() {
     let dir = TempDir::new().unwrap();
     let mut set = code_set("mock/primary", json!({}));
-    // Gate the ending on a file the program must create before its `finish` is accepted — the same
-    // gate the `completion` capability used to provide, now an agent-stop hook, and asserted on the
-    // code path because that path applies it at a different point from the tool-calling one.
+    // Gate the ending on a file the program must create before its `finish` is accepted, asserted
+    // on the code path because that path applies the gate at a different point from the
+    // tool-calling one.
     set.agents[0].hooks.push(test_cabinet_core::gg::GgHook {
         event: test_cabinet_core::gg::GgHookEvent::AgentStop,
         action: test_cabinet_core::gg::GgHookAction::Command {

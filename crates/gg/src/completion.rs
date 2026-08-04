@@ -1,5 +1,4 @@
-//! The **ending calls** an agent is offered, and the optional external **validation** that gates
-//! them.
+//! The **ending calls** an agent is offered.
 //!
 //! How an agent declares it is done is **not** configurable and never was worth making so. Every
 //! agent ends its session with an explicit, typed call, in both execution modes: a tool-calling reply

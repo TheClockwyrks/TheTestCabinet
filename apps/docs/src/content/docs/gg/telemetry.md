@@ -515,9 +515,9 @@ Under [responses as code](/gg/responses-as-code/) this event sits beside `code_e
 and does not duplicate it: that one reports what a **program** did and exists only in that
 mode, while this is the mode-agnostic judgement of the **turn**. A tool-calling run emits
 `turn_outcome` too, which is what lets one error rate be compared across both modes. The
-turn that used to be silent entirely — a tool-calling turn that ends with no tool call under
-an explicit-call [completion signal](/gg/ending-a-session/) — is reported here as
-`missing_completion`.
+turn that used to be silent entirely — a tool-calling turn that ends with no tool call,
+where [ending a session](/gg/ending-a-session/) is always an explicit call — is reported
+here as `missing_completion`.
 
 ### The taxonomy has two levels
 

@@ -776,129 +776,13 @@ function togglesToParam(
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
-// --- `commands` params ----------------------------------------------------------
-//
-// A `commands` param is an ordered list of shell commands, each with a required command
-// line and an optional working directory and timeout — the shape gg's completion
-// validation gate takes. The draft holds the list as JSON *text*, so it is a plain string
-// like every other dedicated control while still carrying structure the form lays out as
-// rows, and a half-typed row survives a re-render.
-
-/** One row of a `commands` param as the editor holds it. */
-export interface CommandDraft {
-  command: string;
-  cwd: string;
-  /** Seconds, as typed — empty means gg's own per-command default. */
-  timeoutSecs: string;
-}
-
-/** A blank row, appended by the editor's "+ Add command". */
-export function blankCommandDraft(): CommandDraft {
-  return { command: "", cwd: "", timeoutSecs: "" };
-}
-
-/**
- * The rows a `commands` draft value stands for. A value that is not the JSON list this
- * control writes yields no rows rather than throwing — the draft is text an operator (or
- * a stored config) can put anything in, and a form that crashed on it would be worse than
- * one that shows an empty list.
- */
-export function commandsFromDraft(
-  raw: string | undefined,
-): ReadonlyArray<CommandDraft> {
-  if (!raw?.trim()) return [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return [];
-  }
-  if (!Array.isArray(parsed)) return [];
-  return parsed.map((entry) => ({
-    command: String((entry as CommandDraft)?.command ?? ""),
-    cwd: String((entry as CommandDraft)?.cwd ?? ""),
-    timeoutSecs: String((entry as CommandDraft)?.timeoutSecs ?? ""),
-  }));
-}
-
-/** The draft value holding exactly `rows` — the inverse of [commandsFromDraft]. */
-export function commandsDraftValue(rows: ReadonlyArray<CommandDraft>): string {
-  return rows.length ? JSON.stringify(rows) : "";
-}
-
-/**
- * The draft value a *stored* `commands` param decodes to, or `null` when the stored value
- * is not one this control can represent (which routes it to the verbatim passthrough).
- *
- * gg accepts a bare string as shorthand for a command with no cwd or timeout, so both
- * spellings load into rows.
- */
-function commandsFromParam(value: unknown): string | null {
-  if (!Array.isArray(value)) return null;
-  const rows: CommandDraft[] = [];
-  for (const entry of value) {
-    if (typeof entry === "string") {
-      rows.push({ ...blankCommandDraft(), command: entry });
-      continue;
-    }
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      return null;
-    }
-    const { command, cwd, timeoutSecs, ...rest } = entry as Record<
-      string,
-      unknown
-    >;
-    // An entry carrying a key this control does not know is one a round-trip through the
-    // rows would silently drop, so the whole param goes to the passthrough instead.
-    if (Object.keys(rest).length) return null;
-    if (typeof command !== "string") return null;
-    if (cwd !== undefined && typeof cwd !== "string") return null;
-    if (timeoutSecs !== undefined && typeof timeoutSecs !== "number") {
-      return null;
-    }
-    rows.push({
-      command,
-      cwd: cwd ?? "",
-      timeoutSecs: timeoutSecs === undefined ? "" : String(timeoutSecs),
-    });
-  }
-  return commandsDraftValue(rows);
-}
-
-/**
- * The JSON a `commands` draft value writes, or `undefined` when it names no usable
- * command (which writes no param at all — the ungated arm). A row with a blank command is
- * dropped: it is a row the operator started and did not fill in, not an instruction to
- * run nothing.
- */
-function commandsToParam(
-  raw: string,
-): Array<Record<string, unknown>> | undefined {
-  const rows = commandsFromDraft(raw)
-    .map((row) => ({
-      command: row.command.trim(),
-      cwd: row.cwd.trim(),
-      timeout: Number(row.timeoutSecs.trim()),
-      hasTimeout: Boolean(row.timeoutSecs.trim()),
-    }))
-    .filter((row) => row.command);
-  if (!rows.length) return undefined;
-  return rows.map((row) => ({
-    command: row.command,
-    ...(row.cwd ? { cwd: row.cwd } : {}),
-    ...(row.hasTimeout && Number.isFinite(row.timeout) && row.timeout > 0
-      ? { timeoutSecs: row.timeout }
-      : {}),
-  }));
-}
-
 // --- `states` params (the FSM machine) ------------------------------------------
 //
 // A `states` param is a whole finite-state machine: an ordered list of states, the
 // first of which is the one the machine enters, each naming an agent profile to run and
-// the edges out of it. Like a `commands` param it is held as the JSON *text* of the
-// list, so the draft stays a flat `Record<string, string>` and a half-written state
-// survives a re-render — but unlike one it carries cross-references, in both
+// the edges out of it. It is held as the JSON *text* of the list, so the draft stays a
+// flat `Record<string, string>` and a half-written state survives a re-render — but
+// unlike every other param it carries cross-references, in both
 // directions: a state names an agent profile (held as that profile's [local id](localId),
 // so a rename follows it), and a transition names a sibling *state* (held as the state's
 // name, because a state's identity in the machine IS its name — it is what the model
@@ -1274,12 +1158,6 @@ function agentDraftFromConfig(
         else params[key] = value ? "true" : "";
         continue;
       }
-      if (spec.kind === "commands") {
-        const decoded = commandsFromParam(value);
-        if (decoded === null) extraParams[key] = value;
-        else params[key] = decoded;
-        continue;
-      }
       if (spec.kind === "states") {
         const decoded = statesFromParam(value);
         if (decoded === null) extraParams[key] = value;
@@ -1626,11 +1504,6 @@ export function capabilityParams(
     if (p.kind === "toggles") {
       const toggles = togglesToParam(p, raw);
       if (toggles) out[p.key] = toggles;
-      continue;
-    }
-    if (p.kind === "commands") {
-      const commands = commandsToParam(raw);
-      if (commands) out[p.key] = commands;
       continue;
     }
     if (p.kind === "states") {

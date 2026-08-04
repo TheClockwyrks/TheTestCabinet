@@ -3035,9 +3035,9 @@ pub enum GgTurnErrorKind {
     /// The sandbox stopped the program at a ceiling — its execution timeout or memory — or the guest
     /// trapped. The program ran and its landed calls stand, but the work it declared was cut short.
     SandboxLimit,
-    /// A tool-calling turn ended with no tool call under an
-    /// explicit-call [completion signal](CAPABILITY_COMPLETION), where a text-only reply
-    /// is not a completion but a failure to end the run the one way this run allows. Counted as an
+    /// A tool-calling turn ended with no tool call. How an agent declares it is done is not
+    /// configurable: every agent ends its session with an explicit, typed call, so a text-only
+    /// reply is not a completion but a failure to end the run the one way gg allows. Counted as an
     /// error so a model that keeps replying in prose trips the error ceilings instead of running to
     /// its turn budget.
     MissingCompletion,
@@ -3187,9 +3187,8 @@ pub enum GgTurnErrorType {
     SandboxOutOfMemory,
     /// The guest trapped for some other reason. The program ran and its landed calls stand.
     SandboxTrap,
-    /// A tool-calling turn ended with **no tool call** under an explicit-call
-    /// [completion signal](CAPABILITY_COMPLETION) — the model replied in prose where the one way to
-    /// end this run is a call.
+    /// A tool-calling turn ended with **no tool call** — the model replied in prose where the one
+    /// way to end a session is an explicit, typed call.
     MissingCompletionNoCall,
     /// A turn replied with no tool call while a [compaction](GgTelemetryKind::Compaction) was
     /// pending: the model was told to compact its window and answered with prose instead. A

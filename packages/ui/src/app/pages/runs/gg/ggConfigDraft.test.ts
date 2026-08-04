@@ -804,51 +804,36 @@ describe("gg open-image-view cap", () => {
   });
 });
 
-// --- Completion ------------------------------------------------------------------
+// --- Removed capabilities ------------------------------------------------------
+//
+// A capability gg no longer has can still be named by a configuration an operator saved
+// while it existed. Loading one must not fail — the operator has to reach the editor to
+// rewrite it — and saving it must not carry the dead capability back out.
 
-const COMPLETION = "completion";
-
-function completionCap(s: GgCapabilitySet): GgCapabilityConfig | undefined {
-  return setCaps(s).find((cap) => cap.id === COMPLETION);
-}
-
-describe("gg completion", () => {
-  // The capability has no implementation any more — how an agent ends is decided by the
-  // role it was dispatched in, not by its profile — so what round-trips is the validation
-  // gate and nothing else.
-  it("round-trips the validation gate and carries no implementation", () => {
-    const configured = capSet([
+describe("gg removed capabilities", () => {
+  // `completion` became an [agent-stop hook]: the same ending gate, declared once and
+  // applying to every agent rather than to the profiles that remembered to enable it. A
+  // stored set naming it opens (with its validation commands visible nowhere, because
+  // there is no row to show them in) and re-saves without it, exactly as the legacy
+  // `filesystem` umbrella does. The commands must be re-authored as an agent-stop hook.
+  it("opens a configuration that still names `completion` and re-saves without it", () => {
+    const stored = capSet([
+      { id: "shell", enabled: true, params: {} },
       {
-        id: COMPLETION,
-        enabled: true,
-        params: { validation: [{ command: "npm test" }] },
-      },
-    ]);
-    const draft = draftFromCapabilitySet(configured);
-    expect(draftCaps(draft)[COMPLETION]?.implementation ?? "").toBe("");
-
-    const round = completionCap(capabilitySetFromDraft(draft, null));
-    expect(round?.implementation).toBeUndefined();
-    expect(round?.params).toEqual({ validation: [{ command: "npm test" }] });
-  });
-
-  // A configuration saved before the signal was dropped still names one. It is carried
-  // through a round-trip rather than rejected — gg ignores it — so reopening an old
-  // configuration never fails and never silently rewrites what it was.
-  it("does not choke on a legacy signal", () => {
-    const configured = capSet([
-      {
-        id: COMPLETION,
+        id: "completion",
         enabled: true,
         implementation: "explicit-call",
-        params: {},
+        params: { validation: [{ command: "npm test", cwd: "game" }] },
       },
     ]);
-    const draft = draftFromCapabilitySet(configured);
-    expect(() => capabilitySetFromDraft(draft, null)).not.toThrow();
-    expect(completionCap(capabilitySetFromDraft(draft, null))?.enabled).toBe(
-      true,
-    );
+
+    const draft = draftFromCapabilitySet(stored);
+    expect(draftCaps(draft)["completion"]).toBeUndefined();
+    expect(draftCaps(draft)["shell"]?.enabled).toBe(true);
+
+    const saved = capabilitySetFromDraft(draft, null);
+    expect(setCaps(saved).find((cap) => cap.id === "completion")).toBeUndefined();
+    expect(setCaps(saved).map((cap) => cap.id)).toContain("shell");
   });
 });
 

@@ -1445,8 +1445,10 @@ async fn a_call_records_its_latency_only_at_full_fidelity() {
 
 // --- subprocesses: shell, git, and the working directory --------------------
 
-/// A completion gate's validation command runs `sh -c` but never reaches tool dispatch, so before
-/// this seam it was recorded nowhere at all — and it decides whether the session may end.
+/// A hook's command runs `sh -c` but never reaches tool dispatch, so before this seam it was
+/// recorded nowhere at all — and an agent-stop hook's decides whether the session may end. The
+/// origin asserted here is the retired `completion_validation` one, which only a stored record
+/// carries now: a live run stamps `Hook`, and both must still round-trip.
 #[test]
 fn a_recorded_command_carries_its_origin_streams_and_working_directory() {
     let (dir, recorder) = recorder_in(None);

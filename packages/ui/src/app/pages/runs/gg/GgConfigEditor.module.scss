@@ -360,45 +360,6 @@
   cursor: pointer;
 }
 
-// A `commands` param (gg's completion-validation gate) is a repeating row of fields,
-// so — like a toggles param — it takes a whole row of the param grid rather than a
-// column beside a number field.
-.commandField {
-  flex: 1 1 100%;
-}
-
-.commandList {
-  display: flex;
-  flex-direction: column;
-  gap: t.$space-xs;
-  align-items: flex-start;
-}
-
-// One command: its command line takes whatever room is left, with the two optional
-// qualifiers (where it runs, how long it may run) sized to their contents so the row
-// reads as "run THIS, there, for that long".
-.commandRow {
-  display: flex;
-  gap: t.$space-sm;
-  align-items: center;
-  width: 100%;
-}
-
-.commandLine {
-  flex: 3 1 14rem;
-  min-width: 0;
-}
-
-.commandCwd {
-  flex: 1 1 8rem;
-  min-width: 0;
-}
-
-.commandTimeout {
-  flex: 0 1 7rem;
-  min-width: 0;
-}
-
 // --- The state machine (a `states` param) -----------------------------------------
 //
 // A machine is the largest control in the form by some distance — a list of states,

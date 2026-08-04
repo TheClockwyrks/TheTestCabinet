@@ -1145,7 +1145,7 @@
         },
         {
           "const": "missing_completion",
-          "description": "A tool-calling turn ended with no tool call under an\nexplicit-call [completion signal](CAPABILITY_COMPLETION), where a text-only reply\nis not a completion but a failure to end the run the one way this run allows. Counted as an\nerror so a model that keeps replying in prose trips the error ceilings instead of running to\nits turn budget.",
+          "description": "A tool-calling turn ended with no tool call. How an agent declares it is done is not\nconfigurable: every agent ends its session with an explicit, typed call, so a text-only\nreply is not a completion but a failure to end the run the one way gg allows. Counted as an\nerror so a model that keeps replying in prose trips the error ceilings instead of running to\nits turn budget.",
           "type": "string"
         }
       ]
@@ -1240,7 +1240,7 @@
         },
         {
           "const": "missing_completion_no_call",
-          "description": "A tool-calling turn ended with **no tool call** under an explicit-call\n[completion signal](CAPABILITY_COMPLETION) — the model replied in prose where the one way to\nend this run is a call.",
+          "description": "A tool-calling turn ended with **no tool call** — the model replied in prose where the one\nway to end a session is an explicit, typed call.",
           "type": "string"
         },
         {

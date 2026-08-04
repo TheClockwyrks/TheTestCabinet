@@ -119,7 +119,7 @@ only on this view:
   the telemetry stream deliberately records an image's media type and size and never its
   bytes;
 - everything the turn consumed **besides** the model call: the tool outcomes, the
-  orchestrator's own `git`, a completion gate's validation commands, the cancel probe and
+  orchestrator's own `git`, a [hook](/gg/hooks/)'s commands, the cancel probe and
   the deadline clock.
 
 Two notices lead the view where they apply, and both are statements about the *capture*

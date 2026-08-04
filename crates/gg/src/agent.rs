@@ -708,8 +708,8 @@ pub struct SessionSeams {
     /// Where every agent's model client comes from.
     pub factory: Arc<dyn ClientFactory>,
     /// What starts a process for every command line the run reaches — the `shell` tool, a
-    /// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and the
-    /// [completion](crate::completion) gate's validation commands alike.
+    /// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and a
+    /// [hook's](crate::hooks) commands alike.
     pub shell: Arc<dyn ShellRunner>,
     /// Who is told about each agent's creation and ending, and about each tool call's final
     /// outcome. **Not a third seam** — see [`SessionObserver`] for the distinction — which is why
@@ -1485,8 +1485,8 @@ struct Orchestrator {
     factory: Arc<dyn ClientFactory>,
     /// The run's [shell seam](ShellRunner), stamped onto every agent's
     /// [tool context](ToolContext) so all three of gg's command-line paths — the `shell` tool, a
-    /// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and the
-    /// [completion](crate::completion) gate's validation commands — start their processes through
+    /// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and a
+    /// [hook's](crate::hooks) commands — start their processes through
     /// the one runner the session was launched with.
     ///
     /// It is the **base** runner: when the run is capturing, each agent's tool context gets it
@@ -3135,7 +3135,7 @@ async fn run_agent(
         //
         // It also carries the run's [shell seam](ShellRunner) and this agent's id — which is what
         // makes every command line the agent reaches (its `shell` tool, its programs'
-        // `system.shell(…)`, and the commands its own [completion](crate::completion) gate runs on
+        // `system.shell(…)`, and the commands its own [hooks](crate::hooks) run on
         // its behalf) start through one runner, attributed to one agent.
         let tool_ctx = ToolContext::new(workspace_dir.clone())
             .with_vision(&model_id, Arc::clone(&orch.vision))
@@ -3573,8 +3573,8 @@ async fn run_agent(
     let emitter = &agent_emitter;
 
     let failed = is_failure_status(end.status);
-    // Whether the loop ended in a *completion* — the model signalled it was done under this agent's
-    // own [completion rule](crate::completion) — rather than on a ceiling, a breached limit, or an
+    // Whether the loop ended in a *completion* — the model signalled it was done with its
+    // [ending call](crate::completion) — rather than on a ceiling, a breached limit, or an
     // error. It is what finishes an [issue](crate::board) this agent was dispatched to implement.
     let completed = end.status == STATUS_COMPLETED;
     if orch.multi_agent() {
@@ -4493,7 +4493,7 @@ enum RoundOutcome {
 ///
 /// `completed` is whether that agent's loop ended in a **completion** ([`STATUS_COMPLETED`]) rather
 /// than on a ceiling or an error. That — and nothing else — is what finishes an issue: the agent
-/// signalled completion under whatever [rule](crate::completion) its own profile configures, and
+/// signalled completion with the [ending call](crate::completion) its role gives it, and
 /// there is no second, board-specific signal for it to forget. Three things can be true when an
 /// issue agent's loop ends, and each has its own path:
 ///
@@ -6208,11 +6208,11 @@ impl Agent {
                     subagents.take(),
                 )
                 .await;
-                // Completion validation gate: a program that called `finish` must pass this run's
-                // validation commands before the run ends. Run them *before* the turn is recorded,
-                // so a rejected completion is accounted as the `Continue` it becomes (progress, the
+                // The ending gate: a program that called `finish` must clear this agent's
+                // agent-stop hooks before the run ends. Fire them *before* the turn is recorded,
+                // so a rejected ending is accounted as the `Continue` it becomes (progress, the
                 // model must fix and finish again) rather than the `Finished` the program declared.
-                // A rejected completion is turned into a `Continue` carrying the failure feedback,
+                // A rejected ending is turned into a `Continue` carrying the failure feedback,
                 // which the arm below reclaims the turn's state for, pushes, and loops on — the same
                 // path an ordinary error turn takes.
                 let decision = match decision {
@@ -6703,11 +6703,11 @@ impl Agent {
                     match parse_ending_call(&call.name, &call.arguments, ending_role) {
                         Err(message) => ToolOutcome::failed(ToolFailure::InvalidArgument, message),
                         Ok(declared) => {
-                            // The [agent-stop](GgHookEvent::AgentStop) hooks are the ending's gate
-                            // — what the `completion` capability's validation commands became. A
-                            // blocking hook hands its reason back as a refused tool result and the
-                            // session goes on, so the model fixes the problem and declares again;
-                            // a hook that only had something to say has it inserted alongside.
+                            // The [agent-stop](GgHookEvent::AgentStop) hooks are the ending's
+                            // gate. A blocking hook hands its reason back as a refused tool result
+                            // and the session goes on, so the model fixes the problem and declares
+                            // again; a hook that only had something to say has it inserted
+                            // alongside.
                             let fired = hooks
                                 .runtime
                                 .fire(

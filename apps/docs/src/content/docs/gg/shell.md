@@ -129,9 +129,9 @@ note says why the promised files are missing.
 ### Where it applies
 
 The policy is applied in the one function both execution modes reach, so it governs a JSON
-tool call and a program's `system.shell(…)` identically, and it also covers the
-[completion validation](/gg/configurations/) commands gg runs on the agent's behalf — a
-failing test suite is exactly the kind of output that arrives by the megabyte.
+tool call and a program's `system.shell(…)` identically, and it also covers a
+[hook](/gg/hooks/)'s commands, which gg runs on the agent's behalf — a failing test suite
+is exactly the kind of output that arrives by the megabyte.
 
 It is read only from a capability that is **enabled**; an absent or disabled one resolves
 to `inline`. Offloading is a bargain — you see less of the output, and you get the rest back

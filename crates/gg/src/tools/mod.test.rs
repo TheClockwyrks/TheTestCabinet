@@ -247,7 +247,7 @@ fn shell_offload_comes_from_the_shell_capability() {
 
     // A *disabled* shell capability resolves to inline whatever it declares: offloading is a
     // bargain (you see less, and grep back the rest) that an agent without the tool cannot keep its
-    // side of — and the policy also governs this agent's completion-validation commands.
+    // side of — and the policy also governs the commands this agent's hooks run.
     let mut disabled = with_mode(SHELL_OUTPUT_OFFLOAD, json!({ "maxLines": 120 }));
     disabled.capabilities[0].enabled = false;
     assert_eq!(shell_offload(&disabled), OffloadPolicy::Inline);

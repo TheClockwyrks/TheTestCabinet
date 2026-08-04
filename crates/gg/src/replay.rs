@@ -66,7 +66,7 @@
 //! - **Command lines** are captured by wrapping the [`ShellRunner`] in a
 //!   [`RecordingShellRunner`]: all three paths that reach `sh -c` — the
 //!   [`shell`](crate::tools::SHELL_TOOL) tool, a [responses-as-code](crate::sandbox) program's
-//!   `system.shell(…)` and the [completion gate's](crate::completion) validation commands — go
+//!   `system.shell(…)` and a [hook's](crate::hooks) commands — go
 //!   through that one seam, and the [origin](ShellRequest::origin) the caller stamped says which.
 //!   Only the third of them was captured before, so a record of a session that used the shell tool
 //!   had no answer for a single one of its commands.
@@ -862,11 +862,11 @@ impl GgRecorder {
     /// Record one **shell command** gg ran on the agent's behalf, from whichever of the three
     /// command paths issued it.
     ///
-    /// The [completion gate's](crate::completion) validation commands are the reason this exists
-    /// as a seam of its own: they run `sh -c` through the same code path a `shell` tool call does
-    /// but never reach tool dispatch, so before this they were recorded nowhere at all — and they
-    /// decide whether the session is allowed to end, which is as control-flow-changing as an
-    /// input gets.
+    /// A [hook's](crate::hooks) commands are the reason this exists as a seam of its own: they run
+    /// `sh -c` through the same code path a `shell` tool call does but never reach tool dispatch,
+    /// so before this they were recorded nowhere at all — and an
+    /// [agent-stop](test_cabinet_core::gg::GgHookEvent::AgentStop) gate decides whether the session
+    /// is allowed to end, which is as control-flow-changing as an input gets.
     pub fn record_shell(
         &self,
         agent_id: &str,
@@ -1381,8 +1381,8 @@ impl ModelClient for RecordingClient {
 /// # Why this exists at the seam rather than at the three call sites
 ///
 /// Three paths reach a command line — the [`shell`](crate::tools::SHELL_TOOL) tool, a
-/// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and the
-/// [completion](crate::completion) gate's validation commands — and for the whole of format v2's
+/// [responses-as-code](crate::sandbox) program's `system.shell(…)`, and a
+/// [hook's](crate::hooks) commands — and for the whole of format v2's
 /// first milestones only the third of them was recorded, because it was the only one with a call
 /// site that happened to hold the recorder. A record of a session that used the shell tool
 /// therefore had no answer for a single one of its commands, and a
@@ -1402,7 +1402,7 @@ impl ModelClient for RecordingClient {
 /// `worktrees/AUTH-1/web/` — otherwise the same command issued by the root and by an issue agent
 /// records as two different commands, and a reconstruction matches neither. So gg builds one of
 /// these per agent, rooted where that agent is, and a command a
-/// [validation](crate::completion) gate ran somewhere else is relativized against the agent's root
+/// [hook](crate::hooks) ran somewhere else is relativized against the agent's root
 /// exactly as its own [`ToolContext`](crate::tools::ToolContext) was derived from it.
 pub struct RecordingShellRunner {
     /// The runner that actually answers — [`RealShellRunner`](crate::tools::real_shell) in a live
