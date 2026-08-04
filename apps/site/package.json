@@ -5,6 +5,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "predev": "tsc -b ../../packages/run-record",
     "dev": "vite --host",
     "build": "tsc -b tsconfig.json tsconfig.node.json && vite build",
     "preview": "vite preview",

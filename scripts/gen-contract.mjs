@@ -1,17 +1,18 @@
 // Generate the Test Cabinet data contract — the TypeScript bindings and the JSON
 // Schemas — from the Rust types that are its single source of truth.
 //
-// The work happens in three steps. First gg projects its own model-facing surface
+// The work happens in four steps. First gg projects its own model-facing surface
 // into `crates/backend/src/gg_reference.json`, because the backend serves that
 // artifact and cannot reach the crate that produces it. Then the `contract-codegen`
 // crate (see `crates/contract-codegen`) emits the TypeScript
 // (`packages/run-record/src/`) and the JSON Schemas (`apps/docs/public/schema/`)
 // from the Rust contract types, which derive `ts_rs::TS` + `schemars::JsonSchema`
 // behind their `contract` feature. The Rust generator is correct but not pretty
-// (ts_rs emits ragged whitespace), so the last step runs Prettier to make the
+// (ts_rs emits ragged whitespace), so the third step runs Prettier to make the
 // committed output deterministic and conventional. CI regenerates and fails on any
 // diff, so the committed artifacts always match the Rust source — hand-edits never
-// survive.
+// survive. The last step compiles the regenerated TypeScript, because `dist/` — not
+// `src/` — is what every consumer of the package actually imports.
 //
 // Usage: `npm run gen:contract` (from the repository root).
 
@@ -133,7 +134,7 @@ run("cargo", ["run", "--quiet", "-p", "contract-codegen"]);
       `export const DEFAULT_GG_SYSTEM_PROMPT_TEMPLATES_CODE: Readonly<Record<string, string>> = ${JSON.stringify(codeTemplates)};\n\n` +
       "/**\n" +
       " * gg's **default** program language's responses-as-code template — the arm an agent that\n" +
-      " * configures no language is held to, and the one a reader wanting \"the code prompt\"\n" +
+      ' * configures no language is held to, and the one a reader wanting "the code prompt"\n' +
       " * means. Self-contained, like its tool-calling sibling.\n" +
       " */\n" +
       `export const DEFAULT_GG_SYSTEM_PROMPT_TEMPLATE_CODE = ${JSON.stringify(code)};\n`,
@@ -155,3 +156,12 @@ run("npx", [
   "apps/docs/public/schema/**/*.json",
   "crates/backend/src/gg_reference.json",
 ]);
+
+// 4. Compile the TypeScript that was just regenerated. Nothing in the browser reads
+//    `packages/run-record/src/` — the package's `exports` map points at `dist/`, so
+//    a Vite dev server serves whatever was last compiled. Emitting only the source
+//    therefore leaves every console running against the *previous* contract until
+//    someone happens to run a production build, and the failure is a module-level
+//    `SyntaxError` naming an export that plainly exists in the source. Regenerating
+//    and compiling are one act; do not split them.
+run("npx", ["tsc", "-b", "packages/run-record"]);
