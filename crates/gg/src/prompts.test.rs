@@ -1791,3 +1791,156 @@ fn each_language_words_its_own_nothing_shown_notice() {
         "the notice fell back, so its template did not render"
     );
 }
+
+// ---------------------------------------------------------------------------
+// What a prompt still tells the model
+// ---------------------------------------------------------------------------
+
+/// Every language a prompt can be rendered for: the registry, plus the seam's fixture language.
+///
+/// A gate that walked only [`GgProgramLanguage::ALL`] would be a gate exercised against one
+/// implementation, which is the shape that cannot tell "the prompt is per language" apart from
+/// "there is one prompt".
+fn every_language() -> impl Iterator<Item = &'static dyn crate::sandbox::ProgramLanguage> {
+    all_languages().chain(crate::sandbox::fixture_languages())
+}
+
+/// The [`SurfaceCall`](crate::sandbox::SurfaceCall) `object.key` names, from gg's own enumeration
+/// of its model-facing surface — so a call renamed there is a failure here rather than a lookup
+/// that silently finds nothing.
+fn surface_call((object, key): (&str, &str)) -> crate::sandbox::SurfaceCall {
+    *crate::sandbox::MODEL_FACING_CALLS
+        .iter()
+        .find(|call| call.object == object && call.key == key)
+        .unwrap_or_else(|| panic!("`{object}.{key}` is part of gg's model-facing surface"))
+}
+
+/// The statements every registered language's responses-as-code prompt must still make about the
+/// run it was rendered for, each paired with the label that says which one went missing.
+///
+/// [`REQUIRED_SECTIONS`] asserts the *headings* are there; this asserts the headings are not empty.
+/// A section that renders its own prose but drops the roster, the ceiling or the identifier the run
+/// put in it is a prompt that tells a model a capability exists and never says what it may name —
+/// and that is a section-shaped hole no heading check can see.
+///
+/// Every phrase here is a **value the context carried**, not a turn of the template's phrasing: a
+/// name, a description, a number, an identifier. That is deliberate and it is the whole discipline
+/// of this table. Rewording a sentence, re-wrapping a paragraph or changing `**bold**` to `*italic*`
+/// must not fail a test — a prompt is prose and it is meant to be edited. Dropping `{{#each
+/// board.reviewerAgents}}` must.
+const REQUIRED_PHRASES: &[(&str, &str)] = &[
+    // ### Your APIs — the objects a program is given, and what each is for. Without these a model
+    // is told to call `<object>.<function>()` and never told which objects it has.
+    ("the API object the run granted", "`harness`"),
+    ("the API object's description", "the run itself"),
+    // ### Ending your session — the call, spelled as this execution mode writes it. A prompt that
+    // loses it leaves a session that cannot be ended deliberately.
+    ("the ending call", "harness.finish"),
+    // ### Messages you receive — the heading vocabulary a plain-text transcript is read through.
+    ("the message heading", "`Task`"),
+    (
+        "the message heading's description",
+        "the task you are working on",
+    ),
+    // ## Skills — the library's roster. `skills.readSkill(name)` accepts these names and no others.
+    ("the skill's name", "`gg-filesystem`"),
+    ("the skill's description", "reading and writing files"),
+    // ## Memory — the budget a model has to write within.
+    ("the memory description ceiling", "120 characters"),
+    ("the memory scope", "`run`"),
+    // ## Tasks — the ceiling.
+    ("the task ceiling", "100"),
+    // ## Subagents — the roster `spawn_subagent` accepts.
+    ("the spawnable agent's name", "`helper`"),
+    ("the spawnable agent's description", "does scoped work"),
+    // ## Project management — the two rosters an issue names.
+    ("the issue agent's name", "`builder`"),
+    ("the issue agent's description", "implements issues"),
+    ("the reviewer agent's name", "`critic`"),
+    ("the reviewer agent's description", "reviews finished work"),
+    (
+        "that a reviewer is mandatory",
+        "must name one or more `reviewers`",
+    ),
+    // ## Your assigned issue — which issue this agent was dispatched to implement.
+    ("the assigned issue's id", "`issue-1`"),
+];
+
+/// **Every registered language's prompt still says what the run configured.**
+///
+/// Rendered under [`every_code_section_on`], which turns on every section a code prompt can carry,
+/// for every **registered** language — so a template copied to a new language and pruned on the way
+/// fails here as loudly as the shared one would. The seam's fixture language is deliberately out of
+/// scope, on the same terms as [`REQUIRED_SECTIONS`]: its template is a stub that renders four
+/// sections on purpose, and holding a stub to the registry's contract would only force the stub to
+/// grow.
+#[test]
+fn every_language_prompt_states_what_the_run_configured() {
+    for language in all_languages() {
+        let name = language.display_name();
+        let rendered = flat(&render_system_for(
+            language,
+            &every_code_section_on(GgProgramLanguage::TypeScript),
+        ));
+        for (what, phrase) in REQUIRED_PHRASES {
+            assert!(
+                rendered.contains(phrase),
+                "{name}: the prompt no longer states {what} (`{phrase}`):\n{rendered}"
+            );
+        }
+    }
+}
+
+/// **A capability the run withheld is absent from the prompt**, in every language.
+///
+/// This is the prompt half of gg's capability model: the host refuses a withheld call, and the
+/// prompt never advertises one. The host half is asserted at the membrane; without this, a template
+/// that describes a capability unconditionally would put a model into a loop calling something that
+/// can only ever refuse — and the failure would look like a model defect.
+///
+/// Asserted against the **spelled** call rather than a literal, so it holds for a language that
+/// writes `agents.spawn_subagent` as surely as for one that writes `agents.spawnSubagent`.
+#[test]
+fn a_capability_the_run_withheld_is_absent_from_its_prompt() {
+    let withheld = [
+        ("agents", "spawn_subagent"),
+        ("tasks", "add_task"),
+        ("project", "create_issue"),
+        ("skills", "read_skill"),
+        ("memory", "read_memory"),
+        ("programs", "rerun"),
+    ]
+    .map(surface_call);
+    for language in every_language() {
+        let name = language.display_name();
+        // Every section off, and only the ending — which every agent has — left on.
+        let context = SystemContext {
+            responses_as_code: true,
+            language: Some(GgProgramLanguage::TypeScript),
+            apis: vec![ApiView {
+                object: "harness".to_string(),
+                description: "the run itself".to_string(),
+            }],
+            ending: EndingView {
+                standard: true,
+                finish: "harness.finish".to_string(),
+                ..EndingView::default()
+            },
+            ..SystemContext::default()
+        };
+        let rendered = render_system_for(language, &context);
+        for call in withheld {
+            let spelling = crate::sandbox::spell(language, call);
+            assert!(
+                !rendered.contains(&spelling),
+                "{name}: the prompt advertises `{spelling}`, which this run withheld:\n{rendered}"
+            );
+        }
+        for section in ["## Skills", "## Memory", "## Tasks", "## Subagents"] {
+            assert!(
+                !rendered.contains(section),
+                "{name}: the prompt carries `{section}` for a run that has none:\n{rendered}"
+            );
+        }
+    }
+}
