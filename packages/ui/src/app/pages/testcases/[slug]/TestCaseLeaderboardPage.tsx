@@ -7,9 +7,9 @@ import { useFindReview } from "../../../data/writeups";
 import { useFindModel } from "../../../data/useModels";
 import { perModelBestFuel } from "../../../data/fuelRanking";
 import {
+  asGrade,
   GRADE_LEVELS,
   type GradeStatus,
-  isGrade,
   overallGradeOf,
   RATINGS,
   scoreChecklist,
@@ -596,12 +596,6 @@ export function resolveRunScore(
     rating: worstRating(review.ratings.map((r) => r.rating)),
     grade: null,
   };
-}
-
-// Narrow a `VerdictStatus` (which also covers pass/fail) to one of the five
-// graded tiers, or null.
-function asGrade(status: string | null | undefined): GradeStatus | null {
-  return status && isGrade(status) ? status : null;
 }
 
 // The best (highest-point) graded tier among `grades`, or null when empty — the
