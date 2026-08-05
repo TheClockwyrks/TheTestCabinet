@@ -40,13 +40,24 @@
 // comparison below is sound either way — a build that plays nothing at all fails it,
 // because then neither window grows.
 
+//
+// EVERY READ OF THE AUDIO LOG IS A SETTLED ONE (`audioSettled`, not `audioCount`).
+// The validate pass advances the simulation instantly, so a count taken on the tick an
+// event happens gives the build no wall clock in which to schedule anything — and a
+// build that raises its cues from its render frame, or rate-limits them against
+// `AudioContext.currentTime`, has scheduled nothing yet. Both are conformant, and
+// reading unsettled reported a full set of working cues as silence. See the note above
+// `armAudio` in `_helpers`.
+
 import {
   newGame,
   spawn,
   armAudio,
-  audioCount,
+  audioSettled,
   skipToApproach,
   nearlyOut,
+  giveClockToBuild,
+  untilOnOwnClock,
   TICK,
 } from "../_helpers.mjs";
 
@@ -82,12 +93,12 @@ export default function item() {
     // walking and the two remain comparable.
     async act(api) {
       const lives0 = (await api.snapshot()).lives;
-      const leakBefore = await audioCount(api);
-      const out = await api.until((s) => s.lives < lives0, {
-        max: 600,
-        poll: 6,
+      await giveClockToBuild(api);
+      const leakBefore = await audioSettled(api);
+      const out = await untilOnOwnClock(api, (s) => s.lives < lives0, {
+        maxMs: 10000,
       });
-      onLeak = (await audioCount(api)) - leakBefore;
+      onLeak = (await audioSettled(api)) - leakBefore;
       leaked = out.hit;
 
       await api.call("setWave", 10); // the midpoint Core wave (specs/surge.md)
@@ -105,12 +116,12 @@ export default function item() {
           (s.surge.length > 0 && s.surge.every(nearlyOut)),
         { max: 3600, poll: 12 },
       );
-      const clearBefore = await audioCount(api);
-      const done = await api.until((s) => s.phase === "building", {
-        max: 600,
-        poll: 6,
+      await giveClockToBuild(api);
+      const clearBefore = await audioSettled(api);
+      const done = await untilOnOwnClock(api, (s) => s.phase === "building", {
+        maxMs: 10000,
       });
-      onClear = (await audioCount(api)) - clearBefore;
+      onClear = (await audioSettled(api)) - clearBefore;
       cleared = done.hit;
       await api.advance(120); // 2 s on the cleared wave the cue belongs to
     },
