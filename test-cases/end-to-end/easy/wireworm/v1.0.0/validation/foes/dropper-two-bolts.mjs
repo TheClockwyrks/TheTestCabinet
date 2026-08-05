@@ -21,7 +21,7 @@
 // specs/foes.md fixes no fall speed.
 
 import {
-  actFireAndResolve,
+  actShootFoeDead,
   TICK,
   foesOf,
   freshBoard,
@@ -79,8 +79,11 @@ export default function item() {
 
       // Second bolt: the dropper dies. The cap is doubled (240 ticks = the old
       // `fireAndResolve(api, 2)`'s 2s) because the sped-up dropper may have fallen
-      // further down the column by now.
-      second = await actFireAndResolve(api, { max: 240 });
+      // further down the column by now. The kill is read once the dropper has
+      // actually left the board rather than on the tick the bolt is consumed — see
+      // `actShootFoeDead`. Note the FIRST bolt above needs no such wait: it is a
+      // survival, read off the `firstHit` mark on a dropper that is still there.
+      second = await actShootFoeDead(api, "dropper", { max: 240 });
       // Every operand is captured; the sim runs on only so the kill is legible at
       // the end of the clip.
       await api.advance(60); // 0.5s of visible aftermath

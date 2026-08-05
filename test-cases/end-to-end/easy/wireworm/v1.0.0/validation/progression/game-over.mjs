@@ -1,11 +1,19 @@
 // Automated validation for progression.game-over: losing the last life ends the run
 // on the Game-over screen, recording the level reached.
 //
-// One life and a worm segment on the cursor's tile are the preconditions; the end is
-// produced by the real loseLife path (lives -> 0 -> gameover) when the sim steps, read
-// back and captured.
+// One life and a worm walking the floor row into the cursor are the preconditions;
+// the end is produced by the real loseLife path (lives -> 0 -> gameover) when the
+// segment reaches the cursor, read back and captured.
+//
+// The worm is left to WALK in rather than posed on top of the cursor — see
+// `arrangeWormIntoCursor` for why a posed overlap decided this on a build's choice
+// of when to test for contact rather than on whether it costs a life.
 
-import { freshBoard, setWorm } from "../_helpers.mjs";
+import {
+  actWormReachesCursor,
+  arrangeWormIntoCursor,
+  freshBoard,
+} from "../_helpers.mjs";
 
 export default function item() {
   let snap;
@@ -15,14 +23,14 @@ export default function item() {
 
     async arrange(api) {
       await freshBoard(api);
-      await api.call("setLives", 1);
-      await api.call("setCursor", 640, 688); // tile (20,19)
-      await setWorm(api, [{ c: 20, r: 19 }], 1, 1);
+      await api.call("setLives", 1); // the next touch is the last
+      await arrangeWormIntoCursor(api);
     },
 
+    // The approach and the touch that ends the run are the clip: the reviewer
+    // watches the last segment bear down on the cursor and the run end on it.
     async act(api) {
-      await api.advance(6); // 6 ticks = the old 0.05s — one sim beat, enough for the touch
-      snap = await api.snapshot();
+      snap = await actWormReachesCursor(api);
       // The snapshot is captured; hold on the Game-over screen so the clip (and the
       // still below) show the state the assertions read.
       await api.advance(120); // 1s holding on the Game-over screen

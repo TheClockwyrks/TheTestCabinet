@@ -6,6 +6,7 @@
 
 import {
   actFireAndResolve,
+  actWormToColumn,
   chargeAt,
   freshBoard,
   setWorm,
@@ -13,8 +14,17 @@ import {
   tileCX,
 } from "../_helpers.mjs";
 
-const KILL_C = 8;
-const R = 15;
+// Row 17 keeps the bolt's flight (about 0.04 s from the muzzle) well inside the
+// 0.14 s between worm tile steps, so the segment aimed at is still in the column
+// when the bolt arrives.
+const R = 17;
+// The worm winds in and the shot is taken the instant its head lands on FIRE_AT_C,
+// which puts the tail four tiles back, on the cursor. Posed on the firing mark it
+// was shot on the clip's first frame; posed six tiles short it is filmed winding in
+// first (see `actWormToColumn`).
+const FIRE_AT_C = 12;
+const START_C = FIRE_AT_C - 6;
+const KILL_C = FIRE_AT_C - 4;
 
 export default function item() {
   let before;
@@ -25,13 +35,15 @@ export default function item() {
 
     async arrange(api) {
       await freshBoard(api);
-      await setWorm(api, straightWorm(12, R, 5, 1), 1, 1); // tail at column 8, row 15
+      await setWorm(api, straightWorm(START_C, R, 5, 1), 1, 1);
       await api.call("setCursor", tileCX(KILL_C), 688);
     },
 
-    // The shot and the node it leaves behind are the clip: the reviewer watches the
-    // segment die and a fresh node appear in its tile.
+    // The approach, the shot and the node it leaves behind are the clip: the
+    // reviewer watches the worm wind over the cursor, the segment die, and a fresh
+    // node appear in its tile.
     async act(api) {
+      await actWormToColumn(api, FIRE_AT_C); // ~0.84s of visible approach
       before = chargeAt(await api.snapshot(), KILL_C, R);
       snap = await actFireAndResolve(api);
       // Both operands are captured; the sim runs on only so the new node is legible

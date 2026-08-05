@@ -6,11 +6,23 @@
 
 import {
   actFireAndResolve,
+  actWormToColumn,
   freshBoard,
   setWorm,
   straightWorm,
   tileCX,
 } from "../_helpers.mjs";
+
+// Row 17 keeps the bolt's flight (about 0.04 s from the muzzle) well inside the
+// 0.14 s between worm tile steps, so the head is still in the column when the bolt
+// arrives.
+const R = 17;
+// The worm winds in and the shot is taken the instant the head lands on FIRE_AT_C,
+// which is where the cursor is waiting. Posed on the firing mark it was shot on the
+// clip's first frame; posed six tiles short it is filmed winding in first (see
+// `actWormToColumn`).
+const FIRE_AT_C = 12;
+const START_C = FIRE_AT_C - 6;
 
 export default function item() {
   let snap;
@@ -20,13 +32,15 @@ export default function item() {
 
     async arrange(api) {
       await freshBoard(api);
-      await setWorm(api, straightWorm(12, 15, 5, 1), 1, 1); // head at column 12, tail at 8
-      await api.call("setCursor", tileCX(12), 688); // aimed at the head
+      await setWorm(api, straightWorm(START_C, R, 5, 1), 1, 1);
+      await api.call("setCursor", tileCX(FIRE_AT_C), 688); // where the head will land
     },
 
-    // The shot into the head is the clip: the reviewer watches the worm lose exactly
-    // one segment and carry on as one worm.
+    // The approach and the shot into the head are the clip: the reviewer watches the
+    // worm wind onto the cursor's column, then lose exactly one segment and carry on
+    // as one worm.
     async act(api) {
+      await actWormToColumn(api, FIRE_AT_C); // ~0.84s of visible approach
       snap = await actFireAndResolve(api);
       // The snapshot is captured; the sim runs on only so the shortened worm is
       // legible at the end of the clip.
