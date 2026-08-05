@@ -324,10 +324,11 @@ pub enum TurnErrorType {
     TranspileLowering,
     /// The program asks for something the sandbox will not run it with.
     TranspileUnsupported,
-    /// The program's uncaught throw was a **failed call** — the class the guest types over the
-    /// membrane as `tool-failure`.
+    /// The program's uncaught throw was a **failed call** — one the membrane serviced and the tool
+    /// rejected, or refused for any reason other than the run not offering it.
     ProgramToolError,
-    /// The program referenced a name that is not in scope.
+    /// The program reached for something this run does not offer it: a name that was never in
+    /// scope, or a call the membrane refused `unavailable`.
     ProgramUnknownName,
     /// The program threw for any other reason.
     ProgramThrow,

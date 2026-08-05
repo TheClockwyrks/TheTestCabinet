@@ -81,7 +81,9 @@ itself can render is not a counter-example — it illustrates a message the mode
   `harness.finish(summary)` for an agent doing work, `review.approve()` /
   `review.requestChanges(items)` for a reviewer. Only that role's group is bound, so a
   call another role would make is an
-  undefined identifier here, exactly as a withheld tool is. Each is a real membrane
+  undefined identifier here, exactly as a withheld tool is — and the membrane
+  [refuses it as well](#capability-gating), so an agent that has the name anyway still
+  cannot use it. Each is a real membrane
   function, not a rule about text: it **sets a flag** in the agent's host-side context and
   returns, the program runs on, and the loop reads the flag once the program has ended.
 - **Every reply is compiled, and gg judges none of them.** After

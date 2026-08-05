@@ -243,11 +243,16 @@ pub enum ProgramErrorKind {
 impl ProgramErrorKind {
     /// The [turn error type](TurnErrorType) an uncaught throw of this class is recorded as.
     ///
-    /// The class already crosses the membrane on every uncaught throw — the guest types it, the
-    /// loop already picks its feedback from it — so recording it costs nothing and is the whole
-    /// difference between "the program faulted" and "the program was fighting a call it could not
-    /// make". All three land under [`ProgramFault`](crate::limits::TurnErrorKind::ProgramFault) at
-    /// the base level.
+    /// The class is settled at the membrane on every uncaught throw — by the host, from the failure
+    /// code the guest hands up with the throw, so that one event is one class in every language;
+    /// see the membrane's `capture::classify`. It is the whole difference between "the program
+    /// faulted" and "the program was fighting a call it could not make". All three land under
+    /// [`ProgramFault`](crate::limits::TurnErrorKind::ProgramFault) at the base level.
+    ///
+    /// **This is the class's only consumer.** The feedback the model reads is the throw's rendered
+    /// message, not its class: nothing in the [loop](crate::agent) branches on the class to pick
+    /// what to say, and a class that decided the wording would be a second, quieter answer to a
+    /// question the message already answers.
     ///
     /// What the class does **not** carry is *which* [failure class](test_cabinet_core::gg::GgToolFailure)
     /// the failed call had: the guest renders that into the message's prose, and recovering it here

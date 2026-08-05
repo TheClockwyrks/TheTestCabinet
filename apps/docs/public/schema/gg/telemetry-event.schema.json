@@ -1210,12 +1210,12 @@
         },
         {
           "const": "program_tool_error",
-          "description": "The program ran and a **failed call it did not catch** ended it: the throw's class, as the\nguest types it over the membrane, was a tool failure. The single most actionable program\nfault there is — it says the model is fighting the API rather than mis-writing it — and it\nwas previously indistinguishable from any other throw.",
+          "description": "The program ran and a **failed call it did not catch** ended it: a call the membrane\nserviced and the tool behind it rejected, or refused for any reason other than the run not\noffering it. The single most actionable program fault there is — it says the model is\nfighting the API rather than mis-writing it — and it was previously indistinguishable from\nany other throw.",
           "type": "string"
         },
         {
           "const": "program_unknown_name",
-          "description": "The program referenced a name that is not in scope — most often a call this run's capability\nset withholds, which means the model is writing against a surface it was not given.",
+          "description": "**The program reached for something this run does not offer it**, and the throw ended the\nturn: a name that was never in the program's scope, or a call the membrane refused\n`unavailable` because this agent's capability set, role or program library does not include\nit.\n\nThe two are one fact and one recovery — write against the surface you were given — and they\nare folded together on purpose. Which of the two a language *produces* is an accident of how\nits SDK is bound: a guest that builds a scope leaves a withheld name out of it and throws a\nreference error, while a guest that links its SDK as an ordinary library has every name and\ngets a refusal from the host. Left apart, the identical event would be counted under two\ndifferent types depending on the arm, which is a confound a cross-language comparison cannot\ncarry.",
           "type": "string"
         },
         {

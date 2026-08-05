@@ -3168,13 +3168,24 @@ pub enum GgTurnErrorType {
     /// there is no loader, an `await` where there is no event loop, a nesting depth past the
     /// parser's guard.
     TranspileUnsupported,
-    /// The program ran and a **failed call it did not catch** ended it: the throw's class, as the
-    /// guest types it over the membrane, was a tool failure. The single most actionable program
-    /// fault there is — it says the model is fighting the API rather than mis-writing it — and it
-    /// was previously indistinguishable from any other throw.
+    /// The program ran and a **failed call it did not catch** ended it: a call the membrane
+    /// serviced and the tool behind it rejected, or refused for any reason other than the run not
+    /// offering it. The single most actionable program fault there is — it says the model is
+    /// fighting the API rather than mis-writing it — and it was previously indistinguishable from
+    /// any other throw.
     ProgramToolError,
-    /// The program referenced a name that is not in scope — most often a call this run's capability
-    /// set withholds, which means the model is writing against a surface it was not given.
+    /// **The program reached for something this run does not offer it**, and the throw ended the
+    /// turn: a name that was never in the program's scope, or a call the membrane refused
+    /// `unavailable` because this agent's capability set, role or program library does not include
+    /// it.
+    ///
+    /// The two are one fact and one recovery — write against the surface you were given — and they
+    /// are folded together on purpose. Which of the two a language *produces* is an accident of how
+    /// its SDK is bound: a guest that builds a scope leaves a withheld name out of it and throws a
+    /// reference error, while a guest that links its SDK as an ordinary library has every name and
+    /// gets a refusal from the host. Left apart, the identical event would be counted under two
+    /// different types depending on the arm, which is a confound a cross-language comparison cannot
+    /// carry.
     ProgramUnknownName,
     /// The program threw for any other reason: its own `TypeError`, a `throw` it wrote, an
     /// assertion it failed.
