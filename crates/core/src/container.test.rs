@@ -131,7 +131,7 @@ fn salvaging_copies_one_container_file_to_a_verbatim_host_path() {
 
 #[tokio::test]
 async fn salvaging_reports_nothing_recovered_when_the_runtime_cannot_be_invoked() {
-    // `collect_file` is the seam a `hung`/`timed_out` run's replay journal is rescued
+    // `collect_file` is the seam a `hung`/`timed_out` run's capture journal is rescued
     // through, and it runs on a path that is *already* failing a run. A runtime binary
     // that cannot even be spawned must therefore report "nothing salvaged" rather than
     // an error: a salvage attempt is never allowed to turn a diagnosable timeout into an

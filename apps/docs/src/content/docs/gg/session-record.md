@@ -36,10 +36,16 @@ is what makes always-on capture affordable — gg assembles nothing — and it i
 makes the record survivable: a journal is appended to, and a document with arrays in
 it is not.
 
+What it holds of a large payload is bounded, because it is written on every run: an
+image is recorded as its **descriptor** — media type and decoded size, never the bytes,
+exactly as the telemetry stream records it — and a text payload past its ceiling is
+recorded as its kept tail with a row saying how much was dropped and what the whole
+payload's content address was.
+
 A per-run byte ceiling (`replayMaxBytes`, among the run's
 [execution limits](/gg/execution-limits/)) bounds the worst case — 256 MiB unless a
 configuration says otherwise; the console's editor offers it as
-**Replay journal (MiB)** and writes the byte count itself. Crossing it stops capture
+**Session journal (MiB)** and writes the byte count itself. Crossing it stops capture
 and marks the record truncated: **capture degrades, it never fails the run it
 observes.**
 

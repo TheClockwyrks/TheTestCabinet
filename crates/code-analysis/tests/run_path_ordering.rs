@@ -378,7 +378,7 @@ async fn drive(cancel: &RunCancellation) -> Ran {
         renderer: Box::new(PrerenderedReferenceRenderer::new(references(
             &test_case, variant,
         ))),
-        replay_assembler: None,
+        session_assembler: None,
         // The subject of this test: the real analyzer, wired exactly as a host wires it.
         analyzer: Some(Box::new(StaticCodeAnalyzer)),
         validator: FakeValidator {

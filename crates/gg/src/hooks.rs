@@ -78,7 +78,7 @@ use test_cabinet_core::gg::{
     GG_BUILTIN_HOOKS, GgAgentConfig, GgCapabilitySet, GgHook, GgHookAction, GgHookAgentKind,
     GgHookEvent, GgHookOutcomeKind, GgTelemetryKind,
 };
-use test_cabinet_core::gg_replay::GgShellOrigin;
+use test_cabinet_core::gg_session_record::GgShellOrigin;
 
 use crate::telemetry::Emitter;
 use crate::tools::{OffloadPolicy, ToolContext, run_command};

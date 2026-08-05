@@ -23,8 +23,9 @@ use emit::{SchemaDoc, TsModule, finalize_schemas, finalize_ts, root_schema, ts_c
 use test_cabinet_backend::{api as bapi, error as berr, relay, snapshot as snap};
 use test_cabinet_core::{
     accounts as acct, code_analysis as code, comparison as cmp, comparison_stats as cstats,
-    event as ev, gg, gg_query as ggq, gg_reference as ggref, gg_replay as ggr, match_play as mp,
-    metrics as m, review as rv, run_record as rr, test_case as tc, validation as val,
+    event as ev, gg, gg_query as ggq, gg_reference as ggref, gg_session_record as ggr,
+    match_play as mp, metrics as m, review as rv, run_record as rr, test_case as tc,
+    validation as val,
 };
 
 /// Collect the [`emit::TsDecl`]s for the listed types, in declaration order.
@@ -378,36 +379,32 @@ fn main() -> Result<()> {
                 gg::GgErrorSummary,
                 gg::GgSlotCost, gg::GgSessionSummary,
                 gg::GgTelemetryKind, gg::GgTelemetryEvent,
-                gg::GgReplayEntryKindV1, gg::GgReplayEntryV1, gg::GgReplayRecordV1,
-                gg::GgReplayToolStep, gg::GgReplayStep,
                 bapi::GgConfig, bapi::GgConfigInput,
             ],
         },
-        // The gg replay record, format v2: the content-addressed input log a recorded
-        // session is reconstructed from. Its own module rather than more of `gg.ts`
-        // because it is a self-contained document with its own pools, provenance table
-        // and entry vocabulary, and because the console loads it only on the Replay tab.
+        // The gg session record: the content-addressed input log a run's session is
+        // captured into. Its own module rather than more of `gg.ts` because it is a
+        // self-contained document with its own pools, provenance table and entry
+        // vocabulary.
         // `GgCapabilitySet`, `GgAgentStatus`, `GgLimitBreach` and `GgContextSource` are
         // owned by `gg.ts`, so those imports resolve cross-module.
         TsModule {
             file: "gg-replay.ts",
             decls: ts_decls![&cfg;
-                ggr::GgReplayRecorder, ggr::GgReplayFidelity,
-                ggr::GgReplayModalities, ggr::GgReplaySeedFile,
-                ggr::GgReplaySeed,
-                ggr::GgReplayMessage, ggr::GgReplayToolset, ggr::GgReplayBlob,
-                ggr::GgReplayTextClip,
-                ggr::GgReplayAgentOrigin, ggr::GgReplayAgent,
-                ggr::GgClientRole, ggr::GgReplayRequestShape, ggr::GgTurnFingerprint,
-                ggr::GgFingerprintComponent, ggr::GgReplayRequest,
-                ggr::GgReplayModelErrorKind, ggr::GgReplayModelError,
-                ggr::GgShellCwd, ggr::GgShellOrigin, ggr::GgReplayCommand,
-                ggr::GgReplayToolCall, ggr::GgReplayToolOutcome,
-                ggr::GgReplayPromptSlot, ggr::GgReplayRetention, ggr::GgReplayFileRegion,
-                ggr::GgReplayPromptItem,
-                ggr::GgReplayEntryKind, ggr::GgReplayEntry,
-                ggr::GgReplayTruncationReason, ggr::GgReplayTruncation,
-                ggr::GgReplayRecord,
+                ggr::GgSessionRecorder,
+                ggr::GgSessionModalities, ggr::GgSessionSeed,
+                ggr::GgSessionMessage, ggr::GgSessionToolset,
+                ggr::GgSessionTextClip,
+                ggr::GgSessionAgentOrigin, ggr::GgSessionAgent,
+                ggr::GgClientRole, ggr::GgSessionRequestShape, ggr::GgSessionRequest,
+                ggr::GgSessionModelErrorKind, ggr::GgSessionModelError,
+                ggr::GgShellCwd, ggr::GgShellOrigin, ggr::GgSessionCommand,
+                ggr::GgSessionImage, ggr::GgSessionToolCall, ggr::GgSessionToolOutcome,
+                ggr::GgSessionPromptSlot, ggr::GgSessionRetention, ggr::GgSessionFileRegion,
+                ggr::GgSessionPromptItem,
+                ggr::GgSessionEntryKind, ggr::GgSessionEntry,
+                ggr::GgSessionTruncationReason, ggr::GgSessionTruncation,
+                ggr::GgSessionRecord,
             ],
         },
         // The gg analysis query language (TCQ): the flat run document every query runs
@@ -717,60 +714,45 @@ fn main() -> Result<()> {
             ],
             schema: root_schema::<gg::GgTelemetryEvent>(),
         },
-        // The gg replay record, format v2: the seed, the four content-addressed pools,
-        // the agent provenance table and the ordered input log. Its `capabilitySet`
+        // The gg session record: the seed, the three content-addressed pools, the agent
+        // provenance table and the ordered input log. Its `capabilitySet`
         // references `GgCapabilitySet`, and its agent rows reference `GgAgentStatus` /
         // `GgLimitBreach`, all owned by the gg documents above, so those refs are
         // rewritten to cross-document URLs; the pooled message/toolset/response bodies
         // are free-form JSON (the gg binary owns their concrete shapes).
         SchemaDoc {
             rel_path: "gg/replay-record.schema.json",
-            root: Some("GgReplayRecord"),
+            root: Some("GgSessionRecord"),
             owns: &[
-                "GgReplayRecorder",
-                "GgReplayFidelity",
-                "GgReplaySeed",
-                "GgReplayModalities",
-                "GgReplaySeedFile",
-                "GgReplayMessage",
-                "GgReplayToolset",
-                "GgReplayBlob",
-                "GgReplayTextClip",
-                "GgReplayAgent",
-                "GgReplayAgentOrigin",
-                "GgReplayRequest",
+                "GgSessionRecorder",
+                "GgSessionSeed",
+                "GgSessionModalities",
+                "GgSessionMessage",
+                "GgSessionToolset",
+                "GgSessionTextClip",
+                "GgSessionAgent",
+                "GgSessionAgentOrigin",
+                "GgSessionRequest",
                 "GgClientRole",
-                "GgReplayRequestShape",
-                "GgTurnFingerprint",
-                // `GgFingerprintComponent` is deliberately absent: it is the *result* of
-                // comparing two fingerprints, not a member of the document, so claiming
-                // it here would register an owner for a `$def` that is never emitted.
-                "GgReplayEntry",
-                "GgReplayEntryKind",
-                "GgReplayModelError",
-                "GgReplayModelErrorKind",
-                "GgReplayToolCall",
-                "GgReplayToolOutcome",
+                "GgSessionRequestShape",
+                "GgSessionEntry",
+                "GgSessionEntryKind",
+                "GgSessionModelError",
+                "GgSessionModelErrorKind",
+                "GgSessionToolCall",
+                "GgSessionToolOutcome",
+                "GgSessionImage",
                 "GgShellCwd",
                 "GgShellOrigin",
-                "GgReplayCommand",
-                "GgReplayPromptItem",
-                "GgReplayPromptSlot",
-                "GgReplayRetention",
-                "GgReplayFileRegion",
-                "GgReplayTruncation",
-                "GgReplayTruncationReason",
+                "GgSessionCommand",
+                "GgSessionPromptItem",
+                "GgSessionPromptSlot",
+                "GgSessionRetention",
+                "GgSessionFileRegion",
+                "GgSessionTruncation",
+                "GgSessionTruncationReason",
             ],
-            schema: root_schema::<ggr::GgReplayRecord>(),
-        },
-        // The superseded format v1 record: the flat transcript every record captured
-        // before v2 is in. Kept published because those records are stored as opaque
-        // bytes and are still served verbatim; the v2 reader upgrades them on read.
-        SchemaDoc {
-            rel_path: "gg/replay-record-v1.schema.json",
-            root: Some("GgReplayRecordV1"),
-            owns: &["GgReplayEntryV1", "GgReplayEntryKindV1"],
-            schema: root_schema::<gg::GgReplayRecordV1>(),
+            schema: root_schema::<ggr::GgSessionRecord>(),
         },
         // The code-analysis document: the unbounded per-run artifact
         // (`{run}/code-analysis.json.gz`, served at `GET /runs/{id}/code-analysis`).
@@ -782,16 +764,6 @@ fn main() -> Result<()> {
             root: Some("CodeAnalysisDocument"),
             owns: CODE_ANALYSIS_DEFS,
             schema: root_schema::<code::CodeAnalysisDocument>(),
-        },
-        // The gg replay step-through view: the per-agent, per-turn "what the agent saw
-        // and did" data model a debugging UI renders, derived from the record above. Its
-        // step/tool payloads are free-form JSON (the gg binary owns their concrete shapes),
-        // so it references nothing cross-document.
-        SchemaDoc {
-            rel_path: "gg/replay-steps.schema.json",
-            root: Some("GgReplayStep"),
-            owns: &["GgReplayToolStep"],
-            schema: root_schema::<gg::GgReplayStep>(),
         },
         // The compiled TCQ query — the single wire form of a gg analysis query. It owns
         // the whole language vocabulary (the filter tree, the aggregation functions,

@@ -1,4 +1,4 @@
-//! Tests for salvaging a dying container's replay journal.
+//! Tests for salvaging a dying container's capture journal.
 //!
 //! The collector is faked here for the reason the whole module exists: the real ones
 //! reach into a container, and the behaviour under test is what happens *around* that
@@ -93,7 +93,7 @@ fn the_journal_is_asked_for_at_its_absolute_in_container_path() {
 #[tokio::test]
 async fn a_salvaged_journal_lands_where_the_assembler_looks_for_it() {
     // The scratch directory is shaped like a *collected tree*, not like an arbitrary
-    // holding pen: the replay assembly stage joins `GG_REPLAY_JOURNAL_PATH` onto the tree
+    // holding pen: the replay assembly stage joins `GG_SESSION_JOURNAL_PATH` onto the tree
     // it is given, so the salvaged file must sit at exactly that relative path for the
     // ordinary stage to work unchanged on the failure path.
     let out = output_dir();
@@ -106,7 +106,7 @@ async fn a_salvaged_journal_lands_where_the_assembler_looks_for_it() {
         collector.asked_for.lock().expect("asked_for").as_deref(),
         Some("/work/.gg/replay.ndjson"),
     );
-    let journal = scratch.path().join(GG_REPLAY_JOURNAL_PATH);
+    let journal = scratch.path().join(GG_SESSION_JOURNAL_PATH);
     assert_eq!(
         std::fs::read(&journal).expect("read the salvaged journal"),
         b"{\"type\":\"header\"}\n",

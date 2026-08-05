@@ -344,7 +344,7 @@ fn a_program_error_is_recorded_once_with_its_kind() {
 }
 
 /// The record deliberately keeps no arguments: the loop already emits the same `Value` as `ToolCall`
-/// telemetry and hands it to the replay recorder, so a second retained copy would be pure waste.
+/// telemetry and hands it to the session recorder, so a second retained copy would be pure waste.
 #[test]
 fn the_record_keeps_the_summary_but_never_the_arguments() {
     let log = CallLog::default();

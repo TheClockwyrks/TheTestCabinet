@@ -24,9 +24,9 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use test_cabinet_core::gg_replay::GG_REPLAY_FORMAT_VERSION;
-use test_cabinet_core::gg_replay_assembly::{GG_REPLAY_TREE_ARTIFACT, GgReplayAssembler};
-use test_cabinet_core::gg_replay_journal::{GG_REPLAY_JOURNAL_PATH, GgJournalLine};
+use test_cabinet_core::gg_session_assembly::{GG_SESSION_TREE_ARTIFACT, GgSessionAssembler};
+use test_cabinet_core::gg_session_journal::{GG_SESSION_JOURNAL_PATH, GgJournalLine};
+use test_cabinet_core::gg_session_record::GG_SESSION_FORMAT_VERSION;
 use test_cabinet_core::{
     AgentHarness, ArtifactCollection, ArtifactCollector, Availability, ContainerHandle,
     ContainerRuntime, ContainerSpec, ContainerStart, CredFile, CredSource, Error as CoreError,
@@ -245,14 +245,13 @@ fn references(test_case: &TestCaseVersion, variant: &Variant) -> Vec<RenderedRef
 /// can leave, and what the assembled record must report as a truncation.
 fn killed_session_journal() -> Vec<u8> {
     let header = GgJournalLine::Header {
-        format_version: GG_REPLAY_FORMAT_VERSION,
+        format_version: GG_SESSION_FORMAT_VERSION,
         session_id: "salvaged".to_string(),
         capability_set: Box::new(test_cabinet_core::gg::GgCapabilitySet::default()),
-        recorder: test_cabinet_core::gg_replay::GgReplayRecorder {
+        recorder: test_cabinet_core::gg_session_record::GgSessionRecorder {
             gg_version: Some("0.7.0".to_string()),
             commit: None,
         },
-        fidelity: test_cabinet_core::gg_replay::GgReplayFidelity::Standard,
     };
     let mut journal = serde_json::to_vec(&header).expect("serialize the header line");
     journal.push(b'\n');
@@ -302,7 +301,7 @@ async fn a_hung_gg_run_keeps_the_replay_journal_it_had_written() {
         ))),
         // The real assembler, not a fake: what is under test is that a hung run reaches
         // the same stage a completed one does, producing the same artifact.
-        replay_assembler: Some(Box::new(GgReplayAssembler)),
+        session_assembler: Some(Box::new(GgSessionAssembler)),
         analyzer: None,
         validator: UnreachableValidator,
         prices: OpenRouterPrices::new(),
@@ -365,14 +364,14 @@ async fn a_hung_gg_run_keeps_the_replay_journal_it_had_written() {
     );
     assert_eq!(
         asked_for.lock().expect("asked_for").as_deref(),
-        Some(format!("/work/{GG_REPLAY_JOURNAL_PATH}").as_str()),
+        Some(format!("/work/{GG_SESSION_JOURNAL_PATH}").as_str()),
     );
 
     // (1): the artifact exists, at the run tree's root, for a run that produced no
     // record of its own — under the id the caller supplied, which is the only id the
     // failure path knows.
     let run_dir = out_dir.path().join(&run_id);
-    let artifact = run_dir.join(GG_REPLAY_TREE_ARTIFACT);
+    let artifact = run_dir.join(GG_SESSION_TREE_ARTIFACT);
     assert!(
         artifact.is_file(),
         "a hung run's salvaged replay should be assembled at {}",

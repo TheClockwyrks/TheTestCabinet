@@ -41,11 +41,11 @@ use test_cabinet_core::gg::{
     GgSlotBinding, GgSubagentRef, GgSubagentScope, GgTelemetryEvent, GgTelemetryKind,
     GgTurnErrorType, ROOT_AGENT,
 };
-use test_cabinet_core::gg_replay::{
-    GG_REPLAY_BLOB_REF_KEY, GgClientRole, GgReplayAgent, GgReplayAgentOrigin, GgReplayEntry,
-    GgReplayEntryKind, GgReplayModelErrorKind, GgReplayPromptSlot, GgReplayRetention, GgReplaySeed,
+use test_cabinet_core::gg_session_journal::{GG_SESSION_JOURNAL_PATH, GgJournalLine};
+use test_cabinet_core::gg_session_record::{
+    GgClientRole, GgSessionAgent, GgSessionAgentOrigin, GgSessionEntry, GgSessionEntryKind,
+    GgSessionModelErrorKind, GgSessionPromptSlot, GgSessionRetention, GgSessionSeed,
 };
-use test_cabinet_core::gg_replay_journal::{GG_REPLAY_JOURNAL_PATH, GgJournalLine};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 /// The context window these tests run every scripted model against. gg has no fallback —
@@ -7677,32 +7677,12 @@ async fn session_summary_counts_match_an_issue_review_run_stream() {
 // Replay capture (Phase 7a) — recording the non-deterministic inputs
 // ---------------------------------------------------------------------------
 
-/// The minimal set with the [replay](CAPABILITY_REPLAY) capability — the escalation to
-/// [full](GgReplayFidelity::Full) fidelity — enabled on the root.
-///
-/// Capture itself needs nothing enabled; these tests use the escalated set only because it is
-/// the configuration a reader of them most expects to see recorded.
-fn minimal_with_replay(model: &str) -> GgCapabilitySet {
-    let mut set = GgCapabilitySet::minimal(model);
-    set.agents[0]
-        .capabilities
-        .push(GgCapabilityConfig::enabled(CAPABILITY_REPLAY));
-    set
-}
-
-/// The [fidelity](GgReplayFidelity) the journal `dir` holds says it was captured at.
-fn journal_fidelity(dir: &Path) -> GgReplayFidelity {
-    match read_replay_journal(dir).first() {
-        Some(GgJournalLine::Header { fidelity, .. }) => *fidelity,
-        other => panic!("the journal opens with its header, got {other:?}"),
-    }
-}
-
 /// A run that asked for **nothing** is still recorded. This is the always-on property, and the
 /// only way to see it is to drive a session with a bare configuration and find a journal.
 ///
-/// It matters because the capability it replaced could not be armed retroactively: replay exists
-/// for surprising outcomes, and an outcome is surprising precisely when nobody predicted it.
+/// It matters because the capability it replaced could not be armed retroactively: the record
+/// exists for surprising outcomes, and an outcome is surprising precisely when nobody predicted
+/// it.
 #[tokio::test]
 async fn a_run_with_no_capabilities_configured_is_still_captured() {
     let dir = TempDir::new().unwrap();
@@ -7710,60 +7690,21 @@ async fn a_run_with_no_capabilities_configured_is_still_captured() {
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-default".to_string()), Box::new(sink.clone()));
     let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
-    assert!(
-        !inv.capability_set.any_agent_enabled(CAPABILITY_REPLAY),
-        "the point of the test: nothing asked to be recorded"
-    );
-
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
-    let lines = read_replay_journal(dir.path());
+    let lines = read_session_journal(dir.path());
     assert!(
         !journal_entries(&lines).is_empty(),
         "an unconfigured run pins its inputs anyway",
     );
-    assert_eq!(
-        journal_fidelity(dir.path()),
-        GgReplayFidelity::Standard,
-        "at standard fidelity, which is what the capability now escalates from",
-    );
-    // And the operator log says so, naming the fidelity — the only place a reader finds out
-    // whether a `replay` set somewhere in the configuration actually took effect.
+    // And the operator log says so — the only place a reader finds out, without opening the
+    // artifact, how much of the run was recorded.
     let logs = sink.lines();
     assert!(
         logs.iter()
-            .any(|line| line.contains("replay capture (standard fidelity): journaled")),
-        "the close-out line reports the capture and its fidelity, got {logs:?}",
+            .any(|line| line.contains("session capture: journaled")),
+        "the close-out line reports the capture, got {logs:?}",
     );
-}
-
-/// `replay` on a **non-root** agent escalates the run.
-///
-/// The gate this replaced read `agents[0]` alone, so enabling it on the one profile whose turns
-/// were under suspicion silently did nothing at all — the run recorded neither at full fidelity
-/// nor, back then, at all.
-#[tokio::test]
-async fn the_replay_capability_escalates_from_a_non_root_agent() {
-    let dir = TempDir::new().unwrap();
-    seed_default_skill(dir.path());
-    let sink = CollectingSink::new();
-    let emitter = Emitter::with_sink(Some("run-escalated".to_string()), Box::new(sink.clone()));
-    let mut set = GgCapabilitySet::minimal("mock/echo");
-    set.agents.push(GgAgentConfig {
-        name: "Reviewer".to_string(),
-        model_id: "mock/echo".to_string(),
-        capabilities: vec![GgCapabilityConfig::enabled(CAPABILITY_REPLAY)],
-        ..GgAgentConfig::root()
-    });
-    assert!(
-        !set.is_enabled(CAPABILITY_REPLAY),
-        "the root does not declare it — a root-only read would see nothing"
-    );
-    let inv = invocation(dir.path(), set);
-
-    assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
-
-    assert_eq!(journal_fidelity(dir.path()), GgReplayFidelity::Full);
 }
 
 /// A real session pins its **invocation envelope** and a row for **every agent it created**,
@@ -7798,7 +7739,7 @@ async fn a_captured_run_pins_its_envelope_and_every_agent_it_created() {
         SessionOutcome::Ran
     );
 
-    let lines = read_replay_journal(dir.path());
+    let lines = read_session_journal(dir.path());
 
     // The envelope, as the launch resolved it.
     let seed = journal_seed(&lines).expect("the run pinned its invocation envelope");
@@ -7827,10 +7768,10 @@ async fn a_captured_run_pins_its_envelope_and_every_agent_it_created() {
         vec![ROOT_AGENT_ID, "agent-0"],
         "the root and the child it spawned, in creation order",
     );
-    assert_eq!(rows[0].origin, GgReplayAgentOrigin::Root);
+    assert_eq!(rows[0].origin, GgSessionAgentOrigin::Root);
     assert_eq!(
         rows[1].origin,
-        GgReplayAgentOrigin::Spawn {
+        GgSessionAgentOrigin::Spawn {
             parent: ROOT_AGENT_ID.to_string(),
             ordinal: 0,
         },
@@ -7868,32 +7809,32 @@ async fn a_captured_run_pins_its_envelope_and_every_agent_it_created() {
 
 /// Read and parse the `.gg/replay.ndjson` capture journal a replay-captured run writes under
 /// `dir`, one [line](GgJournalLine) per record.
-fn read_replay_journal(dir: &Path) -> Vec<GgJournalLine> {
-    let path = dir.join(GG_REPLAY_JOURNAL_PATH);
+fn read_session_journal(dir: &Path) -> Vec<GgJournalLine> {
+    let path = dir.join(GG_SESSION_JOURNAL_PATH);
     let text = std::fs::read_to_string(&path)
-        .unwrap_or_else(|err| panic!("replay journal at {}: {err}", path.display()));
+        .unwrap_or_else(|err| panic!("capture journal at {}: {err}", path.display()));
     text.lines()
         .map(|line| {
             serde_json::from_str(line)
-                .unwrap_or_else(|err| panic!("replay journal line `{line}`: {err}"))
+                .unwrap_or_else(|err| panic!("capture journal line `{line}`: {err}"))
         })
         .collect()
 }
 
-/// The **last** [invocation envelope](GgReplaySeed) a journal carries, which is the one assembly
+/// The **last** [invocation envelope](GgSessionSeed) a journal carries, which is the one assembly
 /// keeps: a later line supersedes an earlier one, because the resolved modality state is not known
 /// until the session ends.
-fn journal_seed(lines: &[GgJournalLine]) -> Option<&GgReplaySeed> {
+fn journal_seed(lines: &[GgJournalLine]) -> Option<&GgSessionSeed> {
     lines.iter().rev().find_map(|line| match line {
         GgJournalLine::Seed { seed } => Some(seed.as_ref()),
         _ => None,
     })
 }
 
-/// The [agent table](GgReplayAgent) a journal implies, folded the way assembly folds it: upserted
+/// The [agent table](GgSessionAgent) a journal implies, folded the way assembly folds it: upserted
 /// by `agent_id`, in creation order, so the terminal row supersedes the opening one.
-fn journal_agent_table(lines: &[GgJournalLine]) -> Vec<GgReplayAgent> {
-    let mut table: Vec<GgReplayAgent> = Vec::new();
+fn journal_agent_table(lines: &[GgJournalLine]) -> Vec<GgSessionAgent> {
+    let mut table: Vec<GgSessionAgent> = Vec::new();
     for line in lines {
         let GgJournalLine::Agent { agent } = line else {
             continue;
@@ -7910,7 +7851,7 @@ fn journal_agent_table(lines: &[GgJournalLine]) -> Vec<GgReplayAgent> {
 }
 
 /// The pinned inputs a journal carries, in write order.
-fn journal_entries(lines: &[GgJournalLine]) -> Vec<&GgReplayEntry> {
+fn journal_entries(lines: &[GgJournalLine]) -> Vec<&GgSessionEntry> {
     lines
         .iter()
         .filter_map(|line| match line {
@@ -7937,16 +7878,16 @@ fn journal_message(lines: &[GgJournalLine], index: u32) -> serde_json::Value {
 /// (pooled request + response) and every tool result, tagged by agent + a globally monotonic
 /// sequence, in order.
 #[tokio::test]
-async fn replay_capture_records_model_io_and_tool_results_in_order() {
+async fn session_capture_records_model_io_and_tool_results_in_order() {
     let dir = TempDir::new().unwrap();
     seed_default_skill(dir.path());
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-replay".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), minimal_with_replay("mock/echo"));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
-    let lines = read_replay_journal(dir.path());
+    let lines = read_session_journal(dir.path());
     // The header identifies the session (what `core` stamps as the run id) and the configuration.
     let GgJournalLine::Header {
         session_id,
@@ -7957,7 +7898,11 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
         panic!("the journal opens with its header, got {:?}", lines[0]);
     };
     assert_eq!(session_id, &inv.session_id);
-    assert!(capability_set.is_enabled(CAPABILITY_REPLAY));
+    assert_eq!(
+        capability_set.as_ref(),
+        &inv.capability_set,
+        "the header pins the configuration the run was launched under"
+    );
     // And it terminates, so the record is provably not a session that died mid-capture.
     assert!(
         matches!(
@@ -7984,7 +7929,7 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
     // turns: one that writes the file and one that stops.
     let model_ios: Vec<_> = entries
         .iter()
-        .filter(|entry| matches!(entry.kind, GgReplayEntryKind::ModelIo { .. }))
+        .filter(|entry| matches!(entry.kind, GgSessionEntryKind::ModelIo { .. }))
         .collect();
     assert!(
         model_ios.len() >= 2,
@@ -7992,7 +7937,7 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
         model_ios.len()
     );
     for entry in &model_ios {
-        let GgReplayEntryKind::ModelIo {
+        let GgSessionEntryKind::ModelIo {
             request, response, ..
         } = &entry.kind
         else {
@@ -8011,10 +7956,6 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
             request.toolset.is_some(),
             "and the toolset it offered, pooled once for the whole run"
         );
-        assert_eq!(
-            request.fingerprint.messages as usize,
-            request.messages.len()
-        );
         assert!(
             response.get("finishReason").is_some(),
             "a recorded response carries its finish reason"
@@ -8029,7 +7970,7 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
 
     // The scripted `write_file` tool result was recorded with its exact call + outcome.
     let write_result = entries.iter().find_map(|entry| match &entry.kind {
-        GgReplayEntryKind::ToolResult { call, outcome } if call.name == "write_file" => {
+        GgSessionEntryKind::ToolResult { call, outcome } if call.name == "write_file" => {
             Some((entry.seq, outcome.clone()))
         }
         _ => None,
@@ -8040,14 +7981,14 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
     // Single-agent run: every entry is tagged with the root agent.
     assert!(
         entries.iter().all(|entry| entry.agent_id == ROOT_AGENT_ID),
-        "a single-agent run tags every replay entry with the root"
+        "a single-agent run tags every session-record entry with the root"
     );
 
     // The model call that requested `write_file` precedes the recorded `write_file` tool result.
     let call_seq = model_ios
         .iter()
         .find(|entry| match &entry.kind {
-            GgReplayEntryKind::ModelIo { response, .. } => {
+            GgSessionEntryKind::ModelIo { response, .. } => {
                 response.to_string().contains("write_file")
             }
             _ => false,
@@ -8068,24 +8009,24 @@ async fn replay_capture_records_model_io_and_tool_results_in_order() {
 /// driven run shows the loop reaches the seam at all, at the one place it holds the
 /// [`PromptItem`](crate::context::PromptItem) stream, and *after* the call it describes.
 #[tokio::test]
-async fn replay_capture_records_a_prompt_frame_for_every_model_turn() {
+async fn session_capture_records_a_prompt_frame_for_every_model_turn() {
     let dir = TempDir::new().unwrap();
     seed_default_skill(dir.path());
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-frames".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), minimal_with_replay("mock/echo"));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
-    let lines = read_replay_journal(dir.path());
+    let lines = read_session_journal(dir.path());
     let entries = journal_entries(&lines);
     let frames: Vec<_> = entries
         .iter()
-        .filter(|entry| matches!(entry.kind, GgReplayEntryKind::PromptFrame { .. }))
+        .filter(|entry| matches!(entry.kind, GgSessionEntryKind::PromptFrame { .. }))
         .collect();
     let model_ios: Vec<_> = entries
         .iter()
-        .filter(|entry| matches!(entry.kind, GgReplayEntryKind::ModelIo { .. }))
+        .filter(|entry| matches!(entry.kind, GgSessionEntryKind::ModelIo { .. }))
         .collect();
     assert_eq!(
         frames.len(),
@@ -8102,10 +8043,10 @@ async fn replay_capture_records_a_prompt_frame_for_every_model_turn() {
     let mut checked = 0;
     for entry in &entries {
         match &entry.kind {
-            GgReplayEntryKind::ModelIo { request, .. } => {
+            GgSessionEntryKind::ModelIo { request, .. } => {
                 pending = Some((entry.seq, &request.messages));
             }
-            GgReplayEntryKind::PromptFrame { items } => {
+            GgSessionEntryKind::PromptFrame { items } => {
                 let (call_seq, messages) = pending.take().expect("a frame follows a model call");
                 assert!(call_seq < entry.seq, "the frame lands after its call");
                 assert_eq!(
@@ -8117,15 +8058,15 @@ async fn replay_capture_records_a_prompt_frame_for_every_model_turn() {
                 // across a compaction verbatim — and it is unnumbered, since it is seeded before
                 // the first turn opens.
                 let system = items.first().expect("a window has a system prompt");
-                assert_eq!(system.slot, GgReplayPromptSlot::System);
-                assert_eq!(system.retention, GgReplayRetention::Pinned);
+                assert_eq!(system.slot, GgSessionPromptSlot::System);
+                assert_eq!(system.retention, GgSessionRetention::Pinned);
                 assert_eq!(system.turn, 0);
                 // Everything after it this run is thread material: the mock takes no paged read
                 // and the minimal set arms no context-usage signal.
                 assert!(
                     items[1..]
                         .iter()
-                        .all(|item| item.slot == GgReplayPromptSlot::Thread),
+                        .all(|item| item.slot == GgSessionPromptSlot::Thread),
                     "the rest of the window is the thread"
                 );
                 checked += 1;
@@ -8157,7 +8098,7 @@ async fn the_capture_close_out_does_not_separate_the_summary_from_session_ended(
     let capture_pos = events
         .iter()
         .position(|event| match &event.kind {
-            GgTelemetryKind::Log { message, .. } => message.starts_with("replay capture ("),
+            GgTelemetryKind::Log { message, .. } => message.starts_with("session capture:"),
             _ => false,
         })
         .expect("every run reports its capture");
@@ -8200,7 +8141,7 @@ async fn replay_capture_interleaves_a_multi_agent_run() {
         SessionOutcome::Ran
     );
 
-    let lines = read_replay_journal(dir.path());
+    let lines = read_session_journal(dir.path());
     let entries = journal_entries(&lines);
 
     // Both the root and the spawned subagent (`agent-0`) recorded entries.
@@ -8227,7 +8168,7 @@ async fn replay_capture_interleaves_a_multi_agent_run() {
     // The subagent's own model I/O was captured (its turns ran through a RecordingClient too).
     assert!(
         entries.iter().any(|entry| entry.agent_id == "agent-0"
-            && matches!(entry.kind, GgReplayEntryKind::ModelIo { .. })),
+            && matches!(entry.kind, GgSessionEntryKind::ModelIo { .. })),
         "the subagent's model I/O was recorded"
     );
 }
@@ -8267,11 +8208,11 @@ async fn a_captured_run_journals_an_outcome_for_every_call_it_made() {
     seed_default_skill(dir.path());
     let sink = CollectingSink::new();
     let emitter = Emitter::with_sink(Some("run-roundtrip".to_string()), Box::new(sink.clone()));
-    let inv = invocation(dir.path(), minimal_with_replay("mock/echo"));
+    let inv = invocation(dir.path(), GgCapabilitySet::minimal("mock/echo"));
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
-    let lines = read_replay_journal(dir.path());
+    let lines = read_session_journal(dir.path());
     let entries = journal_entries(&lines);
 
     // Walk the journal exactly as a reconstruction would: each model turn opens with the calls its
@@ -8283,7 +8224,7 @@ async fn a_captured_run_journals_an_outcome_for_every_call_it_made() {
     let mut journaled: Vec<(&'static str, String)> = Vec::new();
     for entry in &entries {
         match &entry.kind {
-            GgReplayEntryKind::ModelIo { response, .. } => {
+            GgSessionEntryKind::ModelIo { response, .. } => {
                 assert!(
                     awaiting.is_empty(),
                     "turn at seq {} opened with {awaiting:?} still unanswered — the capture would \
@@ -8299,7 +8240,7 @@ async fn a_captured_run_journals_an_outcome_for_every_call_it_made() {
                     .collect();
                 model_calls += 1;
             }
-            GgReplayEntryKind::ToolResult { call, outcome } => {
+            GgSessionEntryKind::ToolResult { call, outcome } => {
                 let expected = awaiting
                     .pop_front()
                     .unwrap_or_else(|| panic!("seq {} answers a call no turn made", entry.seq));
@@ -8312,16 +8253,16 @@ async fn a_captured_run_journals_an_outcome_for_every_call_it_made() {
             // between a call and the results answering it and is no part of that pairing. Skipped
             // rather than removed from the walk: the `other` arm below is what proves the capture
             // emits nothing this reconstruction would not understand.
-            GgReplayEntryKind::PromptFrame { .. } => {}
+            GgSessionEntryKind::PromptFrame { .. } => {}
             // The turn-boundary inputs: read before the turn's model call, so they land between
             // one turn's results and the next turn's call and are likewise no part of the
             // pairing. Counted rather than merely skipped — a boundary that stopped probing
             // would be a run that could no longer be killed.
-            GgReplayEntryKind::CancelProbe { canceled } => {
+            GgSessionEntryKind::CancelProbe { canceled } => {
                 assert!(!canceled, "this run was never canceled");
                 probes += 1;
             }
-            GgReplayEntryKind::Clock { .. } => {}
+            GgSessionEntryKind::Clock { .. } => {}
             other => panic!("unexpected entry kind {other:?}"),
         }
     }
@@ -8782,11 +8723,11 @@ async fn a_handoff_compactions_summarizer_call_reaches_the_record() {
 
     assert_eq!(run(&inv, &emitter).await, SessionOutcome::Ran);
 
-    let lines = read_replay_journal(dir.path());
+    let lines = read_session_journal(dir.path());
     let roles: Vec<GgClientRole> = journal_entries(&lines)
         .iter()
         .filter_map(|entry| match &entry.kind {
-            GgReplayEntryKind::ModelIo { request, .. } => Some(request.role),
+            GgSessionEntryKind::ModelIo { request, .. } => Some(request.role),
             _ => None,
         })
         .collect();
@@ -8835,15 +8776,15 @@ async fn a_vision_refusal_records_the_error_the_retry_and_the_frame_in_that_orde
         SessionOutcome::Ran
     );
 
-    let lines = read_replay_journal(dir.path());
+    let lines = read_session_journal(dir.path());
     let entries = journal_entries(&lines);
     // The refusal, and what the record says about it: the class the loop branched on, and the
     // model that refused — not merely that something failed.
     let refusal = entries
         .iter()
         .position(|entry| match &entry.kind {
-            GgReplayEntryKind::ModelError { error, .. } => {
-                assert_eq!(error.kind, GgReplayModelErrorKind::VisionUnsupported);
+            GgSessionEntryKind::ModelError { error, .. } => {
+                assert_eq!(error.kind, GgSessionModelErrorKind::VisionUnsupported);
                 assert_eq!(error.model_id.as_deref(), Some("mock/text-only"));
                 true
             }
@@ -8852,22 +8793,22 @@ async fn a_vision_refusal_records_the_error_the_retry_and_the_frame_in_that_orde
         .expect("the refused call is in the record");
 
     // What follows it, in order, for the same agent.
-    let after: Vec<&GgReplayEntryKind> = entries[refusal + 1..]
+    let after: Vec<&GgSessionEntryKind> = entries[refusal + 1..]
         .iter()
         .map(|entry| &entry.kind)
         .filter(|kind| {
             matches!(
                 kind,
-                GgReplayEntryKind::ModelIo { .. } | GgReplayEntryKind::PromptFrame { .. }
+                GgSessionEntryKind::ModelIo { .. } | GgSessionEntryKind::PromptFrame { .. }
             )
         })
         .collect();
     assert!(
-        matches!(after.first(), Some(GgReplayEntryKind::ModelIo { .. })),
+        matches!(after.first(), Some(GgSessionEntryKind::ModelIo { .. })),
         "the stripped retry follows the refusal, got {:?}",
         after.first()
     );
-    let Some(GgReplayEntryKind::PromptFrame { items }) = after.get(1) else {
+    let Some(GgSessionEntryKind::PromptFrame { items }) = after.get(1) else {
         panic!(
             "the frame follows the call that was sent, got {:?}",
             after.get(1)
@@ -8878,9 +8819,9 @@ async fn a_vision_refusal_records_the_error_the_retry_and_the_frame_in_that_orde
     // item in it still carries an image payload.
     let carries_image = items.iter().any(|item| {
         let body = journal_message(&lines, item.message);
-        serde_json::to_string(&body)
-            .unwrap_or_default()
-            .contains(GG_REPLAY_BLOB_REF_KEY)
+        body["images"]
+            .as_array()
+            .is_some_and(|images| !images.is_empty())
     });
     assert!(
         !carries_image,
@@ -8987,14 +8928,14 @@ async fn every_agent_binds_its_client_under_its_provenance() {
     // The root: bound trivially, on its own turn-loop client.
     assert!(
         seen.iter().any(|(slot, identity)| slot == ROOT_AGENT
-            && *identity == AgentIdentity::agent(GgReplayAgentOrigin::Root)),
+            && *identity == AgentIdentity::agent(GgSessionAgentOrigin::Root)),
         "the root binds as `Root`: {seen:?}"
     );
     // Its handoff summarizer: the **same** origin, under the compaction role. A second origin here
     // would send a reconstruction looking for an agent that never existed.
     assert!(
         seen.iter().any(|(slot, identity)| slot == COMPACTION_SLOT
-            && *identity == AgentIdentity::compaction(GgReplayAgentOrigin::Root)),
+            && *identity == AgentIdentity::compaction(GgSessionAgentOrigin::Root)),
         "the handoff summarizer binds as the root's compaction client: {seen:?}"
     );
     // The delegated child: keyed on its spawner and its position in that spawner's own strictly
@@ -9002,7 +8943,7 @@ async fn every_agent_binds_its_client_under_its_provenance() {
     assert!(
         seen.iter().any(|(slot, identity)| slot == "subagent"
             && *identity
-                == AgentIdentity::agent(GgReplayAgentOrigin::Spawn {
+                == AgentIdentity::agent(GgSessionAgentOrigin::Spawn {
                     parent: ROOT_AGENT_ID.to_string(),
                     ordinal: 0,
                 })),

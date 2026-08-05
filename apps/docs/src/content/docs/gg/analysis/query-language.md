@@ -306,7 +306,7 @@ no backend at all. Three rules govern the export:
 
 ## What this hands to the other features
 
-Nothing here needs a change from replay, playback, or code analysis. That is the
+Nothing here needs a change from the session record or code analysis. That is the
 point: any scalar any of them adds to the session summary or the record becomes
 queryable, chartable, groupable, and publishable **with no change to the query
 layer**. The only obligations are the two stated above — **emit scalars, not

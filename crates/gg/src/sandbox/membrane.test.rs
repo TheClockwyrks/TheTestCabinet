@@ -97,7 +97,7 @@ fn a_disabled_tool_is_unavailable_without_reaching_the_invoker() {
 }
 
 /// A refusal is counted apart from the serviced calls, because it produced no telemetry and no
-/// replay entry — the invariant that keeps `CodeExecution`'s `tool_calls` equal to the number of
+/// session-record entry — the invariant that keeps `CodeExecution`'s `tool_calls` equal to the number of
 /// `ToolCall`/`ToolResult` pairs the turn streamed.
 #[test]
 fn a_refusal_is_recorded_apart_from_the_serviced_calls() {

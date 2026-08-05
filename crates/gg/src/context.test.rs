@@ -77,7 +77,7 @@ fn prompt_items_expose_source_message_tokens_and_label_in_order() {
     );
 }
 
-/// The four window-model fields [replay capture](crate::capture) records as a prompt frame, and
+/// The four window-model fields [session capture](crate::capture) records as a prompt frame, and
 /// the only place they are observable once a turn has gone out: the slot an item was rendered
 /// from, its retention class, the turn it was pushed on, and a paged file view's region.
 #[test]

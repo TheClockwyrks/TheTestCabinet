@@ -1856,7 +1856,7 @@ fn generation_timestamp_round_trips_a_real_snapshot_id() {
 
 #[tokio::test]
 async fn a_stored_run_tree_artifact_never_reaches_the_public_snapshot() {
-    // R7, and owner decision Q1. The **replay record** is never published: it is a
+    // R7, and owner decision Q1. The **session record** is never published: it is a
     // private, whole-run capture of everything the model was sent, so it never goes to
     // R2 at all (and could not be redacted usefully if it did — it is opaque, possibly
     // gzipped bytes the scrubber cannot walk). A code-analysis document *is* published
@@ -2361,7 +2361,7 @@ async fn the_builder_redacts_the_corpus_itself_rather_than_trusting_its_caller()
 async fn a_replay_record_never_reaches_the_public_snapshot_even_beside_the_gg_corpus() {
     // Owner decision Q1 is a **hard** boundary, and this milestone is where it is most
     // at risk: the snapshot now carries gg data, so "the run's other gg artifact" is a
-    // short step away. A replay record is the complete model conversation verbatim; the
+    // short step away. A session record is the complete model conversation verbatim; the
     // exported documents are configuration ids and outcome numbers. Only the second
     // travels.
     let (_tmp, store) = empty_store();

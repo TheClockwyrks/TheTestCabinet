@@ -41,7 +41,7 @@ use crate::error::{BackendError, Result};
 const SIDECAR: &str = ".tcab";
 
 /// The [run-tree artifact](DefinitionStore::run_artifact_path) name of a gg run's
-/// replay record. One constant, because the same string is the store slot
+/// session record. One constant, because the same string is the store slot
 /// (`runs/<id>/replay.json`), the route segment (`/runs/{id}/replay`) and the run
 /// tree's file stem (`replay.json.gz`) — the convention only holds if they cannot
 /// drift apart.
@@ -1323,13 +1323,13 @@ impl DefinitionStore {
         self.run_artifact_path(run_id, REPLAY_ARTIFACT)
     }
 
-    /// Persist a gg run's replay record. The named wrapper over
+    /// Persist a gg run's session record. The named wrapper over
     /// [`write_run_artifact`](Self::write_run_artifact) — see it for the convention.
     pub fn write_run_replay(&self, run_id: &str, bytes: &[u8]) -> Result<()> {
         self.write_run_artifact(run_id, REPLAY_ARTIFACT, bytes)
     }
 
-    /// Read a gg run's stored replay record. The named wrapper over
+    /// Read a gg run's stored session record. The named wrapper over
     /// [`read_run_artifact`](Self::read_run_artifact).
     pub fn read_run_replay(&self, run_id: &str) -> Result<Vec<u8>> {
         self.read_run_artifact(run_id, REPLAY_ARTIFACT)

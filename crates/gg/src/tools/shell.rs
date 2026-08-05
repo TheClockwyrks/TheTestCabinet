@@ -39,7 +39,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{SHELL_OUTPUT_ADAPTIVE, SHELL_OUTPUT_INLINE, SHELL_OUTPUT_OFFLOAD};
-use test_cabinet_core::gg_replay::GgShellOrigin;
+use test_cabinet_core::gg_session_record::GgShellOrigin;
 
 use super::{
     ArgumentError, ShellData, Tool, ToolContext, ToolData, ToolFailure, ToolOutcome, required_str,

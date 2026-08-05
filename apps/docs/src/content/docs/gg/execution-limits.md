@@ -342,7 +342,7 @@ the single field a study reads to find out why runs stop, so a canceled run's `l
 stays empty.
 
 [What a stopped run leaves behind](#what-a-stopped-run-leaves-behind) applies with one
-exception. The epilogue runs in full — slot rollups, the closing log, the replay record,
+exception. The epilogue runs in full — slot rollups, the closing log, the session record,
 the session summary, the session-ended event — the process exits 0, and the workspace is
 exactly as the last completed turn left it. On the host's side that epilogue is what makes
 a killed run worth keeping: the host writes the sentinel, keeps draining the stream so the

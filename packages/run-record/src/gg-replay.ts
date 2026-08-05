@@ -20,10 +20,10 @@ import type {
  *
  * Carried once on the record rather than per turn: it is a property of the capture, not
  * of any individual input. Both members are optional because a
- * [v1 record](self#reading-a-v1-record) predates them and an upgraded one honestly
- * reports "unknown" instead of inventing a version.
+ * record captured before they existed carries neither, and reports "unknown" rather than
+ * inventing a version.
  */
-export type GgReplayRecorder = {
+export type GgSessionRecorder = {
   /**
    * The `gg --version` of the build that captured this record (for example `0.7.0`).
    * Explanatory only — never the compatibility gate.
@@ -32,33 +32,16 @@ export type GgReplayRecorder = {
   /**
    * The exact commit the capturing build was made from, when it is known. The only
    * thing that can tell an uncommitted prompt edit *within* one version from the
-   * released build of that version, so it is what a playback checks when it resolves
-   * a binary to reconstruct with.
+   * released build of that version, so it is the only thing that identifies exactly which gg
+   * wrote a record.
    */
   commit?: string;
 };
 
 /**
- * How completely a capture pinned the session it observed.
- *
- * Capture is **always on**: pooling collapsed a projected 200-turn record from ~187 MB to
- * well under a megabyte gzipped, and at that price gating it buys nothing while costing
- * the one thing that matters — an opt-in capture is, by construction, never armed for the
- * surprising run it exists to explain. So the
- * [`replay`](crate::gg::CAPABILITY_REPLAY) capability stopped being the switch that
- * decides *whether* a run is recorded and became the one that decides *how much*.
- *
- * It is recorded on the record rather than re-derived from the
- * [capability set](GgReplayRecord::capability_set) because a reader that cannot tell the
- * two fidelities apart reads an absent full-only input as evidence the session never had
- * one — which is exactly the inference a record exists to make safe.
- */
-export type GgReplayFidelity = "standard" | "full";
-
-/**
  * Which input modalities a bound model slot was resolved to accept.
  */
-export type GgReplayModalities = {
+export type GgSessionModalities = {
   /**
    * Whether the slot's model accepts image input. `false` once a provider has
    * refused an image for this model and the loop has stripped images from the
@@ -68,32 +51,13 @@ export type GgReplayModalities = {
 };
 
 /**
- * One file the workspace was [seeded](GgReplaySeed::provided_files) with, as a
- * reference into the [blob pool](GgReplayRecord::blobs).
- */
-export type GgReplaySeedFile = {
-  /**
-   * The workspace-relative path the file was placed at.
-   */
-  path: string;
-  /**
-   * The index into [`blobs`](GgReplayRecord::blobs) holding the file's bytes.
-   */
-  blob: number;
-};
-
-/**
- * The **fixed identity** a recorded session started from: everything a reconstruction
- * needs before it consumes its first [entry](GgReplayEntry).
+ * The **fixed identity** a recorded session started from: everything a reader
+ * needs before it consumes its first [entry](GgSessionEntry).
  *
  * Recording the seed is what makes a record self-contained rather than only meaningful
- * beside the run tree it came from. It costs almost nothing: an
- * [autoloaded](https://docs.testcabinet.ai/gg/autoload-specifications/) case's reference
- * mockups are *already* in the [blob pool](GgReplayRecord::blobs) — they were sent to
- * the model — so [`provided_files`](Self::provided_files) references them rather than
- * carrying a second copy.
+ * beside the run tree it came from.
  */
-export type GgReplaySeed = {
+export type GgSessionSeed = {
   /**
    * The commit gg observed the seeded workspace at, in the container, before the
    * session made any change.
@@ -112,7 +76,7 @@ export type GgReplaySeed = {
   /**
    * The context window, in tokens, resolved for each bound model slot. Recorded
    * because the window is what the fullness signal and compaction thresholds are
-   * computed against, so a reconstruction that guessed it would compact at a
+   * computed against, so a reader that guessed it would compact at a
    * different turn than the run did.
    */
   modelWindows?: { [key in string]: number };
@@ -121,40 +85,35 @@ export type GgReplaySeed = {
    *
    * Resolved, not initial, and that distinction is load-bearing: vision recovery can
    * call the model twice for one turn and only the successful stripped call is
-   * recorded, so a reconstruction that started from an un-denied vision state would
+   * recorded, so a reader that started from an un-denied vision state would
    * send images on the first image turn and drift for a reason that has nothing to do
    * with any real change.
    */
-  modelModalities?: { [key in string]: GgReplayModalities };
-  /**
-   * Files placed into the workspace before the session began — a case's seeded
-   * inputs and autoloaded specification images — each referencing the
-   * [blob pool](GgReplayRecord::blobs).
-   */
-  providedFiles?: Array<GgReplaySeedFile>;
+  modelModalities?: { [key in string]: GgSessionModalities };
 };
 
 /**
- * One distinct message body in the [message pool](GgReplayRecord::messages).
+ * One distinct message body in the [message pool](GgSessionRecord::messages).
  *
  * A single message is typically re-sent on every turn it survives — the measured
  * redundancy on a 12-turn single-agent session was 6.4× — so pooling it is the largest
  * single win in the format after the toolset.
  */
-export type GgReplayMessage = {
+export type GgSessionMessage = {
   /**
-   * The message's [content address](fingerprint_exact), computed over the body
-   * **including its exact image payloads** — before those payloads were replaced by
-   * [blob references](GG_REPLAY_BLOB_REF_KEY). Computing it over the pre-substitution
-   * body is what makes it position-independent: two runs that interned the same
-   * message into differently-ordered pools still produce the same id, which is the
-   * property the [turn fingerprint](GgTurnFingerprint) rests on.
+   * The message's [content address](fingerprint_exact), computed over the body **including
+   * its exact image payloads** — before those payloads were reduced to descriptors.
+   *
+   * Addressing the message as it was *sent* is what keeps two different pictures of the same
+   * media type and decoded size two different messages. Addressing the stored body instead
+   * would collide them, and the pool would then serve one turn's window in place of
+   * another's.
    */
   id: string;
   /**
    * The message as the client sent it — the `gg` binary's `Message`, camelCase, with
    * every inline image payload replaced by a
-   * [blob reference](GG_REPLAY_BLOB_REF_KEY). Carried as free-form JSON because its
+   * [descriptor](GgSessionImage). Carried as free-form JSON because its
    * concrete shape is owned by the `gg` binary rather than by this contract crate.
    */
   body: Record<string, unknown>;
@@ -162,18 +121,18 @@ export type GgReplayMessage = {
 
 /**
  * One distinct offered tool-definition array in the
- * [toolset pool](GgReplayRecord::toolsets).
+ * [toolset pool](GgSessionRecord::toolsets).
  *
  * The finding that reshaped this format: on a real record the re-serialized tool array
  * was **52%** of the bytes — larger than the messages — and its redundancy is exactly
  * the turn count, because a run's offered toolset almost never changes. Pooling
  * collapses `N` copies to one.
  */
-export type GgReplayToolset = {
+export type GgSessionToolset = {
   /**
    * The toolset's [content address](fingerprint_exact) over the serialized array.
-   * Used verbatim as the [`tools`](GgTurnFingerprint::tools) component of every turn
-   * fingerprint that offered it.
+   * What the pool dedups on, so a run's one offered toolset is written once rather than
+   * once per turn.
    */
   id: string;
   /**
@@ -184,65 +143,32 @@ export type GgReplayToolset = {
 };
 
 /**
- * One binary payload in the [blob pool](GgReplayRecord::blobs).
- *
- * Images are what the pool was built for and are most of what it holds — the catastrophic
- * case v1 had no answer for was a view's base64 payload being re-serialized on every turn
- * it survived, so one 500 KB PNG cost ~67 MB across 100 turns; pooled, it costs 500 KB
- * once, flat. But it is a pool of *bytes*, not of images: the
- * [seed](GgReplaySeed::provided_files) stores every provided file here too, whatever its
- * type, which is what makes an empty directory plus a record a runnable session. A seeded
- * file that is an image and was also sent to the model dedupes against it exactly, because
- * the pool is keyed by content.
- */
-export type GgReplayBlob = {
-  /**
-   * The blob's [content address](fingerprint_exact) over its base64 bytes.
-   */
-  id: string;
-  /**
-   * The IANA media type (`image/png`, `image/jpeg`, …), or `application/octet-stream`
-   * for a seeded file whose type the sniffer did not recognize.
-   */
-  mediaType: string;
-  /**
-   * The decoded size in bytes — what the file on disk measured.
-   */
-  bytes: number;
-  /**
-   * The payload's bytes, base64-encoded (no `data:` prefix).
-   */
-  dataBase64: string;
-};
-
-/**
  * One pooled text that is a **clip** of the payload the session actually saw, rather than the
  * whole of it.
  *
- * A [standard](GgReplayFidelity::Standard) capture clips a payload past
- * [its ceiling](GgReplayFidelity::stream_max_bytes). The clip has to be self-describing, and the
+ * A capture clips a payload past [its ceiling](GG_SESSION_STREAM_MAX_BYTES). The clip has
+ * to be self-describing, and the
  * text pool is a bare `Vec<String>` with nowhere to say so — a reader handed a 32 KiB string
  * cannot tell a command that printed exactly that much from one that printed forty megabytes, and
- * the difference is the whole of whether a reconstruction comparing its own output against it is
+ * the difference is the whole of whether a reader comparing its own output against it is
  * entitled to call a mismatch drift. Hence this table, keyed by pool index, holding what the
  * stored string is missing.
  *
  * # Why the whole payload's content address is on it
  *
  * [`original_id`](Self::original_id) is what makes a clipped record still *checkable*: a
- * reconstruction that re-executes the command has the whole output in hand, and hashing it
- * answers "is this the same output?" exactly, from a record that kept 32 KiB of it. Without that
- * the clip would be evidence of nothing — a matching tail proves very little about a payload
- * whose head was dropped.
+ * reader holding the whole output can hash it and answer "is this the same output?" exactly,
+ * from a record that kept 32 KiB of it. Without that the clip would be evidence of nothing — a
+ * matching tail proves very little about a payload whose head was dropped.
  *
  * It is also what makes the pool's dedup unambiguous. Interning keys on the address of the
  * **original** rather than of the stored clip, so two different payloads that happen to share a
  * tail occupy two pool entries with two clip rows, instead of collapsing into one entry whose
  * single row could only describe one of them.
  */
-export type GgReplayTextClip = {
+export type GgSessionTextClip = {
   /**
-   * The index into [`texts`](GgReplayRecord::texts) whose entry is a clip.
+   * The index into [`texts`](GgSessionRecord::texts) whose entry is a clip.
    */
   text: number;
   /**
@@ -256,12 +182,12 @@ export type GgReplayTextClip = {
 };
 
 /**
- * How an [agent](GgReplayAgent) was created, carrying the keys that identify it
+ * How an [agent](GgSessionAgent) was created, carrying the keys that identify it
  * deterministically.
  *
- * Every variant's payload is a key that is a function of something the reconstruction
- * re-derives on its own — a parent's own ordered turn loop, or board state — and never
- * of the global agent counter, whose values a playback legitimately assigns differently.
+ * Every variant's payload is a key that is a function of the run's own structure — a parent's
+ * ordered turn loop, or board state — and never of the global agent counter, whose values say
+ * only what order agents happened to reach their spawn in.
  *
  * The three board-dispatched variants are why this is an enum rather than a flat
  * `(parent, ordinal)` pair: an [issue attempt](Self::IssueAttempt), a
@@ -269,12 +195,12 @@ export type GgReplayTextClip = {
  * parent**, and a reviewer needs three keys rather than two, so a parent-keyed scheme
  * leaves every one of them unbindable — and an unbound agent dies on its first turn.
  */
-export type GgReplayAgentOrigin =
+export type GgSessionAgentOrigin =
   | { type: "root" }
   | {
       type: "spawn";
       /**
-       * The [`agent_id`](GgReplayAgent::agent_id) of the spawner.
+       * The [`agent_id`](GgSessionAgent::agent_id) of the spawner.
        */
       parent: string;
       /**
@@ -288,7 +214,7 @@ export type GgReplayAgentOrigin =
   | {
       type: "succession";
       /**
-       * The [`agent_id`](GgReplayAgent::agent_id) of the agent it succeeded.
+       * The [`agent_id`](GgSessionAgent::agent_id) of the agent it succeeded.
        */
       predecessor: string;
       /**
@@ -310,8 +236,8 @@ export type GgReplayAgentOrigin =
        * learned the hard way: a review that requests changes re-dispatches the issue to a
        * fresh agent while deliberately **not** charging the retry budget (rework asked
        * for by a reviewer is not a failed attempt), so keying on the retry count gave two
-       * different agents one identical origin — and a reconstruction binding on
-       * provenance would then serve both of them the first one's turns.
+       * different agents one identical origin, which is a provenance table that cannot tell
+       * two agents apart.
        */
       attempt: number;
     }
@@ -348,10 +274,10 @@ export type GgReplayAgentOrigin =
  * binds live agents through. **One row per agent, not per turn**: repeating a
  * provenance tuple on every entry would defeat the pooling thesis outright.
  */
-export type GgReplayAgent = {
+export type GgSessionAgent = {
   /**
    * The id the recorded run minted for this agent (`"root"` for the root agent).
-   * Every [entry](GgReplayEntry::agent_id) is stamped with it.
+   * Every [entry](GgSessionEntry::agent_id) is stamped with it.
    */
   agentId: string;
   /**
@@ -359,22 +285,21 @@ export type GgReplayAgent = {
    */
   profile: string;
   /**
-   * How the agent came to exist, carrying the keys it is bound by. This — not
-   * [`agent_id`](Self::agent_id) — is what a reconstruction matches on, because
-   * subagent ids come off a global counter in the order agents reach their spawn and a
-   * playback removes model latency entirely, so the live interleaving of two
-   * concurrent agents *will* differ from the recorded one.
+   * How the agent came to exist, carrying the keys that explain it. This — not
+   * [`agent_id`](Self::agent_id) — is what identifies an agent across runs, because
+   * subagent ids come off a global counter in the order agents reach their spawn, so two
+   * concurrent agents take different ids from one run to the next.
    */
-  origin: GgReplayAgentOrigin;
+  origin: GgSessionAgentOrigin;
   /**
-   * The status the agent's turn loop ended in, when it ended. Compared against the
-   * reconstructed one and reported as terminal drift when they differ.
+   * The status the agent's turn loop ended in, when it ended. Absent for an agent that
+   * never reached an ending — one parked behind the parallelism cap when the run was
+   * killed, which is exactly the row a salvaged record is opened for.
    */
   terminalStatus?: GgAgentStatus;
   /**
-   * The ceiling that stopped this agent, when one did. Cost and turn ceilings are
-   * honored as recorded by a playback — reproducing a limit-hit is a feature — so this
-   * is both an input and something to compare against.
+   * The ceiling that stopped this agent, when one did — and *which* ceiling, which
+   * [`terminal_status`](Self::terminal_status) cannot answer on its own.
    */
   limitHit?: GgLimitBreach;
 };
@@ -384,121 +309,56 @@ export type GgReplayAgent = {
  *
  * The discriminator is what makes a **second queue** representable. Without it a
  * [handoff-compaction](https://docs.testcabinet.ai/gg/compaction/) summarizer call and
- * the agent's own next turn interleave into one indistinguishable queue, and a
- * reconstruction consumes the wrong one. `#[serde(default)]` to
- * [`Agent`](Self::Agent), which is what every request in a
- * [v1 record](self#reading-a-v1-record) was.
+ * the agent's own next turn interleave into one indistinguishable queue, and a reader would
+ * attribute the compaction's turn to the agent. `#[serde(default)]` to
+ * [`Agent`](Self::Agent), which is what every request in a record captured before the
+ * discriminator existed was.
  */
 export type GgClientRole = "agent" | "compaction";
 
 /**
- * Which model-client call shape a [request](GgReplayRequest) was issued under.
+ * Which model-client call shape a [request](GgSessionRequest) was issued under.
  *
  * Recorded because the two shapes are not interchangeable: `complete_requiring` forces
  * the model to call the one offered tool. Without this field a driver replaying a
  * required tool call silently downgrades it to an ordinary offered one, and the
- * reconstructed run is not the run that happened.
+ * recorded run is not the run that happened.
  */
-export type GgReplayRequestShape = "complete" | "complete_requiring";
+export type GgSessionRequestShape = "complete" | "complete_requiring";
 
 /**
- * A **fold over pool ids** proving what a turn asked — the staleness detector a
- * reconstruction compares its live request against.
- *
- * A recorded model response is only a valid input while gg's prompt construction is
- * unchanged: edit a system-prompt template and every recorded response becomes an
- * answer to a question gg no longer asks, silently, if nothing checks.
- *
- * # Why it is a fold, not a second hash
- *
- * The pooled [message](GgReplayMessage::id) and [toolset](GgReplayToolset::id) ids
- * **already are** SHA-256 content addresses, computed at intern time by
- * [`GgReplayPools`]. Folding over them costs a hash of a few hundred bytes of hex per
- * turn instead of a second pass over the whole conversation, and — the property that
- * actually matters — it makes recorder-side and playback-side computation *trivially*
- * identical, because both go through [`GgReplayPools::intern_request`]. Two
- * implementations of one fingerprint would drift, and the detector would become the bug.
+ * One model request, as pool references: the conversation that was sent and the toolset
+ * that was offered.
  */
-export type GgTurnFingerprint = {
+export type GgSessionRequest = {
   /**
-   * How many messages the request carried. The cheapest and most informative
-   * component: if it moved, the loop is asking a different *number* of questions and
-   * nothing after it is worth reading.
-   */
-  messages: number;
-  /**
-   * The pooled id of the **first `system`-role message**, or `None` for a request
-   * that carried none. Isolated from the conversation because the system prompt is
-   * what a template edit moves, and naming it separately is what lets a report say
-   * "your system prompt changed" rather than "something changed".
-   */
-  system?: string;
-  /**
-   * The [toolset's pooled id](GgReplayToolset::id), verbatim, or `None` when no tools
-   * were offered.
-   */
-  tools?: string;
-  /**
-   * A [content address](fingerprint_exact) over the **ordered message-pool id
-   * strings** — the whole conversation, including the system message, reduced to one
-   * value.
-   */
-  conversation: string;
-};
-
-/**
- * Which component of a [turn fingerprint](GgTurnFingerprint) differs, in the order a
- * comparison reports them.
- *
- * The order is deliberate and is the reason this is an enum rather than a set: the
- * first component that moves is the most informative, so a report names *it* rather
- * than listing every downstream consequence. A changed system prompt necessarily
- * changes the conversation too, and saying so twice helps nobody.
- */
-export type GgFingerprintComponent =
-  | "messages"
-  | "system"
-  | "tools"
-  | "conversation";
-
-/**
- * One model request, as pool references plus the [fingerprint](GgTurnFingerprint) that
- * says what question was being asked.
- */
-export type GgReplayRequest = {
-  /**
-   * Which client issued it. Absent in a [v1 record](self#reading-a-v1-record), where
-   * it reads as [`Agent`](GgClientRole::Agent).
+   * Which client issued it. Absent in a record captured before the discriminator existed,
+   * where it reads as [`Agent`](GgClientRole::Agent).
    */
   role: GgClientRole;
   /**
    * Whether the offered tool was required.
    */
-  shape: GgReplayRequestShape;
+  shape: GgSessionRequestShape;
   /**
    * The conversation sent this turn, as ordered indices into
-   * [`messages`](GgReplayRecord::messages).
+   * [`messages`](GgSessionRecord::messages).
    */
   messages: Array<number>;
   /**
    * The offered tool definitions, as an index into
-   * [`toolsets`](GgReplayRecord::toolsets). `None` for a call that offered no tools
+   * [`toolsets`](GgSessionRecord::toolsets). `None` for a call that offered no tools
    * at all.
    */
   toolset?: number;
-  /**
-   * The content fingerprint of this request, so a reconstruction can prove a recorded
-   * response is still an answer to the question the loop is asking.
-   */
-  fingerprint: GgTurnFingerprint;
 };
 
 /**
- * The class of a recorded [model error](GgReplayModelError) — a mirror of the `gg`
+ * The class of a recorded [model error](GgSessionModelError) — a mirror of the `gg`
  * binary's `ModelError` variants, carried in the contract because the *class* is what
  * the turn loop branches on.
  */
-export type GgReplayModelErrorKind =
+export type GgSessionModelErrorKind =
   | "missing_api_key"
   | "fatal"
   | "retry_exhausted"
@@ -511,14 +371,14 @@ export type GgReplayModelErrorKind =
  *
  * v1 dropped model errors entirely, which is a straight defect rather than an omission:
  * a vision refusal strips images and re-runs the turn, and a retry exhaustion counts
- * against an error ceiling, so **both change control flow** — and a reconstruction
+ * against an error ceiling, so **both change control flow** — and the record
  * diverged precisely where a developer was most likely to be looking.
  */
-export type GgReplayModelError = {
+export type GgSessionModelError = {
   /**
    * The error's class — what the loop branched on.
    */
-  kind: GgReplayModelErrorKind;
+  kind: GgSessionModelErrorKind;
   /**
    * The message the loop saw, which for a provider error is a truncated copy of its
    * body.
@@ -543,12 +403,11 @@ export type GgReplayModelError = {
  * Where a recorded command ran, expressed **relative to the workspace** wherever
  * possible.
  *
- * An absolute path is not portable across a reconstruction: a playback builds in a
- * different (and deliberately empty) directory, so a recorded `/work/impl/web` would
- * never match the live one and every command would fall through to a cross-agent search
- * or a miss. Recording the *relationship* instead makes a directory mismatch — which is
- * a real signal, since the same command in a different tree is a different command —
- * detectable rather than universal.
+ * An absolute path says nothing a reader can use: the workspace root is an implementation
+ * detail of the container the run happened in, so `/work/impl/web` and `/work` differ by the
+ * only part worth recording. Storing the *relationship* is what makes the recorded directory
+ * comparable across runs — and the same command in a different tree really is a different
+ * command.
  */
 export type GgShellCwd =
   | { type: "workspace" }
@@ -573,8 +432,7 @@ export type GgShellCwd =
  * All three reach one command line, and the only thing they share is the tool context —
  * which is why the seam belongs there. Recording *which* path asked is what keeps the commands gg
  * runs *without the model asking* — an [agent-stop hook](https://docs.testcabinet.ai/gg/hooks/)'s
- * ending gate, say — off the agent's ordinary queue, where a reconstruction would hand some later
- * `shell` call a result the model never produced.
+ * ending gate, say — distinguishable from the ones it ran because the model asked.
  */
 export type GgShellOrigin =
   | "tool"
@@ -585,7 +443,7 @@ export type GgShellOrigin =
 /**
  * One subprocess gg ran, with its bulky streams pooled.
  */
-export type GgReplayCommand = {
+export type GgSessionCommand = {
   /**
    * The command line, inline rather than pooled: it is short, and it is the **check**
    * half of a recorded-command lookup (position is the key), so it is worth being able
@@ -601,20 +459,39 @@ export type GgReplayCommand = {
    */
   exitCode: number;
   /**
-   * Its standard output, as an index into [`texts`](GgReplayRecord::texts).
+   * Its standard output, as an index into [`texts`](GgSessionRecord::texts).
    */
   stdout: number;
   /**
-   * Its standard error, as an index into [`texts`](GgReplayRecord::texts).
+   * Its standard error, as an index into [`texts`](GgSessionRecord::texts).
    */
   stderr: number;
+};
+
+/**
+ * One image a recorded call produced, as a **descriptor**: what it was and how big it was,
+ * never its bytes.
+ *
+ * The same shape the [telemetry stream](crate::gg::GgLoggedImage) carries, deliberately — the
+ * two are the same fact about the same turn, and a record that carried more would be a record
+ * nobody could afford to keep on every run.
+ */
+export type GgSessionImage = {
+  /**
+   * The IANA media type (`image/png`, `image/jpeg`, …).
+   */
+  mediaType: string;
+  /**
+   * The decoded size in bytes.
+   */
+  bytes: number;
 };
 
 /**
  * A tool call the agent (or a [responses-as-code](crate::gg::CAPABILITY_RESPONSES_AS_CODE)
  * program) made.
  */
-export type GgReplayToolCall = {
+export type GgSessionToolCall = {
   /**
    * The call id the loop minted. A program-composed call arrives under a synthetic id
    * carrying the program prefix, which is the only thing distinguishing the two.
@@ -630,8 +507,8 @@ export type GgReplayToolCall = {
   arguments: Record<string, unknown>;
   /**
    * The directory the call was dispatched in, for a tool that runs a subprocess.
-   * Typed rather than an absolute path string so a reconstruction in a different
-   * workspace can still compare it — see [`GgShellCwd`].
+   * Typed rather than an absolute path string, so what is recorded is the part that says
+   * something — see [`GgShellCwd`].
    */
   cwd?: GgShellCwd;
 };
@@ -639,30 +516,36 @@ export type GgReplayToolCall = {
 /**
  * The exact outcome a tool dispatch returned, with its bulky payloads pooled.
  *
- * Interning the output against the [text pool](GgReplayRecord::texts) is not merely a
+ * Interning the output against the [text pool](GgSessionRecord::texts) is not merely a
  * size win: a tool's output is quoted **verbatim** into the `tool` message that carries
  * it into the window, so the outcome and the message body are duplicates of one another.
  * One table collapses the pair.
  */
-export type GgReplayToolOutcome = {
+export type GgSessionToolOutcome = {
   /**
    * Whether the call succeeded.
    */
   ok: boolean;
   /**
    * The text fed back to the model, as an index into
-   * [`texts`](GgReplayRecord::texts).
+   * [`texts`](GgSessionRecord::texts).
    */
   output: number;
   /**
    * The short human-readable summary, when the call recorded one, as an index into
-   * [`texts`](GgReplayRecord::texts).
+   * [`texts`](GgSessionRecord::texts).
    */
   summary?: number;
   /**
-   * Images the call produced, as indices into [`blobs`](GgReplayRecord::blobs).
+   * The images the call produced, as **descriptors** — media type and decoded size,
+   * never the bytes.
+   *
+   * The same thing the [telemetry stream](crate::gg::GgTelemetryKind::ContextMessage)
+   * records, and for the same reason: a picture's payload is the one thing in a session
+   * large enough to dominate everything that explains it, and a record that carried them
+   * would be a record nobody could afford to keep on every run.
    */
-  images?: Array<number>;
+  images?: Array<GgSessionImage>;
   /**
    * The structured facts a responses-as-code program branches on, when the tool
    * produced them — with the one unbounded text field lifted out into
@@ -671,7 +554,7 @@ export type GgReplayToolOutcome = {
   data?: Record<string, unknown>;
   /**
    * The bulky text lifted out of [`data`](Self::data), as an index into
-   * [`texts`](GgReplayRecord::texts).
+   * [`texts`](GgSessionRecord::texts).
    *
    * Two of gg's structured tool payloads carry the *whole* of what the tool returned a second
    * time: a `read_file`'s `contents` (up to 256 KiB) and a `shell`'s `body`. Left inline they
@@ -698,23 +581,23 @@ export type GgReplayToolOutcome = {
 };
 
 /**
- * Which slot of gg's window model a [prompt item](GgReplayPromptItem) came from.
+ * Which slot of gg's window model a [prompt item](GgSessionPromptItem) came from.
  *
  * The window is not a flat list: two of its three positions are *slots* that are
  * assigned rather than appended, precisely so they cannot accumulate duplicates.
  */
-export type GgReplayPromptSlot = "system" | "thread" | "context_usage";
+export type GgSessionPromptSlot = "system" | "thread" | "context_usage";
 
 /**
- * Whether a [prompt item](GgReplayPromptItem) is retained verbatim across a compaction
+ * Whether a [prompt item](GgSessionPromptItem) is retained verbatim across a compaction
  * boundary or is ephemeral thread material.
  */
-export type GgReplayRetention = "pinned" | "ephemeral";
+export type GgSessionRetention = "pinned" | "ephemeral";
 
 /**
  * The `offset`/`limit` window a paged file view covers.
  */
-export type GgReplayFileRegion = {
+export type GgSessionFileRegion = {
   /**
    * The 1-based first line the read returned.
    */
@@ -734,15 +617,15 @@ export type GgReplayFileRegion = {
  * context-usage signal are otherwise indistinguishable on the wire, since both are
  * [`System`](GgContextSource::System)-sourced, unlabelled and pinned.
  */
-export type GgReplayPromptItem = {
+export type GgSessionPromptItem = {
   /**
-   * The item's message, as an index into [`messages`](GgReplayRecord::messages).
+   * The item's message, as an index into [`messages`](GgSessionRecord::messages).
    */
   message: number;
   /**
    * Which slot of the window model it came from.
    */
-  slot: GgReplayPromptSlot;
+  slot: GgSessionPromptSlot;
   /**
    * The band it is attributed to in the per-source breakdown.
    */
@@ -750,7 +633,7 @@ export type GgReplayPromptItem = {
   /**
    * Whether it survives a compaction boundary verbatim.
    */
-  retention: GgReplayRetention;
+  retention: GgSessionRetention;
   /**
    * The session turn it was pushed on. `0` for everything seeded before the first
    * turn, which is why the turn numbering the model sees starts at `1`.
@@ -764,34 +647,33 @@ export type GgReplayPromptItem = {
   /**
    * For a file view produced by a **paged** read, the window it covers.
    */
-  region?: GgReplayFileRegion;
+  region?: GgSessionFileRegion;
 };
 
 /**
- * Which non-deterministic input one [entry](GgReplayEntry) pins.
+ * Which non-deterministic input one [entry](GgSessionEntry) pins.
  *
  * The vocabulary is enumerated exhaustively on purpose. v1 captured only the first and
  * third of these and silently dropped four categories that **change control flow**, so a
- * reconstruction diverged exactly where a developer was most likely to be looking.
+ * the record was blank exactly where a developer was most likely to be looking.
  */
-export type GgReplayEntryKind =
+export type GgSessionEntryKind =
   | {
       type: "model_io";
       /**
        * What was sent.
        */
-      request: GgReplayRequest;
+      request: GgSessionRequest;
       /**
        * The response the turn yielded — the `gg` binary's `ModelResponse` (`text`,
        * `toolCalls`, `finishReason`, `usage`, `cost`), carried as free-form JSON
        * because its shape is owned by the binary. Its recorded `usage` is what makes a
-       * cost ceiling trip at the same turn under a reconstruction.
+       * cost ceiling trip when it did.
        */
       response: Record<string, unknown>;
       /**
-       * How long the call took, in milliseconds. A
-       * [full-fidelity](GgReplayFidelity::Full) latency clock: absent from a standard
-       * record, and absent even from a full one for a call whose latency was not measured.
+       * How long the call took, in milliseconds. Absent for a call whose latency was not
+       * measured.
        */
       durationMs?: number;
     }
@@ -800,16 +682,15 @@ export type GgReplayEntryKind =
       /**
        * What was sent.
        */
-      request: GgReplayRequest;
+      request: GgSessionRequest;
       /**
        * Why it failed.
        */
-      error: GgReplayModelError;
+      error: GgSessionModelError;
       /**
-       * How long the failed call took, in milliseconds — the same
-       * [full-fidelity](GgReplayFidelity::Full) latency clock the successful path carries.
-       * Worth as much as the successful one and sometimes more: a retry exhaustion's
-       * latency is the whole of the backoff the run paid for nothing.
+       * How long the failed call took, in milliseconds. Worth as much as the successful
+       * path's and sometimes more: a retry exhaustion's latency is the whole of the backoff
+       * the run paid for nothing.
        */
       durationMs?: number;
     }
@@ -818,18 +699,18 @@ export type GgReplayEntryKind =
       /**
        * The call.
        */
-      call: GgReplayToolCall;
+      call: GgSessionToolCall;
       /**
        * The outcome.
        */
-      outcome: GgReplayToolOutcome;
+      outcome: GgSessionToolOutcome;
     }
   | {
       type: "prompt_frame";
       /**
        * The window's items, in the order they were rendered to the client.
        */
-      items: Array<GgReplayPromptItem>;
+      items: Array<GgSessionPromptItem>;
     }
   | {
       type: "shell";
@@ -840,14 +721,14 @@ export type GgReplayEntryKind =
       /**
        * The command and its result.
        */
-      command: GgReplayCommand;
+      command: GgSessionCommand;
     }
   | {
       type: "git";
       /**
        * The command and its result.
        */
-      command: GgReplayCommand;
+      command: GgSessionCommand;
     }
   | {
       type: "cancel_probe";
@@ -870,11 +751,11 @@ export type GgReplayEntryKind =
 
 /**
  * One entry in the input log: a single pinned non-deterministic input, tagged so the
- * multi-agent interleaving reconstructs deterministically.
+ * multi-agent interleaving recovers deterministically.
  */
-export type GgReplayEntry = {
+export type GgSessionEntry = {
   /**
-   * The [agent](GgReplayAgent::agent_id) whose loop consumed this input.
+   * The [agent](GgSessionAgent::agent_id) whose loop consumed this input.
    */
   agentId: string;
   /**
@@ -884,10 +765,9 @@ export type GgReplayEntry = {
    * It is not merely an ordering hint: because a gg run holds run-global mutable state
    * (the [board](https://docs.testcabinet.ai/gg/project-management/), inter-agent
    * messages, collected subagent results) that is rendered into every agent's pinned
-   * prompt each turn, the recorded interleaving **is** an input. A reconstruction
-   * serves a recorded input only once every lower `seq` has been served, which is what
-   * keeps the conversation component of the fingerprint stable across a playback that
-   * removes model latency entirely.
+   * prompt each turn, the recorded interleaving **is** part of what each agent was shown.
+   * Two agents' entries read in `seq` order are the windows the run actually built; read in
+   * any other order they are windows nobody saw.
    */
   seq: number;
 } & (
@@ -896,18 +776,17 @@ export type GgReplayEntry = {
       /**
        * What was sent.
        */
-      request: GgReplayRequest;
+      request: GgSessionRequest;
       /**
        * The response the turn yielded — the `gg` binary's `ModelResponse` (`text`,
        * `toolCalls`, `finishReason`, `usage`, `cost`), carried as free-form JSON
        * because its shape is owned by the binary. Its recorded `usage` is what makes a
-       * cost ceiling trip at the same turn under a reconstruction.
+       * cost ceiling trip when it did.
        */
       response: Record<string, unknown>;
       /**
-       * How long the call took, in milliseconds. A
-       * [full-fidelity](GgReplayFidelity::Full) latency clock: absent from a standard
-       * record, and absent even from a full one for a call whose latency was not measured.
+       * How long the call took, in milliseconds. Absent for a call whose latency was not
+       * measured.
        */
       durationMs?: number;
     }
@@ -916,16 +795,15 @@ export type GgReplayEntry = {
       /**
        * What was sent.
        */
-      request: GgReplayRequest;
+      request: GgSessionRequest;
       /**
        * Why it failed.
        */
-      error: GgReplayModelError;
+      error: GgSessionModelError;
       /**
-       * How long the failed call took, in milliseconds — the same
-       * [full-fidelity](GgReplayFidelity::Full) latency clock the successful path carries.
-       * Worth as much as the successful one and sometimes more: a retry exhaustion's
-       * latency is the whole of the backoff the run paid for nothing.
+       * How long the failed call took, in milliseconds. Worth as much as the successful
+       * path's and sometimes more: a retry exhaustion's latency is the whole of the backoff
+       * the run paid for nothing.
        */
       durationMs?: number;
     }
@@ -934,18 +812,18 @@ export type GgReplayEntry = {
       /**
        * The call.
        */
-      call: GgReplayToolCall;
+      call: GgSessionToolCall;
       /**
        * The outcome.
        */
-      outcome: GgReplayToolOutcome;
+      outcome: GgSessionToolOutcome;
     }
   | {
       type: "prompt_frame";
       /**
        * The window's items, in the order they were rendered to the client.
        */
-      items: Array<GgReplayPromptItem>;
+      items: Array<GgSessionPromptItem>;
     }
   | {
       type: "shell";
@@ -956,14 +834,14 @@ export type GgReplayEntry = {
       /**
        * The command and its result.
        */
-      command: GgReplayCommand;
+      command: GgSessionCommand;
     }
   | {
       type: "git";
       /**
        * The command and its result.
        */
-      command: GgReplayCommand;
+      command: GgSessionCommand;
     }
   | {
       type: "cancel_probe";
@@ -991,7 +869,7 @@ export type GgReplayEntry = {
  * Capture **degrades, it never fails the run it observes** — so every one of these is a
  * recorded fact rather than an error, and the record is still served.
  */
-export type GgReplayTruncationReason =
+export type GgSessionTruncationReason =
   | "byte_ceiling"
   | "session_killed"
   | "corrupt_journal"
@@ -1000,13 +878,13 @@ export type GgReplayTruncationReason =
 /**
  * What a record is missing, when it is missing something.
  */
-export type GgReplayTruncation = {
+export type GgSessionTruncation = {
   /**
    * Why capture stopped.
    */
-  reason: GgReplayTruncationReason;
+  reason: GgSessionTruncationReason;
   /**
-   * The [`seq`](GgReplayEntry::seq) of the last entry that made it into the record.
+   * The [`seq`](GgSessionEntry::seq) of the last entry that made it into the record.
    */
   lastSeq?: number;
   /**
@@ -1016,54 +894,24 @@ export type GgReplayTruncation = {
 };
 
 /**
- * A gg run's **replay record**: the fixed seed, four content-addressed pools, the agent
+ * A gg run's **session record**: the fixed seed, four content-addressed pools, the agent
  * provenance table, and the ordered log of every non-deterministic input the session
  * consumed.
  *
  * See the [module documentation](self) for the shape and for how a
- * [v1 record](self#reading-a-v1-record) is upgraded on read. `Deserialize` accepts both
- * formats and always yields this shape, so every consumer has exactly one code path.
+ * record from a newer gg is refused rather than read on a partial understanding of it.
  */
-export type GgReplayRecord = {
+export type GgSessionRecord = {
   /**
    * The format **this document** is in. The compatibility contract, and the only
-   * identity a reader may branch on. Absent ⇒ [1](GG_REPLAY_FORMAT_V1).
-   *
-   * A [v1 body](self#reading-a-v1-record) is upgraded as it is read, so the record in
-   * hand is always in the v2 shape and reports
-   * [`GG_REPLAY_FORMAT_VERSION`] once it has been. What the *recorder* wrote is
-   * [`upgraded_from`](Self::upgraded_from), and that — not this — is what says whether
-   * the turns carry recorder-stamped fingerprints. Keeping the two apart is what makes
-   * the record round-trip: a document that said `1` while carrying pooled entries would
-   * be re-upgraded on the next read, and positional re-interning would substitute pool
-   * indices for message bodies.
+   * identity a reader may branch on: a record from a *newer* gg is refused outright
+   * rather than read on a partial understanding of its entry kinds.
    */
   formatVersion: number;
   /**
-   * The format the recorder actually wrote, when this record reached the v2 shape
-   * through the [upgrade](self#reading-a-v1-record) rather than being captured in it.
-   * Absent for a record captured at [`format_version`](Self::format_version).
-   *
-   * This is what a *driving* reconstruction refuses on: an upgraded record's
-   * fingerprints were derived from its transcript rather than stamped by the recorder,
-   * and it has no [provenance table](Self::agents), no [seed](Self::seed) and no
-   * [client role](GgClientRole). A passive walk of one is fine.
-   */
-  upgradedFrom?: number;
-  /**
    * Which build captured it. Explanatory; never a gate.
    */
-  recorder: GgReplayRecorder;
-  /**
-   * How completely the session was captured. Absent ⇒
-   * [`Standard`](GgReplayFidelity::Standard), which is the honest floor for a
-   * [v1 record](self#reading-a-v1-record): v1 capture was opt-in, so every one of them
-   * *was* opted into, but none of them carries a full-only input — v1 recorded none of
-   * those categories at all — and reporting it as `full` would invite a reader to
-   * conclude the session had no clock reads rather than that the build had no clock
-   * capture.
-   */
-  fidelity: GgReplayFidelity;
+  recorder: GgSessionRecorder;
   /**
    * The gg session id this record replays — the run id, matching the
    * [telemetry](crate::gg::GgTelemetryEvent::session_id) stream's.
@@ -1071,35 +919,34 @@ export type GgReplayRecord = {
   sessionId: string;
   /**
    * The [capability set](GgCapabilitySet) the run was configured with, so a
-   * reconstruction runs under the recorded configuration verbatim rather than under
-   * one assembled to suit it.
+   * a reader has the configuration the run was launched with rather than one assembled to
+   * suit the record.
    */
   capabilitySet: GgCapabilitySet;
   /**
    * The fixed identity the session started from.
    */
-  seed: GgReplaySeed;
+  seed: GgSessionSeed;
   /**
    * Every agent the session created, and how. One row per agent.
    */
-  agents: Array<GgReplayAgent>;
+  agents: Array<GgSessionAgent>;
   /**
-   * The message pool. [Entries](GgReplayEntry) reference it by index.
+   * The message pool. [Entries](GgSessionEntry) reference it by index.
    */
-  messages: Array<GgReplayMessage>;
+  messages: Array<GgSessionMessage>;
   /**
    * The offered-toolset pool.
    */
-  toolsets: Array<GgReplayToolset>;
+  toolsets: Array<GgSessionToolset>;
   /**
    * The text pool: every large string payload — a tool outcome's output, a `git`
    * invocation's stdout, a probe body.
    */
   texts: Array<string>;
   /**
-   * Which [texts](Self::texts) are [clips](GgReplayTextClip) rather than whole payloads, in
-   * ascending pool order. Empty for a [full-fidelity](GgReplayFidelity::Full) record, which
-   * clips nothing, and for a standard one whose payloads all fit.
+   * Which [texts](Self::texts) are [clips](GgSessionTextClip) rather than whole payloads, in
+   * ascending pool order. Empty for a record whose payloads all fit.
    *
    * A sparse side table rather than a field on each pooled text: the overwhelming majority of
    * payloads are not clipped, and widening every entry of the pool to say so would cost more
@@ -1107,19 +954,15 @@ export type GgReplayRecord = {
    * [`truncation`](Self::truncation) — an empty table is the positive statement "nothing was
    * clipped", which is exactly what a reader of a standard record needs to hear.
    */
-  clips: Array<GgReplayTextClip>;
-  /**
-   * The image-blob pool.
-   */
-  blobs: Array<GgReplayBlob>;
+  clips: Array<GgSessionTextClip>;
   /**
    * Every pinned non-deterministic input, in globally monotonic
-   * [`seq`](GgReplayEntry::seq) order.
+   * [`seq`](GgSessionEntry::seq) order.
    */
-  entries: Array<GgReplayEntry>;
+  entries: Array<GgSessionEntry>;
   /**
    * What the record is missing, when it is missing something. Absent on a complete
    * capture.
    */
-  truncation?: GgReplayTruncation;
+  truncation?: GgSessionTruncation;
 };

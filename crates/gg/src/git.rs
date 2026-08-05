@@ -77,25 +77,24 @@ const GG_IDENTITY: &[&str] = &[
 /// wall-clock date makes every commit gg writes a different object on every run — and gg puts a
 /// commit sha into a *prompt*: an [issue](https://docs.testcabinet.ai/gg/project-management/)
 /// review brief tells the reviewer which commit the work is measured against, so the reviewer can
-/// diff it for itself. With a clock-derived date that one line makes an issue-worktree run
-/// impossible to [reconstruct](crate::playback) faithfully, for a reason that has nothing to do
-/// with the run: the reconstruction's baseline commit differs from the recorded one whenever the
-/// two land in different seconds.
+/// diff it for itself. With a clock-derived date, two runs of the same session put different shas
+/// into that brief for a reason that has nothing to do with either run.
 ///
 /// Fixing it costs nothing real. These are gg's own bookkeeping commits in an ephemeral container —
 /// a baseline, a worktree's work commit, a merge — and nobody reads their dates; `git log` is
-/// topological by default. What it buys is that gg's git history becomes a pure function of its
-/// content, which is what makes the v0.7.0 multi-agent paths reconstructable at all. The epoch is
-/// chosen precisely because it is obviously synthetic: a reader who notices it is meant to conclude
-/// that the date means nothing, rather than that the run happened in 1970.
+/// topological by default. What it buys is that gg's git history is a pure function of its content,
+/// so a sha that appears in a prompt says something about the work rather than about the second it
+/// was written in. The epoch is chosen precisely because it is obviously synthetic: a reader who
+/// notices it is meant to conclude that the date means nothing, rather than that the run happened
+/// in 1970.
 const GG_COMMIT_DATE: &str = "1970-01-01T00:00:00Z";
 
-/// Where a `git` invocation is reported for [replay capture](crate::capture), and under whose name.
+/// Where a `git` invocation is reported for [session capture](crate::capture), and under whose name.
 ///
 /// Threaded into every function in this module as an explicit parameter rather than reached for
 /// through run-global state, for the reason the module already threads emitters: gg's orchestration
 /// runs several agents against one workspace, and a recorded command that could not say *which*
-/// dispatch ran it would be an entry a reconstruction cannot place.
+/// dispatch ran it would be an entry nobody can attribute.
 ///
 /// A [`disabled`](Self::disabled) capture records nothing and is the shape every test and every
 /// pre-orchestrator call takes, so no call site needs an `Option`.

@@ -389,7 +389,7 @@ fn collect_tar_command_excludes_regenerable_dependency_dirs() {
 
 #[test]
 fn the_salvage_read_command_streams_one_file_without_a_shell() {
-    // Salvaging a `hung` run's replay journal out of a pod has no filesystem-layer
+    // Salvaging a `hung` run's capture journal out of a pod has no filesystem-layer
     // channel to use — the only way to read a byte out of a pod is to run something in
     // it — so this is the exec the salvage rides. Passed as argv rather than through
     // `sh -c`, with `--` terminating options, so nothing in the path is ever

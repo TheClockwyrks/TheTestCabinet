@@ -35,7 +35,7 @@ use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use test_cabinet_core::gg_replay::GgShellOrigin;
+use test_cabinet_core::gg_session_record::GgShellOrigin;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 

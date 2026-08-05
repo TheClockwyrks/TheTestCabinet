@@ -67,7 +67,7 @@ One entry in that floor is a deliberate reversal. A file too large to **parse** 
 still **counted for size**. A 300 KB god-file is precisely the interesting case;
 dropping it entirely would bias every size metric against the worst outcomes.
 
-A free consequence of honouring the ignore files: the [replay
+A free consequence of honouring the ignore files: the [capture
 journal](/gg/analysis/session-records/#the-journal-must-be-invisible-to-the-run-it-observes)
 is excluded at seed time through the same mechanism, so it can never pollute a code
 analysis. No coordination between the two features was needed.
@@ -190,7 +190,7 @@ Two independent reasons, and the second is the one that is easy to miss:
 1. **The budget.** The run's timer is already stopped and the cap wraps only the
    harness session, so this costs the test case nothing — by construction rather
    than by policy. This is the shared
-   [post-run stage](/gg/analysis/overview/#design-principles) the replay assembly
+   [post-run stage](/gg/analysis/overview/#design-principles) the record assembly
    also uses.
 2. **What is being measured.** The validator runs the case's install and build
    commands **in the produced tree itself**. After validation the tree carries build

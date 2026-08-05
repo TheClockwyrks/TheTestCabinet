@@ -66,7 +66,7 @@ use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use test_cabinet_core::gg::{GgLoopDetection, GgPromptCacheTtl, GgSlotBinding, ROOT_AGENT};
-use test_cabinet_core::gg_replay::{GgClientRole, GgReplayAgentOrigin};
+use test_cabinet_core::gg_session_record::{GgClientRole, GgSessionAgentOrigin};
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
 use crate::loopguard::{LoopGuard, LoopGuardConfig, LoopVerdict, resolve_loop_guard};
@@ -3574,9 +3574,9 @@ pub trait ClientFactory: Send + Sync {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentIdentity {
     /// How the agent came to exist — the same value recorded on its
-    /// [replay row](test_cabinet_core::gg_replay::GgReplayAgent::origin), so a reconstruction
+    /// [replay row](test_cabinet_core::gg_session_record::GgSessionAgent::origin), so a reconstruction
     /// matches a live resolution against the record with no translation in between.
-    pub origin: GgReplayAgentOrigin,
+    pub origin: GgSessionAgentOrigin,
     /// Which of gg's two model clients is being resolved. A
     /// [handoff compaction](crate::compaction) resolves a *second* client for the same agent, and
     /// without this the summarizer's calls and the agent's own next turn would answer from one
@@ -3587,7 +3587,7 @@ pub struct AgentIdentity {
 impl AgentIdentity {
     /// The agent identified by `origin`, binding the client its own turn loop will call
     /// ([`Agent`](GgClientRole::Agent)).
-    pub fn agent(origin: GgReplayAgentOrigin) -> Self {
+    pub fn agent(origin: GgSessionAgentOrigin) -> Self {
         Self {
             origin,
             role: GgClientRole::Agent,
@@ -3597,7 +3597,7 @@ impl AgentIdentity {
     /// The agent identified by `origin`, binding the second client its
     /// [handoff compaction](crate::compaction) summarizes on
     /// ([`Compaction`](GgClientRole::Compaction)).
-    pub fn compaction(origin: GgReplayAgentOrigin) -> Self {
+    pub fn compaction(origin: GgSessionAgentOrigin) -> Self {
         Self {
             origin,
             role: GgClientRole::Compaction,

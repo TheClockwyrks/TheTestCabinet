@@ -114,7 +114,7 @@ The record's terminal state is
 [`canceled`](/components/core/run-records/#status).
 
 The driver then runs **every artifact upload it runs for any other run** — the
-produced tree, proof media, asset media, the `.gg/replay.json` sidecar — and posts a
+produced tree, proof media, asset media, the session record — and posts a
 `canceled` status carrying the record to `POST /jobs/{id}/status`. The backend
 persists it with the events its relay accumulated and attaches it to the
 already-canceled job. It changes nothing else: no state change, no completion

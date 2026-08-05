@@ -318,7 +318,7 @@ async fn the_post_run_stage_runs_after_collection_before_validation_and_outside_
         renderer: Box::new(PrerenderedReferenceRenderer::new(references(
             &test_case, variant,
         ))),
-        replay_assembler: Some(Box::new(SlowStage {
+        session_assembler: Some(Box::new(SlowStage {
             steps: Arc::clone(&steps),
             observed: Arc::clone(&observed),
         })),

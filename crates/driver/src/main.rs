@@ -68,7 +68,7 @@ async fn main() -> ExitCode {
     // The run's identity, minted here rather than inside the engine. The driver has to
     // be able to record the run *itself* when the engine cannot hand a record back — a
     // session that hung, outran its cap, or would not wind down for a cancellation — and
-    // by then the engine has already written into `out/<run_id>/`, salvaged replay record
+    // by then the engine has already written into `out/<run_id>/`, salvaged session record
     // and all. Minting it here is what makes the record the driver builds name the same
     // run tree the engine wrote, instead of an empty directory beside it.
     let run_id = mint_run_id();
@@ -369,7 +369,7 @@ async fn report_canceled(
             // run that errored *after* collecting has a tree worth keeping, and the
             // upload is a no-op when there is nothing there.
             finalize_artifacts(config, &mut record).await;
-            // Same for a gg run's replay record: a cancellation that could not wind down
+            // Same for a gg run's session record: a cancellation that could not wind down
             // cleanly still leaves a salvaged, truncated record in the run tree, and this
             // is the only path that would mirror it.
             finalize_replay_backend_upload(config, &record).await;
@@ -561,7 +561,7 @@ async fn finalize_validation_backend_upload(
     }
 }
 
-/// Mirror a gg run's replay record into the **backend store**, so `GET /runs/{id}/replay` can serve
+/// Mirror a gg run's session record into the **backend store**, so `GET /runs/{id}/replay` can serve
 /// it to a replay driver.
 ///
 /// A no-op for any run with no assembled record at the run tree's root (every non-gg run, and a gg
@@ -580,7 +580,7 @@ async fn finalize_replay_backend_upload(config: &Config, record: &test_cabinet_c
         tracing::warn!(
             run_id = %record.id,
             error = %err,
-            "could not upload the gg replay record to the backend store",
+            "could not upload the gg session record to the backend store",
         );
     }
 }
@@ -674,7 +674,7 @@ async fn report_failure(
             // succeeded run, before the terminal status is posted.
             finalize_artifacts(config, &mut record).await;
             // A `hung` or `timed_out` gg run never reaches artifact collection, but the
-            // engine salvages its replay journal out of the container before teardown and
+            // engine salvages its capture journal out of the container before teardown and
             // assembles it into the run tree all the same — so this is the one upload that
             // routinely has something to do on the failure path. Without it the replay of
             // exactly the run most worth replaying would stop at the driver pod.

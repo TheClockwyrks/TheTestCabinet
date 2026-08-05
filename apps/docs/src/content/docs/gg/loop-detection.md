@@ -179,7 +179,7 @@ loop:
    reply is never streamed as an assistant message, never enters the context window, and
    never appears in the [replay record](/gg/analysis/session-records/), which journals the
    response a turn was *given*. Only its count survives — which is correct, because a
-   replayed run must re-drive the turn the model actually got.
+   record must carry the turn the model actually got.
 4. The turn logs one `warn` naming what was thrown away:
 
 ```text
@@ -208,7 +208,7 @@ replies, which is the figure worth acting on.
 
 The [replay record](/gg/analysis/session-records/) does keep that failure, as a recorded
 model error of kind `response_loop` carrying how many replies were discarded — because
-unlike a discarded attempt, a turn that *failed* is a turn a replayed run has to reproduce.
+unlike a discarded attempt, a turn that *failed* is a turn that changed the run.
 
 ## Configuring it
 

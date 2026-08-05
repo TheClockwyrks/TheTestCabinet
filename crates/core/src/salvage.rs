@@ -1,4 +1,4 @@
-//! Rescuing a **dying** run container's [replay journal](crate::gg_replay_journal)
+//! Rescuing a **dying** run container's [capture journal](crate::gg_session_journal)
 //! before the container is torn down.
 //!
 //! Every other post-session read of a run goes through the collected working tree: the
@@ -6,7 +6,7 @@
 //! [post-run stages](crate::post_run). A run that *hangs* or *runs past its cap* never
 //! gets there. Its session ends in an [`Err`](crate::Error) — [`HarnessHung`] or
 //! [`RunTimedOut`] — and the engine's error path stops the container and returns
-//! immediately, without collecting anything. So the one run whose replay would be most
+//! immediately, without collecting anything. So the one run whose record would be most
 //! worth reading is precisely the one that has none.
 //!
 //! [`HarnessHung`]: crate::Error::HarnessHung
@@ -15,10 +15,10 @@
 //! This module closes that gap with the narrowest possible copy:
 //! [`ArtifactCollector::collect_file`] pulls the single journal file out of the container
 //! into a scratch directory shaped exactly like a collected tree, and the ordinary
-//! [replay assembly stage](crate::gg_replay_assembly::GgReplayAssembler) folds it into the
+//! [record assembly stage](crate::gg_session_assembly::GgSessionAssembler) folds it into the
 //! run tree's `replay.json.gz` as if the run had ended normally. The assembled record
 //! reports itself
-//! [`SessionKilled`](crate::gg_replay::GgReplayTruncationReason::SessionKilled), because a
+//! [`SessionKilled`](crate::gg_session_record::GgSessionTruncationReason::SessionKilled), because a
 //! journal cut off mid-session carries no terminating line — which is the honest
 //! description of what happened.
 //!
@@ -45,18 +45,18 @@ use std::path::Path;
 use tempfile::TempDir;
 
 use crate::execution::{ArtifactCollector, ContainerHandle, WORKSPACE_DIR};
-use crate::gg_replay_journal::GG_REPLAY_JOURNAL_PATH;
+use crate::gg_session_journal::GG_SESSION_JOURNAL_PATH;
 
 /// The absolute in-container path a recording gg session writes its journal to.
 ///
-/// [`GG_REPLAY_JOURNAL_PATH`] is workspace-relative because that is how every host-side
+/// [`GG_SESSION_JOURNAL_PATH`] is workspace-relative because that is how every host-side
 /// reader wants it — joined onto a collected tree. Salvage is the one caller that needs
 /// the container's own view of it, since it copies the file *before* any tree exists.
 pub fn journal_container_path() -> String {
-    format!("{WORKSPACE_DIR}/{GG_REPLAY_JOURNAL_PATH}")
+    format!("{WORKSPACE_DIR}/{GG_SESSION_JOURNAL_PATH}")
 }
 
-/// Copy the replay journal out of a still-running `handle` into a fresh scratch directory
+/// Copy the capture journal out of a still-running `handle` into a fresh scratch directory
 /// **under `beside`**, laid out like a collected working tree with the journal at its usual
 /// relative path.
 ///
@@ -75,7 +75,7 @@ pub fn journal_container_path() -> String {
 /// written to, which is why the caller passes its output directory rather than this
 /// reaching for [`std::env::temp_dir`]. It is the same rule the assembly's segment files
 /// follow, and for the same reason (spelled out in
-/// [`gg_replay_assembly`](crate::gg_replay_assembly)): a container's `/tmp` is routinely a
+/// [`gg_session_assembly`](crate::gg_session_assembly)): a container's `/tmp` is routinely a
 /// small `tmpfs`, and filling it would either fail the copy or take the pod down with it —
 /// on the one path where the failure being reported has to stay diagnosable.
 pub(crate) async fn salvage_journal_tree(
@@ -92,7 +92,7 @@ pub(crate) async fn salvage_journal_tree(
         return None;
     }
     let scratch = match tempfile::Builder::new()
-        .prefix(".replay-salvage-")
+        .prefix(".session-salvage-")
         .tempdir_in(beside)
     {
         Ok(scratch) => scratch,
@@ -101,7 +101,7 @@ pub(crate) async fn salvage_journal_tree(
             return None;
         }
     };
-    let dest = scratch.path().join(GG_REPLAY_JOURNAL_PATH);
+    let dest = scratch.path().join(GG_SESSION_JOURNAL_PATH);
     // The journal lives under `.gg/`, so the scratch tree needs that directory before the
     // collector can write into it — a collector copies a file, it does not build a tree.
     if let Some(parent) = dest.parent()
@@ -120,12 +120,12 @@ pub(crate) async fn salvage_journal_tree(
             // wrong here.
             tracing::debug!(
                 path = %container_path,
-                "no replay journal to salvage from the run container",
+                "no capture journal to salvage from the run container",
             );
             return None;
         }
         Err(err) => {
-            tracing::warn!(error = %err, "salvaging the replay journal failed");
+            tracing::warn!(error = %err, "salvaging the capture journal failed");
             return None;
         }
     }
@@ -134,16 +134,16 @@ pub(crate) async fn salvage_journal_tree(
         Ok(meta) if meta.len() > 0 => {
             tracing::info!(
                 bytes = meta.len(),
-                "salvaged the replay journal from the run container",
+                "salvaged the capture journal from the run container",
             );
             Some(scratch)
         }
         Ok(_) => {
-            tracing::debug!("the salvaged replay journal was empty; nothing to assemble");
+            tracing::debug!("the salvaged capture journal was empty; nothing to assemble");
             None
         }
         Err(err) => {
-            tracing::warn!(error = %err, "the salvaged replay journal could not be read back");
+            tracing::warn!(error = %err, "the salvaged capture journal could not be read back");
             None
         }
     }

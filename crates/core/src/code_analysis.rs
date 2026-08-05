@@ -13,7 +13,7 @@
 //! leaf a number, a boolean or a small enum, destined for the run record and therefore
 //! deserialized on every run listing. [`CodeAnalysisDocument`] is the **unbounded** tier:
 //! every file, every symbol, every import edge, every cycle, every clone group, served
-//! per run as its own artifact. Same posture, and the same reason, as the replay record.
+//! per run as its own artifact. Same posture, and the same reason, as the session record.
 //!
 //! # Why a typed struct and not an open bag
 //!
@@ -68,7 +68,7 @@ pub const CODE_ANALYSIS_TREE_ARTIFACT: &str = "code-analysis.json.gz";
 /// One constant, because the same string is the backend store slot
 /// (`runs/<id>/code-analysis.json`), the route segment (`/runs/{id}/code-analysis`) and
 /// the stem of [`CODE_ANALYSIS_TREE_ARTIFACT`] — the convention only holds if the three
-/// cannot drift apart. The gg replay record's equivalent is `REPLAY_ARTIFACT`, which
+/// cannot drift apart. The gg session record's equivalent is `REPLAY_ARTIFACT`, which
 /// lives in the backend store because nothing outside it names the slot; this one is in
 /// the contract because the *writer* (the analyzer stage, in another crate) and the
 /// *mirror* (the driver) both have to agree with the store on it.

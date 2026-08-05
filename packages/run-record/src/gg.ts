@@ -1495,17 +1495,16 @@ export type GgRunLimits = {
   maxCost?: number;
   /**
    * The per-run ceiling, in bytes, on the
-   * [replay capture journal](crate::gg_replay_journal) gg writes as it runs. **Absent means
+   * [session capture journal](crate::gg_session_journal) gg writes as it runs. **Absent means
    * gg's default of 256 MiB.**
    *
    * The odd one out here, and deliberately so: every other ceiling **stops the run**, and
    * this one stops only the *observation* of it. Crossing it stops capture and marks the
-   * record [truncated](crate::gg_replay::GgReplayTruncationReason::ByteCeiling) — capture
+   * record [truncated](crate::gg_session_record::GgSessionTruncationReason::ByteCeiling) — capture
    * degrades, it never fails the run it observes, because a debugging artifact that can end
-   * a paid run is worse than no artifact. It lives on this type rather than on the
-   * [replay](CAPABILITY_REPLAY) capability's params because capture is on for every run
-   * regardless of what that capability escalates, so a ceiling parked on the capability
-   * would be unreadable by exactly the runs that need it.
+   * a paid run is worse than no artifact. It lives on this type rather than on a capability's
+   * params because capture is on for every run whatever the set says, so a ceiling parked on a
+   * capability would be unreadable by exactly the runs that need it.
    *
    * `0` cannot bound anything (it would stop capture before its first line) and is read as
    * "no ceiling", with a startup warning, on the same terms as
@@ -2571,7 +2570,7 @@ export type GgTelemetryKind =
        * The [agent profile](GgAgentConfig) that spent this — the same name
        * [`AgentSpawned::slot`](Self::AgentSpawned::slot) and
        * [`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded
-       * before gg attributed its deltas, or on a [replay](crate::gg_replay::GgReplayRecord) reconstruction,
+       * before gg attributed its deltas, or on a [replay](crate::gg_session_record::GgSessionRecord) reconstruction,
        * which has no live model binding to name.
        */
       slot?: string;
@@ -3633,7 +3632,7 @@ export type GgTelemetryEvent = {
        * The [agent profile](GgAgentConfig) that spent this — the same name
        * [`AgentSpawned::slot`](Self::AgentSpawned::slot) and
        * [`SlotUsage::slot`](Self::SlotUsage::slot) key on. Unset only on a stream recorded
-       * before gg attributed its deltas, or on a [replay](crate::gg_replay::GgReplayRecord) reconstruction,
+       * before gg attributed its deltas, or on a [replay](crate::gg_session_record::GgSessionRecord) reconstruction,
        * which has no live model binding to name.
        */
       slot?: string;
@@ -4543,220 +4542,6 @@ export type GgTelemetryEvent = {
       status: string;
     }
 );
-
-/**
- * Which non-deterministic input one [`GgReplayEntryV1`] pins — the discriminated payload of a
- * **format v1** [replay](CAPABILITY_REPLAY) record entry.
- *
- * Superseded by [`GgReplayEntryKind`](crate::gg_replay::GgReplayEntryKind). Retained while the
- * recorder, the replay driver and the console's Replay tab are moved onto
- * [format v2](crate::gg_replay); v2's reader upgrades a v1 body on its own, so nothing new should
- * be written against this type.
- *
- * A faithful re-run needs exactly two things a run's own logic cannot reproduce: what the **model**
- * returned, and what each **tool** returned. This enum is those two kinds. The payloads are carried
- * as JSON [`Value`]s — the same way the [telemetry stream](GgTelemetryKind::ToolCall) carries a tool
- * call's `args` — because their concrete shapes are owned by the `gg` binary (its `Message`,
- * `ToolDefinition`, `ModelResponse`, `ToolCall`, and `ToolOutcome` types), not by this contract
- * crate; the [replay driver](https://docs.testcabinet.ai/gg/session-record/) deserializes each back into
- * those types. The variant tag is the `type` field (`model_io` / `tool_result`), inline with the
- * entry's `agentId`/`seq` envelope.
- */
-export type GgReplayEntryKindV1 =
-  | {
-      type: "model_io";
-      /**
-       * The request sent to the model — a JSON object `{ messages, tools }` (the `gg` binary's
-       * `Message[]` and `ToolDefinition[]`, camelCase). Captured verbatim so a re-run reconstructs
-       * exactly what the agent saw this turn.
-       */
-      request: Record<string, unknown>;
-      /**
-       * The response the turn returned — a JSON object matching the `gg` binary's `ModelResponse`
-       * (`text`, `toolCalls`, `finishReason`, `usage`, `cost`). Fed back in place of a live model
-       * call during replay.
-       */
-      response: Record<string, unknown>;
-    }
-  | {
-      type: "tool_result";
-      /**
-       * The tool call the agent (or a code program) made — a JSON object matching the `gg`
-       * binary's `ToolCall` (`id`, `name`, `arguments`).
-       */
-      call: Record<string, unknown>;
-      /**
-       * The exact outcome the dispatch returned — a JSON object matching the `gg` binary's
-       * `ToolOutcome`: `ok`, `output` and `summary`, plus the optional `images` and the
-       * structured `data`/`failure` a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program
-       * branches on. Those optional members are defaulted on the way back in, so a record
-       * captured before they existed still deserializes and replays. Replayed in place of
-       * running the tool.
-       */
-      outcome: Record<string, unknown>;
-    };
-
-/**
- * One entry in a [replay](CAPABILITY_REPLAY) record — a single pinned non-deterministic input,
- * tagged so the multi-agent interleaving reconstructs deterministically.
- *
- * Every entry carries the [`agent_id`](Self::agent_id) of the [agent](GgTelemetryEvent::agent_id)
- * whose loop produced it and a globally monotonic [`seq`](Self::seq) minted across the whole run
- * (not per agent), so ordering the entries by `seq` recovers the exact order the run's agents —
- * interleaved as they run concurrently — issued their model calls and consumed their tool results.
- * The [`kind`](Self::kind) is the pinned input itself, flattened inline so the `type` discriminator
- * and its fields sit alongside `agentId`/`seq`.
- */
-export type GgReplayEntryV1 = {
-  /**
-   * The id of the [agent](GgTelemetryEvent::agent_id) whose turn loop produced this entry (the
-   * root agent's id `"root"`, or a subagent's minted id). What lets a replay driver route each
-   * recorded input to the right node of the [subagent tree](https://docs.testcabinet.ai/gg/subagents/).
-   */
-  agentId: string;
-  /**
-   * The globally monotonic sequence number this entry was recorded at, minted across **all**
-   * agents from one counter. Ordering entries by `seq` reconstructs the run's true interleaving —
-   * the order concurrent agents actually issued model calls and consumed tool results.
-   */
-  seq: number;
-} & (
-  | {
-      type: "model_io";
-      /**
-       * The request sent to the model — a JSON object `{ messages, tools }` (the `gg` binary's
-       * `Message[]` and `ToolDefinition[]`, camelCase). Captured verbatim so a re-run reconstructs
-       * exactly what the agent saw this turn.
-       */
-      request: Record<string, unknown>;
-      /**
-       * The response the turn returned — a JSON object matching the `gg` binary's `ModelResponse`
-       * (`text`, `toolCalls`, `finishReason`, `usage`, `cost`). Fed back in place of a live model
-       * call during replay.
-       */
-      response: Record<string, unknown>;
-    }
-  | {
-      type: "tool_result";
-      /**
-       * The tool call the agent (or a code program) made — a JSON object matching the `gg`
-       * binary's `ToolCall` (`id`, `name`, `arguments`).
-       */
-      call: Record<string, unknown>;
-      /**
-       * The exact outcome the dispatch returned — a JSON object matching the `gg` binary's
-       * `ToolOutcome`: `ok`, `output` and `summary`, plus the optional `images` and the
-       * structured `data`/`failure` a [responses-as-code](CAPABILITY_RESPONSES_AS_CODE) program
-       * branches on. Those optional members are defaulted on the way back in, so a record
-       * captured before they existed still deserializes and replays. Replayed in place of
-       * running the tool.
-       */
-      outcome: Record<string, unknown>;
-    }
-);
-
-/**
- * A gg run's **deterministic replay record**, format v1: enough of a
- * [replay](CAPABILITY_REPLAY)-captured run to reconstruct it step for step.
- *
- * Superseded by [`GgReplayRecord`](crate::gg_replay::GgReplayRecord), the pooled
- * [format v2](crate::gg_replay) whose reader upgrades a v1 body on read — so a v1 record stays
- * readable forever without this type. It is retained only until the recorder, the replay driver
- * and the console's Replay tab are moved across; nothing new should be written against it.
- *
- * Recorded only when the [replay](CAPABILITY_REPLAY) capability is on (a debugging tool, not a
- * normal result surface), written to a `.gg/replay.json` sidecar the backend serves per run
- * (`GET /runs/{id}/replay`). It pairs the run's *configuration* — its [`capability_set`](Self::capability_set),
- * the same slice-by dimension the [session summary](GgSessionSummary) carries — with the ordered
- * [`entries`](Self::entries) that pin every non-deterministic input (each agent's model I/O and every
- * tool result). A [replay driver](https://docs.testcabinet.ai/gg/session-record/) re-runs the session from
- * this record, feeding each agent the recorded response and each tool call the recorded outcome, so
- * a developer can step through exactly what each agent saw and did. The record is *additive* to the
- * telemetry: the stream is identical whether replay was captured or not.
- */
-export type GgReplayRecordV1 = {
-  /**
-   * The gg session id this record replays — the run id, matching the
-   * [telemetry](GgTelemetryEvent::session_id) stream's.
-   */
-  sessionId: string;
-  /**
-   * The [capability set](GgCapabilitySet) the run was configured with — recorded so a replay is
-   * self-describing (a driver knows which capabilities were on) and so the record carries the same
-   * slice-by configuration the [session summary](GgSessionSummary) does.
-   */
-  capabilitySet: GgCapabilitySet;
-  /**
-   * Every pinned non-deterministic input the run produced, in globally monotonic
-   * [`seq`](GgReplayEntryV1::seq) order — the model I/O of each agent turn and every tool result,
-   * interleaved across the agent tree exactly as the run issued them.
-   */
-  entries: Array<GgReplayEntryV1>;
-};
-
-/**
- * One tool call within a [replay step](GgReplayStep): the call the model made and the exact outcome
- * the run's dispatch returned for it.
- *
- * The payloads are carried as JSON [`Value`]s for the same reason the [record entries](GgReplayEntryKindV1)
- * are — their concrete shapes (`ToolCall`, `ToolOutcome`) are owned by the `gg` binary, not this
- * contract crate.
- */
-export type GgReplayToolStep = {
-  /**
-   * The tool call the model made this step — a JSON object matching the `gg` binary's `ToolCall`
-   * (`id`, `name`, `arguments`).
-   */
-  call: Record<string, unknown>;
-  /**
-   * The exact outcome the run's dispatch returned — a JSON object matching the `gg` binary's
-   * `ToolOutcome` (`ok`, `output`, `summary`). A faithful replay feeds this back in place of
-   * running the tool.
-   */
-  outcome: Record<string, unknown>;
-};
-
-/**
- * One step in the per-agent walk of a [replay record](GgReplayRecordV1) — the debugging view's data
- * model, [derived from the record](GgReplayRecordV1::steps).
- *
- * A step is one **model turn** of one **agent**: what the agent [`saw`](Self::saw) (the
- * `{ messages, tools }` request it was given) and what it [`did`](Self::did) (the model response),
- * plus [`tool_results`](Self::tool_results) — each tool call the turn made paired with the recorded
- * outcome the run's dispatch returned. A [replay driver](https://docs.testcabinet.ai/gg/session-record/)
- * walks the agent tree turn by turn and produces exactly this sequence, so a developer can step
- * through what each agent saw and did without re-deriving it from the raw
- * [entries](GgReplayRecordV1::entries).
- */
-export type GgReplayStep = {
-  /**
-   * The id of the [agent](GgTelemetryEvent::agent_id) whose turn this step reconstructs (the root
-   * agent's id `"root"`, or a subagent's minted id).
-   */
-  agentId: string;
-  /**
-   * The [`seq`](GgReplayEntryV1::seq) the turn's model call was recorded at — the step's position on
-   * the global timeline, so steps from concurrently-running agents order deterministically.
-   */
-  seq: number;
-  /**
-   * What the agent **saw** this turn: the model request — a JSON object `{ messages, tools }`
-   * (the `gg` binary's `Message[]` and `ToolDefinition[]`, camelCase). [`Value::Null`] only for a
-   * synthetic step holding an orphan tool result (see [`GgReplayRecordV1::steps`]).
-   */
-  saw: Record<string, unknown> | null;
-  /**
-   * What the model **did** this turn: the response — a JSON object matching the `gg` binary's
-   * `ModelResponse` (`text`, `toolCalls`, `finishReason`, `usage`, `cost`). [`Value::Null`] only
-   * for a synthetic orphan-tool-result step.
-   */
-  did: Record<string, unknown> | null;
-  /**
-   * Each tool call this turn made, in call order, paired with the recorded outcome the run's
-   * dispatch returned for it.
-   */
-  toolResults: Array<GgReplayToolStep>;
-};
 
 /**
  * An operator's saved, reusable gg configuration: a named

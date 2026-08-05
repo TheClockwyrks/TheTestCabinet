@@ -310,11 +310,11 @@ pub async fn upload_validation_to_backend(
     Ok(())
 }
 
-/// Mirror a gg run's replay record into the **backend store**, keyed by run id — the debug-only
+/// Mirror a gg run's session record into the **backend store**, keyed by run id — the debug-only
 /// counterpart to [`upload_validation_to_backend`], for the same reason.
 ///
 /// A gg run streams its non-deterministic inputs into a journal that the host folds into
-/// [`{out_dir}/{id}/replay.json.gz`](test_cabinet_core::gg_replay_assembly::GG_REPLAY_TREE_ARTIFACT)
+/// [`{out_dir}/{id}/replay.json.gz`](test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT)
 /// at the [post-run seam](test_cabinet_core::post_run) — at the **run tree's root**, not inside
 /// `implementation/`, which is a verbatim copy of what the model produced. Nothing else writes the
 /// backend store's `runs/{id}/replay.json` for a backend-driven run, so without this mirror the
@@ -335,7 +335,7 @@ pub async fn upload_replay_to_backend(
 ) -> test_cabinet_core::Result<()> {
     let replay_path = out_dir
         .join(&record.id)
-        .join(test_cabinet_core::gg_replay_assembly::GG_REPLAY_TREE_ARTIFACT);
+        .join(test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT);
     let Ok(bytes) = std::fs::read(&replay_path) else {
         // No captured replay (the common case: the capability was off, or a run that never produced
         // one) — nothing to mirror.
@@ -359,7 +359,7 @@ pub async fn upload_replay_to_backend(
 ///
 /// Applies to **every** harness, unlike the replay mirror: the analysis is harness-agnostic.
 ///
-/// The gzipped bytes are uploaded as they are, for the same reason the replay record's are: the
+/// The gzipped bytes are uploaded as they are, for the same reason the session record's are: the
 /// store keeps run-tree artifacts opaque and the serving route content-negotiates, so decompressing
 /// here would only cost the transfer and be re-done on the way out.
 ///

@@ -593,7 +593,7 @@ the model's whole reply
 
 Everything above the tool registry is new; everything below it is the same code an
 ordinary tool-calling turn runs through, which is what preserves the loop's gating,
-delegation, telemetry and replay behaviour unchanged.
+delegation, telemetry and capture behaviour unchanged.
 
 The sandbox is synchronous and CPU-bound, so it runs on a blocking thread while each
 call it makes is serviced **on the async loop** over a channel. That is not an
@@ -1554,19 +1554,11 @@ consecutive errors, recent error rate, cost — are not params of this capabilit
 They live on the capability set, apply to both execution modes, and have
 [their own page](/gg/execution-limits/).
 
-## Replay
+## What the session record holds of a program
 
-A program's composed calls are captured for [replay](/gg/session-record/) exactly as native tool
-calls are: each streams its own `ToolCall`/`ToolResult` pair and is recorded. They carry
-a synthetic call id prefixed `program:` — a program's call has no provider-assigned id,
-and the ordinal in that id is what keeps two calls to the same tool in one program
-distinct. The replay driver recognises the prefix and attributes such a result to the
-open turn's program rather than to a native tool call the model never made.
-
-Replaying a code turn is exact because the driver **reconstructs** it: it walks the record
-and re-emits the recorded call/outcome pairs in recorded order. No program is prepared,
-no reply is healed and no sandbox is instantiated, so the record is the whole of what makes
-the reconstruction faithful. The attribution rule is scoped
-to a run the record's own
-capability set says was in code mode, so a `program:` id appearing in a tool-calling record
-is still reported as the divergence it is.
+A program's composed calls are captured for the
+[session record](/gg/session-record/) exactly as native tool calls are: each streams its own
+`ToolCall`/`ToolResult` pair and is recorded. They carry a synthetic call id prefixed
+`program:` — a program's call has no provider-assigned id, and the ordinal in that id is
+what keeps two calls to the same tool in one program distinct, and what tells a reader that
+the call came from a program rather than from a tool-calling turn the model never took.

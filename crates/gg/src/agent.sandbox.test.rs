@@ -18,8 +18,8 @@
 use super::*;
 use crate::model::Role;
 use test_cabinet_core::gg::SHELL_OUTPUT_OFFLOAD;
-use test_cabinet_core::gg_replay::GgReplayEntryKind;
-use test_cabinet_core::gg_replay_journal::GgJournalLine;
+use test_cabinet_core::gg_session_journal::GgJournalLine;
+use test_cabinet_core::gg_session_record::GgSessionEntryKind;
 
 /// A client that answers the first turn with `program` — its whole reply, exactly as this protocol
 /// asks — and then ends the session by calling `finish`.
@@ -723,13 +723,13 @@ async fn the_synthetic_call_ids_are_unique_within_a_turn() {
     .await;
     assert_eq!(outcome, SessionOutcome::Ran);
 
-    let journal = std::fs::read_to_string(dir.path().join(GG_REPLAY_JOURNAL_PATH)).unwrap();
+    let journal = std::fs::read_to_string(dir.path().join(GG_SESSION_JOURNAL_PATH)).unwrap();
     let ids: Vec<String> = journal
         .lines()
         .filter_map(|line| {
             match serde_json::from_str::<GgJournalLine>(line).expect("a journal line") {
                 GgJournalLine::Entry { entry } => match entry.kind {
-                    GgReplayEntryKind::ToolResult { call, .. } => Some(call.id),
+                    GgSessionEntryKind::ToolResult { call, .. } => Some(call.id),
                     _ => None,
                 },
                 _ => None,

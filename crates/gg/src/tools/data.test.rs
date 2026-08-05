@@ -1,5 +1,5 @@
 //! Tests for the structured sidecar's own contract: the shapes serialise, every variant survives
-//! a round trip through the wire format the replay recorder writes, and the classifications that
+//! a round trip through the wire format the session recorder writes, and the classifications that
 //! are derived rather than hand-written are derived correctly.
 //!
 //! The per-tool assertions ("does `list_dir` actually emit its entries?") live with the tools, in
@@ -87,7 +87,7 @@ fn one_of_each() -> Vec<ToolData> {
     ]
 }
 
-/// Every variant survives a JSON round trip. The replay recorder captures the whole outcome
+/// Every variant survives a JSON round trip. The session recorder captures the whole outcome
 /// verbatim and a replay driver feeds it back, so a payload that cannot make that trip is a
 /// payload that silently disappears from a replayed session.
 #[test]

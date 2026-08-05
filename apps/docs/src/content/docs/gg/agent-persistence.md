@@ -66,7 +66,7 @@ instance 2   opening window already holds
 
 Replaying the stored text instead would be worse than nothing. A queued instance may wait a
 long time behind the one ahead of it, and the instance ahead of it is very often editing the
-exact files in question — so a replay would hand the next instance a confident, wrong picture
+exact files in question — so re-serving the old bytes would hand the next instance a confident, wrong picture
 of the workspace. This is also why the re-read happens when the instance **starts its first
 turn** rather than when it was spawned: a spawn-time snapshot would be stale by the time the
 instance actually ran.
@@ -105,14 +105,14 @@ The agent is told all of this in its [system prompt](/gg/prompts/), because it h
 it never made, sitting at the top of a fresh session, are otherwise indistinguishable from a
 hallucination.
 
-### A text view is replayed, not re-read
+### A text view is re-served, not re-read
 
 The "record the reference, never the bytes" principle is exactly right for a file and does
 **not** transfer to a text view, so gg does the opposite for that half of the desk and stores
 the body.
 
 The principle exists because a file has an on-disk truth that can move under a stored
-snapshot; replaying the bytes would hand the next instance a confident, wrong picture of a
+snapshot; re-serving the bytes would hand the next instance a confident, wrong picture of a
 workspace somebody else has been editing. A text view has no on-disk truth to go stale
 against. It is the summary, diff or table the *agent itself* composed, and the window is the
 only place it ever existed — so a reference to it would name nothing, and there is nothing

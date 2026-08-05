@@ -71,7 +71,7 @@ pub const READ_FILE_TOOL: &str = "read_file";
 /// context. Applied **after** any [line window](ReadPolicy), as the last-resort backstop
 /// against a file with enormous lines; the returned text carries a truncation note.
 ///
-/// Visible to the crate because [replay capture](crate::capture) sizes its own tool-payload
+/// Visible to the crate because [session capture](crate::capture) sizes its own tool-payload
 /// ceiling *at* this number and asserts the relation at compile time: a record has to keep whole
 /// whatever the model was shown whole, so lowering the replay ceiling below this one — or raising
 /// this one above it — must fail the build rather than quietly start recording a file the model

@@ -58,7 +58,7 @@ fn replay_of(result: ReplayResult) -> Replay {
     }
 }
 
-/// Build a scored replay entry for a match `decided` a given way over `result`'s
+/// Build a scored session-record entry for a match `decided` a given way over `result`'s
 /// facts, against `border-soldier` (the opponent id and `scored` flag are
 /// immaterial to the outcome derivation under test).
 fn entry(result: ReplayResult, decided: Decided) -> AdversarialReplay {

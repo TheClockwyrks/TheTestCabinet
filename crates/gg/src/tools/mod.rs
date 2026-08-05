@@ -97,17 +97,17 @@ pub use data::{
     ReclaimData, ShellData, SubagentHandleData, SubagentResultData, ToolData, ToolFailure,
     UsagePair, saturating_u32, saturating_u64,
 };
-pub use filesystem::{
-    EditFileTool, ListDirTool, READ_FILE_TOOL, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED,
-    ReadFileTool, ReadPolicy, WriteFileTool,
-};
 /// Crate-visible, unlike the rest of this module's surface: the only consumer of either is
-/// [replay capture](crate::capture). It sizes its tool-payload ceiling at [`READ_FILE_CAP`] and
+/// [session capture](crate::capture). It sizes its tool-payload ceiling at [`READ_FILE_CAP`] and
 /// asserts the relation at compile time, and it types a [seeded file](crate::capture::RecordedSeed)
 /// with the same [`sniff_image`] `read_file` types an attachment with — so an image the model was
 /// shown and the seed that placed it on disk agree about what it is, which is what lets the two
 /// collapse into one blob-pool entry. Neither is part of the tool API.
-pub(crate) use filesystem::{READ_FILE_CAP, sniff_image};
+pub(crate) use filesystem::READ_FILE_CAP;
+pub use filesystem::{
+    EditFileTool, ListDirTool, READ_FILE_TOOL, READ_MODE_DEFAULT_CAP, READ_MODE_UNLIMITED,
+    ReadFileTool, ReadPolicy, WriteFileTool,
+};
 pub use memories::{
     CreateMemoryTool, DeleteMemoryTool, EditMemoryTool, ReadMemoryTool, SearchMemoriesTool,
     UpdateMemoryTool, WriteMemoryTool, is_memory_tool, read_only_refusal,

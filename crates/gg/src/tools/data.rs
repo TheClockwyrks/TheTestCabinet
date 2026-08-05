@@ -96,7 +96,7 @@ pub fn saturating_u64(count: u128) -> u64 {
 /// structured to say" is a real answer and is worth being able to state.
 ///
 /// The serde representation is **adjacently tagged** (`{"kind": "shell", "data": {…}}`). The tag
-/// keeps the JSON self-describing for the replay recorder, which captures the whole
+/// keeps the JSON self-describing for the session recorder, which captures the whole
 /// [`ToolOutcome`](super::ToolOutcome) verbatim; adjacent rather than internal tagging because two
 /// variants wrap something that is not a map ([`BytesWritten`](Self::BytesWritten) wraps a number,
 /// [`DirEntries`](Self::DirEntries) a list), and serde's internally tagged representation cannot

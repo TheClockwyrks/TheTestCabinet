@@ -1105,12 +1105,12 @@ fn the_removed_turn_level_transitions_are_not_tool_names() {
 }
 
 // ---------------------------------------------------------------------------
-// The serde contract the replay recorder depends on
+// The serde contract the session recorder depends on
 // ---------------------------------------------------------------------------
 
 /// An outcome recorded **before** the sidecar existed still deserializes.
 ///
-/// The replay recorder captures a dispatch's outcome verbatim and a replay driver feeds it back,
+/// The session recorder captures a dispatch's outcome verbatim and a replay driver feeds it back,
 /// so a record written by an older gg has to keep loading. Both new fields are `#[serde(default)]`
 /// for exactly this reason, and this is the test that would fail if one stopped being.
 #[test]

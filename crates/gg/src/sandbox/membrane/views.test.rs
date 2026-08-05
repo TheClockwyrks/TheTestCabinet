@@ -12,7 +12,7 @@ use crate::tools::{FileTextData, ToolData, ToolFailure, ToolOutcome};
 /// **`open-file-view` is a `read_file`, and is rostered as one.**
 ///
 /// The whole reason it goes through `dispatch` rather than straight to the api: a program that
-/// shows itself a file has made a read, and the run's roster, telemetry, replay record and
+/// shows itself a file has made a read, and the run's roster, telemetry, session record and
 /// capability backstop must all see it as one. If this ever stopped being true, a run could read a
 /// file through a side door that no capability governs.
 #[test]
@@ -164,7 +164,7 @@ fn re_opening_a_selector_is_reported_as_a_supersede() {
 
 /// **A text view is not a tool call.**
 ///
-/// No dispatch, so no roster entry, no `ToolCall`/`ToolResult` pair and no replay record — a program
+/// No dispatch, so no roster entry, no `ToolCall`/`ToolResult` pair and no session record — a program
 /// that opens ten views has still made zero tool calls. Counting them as calls would make the
 /// `CodeExecution` event's `tool_calls` disagree with the number of telemetry pairs the turn
 /// actually streamed.

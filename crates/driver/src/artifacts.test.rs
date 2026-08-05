@@ -906,7 +906,7 @@ async fn non_asset_run_uploads_no_asset_media() {
 fn write_replay_artifact(out_dir: &std::path::Path, bytes: &[u8]) {
     let path = out_dir
         .join("run-1")
-        .join(test_cabinet_core::gg_replay_assembly::GG_REPLAY_TREE_ARTIFACT);
+        .join(test_cabinet_core::gg_session_assembly::GG_SESSION_TREE_ARTIFACT);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(path, bytes).unwrap();
 }
@@ -943,14 +943,14 @@ async fn a_run_that_assembled_no_replay_uploads_nothing() {
     let (backend_url, received) = stub_backend().await;
     let out = TempDir::new().unwrap();
 
-    // The common case by far: replay capture is off, so the assembly stage wrote nothing.
+    // The common case by far: session capture is off, so the assembly stage wrote nothing.
     upload_replay_to_backend(&backend_url, &record(None), out.path())
         .await
         .expect("no-op succeeds");
 
     assert!(
         received.lock().unwrap().is_empty(),
-        "a run with no assembled replay record makes no request",
+        "a run with no assembled session record makes no request",
     );
 }
 

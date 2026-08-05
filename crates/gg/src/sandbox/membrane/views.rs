@@ -19,7 +19,7 @@
 //! the enabled-set backstop (a run with reading withheld does not get a read through a side door),
 //! and the ordered roster entry — and, on the far side of the
 //! [api](ToolApi), the loop's own servicing: the compaction gate, the `ToolCall`/`ToolResult`
-//! telemetry pair and the replay capture. What it adds is the view itself: the read's result also
+//! telemetry pair and the session capture. What it adds is the view itself: the read's result also
 //! becomes a context item, keyed by the path it came from.
 //!
 //! None of that is what the **model** called. It called `view.openFile`, and that is the identity

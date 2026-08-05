@@ -473,7 +473,7 @@ pub const DEFAULT_MAX_ERROR_RATE: f64 = 0.4;
 /// the minimum sample, so the default ceiling cannot fire before an agent's fiftieth turn.
 pub const DEFAULT_ERROR_RATE_WINDOW: usize = 50;
 
-/// The per-run ceiling on the [replay capture journal](crate::capture) when a run declares none:
+/// The per-run ceiling on the [session capture journal](crate::capture) when a run declares none:
 /// **256 MiB**.
 ///
 /// Sized to be unreachable by any run that is behaving, and reachable by one that is not. A pooled
@@ -482,7 +482,7 @@ pub const DEFAULT_ERROR_RATE_WINDOW: usize = 50;
 /// producing megabytes of distinct output — where the alternative is a journal that fills the run
 /// container's disk and takes the run down with it. Capture is the thing that gives way, never the
 /// run: crossing the ceiling stops capture and marks the record
-/// [truncated](test_cabinet_core::gg_replay::GgReplayTruncationReason::ByteCeiling).
+/// [truncated](test_cabinet_core::gg_session_record::GgSessionTruncationReason::ByteCeiling).
 pub const DEFAULT_REPLAY_MAX_BYTES: u64 = 256 * 1024 * 1024;
 
 /// The resolved [execution ceilings](test_cabinet_core::gg::GgRunLimits) one run is bounded by.
@@ -508,7 +508,7 @@ pub struct RunLimits {
     /// The run's accumulated-cost ceiling, when configured. Measured against the run-wide
     /// [spend](RunSpend), never against one agent's share of it.
     pub max_cost: Option<f64>,
-    /// The per-run byte ceiling on the [replay capture journal](crate::capture), defaulting to
+    /// The per-run byte ceiling on the [session capture journal](crate::capture), defaulting to
     /// [`DEFAULT_REPLAY_MAX_BYTES`] and `None` only when the run explicitly declared a ceiling
     /// that cannot bound anything.
     ///
@@ -580,7 +580,7 @@ impl RunLimits {
 
     /// The one `info` line a run logs at launch, naming every **execution** ceiling actually in
     /// force — the ones that can end the run. The
-    /// [replay ceiling](Self::replay_max_bytes) is deliberately not among them: it bounds the
+    /// [journal ceiling](Self::replay_max_bytes) is deliberately not among them: it bounds the
     /// journal that observes the run, and reporting it here would tell an operator reading "why
     /// might this run stop early?" about something that cannot stop it.
     ///
@@ -705,7 +705,7 @@ pub fn resolve_run_limits(set: &GgCapabilitySet, warnings: &mut Vec<String>) -> 
     let replay_max_bytes = match declared.replay_max_bytes {
         Some(0) => {
             warnings.push(
-                "replayMaxBytes: 0 cannot bound anything (it would stop replay capture before its \
+                "replayMaxBytes: 0 cannot bound anything (it would stop session capture before its \
                  first line); the ceiling is off and capture is unbounded."
                     .to_string(),
             );

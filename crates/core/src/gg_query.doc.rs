@@ -228,7 +228,7 @@ pub fn flatten_json(prefix: &str, value: &Value, out: &mut GgRunDoc) {
 /// the root alone would report `false` for a run that enabled a capability on the one
 /// subagent under study, which is the same defect
 /// [`GgCapabilitySet::any_agent_enabled`](crate::gg::GgCapabilitySet::any_agent_enabled)
-/// was introduced to fix in the replay gate. Per-agent detail is not lost either: each
+/// was introduced to fix. Per-agent detail is not lost either: each
 /// agent's own enablements are written **sparsely** as `agent.<name>.cap.<id>`, so a
 /// per-agent ablation is expressible without making every document carry the catalog
 /// once per profile.
@@ -334,8 +334,8 @@ fn insert_capability_set(doc: &mut GgRunDoc, set: &GgCapabilitySet) {
         //
         // Read from the root when the root declares it, and otherwise from the first
         // agent that does. A set that configures a capability on one subagent has
-        // exactly one configuration for it, and reporting `cap.replay = true` beside no
-        // `cap.replay.journalCeiling` would make the params look absent from the run
+        // exactly one configuration for it, and reporting `cap.memories = true` beside no
+        // `cap.memories.implementation` would make the params look absent from the run
         // rather than absent from the root. Declaration order is stable, so the choice
         // is deterministic.
         let Some(cfg) = set

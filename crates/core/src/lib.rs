@@ -29,9 +29,9 @@ pub mod gg;
 pub mod gg_exec;
 pub mod gg_query;
 pub mod gg_reference;
-pub mod gg_replay;
-pub mod gg_replay_assembly;
-pub mod gg_replay_journal;
+pub mod gg_session_assembly;
+pub mod gg_session_journal;
+pub mod gg_session_record;
 pub mod harness;
 pub mod harness_registry;
 pub mod harness_telemetry;
@@ -384,15 +384,15 @@ where
     pub orchestrators: OrchestratorCatalog,
     /// Renders reference mockups to screenshots for seeding and validation.
     pub renderer: Box<dyn ReferenceRenderer>,
-    /// Assembles a **gg** run's streamed replay journal into the run's replay
+    /// Assembles a **gg** run's streamed capture journal into the run's session
     /// record, at the [post-run stage seam](crate::post_run).
     ///
     /// `None` — the default for every host that has no use for it, and for every
-    /// test — runs no assembly, which simply leaves the run without a replay
+    /// test — runs no assembly, which simply leaves the run without a session
     /// artifact.
-    pub replay_assembler: Option<Box<dyn PostRunStage>>,
+    pub session_assembler: Option<Box<dyn PostRunStage>>,
     /// Statically analyses the code the model wrote, at the [post-run stage
-    /// seam](crate::post_run), after the replay assembly has lifted gg's journal
+    /// seam](crate::post_run), after the record assembly has lifted gg's journal
     /// out of the tree.
     ///
     /// Injected rather than called directly because the analyzer crate depends on
@@ -941,11 +941,11 @@ where
             Err(err) => {
                 // The session failed, so this run never reaches artifact collection or
                 // the post-run seam — the caller returns straight out of `run_resolved`
-                // with this error. Rescue gg's replay journal first, while the container
+                // with this error. Rescue gg's capture journal first, while the container
                 // still exists, because a run that hung or ran past its cap is exactly
-                // the run whose replay is worth reading (see [`crate::salvage`]). Only
+                // the run whose record is worth reading (see [`crate::salvage`]). Only
                 // the journal: the produced tree is deliberately left behind.
-                self.salvage_replay(
+                self.salvage_session_record(
                     &handle,
                     run_id,
                     test_case,
@@ -961,7 +961,7 @@ where
         }
     }
 
-    /// Assemble a replay record for a run whose session ended in an error, from the
+    /// Assemble a session record for a run whose session ended in an error, from the
     /// journal [salvaged](crate::salvage) out of the container it is about to lose.
     ///
     /// This is the failure-path counterpart to the [post-run seam](crate::post_run) in
@@ -972,7 +972,7 @@ where
     /// but the journal, never the implementation, so nothing a hung run half-wrote can be
     /// mistaken for output it produced.
     ///
-    /// Deliberately runs **only** the replay assembler and not the code analyzer. Code
+    /// Deliberately runs **only** the record assembler and not the code analyzer. Code
     /// analysis measures the code the model wrote, and there is no collected tree here to
     /// measure; a figure computed from an empty scratch directory would be a
     /// convincing-looking zero rather than an absence.
@@ -980,7 +980,7 @@ where
     /// Entirely best-effort, and silent about it: this is called while a run is already
     /// failing, and the failure being reported accurately outranks the diagnostic.
     #[allow(clippy::too_many_arguments)]
-    async fn salvage_replay(
+    async fn salvage_session_record(
         &self,
         handle: &ContainerHandle,
         run_id: &str,
@@ -991,10 +991,10 @@ where
         canceled: bool,
     ) {
         // Nothing to assemble into, and nothing to assemble: a host that wires no
-        // assembler wants no replay artifact, and only gg writes a journal at all. Both
+        // assembler wants no session record, and only gg writes a journal at all. Both
         // are checked before the copy so a failing third-party run is never asked to hand
         // over a file it could not have written.
-        let Some(stage) = self.replay_assembler.as_deref() else {
+        let Some(stage) = self.session_assembler.as_deref() else {
             return;
         };
         if !request.is_gg() {
@@ -1019,7 +1019,7 @@ where
             tracing::warn!(
                 error = %err,
                 run_dir = %run_dir.display(),
-                "could not create the run directory to assemble a salvaged replay into",
+                "could not create the run directory to assemble a salvaged session record into",
             );
             return;
         }
@@ -1043,7 +1043,7 @@ where
         if !report.artifacts.is_empty() {
             tracing::info!(
                 artifacts = ?report.artifacts,
-                "assembled a replay record salvaged from the failed run's container",
+                "assembled a session record salvaged from the failed run's container",
             );
         }
     }
@@ -1203,11 +1203,11 @@ where
     /// most callers should do the same — but a host that has to *report* a run this
     /// method never returns from cannot. A run that hangs or outruns its cap ends in an
     /// [`Err`], after the engine has already
-    /// [salvaged](crate::salvage) its replay journal into `<output_dir>/<run_id>`; the
+    /// [salvaged](crate::salvage) its capture journal into `<output_dir>/<run_id>`; the
     /// host then builds the failure record itself with
     /// [`write_failed_record`]. Were the id minted privately here, that record would
     /// carry a *different* id, and everything the failing run left on disk — the
-    /// salvaged replay above all — would be orphaned under an id nothing else knows.
+    /// salvaged session record above all — would be orphaned under an id nothing else knows.
     /// Taking it as a parameter is what keeps the failure path and the success path
     /// naming the same run.
     #[instrument(
@@ -1442,7 +1442,7 @@ where
         let run_dir = self.output_dir.join(run_id);
         std::fs::create_dir_all(&run_dir)?;
         let post_run = post_run::run_stages(
-            [self.replay_assembler.as_deref(), self.analyzer.as_deref()]
+            [self.session_assembler.as_deref(), self.analyzer.as_deref()]
                 .into_iter()
                 .flatten(),
             &post_run::PostRunContext {
@@ -1655,7 +1655,7 @@ pub fn mint_run_id() -> String {
 ///
 /// The `id` must be the same one the run was driven under (see [`mint_run_id`]) whenever
 /// the run reached the engine at all: the engine may already have written into
-/// `<output_dir>/<id>` — a hung gg run's [salvaged](crate::salvage) replay record lands
+/// `<output_dir>/<id>` — a hung gg run's [salvaged](crate::salvage) session record lands
 /// there — and a record filed under a different id leaves all of it unreachable.
 ///
 /// A run that errors before [`RunEngine::run_resolved`] reaches its success path

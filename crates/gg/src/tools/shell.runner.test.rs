@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use test_cabinet_core::gg_replay::GgShellOrigin;
+use test_cabinet_core::gg_session_record::GgShellOrigin;
 
 use super::{RealShellRunner, ShellRequest, ShellRunner, ShellStatus, StubShellRunner, real_shell};
 use crate::tools::{OffloadPolicy, ToolContext, run_command};

@@ -12,7 +12,7 @@
 //!
 //! The production implementation (the loop's `LoopToolApi`, in [`crate::agent`]) performs each call
 //! against gg's real tools and does the loop servicing — the compaction gate, `ToolCall`/
-//! `ToolResult` telemetry, replay capture, agent-managed-context reclaim, skill pinning, and — for
+//! `ToolResult` telemetry, session capture, agent-managed-context reclaim, skill pinning, and — for
 //! the delegation family — routing through the subagent scheduler. Because it holds the agent's
 //! loop state and the sandbox runs on a blocking thread, it drives the async parts (`shell`,
 //! delegation) with a [`Handle`](tokio::runtime::Handle)`::block_on`. The in-memory `FakeToolApi`
@@ -45,7 +45,7 @@ pub struct FunctionSummary {
 /// back to the model and telemetry counts.
 ///
 /// It deliberately does **not** carry the arguments. The loop already sends the same `Value` to the
-/// servicing seam, which emits it as `ToolCall` telemetry and hands it to the replay recorder, so a
+/// servicing seam, which emits it as `ToolCall` telemetry and hands it to the session recorder, so a
 /// second full copy retained for the whole turn would be pure waste — a program that rewrites forty
 /// 64 KiB files would hold ~2.5 MiB of dead clones, uncapped, for a field nothing renders.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,7 +72,7 @@ pub struct SandboxToolCall {
 /// count of withheld capabilities.
 ///
 /// Refusals are kept apart from [serviced calls](SandboxToolCall) because they produce no telemetry
-/// and no replay entry — nothing was dispatched — so counting them together would make the
+/// and no session-record entry — nothing was dispatched — so counting them together would make the
 /// `CodeExecution` event's `tool_calls` disagree with the number of `ToolCall`/`ToolResult` pairs
 /// the turn actually streamed.
 ///
@@ -342,7 +342,7 @@ pub trait ToolApi: Send + 'static {
     /// deliberately does push a [`FileView`](test_cabinet_core::gg::GgContextSource::FileView).
     ///
     /// The read is an ordinary serviced `read_file`: the same tool, the same telemetry, the same
-    /// replay entry, the same roster line. What differs is what happens to the result — it also
+    /// session-record entry, the same roster line. What differs is what happens to the result — it also
     /// becomes a context item keyed by `(path, region)`, and the picture a mockup returned rides in
     /// that item rather than out on the turn's feedback.
     fn open_file_view(

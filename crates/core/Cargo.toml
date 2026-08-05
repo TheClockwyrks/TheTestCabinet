@@ -29,7 +29,7 @@ toml = { workspace = true }
 handlebars = { workspace = true }
 tempfile = { workspace = true }
 # Gzip framing for the run-tree analysis artifacts core assembles on the host
-# (`gg_replay_assembly` writes `replay.json.gz`); the same workspace codec the
+# (`gg_session_assembly` writes `replay.json.gz`); the same workspace codec the
 # backend store's reader and the archive service use, so one encoder decides the
 # framing for the whole path.
 flate2 = { workspace = true }

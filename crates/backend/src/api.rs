@@ -256,7 +256,7 @@ pub fn router(state: AppState) -> Router {
                 .post(test_cases::put_run_controller)
                 .layer(DefaultBodyLimit::max(MAX_RUN_UPLOAD_BYTES)),
         )
-        // A gg run's debug-only replay record (the capture of its non-deterministic
+        // A gg run's debug-only session record (the capture of its non-deterministic
         // inputs — each agent's model I/O and every tool result): mirrored in by the
         // driver from the `replay.json.gz` the post-run assembly stage folds the run's
         // capture journal into (POST), and served so a replay driver can re-run the
@@ -272,7 +272,7 @@ pub fn router(state: AppState) -> Router {
         // A run's code-analysis document — the unbounded tier of the static read of the
         // code its model wrote (every file, symbol, import edge, cycle and clone group),
         // mirrored in by the driver from the run tree's `code-analysis.json.gz` (POST) and
-        // served to the per-run Code tab (GET). Same convention as the replay record above,
+        // served to the per-run Code tab (GET). Same convention as the session record above,
         // and offered for **every** harness: analysing a directory involves no
         // harness-specific work, so restricting the route would cost coverage for nothing.
         .route(

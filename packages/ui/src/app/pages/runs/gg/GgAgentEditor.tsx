@@ -16,8 +16,6 @@ import {
   FSM_CAP,
   LOOP_DETECTION_HINT,
   LOOP_DETECTION_SPECS,
-  REPLAY_CAP,
-  REPLAY_CAP_ID,
   RESPONSES_AS_CODE_CAP,
   RESPONSES_AS_CODE_CAP_ID,
   SUBAGENT_SCOPES,
@@ -524,35 +522,6 @@ export function GgAgentEditor({
                   )}
                 </div>
 
-                {/* Full-fidelity replay. A capability on the wire — that is how gg reads
-                    it and how a study slices on it — but it is not one of the things this
-                    agent may do, so it is not offered on the Tools or APIs tab: it says
-                    what gg writes down while the agent works. Its purpose deliberately
-                    says "the run" and not "this agent", because enabling it on any one
-                    agent escalates the whole run's record; keep that wording wherever
-                    this row moves. */}
-                <div
-                  className={`${gg.capRow}${
-                    agent.capabilities[REPLAY_CAP_ID]?.enabled
-                      ? ""
-                      : ` ${gg.capOff}`
-                  }`}
-                >
-                  <label className={gg.capHeader}>
-                    <Switch
-                      checked={Boolean(
-                        agent.capabilities[REPLAY_CAP_ID]?.enabled,
-                      )}
-                      disabled={readOnly}
-                      onChange={(next) =>
-                        updateCap(REPLAY_CAP_ID, { enabled: next })
-                      }
-                    />
-                    <span className={gg.capName}>{REPLAY_CAP.name}</span>
-                    <span className={gg.capId}>{REPLAY_CAP.id}</span>
-                  </label>
-                  <p className={gg.capPurpose}>{REPLAY_CAP.purpose}</p>
-                </div>
               </div>
 
               {/* Custom instructions — the field an operator edits normally; inserted

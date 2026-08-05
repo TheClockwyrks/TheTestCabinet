@@ -321,9 +321,8 @@ pub trait BackendClient: Send + Sync {
         Ok(())
     }
 
-    /// Fetch a gg run's stored replay record. (`GET /runs/{id}/replay`) Used by
-    /// `tcab gg-replay <RUN_ID>` to reconstruct a published run without first hunting down its
-    /// run tree.
+    /// Fetch a gg run's stored session record (`GET /runs/{id}/replay`), without first hunting
+    /// down its run tree.
     ///
     /// The bytes are whatever the route served. It content-negotiates on `Accept-Encoding`, and
     /// this client is built without `reqwest`'s `gzip` feature so it neither advertises nor decodes
@@ -335,7 +334,7 @@ pub trait BackendClient: Send + Sync {
     /// not serving one; the HTTP client overrides it.
     async fn run_replay(&self, run_id: &str) -> Result<Vec<u8>> {
         Err(Error::Publish(format!(
-            "this backend client cannot serve the replay record for run `{run_id}`"
+            "this backend client cannot serve the session record for run `{run_id}`"
         )))
     }
 

@@ -357,7 +357,7 @@ pub trait ArtifactCollector: Send + Sync {
     /// This exists for the runs that never reach [`collect`](Self::collect) at all.
     /// A `hung` or `timed_out` run is torn down on the engine's error path, which
     /// stops the container and returns *before* the tree is collected — so the
-    /// analysis sidecars a run writes as it goes (gg's replay journal first among
+    /// analysis sidecars a run writes as it goes (gg's capture journal first among
     /// them) are lost for exactly the surprising outcomes they were captured to
     /// explain. One narrow copy is enough to rescue them: the sidecars are small,
     /// self-contained, and already complete on disk when the run stops responding.

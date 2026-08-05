@@ -344,7 +344,7 @@ pub enum PromptSlot {
 }
 
 /// One item of the live window as [`prompt_items`](ContextModel::prompt_items) hands it to
-/// the [message log](crate::message_log) and to [replay capture](crate::capture): the message
+/// the [message log](crate::message_log) and to [session capture](crate::capture): the message
 /// that is sent, the band it occupies, what it is estimated to cost, its
 /// [selector tag](ContextItem::label), and the four typed fields describing *where in the
 /// window model it came from*.
@@ -1198,7 +1198,7 @@ impl ContextModel {
     }
 
     /// The per-item view of the current prompt for the [message log](crate::message_log) and
-    /// for [replay capture](crate::capture): each item's [`source`](GgContextSource) band, its
+    /// for [session capture](crate::capture): each item's [`source`](GgContextSource) band, its
     /// [`Message`], its cached token estimate, its [selector tag](ContextItem::label), and the
     /// [slot](PromptSlot), [retention](Retention), [turn](Self::begin_turn) and
     /// [region](FileRegion) it carries in the window model — in the order they are sent.

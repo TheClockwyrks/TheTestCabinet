@@ -344,7 +344,7 @@ async fn reconcile_into(
 ///    durable in Postgres, so a refresh can and does run against a store that knows about
 ///    no cases at all. Under this rule that window exports nothing instead of exporting
 ///    every experimental case in the corpus.
-/// 3. **A replay record is never involved.** Nothing here touches one. The corpus is
+/// 3. **A session record is never involved.** Nothing here touches one. The corpus is
 ///    documents; the record — the complete model conversation — is console-only, and
 ///    this function is the only door the public site's gg data comes through.
 ///

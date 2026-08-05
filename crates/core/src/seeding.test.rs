@@ -119,7 +119,7 @@ fn init_repo_excludes_the_previous_entries_folder_from_git() {
 }
 
 /// gg's `.gg/` dotdir is excluded unconditionally, and — unlike the previous-entries
-/// folder — it does not exist at seed time: the replay journal is created and grows
+/// folder — it does not exist at seed time: the capture journal is created and grows
 /// *while the session runs*, inside the model's working tree. So the property that
 /// matters is that a seeded repository never reports it as a change, no matter when it
 /// appears. If it ever did, the transcript would ride a speculation judge's diff, an
@@ -169,17 +169,10 @@ fn init_repo_excludes_ggs_dotdir_from_git() {
 #[test]
 fn the_replay_journal_lives_under_the_excluded_dotdir() {
     assert!(
-        crate::gg_replay_journal::GG_REPLAY_JOURNAL_PATH
+        crate::gg_session_journal::GG_SESSION_JOURNAL_PATH
             .starts_with(&format!("{}/", crate::gg::GG_WORKSPACE_DIR)),
         "journal path {} must sit under {}",
-        crate::gg_replay_journal::GG_REPLAY_JOURNAL_PATH,
-        crate::gg::GG_WORKSPACE_DIR,
-    );
-    assert!(
-        crate::gg::GG_REPLAY_ARTIFACT_PATH
-            .starts_with(&format!("{}/", crate::gg::GG_WORKSPACE_DIR)),
-        "sidecar path {} must sit under {}",
-        crate::gg::GG_REPLAY_ARTIFACT_PATH,
+        crate::gg_session_journal::GG_SESSION_JOURNAL_PATH,
         crate::gg::GG_WORKSPACE_DIR,
     );
 }

@@ -1,11 +1,11 @@
-//! The gg **replay capture journal**: the append-only NDJSON stream a recording session
+//! The gg **session capture journal**: the append-only NDJSON stream a recording session
 //! writes inside the run container, and the vocabulary the host folds back into a
-//! [replay record](crate::gg_replay::GgReplayRecord).
+//! [session record](crate::gg_session_record::GgSessionRecord).
 //!
-//! [Format v2](crate::gg_replay) splits capture from assembly. gg appends one JSON object
-//! per line to [`GG_REPLAY_JOURNAL_PATH`] as the run proceeds and **never holds a message
+//! [Format v2](crate::gg_session_record) splits capture from assembly. gg appends one JSON object
+//! per line to [`GG_SESSION_JOURNAL_PATH`] as the run proceeds and **never holds a message
 //! body in memory**; the host, after collecting the run tree,
-//! [streams those lines into the served record](crate::gg_replay_assembly). That split is
+//! [streams those lines into the served record](crate::gg_session_assembly). That split is
 //! what satisfies gg's budget constraint — gg assembles
 //! nothing — and it is why the journal is a distinct vocabulary rather than a partially
 //! written record: a record is a document with four arrays in it, and a document cannot be
@@ -16,7 +16,7 @@
 //! Every pool line names the [index](GgJournalLine::Message) it occupies even though the
 //! index is implied by position. That redundancy is the gap detector: assembly hard-errors
 //! on a pool line whose index is not the next one, rather than silently shifting every
-//! later reference by one and substituting the wrong message body into a reconstructed
+//! later reference by one and substituting the wrong message body into a recorded
 //! prompt. It is the on-disk half of the same guarantee capture enforces in memory — pools
 //! are always a **contiguous prefix**, because minting an index and queueing its line
 //! happen under one critical section and any failure stops capture for the whole run.
@@ -26,11 +26,11 @@
 //! A killed gg cannot write a self-reported truncation marker, so completeness is read from
 //! the *presence* of a terminating [`End`](GgJournalLine::End) line rather than from any
 //! claim a record makes about itself. No `End` ⇒ the record is
-//! [killed](crate::gg_replay::GgReplayTruncationReason::SessionKilled). An `End` that
-//! carries a [truncation](crate::gg_replay::GgReplayTruncation) is a capture that stopped
+//! [killed](crate::gg_session_record::GgSessionTruncationReason::SessionKilled). An `End` that
+//! carries a [truncation](crate::gg_session_record::GgSessionTruncation) is a capture that stopped
 //! deliberately and said why.
 //!
-//! Unlike the [record](crate::gg_replay), this vocabulary is **not** part of the published
+//! Unlike the [record](crate::gg_session_record), this vocabulary is **not** part of the published
 //! contract: the journal never leaves the boundary between the run container and the host
 //! that assembles it, so it has no TypeScript binding and no JSON Schema.
 
@@ -40,10 +40,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::gg::GgCapabilitySet;
-use crate::gg_replay::{
-    GgReplayAgent, GgReplayBlob, GgReplayEntry, GgReplayFidelity, GgReplayInterner,
-    GgReplayMessage, GgReplayRecorder, GgReplaySeed, GgReplayTextClip, GgReplayToolset,
-    GgReplayTruncation, clip_text, fingerprint_exact, fingerprint_json,
+use crate::gg_session_record::{
+    GgSessionAgent, GgSessionEntry, GgSessionInterner, GgSessionMessage, GgSessionRecorder,
+    GgSessionSeed, GgSessionTextClip, GgSessionToolset, GgSessionTruncation, clip_text,
+    fingerprint_exact, fingerprint_json,
 };
 
 /// Where a recording gg session writes its [journal](self), relative to the run workspace.
@@ -52,7 +52,7 @@ use crate::gg_replay::{
 /// workspace's `.git/info/exclude`, so a journal growing *inside the model's working tree
 /// during the run* stays out of the seed commit, out of every diff a speculation judge or
 /// an issue reviewer reads, and out of the model's own `git add -A`.
-pub const GG_REPLAY_JOURNAL_PATH: &str = ".gg/replay.ndjson";
+pub const GG_SESSION_JOURNAL_PATH: &str = ".gg/replay.ndjson";
 
 /// One line of a [capture journal](self).
 ///
@@ -70,7 +70,7 @@ pub enum GgJournalLine {
     /// recorded so that even a journal with no entries at all identifies the session it
     /// belongs to and the build that wrote it.
     Header {
-        /// The [record format](crate::gg_replay::GG_REPLAY_FORMAT_VERSION) this journal
+        /// The [record format](crate::gg_session_record::GG_SESSION_FORMAT_VERSION) this journal
         /// assembles into. Carried here rather than inferred at assembly so a journal
         /// written by a newer gg is refused on the same terms a newer *record* is.
         format_version: u32,
@@ -80,18 +80,10 @@ pub enum GgJournalLine {
         /// other line and this enum is passed by value.
         capability_set: Box<GgCapabilitySet>,
         /// Which build is capturing.
-        recorder: GgReplayRecorder,
-        /// How completely this session is being captured. Carried on the header rather
-        /// than left for assembly to re-derive from the capability set: what the record
-        /// must report is what the recorder *did*, and a host that re-resolved would
-        /// paper over exactly the disagreement worth seeing — a build whose capture seams
-        /// do not yet cover everything the set asked for.
-        #[serde(default)]
-        fidelity: GgReplayFidelity,
+        recorder: GgSessionRecorder,
     },
     /// The run's **invocation envelope**: the fixed identity the session started from — the
-    /// prompt, the resolved windows and modalities, the baseline commit, and the seeded files
-    /// as [blob](GgReplayBlob) references.
+    /// prompt, the resolved windows and modalities, and the baseline commit.
     ///
     /// Written at launch rather than at the end, for the reason every other line is written as
     /// it happens: the sessions whose envelope is most worth having are the ones that were
@@ -99,21 +91,20 @@ pub enum GgJournalLine {
     ///
     /// It may be written **again**, and assembly keeps the **last** one. One field of the
     /// envelope is not final until the session is: a provider that refuses an image
-    /// [denies](crate::gg_replay::GgReplayModalities::vision) that model for the rest of the
-    /// run, and a reconstruction that started from the un-denied state would send images on
+    /// [denies](crate::gg_session_record::GgSessionModalities::vision) that model for the rest of the
+    /// run, and a reader that started from the un-denied state would send images on
     /// the first image turn and drift for a reason that has nothing to do with any real
     /// change. Rewriting the one line is how a streaming journal expresses a value that is
     /// only resolved at the end while still carrying it from the start.
     Seed {
-        /// The envelope, with its provided files already interned as blob references. Boxed
-        /// because it carries the whole build prompt.
-        seed: Box<GgReplaySeed>,
+        /// The envelope. Boxed because it carries the whole build prompt.
+        seed: Box<GgSessionSeed>,
     },
     /// One agent the session created, and how it came to exist.
     ///
     /// Written when the agent **comes into existence** — before it takes a scheduler slot, let
     /// alone a turn — and again when its loop ends, carrying the terminal state. Assembly
-    /// **upserts** by [`agent_id`](GgReplayAgent::agent_id), so the terminal row supersedes the
+    /// **upserts** by [`agent_id`](GgSessionAgent::agent_id), so the terminal row supersedes the
     /// opening one and an agent that never reached an ending keeps the row it was born with.
     ///
     /// That ordering is the whole point of the line. Deriving the agent set from the entries
@@ -124,15 +115,14 @@ pub enum GgJournalLine {
     Agent {
         /// The row. Boxed for the same reason [`Entry`](Self::Entry) is: one large variant
         /// should not size every line.
-        agent: Box<GgReplayAgent>,
+        agent: Box<GgSessionAgent>,
     },
     /// One newly interned message body, at the message pool index it occupies.
     Message {
         /// Its index into the assembled record's message pool.
         index: u32,
-        /// The pooled body, with image payloads already replaced by
-        /// [blob references](crate::gg_replay::GG_REPLAY_BLOB_REF_KEY).
-        message: GgReplayMessage,
+        /// The pooled body, with image payloads already reduced to descriptors.
+        message: GgSessionMessage,
     },
     /// One newly interned offered tool-definition array, at the toolset pool index it
     /// occupies.
@@ -140,14 +130,14 @@ pub enum GgJournalLine {
         /// Its index into the assembled record's toolset pool.
         index: u32,
         /// The pooled toolset.
-        toolset: GgReplayToolset,
+        toolset: GgSessionToolset,
     },
     /// One newly interned string payload, at the text pool index it occupies.
     Text {
         /// Its index into the assembled record's text pool.
         index: u32,
-        /// The payload — the whole of it at [full](GgReplayFidelity::Full) fidelity, and its
-        /// [kept tail](crate::gg_replay::clip_text) when the capture clipped it.
+        /// The payload, or its [kept tail](crate::gg_session_record::clip_text) when the capture
+        /// clipped it.
         text: String,
         /// What the payload is missing, when this line carries a clip of it rather than the whole.
         ///
@@ -155,23 +145,16 @@ pub enum GgJournalLine {
         /// carried at all: a clip that could be separated from its text is a clip that can go
         /// missing, and a record silently claiming a 32 KiB tail is a whole payload is precisely
         /// the lie the table exists to prevent. Its
-        /// [`text`](crate::gg_replay::GgReplayTextClip::text) repeats this line's `index` for the
+        /// [`text`](crate::gg_session_record::GgSessionTextClip::text) repeats this line's `index` for the
         /// same reason every pool line already names its own.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        clip: Option<GgReplayTextClip>,
-    },
-    /// One newly interned image, at the blob pool index it occupies.
-    Blob {
-        /// Its index into the assembled record's blob pool.
-        index: u32,
-        /// The pooled image.
-        blob: GgReplayBlob,
+        clip: Option<GgSessionTextClip>,
     },
     /// One pinned non-deterministic input. Boxed so the enum is not sized by its largest
     /// payload on every line.
     Entry {
         /// The entry, exactly as the assembled record carries it.
-        entry: Box<GgReplayEntry>,
+        entry: Box<GgSessionEntry>,
     },
     /// The **mandatory** terminating line. Its absence — not any field on it — is what
     /// tells assembly the session died mid-capture.
@@ -182,29 +165,27 @@ pub enum GgJournalLine {
         /// Why capture stopped short of the session, when it did. Absent on a complete
         /// capture.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        truncation: Option<GgReplayTruncation>,
+        truncation: Option<GgSessionTruncation>,
     },
 }
 
-/// The **streaming** [interner](GgReplayInterner) a capture journal is written through:
+/// The **streaming** [interner](GgSessionInterner) a capture journal is written through:
 /// it holds pooled *ids*, never pooled bodies, and emits a
 /// [line](GgJournalLine) the first time each body is seen.
 ///
 /// This is the half of the format that makes always-on capture affordable. The
-/// body-retaining [`GgReplayPools`](crate::gg_replay::GgReplayPools) is the right shape
-/// for assembly and for playback, where the whole record is in hand anyway; a *recorder*
+/// body-retaining [`GgSessionPools`](crate::gg_session_record::GgSessionPools) is the right shape
+/// for assembly and for reading, where the whole record is in hand anyway; a *recorder*
 /// that retained bodies would reinstate exactly the memory term v2 exists to remove — a
 /// run's images and every distinct message held for the life of the session, in a process
 /// that is also running the model loop.
 ///
 /// What it does retain is each pool entry's 32-character
-/// [content address](fingerprint_exact), because the
-/// [turn fingerprint](crate::gg_replay::GgTurnFingerprint) is a fold over exactly those.
-/// At a few tens of bytes per *distinct* body that is bounded by the record's own pool
-/// count, not by the run's length.
+/// [content address](fingerprint_exact), which is what dedup keys on. At a few tens of bytes per
+/// *distinct* body that is bounded by the record's own pool count, not by the run's length.
 #[derive(Debug, Default)]
 pub struct GgJournalInterner {
-    /// The pooled message ids, indexed by pool position — what the fingerprint folds over.
+    /// The pooled message ids, indexed by pool position.
     message_ids: Vec<String>,
     /// Message content address → pool index.
     message_index: HashMap<String, u32>,
@@ -218,10 +199,6 @@ pub struct GgJournalInterner {
     text_index: HashMap<String, u32>,
     /// How many texts have been interned, i.e. the next text index.
     texts: u32,
-    /// Blob content address → pool index.
-    blob_index: HashMap<String, u32>,
-    /// How many blobs have been interned, i.e. the next blob index.
-    blobs: u32,
     /// The lines minted since the last [`take_pending`](Self::take_pending) — the bodies
     /// interned for the entry currently being recorded, in the order their indices were
     /// assigned.
@@ -252,22 +229,20 @@ impl GgJournalInterner {
     }
 }
 
-impl GgReplayInterner for GgJournalInterner {
+impl GgSessionInterner for GgJournalInterner {
     fn intern_message(&mut self, body: &Value) -> u32 {
         let id = fingerprint_json(body);
         if let Some(&index) = self.message_index.get(&id) {
             return index;
         }
-        // Substituted *before* the index is minted, so the blob lines its images produce
-        // are queued ahead of the message line that references them.
         let mut stored = body.clone();
-        self.substitute_blobs(&mut stored);
+        Self::withhold_image_bytes(&mut stored);
         let index = self.message_ids.len() as u32;
         self.message_ids.push(id.clone());
         self.message_index.insert(id.clone(), index);
         self.pending.push(GgJournalLine::Message {
             index,
-            message: GgReplayMessage { id, body: stored },
+            message: GgSessionMessage { id, body: stored },
         });
         index
     }
@@ -286,7 +261,7 @@ impl GgReplayInterner for GgJournalInterner {
         self.toolset_index.insert(id.clone(), index);
         self.pending.push(GgJournalLine::Toolset {
             index,
-            toolset: GgReplayToolset {
+            toolset: GgSessionToolset {
                 id,
                 tools: tools.clone(),
             },
@@ -310,7 +285,7 @@ impl GgReplayInterner for GgJournalInterner {
         self.pending.push(GgJournalLine::Text {
             index,
             text: clipped.map_or_else(|| text.to_string(), |(kept, _)| kept.to_string()),
-            clip: clipped.map(|(_, original_bytes)| GgReplayTextClip {
+            clip: clipped.map(|(_, original_bytes)| GgSessionTextClip {
                 text: index,
                 original_bytes,
                 original_id: id,
@@ -318,28 +293,8 @@ impl GgReplayInterner for GgJournalInterner {
         });
         index
     }
-
-    fn intern_blob(&mut self, media_type: &str, bytes: u64, data_base64: &str) -> u32 {
-        let id = fingerprint_exact(data_base64.as_bytes());
-        if let Some(&index) = self.blob_index.get(&id) {
-            return index;
-        }
-        let index = self.blobs;
-        self.blobs += 1;
-        self.blob_index.insert(id.clone(), index);
-        self.pending.push(GgJournalLine::Blob {
-            index,
-            blob: GgReplayBlob {
-                id,
-                media_type: media_type.to_string(),
-                bytes,
-                data_base64: data_base64.to_string(),
-            },
-        });
-        index
-    }
 }
 
 #[cfg(test)]
-#[path = "gg_replay_journal.test.rs"]
+#[path = "gg_session_journal.test.rs"]
 mod tests;

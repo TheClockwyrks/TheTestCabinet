@@ -995,7 +995,7 @@ fn init_repo(repo: &Path) -> Result<String> {
     // building, and so must never be tracked. See `exclude_from_git` for why this is
     // `.git/info/exclude` rather than a committed `.gitignore`.
     let mut excluded = Vec::new();
-    // gg's own dotdir — the replay journal it streams *while the session runs*, its
+    // gg's own dotdir — the capture journal it streams *while the session runs*, its
     // assembled sidecar, its skills library. Unconditional: it is created during the
     // run, not by seeding, so there is nothing to probe for, and the exclusion has to
     // be in place before the model's first commit. Excluding it for a non-gg harness

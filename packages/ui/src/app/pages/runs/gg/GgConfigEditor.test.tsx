@@ -775,55 +775,17 @@ describe("an agent's loop detection", () => {
   });
 });
 
-// Full-fidelity replay is a capability on the wire — that is how gg reads it, and how a
-// study slices on it — but it is not one of the things an agent may *do*: it says what gg
-// writes down while the agent works, and enabling it on any one agent escalates the whole
-// run's record. So it is authored on the Agent tab beside loop detection, not among the
-// tools and APIs, and the group it used to be the only member of is gone.
-describe("full-fidelity replay", () => {
-  function replaySwitch(): HTMLInputElement {
-    return within(
-      screen.getByText("Full-fidelity replay").closest("label")!,
-    ).getByRole("checkbox") as HTMLInputElement;
-  }
-
-  it("is a switch on the Agent tab, saying what it does to the run and not to the agent", () => {
+// The `replay` capability is gone: it escalated a run's capture to a fidelity only a
+// reconstruction needed, and there is no reconstruction. Every run captures the same
+// session record, so there is nothing left to author — and nothing left to leave behind
+// on the Agent tab or in an otherwise-empty capability group.
+describe("the withdrawn replay capability", () => {
+  it("is offered nowhere, and took its empty group with it", () => {
     render(<Harness initial={emptyDraft()} />);
-    expect(replaySwitch().checked).toBe(false);
-    // The copy has to keep saying "the run": one agent's switch escalates all of it.
-    expect(
-      screen.getByText(/Escalate the whole run's replay record/),
-    ).toBeInTheDocument();
-  });
-
-  it("writes the capability the wire format records, under either agent type", () => {
-    for (const mode of ["tools", "rac"] as const) {
-      const draft = emptyDraft();
-      const { unmount } = render(
-        <Harness
-          initial={{ ...draft, agents: [{ ...draft.agents[0]!, mode }] }}
-        />,
-      );
-      fireEvent.click(replaySwitch());
-      expect(replaySwitch().checked).toBe(true);
-      unmount();
-    }
-  });
-
-  it("is not listed among the capabilities, and takes its empty group with it", () => {
+    expect(screen.queryByText(/replay/i)).toBeNull();
     renderCaps(emptyDraft());
-    expect(screen.queryByText("Full-fidelity replay")).toBeNull();
+    expect(screen.queryByText(/replay/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /Debugging/i })).toBeNull();
-  });
-
-  it("is absent under a machine, which records nothing of its own", () => {
-    const draft = emptyDraft();
-    render(
-      <Harness
-        initial={{ ...draft, agents: [{ ...draft.agents[0]!, mode: "fsm" }] }}
-      />,
-    );
-    expect(screen.queryByText("Full-fidelity replay")).toBeNull();
   });
 });
 

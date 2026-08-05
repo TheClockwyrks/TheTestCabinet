@@ -41,14 +41,14 @@ four images are 2.7 MB, flat.
 
 ## The shape
 
-> `seed` (fixed identity) + four content-addressed pools + an ordered input log
+> `seed` (fixed identity) + three content-addressed pools + an ordered input log
 
 This is [Foray's](/testing/adversarial/foray/architecture/) replay shape applied to
 gg: a fixed header plus the ordered inputs the session consumed. Size becomes
 `O(unique bytes) + O(Σ window items)`.
 
-**The four pools.** Messages, toolsets, texts, and image blobs. Each entry is
-stored once under a content address and referenced by **index**.
+**The three pools.** Messages, toolsets and texts. Each entry is stored once under a
+content address and referenced by **index**.
 
 - The **message pool** holds each distinct message body. Its id is a 128-bit
   SHA-256 content address over the message _including its exact image payloads_ —
@@ -56,8 +56,8 @@ stored once under a content address and referenced by **index**.
   [`fingerprint`](/gg/context-visibility/), which is a 64-bit hash over image
   _descriptors_ and therefore not a content address for images at all. Two
   different pictures of the same media type and decoded size fingerprint
-  identically, which is harmless for a telemetry log that discards the pixels and
-  catastrophic for a replay that must send them again.
+  identically, and would then collapse into one pooled message, which would put one
+  turn's window in place of another's.
 - The **toolset pool** holds each distinct offered tool-definition array. The
   measured 12× redundancy above collapses to 1.
 - The **text pool** holds every large string payload — a tool outcome's output, a
@@ -66,8 +66,6 @@ stored once under a content address and referenced by **index**.
   verbatim into the `tool` message that carries it into the window, and an
   [issue review](/gg/project-management/)'s diff is quoted verbatim into the
   reviewer's prompt. Interning both against one table collapses each pair.
-- The **blob pool** holds each image's base64 bytes.
-
 **The input log** is a flat, ordered list of entries, each carrying the agent that
 consumed the input and a globally monotonic `seq`.
 
@@ -80,15 +78,16 @@ developer was most likely to be looking.
 | Input | Changes control flow? | v1 | v2 |
 | --- | --- | --- | --- |
 | Model responses | yes | captured | captured, tagged with the call shape |
+| An image a turn carried | — | inline base64, re-serialized every turn | **descriptor only** — media type and decoded size, never the bytes |
 | Model **errors** | **yes** — a vision refusal strips images and re-runs the turn; a retry exhaustion counts against an error ceiling | **dropped** | captured |
 | [Handoff-compaction](/gg/compaction/) summarizer calls | yes — they rewrite the whole window | **not captured at all** | captured, on their own queue |
 | Tool outcomes | yes | captured | captured, typed, text and images pooled |
 | Orchestrator `git` — worktree add/commit/merge/diff | **yes** — a merge conflict changes the run | **bypasses tool dispatch entirely** | captured |
 | Cancel-file probe | **yes** — it ends the session | dropped | captured |
 | Deadline clock | **yes** | dropped | captured |
-| Latency clocks | no — metrics only | dropped | captured at full fidelity only |
-| Startup filesystem (skills, memories, autoloaded files, templates) | — | dropped | **not captured at either fidelity** — see below |
-| Bulky text payloads (a command's streams, a tool's output) | yes | inline, whole | pooled; clipped at standard, whole at full |
+| Latency clocks | no — metrics only | dropped | captured |
+| Startup filesystem (skills, memories, autoloaded files, templates) | — | dropped | **not captured** — see below |
+| Bulky text payloads (a command's streams, a tool's output) | yes | inline, whole | pooled and clipped, with a clip row saying what was dropped |
 | Cross-agent interleaving | yes | _observed_ via `seq` | the recorded `seq` **is** the input |
 | RNG | — | none exists | none exists |
 
@@ -234,34 +233,29 @@ With pooling, a projected 200-turn run drops from **~187 MB to ~3.6 MB compact,
 ~0.5 MB gzipped**. Against a run tree that already carries tens of megabytes of
 produced source, capture is no longer a cost worth gating.
 
-So **standard capture is always on**, and the `replay`
-[capability](/gg/configurations/) is repurposed to escalate a run to **full**
-fidelity — every clock read, and no payload clipping. Three reasons, in order of
-weight:
+So **capture is always on**. Three reasons, in order of weight:
 
 1. **An opt-in debugging capture is never on when you need it.** The record exists
    for surprising outcomes, which are by definition not predicted.
-2. **It is now the only artifact from which the four typed context fields exist at
+2. **It is the only artifact from which the four typed context fields exist at
    all.** Making that opt-in makes gg's own context construction unauditable by
    default.
 3. It costs under a megabyte.
 
-Always-on also removes a defect on the way past: the capability was read from the
-**root agent only**, so enabling `replay` on a non-root agent silently did nothing.
-The full-fidelity escalation reads any agent.
-
 A per-run byte ceiling bounds the worst case. Crossing it stops capture and marks
 the record truncated — **capture degrades, it never fails the run it observes.**
 
-### What the two fidelities actually differ by
+### What a capture withholds, and how it says so
 
-The difference is deliberately small. A capture that is on for every run is only
-worth having if what it captures is enough on its own, so **every input that
-changes control flow is recorded at both fidelities** — including the deadline
-clock, which is the one clock read the loop branches on.
+Two payload classes are bounded, because a capture that runs on every run has to be
+affordable on every run.
 
-**Full adds two things.** It stores every text payload whole, and it records each
-model call's measured latency.
+**A picture is a descriptor.** An image a turn carried is recorded as its media type
+and decoded size and never as its bytes — the same thing the
+[telemetry](/gg/telemetry/) stream records of the same turn, so the two cannot
+disagree about what a message was. The message's *content address* is still computed
+over the payload, which is what keeps two different pictures of one media type and
+size two different messages.
 
 **A clipped payload says so.** The text pool is a flat array of strings with
 nowhere to record that an entry is a fragment, and a reader handed 32 KiB of a
@@ -272,16 +266,15 @@ table**: for each clipped pool entry, how many bytes the whole payload had and
 **its content address**. That address is what keeps a clipped record *checkable*:
 anyone holding the whole output can hash it and answer "is this the same output?"
 exactly, from a record that kept a fraction of it. It is also what makes the pool's
-dedup unambiguous — interning
-keys on the address of the original, so two payloads that happen to share a tail
-are two entries with two rows rather than one entry whose single row could
-describe only one of them.
+dedup unambiguous — interning keys on the address of the original, so two payloads
+that happen to share a tail are two entries with two rows rather than one entry whose
+single row could describe only one of them.
 
-### The startup filesystem is not a fidelity axis
+### The startup filesystem is not captured
 
-The original design named a third full-only category — the startup filesystem,
-"digested at standard, verbatim at full". Implementing it established that it
-decomposes into four parts, none of which is a fidelity distinction:
+The original design named the startup filesystem as a category of its own.
+Implementing it established that it decomposes into four parts, none of which is
+anything a record has to hold:
 
 - **Prompt templates** are embedded in the gg binary at compile time. They are
   never read from a filesystem, so there is nothing to digest; which templates a
@@ -289,10 +282,9 @@ decomposes into four parts, none of which is a fidelity distinction:
 - **Memories** are created during the session, not loaded at startup. Every
   mutation is already a recorded tool outcome and every rendered index is already
   a pooled message.
-- **Autoloaded specification files** belong to the seed as blob references —
-  verbatim at *both* fidelities and for zero additional bytes, since they were
-  sent to the model and are in the blob pool either way. Withholding them at
-  standard would make a record less self-contained while saving nothing.
+- **Autoloaded specification files** reach the model as messages, and every message
+  the model was sent is pooled. What the record does not hold is their bytes, for the
+  same reason it holds no other picture's.
 - **Skills** are a real directory read, but every skill body that influences the
   run reaches the record verbatim regardless: the description listing is part of
   the pooled system message, and reading one is a recorded tool outcome. What a

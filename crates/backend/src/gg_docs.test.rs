@@ -852,7 +852,7 @@ async fn every_exported_document_is_redacted() {
 #[tokio::test]
 async fn the_export_is_documents_and_never_a_replay_record() {
     // Owner decision Q1, as a regression rather than a comment. A gg document is a flat
-    // map of scalars — configuration ids and outcome numbers. A **replay record** is the
+    // map of scalars — configuration ids and outcome numbers. A **session record** is the
     // complete model conversation verbatim, and it lives in this very store, one call
     // away from the composer. The distinction is the whole reason the corpus is
     // publishable at all, and folding a record in would be a small, plausible-looking
@@ -867,7 +867,7 @@ async fn the_export_is_documents_and_never_a_replay_record() {
             "replay",
             br#"{"messages":[{"role":"user","text":"the-verbatim-conversation"}]}"#,
         )
-        .expect("store the run's replay record");
+        .expect("store the run's session record");
     db.push(&gg_record("r1", "mock/echo"), &RunLinks::default(), None)
         .await
         .unwrap();

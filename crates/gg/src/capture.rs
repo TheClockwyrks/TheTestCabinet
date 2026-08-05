@@ -1,13 +1,13 @@
-//! gg **replay capture**: streaming the non-deterministic inputs of a run into an on-disk
-//! [journal](test_cabinet_core::gg_replay_journal) so the session can be
-//! [reconstructed](https://docs.testcabinet.ai/gg/session-record/) afterward.
+//! gg **session capture**: streaming the non-deterministic inputs of a run into an on-disk
+//! [journal](test_cabinet_core::gg_session_journal) so the session can be
+//! [recorded](https://docs.testcabinet.ai/gg/session-record/) afterward.
 //!
 //! The [telemetry stream](crate::telemetry) is already most of the capture, but it carries
 //! *summaries*, not the exact inputs a faithful re-run needs. So gg additionally pins each agent's
 //! **model I/O** and every **tool result** into a [`GgRecorder`], which appends them to
-//! [`.gg/replay.ndjson`](test_cabinet_core::gg_replay_journal::GG_REPLAY_JOURNAL_PATH) as the run
+//! [`.gg/replay.ndjson`](test_cabinet_core::gg_session_journal::GG_SESSION_JOURNAL_PATH) as the run
 //! proceeds. The host folds that journal into the served
-//! [record](test_cabinet_core::gg_replay::GgReplayRecord) after it collects the run tree — gg
+//! [record](test_cabinet_core::gg_session_record::GgSessionRecord) after it collects the run tree — gg
 //! assembles nothing.
 //!
 //! # Why a journal and a writer thread
@@ -25,7 +25,7 @@
 //! # Capture stops atomically — it never drops a line
 //!
 //! A dropped pool line leaves a hole that positional assembly silently shifts, substituting the
-//! wrong message body into a reconstructed prompt. So nothing is ever dropped individually:
+//! wrong message body into a recorded prompt. So nothing is ever dropped individually:
 //!
 //! - minting a pool index and queueing its line happen under **one** critical section;
 //! - a turn's newly interned bodies and the entry that references them are queued as **one
@@ -77,18 +77,18 @@
 //!   where the loop reads them, because both can end the session and neither is derivable from
 //!   anything else the record holds.
 //!
-//! # What the two fidelities differ by
+//! # What a capture keeps of a large payload
 //!
-//! Capture is always on, and the [`replay`](test_cabinet_core::gg::CAPABILITY_REPLAY) capability
-//! escalates a run to [full](GgReplayFidelity::Full) fidelity rather than switching capture on. The
-//! difference is deliberately small — a capture that runs on every run is only worth having if what
-//! it captures is enough on its own — so **every input that changes control flow is recorded at
-//! both**. Full adds exactly two things: it stores every text payload whole rather than
-//! [clipping](test_cabinet_core::gg_replay::GG_REPLAY_STANDARD_STREAM_MAX_BYTES) it, and it records
-//! each model call's measured latency, which is the one clock read the loop does not branch on.
+//! Capture is always on and is not gated on any capability, so what it keeps has to be affordable
+//! on every run. Two payload classes are therefore bounded: a text payload past
+//! [its ceiling](test_cabinet_core::gg_session_record::GG_SESSION_STREAM_MAX_BYTES) is stored as
+//! its kept tail with a [clip row](test_cabinet_core::gg_session_record::GgSessionTextClip) saying what was
+//! dropped, and an image is stored as its
+//! [descriptor](test_cabinet_core::gg_session_record::GgSessionImage) and never as its bytes. Everything
+//! that changes control flow is recorded whole.
 //!
 //! Every entry is stamped with the recording agent's id and a **globally monotonic** sequence minted
-//! across all agents from one counter, so ordering the entries by sequence reconstructs the true
+//! across all agents from one counter, so ordering the entries by sequence recovers the true
 //! interleaving of concurrently-running agents.
 
 use std::collections::BTreeMap;
@@ -99,37 +99,35 @@ use std::sync::Mutex;
 use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
 use std::thread::JoinHandle;
 
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::Value;
 use test_cabinet_core::gg::GgCapabilitySet;
-use test_cabinet_core::gg_replay::{
-    GG_REPLAY_FORMAT_VERSION, GG_REPLAY_STANDARD_TOOL_MAX_BYTES, GgClientRole, GgReplayAgent,
-    GgReplayCommand, GgReplayEntry, GgReplayEntryKind, GgReplayFidelity, GgReplayFileRegion,
-    GgReplayInterner, GgReplayModalities, GgReplayModelError, GgReplayModelErrorKind,
-    GgReplayPromptItem, GgReplayPromptSlot, GgReplayRecorder, GgReplayRequestShape,
-    GgReplayRetention, GgReplaySeed, GgReplaySeedFile, GgReplayToolCall, GgReplayToolOutcome,
-    GgReplayTruncation, GgReplayTruncationReason, GgShellCwd, GgShellOrigin,
+use test_cabinet_core::gg_session_journal::{GgJournalInterner, GgJournalLine};
+use test_cabinet_core::gg_session_record::{
+    GG_SESSION_FORMAT_VERSION, GG_SESSION_STREAM_MAX_BYTES, GG_SESSION_TOOL_MAX_BYTES,
+    GgClientRole, GgSessionAgent, GgSessionCommand, GgSessionEntry, GgSessionEntryKind,
+    GgSessionFileRegion, GgSessionImage, GgSessionInterner, GgSessionModalities,
+    GgSessionModelError, GgSessionModelErrorKind, GgSessionPromptItem, GgSessionPromptSlot,
+    GgSessionRecorder, GgSessionRequestShape, GgSessionRetention, GgSessionSeed, GgSessionToolCall,
+    GgSessionToolOutcome, GgSessionTruncation, GgSessionTruncationReason, GgShellCwd,
+    GgShellOrigin,
 };
-use test_cabinet_core::gg_replay_journal::{GgJournalInterner, GgJournalLine};
 
 use crate::context::{PromptItem, PromptSlot, Retention};
 use crate::model::{Message, ModelClient, ModelError, ModelResponse, ToolCall, ToolDefinition};
 use crate::tools::{
     READ_FILE_CAP, ShellExecution, ShellRequest, ShellRunner, ShellStatus, ToolData, ToolOutcome,
-    sniff_image,
 };
 
 /// A standard capture must keep whole whatever the model was shown whole, and the largest such
 /// payload gg produces is a whole-file `read_file`. So the record's tool ceiling has to cover the
 /// tool layer's own cap — asserted here, at the one place both numbers are in scope, because the
 /// failure it guards against is silent: a ceiling below the cap records a file the model read in
-/// its entirety as a tail of itself, and a reconstruction feeding that back reports the resulting
+/// its entirety as a tail of itself, and a reader feeding that back would report the resulting
 /// divergence as model drift rather than as a hole in the record.
 ///
 /// A compile error, not a test, because either constant can be lowered by someone who has never
 /// read the other and the relation between them is the whole invariant.
-const _: () = assert!(GG_REPLAY_STANDARD_TOOL_MAX_BYTES >= READ_FILE_CAP);
+const _: () = assert!(GG_SESSION_TOOL_MAX_BYTES >= READ_FILE_CAP);
 
 /// How many queued batches the writer thread may fall behind by before capture stops.
 ///
@@ -144,7 +142,7 @@ const JOURNAL_QUEUE_DEPTH: usize = 64;
 /// terminating [`End`](GgJournalLine::End) line.
 ///
 /// The `End` line is not one line among many: its absence is what makes assembly report the record
-/// as [`SessionKilled`](GgReplayTruncationReason::SessionKilled), so dropping it on a momentarily
+/// as [`SessionKilled`](GgSessionTruncationReason::SessionKilled), so dropping it on a momentarily
 /// full queue would libel a session that ended cleanly as one that was killed — the single most
 /// misleading thing this module could do. A writer merely *behind* by a burst of batches drains in
 /// milliseconds, and this waits for that.
@@ -163,14 +161,14 @@ const END_LINE_RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_m
 /// [`finish`](GgRecorder::finish) so the run's operator log can say so.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GgCaptureReport {
-    /// How many [entries](GgReplayEntry) reached the journal.
+    /// How many [entries](GgSessionEntry) reached the journal.
     pub entries: u64,
     /// How many bytes of pinned input reached the journal — what the
     /// [ceiling](test_cabinet_core::gg::GgRunLimits::replay_max_bytes) is measured against, so it
     /// excludes the terminating line, which is written whatever the ceiling says.
     pub bytes: u64,
     /// Why capture stopped short of the session, when it did.
-    pub truncation: Option<GgReplayTruncation>,
+    pub truncation: Option<GgSessionTruncation>,
     /// The writer thread's own I/O failure, when it had one. Distinct from
     /// [`truncation`](Self::truncation): a writer that died could not record why, so this is the
     /// only place the reason exists at all.
@@ -189,23 +187,18 @@ pub struct RecordedCall<'a> {
     /// Which of gg's two model clients issued it.
     pub role: GgClientRole,
     /// Whether the offered tool was *required*.
-    pub shape: GgReplayRequestShape,
+    pub shape: GgSessionRequestShape,
     /// The conversation that was sent.
     pub messages: &'a [Message],
     /// The tool definitions that were offered. Empty records no toolset at all rather than an
     /// empty one: the contract distinguishes "offered nothing" from "offered an empty array".
     pub tools: &'a [ToolDefinition],
-    /// The call's measured latency, recorded only at [full](GgReplayFidelity::Full) fidelity.
+    /// The call's measured latency.
     pub duration_ms: Option<u64>,
 }
 
-/// The run's **invocation envelope**, as the launch hands it to the recorder — everything a
-/// reconstruction needs before it consumes its first entry.
-///
-/// The provided files arrive as bytes rather than as paths because interning them is the
-/// recorder's business and reading them is not: the same envelope is recorded from a launch that
-/// has already read the workspace, and a recorder that reached for the filesystem would be doing
-/// I/O on the runtime thread every agent shares.
+/// The run's **invocation envelope**, as the launch hands it to the recorder — the fixed
+/// identity the session started from.
 pub struct RecordedSeed<'a> {
     /// The build prompt the root agent was invoked with.
     pub prompt: &'a str,
@@ -219,29 +212,7 @@ pub struct RecordedSeed<'a> {
     /// The modality state of each bound model **as it stands now**. Recorded again at the end of
     /// the run if it has moved, so the record carries the resolved state rather than the
     /// declared one.
-    pub model_modalities: BTreeMap<String, GgReplayModalities>,
-    /// The files the workspace was seeded with, in the order `core` provided them.
-    pub provided_files: &'a [RecordedSeedFile],
-}
-
-/// One file the workspace was seeded with, read off disk for the [seed](RecordedSeed).
-///
-/// Carries the bytes because the record has to be self-contained — a reconstruction seeds its own
-/// empty workspace from this and nothing else — and carrying them is very nearly free: an
-/// [autoloaded](https://docs.testcabinet.ai/gg/autoload-specifications/) case's reference mockups
-/// were sent to the model, so the [blob pool](test_cabinet_core::gg_replay::GgReplayRecord::blobs)
-/// already holds exactly these bytes under exactly this content address and the seed costs one
-/// integer per file.
-pub struct RecordedSeedFile {
-    /// The file's workspace-relative path.
-    pub path: String,
-    /// Its IANA media type, sniffed from the content the way `read_file` sniffs it.
-    pub media_type: String,
-    /// Its size on disk, in bytes (decoded, not base64).
-    pub bytes: u64,
-    /// Its bytes, base64-encoded with the same engine the file tools encode an attached image
-    /// with — which is what makes the pool dedup the two into one entry.
-    pub data_base64: String,
+    pub model_modalities: BTreeMap<String, GgSessionModalities>,
 }
 
 /// One subprocess gg ran, as the seam that ran it hands it to the recorder.
@@ -267,11 +238,10 @@ pub struct RecordedCommand<'a> {
 /// Where `dir` is, relative to `workspace` — the portable form a recorded command's working
 /// directory is stored in.
 ///
-/// An absolute path is not portable across a reconstruction: a playback builds in a different
-/// (deliberately empty) directory, so a recorded `/work/impl/web` would never match the live one
-/// and every recorded command would fall through to a miss. Recording the *relationship* makes a
-/// genuine directory mismatch — the same command in a different tree is a different command —
-/// detectable rather than universal.
+/// An absolute path says nothing a reader can use: the workspace root is an implementation detail
+/// of the container the run happened in, so `/work/impl/web` and `/work` differ by the only part
+/// worth recording. Storing the *relationship* is what makes the recorded directory comparable
+/// across runs.
 ///
 /// A path outside the workspace (a worktree gg created beside it, an absolute `cwd` a validation
 /// command declared) is kept verbatim, because there is nothing to relativize it against.
@@ -293,119 +263,57 @@ pub fn shell_cwd(workspace: &Path, dir: &Path) -> GgShellCwd {
     }
 }
 
-/// How large a [provided file](RecordedSeed::provided_files) may be before the seed records
-/// nothing about it at all: 8 MiB, the same ceiling `read_file` refuses to attach an image above.
-///
-/// A seeded file past that is one gg would never show a model in full, so a record that carried it
-/// would be spending megabytes to be self-contained about bytes the session never used. The
-/// ceiling matters more than that arithmetic suggests, though: the seed is written as **one batch**
-/// at launch, and a batch that crosses the run's
-/// [byte ceiling](test_cabinet_core::gg::GgRunLimits::replay_max_bytes) stops capture for the whole
-/// run — so an unbounded seed would let one enormous seeded asset cost a run its entire record,
-/// before a single turn.
-const SEED_FILE_MAX_BYTES: u64 = 8 * 1024 * 1024;
-
-/// Read the workspace-relative `paths` into [seed files](RecordedSeedFile), skipping — loudly —
-/// whatever cannot be carried.
-///
-/// Every skip appends to `warnings`, which the launch prints on the root's stream before the first
-/// turn. A seed that quietly listed fewer files than the workspace was given would be the worst
-/// possible shape for this: a reconstruction would seed a *different* workspace and report every
-/// consequence as model drift.
-pub fn read_seed_files(
-    workspace: &Path,
-    paths: &[std::path::PathBuf],
-    warnings: &mut Vec<String>,
-) -> Vec<RecordedSeedFile> {
-    let mut files = Vec::new();
-    for path in paths {
-        let absolute = workspace.join(path);
-        let display = path.display();
-        let bytes = match std::fs::read(&absolute) {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                warnings.push(format!(
-                    "replay capture: the provided file `{display}` could not be read ({err}), so \
-                     the replay record's seed does not carry it."
-                ));
-                continue;
-            }
-        };
-        let size = bytes.len() as u64;
-        if size > SEED_FILE_MAX_BYTES {
-            warnings.push(format!(
-                "replay capture: the provided file `{display}` is {size} bytes, past the \
-                 {SEED_FILE_MAX_BYTES}-byte seed ceiling, so the replay record's seed does not \
-                 carry it."
-            ));
-            continue;
-        }
-        files.push(RecordedSeedFile {
-            path: display.to_string(),
-            // Sniffed from the content, exactly as `read_file` does it, so an image the model was
-            // shown is recorded under the media type it was shown as. Anything unrecognized is
-            // carried as opaque bytes rather than guessed at from an extension.
-            media_type: sniff_image(&bytes)
-                .map_or("application/octet-stream", |format| format.media_type)
-                .to_string(),
-            bytes: size,
-            data_base64: BASE64.encode(&bytes),
-        });
-    }
-    files
-}
-
-/// Translate a gg [`ModelError`] into the contract's [class-plus-detail](GgReplayModelError) form.
+/// Translate a gg [`ModelError`] into the contract's [class-plus-detail](GgSessionModelError) form.
 ///
 /// The *class* is what the turn loop branches on, which is why the contract carries an enum rather
-/// than the error's rendered text: a reconstruction has to know that a call failed for a reason
+/// than the error's rendered text: a reader has to know that a call failed for a reason
 /// that strips images and retries, not merely that it failed.
-fn replay_model_error(error: &ModelError) -> GgReplayModelError {
+fn session_model_error(error: &ModelError) -> GgSessionModelError {
     let message = error.to_string();
     match error {
-        ModelError::MissingApiKey => GgReplayModelError {
-            kind: GgReplayModelErrorKind::MissingApiKey,
+        ModelError::MissingApiKey => GgSessionModelError {
+            kind: GgSessionModelErrorKind::MissingApiKey,
             message,
             status: None,
             attempts: None,
             model_id: None,
         },
-        ModelError::Fatal { status, .. } => GgReplayModelError {
-            kind: GgReplayModelErrorKind::Fatal,
+        ModelError::Fatal { status, .. } => GgSessionModelError {
+            kind: GgSessionModelErrorKind::Fatal,
             message,
             status: Some(*status),
             attempts: None,
             model_id: None,
         },
-        ModelError::RetryExhausted { attempts, .. } => GgReplayModelError {
-            kind: GgReplayModelErrorKind::RetryExhausted,
+        ModelError::RetryExhausted { attempts, .. } => GgSessionModelError {
+            kind: GgSessionModelErrorKind::RetryExhausted,
             message,
             status: None,
             attempts: Some(*attempts),
             model_id: None,
         },
-        ModelError::VisionUnsupported { model_id, .. } => GgReplayModelError {
-            kind: GgReplayModelErrorKind::VisionUnsupported,
+        ModelError::VisionUnsupported { model_id, .. } => GgSessionModelError {
+            kind: GgSessionModelErrorKind::VisionUnsupported,
             message,
             status: None,
             attempts: None,
             model_id: Some(model_id.clone()),
         },
-        ModelError::Parse(_) => GgReplayModelError {
-            kind: GgReplayModelErrorKind::Parse,
+        ModelError::Parse(_) => GgSessionModelError {
+            kind: GgSessionModelErrorKind::Parse,
             message,
             status: None,
             attempts: None,
             model_id: None,
         },
         // Every attempt was a [generation loop](crate::loopguard) and was thrown away. Its own
-        // class rather than `RetryExhausted`'s, because a reconstruction that folded the two
+        // class rather than `RetryExhausted`'s, because a reader that folded the two
         // together would claim the provider refused a request it in fact answered — repeatedly.
         // `attempts` carries how many replies were discarded, which is the only place that number
         // survives: the replies themselves never entered the record (see
         // [`record_model_io`](CaptureHandle::record_model_io)).
-        ModelError::ResponseLoop { attempts, .. } => GgReplayModelError {
-            kind: GgReplayModelErrorKind::ResponseLoop,
+        ModelError::ResponseLoop { attempts, .. } => GgSessionModelError {
+            kind: GgSessionModelErrorKind::ResponseLoop,
             message,
             status: None,
             attempts: Some(*attempts),
@@ -425,7 +333,7 @@ struct Capture {
     interner: GgJournalInterner,
     /// The queue to the writer thread. `None` once [`finish`](GgRecorder::finish) has closed it.
     queue: Option<SyncSender<String>>,
-    /// The next globally monotonic [`seq`](GgReplayEntry::seq).
+    /// The next globally monotonic [`seq`](GgSessionEntry::seq).
     next_seq: u64,
     /// How many entries have been queued.
     entries: u64,
@@ -435,15 +343,15 @@ struct Capture {
     bytes: u64,
     /// The per-run byte ceiling, or `None` for unbounded capture.
     max_bytes: Option<u64>,
-    /// The [envelope](GgReplaySeed) last written to the journal, kept so the one field that is
+    /// The [envelope](GgSessionSeed) last written to the journal, kept so the one field that is
     /// not final until the session is — the resolved modalities — can be updated without the
     /// launch having to hold (or re-read) the seeded files a second time.
     ///
     /// The only body this recorder retains, and it is retained for the same reason the interner
     /// retains pool *ids*: it is bounded by the run's configuration rather than by its length.
-    seed: Option<GgReplaySeed>,
+    seed: Option<GgSessionSeed>,
     /// Why capture stopped, once it has. Set exactly once; capture never resumes.
-    stopped: Option<GgReplayTruncationReason>,
+    stopped: Option<GgSessionTruncationReason>,
     /// Whether the terminating [`End`](GgJournalLine::End) line has been written.
     finished: bool,
 }
@@ -454,12 +362,12 @@ impl Capture {
     ///
     /// The bodies go first, so a reader walking the journal in order never meets a reference to a
     /// body it has not yet seen.
-    fn push(&mut self, agent_id: &str, kind: GgReplayEntryKind) {
+    fn push(&mut self, agent_id: &str, kind: GgSessionEntryKind) {
         let seq = self.next_seq;
         self.next_seq += 1;
         let mut lines = self.interner.take_pending();
         lines.push(GgJournalLine::Entry {
-            entry: Box::new(GgReplayEntry {
+            entry: Box::new(GgSessionEntry {
                 agent_id: agent_id.to_string(),
                 seq,
                 kind,
@@ -477,7 +385,7 @@ impl Capture {
     /// Remembered whether or not the batch lands. A batch that does not land has stopped capture,
     /// so nothing further is written either way, and remembering it keeps the recorder's own view
     /// of the envelope the one the journal would have carried.
-    fn write_seed(&mut self, seed: GgReplaySeed) {
+    fn write_seed(&mut self, seed: GgSessionSeed) {
         let mut lines = self.interner.take_pending();
         lines.push(GgJournalLine::Seed {
             seed: Box::new(seed.clone()),
@@ -518,7 +426,7 @@ impl Capture {
                 // `Value` or a plain scalar), and stopping is the only safe response if it ever
                 // happens: the entry that named those bodies would otherwise never be written.
                 Err(_) => {
-                    self.stop(GgReplayTruncationReason::WriteFailed);
+                    self.stop(GgSessionTruncationReason::WriteFailed);
                     return false;
                 }
             }
@@ -527,7 +435,7 @@ impl Capture {
         if let Some(max) = self.max_bytes
             && self.bytes + size > max
         {
-            self.stop(GgReplayTruncationReason::ByteCeiling);
+            self.stop(GgSessionTruncationReason::ByteCeiling);
             return false;
         }
         match queue.try_send(batch) {
@@ -536,20 +444,20 @@ impl Capture {
                 true
             }
             Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {
-                self.stop(GgReplayTruncationReason::WriteFailed);
+                self.stop(GgSessionTruncationReason::WriteFailed);
                 false
             }
         }
     }
 
     /// Stop capture for the whole run, recording `reason` if nothing has stopped it yet.
-    fn stop(&mut self, reason: GgReplayTruncationReason) {
+    fn stop(&mut self, reason: GgSessionTruncationReason) {
         self.stopped.get_or_insert(reason);
     }
 
     /// The truncation the record should carry, given what stopped capture.
-    fn truncation(&self) -> Option<GgReplayTruncation> {
-        self.stopped.map(|reason| GgReplayTruncation {
+    fn truncation(&self) -> Option<GgSessionTruncation> {
+        self.stopped.map(|reason| GgSessionTruncation {
             reason,
             last_seq: self.last_seq,
             bytes: Some(self.bytes),
@@ -557,17 +465,13 @@ impl Capture {
     }
 }
 
-/// The run-wide recorder every replay entry is streamed through.
+/// The run-wide recorder every session-record entry is streamed through.
 ///
 /// Held behind an [`Arc`](std::sync::Arc) on the orchestrator and shared across every agent (the
 /// root and each subagent), so all agents' model I/O and tool results accumulate into one ordered
-/// journal. The [`seq`](GgReplayEntry::seq) counter is global — minted here across all agents — so
-/// the interleaving of concurrent agents is reconstructable by sorting on it.
+/// journal. The [`seq`](GgSessionEntry::seq) counter is global — minted here across all agents — so
+/// the interleaving of concurrent agents is recoverable by sorting on it.
 pub struct GgRecorder {
-    /// How completely this run is being captured. Immutable for the life of the run: the
-    /// escalation is resolved once at launch, so a seam consulting it mid-run cannot get a
-    /// different answer from the one the journal header published.
-    fidelity: GgReplayFidelity,
     /// Everything the capture mutates, behind the one lock described on [`Capture`].
     capture: Mutex<Capture>,
     /// The writer thread, joined by [`finish`](Self::finish). Behind its own lock because the
@@ -576,12 +480,12 @@ pub struct GgRecorder {
 }
 
 impl GgRecorder {
-    /// Open `journal_path` and start capturing `session_id`'s inputs into it at `fidelity`,
-    /// bounded by `max_bytes`.
+    /// Open `journal_path` and start capturing `session_id`'s inputs into it, bounded by
+    /// `max_bytes`.
     ///
     /// Writes the [header](GgJournalLine::Header) line before returning, so that even a journal
-    /// with no entries at all identifies the session it belongs to, the build that wrote it, and
-    /// how much of it was being captured. The parent directory is created if it does not exist.
+    /// with no entries at all identifies the session it belongs to and the build that wrote it.
+    /// The parent directory is created if it does not exist.
     ///
     /// Fails only when the journal cannot be opened — the one condition under which there is
     /// nothing to capture *into*. The caller reports that as a launch warning and runs without
@@ -590,7 +494,6 @@ impl GgRecorder {
         journal_path: &Path,
         session_id: &str,
         capability_set: &GgCapabilitySet,
-        fidelity: GgReplayFidelity,
         max_bytes: Option<u64>,
     ) -> std::io::Result<Self> {
         if let Some(parent) = journal_path.parent() {
@@ -599,11 +502,10 @@ impl GgRecorder {
         let file = File::create(journal_path)?;
         let (queue, lines) = sync_channel::<String>(JOURNAL_QUEUE_DEPTH);
         let writer = std::thread::Builder::new()
-            .name("gg-replay-journal".to_string())
+            .name("gg-session-journal".to_string())
             .spawn(move || write_journal(file, &lines))?;
 
         let recorder = Self {
-            fidelity,
             capture: Mutex::new(Capture {
                 interner: GgJournalInterner::new(),
                 queue: Some(queue),
@@ -621,83 +523,54 @@ impl GgRecorder {
         recorder
             .capture
             .lock()
-            .expect("replay capture lock")
+            .expect("session capture lock")
             .queue_batch(vec![GgJournalLine::Header {
-                format_version: GG_REPLAY_FORMAT_VERSION,
+                format_version: GG_SESSION_FORMAT_VERSION,
                 session_id: session_id.to_string(),
                 capability_set: Box::new(capability_set.clone()),
-                recorder: GgReplayRecorder {
+                recorder: GgSessionRecorder {
                     // This binary's own version, not the release version `core` resolves a
                     // download from: the record's question is "which build wrote this?".
                     gg_version: Some(env!("CARGO_PKG_VERSION").to_string()),
                     commit: None,
                 },
-                fidelity,
             }]);
         Ok(recorder)
     }
 
-    /// How completely this capture is pinning the session — what the
-    /// [full-only](GgReplayFidelity::Full) seams consult before spending bytes on an input
-    /// nobody asked for.
-    ///
-    /// Read off the recorder rather than off the capability set at each seam so there is exactly
-    /// one resolution of the escalation per run, and so the answer a seam acts on is the same one
-    /// the journal header already told the reader to expect.
-    pub fn fidelity(&self) -> GgReplayFidelity {
-        self.fidelity
-    }
-
-    /// Record the run's **[seed](GgReplaySeed)**: the invocation envelope a reconstruction starts
+    /// Record the run's **[seed](GgSessionSeed)**: the fixed identity the session started
     /// from, before it consumes a single entry.
     ///
     /// Called by the launch, as soon as the orchestrator that resolved the envelope exists — not at
     /// teardown, because the records that most need a seed belong to the sessions that never
     /// reached one.
     ///
-    /// The provided files are interned into the **blob pool**, which is what makes carrying them
-    /// nearly free: an autoloaded case's reference mockups are sent to the model, and the pool
-    /// keys on the [content address](test_cabinet_core::gg_replay::fingerprint_exact) of the
-    /// base64 payload, so the file the seed names and the image a turn carried collapse into one
-    /// entry and the seed costs an integer. A file nothing else reads is stored once, which is
-    /// what a self-contained record is worth paying.
     pub fn record_seed(&self, seed: RecordedSeed<'_>) {
-        let mut capture = self.capture.lock().expect("replay capture lock");
+        let mut capture = self.capture.lock().expect("session capture lock");
         if capture.stopped.is_some() {
             return;
         }
-        let provided_files: Vec<GgReplaySeedFile> = seed
-            .provided_files
-            .iter()
-            .map(|file| GgReplaySeedFile {
-                path: file.path.clone(),
-                blob: capture
-                    .interner
-                    .intern_blob(&file.media_type, file.bytes, &file.data_base64),
-            })
-            .collect();
-        capture.write_seed(GgReplaySeed {
+        capture.write_seed(GgSessionSeed {
             baseline_commit: seed.baseline_commit.map(str::to_string),
             prompt: seed.prompt.to_string(),
             model_windows: seed.model_windows,
             model_modalities: seed.model_modalities,
-            provided_files,
         });
     }
 
-    /// Update the recorded [seed](GgReplaySeed)'s **resolved** modality state, rewriting the
+    /// Update the recorded [seed](GgSessionSeed)'s **resolved** modality state, rewriting the
     /// envelope only if it has actually moved.
     ///
     /// Called once at the end of the run. A model's modality state is not a launch fact: a
     /// provider that refuses an image denies that model for the rest of the session, and a
-    /// reconstruction that started from the un-denied state would send images on the first image
-    /// turn and diverge for a reason that has nothing to do with a real change.
+    /// record that reported the un-denied state would say the run had vision on turns where it
+    /// did not.
     ///
     /// The equality check is what keeps this free for the overwhelming majority of runs, in which
     /// nothing was ever denied: no denial, no second envelope, no bytes. It also means the journal
-    /// carries a second seed line exactly when reading one is worthwhile.
-    pub fn record_resolved_modalities(&self, modalities: BTreeMap<String, GgReplayModalities>) {
-        let mut capture = self.capture.lock().expect("replay capture lock");
+    /// carries a second seed line exactly when there is something new to say.
+    pub fn record_resolved_modalities(&self, modalities: BTreeMap<String, GgSessionModalities>) {
+        let mut capture = self.capture.lock().expect("session capture lock");
         if capture.stopped.is_some() {
             return;
         }
@@ -707,26 +580,26 @@ impl GgRecorder {
         if seed.model_modalities == modalities {
             return;
         }
-        capture.write_seed(GgReplaySeed {
+        capture.write_seed(GgSessionSeed {
             model_modalities: modalities,
             ..seed
         });
     }
 
-    /// Record one **[agent](GgReplayAgent)** and how it came to exist.
+    /// Record one **[agent](GgSessionAgent)** and how it came to exist.
     ///
     /// Called twice per agent: once the moment it exists — before it queues for a scheduler slot,
     /// let alone takes a turn — and once when its loop ends, with the terminal status and any
     /// ceiling that stopped it. Assembly upserts the row by
-    /// [`agent_id`](GgReplayAgent::agent_id), so the second supersedes the first and an agent that
+    /// [`agent_id`](GgSessionAgent::agent_id), so the second supersedes the first and an agent that
     /// never reached an ending keeps the row it was born with.
     ///
     /// Recorded at all — rather than derived from which agents happen to appear in the entries —
     /// because the derivation silently omits the agents worth explaining: the one still queued
     /// behind the parallelism cap when the run was killed, the one whose first model call never
     /// returned. Both ran; neither pinned an input.
-    pub fn record_agent(&self, agent: GgReplayAgent) {
-        let mut capture = self.capture.lock().expect("replay capture lock");
+    pub fn record_agent(&self, agent: GgSessionAgent) {
+        let mut capture = self.capture.lock().expect("session capture lock");
         if capture.stopped.is_some() {
             return;
         }
@@ -747,14 +620,14 @@ impl GgRecorder {
     /// distinguishes "offered nothing" from "offered an empty array", and a turn that offers no
     /// tools is the former.
     ///
-    /// `response` is the reply the client **returned**, which is the only reply a reconstruction
-    /// could ever be handed. A reply abandoned mid-stream by [loop detection](crate::loopguard) is
-    /// therefore never journalled: it was never returned, never entered the conversation, and a
-    /// reconstruction that replayed it would have to re-run a detector to throw it away again. All
+    /// `response` is the reply the client **returned**, which is the only reply the conversation
+    /// ever held. A reply abandoned mid-stream by [loop detection](crate::loopguard) is therefore
+    /// never journalled: it was never returned and never entered the conversation, so a record
+    /// carrying it would describe a window the agent never had. All
     /// that survives of the discarded attempts is their *count*, on
     /// [`ModelResponse::loop_aborts`](crate::model::ModelResponse::loop_aborts) — or, when every
     /// attempt looped and nothing was returned at all, on the recorded
-    /// [error](GgReplayModelErrorKind::ResponseLoop)'s `attempts`.
+    /// [error](GgSessionModelErrorKind::ResponseLoop)'s `attempts`.
     pub fn record_model_io(&self, call: RecordedCall<'_>, response: &ModelResponse) {
         // Serialized outside the lock: this is the bulk of the per-turn work, and holding the one
         // lock every agent shares across it would serialize the fleet on the recorder.
@@ -762,7 +635,7 @@ impl GgRecorder {
         let tools = (!call.tools.is_empty()).then(|| to_value(&call.tools));
         let response = to_value(response);
 
-        let mut capture = self.capture.lock().expect("replay capture lock");
+        let mut capture = self.capture.lock().expect("session capture lock");
         if capture.stopped.is_some() {
             return;
         }
@@ -772,10 +645,10 @@ impl GgRecorder {
                 .intern_request(call.role, call.shape, &messages, tools.as_ref());
         capture.push(
             call.agent_id,
-            GgReplayEntryKind::ModelIo {
+            GgSessionEntryKind::ModelIo {
                 request,
                 response,
-                duration_ms: self.latency(call.duration_ms),
+                duration_ms: call.duration_ms,
             },
         );
     }
@@ -785,10 +658,11 @@ impl GgRecorder {
     ///
     /// v1 dropped model errors outright, which was a defect rather than an omission — both
     /// classes of error that a loop *recovers* from change control flow. A
-    /// [vision refusal](GgReplayModelErrorKind::VisionUnsupported) strips the images and re-runs
-    /// the same turn, so a reconstruction that never saw the refusal would send the images again
-    /// and diverge; a [retry exhaustion](GgReplayModelErrorKind::RetryExhausted) counts against
-    /// the run's error ceiling, so one that never saw it would stop at a different turn.
+    /// [vision refusal](GgSessionModelErrorKind::VisionUnsupported) strips the images and re-runs
+    /// the same turn, so a record without the refusal shows two nearly identical calls and no
+    /// reason for the second; a [retry exhaustion](GgSessionModelErrorKind::RetryExhausted) counts
+    /// against the run's error ceiling, so a record without it cannot explain why the run
+    /// stopped.
     ///
     /// Recorded with the same request the successful call carries, because the request is what
     /// identifies *which* turn failed — a vision-refused turn and the stripped retry that follows
@@ -797,9 +671,9 @@ impl GgRecorder {
         // Serialized outside the lock, exactly as the successful path is.
         let messages: Vec<Value> = call.messages.iter().map(to_value).collect();
         let tools = (!call.tools.is_empty()).then(|| to_value(&call.tools));
-        let error = replay_model_error(error);
+        let error = session_model_error(error);
 
-        let mut capture = self.capture.lock().expect("replay capture lock");
+        let mut capture = self.capture.lock().expect("session capture lock");
         if capture.stopped.is_some() {
             return;
         }
@@ -809,42 +683,27 @@ impl GgRecorder {
                 .intern_request(call.role, call.shape, &messages, tools.as_ref());
         capture.push(
             call.agent_id,
-            GgReplayEntryKind::ModelError {
+            GgSessionEntryKind::ModelError {
                 request,
                 error,
-                duration_ms: self.latency(call.duration_ms),
+                duration_ms: call.duration_ms,
             },
         );
     }
 
-    /// The latency to record for a call that took `duration_ms`: the measurement at
-    /// [full](GgReplayFidelity::Full) fidelity, and `None` at
-    /// [standard](GgReplayFidelity::Standard).
-    ///
-    /// A latency clock is the one clock read that changes no control flow — a reconstruction
-    /// removes model latency entirely and compares everything *but* it — so a standard capture
-    /// spends no bytes on it. Decided here rather than at each call site so the two model seams
-    /// cannot disagree about what a standard record promises.
-    fn latency(&self, duration_ms: Option<u64>) -> Option<u64> {
-        match self.fidelity {
-            GgReplayFidelity::Full => duration_ms,
-            GgReplayFidelity::Standard => None,
-        }
-    }
-
-    /// The ceiling a **subprocess stream** is interned under — `None` at
-    /// [full](GgReplayFidelity::Full) fidelity, which stores every payload whole.
+    /// The ceiling a **subprocess stream** is interned under. See
+    /// [`GG_SESSION_STREAM_MAX_BYTES`](test_cabinet_core::gg_session_record::GG_SESSION_STREAM_MAX_BYTES).
     fn stream_max_bytes(&self) -> Option<usize> {
-        self.fidelity.stream_max_bytes()
+        Some(GG_SESSION_STREAM_MAX_BYTES)
     }
 
     /// The ceiling a **tool payload** is interned under, which is eight times the stream ceiling
     /// and for a reason worth restating at the seam: what a tool returns *is* what the model was
     /// shown, so clipping it below the tool layer's own cap would record a file the model read in
     /// full as a tail of itself. See
-    /// [`GG_REPLAY_STANDARD_TOOL_MAX_BYTES`](test_cabinet_core::gg_replay::GG_REPLAY_STANDARD_TOOL_MAX_BYTES).
+    /// [`GG_SESSION_TOOL_MAX_BYTES`](test_cabinet_core::gg_session_record::GG_SESSION_TOOL_MAX_BYTES).
     fn tool_max_bytes(&self) -> Option<usize> {
-        self.fidelity.tool_max_bytes()
+        Some(GG_SESSION_TOOL_MAX_BYTES)
     }
 
     /// Record one **shell command** gg ran on the agent's behalf, from whichever of the three
@@ -863,7 +722,7 @@ impl GgRecorder {
     ) {
         self.record_command(
             agent_id,
-            |command| GgReplayEntryKind::Shell { origin, command },
+            |command| GgSessionEntryKind::Shell { origin, command },
             command,
         );
     }
@@ -872,12 +731,12 @@ impl GgRecorder {
     /// merge, a diff.
     ///
     /// In v1 these bypassed tool dispatch entirely and were captured nowhere, which mattered
-    /// because they are not bookkeeping a reconstruction can take for granted: a merge that
+    /// because they are not bookkeeping a reader can take for granted: a merge that
     /// conflicts changes the run, and a speculation judge scores whatever `git diff` printed.
     pub fn record_git(&self, agent_id: &str, command: RecordedCommand<'_>) {
         self.record_command(
             agent_id,
-            |command| GgReplayEntryKind::Git { command },
+            |command| GgSessionEntryKind::Git { command },
             command,
         );
     }
@@ -891,11 +750,11 @@ impl GgRecorder {
     fn record_command(
         &self,
         agent_id: &str,
-        kind: impl FnOnce(GgReplayCommand) -> GgReplayEntryKind,
+        kind: impl FnOnce(GgSessionCommand) -> GgSessionEntryKind,
         command: RecordedCommand<'_>,
     ) {
         let max_bytes = self.stream_max_bytes();
-        let mut capture = self.capture.lock().expect("replay capture lock");
+        let mut capture = self.capture.lock().expect("session capture lock");
         if capture.stopped.is_some() {
             return;
         }
@@ -905,7 +764,7 @@ impl GgRecorder {
         let stderr = capture
             .interner
             .intern_text_clipped(command.stderr, max_bytes);
-        let command = GgReplayCommand {
+        let command = GgSessionCommand {
             command: command.command.to_string(),
             cwd: command.cwd,
             exit_code: command.exit_code,
@@ -917,17 +776,17 @@ impl GgRecorder {
 
     /// Record one read of the **cancel file**.
     ///
-    /// It ends the session, so a reconstruction that could not see it would run past the point
+    /// It ends the session, so a reader that could not see it would run past the point
     /// the run stopped — and a killed run is one of the two outcomes always-on capture exists for.
     /// Recorded on every read rather than only on the one that fired: "the probe was read forty
     /// times and found nothing" is what makes the fortieth read's `true` an input rather than an
     /// unexplained ending.
     pub fn record_cancel_probe(&self, agent_id: &str, canceled: bool) {
-        let mut capture = self.capture.lock().expect("replay capture lock");
+        let mut capture = self.capture.lock().expect("session capture lock");
         if capture.stopped.is_some() {
             return;
         }
-        capture.push(agent_id, GgReplayEntryKind::CancelProbe { canceled });
+        capture.push(agent_id, GgSessionEntryKind::CancelProbe { canceled });
     }
 
     /// Record one read of the **wall-clock deadline**: how long the session had been running, and
@@ -935,17 +794,17 @@ impl GgRecorder {
     ///
     /// Unlike a latency clock this is recorded at *both* fidelities, because it is the one clock
     /// read the loop branches on: the run stops at the turn boundary where the budget is spent. A
-    /// playback deliberately does not honor it — a reconstruction takes seconds — and reports the
+    /// reading deliberately does not honor it —  — and reports the
     /// resulting terminal difference rather than faking a clock, which it can only do by knowing
     /// what the original observed.
     pub fn record_clock(&self, agent_id: &str, elapsed_ms: u64, remaining_ms: Option<u64>) {
-        let mut capture = self.capture.lock().expect("replay capture lock");
+        let mut capture = self.capture.lock().expect("session capture lock");
         if capture.stopped.is_some() {
             return;
         }
         capture.push(
             agent_id,
-            GgReplayEntryKind::Clock {
+            GgSessionEntryKind::Clock {
                 elapsed_ms,
                 remaining_ms,
             },
@@ -963,7 +822,7 @@ impl GgRecorder {
     ///
     /// A program-composed call arrives here under the synthetic id the loop minted for it
     /// ([`PROGRAM_CALL_ID_PREFIX`](crate::sandbox::PROGRAM_CALL_ID_PREFIX)), and that prefix is the
-    /// only thing distinguishing the two in the record — it is what lets a reconstruction attribute
+    /// only thing distinguishing the two in the record — it is what lets a reader attribute
     /// the entry to the open turn's *program* instead of to a native tool call the model never
     /// made.
     pub fn record_tool_result(&self, agent_id: &str, call: &ToolCall, outcome: &ToolOutcome) {
@@ -972,7 +831,7 @@ impl GgRecorder {
         let failure = outcome.failure.as_ref().map(to_value);
 
         let max_bytes = self.tool_max_bytes();
-        let mut capture = self.capture.lock().expect("replay capture lock");
+        let mut capture = self.capture.lock().expect("session capture lock");
         if capture.stopped.is_some() {
             return;
         }
@@ -992,19 +851,20 @@ impl GgRecorder {
             .summary
             .as_deref()
             .map(|summary| capture.interner.intern_text(summary));
-        let images: Vec<u32> = outcome
+        // Descriptors, never payloads — the same thing the telemetry stream records of an
+        // attached image, so the two cannot disagree about what a turn carried.
+        let images: Vec<GgSessionImage> = outcome
             .images
             .iter()
-            .map(|image| {
-                capture
-                    .interner
-                    .intern_blob(&image.media_type, image.bytes, &image.data_base64)
+            .map(|image| GgSessionImage {
+                media_type: image.media_type.clone(),
+                bytes: image.bytes,
             })
             .collect();
         capture.push(
             agent_id,
-            GgReplayEntryKind::ToolResult {
-                call: GgReplayToolCall {
+            GgSessionEntryKind::ToolResult {
+                call: GgSessionToolCall {
                     id: call.id.clone(),
                     name: call.name.clone(),
                     arguments,
@@ -1012,7 +872,7 @@ impl GgRecorder {
                     // `Workspace` would assert something the capture does not know.
                     cwd: None,
                 },
-                outcome: GgReplayToolOutcome {
+                outcome: GgSessionToolOutcome {
                     ok: outcome.ok,
                     output,
                     summary,
@@ -1034,7 +894,7 @@ impl GgRecorder {
     ///
     /// The request is what the *client* sent — a flat message array. Everything above is gg's own
     /// window model, and it is recoverable from nowhere else: not from that array, not from the
-    /// telemetry stream, not from the raw output. Recording it is what lets a reconstruction
+    /// telemetry stream, not from the raw output. Recording it is what lets a reader
     /// compare the window it **builds** against the one the record pinned, so a drift in what a
     /// compaction kept, or in which page of a file a view covers, is caught where it happens
     /// rather than several turns later when it changes what the model says.
@@ -1042,9 +902,9 @@ impl GgRecorder {
     /// # It costs almost nothing
     ///
     /// Every message here was interned moments ago by the [`RecordingClient`] for this same turn's
-    /// [`ModelIo`](GgReplayEntryKind::ModelIo) entry — same bodies, same content addresses, so the
+    /// [`ModelIo`](GgSessionEntryKind::ModelIo) entry — same bodies, same content addresses, so the
     /// pool does not grow and the frame is a list of small integers. That holds only because both
-    /// go through one [interner](GgReplayInterner); it is not an assumption the frame makes about
+    /// go through one [interner](GgSessionInterner); it is not an assumption the frame makes about
     /// the client's behavior, and a body this seam somehow sees first is simply interned here.
     ///
     /// Called **after** the model call it describes and before that agent's next one — the same
@@ -1056,34 +916,34 @@ impl GgRecorder {
         // one lock is shared by every agent in the run.
         let bodies: Vec<Value> = items.iter().map(|item| to_value(item.message)).collect();
 
-        let mut capture = self.capture.lock().expect("replay capture lock");
+        let mut capture = self.capture.lock().expect("session capture lock");
         if capture.stopped.is_some() {
             return;
         }
-        let items: Vec<GgReplayPromptItem> = items
+        let items: Vec<GgSessionPromptItem> = items
             .iter()
             .zip(bodies.iter())
-            .map(|(item, body)| GgReplayPromptItem {
+            .map(|(item, body)| GgSessionPromptItem {
                 message: capture.interner.intern_message(body),
                 slot: match item.slot {
-                    PromptSlot::System => GgReplayPromptSlot::System,
-                    PromptSlot::Thread => GgReplayPromptSlot::Thread,
-                    PromptSlot::ContextUsage => GgReplayPromptSlot::ContextUsage,
+                    PromptSlot::System => GgSessionPromptSlot::System,
+                    PromptSlot::Thread => GgSessionPromptSlot::Thread,
+                    PromptSlot::ContextUsage => GgSessionPromptSlot::ContextUsage,
                 },
                 source: item.source,
                 retention: match item.retention {
-                    Retention::Pinned => GgReplayRetention::Pinned,
-                    Retention::Ephemeral => GgReplayRetention::Ephemeral,
+                    Retention::Pinned => GgSessionRetention::Pinned,
+                    Retention::Ephemeral => GgSessionRetention::Ephemeral,
                 },
                 turn: item.turn,
                 label: item.label.map(str::to_string),
-                region: item.region.map(|region| GgReplayFileRegion {
+                region: item.region.map(|region| GgSessionFileRegion {
                     offset: region.offset,
                     limit: region.limit,
                 }),
             })
             .collect();
-        capture.push(agent_id, GgReplayEntryKind::PromptFrame { items });
+        capture.push(agent_id, GgSessionEntryKind::PromptFrame { items });
     }
 
     /// Close the journal: write the mandatory [`End`](GgJournalLine::End) line, drop the writer's
@@ -1095,7 +955,7 @@ impl GgRecorder {
     ///
     /// Idempotent: a second call reports the same figures and writes nothing.
     pub fn finish(&self) -> GgCaptureReport {
-        let mut capture = self.capture.lock().expect("replay capture lock");
+        let mut capture = self.capture.lock().expect("session capture lock");
         let truncation = capture.truncation();
         if !capture.finished {
             capture.finished = true;
@@ -1118,7 +978,7 @@ impl GgRecorder {
         let bytes = capture.bytes;
         drop(capture);
 
-        let handle = self.writer.lock().expect("replay writer lock").take();
+        let handle = self.writer.lock().expect("session writer lock").take();
         let write_error = handle
             .and_then(|handle| handle.join().ok())
             .and_then(|report| report.error);
@@ -1193,7 +1053,7 @@ fn to_value<T: serde::Serialize>(value: &T) -> Value {
 }
 
 /// Split a tool's structured [`ToolData`] into the part that is recorded inline and the one
-/// unbounded text field that is [pooled instead](GgReplayToolOutcome::data_text).
+/// unbounded text field that is [pooled instead](GgSessionToolOutcome::data_text).
 ///
 /// Two variants carry the whole of what the tool returned a second time — a `read_file`'s
 /// `contents` and a `shell`'s `body` — and both are duplicates of the `output` the same outcome
@@ -1208,7 +1068,7 @@ fn to_value<T: serde::Serialize>(value: &T) -> Value {
 /// to save nothing.
 ///
 /// The returned text is `Some` whenever the variant *has* the field, empty body included, so the
-/// reconstruction's restore is driven by the variant alone and never has to guess whether an
+/// reading's restore is driven by the variant alone and never has to guess whether an
 /// absent index means "empty" or "not lifted".
 fn split_tool_data(data: Option<&ToolData>) -> (Option<Value>, Option<String>) {
     match data {
@@ -1271,7 +1131,7 @@ impl RecordingClient {
     ///
     /// The [role](GgClientRole) is what makes the second queue representable. Without it a
     /// summarizer call and the agent's own next turn interleave into one indistinguishable stream
-    /// and a reconstruction serves the wrong one to whichever asked first — so the discriminator
+    /// and a reader serves the wrong one to whichever asked first — so the discriminator
     /// is not labelling, it is the correctness condition for capturing this client at all.
     pub fn for_compaction(
         inner: Box<dyn ModelClient>,
@@ -1292,7 +1152,7 @@ impl RecordingClient {
     /// provider's latency rather than the recorder's own work.
     async fn record(
         &self,
-        shape: GgReplayRequestShape,
+        shape: GgSessionRequestShape,
         messages: &[Message],
         tools: &[ToolDefinition],
         call: impl std::future::Future<Output = Result<ModelResponse, ModelError>>,
@@ -1318,7 +1178,7 @@ impl RecordingClient {
 #[async_trait::async_trait]
 impl ModelClient for RecordingClient {
     /// Recorded on the way out, so the captured response is exactly what the loop consumed — and
-    /// a failure is recorded too, as a [`ModelError`](GgReplayEntryKind::ModelError) entry.
+    /// a failure is recorded too, as a [`ModelError`](GgSessionEntryKind::ModelError) entry.
     ///
     /// Capturing the failure *here* rather than at the loop's error arm is what makes the vision
     /// recovery come out right: the recovery re-runs the same turn through this same client, so a
@@ -1331,7 +1191,7 @@ impl ModelClient for RecordingClient {
         tools: &[ToolDefinition],
     ) -> Result<ModelResponse, ModelError> {
         self.record(
-            GgReplayRequestShape::Complete,
+            GgSessionRequestShape::Complete,
             messages,
             tools,
             self.inner.complete(messages, tools),
@@ -1340,7 +1200,7 @@ impl ModelClient for RecordingClient {
     }
 
     /// Recorded as a **required** call, and delegated to the inner client's own implementation
-    /// rather than to the trait default — otherwise wrapping a run in replay capture would quietly
+    /// rather than to the trait default — otherwise wrapping a run in session capture would quietly
     /// downgrade a required tool call to an offered one, and the recorded run would not be the run
     /// that happened.
     async fn complete_requiring(
@@ -1349,7 +1209,7 @@ impl ModelClient for RecordingClient {
         tool: &ToolDefinition,
     ) -> Result<ModelResponse, ModelError> {
         self.record(
-            GgReplayRequestShape::CompleteRequiring,
+            GgSessionRequestShape::CompleteRequiring,
             messages,
             std::slice::from_ref(tool),
             self.inner.complete_requiring(messages, tool),
@@ -1374,13 +1234,13 @@ impl ModelClient for RecordingClient {
 /// first milestones only the third of them was recorded, because it was the only one with a call
 /// site that happened to hold the recorder. A record of a session that used the shell tool
 /// therefore had no answer for a single one of its commands, and a
-/// [playback](crate::playback) of it reported every command as a miss.
+/// [reading](crate::reading) of it reported every command as a miss.
 ///
 /// The seam is where all three meet, so the capture belongs here: one decorator, and the
 /// [origin](ShellRequest::origin) the caller stamped says which path it came from. Recording at the
 /// seam also means what is pinned is what the *process* did, before the
 /// [output policy](crate::tools::OffloadPolicy) merged the streams and added gg's notes — which is
-/// the right side of that line, because a reconstruction re-applies this build's presentation to
+/// the right side of that line, because a reader re-applies this build's presentation to
 /// the recorded bytes.
 ///
 /// # The workspace it measures against is the **agent's**
@@ -1388,13 +1248,13 @@ impl ModelClient for RecordingClient {
 /// Not the run's. An agent working in an [issue worktree](crate::board) has its own root, and a
 /// command it ran in `web/` has to read back as `web/` rather than as
 /// `worktrees/AUTH-1/web/` — otherwise the same command issued by the root and by an issue agent
-/// records as two different commands, and a reconstruction matches neither. So gg builds one of
+/// records as two different commands, and a reader matches neither. So gg builds one of
 /// these per agent, rooted where that agent is, and a command a
 /// [hook](crate::hooks) ran somewhere else is relativized against the agent's root
 /// exactly as its own [`ToolContext`](crate::tools::ToolContext) was derived from it.
 pub struct RecordingShellRunner {
     /// The runner that actually answers — [`RealShellRunner`](crate::tools::real_shell) in a live
-    /// run, and a [playback](crate::playback)'s recorded runner when a reconstruction is
+    /// run, and a [reading](crate::reading)'s recorded runner when a reader is
     /// re-recording itself.
     inner: std::sync::Arc<dyn ShellRunner>,
     /// The shared recorder every command is streamed into.
@@ -1438,7 +1298,7 @@ impl ShellRunner for RecordingShellRunner {
     /// [timeout kill](ShellStatus::TimedOut) and a process that
     /// [never started](ShellStatus::LaunchFailed) both pin as exit `-1`, which is the same value
     /// the record already uses for a signalled process: the record's field is a plain `i32`, every
-    /// consumer of it branches on "zero or not", and what a reconstruction needs from those cases
+    /// consumer of it branches on "zero or not", and what a reader needs from those cases
     /// is that the command did not succeed and printed whatever it printed.
     async fn run(&self, request: ShellRequest) -> ShellExecution {
         let agent_id = request.agent_id.clone();

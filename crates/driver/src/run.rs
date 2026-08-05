@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use test_cabinet_code_analysis::StaticCodeAnalyzer;
-use test_cabinet_core::gg_replay_assembly::GgReplayAssembler;
+use test_cabinet_core::gg_session_assembly::GgSessionAssembler;
 use test_cabinet_core::{
     ArtifactCollector, BackendClient, CliArtifactCollector, CliContainerRuntime, ContainerRuntime,
     CredBytesSource, DefaultHarnessRegistry, DispatchValidator, FsRepoSeeder, HttpBackendClient,
@@ -82,7 +82,7 @@ impl RunFailure {
 /// test type to build the killed run's record.
 ///
 /// `run_id` is minted by the caller and handed to the engine, so the run tree the
-/// engine writes — including a hung run's salvaged replay record — is keyed by the same
+/// engine writes — including a hung run's salvaged session record — is keyed by the same
 /// id the caller's own failure/cancellation record will carry. See
 /// [`RunEngine::run_resolved`](test_cabinet_core::RunEngine::run_resolved).
 pub async fn drive(
@@ -302,13 +302,13 @@ where
         harnesses: Box::new(DefaultHarnessRegistry::new()),
         orchestrators: OrchestratorCatalog::new(),
         renderer: Box::new(PrerenderedReferenceRenderer::new(references)),
-        // gg's replay journal is folded into the run tree's `replay.json.gz` here,
+        // gg's capture journal is folded into the run tree's `replay.json.gz` here,
         // on the host, after the tree is collected and before validation — so a
         // record that can run to hundreds of megabytes of journal costs the test
         // case none of its runtime budget and the driver pod none of its memory
         // (the assembly streams through segment files). A no-op for a
         // third-party-harness run, which has no journal.
-        replay_assembler: Some(Box::new(GgReplayAssembler)),
+        session_assembler: Some(Box::new(GgSessionAssembler)),
         // …and the static code analysis lands in the same seam, immediately after,
         // which is the order that matters: the replay assembly lifts gg's journal
         // *out* of the collected tree first, so a full conversation transcript can

@@ -1,8 +1,8 @@
 //! Host-side **assembly**: folding a gg run's
-//! [capture journal](crate::gg_replay_journal) into the served
-//! [replay record](crate::gg_replay::GgReplayRecord).
+//! [capture journal](crate::gg_session_journal) into the served
+//! [session record](crate::gg_session_record::GgSessionRecord).
 //!
-//! This is the other half of the split [format v2](crate::gg_replay) is built on. In the
+//! This is the other half of the split [format v2](crate::gg_session_record) is built on. In the
 //! container gg appends one line per pinned input and assembles nothing; here, on the
 //! host, after the working tree has been collected and the container is gone, those lines
 //! become the one document a replay driver and the console read. Everything about the
@@ -35,13 +35,13 @@
 //! The distinction is whether the damage is *bounded*. A journal that stops early is a
 //! shorter record and says so; a journal whose **indices do not line up** would produce a
 //! record that looks complete and is wrong — a message body substituted for another one
-//! in a reconstructed prompt, or an out-of-range pool reference that panics whatever walks
+//! in a recorded prompt, or an out-of-range pool reference that panics whatever walks
 //! it. So:
 //!
 //! | Condition | Outcome |
 //! | --- | --- |
-//! | No terminating [`End`](crate::gg_replay_journal::GgJournalLine::End) line | [`SessionKilled`](crate::gg_replay::GgReplayTruncationReason::SessionKilled), everything read is kept |
-//! | A torn or unparseable line | [`CorruptJournal`](crate::gg_replay::GgReplayTruncationReason::CorruptJournal) at the last complete `seq`, everything before it kept |
+//! | No terminating [`End`](crate::gg_session_journal::GgJournalLine::End) line | [`SessionKilled`](crate::gg_session_record::GgSessionTruncationReason::SessionKilled), everything read is kept |
+//! | A torn or unparseable line | [`CorruptJournal`](crate::gg_session_record::GgSessionTruncationReason::CorruptJournal) at the last complete `seq`, everything before it kept |
 //! | `End` disagreeing with the walk's own count | `CorruptJournal`, for the same reason the count is written at all |
 //! | A pool line whose index is not the next one | **Refused** — no record is written |
 //! | An entry referencing past a pool's end | **Refused** — no record is written |
@@ -62,21 +62,21 @@ use tempfile::TempDir;
 
 use crate::error::{Error, Result};
 use crate::gg::GgCapabilitySet;
-use crate::gg_replay::{
-    GG_REPLAY_FORMAT_VERSION, GgReplayAgent, GgReplayEntry, GgReplayEntryKind, GgReplayFidelity,
-    GgReplayRecorder, GgReplaySeed, GgReplayTruncation, GgReplayTruncationReason,
+use crate::gg_session_journal::{GG_SESSION_JOURNAL_PATH, GgJournalLine};
+use crate::gg_session_record::{
+    GG_SESSION_FORMAT_VERSION, GgSessionAgent, GgSessionEntry, GgSessionEntryKind,
+    GgSessionRecorder, GgSessionSeed, GgSessionTruncation, GgSessionTruncationReason,
 };
-use crate::gg_replay_journal::{GG_REPLAY_JOURNAL_PATH, GgJournalLine};
 use crate::post_run::{PostRunContext, PostRunReport, PostRunStage};
 
-/// The file name a run tree carries its assembled replay record under, at the **root** of
+/// The file name a run tree carries its assembled session record under, at the **root** of
 /// the run directory rather than inside `implementation/`.
 ///
 /// `implementation/` is a verbatim copy of what the model produced; a host-written file
 /// there would read as code the model wrote. The root is also what the
 /// [run-tree artifact convention](crate::post_run) names: `<name>.json.gz` here, mirrored
 /// into the backend store as opaque bytes and served back content-negotiated.
-pub const GG_REPLAY_TREE_ARTIFACT: &str = "replay.json.gz";
+pub const GG_SESSION_TREE_ARTIFACT: &str = "replay.json.gz";
 
 /// What one [assembly](assemble_journal_to_gz) produced.
 ///
@@ -84,17 +84,17 @@ pub const GG_REPLAY_TREE_ARTIFACT: &str = "replay.json.gz";
 /// wants — how much was captured, and whether it is all of it — are exactly the two a
 /// gzipped file on disk does not show.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GgReplayAssembly {
-    /// How many [entries](GgReplayEntry) the assembled record carries.
+pub struct GgSessionAssembly {
+    /// How many [entries](GgSessionEntry) the assembled record carries.
     pub entries: u64,
     /// What the record is missing, when it is missing something.
-    pub truncation: Option<GgReplayTruncation>,
+    pub truncation: Option<GgSessionTruncation>,
     /// The size of the written `.gz`, so a run's log can say what the artifact cost.
     pub compressed_bytes: u64,
 }
 
 /// Fold the capture journal at `journal` into a gzipped
-/// [replay record](crate::gg_replay::GgReplayRecord) at `output`, streaming through
+/// [session record](crate::gg_session_record::GgSessionRecord) at `output`, streaming through
 /// scratch [segment files](self#where-the-segment-files-live-and-why-it-is-not-tmp)
 /// beside `output` so peak memory is one journal line.
 ///
@@ -106,8 +106,8 @@ pub struct GgReplayAssembly {
 /// that move is a rename and not a second copy.
 ///
 /// See the [module documentation](self) for which damage is reported as a
-/// [truncation](GgReplayTruncation) and which is refused outright.
-pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayAssembly> {
+/// [truncation](GgSessionTruncation) and which is refused outright.
+pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgSessionAssembly> {
     let scratch = scratch_beside(output)?;
     let mut segments = Segments::create(scratch.path())?;
     let mut reader = BufReader::new(
@@ -121,7 +121,7 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
     let mut last_seq: Option<u64> = None;
     // Set when the walk stops on damage; superseded by whatever the `End` line reports if
     // the walk reaches one.
-    let mut damaged: Option<GgReplayTruncation> = None;
+    let mut damaged: Option<GgSessionTruncation> = None;
     let mut end: Option<EndLine> = None;
 
     let mut line = Vec::new();
@@ -163,14 +163,13 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
                 session_id,
                 capability_set,
                 recorder,
-                fidelity,
             } => {
-                if format_version != GG_REPLAY_FORMAT_VERSION {
+                if format_version != GG_SESSION_FORMAT_VERSION {
                     return Err(journal_error(
                         journal,
                         format!(
                             "is in journal format {format_version}, which this build does not \
-                             assemble (it writes {GG_REPLAY_FORMAT_VERSION}); a record from a gg \
+                             assemble (it writes {GG_SESSION_FORMAT_VERSION}); a record from a gg \
                              this one does not understand is refused rather than guessed at"
                         ),
                     ));
@@ -186,11 +185,9 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
                     session_id,
                     capability_set,
                     recorder,
-                    fidelity,
                 });
             }
             GgJournalLine::Seed { seed } => {
-                check_seed_references(journal, &segments, &seed)?;
                 // The last one wins: the recorder rewrites the envelope when a value it could
                 // not know at launch has since resolved (see the journal line's docs).
                 provenance.seed = *seed;
@@ -212,10 +209,6 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
                 if let Some(clip) = clip {
                     segments.clips.push(&clip)?;
                 }
-            }
-            GgJournalLine::Blob { index, blob } => {
-                expect_next_index(journal, "blob", index, segments.blobs.count)?;
-                segments.blobs.push(&blob)?;
             }
             GgJournalLine::Entry { entry } => {
                 check_entry_references(journal, &segments, &entry)?;
@@ -254,17 +247,17 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
     let compressed_bytes =
         write_record(&staged, &header, &provenance, segments, truncation.as_ref())?;
     std::fs::rename(&staged, output)?;
-    Ok(GgReplayAssembly {
+    Ok(GgSessionAssembly {
         entries,
         truncation,
         compressed_bytes,
     })
 }
 
-/// The [post-run stage](crate::post_run) that assembles a gg run's replay journal into the
-/// run tree's [`replay.json.gz`](GG_REPLAY_TREE_ARTIFACT).
+/// The [post-run stage](crate::post_run) that assembles a gg run's capture journal into the
+/// run tree's [`replay.json.gz`](GG_SESSION_TREE_ARTIFACT).
 ///
-/// Wired into [`RunEngine::replay_assembler`](crate::RunEngine) by the host that drives
+/// Wired into [`RunEngine::session_assembler`](crate::RunEngine) by the host that drives
 /// runs. It applies only to **gg** runs — the seam invokes every wired stage
 /// unconditionally, so deciding "this run has nothing for me" is the stage's own job — and
 /// only to gg runs that actually captured something: a run whose capture never started
@@ -284,23 +277,23 @@ pub fn assemble_journal_to_gz(journal: &Path, output: &Path) -> Result<GgReplayA
 /// from the run's git repository, so it cannot reach the public per-run repo — which is
 /// what makes keeping it the better trade.
 #[derive(Debug, Default, Clone, Copy)]
-pub struct GgReplayAssembler;
+pub struct GgSessionAssembler;
 
 #[async_trait::async_trait]
-impl PostRunStage for GgReplayAssembler {
+impl PostRunStage for GgSessionAssembler {
     fn name(&self) -> &'static str {
-        "gg-replay"
+        "gg-session-record"
     }
 
     async fn run(&self, context: &PostRunContext<'_>) -> Result<PostRunReport> {
         if !context.request.is_gg() {
             return Ok(PostRunReport::empty());
         }
-        let journal = context.artifacts.repo_path.join(GG_REPLAY_JOURNAL_PATH);
+        let journal = context.artifacts.repo_path.join(GG_SESSION_JOURNAL_PATH);
         if !journal.exists() {
             return Ok(PostRunReport::empty());
         }
-        let output = context.run_dir.join(GG_REPLAY_TREE_ARTIFACT);
+        let output = context.run_dir.join(GG_SESSION_TREE_ARTIFACT);
         // The `?` is what leaves a refused journal in the tree, and that is the intent:
         // with no record to supersede it, the journal is the only account of the session
         // left to diagnose the refusal from (see this stage's documentation).
@@ -312,14 +305,14 @@ impl PostRunStage for GgReplayAssembler {
             tracing::warn!(
                 error = %err,
                 journal = %journal.display(),
-                "could not remove the replay journal from the collected tree",
+                "could not remove the capture journal from the collected tree",
             );
         }
         tracing::info!(
             entries = assembly.entries,
             compressed_bytes = assembly.compressed_bytes,
             truncated = assembly.truncation.is_some(),
-            "assembled the gg replay record",
+            "assembled the gg session record",
         );
         Ok(PostRunReport::artifact(output))
     }
@@ -339,10 +332,7 @@ struct JournalHeader {
     /// only copies it through to the record, never reads it.
     capability_set: Box<GgCapabilitySet>,
     /// Which build captured.
-    recorder: GgReplayRecorder,
-    /// How completely it captured — copied through from the journal, never re-derived
-    /// from the capability set.
-    fidelity: GgReplayFidelity,
+    recorder: GgSessionRecorder,
 }
 
 /// The record's **provenance**: the invocation envelope and the agent table, folded out of
@@ -359,9 +349,9 @@ struct Provenance {
     /// The fixed identity the session started from, as the **last**
     /// [`Seed`](GgJournalLine::Seed) line stated it. Default — an empty envelope — for a
     /// journal that carried none, which is every journal written before the line existed.
-    seed: GgReplaySeed,
+    seed: GgSessionSeed,
     /// One row per agent, in the order the run created them.
-    agents: Vec<GgReplayAgent>,
+    agents: Vec<GgSessionAgent>,
 }
 
 impl Provenance {
@@ -372,7 +362,7 @@ impl Provenance {
     /// the parallelism cap and the board for the rest — and the position matters. Replacing in
     /// place is what keeps the table in **creation order** while letting the terminal row
     /// supersede the opening one.
-    fn upsert_agent(&mut self, agent: GgReplayAgent) {
+    fn upsert_agent(&mut self, agent: GgSessionAgent) {
         match self
             .agents
             .iter_mut()
@@ -390,7 +380,7 @@ struct EndLine {
     /// How many entries the recorder says it wrote.
     entries: u64,
     /// Why capture stopped short, when it did.
-    truncation: Option<GgReplayTruncation>,
+    truncation: Option<GgSessionTruncation>,
 }
 
 /// The truncation the assembled record should carry.
@@ -407,21 +397,21 @@ struct EndLine {
 /// 3. otherwise the recorder's own report, which is the ordinary case (`None` for a
 ///    complete capture, a ceiling breach for a deliberate stop).
 fn resolve_truncation(
-    damaged: Option<GgReplayTruncation>,
+    damaged: Option<GgSessionTruncation>,
     end: Option<EndLine>,
     entries: u64,
     last_seq: Option<u64>,
-) -> Option<GgReplayTruncation> {
+) -> Option<GgSessionTruncation> {
     let Some(end) = end else {
-        return Some(damaged.unwrap_or(GgReplayTruncation {
-            reason: GgReplayTruncationReason::SessionKilled,
+        return Some(damaged.unwrap_or(GgSessionTruncation {
+            reason: GgSessionTruncationReason::SessionKilled,
             last_seq,
             bytes: None,
         }));
     };
     if end.entries != entries {
-        return Some(GgReplayTruncation {
-            reason: GgReplayTruncationReason::CorruptJournal,
+        return Some(GgSessionTruncation {
+            reason: GgSessionTruncationReason::CorruptJournal,
             last_seq,
             // The recorder's byte figure survives: it is still the honest answer to "how
             // much was written", which the count mismatch says nothing about.
@@ -431,11 +421,11 @@ fn resolve_truncation(
     end.truncation
 }
 
-/// A [corruption](GgReplayTruncationReason::CorruptJournal) that kept everything up to
+/// A [corruption](GgSessionTruncationReason::CorruptJournal) that kept everything up to
 /// `last_seq`.
-fn corrupt_at(last_seq: Option<u64>) -> GgReplayTruncation {
-    GgReplayTruncation {
-        reason: GgReplayTruncationReason::CorruptJournal,
+fn corrupt_at(last_seq: Option<u64>) -> GgSessionTruncation {
+    GgSessionTruncation {
+        reason: GgSessionTruncationReason::CorruptJournal,
         last_seq,
         bytes: None,
     }
@@ -467,12 +457,12 @@ fn expect_next_index(journal: &Path, pool: &str, index: u32, next: u64) -> Resul
 /// one that does happen means the journal is not the journal it claims to be, and is
 /// refused rather than served as a record whose consumers index out of bounds.
 ///
-/// The match is exhaustive on purpose: a new [entry kind](GgReplayEntryKind) carrying a
+/// The match is exhaustive on purpose: a new [entry kind](GgSessionEntryKind) carrying a
 /// pool reference must be added here, and the compiler is what says so.
 fn check_entry_references(
     journal: &Path,
     segments: &Segments,
-    entry: &GgReplayEntry,
+    entry: &GgSessionEntry,
 ) -> Result<()> {
     let check = |pool: &str, index: u32, len: u64| -> Result<()> {
         if u64::from(index) < len {
@@ -487,7 +477,7 @@ fn check_entry_references(
             ),
         ))
     };
-    let request = |request: &crate::gg_replay::GgReplayRequest| -> Result<()> {
+    let request = |request: &crate::gg_session_record::GgSessionRequest| -> Result<()> {
         for message in &request.messages {
             check("message", *message, segments.messages.count)?;
         }
@@ -497,49 +487,24 @@ fn check_entry_references(
         Ok(())
     };
     match &entry.kind {
-        GgReplayEntryKind::ModelIo { request: sent, .. }
-        | GgReplayEntryKind::ModelError { request: sent, .. } => request(sent)?,
-        GgReplayEntryKind::ToolResult { outcome, .. } => {
+        GgSessionEntryKind::ModelIo { request: sent, .. }
+        | GgSessionEntryKind::ModelError { request: sent, .. } => request(sent)?,
+        GgSessionEntryKind::ToolResult { outcome, .. } => {
             check("text", outcome.output, segments.texts.count)?;
             if let Some(summary) = outcome.summary {
                 check("text", summary, segments.texts.count)?;
             }
-            for image in &outcome.images {
-                check("blob", *image, segments.blobs.count)?;
-            }
         }
-        GgReplayEntryKind::PromptFrame { items } => {
+        GgSessionEntryKind::PromptFrame { items } => {
             for item in items {
                 check("message", item.message, segments.messages.count)?;
             }
         }
-        GgReplayEntryKind::Shell { command, .. } | GgReplayEntryKind::Git { command } => {
+        GgSessionEntryKind::Shell { command, .. } | GgSessionEntryKind::Git { command } => {
             check("text", command.stdout, segments.texts.count)?;
             check("text", command.stderr, segments.texts.count)?;
         }
-        GgReplayEntryKind::CancelProbe { .. } | GgReplayEntryKind::Clock { .. } => {}
-    }
-    Ok(())
-}
-
-/// Require every [seeded file](crate::gg_replay::GgReplaySeedFile) to reference a blob
-/// already read.
-///
-/// The same danger [an entry's references](check_entry_references) carry, and refused on the
-/// same terms: a seed naming a blob past the pool's end would hand a reconstruction seeding a
-/// workspace either nothing or — worse — another file's bytes under this file's path.
-fn check_seed_references(journal: &Path, segments: &Segments, seed: &GgReplaySeed) -> Result<()> {
-    for file in &seed.provided_files {
-        if u64::from(file.blob) >= segments.blobs.count {
-            return Err(journal_error(
-                journal,
-                format!(
-                    "has a dangling reference: the seed's provided file `{}` names blob {}, but \
-                     only {} have been read",
-                    file.path, file.blob, segments.blobs.count
-                ),
-            ));
-        }
+        GgSessionEntryKind::CancelProbe { .. } | GgSessionEntryKind::Clock { .. } => {}
     }
     Ok(())
 }
@@ -547,7 +512,7 @@ fn check_seed_references(journal: &Path, segments: &Segments, seed: &GgReplaySee
 /// A journal that cannot be assembled, named by path so a run's warning says *which*
 /// journal — a stage's error is the only place this surfaces.
 fn journal_error(journal: &Path, detail: impl Into<String>) -> Error {
-    Error::GgReplayJournal {
+    Error::GgSessionJournal {
         path: journal.display().to_string(),
         detail: detail.into(),
     }
@@ -632,23 +597,20 @@ struct Segments {
     toolsets: Segment,
     /// The text pool.
     texts: Segment,
-    /// The [clip](crate::gg_replay::GgReplayTextClip) table: which texts are clips.
+    /// The [clip](crate::gg_session_record::GgSessionTextClip) table: which texts are clips.
     clips: Segment,
-    /// The image-blob pool.
-    blobs: Segment,
     /// The input log.
     entries: Segment,
 }
 
 impl Segments {
-    /// Create the six empty segment files under `dir`.
+    /// Create the five empty segment files under `dir`.
     fn create(dir: &Path) -> Result<Self> {
         Ok(Self {
             messages: Segment::create(dir, "messages")?,
             toolsets: Segment::create(dir, "toolsets")?,
             texts: Segment::create(dir, "texts")?,
             clips: Segment::create(dir, "clips")?,
-            blobs: Segment::create(dir, "blobs")?,
             entries: Segment::create(dir, "entries")?,
         })
     }
@@ -661,7 +623,7 @@ impl Segments {
 /// Stream the record to `output` as gzipped compact JSON, returning its size on disk.
 ///
 /// The document is written **field by field** rather than by serializing a
-/// [`GgReplayRecord`](crate::gg_replay::GgReplayRecord), because the whole point of the
+/// [`GgSessionRecord`](crate::gg_session_record::GgSessionRecord), because the whole point of the
 /// segments is that the arrays never exist in memory at once — and `serde_json` has no way
 /// to emit an array from a file. The cost of that is a hand-written object, so the field
 /// set is pinned by a test against what the record itself serializes; a field added to the
@@ -671,7 +633,7 @@ fn write_record(
     header: &JournalHeader,
     provenance: &Provenance,
     segments: Segments,
-    truncation: Option<&GgReplayTruncation>,
+    truncation: Option<&GgSessionTruncation>,
 ) -> Result<u64> {
     let file = File::create(output)?;
     let mut out = GzEncoder::new(BufWriter::new(file), Compression::default());
@@ -680,8 +642,6 @@ fn write_record(
     write_field(&mut out, "formatVersion", &header.format_version)?;
     out.write_all(b",")?;
     write_field(&mut out, "recorder", &header.recorder)?;
-    out.write_all(b",")?;
-    write_field(&mut out, "fidelity", &header.fidelity)?;
     out.write_all(b",")?;
     write_field(&mut out, "sessionId", &header.session_id)?;
     out.write_all(b",")?;
@@ -702,7 +662,6 @@ fn write_record(
         ("toolsets", segments.toolsets),
         ("texts", segments.texts),
         ("clips", segments.clips),
-        ("blobs", segments.blobs),
         ("entries", segments.entries),
     ] {
         write!(out, ",\"{name}\":[")?;
@@ -729,5 +688,5 @@ fn write_field<W: Write, T: Serialize>(out: &mut W, name: &str, value: &T) -> Re
 }
 
 #[cfg(test)]
-#[path = "gg_replay_assembly.test.rs"]
+#[path = "gg_session_assembly.test.rs"]
 mod tests;

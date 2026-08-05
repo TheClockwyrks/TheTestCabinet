@@ -14,12 +14,12 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::gg::{GgAgentStatus, GgCapabilitySet};
-use crate::gg_replay::{
-    GgClientRole, GgReplayAgentOrigin, GgReplayCommand, GgReplayFidelity, GgReplayInterner,
-    GgReplayModalities, GgReplayRecord, GgReplayRequestShape, GgReplaySeedFile, GgReplayToolCall,
-    GgReplayToolOutcome, GgShellCwd, GgShellOrigin,
+use crate::gg_session_journal::GgJournalInterner;
+use crate::gg_session_record::{
+    GgClientRole, GgSessionAgentOrigin, GgSessionCommand, GgSessionImage, GgSessionInterner,
+    GgSessionModalities, GgSessionRecord, GgSessionRequestShape, GgSessionToolCall,
+    GgSessionToolOutcome, GgShellCwd, GgShellOrigin,
 };
-use crate::gg_replay_journal::GgJournalInterner;
 
 // --- building a journal -----------------------------------------------------
 
@@ -27,28 +27,22 @@ fn message(role: &str, content: &str) -> Value {
     json!({ "role": role, "content": content })
 }
 
-/// The header a recording session writes first, for an ordinary always-on capture.
+/// The header a recording session writes first.
 fn header() -> GgJournalLine {
-    header_at(GgReplayFidelity::Standard)
-}
-
-/// The same, for a run the `replay` capability escalated.
-fn header_at(fidelity: GgReplayFidelity) -> GgJournalLine {
     GgJournalLine::Header {
-        format_version: GG_REPLAY_FORMAT_VERSION,
+        format_version: GG_SESSION_FORMAT_VERSION,
         session_id: "run-1".to_string(),
         capability_set: Box::new(GgCapabilitySet::minimal("some/model")),
-        recorder: GgReplayRecorder {
+        recorder: GgSessionRecorder {
             gg_version: Some("0.7.0".to_string()),
             commit: None,
         },
-        fidelity,
     }
 }
 
-fn entry(seq: u64, kind: GgReplayEntryKind) -> GgJournalLine {
+fn entry(seq: u64, kind: GgSessionEntryKind) -> GgJournalLine {
     GgJournalLine::Entry {
-        entry: Box::new(GgReplayEntry {
+        entry: Box::new(GgSessionEntry {
             agent_id: "root".to_string(),
             seq,
             kind,
@@ -64,14 +58,14 @@ fn session() -> Vec<GgJournalLine> {
 
     let request = interner.intern_request(
         GgClientRole::Agent,
-        GgReplayRequestShape::Complete,
+        GgSessionRequestShape::Complete,
         &[message("system", "you are gg"), message("user", "build it")],
         Some(&json!([{ "name": "shell" }])),
     );
     lines.extend(interner.take_pending());
     lines.push(entry(
         0,
-        GgReplayEntryKind::ModelIo {
+        GgSessionEntryKind::ModelIo {
             request,
             response: json!({ "text": "on it", "toolCalls": [] }),
             duration_ms: None,
@@ -79,22 +73,24 @@ fn session() -> Vec<GgJournalLine> {
     ));
 
     let output = interner.intern_text("ok");
-    let image = interner.intern_blob("image/png", 3, "AAA=");
     lines.extend(interner.take_pending());
     lines.push(entry(
         1,
-        GgReplayEntryKind::ToolResult {
-            call: GgReplayToolCall {
+        GgSessionEntryKind::ToolResult {
+            call: GgSessionToolCall {
                 id: "call-1".to_string(),
                 name: "shell".to_string(),
                 arguments: json!({ "command": "ls" }),
                 cwd: Some(GgShellCwd::Workspace),
             },
-            outcome: GgReplayToolOutcome {
+            outcome: GgSessionToolOutcome {
                 ok: true,
                 output,
                 summary: None,
-                images: vec![image],
+                images: vec![GgSessionImage {
+                    media_type: "image/png".to_string(),
+                    bytes: 3,
+                }],
                 data: None,
                 data_text: None,
                 failure: None,
@@ -131,7 +127,7 @@ fn write_journal_at(path: &Path, lines: &[GgJournalLine]) {
 
 /// Read back an assembled artifact, through the same gzip + `Deserialize` path the
 /// console and a replay driver use.
-fn read_record(path: &Path) -> GgReplayRecord {
+fn read_record(path: &Path) -> GgSessionRecord {
     let bytes = std::fs::read(path).expect("read the assembled record");
     assert_eq!(
         &bytes[..2],
@@ -147,7 +143,7 @@ fn read_record(path: &Path) -> GgReplayRecord {
 
 /// A scratch run tree, and the artifact path inside it.
 fn output_in(dir: &Path) -> PathBuf {
-    dir.join("run-1").join(GG_REPLAY_TREE_ARTIFACT)
+    dir.join("run-1").join(GG_SESSION_TREE_ARTIFACT)
 }
 
 // --- the happy path ---------------------------------------------------------
@@ -165,7 +161,7 @@ fn a_complete_journal_assembles_into_the_record_it_captured() {
     assert_eq!(assembly.entries, 2);
     assert_eq!(assembly.truncation, None);
     let record = read_record(&output);
-    assert_eq!(record.format_version, GG_REPLAY_FORMAT_VERSION);
+    assert_eq!(record.format_version, GG_SESSION_FORMAT_VERSION);
     assert_eq!(record.session_id, "run-1");
     assert_eq!(
         record.capability_set,
@@ -177,14 +173,12 @@ fn a_complete_journal_assembles_into_the_record_it_captured() {
         Some("0.7.0"),
         "which build captured is carried through, explanatory only",
     );
-    // Two distinct messages, one toolset, one tool output, one image — the pools the
-    // interner minted, in the order it minted them.
+    // Two distinct messages, one toolset, one tool output — the pools the interner minted,
+    // in the order it minted them.
     assert_eq!(record.messages.len(), 2);
     assert_eq!(record.messages[0].body, message("system", "you are gg"));
     assert_eq!(record.toolsets.len(), 1);
     assert_eq!(record.texts, vec!["ok".to_string()]);
-    assert_eq!(record.blobs.len(), 1);
-    assert_eq!(record.blobs[0].data_base64, "AAA=");
     assert_eq!(
         record
             .entries
@@ -194,14 +188,9 @@ fn a_complete_journal_assembles_into_the_record_it_captured() {
         vec![0, 1],
     );
     match &record.entries[0].kind {
-        GgReplayEntryKind::ModelIo { request, .. } => {
+        GgSessionEntryKind::ModelIo { request, .. } => {
             assert_eq!(request.messages, vec![0, 1]);
             assert_eq!(request.toolset, Some(0));
-            assert_eq!(
-                request.fingerprint.system.as_deref(),
-                Some(record.messages[0].id.as_str()),
-                "the fingerprint the recorder stamped survives assembly verbatim",
-            );
         }
         other => panic!("expected the model turn first, got {other:?}"),
     }
@@ -229,7 +218,7 @@ fn the_document_carries_every_field_the_record_serializes() {
         .expect("decompress");
     let assembled: serde_json::Map<String, Value> =
         serde_json::from_str(&json).expect("the document is a JSON object");
-    let serialized = serde_json::to_value(GgReplayRecord::new(
+    let serialized = serde_json::to_value(GgSessionRecord::new(
         "run-1",
         GgCapabilitySet::minimal("some/model"),
     ))
@@ -240,30 +229,6 @@ fn the_document_carries_every_field_the_record_serializes() {
         assembled.keys().collect::<Vec<_>>(),
         expected.keys().collect::<Vec<_>>(),
         "the hand-written document and the record type must carry the same fields",
-    );
-}
-
-#[test]
-fn the_fidelity_the_recorder_captured_at_is_what_the_record_reports() {
-    // Copied through from the journal, never re-derived from the capability set the record
-    // also carries: what a reader needs is what the *recorder* did, and the interesting
-    // case — a build whose full-only seams do not yet cover what the set asked for — is
-    // precisely the one a re-derivation would paper over.
-    let dir = tempfile::tempdir().expect("scratch");
-    let mut lines = vec![header_at(GgReplayFidelity::Full)];
-    lines.extend(session().into_iter().skip(1));
-    lines.push(end(2));
-    let journal = write_journal(dir.path(), &lines);
-    let output = output_in(dir.path());
-
-    assemble_journal_to_gz(&journal, &output).expect("assemble");
-
-    let record = read_record(&output);
-    assert_eq!(record.fidelity, GgReplayFidelity::Full);
-    assert_eq!(
-        record.capability_set,
-        GgCapabilitySet::minimal("some/model"),
-        "and it did not come from the set, which declares no `replay` at all",
     );
 }
 
@@ -318,7 +283,7 @@ fn an_always_on_capture_of_a_realistic_session_costs_a_fraction_of_a_megabyte() 
 
         let request = interner.intern_request(
             GgClientRole::Agent,
-            GgReplayRequestShape::Complete,
+            GgSessionRequestShape::Complete,
             &conversation,
             Some(&tools),
         );
@@ -326,7 +291,7 @@ fn an_always_on_capture_of_a_realistic_session_costs_a_fraction_of_a_megabyte() 
         let reply = filler(200 + turn, 1_500);
         lines.push(entry(
             turn,
-            GgReplayEntryKind::ModelIo {
+            GgSessionEntryKind::ModelIo {
                 request,
                 response: json!({ "text": reply, "toolCalls": [] }),
                 duration_ms: None,
@@ -368,8 +333,8 @@ fn a_reported_ceiling_truncation_survives_assembly() {
     let mut lines = session();
     lines.push(GgJournalLine::End {
         entries: 2,
-        truncation: Some(GgReplayTruncation {
-            reason: GgReplayTruncationReason::ByteCeiling,
+        truncation: Some(GgSessionTruncation {
+            reason: GgSessionTruncationReason::ByteCeiling,
             last_seq: Some(1),
             bytes: Some(4096),
         }),
@@ -381,8 +346,8 @@ fn a_reported_ceiling_truncation_survives_assembly() {
 
     assert_eq!(
         assembly.truncation,
-        Some(GgReplayTruncation {
-            reason: GgReplayTruncationReason::ByteCeiling,
+        Some(GgSessionTruncation {
+            reason: GgSessionTruncationReason::ByteCeiling,
             last_seq: Some(1),
             bytes: Some(4096),
         }),
@@ -393,9 +358,9 @@ fn a_reported_ceiling_truncation_survives_assembly() {
 // --- the provenance lines ---------------------------------------------------
 
 /// One agent row, as the recorder writes it when the agent comes into existence.
-fn agent_line(agent_id: &str, profile: &str, origin: GgReplayAgentOrigin) -> GgJournalLine {
+fn agent_line(agent_id: &str, profile: &str, origin: GgSessionAgentOrigin) -> GgJournalLine {
     GgJournalLine::Agent {
-        agent: Box::new(GgReplayAgent {
+        agent: Box::new(GgSessionAgent {
             agent_id: agent_id.to_string(),
             profile: profile.to_string(),
             origin,
@@ -409,7 +374,7 @@ fn agent_line(agent_id: &str, profile: &str, origin: GgReplayAgentOrigin) -> GgJ
 fn ended_agent_line(
     agent_id: &str,
     profile: &str,
-    origin: GgReplayAgentOrigin,
+    origin: GgSessionAgentOrigin,
     status: GgAgentStatus,
 ) -> GgJournalLine {
     let GgJournalLine::Agent { mut agent } = agent_line(agent_id, profile, origin) else {
@@ -419,18 +384,17 @@ fn ended_agent_line(
     GgJournalLine::Agent { agent }
 }
 
-/// An envelope naming `prompt`, carrying `provided_files` as blob references.
-fn seed_line(prompt: &str, provided_files: Vec<GgReplaySeedFile>) -> GgJournalLine {
+/// An envelope naming `prompt`.
+fn seed_line(prompt: &str) -> GgJournalLine {
     GgJournalLine::Seed {
-        seed: Box::new(GgReplaySeed {
+        seed: Box::new(GgSessionSeed {
             baseline_commit: Some("abc123".to_string()),
             prompt: prompt.to_string(),
             model_windows: BTreeMap::from([("some/model".to_string(), 128_000)]),
             model_modalities: BTreeMap::from([(
                 "some/model".to_string(),
-                GgReplayModalities { vision: true },
+                GgSessionModalities { vision: true },
             )]),
-            provided_files,
         }),
     }
 }
@@ -438,12 +402,12 @@ fn seed_line(prompt: &str, provided_files: Vec<GgReplaySeedFile>) -> GgJournalLi
 #[test]
 fn the_invocation_envelope_and_the_agent_table_survive_assembly() {
     let dir = tempfile::tempdir().expect("scratch");
-    let mut lines = vec![header(), seed_line("Build a tiny game.", Vec::new())];
-    lines.push(agent_line("root", "Root", GgReplayAgentOrigin::Root));
+    let mut lines = vec![header(), seed_line("Build a tiny game.")];
+    lines.push(agent_line("root", "Root", GgSessionAgentOrigin::Root));
     lines.push(agent_line(
         "agent-0",
         "Worker",
-        GgReplayAgentOrigin::Spawn {
+        GgSessionAgentOrigin::Spawn {
             parent: "root".to_string(),
             ordinal: 0,
         },
@@ -470,7 +434,7 @@ fn the_invocation_envelope_and_the_agent_table_survive_assembly() {
     );
     assert_eq!(
         record.agents[1].origin,
-        GgReplayAgentOrigin::Spawn {
+        GgSessionAgentOrigin::Spawn {
             parent: "root".to_string(),
             ordinal: 0,
         },
@@ -490,11 +454,11 @@ fn an_agent_that_recorded_nothing_still_has_its_row() {
     let dir = tempfile::tempdir().expect("scratch");
     // The root records everything in `session()`; the subagent records not one entry.
     let mut lines = vec![header()];
-    lines.push(agent_line("root", "Root", GgReplayAgentOrigin::Root));
+    lines.push(agent_line("root", "Root", GgSessionAgentOrigin::Root));
     lines.push(agent_line(
         "agent-0",
         "Worker",
-        GgReplayAgentOrigin::Spawn {
+        GgSessionAgentOrigin::Spawn {
             parent: "root".to_string(),
             ordinal: 0,
         },
@@ -526,7 +490,7 @@ fn an_agent_that_recorded_nothing_still_has_its_row() {
     );
     assert_eq!(
         record.truncation.map(|truncation| truncation.reason),
-        Some(GgReplayTruncationReason::SessionKilled),
+        Some(GgSessionTruncationReason::SessionKilled),
     );
 }
 
@@ -535,11 +499,11 @@ fn a_terminal_agent_row_supersedes_the_one_the_agent_was_born_with() {
     let dir = tempfile::tempdir().expect("scratch");
     let lines = vec![
         header(),
-        agent_line("root", "Root", GgReplayAgentOrigin::Root),
+        agent_line("root", "Root", GgSessionAgentOrigin::Root),
         agent_line(
             "agent-0",
             "Worker",
-            GgReplayAgentOrigin::Spawn {
+            GgSessionAgentOrigin::Spawn {
                 parent: "root".to_string(),
                 ordinal: 0,
             },
@@ -547,7 +511,7 @@ fn a_terminal_agent_row_supersedes_the_one_the_agent_was_born_with() {
         ended_agent_line(
             "root",
             "Root",
-            GgReplayAgentOrigin::Root,
+            GgSessionAgentOrigin::Root,
             GgAgentStatus::Done,
         ),
         end(0),
@@ -580,20 +544,15 @@ fn a_terminal_agent_row_supersedes_the_one_the_agent_was_born_with() {
 #[test]
 fn the_last_envelope_supersedes_the_ones_before_it() {
     let dir = tempfile::tempdir().expect("scratch");
-    let mut resolved = seed_line("Build a tiny game.", Vec::new());
+    let mut resolved = seed_line("Build a tiny game.");
     let GgJournalLine::Seed { seed } = &mut resolved else {
         unreachable!("seed_line writes a seed line")
     };
     seed.model_modalities.insert(
         "some/model".to_string(),
-        GgReplayModalities { vision: false },
+        GgSessionModalities { vision: false },
     );
-    let lines = vec![
-        header(),
-        seed_line("Build a tiny game.", Vec::new()),
-        resolved,
-        end(0),
-    ];
+    let lines = vec![header(), seed_line("Build a tiny game."), resolved, end(0)];
     let journal = write_journal(dir.path(), &lines);
     let output = output_in(dir.path());
 
@@ -610,133 +569,6 @@ fn the_last_envelope_supersedes_the_ones_before_it() {
     );
 }
 
-/// A seeded file resolves against the blob pool, and one whose bytes a turn already carried costs
-/// the record **nothing beyond its reference** — which is the whole reason the seed is allowed to
-/// be self-contained.
-#[test]
-fn a_provided_file_resolves_against_the_pool_without_growing_the_record() {
-    let dir = tempfile::tempdir().expect("scratch");
-    // Incompressible enough that gzip cannot hide a second copy: a duplicated payload would show
-    // up in the size comparison below as tens of kilobytes.
-    let image = filler(7, 64 * 1024);
-
-    // A session whose tool result carried the image, with no seed at all.
-    let mut interner = GgJournalInterner::new();
-    let output_text = interner.intern_text("ok");
-    let blob = interner.intern_blob("image/png", 48 * 1024, &image);
-    let mut without_seed = vec![header()];
-    let pooled = interner.take_pending();
-    // Where the seed line goes below: after the pool lines, never before them. The recorder
-    // writes the two as one batch in exactly that order, because a seed that named a blob the
-    // walk had not read yet is the dangling reference assembly refuses outright.
-    let after_the_pool = 1 + pooled.len();
-    without_seed.extend(pooled);
-    without_seed.push(entry(
-        0,
-        GgReplayEntryKind::ToolResult {
-            call: GgReplayToolCall {
-                id: "call-1".to_string(),
-                name: "read_file".to_string(),
-                arguments: json!({ "path": "specs/mockup.png" }),
-                cwd: None,
-            },
-            outcome: GgReplayToolOutcome {
-                ok: true,
-                output: output_text,
-                summary: None,
-                images: vec![blob],
-                data: None,
-                data_text: None,
-                failure: None,
-            },
-        },
-    ));
-    without_seed.push(end(1));
-
-    // The same session, with the seed naming that same file. The recorder interns it through the
-    // same pool, so it lands on the entry the turn already minted.
-    let mut with_seed = without_seed.clone();
-    with_seed.insert(
-        after_the_pool,
-        seed_line(
-            "Build a tiny game.",
-            vec![GgReplaySeedFile {
-                path: "specs/mockup.png".to_string(),
-                blob,
-            }],
-        ),
-    );
-
-    let bare = output_in(&dir.path().join("bare"));
-    let seeded = output_in(&dir.path().join("seeded"));
-    let bare_bytes = assemble_journal_to_gz(
-        &write_journal(&dir.path().join("bare-journal"), &without_seed),
-        &bare,
-    )
-    .expect("assemble")
-    .compressed_bytes;
-    let seeded_bytes = assemble_journal_to_gz(
-        &write_journal(&dir.path().join("seeded-journal"), &with_seed),
-        &seeded,
-    )
-    .expect("assemble")
-    .compressed_bytes;
-
-    let record = read_record(&seeded);
-    assert_eq!(
-        record.blobs.len(),
-        1,
-        "the seeded file and the image the turn carried are one pool entry",
-    );
-    assert_eq!(
-        record.seed.provided_files[0].blob, blob,
-        "and the seed references it rather than carrying a second copy",
-    );
-    assert_eq!(
-        record.blobs[0].data_base64, image,
-        "the bytes a reconstruction seeds the workspace from are the exact ones",
-    );
-    let growth = seeded_bytes - bare_bytes;
-    assert!(
-        growth < 1024,
-        "the seed cost {growth} compressed bytes over a record without one, against a {} byte \
-         payload — it must cost the reference and the envelope, not the image",
-        image.len(),
-    );
-}
-
-#[test]
-fn an_envelope_referencing_past_the_blob_pool_is_refused_rather_than_assembled() {
-    // The same danger a dangling entry carries, and worse in one way: a reconstruction seeds a
-    // workspace from this, so a mis-resolved reference writes another file's bytes to this path.
-    let dir = tempfile::tempdir().expect("scratch");
-    let lines = vec![
-        header(),
-        seed_line(
-            "Build a tiny game.",
-            vec![GgReplaySeedFile {
-                path: "specs/mockup.png".to_string(),
-                blob: 3,
-            }],
-        ),
-        end(0),
-    ];
-    let journal = write_journal(dir.path(), &lines);
-    let output = output_in(dir.path());
-
-    let error = assemble_journal_to_gz(&journal, &output).expect_err("a dangling seed is refused");
-
-    assert!(
-        error.to_string().contains("dangling reference"),
-        "the error should say what is missing: {error}",
-    );
-    assert!(
-        error.to_string().contains("specs/mockup.png"),
-        "and name the file it could not resolve: {error}",
-    );
-    assert!(!output.exists());
-}
-
 // --- damage that is reported ------------------------------------------------
 
 #[test]
@@ -751,8 +583,8 @@ fn a_journal_without_its_end_line_is_a_killed_session() {
 
     assert_eq!(
         assembly.truncation,
-        Some(GgReplayTruncation {
-            reason: GgReplayTruncationReason::SessionKilled,
+        Some(GgSessionTruncation {
+            reason: GgSessionTruncationReason::SessionKilled,
             last_seq: Some(1),
             bytes: None,
         }),
@@ -783,8 +615,8 @@ fn a_torn_final_line_keeps_everything_before_it() {
 
     assert_eq!(
         assembly.truncation,
-        Some(GgReplayTruncation {
-            reason: GgReplayTruncationReason::CorruptJournal,
+        Some(GgSessionTruncation {
+            reason: GgSessionTruncationReason::CorruptJournal,
             last_seq: Some(1),
             bytes: None,
         }),
@@ -807,8 +639,8 @@ fn an_end_line_that_disagrees_with_the_walk_is_a_corrupt_journal() {
 
     assert_eq!(
         assembly.truncation,
-        Some(GgReplayTruncation {
-            reason: GgReplayTruncationReason::CorruptJournal,
+        Some(GgSessionTruncation {
+            reason: GgSessionTruncationReason::CorruptJournal,
             last_seq: Some(1),
             bytes: None,
         }),
@@ -852,8 +684,8 @@ fn an_entry_referencing_past_a_pool_is_refused_rather_than_assembled() {
     let mut lines = vec![header()];
     lines.push(entry(
         0,
-        GgReplayEntryKind::Git {
-            command: GgReplayCommand {
+        GgSessionEntryKind::Git {
+            command: GgSessionCommand {
                 command: "git status".to_string(),
                 cwd: GgShellCwd::Workspace,
                 exit_code: 0,
@@ -882,11 +714,10 @@ fn a_journal_from_a_newer_gg_is_refused() {
     // never heard of, and half a session's inputs is not a reconstruction.
     let dir = tempfile::tempdir().expect("scratch");
     let lines = vec![GgJournalLine::Header {
-        format_version: GG_REPLAY_FORMAT_VERSION + 1,
+        format_version: GG_SESSION_FORMAT_VERSION + 1,
         session_id: "run-1".to_string(),
         capability_set: Box::new(GgCapabilitySet::default()),
-        recorder: GgReplayRecorder::default(),
-        fidelity: GgReplayFidelity::Standard,
+        recorder: GgSessionRecorder::default(),
     }];
     let journal = write_journal(dir.path(), &lines);
     let output = output_in(dir.path());
@@ -956,7 +787,7 @@ fn assembly_leaves_nothing_behind_but_the_artifact() {
                 .into_owned()
         })
         .collect();
-    assert_eq!(left, vec![GG_REPLAY_TREE_ARTIFACT.to_string()]);
+    assert_eq!(left, vec![GG_SESSION_TREE_ARTIFACT.to_string()]);
 }
 
 // --- the stage --------------------------------------------------------------
@@ -1032,7 +863,7 @@ async fn drive_stage(
     let artifacts = crate::execution::ArtifactCollection {
         repo_path: repo_path.to_path_buf(),
     };
-    GgReplayAssembler
+    GgSessionAssembler
         .run(&PostRunContext {
             run_id: "run-1",
             run_dir,
@@ -1054,7 +885,7 @@ async fn the_stage_ignores_a_run_from_another_harness() {
     let repo = dir.path().join("implementation");
     let mut lines = session();
     lines.push(end(2));
-    write_journal_at(&repo.join(GG_REPLAY_JOURNAL_PATH), &lines);
+    write_journal_at(&repo.join(GG_SESSION_JOURNAL_PATH), &lines);
     let run_dir = dir.path().join("run-1");
 
     let report = drive_stage(crate::HarnessSlug::Claude, &repo, &run_dir)
@@ -1062,7 +893,7 @@ async fn the_stage_ignores_a_run_from_another_harness() {
         .expect("the stage");
 
     assert_eq!(report, PostRunReport::empty());
-    assert!(!run_dir.join(GG_REPLAY_TREE_ARTIFACT).exists());
+    assert!(!run_dir.join(GG_SESSION_TREE_ARTIFACT).exists());
 }
 
 #[tokio::test]
@@ -1089,7 +920,7 @@ async fn the_stage_lifts_the_journal_out_of_the_collected_tree() {
     let repo = dir.path().join("implementation");
     let mut lines = session();
     lines.push(end(2));
-    write_journal_at(&repo.join(GG_REPLAY_JOURNAL_PATH), &lines);
+    write_journal_at(&repo.join(GG_SESSION_JOURNAL_PATH), &lines);
     let run_dir = dir.path().join("run-1");
     std::fs::create_dir_all(&run_dir).expect("a run dir");
 
@@ -1097,10 +928,10 @@ async fn the_stage_lifts_the_journal_out_of_the_collected_tree() {
         .await
         .expect("the stage");
 
-    let artifact = run_dir.join(GG_REPLAY_TREE_ARTIFACT);
+    let artifact = run_dir.join(GG_SESSION_TREE_ARTIFACT);
     assert_eq!(report.artifacts, vec![artifact.clone()]);
     assert!(
-        !repo.join(GG_REPLAY_JOURNAL_PATH).exists(),
+        !repo.join(GG_SESSION_JOURNAL_PATH).exists(),
         "the journal must not survive into the published tree",
     );
     assert_eq!(read_record(&artifact).entries.len(), 2);
@@ -1113,7 +944,7 @@ async fn the_stage_reports_an_unusable_journal_as_a_failure() {
     let dir = tempfile::tempdir().expect("scratch");
     let repo = dir.path().join("implementation");
     std::fs::create_dir_all(repo.join(".gg")).expect("a tree");
-    std::fs::write(repo.join(GG_REPLAY_JOURNAL_PATH), "not a journal\n").expect("a bad journal");
+    std::fs::write(repo.join(GG_SESSION_JOURNAL_PATH), "not a journal\n").expect("a bad journal");
     let run_dir = dir.path().join("run-1");
 
     let error = drive_stage(crate::HarnessSlug::Gg, &repo, &run_dir)
@@ -1125,7 +956,7 @@ async fn the_stage_reports_an_unusable_journal_as_a_failure() {
         "the failure should say what was wrong: {error}",
     );
     assert!(
-        repo.join(GG_REPLAY_JOURNAL_PATH).exists(),
+        repo.join(GG_SESSION_JOURNAL_PATH).exists(),
         "a journal that could not be assembled is left where it is, for a human to read",
     );
 }
@@ -1142,9 +973,9 @@ fn a_shell_entrys_streams_are_checked_against_the_text_pool() {
     lines.extend(interner.take_pending());
     lines.push(entry(
         0,
-        GgReplayEntryKind::Shell {
+        GgSessionEntryKind::Shell {
             origin: GgShellOrigin::Tool,
-            command: GgReplayCommand {
+            command: GgSessionCommand {
                 command: "echo hello".to_string(),
                 cwd: GgShellCwd::Workspace,
                 exit_code: 0,
@@ -1185,9 +1016,9 @@ fn a_clipped_journal_assembles_into_a_record_that_says_which_texts_are_clips() {
     lines.extend(interner.take_pending());
     lines.push(entry(
         0,
-        GgReplayEntryKind::Shell {
+        GgSessionEntryKind::Shell {
             origin: GgShellOrigin::CompletionValidation,
-            command: GgReplayCommand {
+            command: GgSessionCommand {
                 command: "npm test".to_string(),
                 cwd: GgShellCwd::Workspace,
                 exit_code: 1,

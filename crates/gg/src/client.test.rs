@@ -1171,7 +1171,7 @@ fn the_default_identity_resolution_delegates_to_the_anonymous_one() {
     let client = factory
         .client_for_agent(
             &binding,
-            &AgentIdentity::agent(GgReplayAgentOrigin::Spawn {
+            &AgentIdentity::agent(GgSessionAgentOrigin::Spawn {
                 parent: "root".to_string(),
                 ordinal: 3,
             }),
@@ -1190,7 +1190,7 @@ fn the_default_identity_resolution_delegates_to_the_anonymous_one() {
 /// next turn would answer from one indistinguishable queue.
 #[test]
 fn an_agents_two_clients_share_its_origin_and_differ_only_in_role() {
-    let origin = GgReplayAgentOrigin::IssueAttempt {
+    let origin = GgSessionAgentOrigin::IssueAttempt {
         issue: "AUTH-1".to_string(),
         attempt: 2,
     };

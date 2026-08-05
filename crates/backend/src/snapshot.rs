@@ -535,8 +535,8 @@ impl SnapshotBuilder {
         //
         // Two boundaries meet here and both are load-bearing.
         //
-        // **A replay record is never exported.** A document carries configuration ids
-        // and outcome numbers; a replay record carries the complete model conversation
+        // **A session record is never exported.** A document carries configuration ids
+        // and outcome numbers; a session record carries the complete model conversation
         // verbatim, which is why the corpus is publishable at all and the record is not.
         // The distinction is enforced upstream (nothing assembles a record into a
         // snapshot object) and asserted in this module's tests, because it is exactly

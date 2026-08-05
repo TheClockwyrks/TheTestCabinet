@@ -2,7 +2,7 @@
 //!
 //! A run produces two kinds of output. The first is the run's *result* — metrics,
 //! a validation summary, a terminal state — which the engine computes itself. The
-//! second is *analysis of what the run did*: gg's replay record assembled from the
+//! second is *analysis of what the run did*: gg's session record assembled from the
 //! journal the session streamed, a static read of the code the model wrote, and
 //! whatever else later wants to measure a finished run. That second kind is what
 //! this module exists for.

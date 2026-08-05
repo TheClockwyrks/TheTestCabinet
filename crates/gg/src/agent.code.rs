@@ -21,7 +21,7 @@
 //! * [`run_code_turn`] — one whole turn, from the raw reply to the [decision](CodeTurnOutcome) the
 //!   loop acts on. Every effect a code turn has on the world happens inside it.
 //! * [`run_code_program`] — the `spawn_blocking` offload plus the servicing loop, which is where
-//!   every must-survive loop behaviour (gating, scheduler routing, telemetry, replay capture,
+//!   every must-survive loop behaviour (gating, scheduler routing, telemetry, session capture,
 //!   knowledge-state re-emission, context reclaim, skill pinning) is preserved for a composed call.
 //! * [`dispatch_code_tool_call`] — the per-call counterpart of the tool-calling loop's dispatch, so
 //!   the two paths gate and route identically.
@@ -39,7 +39,7 @@ use std::time::Duration;
 use tokio::runtime::Handle;
 
 use test_cabinet_core::gg::GgSubagentRef;
-use test_cabinet_core::gg_replay::GgShellOrigin;
+use test_cabinet_core::gg_session_record::GgShellOrigin;
 
 use crate::context::{EvictionResult, OpenViewInfo, ViewKind};
 use crate::ending::Ending;
@@ -213,7 +213,7 @@ impl CodeTurnOutcome {
 /// report what the loop must do next.
 ///
 /// Every effect the turn has on the world happens inside this function — the healing, the sandbox
-/// run, the servicing of each composed call, the telemetry, the replay capture. What comes back is
+/// run, the servicing of each composed call, the telemetry, the session capture. What comes back is
 /// only the decision, and the [outcome](CodeTurnOutcome::turn_outcome) the run's ceilings count.
 ///
 /// The order of the steps below is the design, not an implementation detail. A **completion is read
@@ -337,7 +337,7 @@ pub(super) async fn run_code_turn(
         // in. This is the **only** record of it: a log line is not a channel into the model's own
         // window (what a program shows itself is a view, which arrives as its own context message),
         // so without this the output would exist for the instant it crossed the membrane and then
-        // be gone — invisible to the operator reading a finished run, to the replay record, and to
+        // be gone — invisible to the operator reading a finished run, to the session record, and to
         // any analysis over many runs.
         logs: outcome.logs.clone(),
         logs_suppressed: outcome.logs_suppressed,
@@ -942,7 +942,7 @@ fn program_error_feedback(error: &ProgramError) -> CodeFeedback {
 /// checker prove the seam cannot mutate the window through two paths at once.
 pub(super) struct CodeTurn<'a> {
     /// The agent running the program — the spawner a delegation call is attributed to, and the id
-    /// a replay entry is tagged with.
+    /// a session-record entry is tagged with.
     pub(super) spawner: &'a Agent,
     /// This agent's **session turn** — the number the [library](crate::programs) keys this turn's
     /// program under, and the same number the window's turn headers carry, so a model that reads
@@ -974,7 +974,7 @@ pub(super) struct CodeTurn<'a> {
     pub(super) amc: &'a AmcSetup,
     /// Where this turn's telemetry goes.
     pub(super) emitter: &'a Emitter,
-    /// The replay recorder, when the capability is on.
+    /// The session recorder, when the capability is on.
     pub(super) replay: Option<&'a Arc<GgRecorder>>,
     /// The [compaction](crate::compaction) the loop is waiting for this agent to perform, when one
     /// is in flight. While it is set the program's calls are narrowed to the one family that
@@ -1587,7 +1587,7 @@ fn run_on_use_scripts(
     api
 }
 
-/// The JSON a memory write is **recorded** as, for the roster, the replay record and the observer.
+/// The JSON a memory write is **recorded** as, for the roster, the session record and the observer.
 ///
 /// The two code halves are recorded as their lengths rather than their text. They can be tens of
 /// kilobytes each, they are not what a reader of a run wants beside a memory write, and the source
@@ -2921,7 +2921,7 @@ impl ToolApi for LoopToolApi {
     /// [`FileView`](GgContextSource::FileView).
     ///
     /// The read itself is [`read_file`](Self::read_file) verbatim, so the gate, the telemetry pair,
-    /// the replay entry, the roster line and the read policy are the ones a bare `fs.readFile`
+    /// the session-record entry, the roster line and the read policy are the ones a bare `fs.readFile`
     /// gets; there is no second, quieter read path. What follows it is the view: the `(path,
     /// region)` key comes from what the tool actually **returned** rather than from what the call
     /// asked for (an unlimited read policy ignores the window; a capped one applies its default when
@@ -2946,7 +2946,7 @@ impl ToolApi for LoopToolApi {
     ///
     /// The refusal replaces the read's outcome, which the membrane lowers into the catchable
     /// `limit-exceeded` the program sees thrown. The read itself already streamed its own
-    /// `ToolCall`/`ToolResult` pair and its replay entry — it really did happen, and the telemetry
+    /// `ToolCall`/`ToolResult` pair and its session-record entry — it really did happen, and the telemetry
     /// says so — while the roster line the *model* reads next turn records the call it actually
     /// made, which failed. Both are true of different readers, and the alternative (streaming no
     /// telemetry for a read that ran) would leave the operator's stream with a gap.

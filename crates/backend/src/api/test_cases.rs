@@ -366,7 +366,7 @@ pub async fn run_replay(
     run_artifact_response(&headers, crate::store::REPLAY_ARTIFACT, bytes)
 }
 
-/// `POST /runs/{id}/replay` — store a gg run's replay record, mirrored in by the driver from the
+/// `POST /runs/{id}/replay` — store a gg run's session record, mirrored in by the driver from the
 /// collected run tree. The raw request body is the bytes.
 ///
 /// **Store-only**, by the run-tree artifact convention: the driver uploads *before* the terminal
@@ -390,7 +390,7 @@ pub async fn put_run_replay(
 /// static read of the code its model wrote, with every file, symbol, import edge, cycle and
 /// clone group.
 ///
-/// Served through [`run_artifact_response`] exactly as the replay record is: a browser (the
+/// Served through [`run_artifact_response`] exactly as the session record is: a browser (the
 /// per-run Code tab) gets the stored gzip moved verbatim, and a gzip-unaware client on the
 /// workspace `reqwest` gets it decoded here.
 ///

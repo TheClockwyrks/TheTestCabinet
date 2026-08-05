@@ -2166,58 +2166,6 @@ fn a_healing_rollup_written_before_the_armed_set_still_deserializes() {
     assert_eq!(value["healing"]["enabled"], json!([]));
 }
 
-#[test]
-fn replay_entry_flattens_its_kind_inline_with_the_agent_and_seq() {
-    let entry = GgReplayEntryV1 {
-        agent_id: "root".to_string(),
-        seq: 3,
-        kind: GgReplayEntryKindV1::ToolResult {
-            call: json!({ "id": "c1", "name": "shell", "arguments": { "command": "ls" } }),
-            outcome: json!({ "ok": true, "output": "a.txt", "summary": "listed" }),
-        },
-    };
-    // The discriminator and its fields sit inline with `agentId`/`seq`.
-    assert_eq!(
-        serde_json::to_value(&entry).unwrap(),
-        json!({
-            "agentId": "root",
-            "seq": 3,
-            "type": "tool_result",
-            "call": { "id": "c1", "name": "shell", "arguments": { "command": "ls" } },
-            "outcome": { "ok": true, "output": "a.txt", "summary": "listed" },
-        })
-    );
-}
-
-#[test]
-fn replay_record_round_trips_through_json() {
-    let record = GgReplayRecordV1 {
-        session_id: "run-xyz".to_string(),
-        capability_set: GgCapabilitySet::minimal("mock/echo"),
-        entries: vec![
-            GgReplayEntryV1 {
-                agent_id: "root".to_string(),
-                seq: 0,
-                kind: GgReplayEntryKindV1::ModelIo {
-                    request: json!({ "messages": [], "tools": [] }),
-                    response: json!({ "finishReason": "stop" }),
-                },
-            },
-            GgReplayEntryV1 {
-                agent_id: "agent-0".to_string(),
-                seq: 1,
-                kind: GgReplayEntryKindV1::ToolResult {
-                    call: json!({ "id": "c1", "name": "list_dir", "arguments": {} }),
-                    outcome: json!({ "ok": true, "output": "", "summary": "listed" }),
-                },
-            },
-        ],
-    };
-    let json = serde_json::to_string(&record).unwrap();
-    let back: GgReplayRecordV1 = serde_json::from_str(&json).unwrap();
-    assert_eq!(back, record);
-}
-
 /// The message-log events (`context_message` / `prompt`) round-trip through the wire in
 /// camelCase, with the tagged discriminant, image descriptors (never bytes), and an
 /// omitted `responseId`/`cost` when absent.

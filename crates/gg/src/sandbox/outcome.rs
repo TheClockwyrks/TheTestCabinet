@@ -45,7 +45,7 @@ pub struct SandboxOutcome {
     /// tool layer does not, because nothing ran.
     pub api_calls: u64,
     /// Calls the membrane refused before they reached the loop: a turn-level transition, or a tool
-    /// this run does not offer. They produce no telemetry and no replay entry, so they are counted
+    /// this run does not offer. They produce no telemetry and no session-record entry, so they are counted
     /// apart from [`tool_calls`](Self::tool_calls) and only mentioned in the model's feedback.
     pub refusals: Vec<SandboxRefusal>,
     /// How many refusals the cap discarded — the shape being bounded is a program that swallows

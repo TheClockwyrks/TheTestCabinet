@@ -18,7 +18,7 @@
 //! degenerating into a chain of trampolines.
 //!
 //! Nothing about a program's *effects* is kept here. This is a text store: what the program did is
-//! the run's telemetry, its replay record, and the workspace.
+//! the run's telemetry, its session record, and the workspace.
 //!
 //! # Why it is not a context item
 //!
