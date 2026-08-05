@@ -291,11 +291,14 @@ pub fn run_program<A: ToolApi>(
     reclaim(store, returned, unreachable, compile, compile_wait)
 }
 
-/// A linker carrying the whole membrane and nothing else: every one of the thirty-two typed gg tool
-/// functions, the four model-facing carve-outs that are not tools (the
-/// [`finish`](FINISH_FUNCTION) that ends the run, the documentation lookups, the view calls a
-/// program puts material into its own window with, and the [program library](crate::programs) it
-/// reaches back through for a program it already ran), and the shim's feedback channel.
+/// A linker carrying the whole membrane, and the host's WASI beside it.
+///
+/// The membrane is every one of the thirty-two typed gg tool functions, the four model-facing
+/// carve-outs that are not tools (the [`finish`](FINISH_FUNCTION) that ends the run, the
+/// documentation lookups, the view calls a program puts material into its own window with, and the
+/// [program library](crate::programs) it reaches back through for a program it already ran), and the
+/// shim's feedback channel. That is the whole of what a program can ask *gg* for. Everything a
+/// guest's own language runtime reaches for is the WASI half below.
 ///
 /// Building it per run rather than once per process is deliberate and nearly free: the whole thing,
 /// WASI included, measures ~50 µs — the same order as the instantiate it precedes, and a couple of
