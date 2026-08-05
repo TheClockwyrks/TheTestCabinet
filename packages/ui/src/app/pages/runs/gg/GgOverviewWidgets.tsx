@@ -21,9 +21,15 @@
 // record and the ranking wants the width — but both surfaces rank through
 // {@link ErrorTypeRanking} and phrase the rate through {@link errorRatePhrase}, so what
 // "37% of 19 turns" or a missing per-type split means cannot come to differ between them.
+// The one reading this card carries that the Dashboard's row does not is the scope's
+// failed CALLS ({@link CallFailureRanking}): a failure class summed over every agent of a
+// run names no agent, and the reading worth having is "this instance spent forty calls on
+// the same `not-found`".
 
 import {
+  callFailureSurface,
   shortTokens,
+  topCallFailures,
   topErrorTypes,
   TURN_ERROR_LABELS,
   type ContextSnapshot,
@@ -561,6 +567,53 @@ function ErrorTypeRow({ row }: { row: GgRankedError }) {
   );
 }
 
+// How many call-failure classes the ranking names. Three, for the same reason the type
+// ranking stops at three: the reading is the narrowing.
+export const TOP_CALL_FAILURES_SHOWN = 3;
+
+/**
+ * A scope's failed CALLS ranked by class, most common first.
+ *
+ * A different population from the ranking above it, which is why it is a second list and
+ * never rows added to the first: that one counts turns against the turns that reported an
+ * outcome, this one counts calls against no denominator this tally holds. A call that
+ * failed inside a program the model then handled is not an errored turn at all — the typed
+ * surface working is not the turn failing — so a run can rank empty above and long here,
+ * and that combination is the finding rather than a contradiction. It is worth its own list
+ * because a model fighting the same `not-found` forty times is one of the most actionable
+ * facts a run has, and until this it was folded, tested, queryable and shown nowhere.
+ *
+ * `surface` names which of the two records is ranked, and the caption above says so out
+ * loud: the two overlap for a bridged call and neither is derived from the other, so a
+ * ranking that did not say which it was drawn from would be a figure whose population a
+ * reader could not state (see `callFailureSurface`).
+ *
+ * The nothing is one nothing rather than the type ranking's three, and it says *recorded*
+ * on purpose. A stream written before gg published failure classes has an empty record here
+ * exactly as a scope whose calls all succeeded does, and this tally holds no count of calls
+ * to tell them apart — so the honest line is that nothing was recorded, not that nothing
+ * failed.
+ */
+export function CallFailureRanking({
+  errors,
+  surface,
+}: {
+  errors: GgErrorTally;
+  surface: "tool" | "api";
+}) {
+  const top = topCallFailures(errors, surface, TOP_CALL_FAILURES_SHOWN);
+  if (top.length === 0) {
+    return <span className={styles.metricUnit}>no failed calls recorded</span>;
+  }
+  return (
+    <ul className={styles.errorTypes}>
+      {top.map((row) => (
+        <ErrorTypeRow key={row.id} row={row} />
+      ))}
+    </ul>
+  );
+}
+
 /**
  * The Errors widget: what the scope's turns failed at, in one card.
  *
@@ -574,18 +627,34 @@ function ErrorTypeRow({ row }: { row: GgRankedError }) {
  * The count leads and the rate follows it, never the other way round: a rate is a derived
  * figure, and "50%" in the headline slot invites reading a run that has taken two turns as
  * though it meant something. The denominator travels with the rate for the same reason.
+ *
+ * Below the turn record sits the scope's failed CALLS, ranked by class. They are on this
+ * card because they are what the model was fighting — the API-error attribution an
+ * instance's Overview is opened for — and they are a *second* group on it rather than more
+ * rows in the first because they count a different population (see
+ * {@link CallFailureRanking}). They are deliberately not on the whole-run Dashboard's error
+ * row: a class summed over every agent names no agent, and the reading that pays is "this
+ * instance spent forty calls on the same `not-found`".
  */
 export function ErrorsWidget({
   errors,
+  executionMode,
   className,
   bare = false,
 }: {
   errors: GgErrorTally;
+  /**
+   * How the scope's agent answers a turn (`GgAgentSurface.executionMode`), which picks
+   * which call-failure record is ranked — see {@link callFailureSurface}. Omitted for a
+   * scope that reported no surface, which falls back to the evidence in the tally.
+   */
+  executionMode?: string;
   className?: string;
   /** Drop the card chrome so the widget sits directly in its host — see {@link TokensWidget}. */
   bare?: boolean;
 }) {
   const { turns, errors: failed, maxConsecutive, loopAborts } = errors;
+  const surface = callFailureSurface(errors, executionMode);
   return (
     <div className={cardClass(bare, className)}>
       <span className={styles.cardLabel}>Errors</span>
@@ -627,6 +696,23 @@ export function ErrorsWidget({
       <div className={styles.spendGroup}>
         <span className={styles.spendGroupLabel}>Top types</span>
         <ErrorTypeRanking errors={errors} />
+      </div>
+      {/* Named for the surface it is drawn from, never just "failed calls": the two records
+          overlap for a bridged call, so a caption that did not say which one this is would
+          leave a reader unable to state what the figures counted — and it must not read as
+          more of the ranking above it, which counts turns. */}
+      <div className={styles.spendGroup}>
+        <span
+          className={styles.spendGroupLabel}
+          title={
+            surface === "api"
+              ? "Calls this agent's own programs were thrown, by class — the failures the MODEL met and had to write around, including the calls no gg tool ever ran (a function no tool backs, and a call the membrane refused). A different population from the turn errors above: a call that failed inside a program that carried on is not an errored turn."
+              : "Dispatched tool calls that failed, by class — what gg ran and what it returned. A different population from the turn errors above: a call that failed on a turn the agent went on to complete is not an errored turn."
+          }
+        >
+          Failed {surface === "api" ? "API" : "tool"} calls
+        </span>
+        <CallFailureRanking errors={errors} surface={surface} />
       </div>
     </div>
   );

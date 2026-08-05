@@ -943,8 +943,19 @@ function OverviewFile({
               whole-run figure is a sum: an instance that failed every turn it took and
               one that failed none are indistinguishable in it, and the run's own
               consecutive-error peak names no agent. Here the streak is a real streak —
-              one instance's turns are sequential, where the run's interleave. */}
-          <ErrorsWidget errors={state.errors} bare />
+              one instance's turns are sequential, where the run's interleave.
+
+              Its execution mode rides along because the widget's second ranking — the
+              calls that failed — has two records to draw from and they count different
+              things (see `callFailureSurface`). This instance's own surface is what says
+              which of them it fought, and the instance is the only scope that can answer
+              it: a run mixing tool-calling and responses-as-code agents has no one
+              answer. */}
+          <ErrorsWidget
+            errors={state.errors}
+            executionMode={node.surface?.executionMode}
+            bare
+          />
         </div>
         {tools.tools.length > 0 && (
           <AgentToolsPanel breakdown={tools} responses={state.turnCount} />

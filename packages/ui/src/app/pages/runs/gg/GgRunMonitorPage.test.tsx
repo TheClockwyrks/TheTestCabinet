@@ -1455,11 +1455,14 @@ describe("GgRunMonitorPage", () => {
     expect(row).toHaveTextContent(/^0×fs\.readTextFile$/);
     expect(row).toHaveAttribute(
       "title",
-      "fs.readTextFile was offered and never called.",
+      "fs.readTextFile was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
     );
-    // And nothing on the page says it in words any more — the row is a figure, and the
-    // sentence lives where a reader asks for it.
+    // And the words the figure replaced are gone from the row entirely — not moved into the
+    // hover text, which is where a replaced wording usually survives. The tooltip says the
+    // same zero the cell does and spends its length on what the cell cannot say: that this
+    // is a finding about an entry the agent HELD.
     expect(screen.queryByText("never called")).toBeNull();
+    expect(row.getAttribute("title")).not.toMatch(/never called/);
   });
 
   it("offers no surface file to an instance that never reported one", () => {

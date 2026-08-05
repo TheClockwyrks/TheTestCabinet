@@ -480,7 +480,7 @@ describe("GgAgentsSummary offered surface", () => {
     expect(uncalled).toHaveAttribute("data-uncalled");
     expect(uncalled).toHaveAttribute(
       "title",
-      "write_file was offered and never called.",
+      "write_file was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
     );
     expect(within(uncalled).getByText("0×")).toBeInTheDocument();
 
@@ -529,7 +529,7 @@ describe("GgAgentsSummary offered surface", () => {
     expect(untooled).toHaveAttribute("data-uncalled");
     expect(untooled).toHaveAttribute(
       "title",
-      "fs.watch was offered and never called.",
+      "fs.watch was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.",
     );
     // …and the one both instances called reads as its own figure, on its own identity.
     expect(

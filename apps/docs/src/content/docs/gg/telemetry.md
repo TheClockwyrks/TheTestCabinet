@@ -193,8 +193,11 @@ identically down to the order of the cards) reads a run through these surfaces:
   *given*, so the names are the column that repeats and the figures are the column that
   differs, and a figure in a fixed leading column can be read straight down the list. A
   tool the instance never reached for reads a real `0×` and is **muted rather than
-  dropped**, which is the entire point of the file; the sentence behind the figure
-  ("offered and never called") is on the row's hover text. Beside them sit the tools this
+  dropped**, which is the entire point of the file; the row's hover text says the same
+  zero in the same words the cell does ("offered, 0 calls") and spends the rest of its
+  length on what the figure cannot carry — that this is a finding about something the
+  agent *held*, which is not the same finding as one it was never offered and which
+  therefore has no row here at all. Beside them sit the tools this
   instance's [ablation](/gg/toolset-ablation/) withheld, marked as such rather than
   merely absent. That withheld list is gg's own, reported on the same
   event rather than re-read from the configuration, so a `disabledTools` entry that
@@ -217,9 +220,17 @@ identically down to the order of the cards) reads a run through these surfaces:
   window (what it was *offered* is the file above; the two are named apart because they
   are the two halves of one question, not one read-out twice) — its own **Errors**
   widget (its errored turns against the turns it took, its worst *unbroken* streak of
-  them, and its ranked [error types](#the-taxonomy-has-two-levels): the run-wide figures
-  on the Dashboard are a sum, in which an instance that failed every turn it took and one
-  that failed none are indistinguishable) — its **working
+  them, its ranked [error types](#the-taxonomy-has-two-levels), and — the one reading
+  the Dashboard's error row does not carry — the **calls** it failed, ranked by class:
+  the run-wide figures on the Dashboard are a sum, in which an instance that failed
+  every turn it took and one that failed none are indistinguishable, and a failure class
+  summed over every agent names no agent. The call ranking is captioned **Failed API
+  calls** for a [code-shaped](/gg/responses-as-code/) instance and **Failed tool calls**
+  for a tool-calling one, because those are two records over one core and not one figure:
+  the first is what the model's own programs were thrown — including the calls no gg tool
+  ever ran — and the second is what gg dispatched. They are never summed, and they are
+  never mixed into the turn ranking above them, which counts turns rather than calls) —
+  its **working
   directory** (the isolated
   [worktree](/gg/project-management/) checkout its tools are rooted at, or the shared
   workspace), and, while it is blocked, **what it is waiting on**: `blocked` on its

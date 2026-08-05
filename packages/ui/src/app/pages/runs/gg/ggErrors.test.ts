@@ -24,6 +24,7 @@ import type { HarnessEvent } from "../../../../client/types";
 import type { ModelNameLookup, ModelPriceLookup } from "./ggCost";
 import { deriveGgAgentSummaries } from "./ggAgentAggregate";
 import {
+  callFailureSurface,
   emptyErrorTally,
   errorTypeLabel,
   reduceGgEvents,
@@ -510,5 +511,52 @@ describe("the call-failure fold", () => {
     expect(topCallFailures(state.errors, "api", 1)).toEqual([
       { id: "not-found", label: "not found", kind: null, count: 1 },
     ]);
+  });
+
+  // Which of the two a READER is shown. Keeping them apart in the fold is only half the
+  // job: something has to choose, and a console that chose wrong would report the
+  // execution read-out as though it were what the model fought — the same category error
+  // as summing them.
+  describe("choosing the surface to read", () => {
+    it("reads a responses-as-code agent on the surface its programs met", () => {
+      // The refusal is the case that settles it: it never dispatched, so the tool record
+      // cannot see it at all. Reading this agent on `tool` would drop the failure that
+      // the model actually had to write around.
+      const state = reduceGgEvents([
+        apiResult("root", "unavailable"),
+        toolResult("root", "io-error"),
+      ]);
+
+      expect(callFailureSurface(state.errors, "responses_as_code")).toBe("api");
+      expect(topCallFailures(state.errors, "api", 3)).toEqual([
+        { id: "unavailable", label: "unavailable", kind: null, count: 1 },
+      ]);
+    });
+
+    it("reads a tool-calling agent on the execution record, having no other", () => {
+      const state = reduceGgEvents([toolResult("root", "not-found")]);
+
+      expect(callFailureSurface(state.errors, "tool_calling")).toBe("tool");
+      // …and stays there even where nothing failed at all, rather than falling through to
+      // a surface this agent does not have.
+      expect(callFailureSurface(emptyErrorTally(), "tool_calling")).toBe(
+        "tool",
+      );
+    });
+
+    it("falls back to the evidence when no surface was reported", () => {
+      // Every stream recorded before gg emitted `agent_surface`, and any mode from a newer
+      // gg than this console. Only a responses-as-code agent can have recorded an API
+      // failure, so one that did is read as the model-facing surface it must have had.
+      const code = reduceGgEvents([apiResult("root", "not-found")]);
+      expect(callFailureSurface(code.errors)).toBe("api");
+      expect(callFailureSurface(code.errors, "some_mode_from_a_newer_gg")).toBe(
+        "api",
+      );
+
+      const tools = reduceGgEvents([toolResult("root", "not-found")]);
+      expect(callFailureSurface(tools.errors)).toBe("tool");
+      expect(callFailureSurface(emptyErrorTally())).toBe("tool");
+    });
   });
 });

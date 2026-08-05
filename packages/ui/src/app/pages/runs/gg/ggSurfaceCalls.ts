@@ -22,13 +22,22 @@ const numberFmt = new Intl.NumberFormat("en-US");
 /**
  * How often an offered entry was called, said plainly.
  *
+ * The zero says the same thing the cell does, in the same vocabulary: the cell reads `0×`
+ * because a zero here is a measurement of the same kind as a three, and a sentence that
+ * called it *never called* would have put the finding in one register on the row and
+ * another on hover — the wording the figures replaced, surviving in the tooltip. What the
+ * tooltip adds is the contrast the muting cannot state on its own: a zero is a fact about
+ * what the model did with something it HAD, which is a different finding from an entry it
+ * was not offered at all and which therefore has no row here.
+ *
  * `count` is null only for a surface record written before gg counted a call per function —
  * never for a function nothing dispatched, which is counted like any other.
  */
 export function surfaceCallPhrase(name: string, count: number | null): string {
   if (count == null)
     return `${name} is bound. This record predates per-function call recording, so there is no count for it — not a count of zero.`;
-  if (count === 0) return `${name} was offered and never called.`;
+  if (count === 0)
+    return `${name} was offered, 0 calls — this agent was bound to it and did not use it, which is a different finding from one it was not offered.`;
   const times = `${numberFmt.format(count)} time${count === 1 ? "" : "s"}`;
   return `${name} was called ${times}.`;
 }

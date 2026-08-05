@@ -643,6 +643,38 @@ export function topCallFailures(
     .slice(0, limit);
 }
 
+// Which of the two records a scope should be READ on, given how its agent answers a turn.
+//
+// A caller has to choose, and the choice is not a preference: the two are surfaces over one
+// core and a reader shown the wrong one is reading a different population than the one they
+// think they are (see `GgErrorTally.toolFailures`). It resolves here rather than at each
+// call site so that every surface of this console answers "which failures did this agent
+// fight?" the same way.
+//
+// Responses-as-code is read on `"api"`. That is the surface the MODEL experienced — the
+// class its program was thrown and had to branch on — and it is the only record of the
+// calls that never reached a tool at all: a carve-out no tool backs, and a call the membrane
+// refused. The tool record beside it is the execution read-out, which answers a different
+// question ("what did gg run, and what did it return") and cannot see either of those.
+// A tool-calling agent is read on `"tool"` because it has no API surface whatsoever; there
+// is nothing to choose between.
+//
+// `executionMode` is absent for a stream recorded before gg emitted a surface, and may name
+// a mode from a newer gg than this console (the field is a plain string for exactly that
+// reason). Both fall back to the evidence in the tally: only a responses-as-code agent can
+// have recorded an API failure at all, so one that did is read as the model-facing surface,
+// and one with nothing there is read on the record that might hold something.
+export function callFailureSurface(
+  errors: GgErrorTally,
+  executionMode?: string,
+): "tool" | "api" {
+  if (executionMode === "responses_as_code") return "api";
+  if (executionMode === "tool_calling") return "tool";
+  return Object.values(errors.apiFailures).some((count) => count > 0)
+    ? "api"
+    : "tool";
+}
+
 // One recorded revision of one memory — a `memory_revision` event, which gg emits for
 // every successful mutation. `body` is the memory's text as of that revision; a
 // deletion carries none, because what the memory said is on the revision before it.
