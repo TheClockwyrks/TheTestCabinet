@@ -25,7 +25,7 @@ spec:
         - name: dispatcher
           env:
             - name: TCAB_PUBLISHER_IMAGE
-              value: "ghcr.io/theclockwyrks/tcab-publisher:518e7ae4d0dc6bb9f82930c50f572fc9e0cb6f35"
+              value: "ghcr.io/theclockwyrks/tcab-publisher:4cab71a4f26242b3fc597d64ab681f0b3d233453"
             - name: TCAB_DISPATCHER_PUBLISHER_SECRETS
               value: "tcab-publisher-secrets"
             - name: TCAB_GITHUB_ORG

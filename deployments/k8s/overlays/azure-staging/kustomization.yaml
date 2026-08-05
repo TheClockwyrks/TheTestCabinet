@@ -130,39 +130,46 @@ patches:
         value: grafana.staging.tcab.testcabinet.ai
 
 # Pin ALL service images (the CODE) to ONE git-sha so they version together. Currently
-# 518e7ae4d0dc6bb9f82930c50f572fc9e0cb6f35 (the v0.6.0-rc2 build — the `staging` branch
-# tip at which `build-service-images` published; prod is still on master's v0.5.1 build
-# c68566c5). Bumped from the v0.6.0-beta4 pin e6afbee6. This pins CODE only — the catalog is
-# ingested from the `staging` branch tip separately (patch-backend-ingest.yaml). The
-# run-container images are pinned SEPARATELY via TCAB_CONTAINER_TAG in
-# patch-dispatcher-driver-image.yaml (a different cadence) — the v0.6.0-rc1 and rc2 builds
-# ran only `build-service-images`, NOT `build-containers`, so the run-container tag stays
-# pinned at beta4 (e6afbee6) while the service images move ahead to rc2, re-opening the
-# service-vs-run-container divergence.
+# 4cab71a4f26242b3fc597d64ab681f0b3d233453 (the v0.6.1-rc1 build — the latest `staging`
+# commit at which `build-service-images` published; prod is on the older v0.6.0-rc2 build
+# 518e7ae4, so staging is again one build ahead). Bumped from the v0.6.0-rc2 pin 518e7ae4.
+#
+# NOTE this pin deliberately trails the `staging` branch tip, which is v0.6.1-rc2
+# (506ddcf9). That commit changed ONLY test-cases/, which is not one of
+# build-service-images' trigger paths, so it published NO images and there is no rc2 tag to
+# pin — and it needs none: this pins CODE only, and the catalog those test-case changes
+# live in is ingested from the `staging` branch tip separately (patch-backend-ingest.yaml).
+#
+# The run-container images are pinned SEPARATELY via TCAB_CONTAINER_TAG in
+# patch-dispatcher-driver-image.yaml (a different cadence) — nothing since v0.6.0-beta4 has
+# run `build-containers`, so the run-container tag stays pinned at beta4 (e6afbee6) while
+# the service images move ahead to v0.6.1-rc1, widening the service-vs-run-container
+# divergence. It stays benign: nothing under containers/ has changed on `staging` since
+# e6afbee6, so the beta4 run images are still content-current.
 images:
   - name: REPLACE_REGISTRY/tcab-backend
     newName: ghcr.io/theclockwyrks/tcab-backend
-    newTag: 518e7ae4d0dc6bb9f82930c50f572fc9e0cb6f35
+    newTag: 4cab71a4f26242b3fc597d64ab681f0b3d233453
   - name: REPLACE_REGISTRY/tcab-auth-service
     newName: ghcr.io/theclockwyrks/tcab-auth-service
-    newTag: 518e7ae4d0dc6bb9f82930c50f572fc9e0cb6f35
+    newTag: 4cab71a4f26242b3fc597d64ab681f0b3d233453
   - name: REPLACE_REGISTRY/tcab-dispatcher
     newName: ghcr.io/theclockwyrks/tcab-dispatcher
-    newTag: 518e7ae4d0dc6bb9f82930c50f572fc9e0cb6f35
+    newTag: 4cab71a4f26242b3fc597d64ab681f0b3d233453
   - name: REPLACE_REGISTRY/tcab-driver
     newName: ghcr.io/theclockwyrks/tcab-driver
-    newTag: 518e7ae4d0dc6bb9f82930c50f572fc9e0cb6f35
+    newTag: 4cab71a4f26242b3fc597d64ab681f0b3d233453
   - name: REPLACE_REGISTRY/tcab-artifacts
     newName: ghcr.io/theclockwyrks/tcab-artifacts
-    newTag: 518e7ae4d0dc6bb9f82930c50f572fc9e0cb6f35
+    newTag: 4cab71a4f26242b3fc597d64ab681f0b3d233453
   - name: REPLACE_REGISTRY/tcab-arena
     newName: ghcr.io/theclockwyrks/tcab-arena
-    newTag: 518e7ae4d0dc6bb9f82930c50f572fc9e0cb6f35
+    newTag: 4cab71a4f26242b3fc597d64ab681f0b3d233453
   - name: REPLACE_REGISTRY/tcab-web
     newName: ghcr.io/theclockwyrks/tcab-web
-    newTag: 518e7ae4d0dc6bb9f82930c50f572fc9e0cb6f35
+    newTag: 4cab71a4f26242b3fc597d64ab681f0b3d233453
   # Referenced as an env VALUE (TCAB_PUBLISHER_IMAGE), not a container image: field,
   # so this rewrites nothing today; kept so the registry/tag set stays complete.
   - name: REPLACE_REGISTRY/tcab-publisher
     newName: ghcr.io/theclockwyrks/tcab-publisher
-    newTag: 518e7ae4d0dc6bb9f82930c50f572fc9e0cb6f35
+    newTag: 4cab71a4f26242b3fc597d64ab681f0b3d233453
