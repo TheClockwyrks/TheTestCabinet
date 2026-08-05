@@ -24,20 +24,44 @@
 // compared on. A guest built by another toolchain need not run this script at all — only the
 // emitted JSON is contractual.
 //
-// Two properties are enforced here rather than left to review:
+// Six properties are enforced here rather than left to review. Every one of them is the same rule
+// under a different subject: NOTHING a model reads about this SDK may be written anywhere but on the
+// declaration it describes, and an undocumented declaration is a build error rather than a blank in
+// a prompt.
 //
 //   * every catalogued export must exist, in the module the catalogue names for it — a typo in
 //     `src/catalogue.ts` is an error, not a missing prompt line;
 //   * every catalogued export must carry a doc comment — an undocumented tool would reach a model as
-//     a bare signature with nothing after the dash.
+//     a bare signature with nothing after the dash;
+//   * every PARAMETER a catalogued signature declares must carry an `@param` describing it, and
+//     every field of a parameter whose type is written inline must carry an `@param a.b` of its own;
+//   * an `@param` that names something the signature does not declare is an error too, so a renamed
+//     parameter cannot leave its description behind under the old name;
+//   * every TYPE the catalogue carries must be documented, and so must each of its members — a
+//     record whose fields arrive unexplained is a record a model has to guess at;
+//   * every API OBJECT must carry the sentence the prompt introduces it by, taken from the doc
+//     comment on its declaration in `src/catalogue.ts`.
 //
-// Beside its language tag and its provenance line the catalogue has six parts — `session`, `views`,
-// `programs`, `tools`, `helpers`, `types` — and the three carve-outs come first because they are the
-// parts that are not a projection of the run's enabled set: an ending call is bound from the agent's
-// *role*, three of the four view functions are bound unconditionally, and the program library is
-// bound from a capability.
+// Beside its language tag and its provenance line the catalogue has seven parts — `objects`,
+// `session`, `views`, `programs`, `tools`, `helpers`, `types` — and after the objects the three
+// carve-outs come first because they are the parts that are not a projection of the run's enabled
+// set: an ending call is bound from the agent's *role*, three of the four view functions are bound
+// unconditionally, and the program library is bound from a capability.
 // So a run that offers no tools at all is still told how to end and how to put something in front of
 // itself.
+//
+// # One entry, many signatures
+//
+// A function's entry carries a `signatures` ARRAY rather than one string, because how a language
+// offers an optional argument is that language's own business: Java writes two overloads where
+// Kotlin writes one signature with a default and Python writes one with a keyword argument. All
+// three are the same function — one entry, one `key`, one `object`, one description — and the array
+// is what lets the shape differ without the identity differing. Each signature carries its own
+// `parameters`, so an overload that takes fewer of them says so.
+//
+// TypeScript spells every optional argument with `?`, so every entry here has exactly one signature
+// today. The overload group is still read, not assumed away: two declarations of one name in one
+// module become one entry with two signatures.
 //
 // Usage:
 //   node tools/signatures.mjs --out <path>            # write the catalogue
@@ -117,12 +141,40 @@ function declarationText(node, sourceFile) {
  * The text is collapsed onto one line because the prompt renders it as one bullet.
  */
 function docComment(node, sourceFile) {
-  const blocks = ts
-    .getJSDocCommentsAndTags(node)
-    .filter((block) => ts.isJSDoc(block) && sourceFile.text.slice(0, block.pos).trim() !== "");
-  const own = blocks.at(-1);
+  const own = ownBlock(node, sourceFile);
   if (!own) return "";
   return (ts.getTextOfJSDocComment(own.comment) ?? "").replace(/\s+/g, " ").trim();
+}
+
+/** The JSDoc block that belongs to `node`, by the rule {@link docComment} describes. */
+function ownBlock(node, sourceFile) {
+  return ts
+    .getJSDocCommentsAndTags(node)
+    .filter((block) => ts.isJSDoc(block) && sourceFile.text.slice(0, block.pos).trim() !== "")
+    .at(-1);
+}
+
+/**
+ * The `@param` descriptions on a declaration, keyed by the name each one addresses.
+ *
+ * A field of an inline object argument is addressed the way JSDoc addresses one — `@param
+ * options.offset` — so the key is the dotted path and the caller looks a field up under
+ * `` `${parameter}.${field}` ``. That is deliberately the only way to document a field: a parameter
+ * whose type is a NAMED type is documented on that type's members instead, so the same sentence can
+ * never be written in two places.
+ */
+function paramDocs(node, sourceFile) {
+  const own = ownBlock(node, sourceFile);
+  /** @type {Map<string, string>} */
+  const docs = new Map();
+  for (const tag of own?.tags ?? []) {
+    if (!ts.isJSDocParameterTag(tag)) continue;
+    docs.set(
+      tag.name.getText(sourceFile),
+      (ts.getTextOfJSDocComment(tag.comment) ?? "").replace(/\s+/g, " ").trim(),
+    );
+  }
+  return docs;
 }
 
 /**
@@ -177,34 +229,140 @@ async function loadHeaders() {
 /**
  * Index the declarations the catalogue can refer to.
  *
- * Functions are keyed by name and carry the file they came from, so a catalogue entry that names the
- * wrong module is caught. Types keep their discovery order — files sorted, statements in source
- * order — which is the order the prompt lists them in.
+ * Functions are keyed by name and carry every declaration of that name in the file they came from —
+ * an OVERLOAD GROUP is several declarations of one function, and becomes one catalogue entry with
+ * several signatures. Two modules declaring one name is still an error: the shim binds by name into
+ * a flat scope, so a collision there is one function silently shadowing another.
+ *
+ * Types keep their discovery order — files sorted, statements in source order — which is the order
+ * the prompt lists them in, and carry the node they were read from so their members can be walked.
+ *
+ * Values are indexed too, because the API objects' descriptions are doc comments on the `OBJECT_*`
+ * constants in `src/catalogue.ts`.
  */
 function index(headers) {
-  /** @type {Map<string, { node: any; sourceFile: any; file: string }>} */
+  /** @type {Map<string, { nodes: any[]; sourceFile: any; file: string }>} */
   const functions = new Map();
-  /** @type {Map<string, { declaration: string; order: number }>} */
+  /** @type {Map<string, { declaration: string; doc: string; members: any[]; order: number }>} */
   const types = new Map();
+  /** @type {Map<string, { value: string | undefined; doc: string }>} */
+  const values = new Map();
   for (const { file, sourceFile } of headers) {
     for (const statement of sourceFile.statements) {
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          const name = declaration.name?.text;
+          if (!name) continue;
+          values.set(name, {
+            value: literalValue(declaration),
+            doc: docComment(statement, sourceFile),
+          });
+        }
+        continue;
+      }
       const name = statement.name?.text;
       if (!name) continue;
       if (ts.isFunctionDeclaration(statement)) {
-        if (functions.has(name)) {
+        const found = functions.get(name);
+        if (found && found.file !== file) {
           throw new Error(`\`${name}\` is declared in two modules; SDK names must be unique.`);
         }
-        functions.set(name, { node: statement, sourceFile, file });
+        if (found) found.nodes.push(statement);
+        else functions.set(name, { nodes: [statement], sourceFile, file });
       } else if (
         ts.isInterfaceDeclaration(statement) ||
         ts.isTypeAliasDeclaration(statement) ||
         ts.isClassDeclaration(statement)
       ) {
-        types.set(name, { declaration: declarationText(statement, sourceFile), order: types.size });
+        types.set(name, {
+          declaration: declarationText(statement, sourceFile),
+          doc: docComment(statement, sourceFile),
+          members: typeMembers(statement, sourceFile),
+          order: types.size,
+        });
       }
     }
   }
-  return { functions, types };
+  return { functions, types, values };
+}
+
+/** The string a `declare const X = "…"` is fixed to, or `undefined` for anything else. */
+function literalValue(declaration) {
+  const node = declaration.initializer ?? declaration.type;
+  if (node && ts.isLiteralTypeNode(node) && ts.isStringLiteral(node.literal)) {
+    return node.literal.text;
+  }
+  return node && ts.isStringLiteral(node) ? node.text : undefined;
+}
+
+/**
+ * The members of one type declaration, each with the doc comment written on it.
+ *
+ * Three shapes reach a model and all three are walked. A record's members are its properties. A
+ * union of string literals — `TaskStatus`, `AgentEnding` — has one member per arm, named by the
+ * literal itself and carrying no type of its own, because the arm *is* the value. A union of records
+ * — `FileRead` — contributes every arm's properties in order, so a discriminant appears once per arm
+ * with the literal it is fixed to, which is exactly how a model reads the type.
+ */
+function typeMembers(statement, sourceFile) {
+  if (ts.isInterfaceDeclaration(statement) || ts.isClassDeclaration(statement)) {
+    return propertyMembers(statement.members, sourceFile);
+  }
+  return ts.isTypeAliasDeclaration(statement) ? typeNodeMembers(statement.type, sourceFile) : [];
+}
+
+/** {@link typeMembers}, for one type *node* — the recursive half. */
+function typeNodeMembers(node, sourceFile) {
+  if (ts.isParenthesizedTypeNode(node)) return typeNodeMembers(node.type, sourceFile);
+  if (ts.isTypeLiteralNode(node)) return propertyMembers(node.members, sourceFile);
+  if (ts.isUnionTypeNode(node)) {
+    return node.types.flatMap((arm, index) =>
+      ts.isLiteralTypeNode(arm)
+        ? [{ name: print(arm, sourceFile), type: null, doc: armDoc(node, index, sourceFile) }]
+        : typeNodeMembers(arm, sourceFile),
+    );
+  }
+  return [];
+}
+
+/**
+ * The doc comment written above one arm of a union, read from the source text rather than from the
+ * AST.
+ *
+ * A union arm is the one documented thing in a `.d.ts` that `getJSDocCommentsAndTags` cannot answer
+ * for: the block sits before the `|` that introduces the arm, so it falls outside the arm node and
+ * is attached to nothing. Scanning forward from where the previous arm ended is what finds it, and
+ * only a `/**` block counts — a `//` note left after an arm is a note, not the next arm's
+ * description.
+ */
+function armDoc(union, index, sourceFile) {
+  const from = index === 0 ? union.pos : union.types[index - 1].end;
+  const block = (ts.getLeadingCommentRanges(sourceFile.text, from) ?? [])
+    .map((range) => sourceFile.text.slice(range.pos, range.end))
+    .filter((text) => text.startsWith("/**"))
+    .at(-1);
+  if (!block) return "";
+  return block
+    .slice(3, -2)
+    .split("\n")
+    .map((line) => line.replace(/^\s*\*/, "").trim())
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** The named, typed members of a member list — properties, and nothing a program cannot read. */
+function propertyMembers(members, sourceFile) {
+  return members
+    .filter(
+      (member) =>
+        (ts.isPropertySignature(member) || ts.isPropertyDeclaration(member)) && member.name,
+    )
+    .map((member) => ({
+      name: member.name.getText(sourceFile),
+      type: member.type ? print(member.type, sourceFile) : null,
+      doc: docComment(member, sourceFile),
+    }));
 }
 
 /**
@@ -224,7 +382,7 @@ function referencedTypes(text, types, seen = new Set()) {
   return seen;
 }
 
-/** The `{ signature, doc, types }` triple for one catalogued export. */
+/** The `{ signatures, doc, types }` triple for one catalogued export. */
 function reflect(js, expectedFile, { functions, types }) {
   const found = functions.get(js);
   if (!found) {
@@ -235,18 +393,120 @@ function reflect(js, expectedFile, { functions, types }) {
       `\`${js}\` is catalogued in ${expectedFile} but is exported by ${path.basename(found.file)}.`,
     );
   }
-  const { node, sourceFile } = found;
-  const parameters = node.parameters.map((parameter) => print(parameter, sourceFile)).join(", ");
-  const returnType = node.type ? print(node.type, sourceFile) : "void";
-  const signature = `${js}(${parameters}): ${returnType}`;
-  const doc = docComment(node, sourceFile);
+  const { nodes, sourceFile } = found;
+  const signatures = nodes.map((node) => {
+    const rendered = node.parameters.map((p) => print(p, sourceFile)).join(", ");
+    const returnType = node.type ? print(node.type, sourceFile) : "void";
+    return {
+      signature: `${js}(${rendered}): ${returnType}`,
+      parameters: parametersOf(js, node, sourceFile),
+    };
+  });
+  const doc = docComment(nodes[0], sourceFile);
   if (!doc) {
     throw new Error(
       `\`${js}\` has no doc comment. Every catalogued export's JSDoc is shown to a model in the ` +
         "system prompt, so an undocumented one would reach it as a bare signature.",
     );
   }
-  return { signature, doc, referenced: referencedTypes(signature, types) };
+  const referenced = new Set();
+  for (const { signature } of signatures) {
+    for (const name of referencedTypes(signature, types)) referenced.add(name);
+  }
+  return { signatures, doc, referenced };
+}
+
+/**
+ * One declaration's parameters, each with the `@param` written for it.
+ *
+ * `kind` is `positional` for every one of them, and is carried anyway: it is what a language whose
+ * arguments are passed BY NAME — Python's keyword arguments, Kotlin's named ones — says instead, and
+ * a field only some catalogues fill is a field consumers forget exists.
+ */
+function parametersOf(js, node, sourceFile) {
+  const docs = paramDocs(node, sourceFile);
+  const addressed = new Set();
+  const parameters = node.parameters.map((parameter) => {
+    const name = parameter.name.getText(sourceFile);
+    addressed.add(name);
+    const fields = inlineFields(parameter.type, sourceFile).map((field) => {
+      const address = `${name}.${field.name}`;
+      addressed.add(address);
+      return {
+        ...field,
+        kind: "positional",
+        default: null,
+        doc: required(docs.get(address), js, `the field \`${address}\``, `@param ${address}`),
+        fields: [],
+      };
+    });
+    return {
+      name,
+      type: parameter.type ? print(parameter.type, sourceFile) : "unknown",
+      optional: Boolean(parameter.questionToken || parameter.initializer),
+      kind: "positional",
+      default: parameter.initializer ? print(parameter.initializer, sourceFile) : null,
+      doc: required(docs.get(name), js, `the parameter \`${name}\``, `@param ${name}`),
+      fields,
+    };
+  });
+  for (const address of docs.keys()) {
+    if (!addressed.has(address)) {
+      throw new Error(
+        `\`${js}\` documents \`${address}\` with an \`@param\`, and its signature declares no such ` +
+          "parameter or inline field. A description left behind under an old name is a description " +
+          "no model will ever be shown.",
+      );
+    }
+  }
+  return parameters;
+}
+
+/** The text of a required doc comment, or a build error naming exactly what to write and where. */
+function required(text, subject, what, how) {
+  if (text) return text;
+  throw new Error(
+    `\`${subject}\`: ${what} has no documentation. Everything a model reads about this SDK is ` +
+      `reflected from the declaration it describes, so write \`${how}\` rather than leaving a model ` +
+      "to guess.",
+  );
+}
+
+/**
+ * The fields of a parameter whose type is written INLINE, and nothing else.
+ *
+ * A parameter typed by name — `memory: MemoryWrite` — has no fields here on purpose: that type is
+ * catalogued in its own right and its members carry its documentation, so documenting the fields at
+ * the call site as well would be two copies of one sentence with nothing keeping them equal.
+ *
+ * Unions and intersections are walked because a brief that is `{ agent } & ({ prompt } | { issueId })`
+ * is still one object a model fills in, and the fields it may fill in are all of them.
+ */
+function inlineFields(node, sourceFile) {
+  if (!node) return [];
+  if (ts.isParenthesizedTypeNode(node)) return inlineFields(node.type, sourceFile);
+  if (ts.isTypeLiteralNode(node)) {
+    return node.members
+      .filter((member) => ts.isPropertySignature(member) && member.name)
+      .map((member) => ({
+        name: member.name.getText(sourceFile),
+        type: member.type ? print(member.type, sourceFile) : "unknown",
+        optional: Boolean(member.questionToken),
+      }));
+  }
+  if (ts.isUnionTypeNode(node) || ts.isIntersectionTypeNode(node)) {
+    const out = [];
+    const seen = new Set();
+    for (const arm of node.types) {
+      for (const field of inlineFields(arm, sourceFile)) {
+        if (seen.has(field.name)) continue;
+        seen.add(field.name);
+        out.push(field);
+      }
+    }
+    return out;
+  }
+  return [];
 }
 
 /** Build the whole catalogue. */
@@ -262,6 +522,7 @@ async function build() {
     PROGRAM_KEYS,
     PROGRAM_MODULE,
     OBJECT_FOR_MODULE,
+    OBJECT_ORDER,
   } = await loadCatalogue();
   const declarations = index(await loadHeaders());
   // The API object a module's functions are grouped under in a program's scope. The host groups the
@@ -284,7 +545,7 @@ async function build() {
   // missing identity, and `ending` names the role whose programs each one is bound for, which is what
   // lets the prompt render one group.
   const session = SESSION_ENTRIES.map((entry) => {
-    const { signature, doc, referenced } = reflect(
+    const { signatures, doc, referenced } = reflect(
       entry.js,
       `${SESSION_MODULE}.d.ts`,
       declarations,
@@ -295,7 +556,7 @@ async function build() {
       name: entry.js,
       object: entry.object,
       ending: entry.ending,
-      signature,
+      signatures,
       doc,
       types: sorted(referenced),
     };
@@ -306,14 +567,14 @@ async function build() {
   // one gate among them — `openFile` is a read — and is `null` for the three nothing gates, so the
   // host reads an explicit absence rather than a missing key.
   const views = VIEW_ENTRIES.map((entry) => {
-    const { signature, doc, referenced } = reflect(entry.js, `${VIEW_MODULE}.d.ts`, declarations);
+    const { signatures, doc, referenced } = reflect(entry.js, `${VIEW_MODULE}.d.ts`, declarations);
     for (const name of referenced) used.add(name);
     return {
       key: entry.key,
       name: entry.js,
       object: objectForModule(VIEW_MODULE),
       requires: entry.requires ?? null,
-      signature,
+      signatures,
       doc,
       types: sorted(referenced),
     };
@@ -323,7 +584,7 @@ async function build() {
   // the whole object is bound or absent together and what decides that is a capability rather than a
   // tool name. The host reads the array's presence as the family and gates it on its own flag.
   const programs = PROGRAM_ENTRIES.map((js) => {
-    const { signature, doc, referenced } = reflect(
+    const { signatures, doc, referenced } = reflect(
       js,
       `${PROGRAM_MODULE}.d.ts`,
       declarations,
@@ -336,14 +597,14 @@ async function build() {
       key: PROGRAM_KEYS[js],
       name: js,
       object: objectForModule(PROGRAM_MODULE),
-      signature,
+      signatures,
       doc,
       types: sorted(referenced),
     };
   });
 
   const tools = TOOL_CATALOGUE.map((entry) => {
-    const { signature, doc, referenced } = reflect(
+    const { signatures, doc, referenced } = reflect(
       entry.js,
       `${entry.module}.d.ts`,
       declarations,
@@ -355,14 +616,14 @@ async function build() {
       tool: entry.tool,
       name: entry.js,
       object: objectForModule(entry.module),
-      signature,
+      signatures,
       doc,
       types: sorted(referenced),
     };
   });
 
   const helpers = HELPER_CATALOGUE.map((entry) => {
-    const { signature, doc, referenced } = reflect(entry.js, "helpers.d.ts", declarations);
+    const { signatures, doc, referenced } = reflect(entry.js, "helpers.d.ts", declarations);
     for (const name of referenced) used.add(name);
     const module = moduleForTool(entry.requires);
     if (!module) throw new Error(`helper \`${entry.js}\` requires unknown tool \`${entry.requires}\`.`);
@@ -371,21 +632,78 @@ async function build() {
       requires: entry.requires,
       name: entry.js,
       object: objectForModule(module),
-      signature,
+      signatures,
       doc,
       types: sorted(referenced),
     };
   });
 
-  const types = sorted(used).map((name) => ({
-    name,
-    declaration: declarations.types.get(name).declaration,
-  }));
+  // A type reaches a model whole: its declaration, the paragraph explaining what it is for, and a
+  // line per member. The declaration alone tells a model the shape and nothing about what any field
+  // MEANS — `shown: boolean` on a `FileRead` is unguessable — so the members travel with it.
+  const types = sorted(used).map((name) => {
+    const declared = declarations.types.get(name);
+    return {
+      name,
+      declaration: declared.declaration,
+      doc: required(declared.doc, name, "the type", "a doc comment on the declaration"),
+      members: declared.members.map((member) => ({
+        ...member,
+        doc: required(
+          member.doc,
+          name,
+          `the member \`${member.name}\``,
+          `a doc comment on ${member.name}`,
+        ),
+      })),
+    };
+  });
+
+  // The API objects, in the order the surface is presented in, each with the sentence written on its
+  // declaration. Every object a catalogued function hangs off must be here and nothing else may be:
+  // an object with no functions would be introduced to a model and then never mentioned again, and a
+  // function on an object nobody described would arrive with a bare name over it.
+  const grouped = new Set(
+    [...session, ...views, ...programs, ...tools, ...helpers].map((entry) => entry.object),
+  );
+  const objects = OBJECT_ORDER.map((object) => {
+    if (!grouped.delete(object)) {
+      throw new Error(
+        `\`${object}\` is in OBJECT_ORDER and no catalogued function hangs off it; a described ` +
+          "object with nothing on it is an object a model is introduced to and never given.",
+      );
+    }
+    const declaration = `OBJECT_${object.toUpperCase()}`;
+    const declared = declarations.values.get(declaration);
+    if (!declared) {
+      throw new Error(
+        `\`${object}\` has no \`${declaration}\` constant in src/catalogue.ts to take its ` +
+          "description from.",
+      );
+    }
+    if (declared.value !== object) {
+      throw new Error(
+        `\`${declaration}\` is \`${declared.value}\` and is read as the description of ` +
+          `\`${object}\`; the constant the doc comment hangs on must be the object it describes.`,
+      );
+    }
+    return {
+      object,
+      doc: required(declared.doc, object, "the API object", `a doc comment on ${declaration}`),
+    };
+  });
+  for (const object of grouped) {
+    throw new Error(
+      `\`${object}\` groups catalogued functions and is not in OBJECT_ORDER, so nothing describes ` +
+        "it to a model.",
+    );
+  }
 
   return `${JSON.stringify(
     {
       language: LANGUAGE,
       generatedFrom: GENERATED_FROM,
+      objects,
       session,
       views,
       programs,
@@ -432,9 +750,9 @@ async function main() {
   }
   await mkdir(path.dirname(out), { recursive: true });
   await writeFile(out, catalogue, "utf8");
-  const { views, programs, tools, helpers, types } = JSON.parse(catalogue);
+  const { objects, views, programs, tools, helpers, types } = JSON.parse(catalogue);
   process.stdout.write(
-    `Wrote ${path.relative(process.cwd(), out)} (${tools.length} tools, ` +
+    `Wrote ${path.relative(process.cwd(), out)} (${objects.length} objects, ${tools.length} tools, ` +
       `${helpers.length} helpers, ${views.length} view functions, ` +
       `${programs.length} program-library functions, ${types.length} types).\n`,
   );

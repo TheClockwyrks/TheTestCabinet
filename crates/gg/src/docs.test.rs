@@ -103,6 +103,60 @@ fn every_lookup_is_self_contained() {
     assert_eq!(first, second);
 }
 
+/// **A lookup says what each argument is for, and what each field of the result means.**
+///
+/// A signature and a paragraph leave a model to infer the rest from names alone, and the two things
+/// it has to infer are exactly the two it cannot: what to put in an argument it has never passed,
+/// and what a field of a returned record means. Both are the SDK's own words — reflected out of the
+/// `@param` written on the argument and the comment written above the member — so this is also the
+/// assertion that the reflection reaches the model rather than stopping at the committed JSON.
+#[test]
+fn a_lookup_explains_every_argument_and_every_field() {
+    let docs = DocsRuntime::new(
+        enabled(),
+        EndingRole::Standard,
+        false,
+        GgProgramLanguage::TypeScript,
+    );
+    let read_file = docs.read("readFile").expect("readFile is bound");
+
+    // The argument, and the fields of the structured argument nested under it.
+    assert!(read_file.contains("\n  path: string — "), "{read_file}");
+    assert!(read_file.contains("\n  options?: "), "{read_file}");
+    assert!(
+        read_file.contains("\n    offset?: number — "),
+        "{read_file}"
+    );
+
+    // And the referenced type: its own paragraph, then a line per member.
+    assert!(
+        read_file.contains("What `readFile` returned"),
+        "the type is explained, not just declared: {read_file}"
+    );
+    assert!(
+        read_file.contains("\n  totalLines: number — "),
+        "{read_file}"
+    );
+}
+
+/// A union's arms are members too — named by the literal, with no type beside them, because the arm
+/// *is* the value. A model choosing between `pending` and `in_progress` is choosing between two
+/// values whose difference is prose, and nothing but the prose can tell it which to write.
+#[test]
+fn a_lookup_explains_the_arms_of_a_union() {
+    let docs = DocsRuntime::new(
+        vec!["update_issue".to_string()],
+        EndingRole::Standard,
+        false,
+        GgProgramLanguage::TypeScript,
+    );
+    let update_issue = docs.read("updateIssue").expect("updateIssue is bound");
+    assert!(
+        update_issue.contains("\n  \"in_progress\" — "),
+        "{update_issue}"
+    );
+}
+
 /// A lookup for a function the run did not enable is `None` — the model is told the name is not
 /// available rather than shown docs for a method its scope does not carry.
 #[test]

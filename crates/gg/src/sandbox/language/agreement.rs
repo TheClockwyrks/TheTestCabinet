@@ -35,8 +35,22 @@
 //!   [program library](crate::programs), which is the one family a capability rather than a tool
 //!   decides.
 //!
-//! **Spelling** is the function name a program calls, the signature it is declared with, and the
-//! prose that documents it. Those are the language's own, and the whole point of the seam.
+//! **Spelling** is everything else, and it is deliberately a great deal: the function name a program
+//! calls, the prose that documents it, the object's own description — and the whole **shape of the
+//! call**. Parameter names, parameter descriptions, whether an argument is positional or passed by
+//! name, what it defaults to, and *how many signatures the entry carries* are all spelling. A
+//! language that expresses an optional argument as an overload pair carries two signatures where one
+//! expressing it as a default carries one, and that is not a difference in what the function does —
+//! so nothing here compares the count. Those are the language's own, and the whole point of the seam.
+//!
+//! # What is asserted about spelling, then
+//!
+//! That it is *there*. Every parameter, every field of a structured argument, every type, every one
+//! of a type's members and every API object must carry documentation, because all of it is read by a
+//! model and a blank is a model guessing. The check runs over the **emitted catalogue**, so it is the
+//! same check for a language whose compiler enforced its doc comments and one whose convention did —
+//! Swift's `docc`, Java's `-Xdoclint`, Rust's `# Arguments` heading and PureScript's `@param` all
+//! land in one shape here, and one gate covers every language that will ever be added.
 //!
 //! # With exactly one registered language
 //!
@@ -65,6 +79,7 @@ use crate::ending::EndingRole;
 use crate::tools::ALL_TOOL_NAMES;
 
 use super::ProgramLanguage;
+use crate::sandbox::signatures::{Parameter, SignatureEntry};
 
 /// The five sections of a catalogue, which are themselves identity: a function that is a `view` in
 /// one language and a `tool` in another is not the same function, whatever it is called.
@@ -385,6 +400,14 @@ fn anchored_to_gg(language: &'static dyn ProgramLanguage, out: &mut Vec<Disagree
     }
 }
 
+/// Every API object at least one of a catalogue's functions hangs off.
+fn grouped_objects(language: &'static dyn ProgramLanguage) -> BTreeSet<&'static str> {
+    spellings(language)
+        .into_iter()
+        .map(|spelling| spelling.object)
+        .collect()
+}
+
 /// The [ending roles](crate::ending::EndingRole) a catalogue may tag a session entry with — the same
 /// three spellings [`DocsRuntime`](crate::docs::DocsRuntime) filters by.
 const ENDING_ROLES: [&str; 3] = ["standard", "review", "judge"];
@@ -415,20 +438,12 @@ fn internally_consistent(language: &'static dyn ProgramLanguage, out: &mut Vec<D
         let Spelling {
             object,
             name,
-            signature,
+            signatures,
             doc,
             key,
         } = entry;
         if name.trim().is_empty() {
             complain(format!("`{object}.{key}` has no name a program could call"));
-        }
-        if signature.trim().is_empty() {
-            complain(format!("`{object}.{key}` has no signature"));
-        } else if !signature.starts_with(name) {
-            complain(format!(
-                "`{object}.{key}`'s signature does not start with the name a program calls \
-                 (`{name}`): {signature}"
-            ));
         }
         if doc.trim().is_empty() {
             complain(format!("`{object}.{key}` has no documentation"));
@@ -438,11 +453,81 @@ fn internally_consistent(language: &'static dyn ProgramLanguage, out: &mut Vec<D
                 "two functions on `{object}` are both spelled `{name}`"
             ));
         }
+        // Every shape the language offers this function in, checked on its own. The COUNT is
+        // spelling — an overload pair and a default argument are two idioms for one capability —
+        // so what is asserted is that each of them is callable and documented, never how many
+        // there are.
+        if signatures.is_empty() {
+            complain(format!("`{object}.{key}` has no signature"));
+        }
+        for SignatureEntry {
+            signature,
+            parameters,
+        } in signatures
+        {
+            if signature.trim().is_empty() {
+                complain(format!("`{object}.{key}` has an empty signature"));
+            } else if !signature.starts_with(name) {
+                complain(format!(
+                    "`{object}.{key}`'s signature does not start with the name a program calls \
+                     (`{name}`): {signature}"
+                ));
+            }
+            for parameter in parameters {
+                check_parameter(parameter, object, key, signature, &mut complain);
+            }
+        }
     }
 
     // Every type a signature mentions is declared, so a doc lookup never shows a name it does not
-    // then define.
+    // then define — and is itself explained, member by member. A record whose fields arrive
+    // unexplained is a record the model has to infer from its field names, which is exactly the
+    // guessing the catalogue exists to remove.
     let declared: BTreeSet<&str> = catalogue.types.iter().map(|t| t.name.as_str()).collect();
+    for declaration in &catalogue.types {
+        let name = &declaration.name;
+        if declaration.declaration.trim().is_empty() {
+            complain(format!("the type `{name}` has no declaration"));
+        }
+        if declaration.doc.trim().is_empty() {
+            complain(format!("the type `{name}` has no documentation"));
+        }
+        for member in &declaration.members {
+            if member.name.trim().is_empty() {
+                complain(format!("a member of `{name}` has no name"));
+            } else if member.doc.trim().is_empty() {
+                complain(format!(
+                    "`{name}.{}` has no documentation",
+                    member.name.trim()
+                ));
+            }
+        }
+    }
+
+    // The API objects: described exactly once each, and only the ones a function actually hangs off.
+    // A described object with nothing on it is an object a model is introduced to and never given;
+    // an object with functions and no description is a heading with no sentence under it.
+    let grouped = grouped_objects(language);
+    let mut described: BTreeSet<&str> = BTreeSet::new();
+    for entry in &catalogue.objects {
+        let object = entry.object.as_str();
+        if !described.insert(object) {
+            complain(format!("the API object `{object}` is described twice"));
+        }
+        if entry.doc.trim().is_empty() {
+            complain(format!("the API object `{object}` has no description"));
+        }
+        if !grouped.contains(object) {
+            complain(format!(
+                "the API object `{object}` is described and no function hangs off it"
+            ));
+        }
+    }
+    for object in grouped.difference(&described) {
+        complain(format!(
+            "functions hang off `{object}` and nothing describes it"
+        ));
+    }
     let referenced = catalogue
         .session
         .iter()
@@ -460,14 +545,48 @@ fn internally_consistent(language: &'static dyn ProgramLanguage, out: &mut Vec<D
     }
 }
 
+/// Every parameter is named, documented, and named *in the signature it belongs to*.
+///
+/// The last of the three is what catches the defect this gate exists for: a parameter renamed in the
+/// signature and left behind under its old name in the documentation reads perfectly and tells a
+/// model to write something the call will not accept. It is checked by substring rather than by
+/// parsing, because parsing a signature would need a parser per language, and every language spells
+/// a parameter's name into its own signature whichever side of the type it puts it on.
+fn check_parameter(
+    parameter: &'static Parameter,
+    object: &'static str,
+    key: &'static str,
+    signature: &'static str,
+    complain: &mut impl FnMut(String),
+) {
+    let name = parameter.name.trim();
+    if name.is_empty() {
+        complain(format!("`{object}.{key}` has an argument with no name"));
+        return;
+    }
+    if parameter.doc.trim().is_empty() {
+        complain(format!("`{object}.{key}`'s `{name}` has no documentation"));
+    }
+    if !signature.contains(name) {
+        complain(format!(
+            "`{object}.{key}` documents an argument `{name}` its signature does not name: \
+             {signature}"
+        ));
+    }
+    for field in &parameter.fields {
+        check_parameter(field, object, key, signature, complain);
+    }
+}
+
 /// One entry's spellings, beside the identity they belong to, so a complaint can name both.
 struct Spelling {
     /// The object it hangs off — identity, and here only so a complaint can qualify the name.
     object: &'static str,
     /// The name a program calls it by.
     name: &'static str,
-    /// The signature this language's SDK declares it with.
-    signature: &'static str,
+    /// Every shape this language's SDK declares it in. Never compared across languages — the count
+    /// is idiom — and checked one by one within a language.
+    signatures: &'static [SignatureEntry],
     /// The documentation paragraph a lookup renders.
     doc: &'static str,
     /// The language-independent key the spelling belongs to.
@@ -483,7 +602,7 @@ fn spellings(language: &'static dyn ProgramLanguage) -> Vec<Spelling> {
         .map(|e| Spelling {
             object: e.object.as_str(),
             name: e.name.as_str(),
-            signature: e.signature.as_str(),
+            signatures: e.signatures.as_slice(),
             doc: e.doc.as_str(),
             key: e.key.as_str(),
         })
@@ -491,14 +610,14 @@ fn spellings(language: &'static dyn ProgramLanguage) -> Vec<Spelling> {
     out.extend(catalogue.views.iter().map(|e| Spelling {
         object: e.object.as_str(),
         name: e.name.as_str(),
-        signature: e.signature.as_str(),
+        signatures: e.signatures.as_slice(),
         doc: e.doc.as_str(),
         key: e.key.as_str(),
     }));
     out.extend(catalogue.programs.iter().map(|e| Spelling {
         object: e.object.as_str(),
         name: e.name.as_str(),
-        signature: e.signature.as_str(),
+        signatures: e.signatures.as_slice(),
         doc: e.doc.as_str(),
         key: e.key.as_str(),
     }));
@@ -506,14 +625,14 @@ fn spellings(language: &'static dyn ProgramLanguage) -> Vec<Spelling> {
     out.extend(catalogue.tools.iter().map(|e| Spelling {
         object: e.object.as_str(),
         name: e.name.as_str(),
-        signature: e.signature.as_str(),
+        signatures: e.signatures.as_slice(),
         doc: e.doc.as_str(),
         key: e.tool.as_str(),
     }));
     out.extend(catalogue.helpers.iter().map(|e| Spelling {
         object: e.object.as_str(),
         name: e.name.as_str(),
-        signature: e.signature.as_str(),
+        signatures: e.signatures.as_slice(),
         doc: e.doc.as_str(),
         key: e.key.as_str(),
     }));

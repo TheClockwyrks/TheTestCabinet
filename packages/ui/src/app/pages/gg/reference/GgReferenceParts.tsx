@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { GgApiParameter } from "@test-cabinet/run-record/gg-reference";
 import { toolParameters } from "./toolParameters";
 import styles from "./GgReference.module.scss";
 
@@ -10,8 +11,9 @@ import styles from "./GgReference.module.scss";
 //   never reflowed.
 // - `<CodeBlock>` is machine-readable text (a JSON Schema, a signature, a type
 //   declaration), where indentation is structure and lines therefore scroll.
-// - `<ParameterList>` is *ours* — derived from the schema beside it, and the only thing
-//   on either page that we wrote.
+// - `<ParameterList>` and `<ApiParameterList>` are *ours* — derived from the schema or
+//   the signature catalogue beside them, and the only thing on either page that we wrote.
+//   The prose inside their rows is still the model's, reflected from the same place.
 //
 // A reader must never have to wonder which of those three they are looking at, which is
 // why they are three components with three looks rather than one `<pre>` used everywhere.
@@ -115,6 +117,55 @@ export function ParameterList({ schema }: { schema: Record<string, unknown> }) {
         ))}
       </ul>
     </Section>
+  );
+}
+
+/**
+ * An API function's arguments, read out of the signature catalogue rather than a JSON
+ * Schema.
+ *
+ * The sibling of {@link ParameterList}, which does the same job for a *tool*. They are
+ * two functions rather than one because the two surfaces carry their arguments in
+ * genuinely different shapes — a tool's are a JSON Schema the provider is sent, an API
+ * function's are reflected out of the SDK's own `@param` blocks — and flattening them
+ * into a shared row type would mean neither could ever say anything the other cannot.
+ * A structured argument's fields nest under it, because that is where a model writes
+ * them.
+ */
+export function ApiParameterList({
+  parameters,
+}: {
+  parameters: GgApiParameter[];
+}) {
+  if (parameters.length === 0) {
+    // A real answer, not a gap: `view.current()` and `programs.history()` take nothing.
+    return <p className={styles.paramDesc}>No arguments.</p>;
+  }
+  return (
+    <ul className={styles.params}>
+      {parameters.map((parameter) => (
+        <li key={parameter.name} className={styles.param}>
+          <span className={styles.paramHead}>
+            <span className={styles.paramName}>{parameter.name}</span>
+            <span className={styles.paramType}>{parameter.type}</span>
+            {/* Only "required" is marked, the same rule the tool rows follow. */}
+            {!parameter.optional && (
+              <span className={styles.paramRequired}>required</span>
+            )}
+            {/* A default is worth a row of its own only where the language states one;
+                TypeScript never does, so this is silent today and will not be for a
+                language that spells options as defaults. */}
+            {parameter.default !== undefined && (
+              <span className={styles.paramType}>= {parameter.default}</span>
+            )}
+          </span>
+          <p className={styles.paramDesc}>{parameter.doc}</p>
+          {parameter.fields.length > 0 && (
+            <ApiParameterList parameters={parameter.fields} />
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 

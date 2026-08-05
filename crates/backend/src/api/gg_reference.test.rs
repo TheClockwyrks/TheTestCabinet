@@ -89,17 +89,35 @@ fn every_entry_names_a_category_the_document_defines() {
     }
 }
 
-/// Every function carries the three things the API tab renders: the signature, the SDK's
-/// own documentation, and the one-line summary the sidebar shows.
+/// Every function carries the three things the API tab renders: at least one signature — with
+/// a description on every argument it takes — the SDK's own documentation, and the one-line
+/// summary the sidebar shows.
 #[test]
 fn every_function_carries_its_signature_and_docs() {
     for function in &reference().functions {
         assert!(
-            !function.signature.trim().is_empty(),
-            "{}.{} carries its signature",
+            !function.signatures.is_empty(),
+            "{}.{} carries a signature",
             function.object,
             function.name
         );
+        for entry in &function.signatures {
+            assert!(
+                !entry.signature.trim().is_empty(),
+                "{}.{} carries its signature",
+                function.object,
+                function.name
+            );
+            for parameter in &entry.parameters {
+                assert!(
+                    !parameter.doc.trim().is_empty(),
+                    "{}.{}'s `{}` carries its description",
+                    function.object,
+                    function.name,
+                    parameter.name
+                );
+            }
+        }
         assert!(
             !function.doc.trim().is_empty(),
             "{}.{} carries its documentation",

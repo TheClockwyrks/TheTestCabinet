@@ -141,9 +141,18 @@ pub use outcome::{
 pub use {
     invoker::FunctionSummary, invoker::PROGRAM_CALL_ID_PREFIX, invoker::SandboxViewOpened,
     invoker::ViewOpenOutcome, invoker::ViewRefusal, limits::resolve_sandbox_limits,
-    membrane::RunEnding, signatures::CatalogueFunction, signatures::catalogue_functions,
-    signatures::type_declaration,
+    membrane::RunEnding, signatures::CatalogueFunction, signatures::Parameter,
+    signatures::ParameterKind, signatures::TypeDeclaration, signatures::catalogue_functions,
+    signatures::catalogue_objects, signatures::type_declaration,
 };
+
+// The three catalogue types nothing outside `sandbox` names *yet*, exported all the same because
+// they are fields of types it does: an `ObjectDoc` comes back from `catalogue_objects`, a
+// `SignatureEntry` hangs off every `CatalogueFunction`, and a `TypeMember` off every
+// `TypeDeclaration`. A type a reader has to reach into a private module to read is a type nobody
+// reads, and the crate denies warnings.
+#[allow(unused_imports)]
+pub use signatures::{ObjectDoc, SignatureEntry, TypeMember};
 
 /// One code module as the guest binds it: the key it is reached at under `lib`, and the source
 /// whose evaluation — in whatever that guest evaluates — produces its exports.

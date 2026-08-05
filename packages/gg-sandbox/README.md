@@ -32,7 +32,7 @@ for this package:
 | `src/membrane.d.ts` | The hand-maintained TypeScript mirror of `crates/gg/wit/gg-sandbox.wit`. Emits no code; `componentize-js` injects the real bindings. |
 | `src/types.ts` | The **model-facing** record and enum types — gg's vocabulary, not the WIT's. |
 | `src/errors.ts` | `ToolError`, and the argument validators every wrapper runs first. |
-| `src/catalogue.ts` | Pure data: gg tool name ↔ SDK function ↔ module, plus `SESSION_ENTRIES`, `VIEW_ENTRIES` and `PROGRAM_ENTRIES` — each carrying the `key` that identifies it across languages. |
+| `src/catalogue.ts` | Pure data: gg tool name ↔ SDK function ↔ module, plus `SESSION_ENTRIES`, `VIEW_ENTRIES` and `PROGRAM_ENTRIES` — each carrying the `key` that identifies it across languages — and the `OBJECT_*` constants whose doc comments are the API objects' own model-facing descriptions. |
 | `src/tools/*.ts` | The 37 typed wrappers — one per gg tool, grouped one module per capability family — plus the on-demand directory call (`listFunctions`, which is every object's `list()`) and the five `view` functions. |
 | `src/helpers.ts` | The one helper, `readTextFile`. |
 | `src/session.ts` | `finish(summary)` and the two verdict endings — model-facing functions that are not gg tools. |
@@ -112,9 +112,16 @@ gate for the catalogue.
 | gg's `bound-tools` test | a tool added, renamed or removed in gg with a **stale committed `.wasm`** |
 | `npm run -w @test-cabinet/gg-sandbox signatures` + `git diff --exit-code` in CI | an SDK signature or JSDoc edited without regenerating `typescript.signatures.json` |
 | `tools/signatures.mjs` exiting non-zero | a catalogued export that does not exist, lives in the wrong module, or has no doc comment |
+| `tools/signatures.mjs` exiting non-zero | an **argument**, an inline argument **field**, a **type**, a type **member** or an **API object** with no doc comment — or an `@param` naming something the signature does not declare |
+| gg's agreement gate | the same completeness rules, read off the emitted catalogue rather than off TypeScript's AST, so every language is held to them |
 
-The JSDoc on each wrapper is not decoration: it is the sentence a model reads in
-the system prompt beside that function's signature. Write it for that reader.
+Every one of those is the same rule under a different subject: **nothing a model reads
+about this SDK may be written anywhere but on the declaration it describes.** The JSDoc on
+a wrapper is the sentence a model reads beside that function's signature; the `@param` on
+an argument is the line it reads under it; the comment above an interface member is what
+tells it what the field means; and the doc comment on an `OBJECT_*` constant in
+`src/catalogue.ts` is how the system prompt introduces that object. Write all of them for
+that reader.
 
 ## Why the component is committed raw, at ~13 MB
 
@@ -158,7 +165,10 @@ binds the WIT itself; it does not go through this package.
 
 **2. The catalogue schema.** It emits
 `crates/gg/src/sandbox/guests/<language-id>.signatures.json` in the same shape, with
-`language: "<language-id>"` and the same `key`s. It need not use
+`language: "<language-id>"` and the same `key`s — the `objects` section in presentation
+order, one entry per function carrying a `signatures` array (one entry per shape that
+language offers the function in, each with its own documented arguments), and every type
+with its own description and its members'. It need not use
 `tools/signatures.mjs` — only the emitted JSON is contractual, and a Python guest
 would reflect its own docstrings and type hints with its own script. The `key` is
 what makes two catalogues comparable: gg asserts that every registered language

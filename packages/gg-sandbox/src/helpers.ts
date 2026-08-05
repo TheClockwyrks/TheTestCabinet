@@ -24,6 +24,12 @@ import { U32_MAX, call, opts, uint } from "./errors.js";
  * Read a text file and return its contents directly — `readFile` without the variant
  * narrowing, for the common case. Takes the same `offset`/`limit` window options. Throws
  * `invalid-argument` when the path names a picture; use `readFile` to inspect those.
+ *
+ * @param path The file to read. Relative to your workspace, or absolute.
+ * @param options The window of lines to read; omit it to read the whole file.
+ * @param options.offset The 1-based line to start at. Honoured only under a capped read policy.
+ * @param options.limit How many lines to return from `offset`. Honoured only under a capped read
+ * policy.
  */
 export function readTextFile(
   path: string,

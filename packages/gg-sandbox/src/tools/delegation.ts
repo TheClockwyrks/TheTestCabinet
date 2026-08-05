@@ -50,6 +50,14 @@ function brief(fn: string, request: BriefInput): SubagentBrief {
  * brief it with exactly one of `prompt` (self-contained instructions) or `issueId` (a board issue).
  * The child shares your workspace. Throws `limit-exceeded` at the delegation depth cap, and
  * `invalid-argument` if `agent` is not one you may spawn.
+ *
+ * @param request The agent to run and the brief to run it on.
+ * @param request.agent The agent profile to run the child as, from the ones you may spawn. It
+ * selects the child's model, tools and instructions.
+ * @param request.prompt Self-contained instructions for the child. Give this or `issueId`, never
+ * both and never neither.
+ * @param request.issueId The board issue to brief the child from. Give this or `prompt`, never
+ * both and never neither.
  */
 export function spawnSubagent(
   request: { agent: string } & ({ prompt: string } | { issueId: string }),
@@ -93,6 +101,8 @@ function ending(status: AgentStatus | undefined): AgentEnding | undefined {
  * has — and collect their results in dispatch order. The run's wall-clock budget keeps running while
  * you wait, so wait once for many children rather than once per child. Throws `not-found` for an
  * unknown id.
+ *
+ * @param ids The children to wait for. Omit it to wait for every one still outstanding.
  */
 export function waitForSubagents(ids?: string[]): SubagentResult[] {
   const results = call(() => raw.waitForSubagents(ids));
@@ -106,6 +116,9 @@ export function waitForSubagents(ids?: string[]): SubagentResult[] {
 /**
  * Deliver a message to a running child agent's inbox; it reads the message at its next turn. Throws
  * `not-found` for an unknown agent id and `conflict` when that child has already returned.
+ *
+ * @param agentId The child to deliver to, as `spawnSubagent` returned it.
+ * @param message What to put in its inbox. It reads it at its next turn.
  */
 export function sendMessage(agentId: string, message: string): void {
   call(() => raw.sendMessage(agentId, message));
@@ -119,6 +132,9 @@ export function sendMessage(agentId: string, message: string): void {
  * to its end — the transition happens after that, because replacing your agent (and your window)
  * mid-program would pull every remaining call out from under it. The FIRST declaration stands, and a
  * second throws `refused`. Throws `invalid-argument` for a state you may not move to.
+ *
+ * @param state The state to move on to, named the way you name an agent to spawn.
+ * @param note The opening message the next state's agent sees.
  */
 export function transitionState(state: string, note?: string): void {
   call(() => raw.transitionState(state, note));
@@ -135,6 +151,10 @@ export function transitionState(state: string, note?: string): void {
  * throws `refused`. Bound only when your agent may make agent transitions and has agents it may
  * become, and never while a state machine is driving you. Throws `invalid-argument` for an agent
  * you may not become.
+ *
+ * @param agent The agent to become, from the ones you may become.
+ * @param prompt Its opening message. It already has your whole conversation, so this is the
+ * instruction rather than a briefing.
  */
 export function exec(agent: string, prompt?: string): void {
   call(() => raw.exec(agent, prompt));
@@ -149,6 +169,9 @@ export function exec(agent: string, prompt?: string): void {
  * recorded (the conversation it inherits has to be a complete one), so `waitForSubagents` can only
  * collect it on a later turn — do not wait on it in the program that made it. Throws
  * `limit-exceeded` at the delegation depth cap.
+ *
+ * @param prompt What the copy is to do instead of what you are doing. It has your whole
+ * conversation already, so write the difference rather than a briefing.
  */
 export function fork(prompt: string): SubagentHandle {
   return call(() => raw.fork(prompt));

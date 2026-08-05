@@ -31,9 +31,12 @@
           "description": "The API object the function hangs off in a program's scope (`fs`).",
           "type": "string"
         },
-        "signature": {
-          "description": "The full TypeScript signature, as the SDK declares it.",
-          "type": "string"
+        "signatures": {
+          "description": "Every shape the SDK offers this function in, each with the arguments it takes.\n\nAn array rather than one string because how a language expresses an optional argument is\nthat language's own business: an overload pair and a default argument are two spellings of\none capability, and the first arrives here as two entries where the second arrives as one.",
+          "items": {
+            "$ref": "#/$defs/GgApiSignature"
+          },
+          "type": "array"
         },
         "summary": {
           "description": "The one-line summary `object.list()` shows — the first sentence of\n[`doc`](Self::doc).",
@@ -52,11 +55,67 @@
         "name",
         "category",
         "summary",
-        "signature",
+        "signatures",
         "doc",
         "library",
         "types"
       ],
+      "type": "object"
+    },
+    "GgApiParameter": {
+      "description": "One argument an [API signature](GgApiSignature) takes, or one field of a structured argument.",
+      "properties": {
+        "default": {
+          "description": "The value it takes when it is left out, for a language that says so in the signature.",
+          "type": ["string", "null"]
+        },
+        "doc": {
+          "description": "The SDK's own documentation for it — what to put here, and what happens if you do not.",
+          "type": "string"
+        },
+        "fields": {
+          "description": "The fields of a structured argument written inline at the call site, each documented in its\nown right. Empty for an argument typed by name, whose documentation is on that\n[type](GgApiType)'s members instead.",
+          "items": {
+            "$ref": "#/$defs/GgApiParameter"
+          },
+          "type": "array"
+        },
+        "name": {
+          "description": "The name the signature declares it under.",
+          "type": "string"
+        },
+        "optional": {
+          "description": "Whether the call is legal without it.",
+          "type": "boolean"
+        },
+        "passing": {
+          "description": "How it is passed: `positional`, or `keyword` for a language whose call site writes the\nargument's name as well as its value.",
+          "type": "string"
+        },
+        "type": {
+          "description": "Its type, as the SDK writes it.",
+          "type": "string"
+        }
+      },
+      "required": ["name", "type", "optional", "passing", "doc", "fields"],
+      "type": "object"
+    },
+    "GgApiSignature": {
+      "description": "One way an [API function](GgApiFunction) may be called.",
+      "properties": {
+        "parameters": {
+          "description": "Every argument this shape takes, in the order it takes them.",
+          "items": {
+            "$ref": "#/$defs/GgApiParameter"
+          },
+          "type": "array"
+        },
+        "signature": {
+          "description": "The signature as the SDK declares it, beginning with the name a program calls.",
+          "type": "string"
+        }
+      },
+      "required": ["signature", "parameters"],
       "type": "object"
     },
     "GgApiType": {
@@ -66,12 +125,42 @@
           "description": "The declaration, as the SDK wrote it.",
           "type": "string"
         },
+        "doc": {
+          "description": "The SDK's own documentation for the type: what it is, and why it has the shape it has.",
+          "type": "string"
+        },
+        "members": {
+          "description": "One line per member — a record's properties, or the arms of a union — each with the\ndocumentation written on it. A declaration says what fields a value has and nothing about\nwhat any of them means, which is the half that decides whether a model uses it correctly.",
+          "items": {
+            "$ref": "#/$defs/GgApiTypeMember"
+          },
+          "type": "array"
+        },
         "name": {
           "description": "The type's name, as it appears in the signature.",
           "type": "string"
         }
       },
-      "required": ["name", "declaration"],
+      "required": ["name", "declaration", "doc", "members"],
+      "type": "object"
+    },
+    "GgApiTypeMember": {
+      "description": "One member of an [API type](GgApiType).",
+      "properties": {
+        "doc": {
+          "description": "The SDK's own documentation for the member.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The member's name as a program reads it (`totalLines`), or the literal itself (`\"pending\"`)\nfor the arm of a union.",
+          "type": "string"
+        },
+        "type": {
+          "description": "The member's type; absent for a union arm, which is a value rather than a field and so has\nno type beside itself.",
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["name", "doc"],
       "type": "object"
     },
     "GgReferenceCategory": {

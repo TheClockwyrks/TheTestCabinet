@@ -14,6 +14,8 @@ import type { ArchiveSearch, ReclaimReport, TurnRange } from "../types.js";
  * Drop the contents of files you have read out of your context window, freeing the tokens they
  * occupy, and report what that reclaimed; omit `path` to drop every file view. The files on disk are
  * untouched — this forgets what you read, not what exists.
+ *
+ * @param path The file whose views to drop. Omit it to drop every file view you hold.
  */
 export function evictFileView(path?: string): ReclaimReport {
   return call(() => raw.evictFileView(path));
@@ -26,6 +28,8 @@ export function evictFileView(path?: string): ReclaimReport {
  * costs, so name the turns worth dropping: `ranges` is a list of inclusive spans, and
  * `archiveThread([{ from: 4, to: 19 }])` archives turns 4 through 19. Your own messages in an
  * archived turn are dropped; the results are kept and stay searchable with `searchArchive`.
+ *
+ * @param ranges The inclusive spans of turn numbers to move out of your window.
  */
 export function archiveThread(ranges: TurnRange[]): ReclaimReport {
   const spans = list<TurnRange>("archiveThread", "ranges", ranges).map((range) => {
@@ -56,6 +60,8 @@ export function archiveThread(ranges: TurnRange[]): ReclaimReport {
  * Search archived history for a case-insensitive substring, most recent first, up to 8 hits. Check
  * `archiveEmpty` before reading `hits`: it distinguishes "nothing has been archived yet" from "the
  * search ran and matched nothing", so you do not archive again believing the first archive failed.
+ *
+ * @param query The substring to look for. Matching is case-insensitive.
  */
 export function searchArchive(query: string): ArchiveSearch {
   return call(() => raw.searchArchive(query));
@@ -69,6 +75,10 @@ export function searchArchive(query: string): ArchiveSearch {
  * It does NOT stop your program: it registers the request and returns, and the rewrite happens once
  * your program has ended. Everything not in your summary and not in `files` is gone, so write the
  * summary for your future self and name the files you will actually need in hand.
+ *
+ * @param summary What your restarted window opens with. Write it for your future self:
+ * everything not in it and not re-read from `files` is gone.
+ * @param files The paths to read afresh into the restarted window. Defaults to none.
  */
 export function compact(summary: string, files: string[] = []): void {
   call(() => raw.compact(summary, files));

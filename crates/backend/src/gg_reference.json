@@ -1180,7 +1180,21 @@
       "name": "finish",
       "category": "gg-session",
       "summary": "End your session, reporting what you did in a sentence or two.",
-      "signature": "finish(summary: string): void",
+      "signatures": [
+        {
+          "signature": "finish(summary: string): void",
+          "parameters": [
+            {
+              "name": "summary",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "What you did, in a sentence or two.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "End your session, reporting what you did in a sentence or two. This is the only thing that ends it. It does not stop your program — whatever follows it still runs — so call it last, once the tools have confirmed the work is really done. If your program then fails, the ending is cancelled and you get another turn.",
       "ending": "standard",
       "library": false,
@@ -1191,7 +1205,12 @@
       "name": "approve",
       "category": "gg-session",
       "summary": "Accept the work you are reviewing: it meets every completion criterion and stays in scope.",
-      "signature": "approve(): void",
+      "signatures": [
+        {
+          "signature": "approve(): void",
+          "parameters": []
+        }
+      ],
       "doc": "Accept the work you are reviewing: it meets every completion criterion and stays in scope. This ends your session. It does not stop your program — whatever follows it still runs — so call it last, once you have actually read the change.",
       "ending": "review",
       "library": false,
@@ -1202,7 +1221,21 @@
       "name": "requestChanges",
       "category": "gg-session",
       "summary": "Reject the work you are reviewing, listing every change that must be made before it can be accepted.",
-      "signature": "requestChanges(items: string[]): void",
+      "signatures": [
+        {
+          "signature": "requestChanges(items: string[]): void",
+          "parameters": [
+            {
+              "name": "items",
+              "type": "string[]",
+              "optional": false,
+              "passing": "positional",
+              "doc": "Every change that must be made before the work can be accepted, one per entry: what is wrong, and what to change. It may not be empty.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Reject the work you are reviewing, listing every change that must be made before it can be accepted. Each item says what is wrong and what to change; the list may not be empty. This ends your session, and does not stop your program.",
       "ending": "review",
       "library": false,
@@ -1213,14 +1246,116 @@
       "name": "openFile",
       "category": "gg-views",
       "summary": "Read a file AND show it to yourself: you get back exactly what `fs.readFile` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it.",
-      "signature": "openFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
+      "signatures": [
+        {
+          "signature": "openFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The file to open. Relative to your workspace, or absolute.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "{ offset?: number; limit?: number; }",
+              "optional": true,
+              "passing": "positional",
+              "doc": "The window of lines to show; omit it to show the whole file.",
+              "fields": [
+                {
+                  "name": "offset",
+                  "type": "number",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The 1-based line to start at.",
+                  "fields": []
+                },
+                {
+                  "name": "limit",
+                  "type": "number",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "How many lines to show from `offset`.",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "doc": "Read a file AND show it to yourself: you get back exactly what `fs.readFile` returns, and the file also becomes its own item in your context window, attributed to its path and closable by it. The split from `fs.readFile` is the point — `fs.readFile` gets bytes for your PROGRAM, `view.openFile` shows a file to YOU — so a program that reads forty files to grep them still puts nothing in your window. `offset` and `limit` select a window of lines, and two pages of one file are two views that coexist; re-opening the SAME page replaces what it showed rather than piling up a duplicate. An image file is shown to you as a picture, and is the ONLY way to look at one — `fs.readFile` of an image describes it without showing it. Pictures are the one thing this call can refuse. Only so many image-carrying views may be open at once (your agent's `imageViewCap`); opening one past that throws `limit-exceeded` naming the cap, and nothing is opened and nothing is shown, so close one with `view.close(path)` and try again. Re-opening a picture you already have open replaces it rather than adding one, and is never refused. Text views are never refused by this cap.",
       "gate": "read_file",
       "library": false,
       "types": [
         {
           "name": "FileRead",
-          "declaration": "type FileRead = { kind: \"text\"; contents: string; firstLine: number; lastLine: number; totalLines: number; byteTruncated: boolean; } | { kind: \"image\"; mediaType: string; label: string; bytes: number; shown: boolean; notShownReason: string | undefined; }"
+          "declaration": "type FileRead = { kind: \"text\"; contents: string; firstLine: number; lastLine: number; totalLines: number; byteTruncated: boolean; } | { kind: \"image\"; mediaType: string; label: string; bytes: number; shown: boolean; notShownReason: string | undefined; }",
+          "doc": "What `readFile` returned: a text file's window, or a picture's metadata. A picture is a different kind of thing from text, so it is a different case rather than a string that happens to be binary — a program that treats an image as text is caught by the `kind` check instead of silently writing an empty string somewhere. Image *bytes* never enter the program: gg attaches the picture to the turn so the model can look at it directly, which is worth far more than base64 in a variable.",
+          "members": [
+            {
+              "name": "kind",
+              "type": "\"text\"",
+              "doc": "This file is text."
+            },
+            {
+              "name": "contents",
+              "type": "string",
+              "doc": "The file's text, or just the requested window under a capped read policy."
+            },
+            {
+              "name": "firstLine",
+              "type": "number",
+              "doc": "The 1-based first line returned."
+            },
+            {
+              "name": "lastLine",
+              "type": "number",
+              "doc": "The 1-based last line returned."
+            },
+            {
+              "name": "totalLines",
+              "type": "number",
+              "doc": "The file's total line count, so you know whether to page again."
+            },
+            {
+              "name": "byteTruncated",
+              "type": "boolean",
+              "doc": "A 256 KiB byte ceiling cut the returned text."
+            },
+            {
+              "name": "kind",
+              "type": "\"image\"",
+              "doc": "This file is a picture; gg shows it to you rather than handing you its bytes."
+            },
+            {
+              "name": "mediaType",
+              "type": "string",
+              "doc": "The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`)."
+            },
+            {
+              "name": "label",
+              "type": "string",
+              "doc": "The short format label (`PNG`, `JPEG`, `GIF`, `WebP`)."
+            },
+            {
+              "name": "bytes",
+              "type": "number",
+              "doc": "The file's size in bytes."
+            },
+            {
+              "name": "shown",
+              "type": "boolean",
+              "doc": "Whether the picture is being attached to this turn for you to look at."
+            },
+            {
+              "name": "notShownReason",
+              "type": "string | undefined",
+              "doc": "Why it is not being shown; `undefined` when `shown` is true."
+            }
+          ]
         }
       ]
     },
@@ -1229,7 +1364,29 @@
       "name": "openText",
       "category": "gg-views",
       "summary": "Show yourself a value your program computed, under `label` — a directory listing, a command's output, a child agent's answer, a table you assembled.",
-      "signature": "openText(label: string, body: string): void",
+      "signatures": [
+        {
+          "signature": "openText(label: string, body: string): void",
+          "parameters": [
+            {
+              "name": "label",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "What to file the view under. It is what `view.close` takes, and opening the same label again replaces what it showed. It may not be empty.",
+              "fields": []
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "What to show yourself. An empty body is allowed: it is how you say that something you were showing is now empty.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Show yourself a value your program computed, under `label` — a directory listing, a command's output, a child agent's answer, a table you assembled. This is what replaced `console.log` as the channel into your context: logs go to the run's operator, views come back to you on your next turn. Opening the same `label` again replaces what it showed, so a program may refine a view in a loop without piling up a copy per iteration. An empty label is `invalid-argument` — a view with no selector could never be closed or attributed — while an empty BODY is allowed, since it is how you say that something you were showing is now empty. A body or label over gg's caps throws `limit-exceeded` naming the cap; nothing is ever silently truncated.",
       "library": false,
       "types": []
@@ -1239,7 +1396,21 @@
       "name": "openDocsView",
       "category": "gg-views",
       "summary": "Show yourself the full documentation for one function: its signature, its description, and the declarations of any types it refers to that you have not already been shown this session.",
-      "signature": "openDocsView(target: Function | string): void",
+      "signatures": [
+        {
+          "signature": "openDocsView(target: Function | string): void",
+          "parameters": [
+            {
+              "name": "target",
+              "type": "Function | string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The function to document — the function itself (`fs.readFile`) or its name (`\"readFile\"`).",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Show yourself the full documentation for one function: its signature, its description, and the declarations of any types it refers to that you have not already been shown this session. Pass the function itself (`view.openDocsView(fs.readFile)`) or its name (`view.openDocsView(\"readFile\")`). This is how you read what a function does. It is a **view**, not a return value — the documentation arrives in your next prompt under a `Documentation` heading keyed by the function name, exactly as a file or a computed value arrives — so it is not available in the turn you ask for it. Plan for that: ask in one turn, use it in the next. Opening the same function's docs again replaces the view rather than adding a second copy, and `view.close(name)` closes it when you are done with it. An unknown or unbound name throws `not-found`; `<object>.list()` is how you find out which names exist.",
       "library": false,
       "types": []
@@ -1249,7 +1420,21 @@
       "name": "close",
       "category": "gg-views",
       "summary": "Close every view carrying `selector` — for a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name — and return how many were closed, freeing the tokens they occupied.",
-      "signature": "close(selector: string): number",
+      "signatures": [
+        {
+          "signature": "close(selector: string): number",
+          "parameters": [
+            {
+              "name": "selector",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "What the view is filed under: a file's path, a text view's label, or a documentation view's function name.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Close every view carrying `selector` — for a file that is every page of that path, for a text view the one with that label, for a documentation view the function's name — and return how many were closed, freeing the tokens they occupied. Closing a selector that is not open returns `0` rather than failing, so a program that tidies up unconditionally does not have to guard every call. Closing a file view forgets what you read, not what exists; closing a text view discards the only copy of what it held, so write anything you will need later to a file or a memory first.",
       "library": false,
       "types": []
@@ -1259,21 +1444,77 @@
       "name": "current",
       "category": "gg-views",
       "summary": "List what is open in your context window right now: each view's `kind`, the `selector` that closes it, roughly what it costs you in `tokens`, and — for a paged file view — the `region` it covers.",
-      "signature": "current(): OpenView[]",
+      "signatures": [
+        {
+          "signature": "current(): OpenView[]",
+          "parameters": []
+        }
+      ],
       "doc": "List what is open in your context window right now: each view's `kind`, the `selector` that closes it, roughly what it costs you in `tokens`, and — for a paged file view — the `region` it covers. It is called `current` rather than `list` because every API object already carries a `list()` that lists that object's own functions. Read it before deciding what to close when your window is filling up.",
       "library": false,
       "types": [
         {
           "name": "ViewKind",
-          "declaration": "type ViewKind = \"file\" | \"text\" | \"docs\""
+          "declaration": "type ViewKind = \"file\" | \"text\" | \"docs\"",
+          "doc": "Which of the three kinds a view is. The taxonomy is closed at three on purpose: everything on disk is a file, everything a program can compute is a string, and documentation is neither — gg holds it. A directory listing, a command's output, a child agent's answer, a table you assembled are all **text** views; what `view.openDocsView` opens is a **docs** view.",
+          "members": [
+            {
+              "name": "\"file\"",
+              "doc": "A file you opened; its selector is the path."
+            },
+            {
+              "name": "\"text\"",
+              "doc": "A value you showed yourself; its selector is the label you gave it."
+            },
+            {
+              "name": "\"docs\"",
+              "doc": "A function's documentation; its selector is the function's name."
+            }
+          ]
         },
         {
           "name": "ViewRegion",
-          "declaration": "interface ViewRegion { offset: number; limit: number; }"
+          "declaration": "interface ViewRegion { offset: number; limit: number; }",
+          "doc": "The window of lines a **paged** file view covers; absent for a whole-file view.",
+          "members": [
+            {
+              "name": "offset",
+              "type": "number",
+              "doc": "The 1-based first line the view shows."
+            },
+            {
+              "name": "limit",
+              "type": "number",
+              "doc": "How many lines it shows."
+            }
+          ]
         },
         {
           "name": "OpenView",
-          "declaration": "interface OpenView { kind: ViewKind; selector: string; tokens: number; region?: ViewRegion; }"
+          "declaration": "interface OpenView { kind: ViewKind; selector: string; tokens: number; region?: ViewRegion; }",
+          "doc": "One view open in your context window, as `view.current()` reports it.",
+          "members": [
+            {
+              "name": "kind",
+              "type": "ViewKind",
+              "doc": "Whether it is a file, text, or documentation view."
+            },
+            {
+              "name": "selector",
+              "type": "string",
+              "doc": "What `view.close` takes: a file's path, a text view's label, or a docs view's function name."
+            },
+            {
+              "name": "tokens",
+              "type": "number",
+              "doc": "Roughly what holding it costs you, in tokens."
+            },
+            {
+              "name": "region",
+              "type": "ViewRegion",
+              "doc": "The line window a paged file view covers; absent for a whole-file view and for text views."
+            }
+          ]
         }
       ]
     },
@@ -1282,13 +1523,46 @@
       "name": "history",
       "category": "gg-programs",
       "summary": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end.",
-      "signature": "history(): ProgramSummary[]",
+      "signatures": [
+        {
+          "signature": "history(): ProgramSummary[]",
+          "parameters": []
+        }
+      ],
       "doc": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end. It lists shapes, not sources: fetch the one you want with `programs.get(turn)`. The list survives a compaction, so it is also how you find a program whose text has left your context window. An agent with no program library throws `unavailable`. It is empty — never an error — for one that has a library and has run nothing yet.",
       "library": true,
       "types": [
         {
           "name": "ProgramSummary",
-          "declaration": "interface ProgramSummary { turn: number; lines: number; chars: number; ok: boolean; error?: string; }"
+          "declaration": "interface ProgramSummary { turn: number; lines: number; chars: number; ok: boolean; error?: string; }",
+          "doc": "One program you have already run, as `programs.history()` lists it. It describes the program's **shape**, never its source: a directory that inlined every program would put the whole session back in front of you, which is the one thing the library exists to avoid. Fetch the source you actually want with `programs.get(turn)`.",
+          "members": [
+            {
+              "name": "turn",
+              "type": "number",
+              "doc": "The turn it ran on — what `programs.get` takes."
+            },
+            {
+              "name": "lines",
+              "type": "number",
+              "doc": "How many lines of source it was."
+            },
+            {
+              "name": "chars",
+              "type": "number",
+              "doc": "How many characters of source it was."
+            },
+            {
+              "name": "ok",
+              "type": "boolean",
+              "doc": "Whether it ran to its end, with no uncaught throw and no sandbox ceiling stopping it."
+            },
+            {
+              "name": "error",
+              "type": "string",
+              "doc": "The error it ended with, when it did not run to its end."
+            }
+          ]
         }
       ]
     },
@@ -1297,7 +1571,21 @@
       "name": "get",
       "category": "gg-programs",
       "summary": "The exact source of one program you ran, as a string.",
-      "signature": "get(turn?: number): string",
+      "signatures": [
+        {
+          "signature": "get(turn?: number): string",
+          "parameters": [
+            {
+              "name": "turn",
+              "type": "number",
+              "optional": true,
+              "passing": "positional",
+              "doc": "The turn whose program to fetch, as `programs.history()` reports it. Omit it for your most recent one.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "The exact source of one program you ran, as a string. With no argument, your most recent one. This is the first half of fixing a program without rewriting it: get what ran, patch it with ordinary string work (`replace`, `replaceAll`, a template literal), and hand the result to `programs.rerun`. What comes back is the program that **executed** — so when a turn's program was itself handed over by `programs.rerun`, you get the program that ran, not the few lines that asked for it, and fetch-patch-run composes turn after turn. A turn that ran no program, or one old enough that the library has dropped it, throws `not-found` naming the turns that are held; `programs.history()` lists them.",
       "library": true,
       "types": []
@@ -1307,7 +1595,21 @@
       "name": "rerun",
       "category": "gg-programs",
       "summary": "Hand gg a program to run in place of this one.",
-      "signature": "rerun(source: string): void",
+      "signatures": [
+        {
+          "signature": "rerun(source: string): void",
+          "parameters": [
+            {
+              "name": "source",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The program to run in place of this one. It may not be blank.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Hand gg a program to run in place of this one. Your program finishes, then gg compiles and runs `source` as this turn's program. Use it with `programs.get` to fix a program without re-emitting it. Nothing is undone: every call your program already made stands, and the program that runs next sees the world your program left behind — so hand over BEFORE doing work you do not want done twice. The first call stands; a second throws `refused`, because a silently replaced program is a change you cannot see. A blank source is `invalid-argument`. If your program then throws, the hand-over is cancelled along with everything else the failed program decided, and you get an ordinary error turn instead. Chains are bounded: hand over once per turn, and write the fixed program to do the work.",
       "library": true,
       "types": []
@@ -1317,14 +1619,63 @@
       "name": "shell",
       "category": "gg-shell",
       "summary": "Run a command with `sh -c` in the workspace directory and return its merged stdout and stderr.",
-      "signature": "shell(command: string, options?: { timeoutSecs?: number; }): ShellOutput",
+      "signatures": [
+        {
+          "signature": "shell(command: string, options?: { timeoutSecs?: number; }): ShellOutput",
+          "parameters": [
+            {
+              "name": "command",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The command line, run by `sh -c` with your workspace as its working directory.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "{ timeoutSecs?: number; }",
+              "optional": true,
+              "passing": "positional",
+              "doc": "How to run it.",
+              "fields": [
+                {
+                  "name": "timeoutSecs",
+                  "type": "number",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "How long to let it run before killing it. Defaults to 120, and is clamped to whatever is left of the run's wall-clock budget.",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "doc": "Run a command with `sh -c` in the workspace directory and return its merged stdout and stderr. A non-zero exit is NOT a failure — check `exitCode` on the result; only a process that could not be launched, or one the timeout killed, throws. `timeoutSecs` defaults to 120 and is clamped to whatever is left of the run's wall-clock budget. This run may **offload** shell output — the `shell` tool's own description says which mode is in force. Under `offload`, `output` holds only the tail that fits and ends with a note naming the two files the command's full stdout and stderr were written to. Under `adaptive` (the default), a command that **succeeded** returns no output at all, only that note; one that **failed** returns the tail. Grep the named files instead of re-running the command.",
       "gate": "shell",
       "library": false,
       "types": [
         {
           "name": "ShellOutput",
-          "declaration": "interface ShellOutput { exitCode: number | undefined; output: string; truncated: boolean; }"
+          "declaration": "interface ShellOutput { exitCode: number | undefined; output: string; truncated: boolean; }",
+          "doc": "What a command `shell` ran reported when it finished.",
+          "members": [
+            {
+              "name": "exitCode",
+              "type": "number | undefined",
+              "doc": "The process's exit status; `undefined` when a signal killed it. Zero means success."
+            },
+            {
+              "name": "output",
+              "type": "string",
+              "doc": "Merged stdout-then-stderr, tail-truncated at 16 KiB — or, when the run offloads shell output, at the configured line/character ceiling, with a note naming the files holding the whole of it. Under the default `adaptive` mode a command that succeeded returns just that note."
+            },
+            {
+              "name": "truncated",
+              "type": "boolean",
+              "doc": "Whether the cap cut `output`, dropping the head and keeping the tail."
+            }
+          ]
         }
       ]
     },
@@ -1333,14 +1684,116 @@
       "name": "readFile",
       "category": "gg-filesystem",
       "summary": "Read a file, returning either `{ kind: \"text\", ...",
-      "signature": "readFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
+      "signatures": [
+        {
+          "signature": "readFile(path: string, options?: { offset?: number; limit?: number; }): FileRead",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The file to read. Relative to your workspace, or absolute for anything else in this container.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "{ offset?: number; limit?: number; }",
+              "optional": true,
+              "passing": "positional",
+              "doc": "The window of lines to read; omit it to read the whole file.",
+              "fields": [
+                {
+                  "name": "offset",
+                  "type": "number",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The 1-based line to start at. Honoured only under a capped read policy.",
+                  "fields": []
+                },
+                {
+                  "name": "limit",
+                  "type": "number",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "How many lines to return from `offset`. Honoured only under a capped read policy.",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "doc": "Read a file, returning either `{ kind: \"text\", ... }` or `{ kind: \"image\", ... }` — the format is detected from the file's bytes, never its extension. `offset` and `limit` select a window of lines and are honoured only under a capped read policy. This gets bytes for your program and puts NOTHING in your context window; `view.openFile` is the call that shows the file to you. A relative path resolves against your workspace; an absolute one is read as given, so anything in this container — an offloaded command's output under `/tmp/gg-shell`, say — is readable. Throws `not-found` for a missing path. Reading an IMAGE describes it to your program — label, media type, byte size — and does not show it to YOU: the pixels reach neither your program nor your context window, so a file you only `readFile` is a file you have not looked at. `view.openFile` is the one way to actually see a picture.",
       "gate": "read_file",
       "library": false,
       "types": [
         {
           "name": "FileRead",
-          "declaration": "type FileRead = { kind: \"text\"; contents: string; firstLine: number; lastLine: number; totalLines: number; byteTruncated: boolean; } | { kind: \"image\"; mediaType: string; label: string; bytes: number; shown: boolean; notShownReason: string | undefined; }"
+          "declaration": "type FileRead = { kind: \"text\"; contents: string; firstLine: number; lastLine: number; totalLines: number; byteTruncated: boolean; } | { kind: \"image\"; mediaType: string; label: string; bytes: number; shown: boolean; notShownReason: string | undefined; }",
+          "doc": "What `readFile` returned: a text file's window, or a picture's metadata. A picture is a different kind of thing from text, so it is a different case rather than a string that happens to be binary — a program that treats an image as text is caught by the `kind` check instead of silently writing an empty string somewhere. Image *bytes* never enter the program: gg attaches the picture to the turn so the model can look at it directly, which is worth far more than base64 in a variable.",
+          "members": [
+            {
+              "name": "kind",
+              "type": "\"text\"",
+              "doc": "This file is text."
+            },
+            {
+              "name": "contents",
+              "type": "string",
+              "doc": "The file's text, or just the requested window under a capped read policy."
+            },
+            {
+              "name": "firstLine",
+              "type": "number",
+              "doc": "The 1-based first line returned."
+            },
+            {
+              "name": "lastLine",
+              "type": "number",
+              "doc": "The 1-based last line returned."
+            },
+            {
+              "name": "totalLines",
+              "type": "number",
+              "doc": "The file's total line count, so you know whether to page again."
+            },
+            {
+              "name": "byteTruncated",
+              "type": "boolean",
+              "doc": "A 256 KiB byte ceiling cut the returned text."
+            },
+            {
+              "name": "kind",
+              "type": "\"image\"",
+              "doc": "This file is a picture; gg shows it to you rather than handing you its bytes."
+            },
+            {
+              "name": "mediaType",
+              "type": "string",
+              "doc": "The IANA media type (`image/png`, `image/jpeg`, `image/gif`, `image/webp`)."
+            },
+            {
+              "name": "label",
+              "type": "string",
+              "doc": "The short format label (`PNG`, `JPEG`, `GIF`, `WebP`)."
+            },
+            {
+              "name": "bytes",
+              "type": "number",
+              "doc": "The file's size in bytes."
+            },
+            {
+              "name": "shown",
+              "type": "boolean",
+              "doc": "Whether the picture is being attached to this turn for you to look at."
+            },
+            {
+              "name": "notShownReason",
+              "type": "string | undefined",
+              "doc": "Why it is not being shown; `undefined` when `shown` is true."
+            }
+          ]
         }
       ]
     },
@@ -1349,7 +1802,29 @@
       "name": "writeFile",
       "category": "gg-filesystem",
       "summary": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and return the number of bytes written.",
-      "signature": "writeFile(path: string, contents: string): number",
+      "signatures": [
+        {
+          "signature": "writeFile(path: string, contents: string): number",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "Where to write. Relative to your workspace, or absolute. Parent directories are created for you.",
+              "fields": []
+            },
+            {
+              "name": "contents",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The UTF-8 text to write. It replaces the file entirely.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Write UTF-8 text to a file, creating parent directories and replacing any existing file, and return the number of bytes written. Writing is the expensive direction of the sandbox — rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a large rewrite across several turns.",
       "gate": "write_file",
       "library": false,
@@ -1360,7 +1835,37 @@
       "name": "editFile",
       "category": "gg-filesystem",
       "summary": "Replace the one exact occurrence of `oldString` in a file with `newString`.",
-      "signature": "editFile(path: string, oldString: string, newString: string): void",
+      "signatures": [
+        {
+          "signature": "editFile(path: string, oldString: string, newString: string): void",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The file to edit.",
+              "fields": []
+            },
+            {
+              "name": "oldString",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The exact text to find, including its whitespace. It must appear exactly once.",
+              "fields": []
+            },
+            {
+              "name": "newString",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The text to put in its place. An empty string deletes the match.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Replace the one exact occurrence of `oldString` in a file with `newString`. Throws `not-found` when the text does not appear and `conflict` — with the number of matches — when it appears more than once; widen the surrounding context until the match is unique.",
       "gate": "edit_file",
       "library": false,
@@ -1371,14 +1876,41 @@
       "name": "listDir",
       "category": "gg-filesystem",
       "summary": "List a directory, sorted by name; defaults to your workspace.",
-      "signature": "listDir(path?: string): DirEntry[]",
+      "signatures": [
+        {
+          "signature": "listDir(path?: string): DirEntry[]",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string",
+              "optional": true,
+              "passing": "positional",
+              "doc": "The directory to list; omit it for your workspace root.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "List a directory, sorted by name; defaults to your workspace. Each entry carries a bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an empty array, not a failure.",
       "gate": "list_dir",
       "library": false,
       "types": [
         {
           "name": "DirEntry",
-          "declaration": "interface DirEntry { name: string; kind: \"file\" | \"directory\" | \"other\"; }"
+          "declaration": "interface DirEntry { name: string; kind: \"file\" | \"directory\" | \"other\"; }",
+          "doc": "One entry `listDir` found: a bare name — join it with the directory you listed — and its kind.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The entry's bare name, with no directory part. Join it with the directory you listed."
+            },
+            {
+              "name": "kind",
+              "type": "\"file\" | \"directory\" | \"other\"",
+              "doc": "What the entry is. `other` covers everything that is neither, a symlink among them."
+            }
+          ]
         }
       ]
     },
@@ -1387,7 +1919,21 @@
       "name": "readSkill",
       "category": "gg-skills",
       "summary": "Read a skill by name and return its body with the front matter stripped; reading it also pins that body permanently into your context, so a skill you have read stays read.",
-      "signature": "readSkill(name: string): string",
+      "signatures": [
+        {
+          "signature": "readSkill(name: string): string",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The skill's name, as the system prompt lists it.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Read a skill by name and return its body with the front matter stripped; reading it also pins that body permanently into your context, so a skill you have read stays read. A skill may be **code** rather than prose, or as well as it. If it carries code, reading it binds that code at `lib.<key>` for the rest of your session and the reply names the key and what it exports. If it carries an on-use script, gg runs it once your program has ended, and whatever it shows you arrives on your next turn. Throws `not-found` — listing the skills that do exist — when the name is unknown.",
       "gate": "read_skill",
       "library": false,
@@ -1398,18 +1944,93 @@
       "name": "writeMemory",
       "category": "gg-memory",
       "summary": "Record a durable memory that survives context compaction, and return how much of the memory budget is now used.",
-      "signature": "writeMemory(memory: MemoryWrite): MemoryUsage",
+      "signatures": [
+        {
+          "signature": "writeMemory(memory: MemoryWrite): MemoryUsage",
+          "parameters": [
+            {
+              "name": "memory",
+              "type": "MemoryWrite",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The memory to record. Its name must not already be taken.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Record a durable memory that survives context compaction, and return how much of the memory budget is now used. Throws `conflict` on a duplicate name and `limit-exceeded` when the body would breach the run's caps — revise or delete a memory rather than accruing more. A memory may also carry **code**. `code` is a TypeScript module whose exports are bound at `lib.<name>` in every later program you write, so a helper you get right once you never write again; `onUse` is a script gg runs the first time the memory comes into use, whose views reach you on your next turn. Neither is context — they cost you no window, are never shown back to you, and count against no body limit — and both are bounded on their own.",
       "gate": "write_memory",
       "library": false,
       "types": [
         {
           "name": "MemoryWrite",
-          "declaration": "interface MemoryWrite { name: string; description: string; body: string; code?: string; onUse?: string; }"
+          "declaration": "interface MemoryWrite { name: string; description: string; body: string; code?: string; onUse?: string; }",
+          "doc": "One memory as a program writes it, with the two optional code halves every write accepts.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The memory's slug: letters, digits, `-`, `_` and `.`. It is what every other memory call takes, and no two memories may share one."
+            },
+            {
+              "name": "description",
+              "type": "string",
+              "doc": "A one-line description of what the memory holds. Where the run keeps a memory index this is the memory's line in it, and so all you see of the memory until you read it."
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "doc": "The memory's contents."
+            },
+            {
+              "name": "code",
+              "type": "string",
+              "doc": "A TypeScript module whose exports are bound at `lib.<name>` for the rest of your session, so a helper you get right once you never write again. Omit it, or pass an empty string, for a memory that is only prose. It costs you no context window and counts against no body limit."
+            },
+            {
+              "name": "onUse",
+              "type": "string",
+              "doc": "A script gg runs the first time the memory comes into use; whatever it shows you arrives on your next turn. Omit it, or pass an empty string, for a memory that runs nothing."
+            }
+          ]
         },
         {
           "name": "MemoryUsage",
-          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }"
+          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }",
+          "doc": "How much of the run's durable-memory budget is used, after the call that returned it. Every maximum is optional: each limit can be turned off, and a run's memory strategy applies only some of them, so `undefined` means nothing bounds that axis — check before subtracting.",
+          "members": [
+            {
+              "name": "count",
+              "type": "number",
+              "doc": "Memories currently held."
+            },
+            {
+              "name": "maxCount",
+              "type": "number | undefined",
+              "doc": "The most memories this run allows, if it limits the count."
+            },
+            {
+              "name": "totalChars",
+              "type": "number",
+              "doc": "Characters of body currently held, across all memories."
+            },
+            {
+              "name": "maxTotalChars",
+              "type": "number | undefined",
+              "doc": "The most characters of body this run allows in total, if it limits the aggregate."
+            },
+            {
+              "name": "indexChars",
+              "type": "number | undefined",
+              "doc": "Characters the memory index occupies, under a run that keeps one."
+            },
+            {
+              "name": "maxIndexChars",
+              "type": "number | undefined",
+              "doc": "The most characters the index may occupy, if it is limited."
+            }
+          ]
         }
       ]
     },
@@ -1418,18 +2039,93 @@
       "name": "updateMemory",
       "category": "gg-memory",
       "summary": "Replace an existing memory's description and body, keyed on its `name`, and return the memory budget.",
-      "signature": "updateMemory(memory: MemoryWrite): MemoryUsage",
+      "signatures": [
+        {
+          "signature": "updateMemory(memory: MemoryWrite): MemoryUsage",
+          "parameters": [
+            {
+              "name": "memory",
+              "type": "MemoryWrite",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The replacement, keyed on its `name`. Every other field replaces what the existing memory held, and an omitted one clears it.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Replace an existing memory's description and body, keyed on its `name`, and return the memory budget. Its `code` and `onUse` are replaced too — omitting them clears them. Throws `not-found` when no memory has that name.",
       "gate": "update_memory",
       "library": false,
       "types": [
         {
           "name": "MemoryWrite",
-          "declaration": "interface MemoryWrite { name: string; description: string; body: string; code?: string; onUse?: string; }"
+          "declaration": "interface MemoryWrite { name: string; description: string; body: string; code?: string; onUse?: string; }",
+          "doc": "One memory as a program writes it, with the two optional code halves every write accepts.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The memory's slug: letters, digits, `-`, `_` and `.`. It is what every other memory call takes, and no two memories may share one."
+            },
+            {
+              "name": "description",
+              "type": "string",
+              "doc": "A one-line description of what the memory holds. Where the run keeps a memory index this is the memory's line in it, and so all you see of the memory until you read it."
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "doc": "The memory's contents."
+            },
+            {
+              "name": "code",
+              "type": "string",
+              "doc": "A TypeScript module whose exports are bound at `lib.<name>` for the rest of your session, so a helper you get right once you never write again. Omit it, or pass an empty string, for a memory that is only prose. It costs you no context window and counts against no body limit."
+            },
+            {
+              "name": "onUse",
+              "type": "string",
+              "doc": "A script gg runs the first time the memory comes into use; whatever it shows you arrives on your next turn. Omit it, or pass an empty string, for a memory that runs nothing."
+            }
+          ]
         },
         {
           "name": "MemoryUsage",
-          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }"
+          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }",
+          "doc": "How much of the run's durable-memory budget is used, after the call that returned it. Every maximum is optional: each limit can be turned off, and a run's memory strategy applies only some of them, so `undefined` means nothing bounds that axis — check before subtracting.",
+          "members": [
+            {
+              "name": "count",
+              "type": "number",
+              "doc": "Memories currently held."
+            },
+            {
+              "name": "maxCount",
+              "type": "number | undefined",
+              "doc": "The most memories this run allows, if it limits the count."
+            },
+            {
+              "name": "totalChars",
+              "type": "number",
+              "doc": "Characters of body currently held, across all memories."
+            },
+            {
+              "name": "maxTotalChars",
+              "type": "number | undefined",
+              "doc": "The most characters of body this run allows in total, if it limits the aggregate."
+            },
+            {
+              "name": "indexChars",
+              "type": "number | undefined",
+              "doc": "Characters the memory index occupies, under a run that keeps one."
+            },
+            {
+              "name": "maxIndexChars",
+              "type": "number | undefined",
+              "doc": "The most characters the index may occupy, if it is limited."
+            }
+          ]
         }
       ]
     },
@@ -1438,18 +2134,93 @@
       "name": "createMemory",
       "category": "gg-memory",
       "summary": "Record a new memory whose contents are kept OUT of your context window until you read them, and return the memory budget.",
-      "signature": "createMemory(memory: MemoryWrite): MemoryUsage",
+      "signatures": [
+        {
+          "signature": "createMemory(memory: MemoryWrite): MemoryUsage",
+          "parameters": [
+            {
+              "name": "memory",
+              "type": "MemoryWrite",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The memory to record. Its `body` stays out of your context window until you read it, and its name must not already be taken.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Record a new memory whose contents are kept OUT of your context window until you read them, and return the memory budget. Give it a slug (letters, digits, `-`, `_`, `.`), a one-line description — required where the run keeps an index, since that is the memory's line in it — and the initial contents. It may also carry `code` (a module bound at `lib.<name>` once you read the memory) and `onUse` (a script run on that first read). Throws `conflict` on a duplicate slug and `limit-exceeded` when the contents, or the index entry, would breach a limit.",
       "gate": "create_memory",
       "library": false,
       "types": [
         {
           "name": "MemoryWrite",
-          "declaration": "interface MemoryWrite { name: string; description: string; body: string; code?: string; onUse?: string; }"
+          "declaration": "interface MemoryWrite { name: string; description: string; body: string; code?: string; onUse?: string; }",
+          "doc": "One memory as a program writes it, with the two optional code halves every write accepts.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The memory's slug: letters, digits, `-`, `_` and `.`. It is what every other memory call takes, and no two memories may share one."
+            },
+            {
+              "name": "description",
+              "type": "string",
+              "doc": "A one-line description of what the memory holds. Where the run keeps a memory index this is the memory's line in it, and so all you see of the memory until you read it."
+            },
+            {
+              "name": "body",
+              "type": "string",
+              "doc": "The memory's contents."
+            },
+            {
+              "name": "code",
+              "type": "string",
+              "doc": "A TypeScript module whose exports are bound at `lib.<name>` for the rest of your session, so a helper you get right once you never write again. Omit it, or pass an empty string, for a memory that is only prose. It costs you no context window and counts against no body limit."
+            },
+            {
+              "name": "onUse",
+              "type": "string",
+              "doc": "A script gg runs the first time the memory comes into use; whatever it shows you arrives on your next turn. Omit it, or pass an empty string, for a memory that runs nothing."
+            }
+          ]
         },
         {
           "name": "MemoryUsage",
-          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }"
+          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }",
+          "doc": "How much of the run's durable-memory budget is used, after the call that returned it. Every maximum is optional: each limit can be turned off, and a run's memory strategy applies only some of them, so `undefined` means nothing bounds that axis — check before subtracting.",
+          "members": [
+            {
+              "name": "count",
+              "type": "number",
+              "doc": "Memories currently held."
+            },
+            {
+              "name": "maxCount",
+              "type": "number | undefined",
+              "doc": "The most memories this run allows, if it limits the count."
+            },
+            {
+              "name": "totalChars",
+              "type": "number",
+              "doc": "Characters of body currently held, across all memories."
+            },
+            {
+              "name": "maxTotalChars",
+              "type": "number | undefined",
+              "doc": "The most characters of body this run allows in total, if it limits the aggregate."
+            },
+            {
+              "name": "indexChars",
+              "type": "number | undefined",
+              "doc": "Characters the memory index occupies, under a run that keeps one."
+            },
+            {
+              "name": "maxIndexChars",
+              "type": "number | undefined",
+              "doc": "The most characters the index may occupy, if it is limited."
+            }
+          ]
         }
       ]
     },
@@ -1458,7 +2229,21 @@
       "name": "readMemory",
       "category": "gg-memory",
       "summary": "Read one memory's full contents, by slug — the only thing that brings them into your context.",
-      "signature": "readMemory(name: string): string",
+      "signatures": [
+        {
+          "signature": "readMemory(name: string): string",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The memory's slug.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Read one memory's full contents, by slug — the only thing that brings them into your context. If the memory carries code, reading it also loads that code: the reply names the `lib.<key>` it is bound at, and it stays bound for the rest of your session. Throws `not-found` when no memory has that slug.",
       "gate": "read_memory",
       "library": false,
@@ -1469,14 +2254,86 @@
       "name": "editMemory",
       "category": "gg-memory",
       "summary": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and return the memory budget.",
-      "signature": "editMemory(edit: { name: string; search: string; replace: string; }): MemoryUsage",
+      "signatures": [
+        {
+          "signature": "editMemory(edit: { name: string; search: string; replace: string; }): MemoryUsage",
+          "parameters": [
+            {
+              "name": "edit",
+              "type": "{ name: string; search: string; replace: string; }",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The revision to make.",
+              "fields": [
+                {
+                  "name": "name",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "The slug of the memory to revise.",
+                  "fields": []
+                },
+                {
+                  "name": "search",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "The exact text to find in its contents. It must appear exactly once.",
+                  "fields": []
+                },
+                {
+                  "name": "replace",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "The text to put in its place.",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "doc": "Revise a memory in place by replacing the one exact occurrence of `search` with `replace`, and return the memory budget. Append by quoting the last line and replacing it with itself plus what you are adding. Throws `not-found` when the text does not appear, `conflict` when it appears more than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when the edit would leave the memory empty — delete it instead.",
       "gate": "edit_memory",
       "library": false,
       "types": [
         {
           "name": "MemoryUsage",
-          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }"
+          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }",
+          "doc": "How much of the run's durable-memory budget is used, after the call that returned it. Every maximum is optional: each limit can be turned off, and a run's memory strategy applies only some of them, so `undefined` means nothing bounds that axis — check before subtracting.",
+          "members": [
+            {
+              "name": "count",
+              "type": "number",
+              "doc": "Memories currently held."
+            },
+            {
+              "name": "maxCount",
+              "type": "number | undefined",
+              "doc": "The most memories this run allows, if it limits the count."
+            },
+            {
+              "name": "totalChars",
+              "type": "number",
+              "doc": "Characters of body currently held, across all memories."
+            },
+            {
+              "name": "maxTotalChars",
+              "type": "number | undefined",
+              "doc": "The most characters of body this run allows in total, if it limits the aggregate."
+            },
+            {
+              "name": "indexChars",
+              "type": "number | undefined",
+              "doc": "Characters the memory index occupies, under a run that keeps one."
+            },
+            {
+              "name": "maxIndexChars",
+              "type": "number | undefined",
+              "doc": "The most characters the index may occupy, if it is limited."
+            }
+          ]
         }
       ]
     },
@@ -1485,14 +2342,56 @@
       "name": "searchMemories",
       "category": "gg-memory",
       "summary": "Find the memories mentioning any of `keywords`, best first: plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often.",
-      "signature": "searchMemories(keywords: string[]): MemoryHit[]",
+      "signatures": [
+        {
+          "signature": "searchMemories(keywords: string[]): MemoryHit[]",
+          "parameters": [
+            {
+              "name": "keywords",
+              "type": "string[]",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The words to look for. Several specific words rank better than one sentence, because a memory is ranked by how many of them it mentions.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Find the memories mentioning any of `keywords`, best first: plain case-insensitive substring matching over each memory's slug, description and contents, ranked by how many of your keywords a memory mentions and then by how often. Pass several specific words rather than one sentence, then `readMemory` the hits worth having in full. Throws `invalid-argument` when every keyword is empty; a search that matches nothing is an empty array.",
       "gate": "search_memories",
       "library": false,
       "types": [
         {
           "name": "MemoryHit",
-          "declaration": "interface MemoryHit { name: string; description: string; matched: number; occurrences: number; excerpt: string; }"
+          "declaration": "interface MemoryHit { name: string; description: string; matched: number; occurrences: number; excerpt: string; }",
+          "doc": "One memory `searchMemories` matched, and the numbers it was ranked by.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The memory's slug — what `readMemory` takes."
+            },
+            {
+              "name": "description",
+              "type": "string",
+              "doc": "Its description, or `\"\"` when it was created without one."
+            },
+            {
+              "name": "matched",
+              "type": "number",
+              "doc": "How many of your distinct keywords it matched — the primary ranking."
+            },
+            {
+              "name": "occurrences",
+              "type": "number",
+              "doc": "How many times those keywords occur in it — the tiebreak."
+            },
+            {
+              "name": "excerpt",
+              "type": "string",
+              "doc": "A short window of the memory around its first match."
+            }
+          ]
         }
       ]
     },
@@ -1501,14 +2400,61 @@
       "name": "deleteMemory",
       "category": "gg-memory",
       "summary": "Evict a memory by name, freeing room in the budget, and return what is left in use.",
-      "signature": "deleteMemory(name: string): MemoryUsage",
+      "signatures": [
+        {
+          "signature": "deleteMemory(name: string): MemoryUsage",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The memory's slug.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Evict a memory by name, freeing room in the budget, and return what is left in use. Throws `not-found` when no memory has that name.",
       "gate": "delete_memory",
       "library": false,
       "types": [
         {
           "name": "MemoryUsage",
-          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }"
+          "declaration": "interface MemoryUsage { count: number; maxCount: number | undefined; totalChars: number; maxTotalChars: number | undefined; indexChars: number | undefined; maxIndexChars: number | undefined; }",
+          "doc": "How much of the run's durable-memory budget is used, after the call that returned it. Every maximum is optional: each limit can be turned off, and a run's memory strategy applies only some of them, so `undefined` means nothing bounds that axis — check before subtracting.",
+          "members": [
+            {
+              "name": "count",
+              "type": "number",
+              "doc": "Memories currently held."
+            },
+            {
+              "name": "maxCount",
+              "type": "number | undefined",
+              "doc": "The most memories this run allows, if it limits the count."
+            },
+            {
+              "name": "totalChars",
+              "type": "number",
+              "doc": "Characters of body currently held, across all memories."
+            },
+            {
+              "name": "maxTotalChars",
+              "type": "number | undefined",
+              "doc": "The most characters of body this run allows in total, if it limits the aggregate."
+            },
+            {
+              "name": "indexChars",
+              "type": "number | undefined",
+              "doc": "Characters the memory index occupies, under a run that keeps one."
+            },
+            {
+              "name": "maxIndexChars",
+              "type": "number | undefined",
+              "doc": "The most characters the index may occupy, if it is limited."
+            }
+          ]
         }
       ]
     },
@@ -1517,14 +2463,74 @@
       "name": "addTask",
       "category": "gg-tasks",
       "summary": "Add a task to the task DAG and return the task budget.",
-      "signature": "addTask(task: { id: string; title: string; description?: string; blockedBy?: string[]; }): TaskUsage",
+      "signatures": [
+        {
+          "signature": "addTask(task: { id: string; title: string; description?: string; blockedBy?: string[]; }): TaskUsage",
+          "parameters": [
+            {
+              "name": "task",
+              "type": "{ id: string; title: string; description?: string; blockedBy?: string[]; }",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The task to add.",
+              "fields": [
+                {
+                  "name": "id",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "The id you choose for it. It is what every other task call takes, and no two tasks may share one.",
+                  "fields": []
+                },
+                {
+                  "name": "title",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "A short line naming the work.",
+                  "fields": []
+                },
+                {
+                  "name": "description",
+                  "type": "string",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "What the work is, at whatever length is useful.",
+                  "fields": []
+                },
+                {
+                  "name": "blockedBy",
+                  "type": "string[]",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The ids of the tasks that must be done before this one. Defaults to none.",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "doc": "Add a task to the task DAG and return the task budget. `blockedBy` names the tasks that must finish before this one and defaults to none. Throws `conflict` on a duplicate id or on an edge that would close a cycle.",
       "gate": "add_task",
       "library": false,
       "types": [
         {
           "name": "TaskUsage",
-          "declaration": "interface TaskUsage { count: number; maxTasks: number; }"
+          "declaration": "interface TaskUsage { count: number; maxTasks: number; }",
+          "doc": "How much of the run's task budget is used, after the call that returned it.",
+          "members": [
+            {
+              "name": "count",
+              "type": "number",
+              "doc": "Tasks currently on the list."
+            },
+            {
+              "name": "maxTasks",
+              "type": "number",
+              "doc": "The most tasks this run allows."
+            }
+          ]
         }
       ]
     },
@@ -1533,14 +2539,76 @@
       "name": "updateTask",
       "category": "gg-tasks",
       "summary": "Revise a task's title, description and/or status; supply at least one.",
-      "signature": "updateTask(id: string, patch: { title?: string; description?: string | null; status?: TaskStatus; }): void",
+      "signatures": [
+        {
+          "signature": "updateTask(id: string, patch: { title?: string; description?: string | null; status?: TaskStatus; }): void",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The task to revise.",
+              "fields": []
+            },
+            {
+              "name": "patch",
+              "type": "{ title?: string; description?: string | null; status?: TaskStatus; }",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The fields to change. Supply at least one; an omitted field is left alone.",
+              "fields": [
+                {
+                  "name": "title",
+                  "type": "string",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The title to replace the old one with.",
+                  "fields": []
+                },
+                {
+                  "name": "description",
+                  "type": "string | null",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The description to replace the old one with, or `null` to clear it.",
+                  "fields": []
+                },
+                {
+                  "name": "status",
+                  "type": "TaskStatus",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "Where the task now stands.",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "doc": "Revise a task's title, description and/or status; supply at least one. An omitted `description` leaves it alone, `null` clears it, and a string replaces it. Throws `not-found` for an unknown id.",
       "gate": "update_task",
       "library": false,
       "types": [
         {
           "name": "TaskStatus",
-          "declaration": "type TaskStatus = \"pending\" | \"in_progress\" | \"done\""
+          "declaration": "type TaskStatus = \"pending\" | \"in_progress\" | \"done\"",
+          "doc": "Where a task stands.",
+          "members": [
+            {
+              "name": "\"pending\"",
+              "doc": "Not started. Every task begins here."
+            },
+            {
+              "name": "\"in_progress\"",
+              "doc": "Being worked on now."
+            },
+            {
+              "name": "\"done\"",
+              "doc": "Finished. Tasks blocked on it become actionable once all their blockers are done."
+            }
+          ]
         }
       ]
     },
@@ -1549,7 +2617,29 @@
       "name": "setBlockedBy",
       "category": "gg-tasks",
       "summary": "Replace a task's whole blocker set; an empty array clears every blocker.",
-      "signature": "setBlockedBy(id: string, blockedBy: string[]): void",
+      "signatures": [
+        {
+          "signature": "setBlockedBy(id: string, blockedBy: string[]): void",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The task whose blockers to replace.",
+              "fields": []
+            },
+            {
+              "name": "blockedBy",
+              "type": "string[]",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The ids of every task that must now be done before it. An empty array clears them all.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Replace a task's whole blocker set; an empty array clears every blocker. Throws `not-found` for an unknown id and `conflict` when an edge would close a cycle.",
       "gate": "set_blocked_by",
       "library": false,
@@ -1560,7 +2650,21 @@
       "name": "completeTask",
       "category": "gg-tasks",
       "summary": "Mark a task done.",
-      "signature": "completeTask(id: string): void",
+      "signatures": [
+        {
+          "signature": "completeTask(id: string): void",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The task to mark done.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Mark a task done. Tasks it was blocking become actionable once every one of their blockers is done. Throws `not-found` for an unknown id.",
       "gate": "complete_task",
       "library": false,
@@ -1571,14 +2675,41 @@
       "name": "removeTask",
       "category": "gg-tasks",
       "summary": "Remove a task and every blocker edge pointing at it, and return the task budget.",
-      "signature": "removeTask(id: string): TaskUsage",
+      "signatures": [
+        {
+          "signature": "removeTask(id: string): TaskUsage",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The task to remove.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Remove a task and every blocker edge pointing at it, and return the task budget. Throws `not-found` for an unknown id.",
       "gate": "remove_task",
       "library": false,
       "types": [
         {
           "name": "TaskUsage",
-          "declaration": "interface TaskUsage { count: number; maxTasks: number; }"
+          "declaration": "interface TaskUsage { count: number; maxTasks: number; }",
+          "doc": "How much of the run's task budget is used, after the call that returned it.",
+          "members": [
+            {
+              "name": "count",
+              "type": "number",
+              "doc": "Tasks currently on the list."
+            },
+            {
+              "name": "maxTasks",
+              "type": "number",
+              "doc": "The most tasks this run allows."
+            }
+          ]
         }
       ]
     },
@@ -1587,18 +2718,93 @@
       "name": "createEpic",
       "category": "gg-project",
       "summary": "Create an epic to group related issues.",
-      "signature": "createEpic(epic: { prefix: string; title: string; description: string; }): EpicCreated",
+      "signatures": [
+        {
+          "signature": "createEpic(epic: { prefix: string; title: string; description: string; }): EpicCreated",
+          "parameters": [
+            {
+              "name": "epic",
+              "type": "{ prefix: string; title: string; description: string; }",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The epic to create.",
+              "fields": [
+                {
+                  "name": "prefix",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "3-6 letters naming it. Upper-cased, it becomes the epic's id and the stem its issues are numbered from.",
+                  "fields": []
+                },
+                {
+                  "name": "title",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "A short line naming the body of work.",
+                  "fields": []
+                },
+                {
+                  "name": "description",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "What the epic covers, for a reader who has not seen its issues.",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "doc": "Create an epic to group related issues. `prefix` is 3-6 letters naming the epic; it is upper-cased and becomes the epic's id, which is also what its issues are numbered from — a prefix of `auth` gives issues `AUTH-1`, `AUTH-2`, and so on. Returns that id and the board budget. Throws `invalid-argument` when the prefix is not 3-6 letters, and `conflict` when another epic already holds it.",
       "gate": "create_epic",
       "library": false,
       "types": [
         {
           "name": "BoardUsage",
-          "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }"
+          "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }",
+          "doc": "How much of the run's board budget is used, after the call that returned it.",
+          "members": [
+            {
+              "name": "epics",
+              "type": "number",
+              "doc": "Epics currently on the board."
+            },
+            {
+              "name": "maxEpics",
+              "type": "number",
+              "doc": "The most epics this run allows."
+            },
+            {
+              "name": "issues",
+              "type": "number",
+              "doc": "Issues currently on the board."
+            },
+            {
+              "name": "maxIssues",
+              "type": "number",
+              "doc": "The most issues this run allows."
+            }
+          ]
         },
         {
           "name": "EpicCreated",
-          "declaration": "interface EpicCreated { id: string; board: BoardUsage; }"
+          "declaration": "interface EpicCreated { id: string; board: BoardUsage; }",
+          "doc": "An epic that was just created: the id its prefix resolved to, and the board budget.",
+          "members": [
+            {
+              "name": "id",
+              "type": "string",
+              "doc": "The epic's id — the prefix you gave, upper-cased (`auth` → `AUTH`). Group issues under it with this, and its issues are numbered from it (`AUTH-1`)."
+            },
+            {
+              "name": "board",
+              "type": "BoardUsage",
+              "doc": "How much of the board budget is used."
+            }
+          ]
         }
       ]
     },
@@ -1607,18 +2813,141 @@
       "name": "createIssue",
       "category": "gg-project",
       "summary": "Create a self-contained, dispatchable issue.",
-      "signature": "createIssue(issue: { title: string; description?: string; inScope: string; outOfScope: string; completionCriteria: string; blockedBy?: string[]; epicId?: string; agent: string; reviewers?: string[]; }): IssueCreated",
+      "signatures": [
+        {
+          "signature": "createIssue(issue: { title: string; description?: string; inScope: string; outOfScope: string; completionCriteria: string; blockedBy?: string[]; epicId?: string; agent: string; reviewers?: string[]; }): IssueCreated",
+          "parameters": [
+            {
+              "name": "issue",
+              "type": "{ title: string; description?: string; inScope: string; outOfScope: string; completionCriteria: string; blockedBy?: string[]; epicId?: string; agent: string; reviewers?: string[]; }",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The issue to create.",
+              "fields": [
+                {
+                  "name": "title",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "A short line naming the work.",
+                  "fields": []
+                },
+                {
+                  "name": "description",
+                  "type": "string",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "What the work is. Written for a child agent with no other context.",
+                  "fields": []
+                },
+                {
+                  "name": "inScope",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "What the issue covers, precisely. Part of the brief a child agent is given.",
+                  "fields": []
+                },
+                {
+                  "name": "outOfScope",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "What the issue deliberately does not cover, so the work stops where you meant it to.",
+                  "fields": []
+                },
+                {
+                  "name": "completionCriteria",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "What must be true for the issue to be done. It is what a reviewer checks the work against.",
+                  "fields": []
+                },
+                {
+                  "name": "blockedBy",
+                  "type": "string[]",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The ids of every issue that must be done before this one. Defaults to none.",
+                  "fields": []
+                },
+                {
+                  "name": "epicId",
+                  "type": "string",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The id of an existing epic to group it under. Omit it to leave it ungrouped and numbered under `ISSUE`.",
+                  "fields": []
+                },
+                {
+                  "name": "agent",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "The agent the issue is dispatched to. It must be one you may spawn.",
+                  "fields": []
+                },
+                {
+                  "name": "reviewers",
+                  "type": "string[]",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The agents that must approve the work, from that same set. Required when this run's reviewers feature is on.",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "doc": "Create a self-contained, dispatchable issue. Returns the id the board **assigned** it — numbered under its epic's prefix (`AUTH-1`, `AUTH-2`, …), or under `ISSUE` when it has no epic — together with the board budget; you do not choose the id, so keep the returned one to block a later issue on this one or to wait for it. `inScope`, `outOfScope` and `completionCriteria` are what a child agent is briefed from, so write them for a reader with no other context. `agent` names the agent the issue is dispatched to and must be one you may spawn; `reviewers` names the agents that must approve the work, from that same set, and is required when this run's reviewers feature is on. `blockedBy` defaults to none; `epicId` groups the issue under an existing epic. Throws `invalid-argument` when `agent` or a reviewer is not yours to assign, and `conflict` on a blocker edge that would close a cycle.",
       "gate": "create_issue",
       "library": false,
       "types": [
         {
           "name": "BoardUsage",
-          "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }"
+          "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }",
+          "doc": "How much of the run's board budget is used, after the call that returned it.",
+          "members": [
+            {
+              "name": "epics",
+              "type": "number",
+              "doc": "Epics currently on the board."
+            },
+            {
+              "name": "maxEpics",
+              "type": "number",
+              "doc": "The most epics this run allows."
+            },
+            {
+              "name": "issues",
+              "type": "number",
+              "doc": "Issues currently on the board."
+            },
+            {
+              "name": "maxIssues",
+              "type": "number",
+              "doc": "The most issues this run allows."
+            }
+          ]
         },
         {
           "name": "IssueCreated",
-          "declaration": "interface IssueCreated { id: string; board: BoardUsage; }"
+          "declaration": "interface IssueCreated { id: string; board: BoardUsage; }",
+          "doc": "An issue that was just created: the id the board assigned it, and the board budget.",
+          "members": [
+            {
+              "name": "id",
+              "type": "string",
+              "doc": "The id the board assigned (`AUTH-1`) — you do not choose it. Use it to block later issues on this one, or to wait for it."
+            },
+            {
+              "name": "board",
+              "type": "BoardUsage",
+              "doc": "How much of the board budget is used."
+            }
+          ]
         }
       ]
     },
@@ -1627,14 +2956,108 @@
       "name": "updateIssue",
       "category": "gg-project",
       "summary": "Revise an issue; supply at least one field.",
-      "signature": "updateIssue(id: string, patch: { title?: string; description?: string | null; inScope?: string; outOfScope?: string; completionCriteria?: string; status?: IssueStatus; epicId?: string | null; }): void",
+      "signatures": [
+        {
+          "signature": "updateIssue(id: string, patch: { title?: string; description?: string | null; inScope?: string; outOfScope?: string; completionCriteria?: string; status?: IssueStatus; epicId?: string | null; }): void",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The issue to revise.",
+              "fields": []
+            },
+            {
+              "name": "patch",
+              "type": "{ title?: string; description?: string | null; inScope?: string; outOfScope?: string; completionCriteria?: string; status?: IssueStatus; epicId?: string | null; }",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The fields to change. Supply at least one; an omitted field is left alone.",
+              "fields": [
+                {
+                  "name": "title",
+                  "type": "string",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The title to replace the old one with.",
+                  "fields": []
+                },
+                {
+                  "name": "description",
+                  "type": "string | null",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The description to replace the old one with, or `null` to clear it.",
+                  "fields": []
+                },
+                {
+                  "name": "inScope",
+                  "type": "string",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The scope statement to replace the old one with.",
+                  "fields": []
+                },
+                {
+                  "name": "outOfScope",
+                  "type": "string",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The non-scope statement to replace the old one with.",
+                  "fields": []
+                },
+                {
+                  "name": "completionCriteria",
+                  "type": "string",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The completion criteria to replace the old ones with.",
+                  "fields": []
+                },
+                {
+                  "name": "status",
+                  "type": "IssueStatus",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "Where the issue now stands.",
+                  "fields": []
+                },
+                {
+                  "name": "epicId",
+                  "type": "string | null",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The epic to regroup it under, or `null` to detach it from the one it has.",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "doc": "Revise an issue; supply at least one field. An omitted field is left alone, `description: null` clears the description, and `epicId: null` detaches the issue from its epic. Throws `not-found` for an unknown id.",
       "gate": "update_issue",
       "library": false,
       "types": [
         {
           "name": "IssueStatus",
-          "declaration": "type IssueStatus = \"open\" | \"in_progress\" | \"done\""
+          "declaration": "type IssueStatus = \"open\" | \"in_progress\" | \"done\"",
+          "doc": "Where an issue stands.",
+          "members": [
+            {
+              "name": "\"open\"",
+              "doc": "Not started, and dispatchable once its blockers are done."
+            },
+            {
+              "name": "\"in_progress\"",
+              "doc": "Dispatched, with its assigned agent working on it."
+            },
+            {
+              "name": "\"done\"",
+              "doc": "Finished and, where this run requires reviewers, approved."
+            }
+          ]
         }
       ]
     },
@@ -1643,7 +3066,29 @@
       "name": "setIssueBlockedBy",
       "category": "gg-project",
       "summary": "Replace an issue's whole blocker set; an empty array clears every blocker.",
-      "signature": "setIssueBlockedBy(id: string, blockedBy: string[]): void",
+      "signatures": [
+        {
+          "signature": "setIssueBlockedBy(id: string, blockedBy: string[]): void",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The issue whose blockers to replace.",
+              "fields": []
+            },
+            {
+              "name": "blockedBy",
+              "type": "string[]",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The ids of every issue that must now be done before it. An empty array clears them all.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Replace an issue's whole blocker set; an empty array clears every blocker. Throws `not-found` for an unknown id and `conflict` when an edge would close a cycle.",
       "gate": "set_issue_blocked_by",
       "library": false,
@@ -1654,14 +3099,51 @@
       "name": "removeEpic",
       "category": "gg-project",
       "summary": "Remove an epic, keeping its issues and ungrouping them, and return the board budget.",
-      "signature": "removeEpic(id: string): BoardUsage",
+      "signatures": [
+        {
+          "signature": "removeEpic(id: string): BoardUsage",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The epic to remove.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Remove an epic, keeping its issues and ungrouping them, and return the board budget. Throws `not-found` for an unknown id.",
       "gate": "remove_epic",
       "library": false,
       "types": [
         {
           "name": "BoardUsage",
-          "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }"
+          "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }",
+          "doc": "How much of the run's board budget is used, after the call that returned it.",
+          "members": [
+            {
+              "name": "epics",
+              "type": "number",
+              "doc": "Epics currently on the board."
+            },
+            {
+              "name": "maxEpics",
+              "type": "number",
+              "doc": "The most epics this run allows."
+            },
+            {
+              "name": "issues",
+              "type": "number",
+              "doc": "Issues currently on the board."
+            },
+            {
+              "name": "maxIssues",
+              "type": "number",
+              "doc": "The most issues this run allows."
+            }
+          ]
         }
       ]
     },
@@ -1670,14 +3152,51 @@
       "name": "removeIssue",
       "category": "gg-project",
       "summary": "Remove an issue and every blocker edge pointing at it, and return the board budget.",
-      "signature": "removeIssue(id: string): BoardUsage",
+      "signatures": [
+        {
+          "signature": "removeIssue(id: string): BoardUsage",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The issue to remove.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Remove an issue and every blocker edge pointing at it, and return the board budget. Throws `not-found` for an unknown id.",
       "gate": "remove_issue",
       "library": false,
       "types": [
         {
           "name": "BoardUsage",
-          "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }"
+          "declaration": "interface BoardUsage { epics: number; maxEpics: number; issues: number; maxIssues: number; }",
+          "doc": "How much of the run's board budget is used, after the call that returned it.",
+          "members": [
+            {
+              "name": "epics",
+              "type": "number",
+              "doc": "Epics currently on the board."
+            },
+            {
+              "name": "maxEpics",
+              "type": "number",
+              "doc": "The most epics this run allows."
+            },
+            {
+              "name": "issues",
+              "type": "number",
+              "doc": "Issues currently on the board."
+            },
+            {
+              "name": "maxIssues",
+              "type": "number",
+              "doc": "The most issues this run allows."
+            }
+          ]
         }
       ]
     },
@@ -1686,7 +3205,21 @@
       "name": "waitForIssue",
       "category": "gg-project",
       "summary": "Register a wait on an issue and return an acknowledgement.",
-      "signature": "waitForIssue(id: string): string",
+      "signatures": [
+        {
+          "signature": "waitForIssue(id: string): string",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The issue to wait on. It may not be the issue you were assigned.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Register a wait on an issue and return an acknowledgement. It does not block inside your program — it records the wait and returns at once, so the rest of your program still runs; the suspension happens after the program ends, between turns. Once the program finishes the run suspends, freeing this agent's slot for others, until the issue is terminal (done, or failed if its assigned agent could not complete it), then resumes on the next turn. Use it to sequence your next turn's work behind an issue you depend on. You cannot wait on the issue you were assigned to implement. Throws `not-found` for an unknown id.",
       "gate": "wait_for_issue",
       "library": false,
@@ -1697,14 +3230,51 @@
       "name": "evictFileView",
       "category": "gg-context",
       "summary": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed; omit `path` to drop every file view.",
-      "signature": "evictFileView(path?: string): ReclaimReport",
+      "signatures": [
+        {
+          "signature": "evictFileView(path?: string): ReclaimReport",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string",
+              "optional": true,
+              "passing": "positional",
+              "doc": "The file whose views to drop. Omit it to drop every file view you hold.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Drop the contents of files you have read out of your context window, freeing the tokens they occupy, and report what that reclaimed; omit `path` to drop every file view. The files on disk are untouched — this forgets what you read, not what exists.",
       "gate": "evict_file_view",
       "library": false,
       "types": [
         {
           "name": "ReclaimReport",
-          "declaration": "interface ReclaimReport { items: number; reclaimedTokens: number; paths: string[]; detail: string; }"
+          "declaration": "interface ReclaimReport { items: number; reclaimedTokens: number; paths: string[]; detail: string; }",
+          "doc": "What a context reclaim actually freed from the live context window.",
+          "members": [
+            {
+              "name": "items",
+              "type": "number",
+              "doc": "Context items dropped from the live window."
+            },
+            {
+              "name": "reclaimedTokens",
+              "type": "number",
+              "doc": "Approximately how many tokens that freed."
+            },
+            {
+              "name": "paths",
+              "type": "string[]",
+              "doc": "The workspace paths whose views were evicted. Empty for an archive."
+            },
+            {
+              "name": "detail",
+              "type": "string",
+              "doc": "The prose summary of what was reclaimed."
+            }
+          ]
         }
       ]
     },
@@ -1713,18 +3283,68 @@
       "name": "archiveThread",
       "category": "gg-context",
       "summary": "Move whole turns out of your context window and report what that reclaimed.",
-      "signature": "archiveThread(ranges: TurnRange[]): ReclaimReport",
+      "signatures": [
+        {
+          "signature": "archiveThread(ranges: TurnRange[]): ReclaimReport",
+          "parameters": [
+            {
+              "name": "ranges",
+              "type": "TurnRange[]",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The inclusive spans of turn numbers to move out of your window.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Move whole turns out of your context window and report what that reclaimed. Every result you are given carries a header with its turn number and roughly what holding it costs, so name the turns worth dropping: `ranges` is a list of inclusive spans, and `archiveThread([{ from: 4, to: 19 }])` archives turns 4 through 19. Your own messages in an archived turn are dropped; the results are kept and stay searchable with `searchArchive`.",
       "gate": "archive_thread",
       "library": false,
       "types": [
         {
           "name": "ReclaimReport",
-          "declaration": "interface ReclaimReport { items: number; reclaimedTokens: number; paths: string[]; detail: string; }"
+          "declaration": "interface ReclaimReport { items: number; reclaimedTokens: number; paths: string[]; detail: string; }",
+          "doc": "What a context reclaim actually freed from the live context window.",
+          "members": [
+            {
+              "name": "items",
+              "type": "number",
+              "doc": "Context items dropped from the live window."
+            },
+            {
+              "name": "reclaimedTokens",
+              "type": "number",
+              "doc": "Approximately how many tokens that freed."
+            },
+            {
+              "name": "paths",
+              "type": "string[]",
+              "doc": "The workspace paths whose views were evicted. Empty for an archive."
+            },
+            {
+              "name": "detail",
+              "type": "string",
+              "doc": "The prose summary of what was reclaimed."
+            }
+          ]
         },
         {
           "name": "TurnRange",
-          "declaration": "interface TurnRange { from: number; to: number; }"
+          "declaration": "interface TurnRange { from: number; to: number; }",
+          "doc": "An inclusive span of turn numbers, the unit `archiveThread` moves out of the window. The numbers are the ones on the header of every result you are given, so `{ from: 4, to: 19 }` means exactly the turns you can see numbered 4 through 19 — both ends included.",
+          "members": [
+            {
+              "name": "from",
+              "type": "number",
+              "doc": "The first turn in the span."
+            },
+            {
+              "name": "to",
+              "type": "number",
+              "doc": "The last turn in the span, inclusive."
+            }
+          ]
         }
       ]
     },
@@ -1733,18 +3353,63 @@
       "name": "searchArchive",
       "category": "gg-context",
       "summary": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits.",
-      "signature": "searchArchive(query: string): ArchiveSearch",
+      "signatures": [
+        {
+          "signature": "searchArchive(query: string): ArchiveSearch",
+          "parameters": [
+            {
+              "name": "query",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The substring to look for. Matching is case-insensitive.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Search archived history for a case-insensitive substring, most recent first, up to 8 hits. Check `archiveEmpty` before reading `hits`: it distinguishes \"nothing has been archived yet\" from \"the search ran and matched nothing\", so you do not archive again believing the first archive failed.",
       "gate": "search_archive",
       "library": false,
       "types": [
         {
           "name": "ArchiveHit",
-          "declaration": "interface ArchiveHit { seq: number; role: \"system\" | \"user\" | \"assistant\" | \"tool\"; text: string; }"
+          "declaration": "interface ArchiveHit { seq: number; role: \"system\" | \"user\" | \"assistant\" | \"tool\"; text: string; }",
+          "doc": "One archived message that matched a search.",
+          "members": [
+            {
+              "name": "seq",
+              "type": "number",
+              "doc": "The archived message's sequence number."
+            },
+            {
+              "name": "role",
+              "type": "\"system\" | \"user\" | \"assistant\" | \"tool\"",
+              "doc": "Who said it."
+            },
+            {
+              "name": "text",
+              "type": "string",
+              "doc": "The message text."
+            }
+          ]
         },
         {
           "name": "ArchiveSearch",
-          "declaration": "interface ArchiveSearch { archiveEmpty: boolean; hits: ArchiveHit[]; }"
+          "declaration": "interface ArchiveSearch { archiveEmpty: boolean; hits: ArchiveHit[]; }",
+          "doc": "What `searchArchive` found.",
+          "members": [
+            {
+              "name": "archiveEmpty",
+              "type": "boolean",
+              "doc": "Nothing has been archived yet, so there was nothing to search. Deliberately distinct from a search that ran and matched nothing, so you do not archive again believing the first archive failed."
+            },
+            {
+              "name": "hits",
+              "type": "ArchiveHit[]",
+              "doc": "The matches, most recent first, at most 8."
+            }
+          ]
         }
       ]
     },
@@ -1753,7 +3418,29 @@
       "name": "compact",
       "category": "gg-context",
       "summary": "Compact your context window: the detailed thread is dropped and restarted from `summary`, plus a fresh read of each path in `files`.",
-      "signature": "compact(summary: string, files?: string[]): void",
+      "signatures": [
+        {
+          "signature": "compact(summary: string, files?: string[]): void",
+          "parameters": [
+            {
+              "name": "summary",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "What your restarted window opens with. Write it for your future self: everything not in it and not re-read from `files` is gone.",
+              "fields": []
+            },
+            {
+              "name": "files",
+              "type": "string[]",
+              "optional": true,
+              "passing": "positional",
+              "doc": "The paths to read afresh into the restarted window. Defaults to none.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Compact your context window: the detailed thread is dropped and restarted from `summary`, plus a fresh read of each path in `files`. Your skills, memories and task list are kept as they are. You are asked to call this when your window is full, and every other call is refused until you do. It does NOT stop your program: it registers the request and returns, and the rewrite happens once your program has ended. Everything not in your summary and not in `files` is gone, so write the summary for your future self and name the files you will actually need in hand.",
       "gate": "compact",
       "library": false,
@@ -1764,14 +3451,71 @@
       "name": "spawnSubagent",
       "category": "gg-delegation",
       "summary": "Delegate scoped work to a child agent and return its handle immediately — the child runs in parallel while your program continues.",
-      "signature": "spawnSubagent(request: { agent: string; } & ({ prompt: string; } | { issueId: string; })): SubagentHandle",
+      "signatures": [
+        {
+          "signature": "spawnSubagent(request: { agent: string; } & ({ prompt: string; } | { issueId: string; })): SubagentHandle",
+          "parameters": [
+            {
+              "name": "request",
+              "type": "{ agent: string; } & ({ prompt: string; } | { issueId: string; })",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The agent to run and the brief to run it on.",
+              "fields": [
+                {
+                  "name": "agent",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "The agent profile to run the child as, from the ones you may spawn. It selects the child's model, tools and instructions.",
+                  "fields": []
+                },
+                {
+                  "name": "prompt",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "Self-contained instructions for the child. Give this or `issueId`, never both and never neither.",
+                  "fields": []
+                },
+                {
+                  "name": "issueId",
+                  "type": "string",
+                  "optional": false,
+                  "passing": "positional",
+                  "doc": "The board issue to brief the child from. Give this or `prompt`, never both and never neither.",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "doc": "Delegate scoped work to a child agent and return its handle immediately — the child runs in parallel while your program continues. Name the `agent` to run it as (one of the agents you may spawn — the system prompt lists them; it selects the child's model, tools, and instructions) and brief it with exactly one of `prompt` (self-contained instructions) or `issueId` (a board issue). The child shares your workspace. Throws `limit-exceeded` at the delegation depth cap, and `invalid-argument` if `agent` is not one you may spawn.",
       "gate": "spawn_subagent",
       "library": false,
       "types": [
         {
           "name": "SubagentHandle",
-          "declaration": "interface SubagentHandle { id: string; slot: string; modelId: string; }"
+          "declaration": "interface SubagentHandle { id: string; slot: string; modelId: string; }",
+          "doc": "A child agent that was spawned and is now running in parallel.",
+          "members": [
+            {
+              "name": "id",
+              "type": "string",
+              "doc": "The child's id — pass it to `waitForSubagents` or `sendMessage`."
+            },
+            {
+              "name": "slot",
+              "type": "string",
+              "doc": "The agent profile it runs as."
+            },
+            {
+              "name": "modelId",
+              "type": "string",
+              "doc": "The model actually bound to that agent."
+            }
+          ]
         }
       ]
     },
@@ -1780,18 +3524,77 @@
       "name": "waitForSubagents",
       "category": "gg-delegation",
       "summary": "Block until the named children have finished — or, with no argument, until every outstanding child has — and collect their results in dispatch order.",
-      "signature": "waitForSubagents(ids?: string[]): SubagentResult[]",
+      "signatures": [
+        {
+          "signature": "waitForSubagents(ids?: string[]): SubagentResult[]",
+          "parameters": [
+            {
+              "name": "ids",
+              "type": "string[]",
+              "optional": true,
+              "passing": "positional",
+              "doc": "The children to wait for. Omit it to wait for every one still outstanding.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Block until the named children have finished — or, with no argument, until every outstanding child has — and collect their results in dispatch order. The run's wall-clock budget keeps running while you wait, so wait once for many children rather than once per child. Throws `not-found` for an unknown id.",
       "gate": "wait_for_subagents",
       "library": false,
       "types": [
         {
           "name": "AgentEnding",
-          "declaration": "type AgentEnding = \"completed\" | \"exhausted\" | \"timed_out\" | \"model_error\" | \"auth_error\" | \"limit_exceeded\""
+          "declaration": "type AgentEnding = \"completed\" | \"exhausted\" | \"timed_out\" | \"model_error\" | \"auth_error\" | \"limit_exceeded\"",
+          "doc": "How a child agent's loop ended — gg's own six words, as the native path also reports them.",
+          "members": [
+            {
+              "name": "\"completed\"",
+              "doc": "It finished normally: it called `finish`, and its summary is what it returned."
+            },
+            {
+              "name": "\"exhausted\"",
+              "doc": "It hit the per-run turn ceiling."
+            },
+            {
+              "name": "\"timed_out\"",
+              "doc": "It passed its wall-clock deadline."
+            },
+            {
+              "name": "\"model_error\"",
+              "doc": "A model turn failed."
+            },
+            {
+              "name": "\"auth_error\"",
+              "doc": "The run's credential was refused."
+            },
+            {
+              "name": "\"limit_exceeded\"",
+              "doc": "An execution ceiling stopped it — consecutive errors, error rate, or cost."
+            }
+          ]
         },
         {
           "name": "SubagentResult",
-          "declaration": "interface SubagentResult { id: string; status: AgentEnding | undefined; summary: string; }"
+          "declaration": "interface SubagentResult { id: string; status: AgentEnding | undefined; summary: string; }",
+          "doc": "One child agent's collected result.",
+          "members": [
+            {
+              "name": "id",
+              "type": "string",
+              "doc": "The child's id."
+            },
+            {
+              "name": "status",
+              "type": "AgentEnding | undefined",
+              "doc": "How it finished; `undefined` when it produced no return value at all."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "Its final message."
+            }
+          ]
         }
       ]
     },
@@ -1800,7 +3603,29 @@
       "name": "sendMessage",
       "category": "gg-delegation",
       "summary": "Deliver a message to a running child agent's inbox; it reads the message at its next turn.",
-      "signature": "sendMessage(agentId: string, message: string): void",
+      "signatures": [
+        {
+          "signature": "sendMessage(agentId: string, message: string): void",
+          "parameters": [
+            {
+              "name": "agentId",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The child to deliver to, as `spawnSubagent` returned it.",
+              "fields": []
+            },
+            {
+              "name": "message",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "What to put in its inbox. It reads it at its next turn.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Deliver a message to a running child agent's inbox; it reads the message at its next turn. Throws `not-found` for an unknown agent id and `conflict` when that child has already returned.",
       "gate": "send_message",
       "library": false,
@@ -1811,7 +3636,29 @@
       "name": "transitionState",
       "category": "gg-delegation",
       "summary": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn; `note` is the opening message the next state's agent sees.",
-      "signature": "transitionState(state: string, note?: string): void",
+      "signatures": [
+        {
+          "signature": "transitionState(state: string, note?: string): void",
+          "parameters": [
+            {
+              "name": "state",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The state to move on to, named the way you name an agent to spawn.",
+              "fields": []
+            },
+            {
+              "name": "note",
+              "type": "string",
+              "optional": true,
+              "passing": "positional",
+              "doc": "The opening message the next state's agent sees.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Move the process you are running inside on to another of its states, naming the state the way you name an agent to spawn; `note` is the opening message the next state's agent sees. Bound only when a state machine is driving you and the state you are in has somewhere to go. Like `compact` it is registered rather than performed: the call validates the target, returns, and your program runs on to its end — the transition happens after that, because replacing your agent (and your window) mid-program would pull every remaining call out from under it. The FIRST declaration stands, and a second throws `refused`. Throws `invalid-argument` for a state you may not move to.",
       "gate": "transition_state",
       "library": false,
@@ -1822,7 +3669,29 @@
       "name": "exec",
       "category": "gg-delegation",
       "summary": "Continue this session as a different agent: the named agent takes over from your next turn with its own model, tools and instructions, keeping every capability the two of you both have — your whole conversation above all, so it needs no catching up.",
-      "signature": "exec(agent: string, prompt?: string): void",
+      "signatures": [
+        {
+          "signature": "exec(agent: string, prompt?: string): void",
+          "parameters": [
+            {
+              "name": "agent",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The agent to become, from the ones you may become.",
+              "fields": []
+            },
+            {
+              "name": "prompt",
+              "type": "string",
+              "optional": true,
+              "passing": "positional",
+              "doc": "Its opening message. It already has your whole conversation, so this is the instruction rather than a briefing.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Continue this session as a different agent: the named agent takes over from your next turn with its own model, tools and instructions, keeping every capability the two of you both have — your whole conversation above all, so it needs no catching up. `prompt` is its opening message. Registered rather than performed, exactly as `transitionState` is and for the same reason: your window would otherwise be pulled out from under the program still composing into it. A session makes one succession per turn, so an `exec` after a `transitionState` — or a second `exec` — throws `refused`. Bound only when your agent may make agent transitions and has agents it may become, and never while a state machine is driving you. Throws `invalid-argument` for an agent you may not become.",
       "gate": "exec",
       "library": false,
@@ -1833,14 +3702,46 @@
       "name": "fork",
       "category": "gg-delegation",
       "summary": "Run a copy of yourself, in parallel, on something you will not do yourself.",
-      "signature": "fork(prompt: string): SubagentHandle",
+      "signatures": [
+        {
+          "signature": "fork(prompt: string): SubagentHandle",
+          "parameters": [
+            {
+              "name": "prompt",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "What the copy is to do instead of what you are doing. It has your whole conversation already, so write the difference rather than a briefing.",
+              "fields": []
+            }
+          ]
+        }
+      ],
       "doc": "Run a copy of yourself, in parallel, on something you will not do yourself. The copy has your model, your tools and a private copy of your whole conversation, so `prompt` is the *difference* rather than a briefing — everything you have worked out is already there. Its handle comes back immediately, but the copy itself starts once this turn's tool results are recorded (the conversation it inherits has to be a complete one), so `waitForSubagents` can only collect it on a later turn — do not wait on it in the program that made it. Throws `limit-exceeded` at the delegation depth cap.",
       "gate": "fork",
       "library": false,
       "types": [
         {
           "name": "SubagentHandle",
-          "declaration": "interface SubagentHandle { id: string; slot: string; modelId: string; }"
+          "declaration": "interface SubagentHandle { id: string; slot: string; modelId: string; }",
+          "doc": "A child agent that was spawned and is now running in parallel.",
+          "members": [
+            {
+              "name": "id",
+              "type": "string",
+              "doc": "The child's id — pass it to `waitForSubagents` or `sendMessage`."
+            },
+            {
+              "name": "slot",
+              "type": "string",
+              "doc": "The agent profile it runs as."
+            },
+            {
+              "name": "modelId",
+              "type": "string",
+              "doc": "The model actually bound to that agent."
+            }
+          ]
         }
       ]
     },
@@ -1849,7 +3750,46 @@
       "name": "readTextFile",
       "category": "gg-filesystem",
       "summary": "Read a text file and return its contents directly — `readFile` without the variant narrowing, for the common case.",
-      "signature": "readTextFile(path: string, options?: { offset?: number; limit?: number; }): string",
+      "signatures": [
+        {
+          "signature": "readTextFile(path: string, options?: { offset?: number; limit?: number; }): string",
+          "parameters": [
+            {
+              "name": "path",
+              "type": "string",
+              "optional": false,
+              "passing": "positional",
+              "doc": "The file to read. Relative to your workspace, or absolute.",
+              "fields": []
+            },
+            {
+              "name": "options",
+              "type": "{ offset?: number; limit?: number; }",
+              "optional": true,
+              "passing": "positional",
+              "doc": "The window of lines to read; omit it to read the whole file.",
+              "fields": [
+                {
+                  "name": "offset",
+                  "type": "number",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "The 1-based line to start at. Honoured only under a capped read policy.",
+                  "fields": []
+                },
+                {
+                  "name": "limit",
+                  "type": "number",
+                  "optional": true,
+                  "passing": "positional",
+                  "doc": "How many lines to return from `offset`. Honoured only under a capped read policy.",
+                  "fields": []
+                }
+              ]
+            }
+          ]
+        }
+      ],
       "doc": "Read a text file and return its contents directly — `readFile` without the variant narrowing, for the common case. Takes the same `offset`/`limit` window options. Throws `invalid-argument` when the path names a picture; use `readFile` to inspect those.",
       "gate": "read_file",
       "library": false,

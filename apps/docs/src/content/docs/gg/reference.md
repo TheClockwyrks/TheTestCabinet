@@ -16,7 +16,8 @@ So the reference is not written at all. It is **projected out of gg's own defini
 - every **API function** entry is the committed
   [signature catalogue](/gg/responses-as-code/), reflected out of the sandbox SDK's own
   emitted `.d.ts` and its JSDoc — the same material a program gets back from
-  `view.openDocsView(...)` mid-run.
+  `view.openDocsView(...)` mid-run: every shape the function may be called in, a line per
+  argument, and every type it refers to with a line per member.
 
 It is the same rule the [built-in skills](/gg/skills/) obey, and for the same reason: a
 tool that is renamed is renamed in the one place its name appears.
@@ -50,6 +51,14 @@ differently:
   is built from has no signature to show for it. An instance's own
   [surface](/gg/telemetry/#what-an-agent-is-offered) does report it, appended last on
   every object.
+
+An API function shows **every signature** the SDK offers it in, each above its own argument
+list. There is usually exactly one — TypeScript spells an optional argument with `?` — but a
+[language](/gg/program-languages/#one-entry-many-signatures) that has to spell it as an
+overload pair carries two, and showing only the first would tell a reader half of what a
+program may write. Each type under a signature is shown the same way: the declaration, the
+paragraph explaining what it is for, and a line per member. Every one of those lines is the
+SDK's own, written on the argument or member it describes.
 
 Descriptions and documentation are rendered verbatim, whitespace and all, rather than as
 markdown: the point of the page is to see what the model sees.

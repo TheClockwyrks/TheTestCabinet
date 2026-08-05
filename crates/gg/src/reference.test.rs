@@ -196,7 +196,11 @@ fn every_catalogued_function_appears() {
 
     for function in &reference.functions {
         assert!(
-            !function.signature.trim().is_empty(),
+            !function.signatures.is_empty()
+                && function
+                    .signatures
+                    .iter()
+                    .all(|entry| !entry.signature.trim().is_empty()),
             "`{}.{}` came out with no signature",
             function.object,
             function.name

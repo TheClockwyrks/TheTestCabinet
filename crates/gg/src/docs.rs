@@ -28,9 +28,10 @@
 //!
 //! # Why a lookup is self-contained
 //!
-//! [`read`](DocsRuntime::read) returns the signature, the description, **and** every type
-//! declaration the function refers to, every time — no dedup against what the model has already
-//! been shown. That is a consequence of documentation being a
+//! [`read`](DocsRuntime::read) returns every shape the function may be called in with a line per
+//! argument, the description, **and** every type it refers to with a line per member — every time,
+//! and with no dedup against what the model has already been shown. That is a consequence of
+//! documentation being a
 //! [view](crate::context::ViewKind::Docs): a view can be closed, and it can be replaced, so a block
 //! that omitted a declaration on the grounds that some *other* block already carried it would be a
 //! block that stopped making sense the moment the model tidied up. A view has to read correctly on
@@ -49,8 +50,8 @@ use test_cabinet_core::gg::GgProgramLanguage;
 
 use crate::ending::EndingRole;
 use crate::sandbox::{
-    CatalogueFunction, FunctionSummary, ProgramLanguage, catalogue_functions, language,
-    type_declaration,
+    CatalogueFunction, FunctionSummary, Parameter, ProgramLanguage, TypeDeclaration,
+    catalogue_functions, language, type_declaration,
 };
 
 #[path = "docs.suggest.rs"]
@@ -192,20 +193,69 @@ impl DocsRuntime {
     }
 }
 
-/// Assemble a catalogue function's documentation: its signature, its description, and the
-/// declarations of every type it refers to.
+/// Assemble a catalogue function's documentation: how it may be called and what each argument is
+/// for, its description, and the declarations of every type it refers to with a line per member.
 ///
 /// Every type, every time — see the module's *Why a lookup is self-contained*.
+///
+/// A function is rendered with **every** signature the language offers it in, because for some
+/// languages that is how an optional argument is spelled: an overload pair reads as two ways to call
+/// one function, and showing only the first would tell a model half of what it may write. Under a
+/// language that spells options with a default there is exactly one, and the rendering is the single
+/// line it always was.
 fn assemble(function: &CatalogueFunction, language: &'static dyn ProgramLanguage) -> String {
-    let mut text = format!("{}\n\n{}", function.signature, function.doc);
-    let types: Vec<&'static str> = function
+    let mut text = String::new();
+    for entry in function.signatures {
+        text.push_str(&entry.signature);
+        text.push('\n');
+        for parameter in &entry.parameters {
+            describe(&mut text, parameter, 1);
+        }
+    }
+    text.push('\n');
+    text.push_str(function.doc);
+    let types: Vec<String> = function
         .types
         .iter()
         .filter_map(|name| type_declaration(language, name))
+        .map(declare)
         .collect();
     if !types.is_empty() {
         text.push_str("\n\n");
         text.push_str(&types.join("\n\n"));
+    }
+    text
+}
+
+/// One argument, indented under the signature that takes it, and its fields indented under it.
+fn describe(text: &mut String, parameter: &Parameter, depth: usize) {
+    let indent = "  ".repeat(depth);
+    let optional = if parameter.optional { "?" } else { "" };
+    let default = match &parameter.default {
+        Some(value) => format!(" = {value}"),
+        None => String::new(),
+    };
+    text.push_str(&format!(
+        "{indent}{}{optional}: {}{default} — {}\n",
+        parameter.name, parameter.r#type, parameter.doc
+    ));
+    for field in &parameter.fields {
+        describe(text, field, depth + 1);
+    }
+}
+
+/// One type declaration, with a line per member.
+///
+/// The declaration alone says what fields a record has and nothing about what any of them *means*,
+/// and `shown: boolean` on a `FileRead` is not a thing a model can infer. A union arm carries no type
+/// of its own — the arm is the value — so it is rendered as the bare literal.
+fn declare(declaration: &'static TypeDeclaration) -> String {
+    let mut text = format!("{}\n{}", declaration.declaration, declaration.doc);
+    for member in &declaration.members {
+        match &member.r#type {
+            Some(kind) => text.push_str(&format!("\n  {}: {kind} — {}", member.name, member.doc)),
+            None => text.push_str(&format!("\n  {} — {}", member.name, member.doc)),
+        }
     }
     text
 }

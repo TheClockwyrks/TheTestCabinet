@@ -66,7 +66,8 @@ use test_cabinet_core::gg::{
     SHELL_OUTPUT_OFFLOAD,
 };
 use test_cabinet_core::gg_reference::{
-    GgApiFunction, GgApiType, GgReference, GgReferenceCategory, GgToolReference, GgToolVariant,
+    GgApiFunction, GgApiParameter, GgApiSignature, GgApiType, GgApiTypeMember, GgReference,
+    GgReferenceCategory, GgToolReference, GgToolVariant,
 };
 
 use crate::archive::ArchiveRuntime;
@@ -75,6 +76,7 @@ use crate::fsm::{FsmPosition, FsmSpec};
 use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryStrategy};
 use crate::model::ToolDefinition;
 use crate::modules::{CapabilityModules, ModuleHandle};
+use crate::sandbox::{Parameter, ParameterKind};
 use crate::skills::builtin::FAMILIES;
 use crate::skills::{SkillLibrary, SkillsRuntime, parse_skill};
 use crate::tasks::{TaskMode, TasksRuntime};
@@ -522,7 +524,14 @@ fn functions() -> Vec<GgApiFunction> {
             name: function.name.to_string(),
             category: category_of_object(function.object),
             summary: function.summary.to_string(),
-            signature: function.signature.to_string(),
+            signatures: function
+                .signatures
+                .iter()
+                .map(|entry| GgApiSignature {
+                    signature: entry.signature.clone(),
+                    parameters: entry.parameters.iter().map(argument).collect(),
+                })
+                .collect(),
             doc: function.doc.to_string(),
             gate: function.gate.map(str::to_string),
             ending: function.ending.map(str::to_string),
@@ -534,14 +543,41 @@ fn functions() -> Vec<GgApiFunction> {
                 .types
                 .iter()
                 .filter_map(|name| {
-                    crate::sandbox::type_declaration(language, name).map(|declaration| GgApiType {
+                    crate::sandbox::type_declaration(language, name).map(|declared| GgApiType {
                         name: name.clone(),
-                        declaration: declaration.to_string(),
+                        declaration: declared.declaration.clone(),
+                        doc: declared.doc.clone(),
+                        members: declared
+                            .members
+                            .iter()
+                            .map(|member| GgApiTypeMember {
+                                name: member.name.clone(),
+                                kind: member.r#type.clone(),
+                                doc: member.doc.clone(),
+                            })
+                            .collect(),
                     })
                 })
                 .collect(),
         })
         .collect()
+}
+
+/// One argument of one signature, projected onto the wire — recursively, so a structured argument's
+/// fields arrive documented alongside it.
+fn argument(parameter: &'static Parameter) -> GgApiParameter {
+    GgApiParameter {
+        name: parameter.name.clone(),
+        kind: parameter.r#type.clone(),
+        optional: parameter.optional,
+        passing: match parameter.kind {
+            ParameterKind::Positional => "positional".to_string(),
+            ParameterKind::Keyword => "keyword".to_string(),
+        },
+        default: parameter.default.clone(),
+        doc: parameter.doc.clone(),
+        fields: parameter.fields.iter().map(argument).collect(),
+    }
 }
 
 #[cfg(test)]

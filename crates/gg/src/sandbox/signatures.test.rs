@@ -32,6 +32,18 @@ fn catalogue() -> &'static SignatureCatalogue {
     typescript().catalogue()
 }
 
+/// The one way a TypeScript function may be called.
+///
+/// TypeScript spells every optional argument with `?`, so each of its entries carries exactly one
+/// signature — the assertion is here rather than left implicit, because an entry that quietly grew a
+/// second shape would otherwise have the expectations below read only its first.
+fn sole(signatures: &[SignatureEntry]) -> &str {
+    let [entry] = signatures else {
+        panic!("TypeScript offers one shape per function, and this one has {signatures:?}")
+    };
+    entry.signature.as_str()
+}
+
 /// The committed catalogue parses, is not empty, and says whose it is.
 #[test]
 fn the_committed_catalogue_parses() {
@@ -153,18 +165,18 @@ fn typescript_spells_its_ending_calls_as_its_sdk_declares_them() {
     let finish = by_name(FINISH_FUNCTION);
     assert_eq!(finish.object, "harness");
     assert_eq!(finish.ending, "standard");
-    assert_eq!(finish.signature, "finish(summary: string): void");
+    assert_eq!(sole(&finish.signatures), "finish(summary: string): void");
 
     let approve = by_name("approve");
     assert_eq!(approve.object, "review");
     assert_eq!(approve.ending, "review");
-    assert_eq!(approve.signature, "approve(): void");
+    assert_eq!(sole(&approve.signatures), "approve(): void");
 
     let request_changes = by_name("requestChanges");
     assert_eq!(request_changes.object, "review");
     assert_eq!(request_changes.ending, "review");
     assert_eq!(
-        request_changes.signature,
+        sole(&request_changes.signatures),
         "requestChanges(items: string[]): void"
     );
 
@@ -301,11 +313,26 @@ fn catalogue_functions_carry_object_and_gate() {
 /// a type the catalogue does not carry is `None` rather than a fabricated declaration.
 #[test]
 fn type_declaration_returns_the_sdks_own_declaration() {
-    assert!(
-        type_declaration(typescript(), "DirEntry")
-            .expect("DirEntry is declared")
-            .contains("interface DirEntry"),
+    let dir_entry = type_declaration(typescript(), "DirEntry").expect("DirEntry is declared");
+    assert!(dir_entry.declaration.contains("interface DirEntry"));
+    // And it arrives explained, member by member: a declaration alone says what fields a value has
+    // and nothing about what any of them means.
+    assert!(!dir_entry.doc.trim().is_empty());
+    assert_eq!(
+        dir_entry
+            .members
+            .iter()
+            .map(|member| member.name.as_str())
+            .collect::<Vec<_>>(),
+        ["name", "kind"]
     );
+    for member in &dir_entry.members {
+        assert!(
+            !member.doc.trim().is_empty(),
+            "`DirEntry.{}` came out undocumented",
+            member.name
+        );
+    }
     assert!(type_declaration(typescript(), "NoSuchType").is_none());
 }
 

@@ -46,6 +46,11 @@ import { asFileRead } from "./files.js";
  * and nothing is opened and nothing is shown, so close one with `view.close(path)` and try again.
  * Re-opening a picture you already have open replaces it rather than adding one, and is never
  * refused. Text views are never refused by this cap.
+ *
+ * @param path The file to open. Relative to your workspace, or absolute.
+ * @param options The window of lines to show; omit it to show the whole file.
+ * @param options.offset The 1-based line to start at.
+ * @param options.limit How many lines to show from `offset`.
  */
 export function openFile(path: string, options?: { offset?: number; limit?: number }): FileRead {
   const o = opts<{ offset?: number; limit?: number }>("openFile", options);
@@ -64,6 +69,11 @@ export function openFile(path: string, options?: { offset?: number; limit?: numb
  * selector could never be closed or attributed — while an empty BODY is allowed, since it is how you
  * say that something you were showing is now empty. A body or label over gg's caps throws
  * `limit-exceeded` naming the cap; nothing is ever silently truncated.
+ *
+ * @param label What to file the view under. It is what `view.close` takes, and opening the same
+ * label again replaces what it showed. It may not be empty.
+ * @param body What to show yourself. An empty body is allowed: it is how you say that something
+ * you were showing is now empty.
  */
 export function openText(label: string, body: string): void {
   call(() => raw.openTextView(label, body));
@@ -81,6 +91,9 @@ export function openText(label: string, body: string): void {
  * replaces the view rather than adding a second copy, and `view.close(name)` closes it when you are
  * done with it. An unknown or unbound name throws `not-found`; `<object>.list()` is how you find out
  * which names exist.
+ *
+ * @param target The function to document — the function itself (`fs.readFile`) or its name
+ * (`"readFile"`).
  */
 export function openDocsView(target: Function | string): void {
   call(() => raw.openDocsView(docsName(target)));
@@ -127,6 +140,9 @@ function docsName(target: Function | string): string {
  * unconditionally does not have to guard every call. Closing a file view forgets what you read, not
  * what exists; closing a text view discards the only copy of what it held, so write anything you
  * will need later to a file or a memory first.
+ *
+ * @param selector What the view is filed under: a file's path, a text view's label, or a
+ * documentation view's function name.
  */
 export function close(selector: string): number {
   // A `u32`, so already a `number` — the `bigint` conversion this module makes in `current` is not

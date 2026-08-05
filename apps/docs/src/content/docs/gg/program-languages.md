@@ -239,7 +239,7 @@ instantly in every gate that iterates languages.
 | **Whether preparing a program compiles** | Whether that step invokes a compiler whose cost belongs to the program that paid it, and is therefore [recorded](#what-compiling-costs-and-where-it-is-recorded). A required answer rather than an inferred one: an arm whose compile time went unrecorded because nobody declared it would look free and would not be. |
 | **Preparing a module** | Turning a [code skill](/gg/skills/#code-skills)'s or [code memory](/gg/memories/#code-memories)'s file into something whose evaluation yields a namespace, bound at `lib.<key>`. |
 | Its **guest component** | The committed `.wasm` that evaluates the prepared source, embedded in the binary. |
-| Its **signature catalogue** | The committed JSON reflected out of its own SDK — the signatures and documentation the model reads through `object.list()` and `view.openDocsView()`. |
+| Its **signature catalogue** | The committed JSON reflected out of its own SDK — every object, signature, argument, type and type member the model reads through `object.list()` and `view.openDocsView()`. See [the catalogue](#the-catalogue). |
 | A **healing dialect** | The language-shaped questions [response healing](/gg/response-healing/#the-skeleton-and-the-dialect) asks: which fence tags mean "this block is the program", which lines are certainly code and which are certainly prose, which bytes of a source are code rather than string or comment, what an import statement looks like, what makes a binding the language refuses to see twice, and what a whole-program concurrency wrapper looks like. |
 | A **prompt dialect** | Its own `system-code.<id>.hbs` and `code-nothing-shown.<id>.hbs` templates, and the handful of spellings gg itself has to quote back — the four [ending calls](/gg/ending-a-session/#ending-calls) and the call that closes a view. |
 | **Healing fixtures** (tests only) | Replies its own dialect must survive, so that healing's delete-only invariant is re-earned per language rather than inherited. |
@@ -281,6 +281,48 @@ identifiers and the one term each rule cannot be stated without — never a sent
 punctuation, never emphasis. A prompt is prose and revising it is ordinary work: rewrapping
 a paragraph, rewriting a sentence or changing `**bold**` to `*italic*` must not fail a test,
 or the gate stops being a safety net and becomes a reason not to improve the prompt.
+
+### The catalogue
+
+A language's catalogue is the whole of what a model is *told* about the surface, and every
+word of it is **reflected out of documentation written on the declaration it describes**.
+Nothing in it is authored in a table, a template or a prompt: an object's one-line
+description comes from the doc comment on the constant that names the object, an argument's
+description from the `@param` (or `# Arguments` heading, or `///` on the parameter — the
+convention is the language's) written on that argument, and a type member's from the comment
+above the member. A description kept anywhere else is a description that drifts, and nothing
+would catch it.
+
+It has seven sections:
+
+| Section | What it carries |
+| --- | --- |
+| `objects` | Every API object a program's surface is divided into, **in the order the surface is presented in**, each with the sentence the system prompt introduces it by. The order is model-facing: it is what the prompt's API list and the run's [agent surface](/gg/agent-surface/) both render. |
+| `session` | The [ending calls](/gg/ending-a-session/), one group per role. |
+| `views` | The `view` object — the calls that put material into the agent's own context window. |
+| `programs` | The [program library](/gg/program-library/)'s calls. |
+| `tools` | One entry per gg tool, in exact bijection with the tool registry's vocabulary. |
+| `helpers` | The convenience wrappers bound alongside a tool. |
+| `types` | Every type a signature refers to: its declaration, the paragraph explaining what it is for, and **a line per member**. A declaration says what fields a value has and nothing about what any of them means — `shown: boolean` on a `FileRead` is not a thing a model can infer — so the members travel with it. |
+
+#### One entry, many signatures
+
+Every function entry carries a `signatures` **array**, and that array is the mechanism by
+which a language expresses its own idiom without changing what the function *is*.
+
+An optional argument is a Java overload pair, a Kotlin default, a Python keyword argument
+and a TypeScript `?`. Those are four spellings of one capability. Java's arrives as **one
+entry with two signatures**, each with its own argument list; the other three arrive as one
+entry with one. Nothing downstream compares the count, because the count is spelling — see
+[the agreement gate](#the-agreement-gate).
+
+Each signature carries its arguments in order, and each argument carries its name, its type,
+whether it is optional, whether it is passed by position or **by name**, the default the
+language states for it if any, its description, and — for a structured argument written
+inline at the call site — the same again for each of its fields. An argument typed by *name*
+carries no fields: that type is catalogued in its own right and its members carry its
+documentation, so filling both would be two copies of one sentence with nothing keeping
+them equal.
 
 ### What the host checks, and what a language must not be trusted with
 
@@ -378,9 +420,23 @@ the sets:
   `request_changes` and `open_text` are the carve-outs' own), the gg tool that **gates**
   it, the ending **role** whose programs bind it, and whether it belongs to the
   [program library](/gg/program-library/). None of it may differ.
-- **Spelling** — the name a program calls, the signature it is declared with, and the
-  prose that documents it. Compared for nothing except being present, unique within its
-  object, and consistent with each other.
+- **Spelling** — everything else, and deliberately a great deal: the name a program calls,
+  the prose that documents it, the object's own description, and the whole **shape of the
+  call**. Argument names, argument descriptions, whether an argument is positional or passed
+  by name, what it defaults to, and *how many signatures an entry carries* are all spelling.
+  A language that must express an optional argument as an overload pair carries two
+  signatures where one expressing it as a default carries one, and that is not a difference
+  in what the function does — so the gate does not compare the count.
+
+What the gate asserts about spelling is that it is **there**. Every argument, every field of
+a structured argument, every type, every one of a type's members and every API object must
+carry documentation; a signature must begin with the name a program calls; an argument must
+be named by the signature that takes it — a renamed parameter left behind under its old name
+in the docs reads perfectly and tells a model to write something the call will not accept;
+and no two functions on one object may share a name. Those checks run over the **emitted
+catalogue**, so they are one gate for every language: a language whose compiler enforced its
+doc comments (Swift's `docc`, Java's `-Xdoclint`) and one whose convention did (Rust's
+`# Arguments`, PureScript's `@param`) land in the same shape here.
 
 Each language is additionally anchored to **gg's own vocabularies**: its tools in exact
 bijection with the tool registry's, its component binding exactly those tools, its ending
@@ -400,7 +456,12 @@ It returns its complaints rather than asserting them, so its own failure mode is
 a gate that can be shown to pass but never shown to *catch* anything is a gate nobody knows
 works. Its tests hand it deliberately damaged catalogues — a missing `edit_file`, a
 renamed object, a view function gated on the wrong tool, an ending offered to the wrong
-role — and assert on what comes back.
+role, an undocumented argument, a type member with no description, an API object nothing
+describes, an argument the signature does not name — and assert on what comes back. One test
+runs the other way: a catalogue that **renames every argument, passes them by name with
+stated defaults, and splits an optional argument into an overload pair** must be accepted
+without complaint, because a gate that rejected that would make an overloading language
+impossible to register — which is a worse failure than any it prevents.
 
 With one registered language the comparative half degenerates to "equals itself" and the
 anchored half does not, which is why the gate earns its place today. The comparative half
@@ -468,10 +529,14 @@ one.**
    copy of it. The guest binds it directly.
 3. **Hand-write the SDK**, idiomatic for the language, obeying the
    [five rules](#the-rules-an-agent-facing-surface-obeys-in-every-language) above.
-4. **Emit a catalogue** at `crates/gg/src/sandbox/guests/python.signatures.json`, in the same
-   shape, with `language: "python"` and the same `key`s. It need not use the TypeScript
-   package's reflector — only the emitted JSON is contractual, and a Python guest would
-   reflect its own docstrings and type hints with its own script.
+4. **Emit a catalogue** at `crates/gg/src/sandbox/guests/python.signatures.json`, in
+   [the same shape](#the-catalogue), with `language: "python"` and the same `key`s: the
+   `objects` section in presentation order, one entry per function with its `signatures` and
+   each signature's arguments, and every type with its own description and its members'. It
+   need not use the TypeScript package's reflector — only the emitted JSON is contractual,
+   and a Python guest would reflect its own docstrings and type hints with its own script —
+   but it must reflect them rather than list them, because the completeness half of the
+   agreement gate fails a catalogue with a blank in it.
 5. **Commit both artifacts** under `crates/gg/src/sandbox/guests/`.
 6. **Add the enum variant** in `crates/core/src/gg.rs`, and list it in `GgProgramLanguage::ALL`
    with an `ordinal()` arm. Neither is optional and neither can be forgotten: `ordinal()` is an

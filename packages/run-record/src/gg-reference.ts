@@ -123,6 +123,26 @@ export type GgToolReference = {
 };
 
 /**
+ * One member of an [API type](GgApiType).
+ */
+export type GgApiTypeMember = {
+  /**
+   * The member's name as a program reads it (`totalLines`), or the literal itself (`"pending"`)
+   * for the arm of a union.
+   */
+  name: string;
+  /**
+   * The member's type; absent for a union arm, which is a value rather than a field and so has
+   * no type beside itself.
+   */
+  type?: string;
+  /**
+   * The SDK's own documentation for the member.
+   */
+  doc: string;
+};
+
+/**
  * One type declaration an [API function](GgApiFunction)'s signature refers to.
  */
 export type GgApiType = {
@@ -134,6 +154,67 @@ export type GgApiType = {
    * The declaration, as the SDK wrote it.
    */
   declaration: string;
+  /**
+   * The SDK's own documentation for the type: what it is, and why it has the shape it has.
+   */
+  doc: string;
+  /**
+   * One line per member — a record's properties, or the arms of a union — each with the
+   * documentation written on it. A declaration says what fields a value has and nothing about
+   * what any of them means, which is the half that decides whether a model uses it correctly.
+   */
+  members: Array<GgApiTypeMember>;
+};
+
+/**
+ * One argument an [API signature](GgApiSignature) takes, or one field of a structured argument.
+ */
+export type GgApiParameter = {
+  /**
+   * The name the signature declares it under.
+   */
+  name: string;
+  /**
+   * Its type, as the SDK writes it.
+   */
+  type: string;
+  /**
+   * Whether the call is legal without it.
+   */
+  optional: boolean;
+  /**
+   * How it is passed: `positional`, or `keyword` for a language whose call site writes the
+   * argument's name as well as its value.
+   */
+  passing: string;
+  /**
+   * The value it takes when it is left out, for a language that says so in the signature.
+   */
+  default?: string;
+  /**
+   * The SDK's own documentation for it — what to put here, and what happens if you do not.
+   */
+  doc: string;
+  /**
+   * The fields of a structured argument written inline at the call site, each documented in its
+   * own right. Empty for an argument typed by name, whose documentation is on that
+   * [type](GgApiType)'s members instead.
+   */
+  fields: Array<GgApiParameter>;
+};
+
+/**
+ * One way an [API function](GgApiFunction) may be called.
+ */
+export type GgApiSignature = {
+  /**
+   * The signature as the SDK declares it, beginning with the name a program calls.
+   */
+  signature: string;
+  /**
+   * Every argument this shape takes, in the order it takes them.
+   */
+  parameters: Array<GgApiParameter>;
 };
 
 /**
@@ -163,9 +244,13 @@ export type GgApiFunction = {
    */
   summary: string;
   /**
-   * The full TypeScript signature, as the SDK declares it.
+   * Every shape the SDK offers this function in, each with the arguments it takes.
+   *
+   * An array rather than one string because how a language expresses an optional argument is
+   * that language's own business: an overload pair and a default argument are two spellings of
+   * one capability, and the first arrives here as two entries where the second arrives as one.
    */
-  signature: string;
+  signatures: Array<GgApiSignature>;
   /**
    * The SDK's own paragraph of documentation, verbatim. Rendered with its whitespace
    * preserved, for the same reason a tool's description is.

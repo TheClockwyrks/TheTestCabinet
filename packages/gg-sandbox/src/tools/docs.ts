@@ -17,6 +17,8 @@ export type { FunctionSummary } from "test-cabinet:gg/docs";
 /**
  * List one API object's bound functions, each with a one-line summary. Only the functions this run
  * actually bound are returned; an unknown object name is an empty list, not a failure.
+ *
+ * @param object The API object to list (`fs`, `view`, …).
  */
 export function listFunctions(object: string): raw.FunctionSummary[] {
   return raw.listFunctions(object);

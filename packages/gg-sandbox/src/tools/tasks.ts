@@ -31,6 +31,13 @@ function witStatus(status: TaskStatus | undefined): TaskStatusRaw | undefined {
  * Add a task to the task DAG and return the task budget. `blockedBy` names the tasks that must
  * finish before this one and defaults to none. Throws `conflict` on a duplicate id or on an edge
  * that would close a cycle.
+ *
+ * @param task The task to add.
+ * @param task.id The id you choose for it. It is what every other task call takes, and no two tasks
+ * may share one.
+ * @param task.title A short line naming the work.
+ * @param task.description What the work is, at whatever length is useful.
+ * @param task.blockedBy The ids of the tasks that must be done before this one. Defaults to none.
  */
 export function addTask(task: {
   id: string;
@@ -51,6 +58,12 @@ export function addTask(task: {
 /**
  * Revise a task's title, description and/or status; supply at least one. An omitted `description`
  * leaves it alone, `null` clears it, and a string replaces it. Throws `not-found` for an unknown id.
+ *
+ * @param id The task to revise.
+ * @param patch The fields to change. Supply at least one; an omitted field is left alone.
+ * @param patch.title The title to replace the old one with.
+ * @param patch.description The description to replace the old one with, or `null` to clear it.
+ * @param patch.status Where the task now stands.
  */
 export function updateTask(
   id: string,
@@ -68,6 +81,10 @@ export function updateTask(
 /**
  * Replace a task's whole blocker set; an empty array clears every blocker. Throws `not-found` for an
  * unknown id and `conflict` when an edge would close a cycle.
+ *
+ * @param id The task whose blockers to replace.
+ * @param blockedBy The ids of every task that must now be done before it. An empty array clears
+ * them all.
  */
 export function setBlockedBy(id: string, blockedBy: string[]): void {
   call(() => raw.setBlockedBy(id, list("setBlockedBy", "blockedBy", blockedBy)));
@@ -76,6 +93,8 @@ export function setBlockedBy(id: string, blockedBy: string[]): void {
 /**
  * Mark a task done. Tasks it was blocking become actionable once every one of their blockers is
  * done. Throws `not-found` for an unknown id.
+ *
+ * @param id The task to mark done.
  */
 export function completeTask(id: string): void {
   call(() => raw.completeTask(id));
@@ -84,6 +103,8 @@ export function completeTask(id: string): void {
 /**
  * Remove a task and every blocker edge pointing at it, and return the task budget. Throws
  * `not-found` for an unknown id.
+ *
+ * @param id The task to remove.
  */
 export function removeTask(id: string): TaskUsage {
   return call(() => raw.removeTask(id));

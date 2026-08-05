@@ -197,8 +197,12 @@ pub struct GgApiFunction {
     /// The one-line summary `object.list()` shows — the first sentence of
     /// [`doc`](Self::doc).
     pub summary: String,
-    /// The full TypeScript signature, as the SDK declares it.
-    pub signature: String,
+    /// Every shape the SDK offers this function in, each with the arguments it takes.
+    ///
+    /// An array rather than one string because how a language expresses an optional argument is
+    /// that language's own business: an overload pair and a default argument are two spellings of
+    /// one capability, and the first arrives here as two entries where the second arrives as one.
+    pub signatures: Vec<GgApiSignature>,
     /// The SDK's own paragraph of documentation, verbatim. Rendered with its whitespace
     /// preserved, for the same reason a tool's description is.
     pub doc: String,
@@ -225,6 +229,44 @@ pub struct GgApiFunction {
     pub types: Vec<GgApiType>,
 }
 
+/// One way an [API function](GgApiFunction) may be called.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgApiSignature {
+    /// The signature as the SDK declares it, beginning with the name a program calls.
+    pub signature: String,
+    /// Every argument this shape takes, in the order it takes them.
+    pub parameters: Vec<GgApiParameter>,
+}
+
+/// One argument an [API signature](GgApiSignature) takes, or one field of a structured argument.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgApiParameter {
+    /// The name the signature declares it under.
+    pub name: String,
+    /// Its type, as the SDK writes it.
+    #[serde(rename = "type")]
+    pub kind: String,
+    /// Whether the call is legal without it.
+    pub optional: bool,
+    /// How it is passed: `positional`, or `keyword` for a language whose call site writes the
+    /// argument's name as well as its value.
+    pub passing: String,
+    /// The value it takes when it is left out, for a language that says so in the signature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub default: Option<String>,
+    /// The SDK's own documentation for it — what to put here, and what happens if you do not.
+    pub doc: String,
+    /// The fields of a structured argument written inline at the call site, each documented in its
+    /// own right. Empty for an argument typed by name, whose documentation is on that
+    /// [type](GgApiType)'s members instead.
+    pub fields: Vec<GgApiParameter>,
+}
+
 /// One type declaration an [API function](GgApiFunction)'s signature refers to.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -234,4 +276,27 @@ pub struct GgApiType {
     pub name: String,
     /// The declaration, as the SDK wrote it.
     pub declaration: String,
+    /// The SDK's own documentation for the type: what it is, and why it has the shape it has.
+    pub doc: String,
+    /// One line per member — a record's properties, or the arms of a union — each with the
+    /// documentation written on it. A declaration says what fields a value has and nothing about
+    /// what any of them means, which is the half that decides whether a model uses it correctly.
+    pub members: Vec<GgApiTypeMember>,
+}
+
+/// One member of an [API type](GgApiType).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "contract", derive(ts_rs::TS, schemars::JsonSchema))]
+pub struct GgApiTypeMember {
+    /// The member's name as a program reads it (`totalLines`), or the literal itself (`"pending"`)
+    /// for the arm of a union.
+    pub name: String,
+    /// The member's type; absent for a union arm, which is a value rather than a field and so has
+    /// no type beside itself.
+    #[serde(rename = "type", default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "contract", ts(optional))]
+    pub kind: Option<String>,
+    /// The SDK's own documentation for the member.
+    pub doc: String,
 }

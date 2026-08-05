@@ -58,6 +58,9 @@ export function history(): ProgramSummary[] {
  *
  * A turn that ran no program, or one old enough that the library has dropped it, throws `not-found`
  * naming the turns that are held; `programs.history()` lists them.
+ *
+ * @param turn The turn whose program to fetch, as `programs.history()` reports it. Omit it for
+ * your most recent one.
  */
 export function get(turn?: number): string {
   return call(() => raw.get(uint("get", "turn", turn, U32_MAX)));
@@ -75,6 +78,8 @@ export function get(turn?: number): string {
  * you cannot see. A blank source is `invalid-argument`. If your program then throws, the hand-over is
  * cancelled along with everything else the failed program decided, and you get an ordinary error turn
  * instead. Chains are bounded: hand over once per turn, and write the fixed program to do the work.
+ *
+ * @param source The program to run in place of this one. It may not be blank.
  */
 export function rerun(source: string): void {
   call(() => raw.rerun(source));

@@ -211,6 +211,54 @@ async fn a_subagent_reports_its_own_surface() {
     );
 }
 
+/// **An object's description is the catalogue's, in the catalogue's order.**
+///
+/// The sentence a model is introduced to `fs` by is written on the declaration that names `fs`, in
+/// the guest SDK, and reflected into the catalogue by the same build that produced the component —
+/// exactly as every function's description is. A table here would be a second copy of prose the
+/// model also reads through the reference and through a doc lookup, and nothing would keep the
+/// copies equal.
+///
+/// The **order** travels with it, and is checked here rather than left implicit: it is what the
+/// system prompt's API list renders in, so a surface that sorted the objects would silently rewrite
+/// what a model reads first.
+#[test]
+fn each_objects_description_and_its_place_come_from_the_catalogue() {
+    let set = GgCapabilitySet::minimal("mock/echo");
+    let registry = ToolRegistry::from_capabilities(set.root());
+    let apis = api_surface(
+        &registry,
+        EndingRole::Standard,
+        false,
+        GgProgramLanguage::TypeScript,
+    );
+
+    let catalogue =
+        crate::sandbox::catalogue_objects(crate::sandbox::language(GgProgramLanguage::TypeScript));
+    for api in &apis {
+        let described = catalogue
+            .iter()
+            .find(|entry| entry.object == api.object)
+            .unwrap_or_else(|| panic!("`{}` is described by the catalogue", api.object));
+        assert_eq!(
+            api.description, described.doc,
+            "`{}`'s description is the catalogue's, verbatim",
+            api.object
+        );
+    }
+
+    // Presentation order, not alphabetical and not the order the functions happen to be catalogued
+    // in. `fs` leads because nearly every run has it.
+    let order: Vec<&str> = apis.iter().map(|api| api.object.as_str()).collect();
+    let expected: Vec<&str> = catalogue
+        .iter()
+        .map(|entry| entry.object.as_str())
+        .filter(|object| order.contains(object))
+        .collect();
+    assert_eq!(order, expected, "the surface keeps the catalogue's order");
+    assert_eq!(order.first(), Some(&"fs"));
+}
+
 /// The code-mode surface: one object per family the agent binds, each carrying the functions
 /// actually bound and each function's own language-independent key — the join a console counts a
 /// program's calls by, because a call is recorded under the function the model wrote and no gg tool

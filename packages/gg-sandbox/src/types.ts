@@ -128,7 +128,9 @@ export type FileRead =
 
 /** One entry `listDir` found: a bare name — join it with the directory you listed — and its kind. */
 export interface DirEntry {
+  /** The entry's bare name, with no directory part. Join it with the directory you listed. */
   name: string;
+  /** What the entry is. `other` covers everything that is neither, a symlink among them. */
   kind: "file" | "directory" | "other";
 }
 
@@ -168,22 +170,40 @@ export interface MemoryHit {
 }
 
 /** Where a task stands. */
-export type TaskStatus = "pending" | "in_progress" | "done";
+export type TaskStatus =
+  /** Not started. Every task begins here. */
+  | "pending"
+  /** Being worked on now. */
+  | "in_progress"
+  /** Finished. Tasks blocked on it become actionable once all their blockers are done. */
+  | "done";
 
 /** How much of the run's task budget is used, after the call that returned it. */
 export interface TaskUsage {
+  /** Tasks currently on the list. */
   count: number;
+  /** The most tasks this run allows. */
   maxTasks: number;
 }
 
 /** Where an issue stands. */
-export type IssueStatus = "open" | "in_progress" | "done";
+export type IssueStatus =
+  /** Not started, and dispatchable once its blockers are done. */
+  | "open"
+  /** Dispatched, with its assigned agent working on it. */
+  | "in_progress"
+  /** Finished and, where this run requires reviewers, approved. */
+  | "done";
 
 /** How much of the run's board budget is used, after the call that returned it. */
 export interface BoardUsage {
+  /** Epics currently on the board. */
   epics: number;
+  /** The most epics this run allows. */
   maxEpics: number;
+  /** Issues currently on the board. */
   issues: number;
+  /** The most issues this run allows. */
   maxIssues: number;
 }
 
@@ -260,7 +280,13 @@ export interface ArchiveSearch {
  * output, a child agent's answer, a table you assembled are all **text** views; what
  * `view.openDocsView` opens is a **docs** view.
  */
-export type ViewKind = "file" | "text" | "docs";
+export type ViewKind =
+  /** A file you opened; its selector is the path. */
+  | "file"
+  /** A value you showed yourself; its selector is the label you gave it. */
+  | "text"
+  /** A function's documentation; its selector is the function's name. */
+  | "docs";
 
 /** The window of lines a **paged** file view covers; absent for a whole-file view. */
 export interface ViewRegion {

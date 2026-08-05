@@ -19,6 +19,8 @@ import { call } from "../errors.js";
  * shows you arrives on your next turn.
  *
  * Throws `not-found` — listing the skills that do exist — when the name is unknown.
+ *
+ * @param name The skill's name, as the system prompt lists it.
  */
 export function readSkill(name: string): string {
   return call(() => raw.readSkill(name));

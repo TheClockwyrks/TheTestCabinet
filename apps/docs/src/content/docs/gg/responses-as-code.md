@@ -291,9 +291,17 @@ put nothing in its context, earned by a program that did exactly what it was tol
 
 `view.openDocsView(fn)` is the other one, and it opens a **view**. Pass the bound function
 itself — `view.openDocsView(view.openText)` — or its name, `view.openDocsView("openText")`.
-What comes back is that function's full signature, its documentation, and the declarations of
-every type it mentions, arriving under the [`Documentation`](#three-kinds-of-view) heading
-qualified by the function's name.
+What comes back is every shape the function may be called in — usually one, but a language
+that spells an optional argument as an overload pair carries two — with **a line per
+argument** saying what to put there, then its documentation, then the declarations of every
+type it mentions, each with **a line per member**. All of it arrives under the
+[`Documentation`](#three-kinds-of-view) heading qualified by the function's name.
+
+The per-argument and per-member lines are not commentary gg wrote: every one of them is
+reflected out of the doc comment on the argument or member it describes, in the SDK's own
+source, by the same build that produced the component. A declaration says what fields a
+value has and nothing about what any of them *means* — `shown: boolean` on a `FileRead` is
+unguessable — which is the half that decides whether a model uses the value correctly.
 
 An argument that is *neither* a bound function nor a name is refused in the **guest**, before
 any lookup happens, and that placement is the point. `view.openDocsView(system.run)` — a
@@ -1489,8 +1497,17 @@ set must be identical, and each language's own must line up with gg's vocabulari
 tools in exact bijection with the tool registry's, the ending calls exactly the four the
 tool-calling arm dispatches, each bound to the role `EndingRole` gives it, every gate a
 real tool name, `view.openFile` gated on `read_file` and the rest of the view surface
-gated on nothing. Names, signatures and documentation are compared for nothing except
-being present, unique within their object, and consistent with each other.
+gated on nothing.
+
+Everything else is **spelling**, and the gate asserts only that it is there: every function
+name unique within its object, every signature starting with the name a program calls, and
+a description on every object, every argument, every field of a structured argument, every
+type and every one of a type's members. What it deliberately does not compare is the *shape*
+of a call — an argument's name, whether it is passed by position or by name, what it
+defaults to, or how many signatures an entry carries. A language that must express an
+optional argument as an overload pair offers the same capability as one that expresses it as
+a default, and a gate that said otherwise would make the first kind of language impossible
+to register.
 
 It is load-bearing because its absence is silent. Each language's own drift gates compare
 it to gg's tool vocabulary and to its own committed component — never to another language

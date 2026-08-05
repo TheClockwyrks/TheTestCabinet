@@ -22,6 +22,11 @@ import type { ShellOutput } from "../types.js";
  * files the command's full stdout and stderr were written to. Under `adaptive` (the default), a
  * command that **succeeded** returns no output at all, only that note; one that **failed** returns
  * the tail. Grep the named files instead of re-running the command.
+ *
+ * @param command The command line, run by `sh -c` with your workspace as its working directory.
+ * @param options How to run it.
+ * @param options.timeoutSecs How long to let it run before killing it. Defaults to 120, and is
+ * clamped to whatever is left of the run's wall-clock budget.
  */
 export function shell(command: string, options?: { timeoutSecs?: number }): ShellOutput {
   const o = opts<{ timeoutSecs?: number }>("shell", options);

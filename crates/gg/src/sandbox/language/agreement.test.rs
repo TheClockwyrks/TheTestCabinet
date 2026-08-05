@@ -231,7 +231,18 @@ fn a_second_language_that_disagrees_is_caught() {
                 let mut invented = document["views"][0].clone();
                 invented["key"] = json!("open_url");
                 invented["name"] = json!("open_url");
-                invented["signature"] = json!("open_url(url: str)");
+                invented["signatures"] = json!([{
+                    "signature": "open_url(url: str)",
+                    "parameters": [{
+                        "name": "url",
+                        "type": "str",
+                        "optional": false,
+                        "kind": "positional",
+                        "default": null,
+                        "doc": "Where to look.",
+                        "fields": [],
+                    }],
+                }]);
                 document["views"]
                     .as_array_mut()
                     .expect("an array")
@@ -275,16 +286,106 @@ fn a_second_language_that_disagrees_is_caught() {
             Box::new(|document: &mut Value| {
                 let entry = &mut document["helpers"].as_array_mut().expect("an array")[0];
                 entry["name"] = json!("read_file");
-                entry["signature"] = json!("read_file(path: str) -> str");
+                entry["signatures"][0]["signature"] = json!("read_file(path: str) -> str");
             }),
             "two functions on `fs` are both spelled `read_file`",
         ),
         (
             "a signature that does not start with the name a program calls",
             Box::new(|document: &mut Value| {
-                document["tools"][0]["signature"] = json!("run(command: str)");
+                document["tools"][0]["signatures"][0]["signature"] = json!("run(command: str)");
             }),
             "signature does not start with the name a program calls",
+        ),
+        (
+            "a function offered in no shape at all",
+            Box::new(|document: &mut Value| {
+                document["tools"][0]["signatures"] = json!([]);
+            }),
+            "has no signature",
+        ),
+        (
+            "an OVERLOAD whose second shape is misspelled",
+            Box::new(|document: &mut Value| {
+                let mut overload = document["tools"][0]["signatures"][0].clone();
+                overload["signature"] = json!("run(command: str)");
+                document["tools"][0]["signatures"]
+                    .as_array_mut()
+                    .expect("an array")
+                    .push(overload);
+            }),
+            "signature does not start with the name a program calls",
+        ),
+        (
+            "an argument with no description",
+            Box::new(|document: &mut Value| {
+                document["tools"][0]["signatures"][0]["parameters"][0]["doc"] = json!("");
+            }),
+            "has no documentation",
+        ),
+        (
+            "a FIELD of a structured argument with no description",
+            Box::new(|document: &mut Value| {
+                for entry in document["tools"].as_array_mut().expect("an array") {
+                    if entry["tool"] == json!("read_file") {
+                        entry["signatures"][0]["parameters"][1]["fields"][0]["doc"] = json!("");
+                    }
+                }
+            }),
+            "`offset` has no documentation",
+        ),
+        (
+            "an argument the signature does not name",
+            Box::new(|document: &mut Value| {
+                document["tools"][0]["signatures"][0]["parameters"][0]["name"] =
+                    json!("commandLine");
+            }),
+            "documents an argument `commandLine` its signature does not name",
+        ),
+        (
+            "a type with no description",
+            Box::new(|document: &mut Value| {
+                document["types"][0]["doc"] = json!("");
+            }),
+            "has no documentation",
+        ),
+        (
+            "a type member with no description",
+            Box::new(|document: &mut Value| {
+                for entry in document["types"].as_array_mut().expect("an array") {
+                    if entry["name"] == json!("DirEntry") {
+                        entry["members"][1]["doc"] = json!("");
+                    }
+                }
+            }),
+            "`DirEntry.kind` has no documentation",
+        ),
+        (
+            "an API object with no description",
+            Box::new(|document: &mut Value| {
+                document["objects"][0]["doc"] = json!("");
+            }),
+            "the API object `fs` has no description",
+        ),
+        (
+            "an API object nothing describes",
+            Box::new(|document: &mut Value| {
+                document["objects"]
+                    .as_array_mut()
+                    .expect("an array")
+                    .retain(|entry| entry["object"] != json!("fs"));
+            }),
+            "functions hang off `fs` and nothing describes it",
+        ),
+        (
+            "an API object described and never given",
+            Box::new(|document: &mut Value| {
+                document["objects"]
+                    .as_array_mut()
+                    .expect("an array")
+                    .push(json!({ "object": "network", "doc": "reach the internet" }));
+            }),
+            "the API object `network` is described and no function hangs off it",
         ),
         (
             "a type mentioned and never declared",
@@ -337,13 +438,24 @@ fn a_difference_in_spelling_alone_is_never_a_disagreement() {
     let respelled = a_language_whose_catalogue(|document| {
         for entry in document["tools"].as_array_mut().expect("an array") {
             let name = format!("gg_{}", entry["name"].as_str().expect("a name"));
-            let signature = entry["signature"]
-                .as_str()
-                .expect("a signature")
-                .to_string();
-            entry["signature"] = json!(format!("gg_{signature}"));
+            for shape in entry["signatures"].as_array_mut().expect("an array") {
+                let signature = shape["signature"]
+                    .as_str()
+                    .expect("a signature")
+                    .to_string();
+                shape["signature"] = json!(format!("gg_{signature}"));
+            }
             entry["name"] = json!(name);
             entry["doc"] = json!("Documented entirely differently, in another language's voice.");
+        }
+        for entry in document["objects"].as_array_mut().expect("an array") {
+            entry["doc"] = json!("Introduced in another language's voice entirely.");
+        }
+        for entry in document["types"].as_array_mut().expect("an array") {
+            entry["doc"] = json!("Explained differently.");
+            for member in entry["members"].as_array_mut().expect("an array") {
+                member["doc"] = json!("Explained differently.");
+            }
         }
     });
     let found = disagreements(&[typescript(), respelled]);
@@ -352,6 +464,87 @@ fn a_difference_in_spelling_alone_is_never_a_disagreement() {
         "a re-spelling was reported as a difference in capability:{}",
         report(&found)
     );
+}
+
+/// **A language that offers the same capability in a different SHAPE agrees.**
+///
+/// This is the assertion the `signatures` array exists for, and the one nothing else makes. An
+/// optional argument is a Java overload pair, a Kotlin default and a TypeScript `?`; a structured
+/// argument is a Python set of keyword arguments; and an argument's *name* is whatever reads best in
+/// the language it is written in. All of that is spelling — so a catalogue that
+///
+/// * splits `fs.readFile`'s optional argument into **two signatures**, one taking the window and one
+///   not, the way an overloading language must;
+/// * renames every argument, the way a language with its own naming convention would; and
+/// * passes them **by name** with a stated default, the way Python and Kotlin do
+///
+/// must agree with TypeScript's exactly, because it offers the same functions on the same objects
+/// under the same gates. A gate that rejected this would make an overloading language impossible to
+/// register, which is the failure that matters more than any it prevents.
+#[test]
+fn a_language_that_offers_the_same_capability_in_another_shape_agrees() {
+    let idiomatic = a_language_whose_catalogue(|document| {
+        for entry in document["tools"].as_array_mut().expect("an array") {
+            let called = entry["name"].as_str().expect("a name").to_string();
+            // The overload group: the same function, offered in two shapes, exactly as a language
+            // without optional parameters has to offer it.
+            if entry["tool"] == json!("read_file") {
+                let full = entry["signatures"][0].clone();
+                entry["signatures"] = json!([
+                    {
+                        "signature": format!("{called}(path: String): FileRead"),
+                        "parameters": [full["parameters"][0].clone()],
+                    },
+                    full,
+                ]);
+            }
+            // Renamed, passed by name, with a default stated in the signature — three idioms
+            // TypeScript has no way to express, and none of them a difference in capability.
+            // Only the argument list is rewritten: the head is the function's own name, which is
+            // the one part of a signature the gate does read.
+            for shape in entry["signatures"].as_array_mut().expect("an array") {
+                let signature = shape["signature"]
+                    .as_str()
+                    .expect("a signature")
+                    .to_string();
+                let (head, mut arguments) = signature
+                    .split_once('(')
+                    .map(|(head, rest)| (head.to_string(), rest.to_string()))
+                    .expect("a signature has an argument list");
+                for parameter in shape["parameters"].as_array_mut().expect("an array") {
+                    let name = parameter["name"].as_str().expect("a name").to_string();
+                    let renamed = format!("the_{name}");
+                    arguments = arguments.replace(&name, &renamed);
+                    parameter["name"] = json!(renamed);
+                    parameter["kind"] = json!("keyword");
+                    parameter["default"] = json!("None");
+                }
+                shape["signature"] = json!(format!("{head}({arguments}"));
+            }
+        }
+    });
+
+    let found = disagreements(&[typescript(), idiomatic]);
+    assert!(
+        found.is_empty(),
+        "a language offering the same capabilities in its own shape was rejected:{}",
+        report(&found)
+    );
+
+    // And the divergence is real, not a no-op the gate never saw.
+    let read_file = idiomatic
+        .catalogue()
+        .tools
+        .iter()
+        .find(|entry| entry.tool == "read_file")
+        .expect("read_file is catalogued");
+    assert_eq!(
+        read_file.signatures.len(),
+        2,
+        "the overload group must actually carry two shapes"
+    );
+    assert_eq!(read_file.signatures[0].parameters.len(), 1);
+    assert_eq!(read_file.signatures[1].parameters.len(), 2);
 }
 
 /// **A surface that agrees with the reference arm agrees with it whichever arm is first.**

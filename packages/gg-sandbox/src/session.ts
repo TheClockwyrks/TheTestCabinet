@@ -57,6 +57,8 @@ function requireString(fn: string, expected: string, value: unknown): asserts va
  * It does not stop your program — whatever follows it still runs — so call it last, once the tools
  * have confirmed the work is really done. If your program then fails, the ending is cancelled and you
  * get another turn.
+ *
+ * @param summary What you did, in a sentence or two.
  */
 export function finish(summary: string): void {
   requireString(FINISH, "a summary string", summary);
@@ -78,6 +80,9 @@ export function approve(): void {
  * Reject the work you are reviewing, listing every change that must be made before it can be
  * accepted. Each item says what is wrong and what to change; the list may not be empty. This ends
  * your session, and does not stop your program.
+ *
+ * @param items Every change that must be made before the work can be accepted, one per entry:
+ * what is wrong, and what to change. It may not be empty.
  */
 export function requestChanges(items: string[]): void {
   if (!Array.isArray(items)) {

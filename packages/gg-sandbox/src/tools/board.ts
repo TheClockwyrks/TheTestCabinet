@@ -50,6 +50,12 @@ function witStatus(
  * gives issues `AUTH-1`, `AUTH-2`, and so on. Returns that id and the board budget. Throws
  * `invalid-argument` when the prefix is not 3-6 letters, and `conflict` when another epic already
  * holds it.
+ *
+ * @param epic The epic to create.
+ * @param epic.prefix 3-6 letters naming it. Upper-cased, it becomes the epic's id and the stem its
+ * issues are numbered from.
+ * @param epic.title A short line naming the body of work.
+ * @param epic.description What the epic covers, for a reader who has not seen its issues.
  */
 export function createEpic(epic: {
   prefix: string;
@@ -70,6 +76,21 @@ export function createEpic(epic: {
  * `blockedBy` defaults to none; `epicId` groups the issue under an existing epic. Throws
  * `invalid-argument` when `agent` or a reviewer is not yours to assign, and `conflict` on a blocker
  * edge that would close a cycle.
+ *
+ * @param issue The issue to create.
+ * @param issue.title A short line naming the work.
+ * @param issue.description What the work is. Written for a child agent with no other context.
+ * @param issue.inScope What the issue covers, precisely. Part of the brief a child agent is given.
+ * @param issue.outOfScope What the issue deliberately does not cover, so the work stops where you
+ * meant it to.
+ * @param issue.completionCriteria What must be true for the issue to be done. It is what a reviewer
+ * checks the work against.
+ * @param issue.blockedBy The ids of every issue that must be done before this one. Defaults to none.
+ * @param issue.epicId The id of an existing epic to group it under. Omit it to leave it ungrouped
+ * and numbered under `ISSUE`.
+ * @param issue.agent The agent the issue is dispatched to. It must be one you may spawn.
+ * @param issue.reviewers The agents that must approve the work, from that same set. Required when
+ * this run's reviewers feature is on.
  */
 export function createIssue(issue: {
   title: string;
@@ -101,6 +122,16 @@ export function createIssue(issue: {
  * Revise an issue; supply at least one field. An omitted field is left alone, `description: null`
  * clears the description, and `epicId: null` detaches the issue from its epic. Throws `not-found`
  * for an unknown id.
+ *
+ * @param id The issue to revise.
+ * @param patch The fields to change. Supply at least one; an omitted field is left alone.
+ * @param patch.title The title to replace the old one with.
+ * @param patch.description The description to replace the old one with, or `null` to clear it.
+ * @param patch.inScope The scope statement to replace the old one with.
+ * @param patch.outOfScope The non-scope statement to replace the old one with.
+ * @param patch.completionCriteria The completion criteria to replace the old ones with.
+ * @param patch.status Where the issue now stands.
+ * @param patch.epicId The epic to regroup it under, or `null` to detach it from the one it has.
  */
 export function updateIssue(
   id: string,
@@ -130,6 +161,10 @@ export function updateIssue(
 /**
  * Replace an issue's whole blocker set; an empty array clears every blocker. Throws `not-found` for
  * an unknown id and `conflict` when an edge would close a cycle.
+ *
+ * @param id The issue whose blockers to replace.
+ * @param blockedBy The ids of every issue that must now be done before it. An empty array clears
+ * them all.
  */
 export function setIssueBlockedBy(id: string, blockedBy: string[]): void {
   call(() =>
@@ -143,6 +178,8 @@ export function setIssueBlockedBy(id: string, blockedBy: string[]): void {
 /**
  * Remove an epic, keeping its issues and ungrouping them, and return the board budget. Throws
  * `not-found` for an unknown id.
+ *
+ * @param id The epic to remove.
  */
 export function removeEpic(id: string): BoardUsage {
   return call(() => raw.removeEpic(id));
@@ -151,6 +188,8 @@ export function removeEpic(id: string): BoardUsage {
 /**
  * Remove an issue and every blocker edge pointing at it, and return the board budget. Throws
  * `not-found` for an unknown id.
+ *
+ * @param id The issue to remove.
  */
 export function removeIssue(id: string): BoardUsage {
   return call(() => raw.removeIssue(id));
@@ -164,6 +203,8 @@ export function removeIssue(id: string): BoardUsage {
  * its assigned agent could not complete it), then resumes on the next turn. Use it to sequence your
  * next turn's work behind an issue you depend on. You cannot wait on the issue you were assigned to
  * implement. Throws `not-found` for an unknown id.
+ *
+ * @param id The issue to wait on. It may not be the issue you were assigned.
  */
 export function waitForIssue(id: string): string {
   return call(() => raw.waitForIssue(id));

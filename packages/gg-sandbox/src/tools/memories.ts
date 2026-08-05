@@ -18,10 +18,28 @@ import type { MemoryHit, MemoryUsage } from "../types.js";
 
 /** One memory as a program writes it, with the two optional code halves every write accepts. */
 interface MemoryWrite {
+  /**
+   * The memory's slug: letters, digits, `-`, `_` and `.`. It is what every other memory call takes,
+   * and no two memories may share one.
+   */
   name: string;
+  /**
+   * A one-line description of what the memory holds. Where the run keeps a memory index this is the
+   * memory's line in it, and so all you see of the memory until you read it.
+   */
   description: string;
+  /** The memory's contents. */
   body: string;
+  /**
+   * A TypeScript module whose exports are bound at `lib.<name>` for the rest of your session, so a
+   * helper you get right once you never write again. Omit it, or pass an empty string, for a memory
+   * that is only prose. It costs you no context window and counts against no body limit.
+   */
   code?: string;
+  /**
+   * A script gg runs the first time the memory comes into use; whatever it shows you arrives on
+   * your next turn. Omit it, or pass an empty string, for a memory that runs nothing.
+   */
   onUse?: string;
 }
 
@@ -56,6 +74,8 @@ function written(memory: MemoryWrite): raw.MemoryInput {
  * again; `onUse` is a script gg runs the first time the memory comes into use, whose views reach you
  * on your next turn. Neither is context — they cost you no window, are never shown back to you, and
  * count against no body limit — and both are bounded on their own.
+ *
+ * @param memory The memory to record. Its name must not already be taken.
  */
 export function writeMemory(memory: MemoryWrite): MemoryUsage {
   return call(() => raw.writeMemory(written(memory)));
@@ -65,6 +85,9 @@ export function writeMemory(memory: MemoryWrite): MemoryUsage {
  * Replace an existing memory's description and body, keyed on its `name`, and return the memory
  * budget. Its `code` and `onUse` are replaced too — omitting them clears them. Throws `not-found`
  * when no memory has that name.
+ *
+ * @param memory The replacement, keyed on its `name`. Every other field replaces what the existing
+ * memory held, and an omitted one clears it.
  */
 export function updateMemory(memory: MemoryWrite): MemoryUsage {
   return call(() => raw.updateMemory(written(memory)));
@@ -77,6 +100,9 @@ export function updateMemory(memory: MemoryWrite): MemoryUsage {
  * contents. It may also carry `code` (a module bound at `lib.<name>` once you read the memory) and
  * `onUse` (a script run on that first read). Throws `conflict` on a duplicate slug and
  * `limit-exceeded` when the contents, or the index entry, would breach a limit.
+ *
+ * @param memory The memory to record. Its `body` stays out of your context window until you read
+ * it, and its name must not already be taken.
  */
 export function createMemory(memory: MemoryWrite): MemoryUsage {
   return call(() => raw.createMemory(written(memory)));
@@ -87,6 +113,8 @@ export function createMemory(memory: MemoryWrite): MemoryUsage {
  * the memory carries code, reading it also loads that code: the reply names the `lib.<key>` it is
  * bound at, and it stays bound for the rest of your session. Throws `not-found` when no memory has
  * that slug.
+ *
+ * @param name The memory's slug.
  */
 export function readMemory(name: string): string {
   return call(() => raw.readMemory(name));
@@ -98,6 +126,11 @@ export function readMemory(name: string): string {
  * you are adding. Throws `not-found` when the text does not appear, `conflict` when it appears more
  * than once, `limit-exceeded` when the result would be too long, and `invalid-argument` when the
  * edit would leave the memory empty — delete it instead.
+ *
+ * @param edit The revision to make.
+ * @param edit.name The slug of the memory to revise.
+ * @param edit.search The exact text to find in its contents. It must appear exactly once.
+ * @param edit.replace The text to put in its place.
  */
 export function editMemory(edit: {
   name: string;
@@ -113,6 +146,9 @@ export function editMemory(edit: {
  * memory mentions and then by how often. Pass several specific words rather than one sentence, then
  * `readMemory` the hits worth having in full. Throws `invalid-argument` when every keyword is empty;
  * a search that matches nothing is an empty array.
+ *
+ * @param keywords The words to look for. Several specific words rank better than one sentence,
+ * because a memory is ranked by how many of them it mentions.
  */
 export function searchMemories(keywords: string[]): MemoryHit[] {
   return call(() => raw.searchMemories(keywords));
@@ -121,6 +157,8 @@ export function searchMemories(keywords: string[]): MemoryHit[] {
 /**
  * Evict a memory by name, freeing room in the budget, and return what is left in use. Throws
  * `not-found` when no memory has that name.
+ *
+ * @param name The memory's slug.
  */
 export function deleteMemory(name: string): MemoryUsage {
   return call(() => raw.deleteMemory(name));

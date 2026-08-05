@@ -51,7 +51,21 @@ const REFERENCE: GgReference = {
       name: "readFile",
       category: "gg-filesystem",
       summary: "Read a file.",
-      signature: "readFile(path: string): string",
+      signatures: [
+        {
+          signature: "readFile(path: string): string",
+          parameters: [
+            {
+              name: "path",
+              type: "string",
+              optional: false,
+              passing: "positional",
+              doc: "The file to read.",
+              fields: [],
+            },
+          ],
+        },
+      ],
       doc: "Read a file and return its contents.",
       gate: "read_file",
       library: false,

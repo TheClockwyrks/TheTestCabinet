@@ -50,6 +50,60 @@ export interface CatalogueEntry {
   module: string;
 }
 
+// The API objects a program's surface is divided into, each declared with the one sentence a model
+// is told about it.
+//
+// The name is the identifier a program calls through; the doc comment above it is the object's
+// MODEL-FACING description, reflected into the catalogue's `objects` section by
+// `tools/signatures.mjs` and rendered into the system prompt's API list. It is written HERE, on the
+// declaration, for the same reason every function's description is written on the function: a
+// description kept in a table somewhere else is a description that drifts from the thing it
+// describes, and nothing would catch it.
+//
+// They are constants rather than string literals inside `OBJECT_FOR_MODULE` so that the declaration
+// a doc comment hangs on and the value the catalogue is keyed by are the same thing. The sentences
+// are lower-case fragments because of where they land: `- \`fs\` — read, write, and edit workspace
+// files`.
+
+/** read, write, and edit workspace files */
+export const OBJECT_FS = "fs";
+
+/** run shell commands in the workspace */
+export const OBJECT_SYSTEM = "system";
+
+/** the epic/issue board — decompose work into dispatchable issues */
+export const OBJECT_PROJECT = "project";
+
+/** your task list */
+export const OBJECT_TASKS = "tasks";
+
+/** durable memories that survive context compaction */
+export const OBJECT_MEMORY = "memory";
+
+/**
+ * show yourself a file, a value, or a function's documentation — the only way material enters your
+ * context
+ */
+export const OBJECT_VIEW = "view";
+
+/** manage your own context window */
+export const OBJECT_CONTEXT = "context";
+
+/** delegate work to child agents */
+export const OBJECT_AGENTS = "agents";
+
+/** read authored skills */
+export const OBJECT_SKILLS = "skills";
+
+/** fetch a program you already ran, and hand a patched copy back to be run */
+export const OBJECT_PROGRAMS = "programs";
+
+/** end your session */
+export const OBJECT_HARNESS = "harness";
+
+/** return your verdict on the work you are reviewing */
+export const OBJECT_REVIEW = "review";
+
 /**
  * The **API object** each module's functions are grouped under in a program's scope.
  *
@@ -75,18 +129,46 @@ export interface CatalogueEntry {
  * the mirror reason: it *is* a collection, and `programs.get(12)` reads as reaching into one.
  */
 export const OBJECT_FOR_MODULE: Readonly<Record<string, string>> = {
-  shell: "system",
-  files: "fs",
-  skills: "skills",
-  memories: "memory",
-  tasks: "tasks",
-  board: "project",
-  context: "context",
-  delegation: "agents",
-  session: "harness",
-  views: "view",
-  programs: "programs",
+  shell: OBJECT_SYSTEM,
+  files: OBJECT_FS,
+  skills: OBJECT_SKILLS,
+  memories: OBJECT_MEMORY,
+  tasks: OBJECT_TASKS,
+  board: OBJECT_PROJECT,
+  context: OBJECT_CONTEXT,
+  delegation: OBJECT_AGENTS,
+  session: OBJECT_HARNESS,
+  views: OBJECT_VIEW,
+  programs: OBJECT_PROGRAMS,
 };
+
+/**
+ * Every API object, in the order a program's surface is listed in.
+ *
+ * The order is model-facing: it is the sequence the system prompt's API list renders in, and the
+ * sequence the run's [agent surface](https://docs.testcabinet.ai/gg/agent-surface/) reports. It runs
+ * from the objects almost every run has (`fs`, `system`) to the ones a particular shape of agent has
+ * (`programs`, `harness`, `review`), because a model reads a list from the top.
+ *
+ * `tools/signatures.mjs` walks it to emit the catalogue's `objects` section, taking each object's
+ * description from the doc comment on the constant above rather than from a table of prose — so the
+ * sentence a model reads about `fs` is written where `fs` is declared, and there is nowhere else for
+ * a second copy of it to live.
+ */
+export const OBJECT_ORDER: readonly string[] = [
+  OBJECT_FS,
+  OBJECT_SYSTEM,
+  OBJECT_PROJECT,
+  OBJECT_TASKS,
+  OBJECT_MEMORY,
+  OBJECT_VIEW,
+  OBJECT_CONTEXT,
+  OBJECT_AGENTS,
+  OBJECT_SKILLS,
+  OBJECT_PROGRAMS,
+  OBJECT_HARNESS,
+  OBJECT_REVIEW,
+];
 
 /**
  * A helper bound alongside a tool: not a tool itself, so it can never perturb the
@@ -192,9 +274,9 @@ export interface SessionEntry {
  * so the prompt can teach a model the ending it is actually held to.
  */
 export const SESSION_ENTRIES: readonly SessionEntry[] = [
-  { key: "finish", js: "finish", object: "harness", ending: "standard" },
-  { key: "approve", js: "approve", object: "review", ending: "review" },
-  { key: "request_changes", js: "requestChanges", object: "review", ending: "review" },
+  { key: "finish", js: "finish", object: OBJECT_HARNESS, ending: "standard" },
+  { key: "approve", js: "approve", object: OBJECT_REVIEW, ending: "review" },
+  { key: "request_changes", js: "requestChanges", object: OBJECT_REVIEW, ending: "review" },
 ];
 
 /** The module every {@link SESSION_ENTRIES} function is exported by. */

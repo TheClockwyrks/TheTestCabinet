@@ -11,7 +11,7 @@ import {
   useFsFolders,
 } from "../../runs/gg/GgFsExplorer";
 import { fsIndent } from "../../runs/gg/ggFsTree";
-import { CodeBlock, Section, Verbatim } from "./GgReferenceParts";
+import { ApiParameterList, Section, Verbatim } from "./GgReferenceParts";
 import { useEntrySelection, useRevealSelection } from "./referenceSelection";
 import panels from "../../runs/gg/GgPanels.module.scss";
 import styles from "./GgReference.module.scss";
@@ -194,9 +194,28 @@ function FunctionDetail({
           </div>
         </header>
 
-        {/* Wrapped: a signature is one logical line, so folding it costs nothing and
+        {/* One block per shape the SDK offers the function in, each with the arguments
+            that shape takes. There is usually exactly one — TypeScript spells an optional
+            argument with `?` — but a language that has to spell it as an overload pair
+            carries two, and showing only the first would tell a reader half of what a
+            program may write.
+
+            Wrapped: a signature is one logical line, so folding it costs nothing and
             scrolling it sideways would hide the return type. */}
-        <CodeBlock label="Signature" text={fn.signature} wrap />
+        <Section
+          label={fn.signatures.length > 1 ? "Signatures" : "Signature"}
+        >
+          <div className={styles.typeList}>
+            {fn.signatures.map((entry) => (
+              <div key={entry.signature} className={styles.typeList}>
+                <pre className={`${styles.code} ${styles.codeWrap}`}>
+                  {entry.signature}
+                </pre>
+                <ApiParameterList parameters={entry.parameters} />
+              </div>
+            ))}
+          </div>
+        </Section>
         <Verbatim label="Documentation" text={fn.doc} />
 
         {fn.types.length > 0 && (
@@ -222,16 +241,43 @@ function FunctionDetail({
                 // practice. The branch is still the rule rather than a `wrap` on the
                 // block, because the day one declaration arrives with a body is not a day
                 // anyone will remember this line exists.
-                <pre
-                  key={type.name}
-                  className={
-                    type.declaration.includes("\n")
-                      ? styles.code
-                      : `${styles.code} ${styles.codeWrap}`
-                  }
-                >
-                  {type.declaration}
-                </pre>
+                <div key={type.name} className={styles.typeList}>
+                  <pre
+                    className={
+                      type.declaration.includes("\n")
+                        ? styles.code
+                        : `${styles.code} ${styles.codeWrap}`
+                    }
+                  >
+                    {type.declaration}
+                  </pre>
+                  {/* What the shape MEANS, which the declaration cannot say. A
+                      `shown: boolean` on a `FileRead` is not a thing a reader can infer
+                      from its name, and neither is a model. */}
+                  <p className={styles.note}>{type.doc}</p>
+                  {type.members.length > 0 && (
+                    <ul className={styles.params}>
+                      {type.members.map((member, index) => (
+                        <li
+                          key={`${member.name}-${index}`}
+                          className={styles.param}
+                        >
+                          <span className={styles.paramHead}>
+                            <span className={styles.paramName}>
+                              {member.name}
+                            </span>
+                            {member.type && (
+                              <span className={styles.paramType}>
+                                {member.type}
+                              </span>
+                            )}
+                          </span>
+                          <p className={styles.paramDesc}>{member.doc}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               ))}
             </div>
           </Section>

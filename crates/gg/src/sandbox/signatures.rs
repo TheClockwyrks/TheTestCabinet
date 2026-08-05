@@ -2,18 +2,31 @@
 //! the guest actually exports.
 //!
 //! When a model asks for a function's documentation — `view.openDocsView(fs.readFile)`, serviced by the
-//! [docs carve-out](crate::docs) — gg answers with a signature in the run's own program language, a
-//! sentence of documentation, and the declarations of the types the signature references.
+//! [docs carve-out](crate::docs) — gg answers in the run's own program language with every shape the
+//! function may be called in, a line saying what to put in each argument, a sentence of
+//! documentation, and the types the signature references with a line per member.
 //! Hand-writing that would guarantee it drifts — a renamed parameter, an options object that became
 //! positional, a tool whose behaviour changed — and documentation that describes a signature the
 //! sandbox does not have is worse than none, because the model has no way to discover the lie.
 //!
 //! So the catalogue is generated from the guest SDK's own emitted `.d.ts` and its JSDoc, committed
 //! beside the component **by the same build**, and read from here through
-//! [`catalogue_functions`] and [`type_declaration`]. The documentation therefore cannot be more
-//! current than the component that implements it, which is the correct failure direction: a stale
-//! catalogue describes a sandbox that once existed, while a hand-written one describes a sandbox that
-//! never did.
+//! [`catalogue_functions`], [`catalogue_objects`] and [`type_declaration`]. The documentation
+//! therefore cannot be more current than the component that implements it, which is the correct
+//! failure direction: a stale catalogue describes a sandbox that once existed, while a hand-written
+//! one describes a sandbox that never did.
+//!
+//! # Every word of it is written on a declaration
+//!
+//! Not just the sentence under a function: the description of each **argument**, of each **field**
+//! of a structured argument, of each **type** and each of its **members**, and of each **API
+//! object**, is reflected out of the doc comment on the thing it describes. A description authored
+//! anywhere else — a table, a prompt template, a `const` in this crate — is one that drifts from
+//! its subject with nothing to catch it, which is the same failure hand-writing a signature is. The
+//! guest's generator refuses to emit a catalogue with a blank in it, and the
+//! [agreement gate](super::language::agreement) refuses one at load, so the rule is enforced twice:
+//! once in the language that can see its own AST, and once over the emitted JSON, where it is the
+//! same check for every language there will ever be.
 //!
 //! # One schema, one catalogue per language
 //!
@@ -58,6 +71,14 @@ pub(crate) struct SignatureCatalogue {
         reason = "provenance for a human reading the committed artifact, not something gg renders"
     )]
     pub generated_from: String,
+    /// The **API objects** a program's surface is divided into, in the order it is presented in,
+    /// each with the one sentence a model is introduced to it by.
+    ///
+    /// Ordered rather than keyed, because the order is model-facing: it is the sequence the system
+    /// prompt's API list renders in and the sequence the run's agent surface reports. Every object a
+    /// catalogued function hangs off appears here exactly once, and nothing else does — an object
+    /// with no functions would be an object a model is introduced to and never given.
+    pub objects: Vec<ObjectDoc>,
     /// The model-facing functions that are not gg tools: the calls that end a session, one group per
     /// [role](crate::ending::EndingRole).
     ///
@@ -104,8 +125,9 @@ pub(crate) struct ToolSignature {
     /// The API object this function is grouped under in a program's scope (`fs`) — what
     /// `object.list()` enumerates and what `view.openDocsView` routes by.
     pub object: String,
-    /// The full signature, as this language's SDK declares it.
-    pub signature: String,
+    /// How this function may be called, one entry per shape its language offers. See
+    /// [`SignatureEntry`].
+    pub signatures: Vec<SignatureEntry>,
     /// The SDK's own one-paragraph documentation for the function.
     pub doc: String,
     /// The type names this signature references, so the prompt can declare only the types the
@@ -131,10 +153,11 @@ pub(crate) struct SessionSignature {
     pub object: String,
     /// The [role](crate::ending::EndingRole) whose programs bind it: `standard`, `review`, `judge`.
     pub ending: String,
-    /// The full signature, as this language's SDK declares it — `finish(summary: string): void`.
-    /// The `void` is load-bearing prompt text: it tells a model at a glance that the call returns
-    /// like any other, so what follows it still runs.
-    pub signature: String,
+    /// How this function may be called, one entry per shape its language offers — for TypeScript
+    /// `finish(summary: string): void`, whose `void` is load-bearing prompt text: it tells a model
+    /// at a glance that the call returns like any other, so what follows it still runs. See
+    /// [`SignatureEntry`].
+    pub signatures: Vec<SignatureEntry>,
     /// The SDK's own documentation for it, which is what the system prompt renders.
     pub doc: String,
     /// The type names this signature references, folded into the prompt's declarations exactly as a
@@ -162,8 +185,9 @@ pub(crate) struct ViewSignature {
     pub name: String,
     /// The API object it is grouped under — `view`, for all four.
     pub object: String,
-    /// The full signature, as this language's SDK declares it.
-    pub signature: String,
+    /// How this function may be called, one entry per shape its language offers. See
+    /// [`SignatureEntry`].
+    pub signatures: Vec<SignatureEntry>,
     /// The SDK's own documentation for it, which is what a doc lookup renders.
     pub doc: String,
     /// The type names this signature references, folded into the prompt's declarations exactly as a
@@ -185,8 +209,9 @@ pub(crate) struct ProgramSignature {
     pub name: String,
     /// The API object it is grouped under — `programs`, for all three.
     pub object: String,
-    /// The full signature, as this language's SDK declares it.
-    pub signature: String,
+    /// How this function may be called, one entry per shape its language offers. See
+    /// [`SignatureEntry`].
+    pub signatures: Vec<SignatureEntry>,
     /// The SDK's own documentation for it, which is what a doc lookup renders.
     pub doc: String,
     /// The type names this signature references, folded into the prompt's declarations exactly as a
@@ -206,8 +231,9 @@ pub(crate) struct HelperSignature {
     pub name: String,
     /// The API object this helper is grouped under — the same object as the tool it wraps (`fs`).
     pub object: String,
-    /// The full signature, as this language's SDK declares it.
-    pub signature: String,
+    /// How this function may be called, one entry per shape its language offers. See
+    /// [`SignatureEntry`].
+    pub signatures: Vec<SignatureEntry>,
     /// The SDK's own documentation.
     pub doc: String,
     /// The type names this signature references.
@@ -217,11 +243,112 @@ pub(crate) struct HelperSignature {
 /// One type declaration a signature refers to.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct TypeDeclaration {
+pub struct TypeDeclaration {
     /// The type's name, as it appears in a signature.
     pub name: String,
     /// The declaration, as the SDK wrote it.
     pub declaration: String,
+    /// The SDK's own documentation for the type: what it is, and why it has the shape it has.
+    ///
+    /// A declaration says what fields a record has and nothing about what any of them *means*, which
+    /// for a model is the half that decides whether it uses the value correctly.
+    pub doc: String,
+    /// One entry per member, each with the documentation written on it.
+    ///
+    /// Three shapes reach a model through this one field, because all three are things a model has
+    /// to read a value of: a record's **properties**; the **arms** of a union of literals, each named
+    /// by the literal itself and carrying no type of its own because the arm *is* the value; and the
+    /// properties of every arm of a union of records, in order, so a discriminant appears once per
+    /// arm against the literal it is fixed to.
+    pub members: Vec<TypeMember>,
+}
+
+/// One member of a [type declaration](TypeDeclaration).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TypeMember {
+    /// The member's name as a program reads it (`totalLines`), or the literal itself (`"pending"`)
+    /// for the arm of a union.
+    pub name: String,
+    /// The member's type, as this language's SDK declares it; `None` for a union arm, which is a
+    /// value rather than a field and so has no type beside itself.
+    pub r#type: Option<String>,
+    /// The SDK's own documentation for the member.
+    pub doc: String,
+}
+
+/// One **API object**'s description: the sentence a model is introduced to it by.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObjectDoc {
+    /// The object name a program calls through (`fs`).
+    pub object: String,
+    /// What it is for, in the one line the system prompt's API list renders.
+    pub doc: String,
+}
+
+/// **One way a function may be called** — the unit that lets two languages offer the same function
+/// in the shape each of them writes it in.
+///
+/// A catalogue entry carries an array of these rather than a single signature, and that is the whole
+/// mechanism by which per-language idiom is expressed without per-language *identity*. An optional
+/// argument is a Java **overload pair**, a Kotlin **default**, a Python **keyword argument** and a
+/// TypeScript `?` — four shapes of one capability. Java's arrives as one entry with two signatures,
+/// each with its own [`parameters`](Self::parameters); the other three arrive as one entry with one.
+/// Nothing downstream compares the count, because the count is spelling.
+///
+/// What is *not* free to differ is the identity around it: the entry's key, its object, its gate.
+/// See the [agreement gate](super::language::agreement) for the line between the two.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SignatureEntry {
+    /// The signature as this language's SDK declares it, beginning with the name a program calls.
+    pub signature: String,
+    /// Every argument this shape takes, in the order it takes them.
+    pub parameters: Vec<Parameter>,
+}
+
+/// One argument a [signature](SignatureEntry) takes, or one field of a structured argument.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Parameter {
+    /// The name the signature declares it under.
+    pub name: String,
+    /// Its type, as this language's SDK writes it.
+    pub r#type: String,
+    /// Whether the call is legal without it.
+    pub optional: bool,
+    /// How it is passed. See [`ParameterKind`].
+    pub kind: ParameterKind,
+    /// The value it takes when it is left out, for a language that says so in the signature; `None`
+    /// where the language has no such notion or the argument is required.
+    pub default: Option<String>,
+    /// The SDK's own documentation for it — what to put here, and what happens if you do not.
+    pub doc: String,
+    /// The fields of a **structured** argument written inline at the call site, each documented in
+    /// its own right.
+    ///
+    /// Empty for an argument typed by *name*: that type is catalogued in [`SignatureCatalogue::types`]
+    /// and its [members](TypeMember) carry its documentation, so filling both would be two copies of
+    /// one sentence with nothing keeping them equal.
+    pub fields: Vec<Parameter>,
+}
+
+/// How an argument is passed — the one axis of calling convention that changes what a model must
+/// *write*.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ParameterKind {
+    /// Passed by position, as TypeScript, Java, Rust and Swift pass every argument.
+    Positional,
+    /// Passed by name — Python's keyword arguments, Kotlin's named ones — so the call site writes
+    /// the parameter's name as well as its value.
+    #[allow(
+        dead_code,
+        reason = "no registered language passes arguments by name yet; the schema carries the \
+                  distinction so the first one that does needs no schema change"
+    )]
+    Keyword,
 }
 
 impl SignatureCatalogue {
@@ -285,8 +412,13 @@ pub struct CatalogueFunction {
     pub library: bool,
     /// The one-line summary `object.list()` shows — the first sentence of the documentation.
     pub summary: &'static str,
-    /// The full signature, as this language's SDK declares it.
-    pub signature: &'static str,
+    /// How it may be called: one [entry](SignatureEntry) per shape this language offers, each with
+    /// its own parameters. Never empty.
+    ///
+    /// It is an array because the number of shapes is *spelling*: a language that expresses an
+    /// optional argument as an overload pair carries two here where one expressing it as a default
+    /// carries one, and neither is a difference in what the function does.
+    pub signatures: &'static [SignatureEntry],
     /// The SDK's own paragraph of documentation.
     pub doc: &'static str,
     /// The type names this function's signature refers to, transitively closed.
@@ -335,7 +467,7 @@ pub fn catalogue_functions(language: &'static dyn ProgramLanguage) -> Vec<Catalo
             ending: Some(session.ending.as_str()),
             library: false,
             summary: first_sentence(&session.doc),
-            signature: session.signature.as_str(),
+            signatures: session.signatures.as_slice(),
             doc: session.doc.as_str(),
             types: session.types.as_slice(),
         });
@@ -352,7 +484,7 @@ pub fn catalogue_functions(language: &'static dyn ProgramLanguage) -> Vec<Catalo
             ending: None,
             library: false,
             summary: first_sentence(&view.doc),
-            signature: view.signature.as_str(),
+            signatures: view.signatures.as_slice(),
             doc: view.doc.as_str(),
             types: view.types.as_slice(),
         });
@@ -368,7 +500,7 @@ pub fn catalogue_functions(language: &'static dyn ProgramLanguage) -> Vec<Catalo
             ending: None,
             library: true,
             summary: first_sentence(&program.doc),
-            signature: program.signature.as_str(),
+            signatures: program.signatures.as_slice(),
             doc: program.doc.as_str(),
             types: program.types.as_slice(),
         });
@@ -382,7 +514,7 @@ pub fn catalogue_functions(language: &'static dyn ProgramLanguage) -> Vec<Catalo
             ending: None,
             library: false,
             summary: first_sentence(&tool.doc),
-            signature: tool.signature.as_str(),
+            signatures: tool.signatures.as_slice(),
             doc: tool.doc.as_str(),
             types: tool.types.as_slice(),
         });
@@ -396,7 +528,7 @@ pub fn catalogue_functions(language: &'static dyn ProgramLanguage) -> Vec<Catalo
             ending: None,
             library: false,
             summary: first_sentence(&helper.doc),
-            signature: helper.signature.as_str(),
+            signatures: helper.signatures.as_slice(),
             doc: helper.doc.as_str(),
             types: helper.types.as_slice(),
         });
@@ -422,18 +554,28 @@ pub(crate) fn spelling(
         .map(|function| function.name)
 }
 
-/// The declaration of one catalogued type, by name, as `language`'s SDK writes it — what a doc
-/// lookup appends for a referenced type the session has not already been shown.
+/// One catalogued type, by name, as `language`'s SDK writes it — the declaration, the paragraph
+/// explaining it, and a line per member. What a doc lookup appends for a referenced type the session
+/// has not already been shown.
 pub fn type_declaration(
     language: &'static dyn ProgramLanguage,
     name: &str,
-) -> Option<&'static str> {
+) -> Option<&'static TypeDeclaration> {
     language
         .catalogue()
         .types
         .iter()
         .find(|declaration| declaration.name == name)
-        .map(|declaration| declaration.declaration.as_str())
+}
+
+/// Every **API object** `language`'s catalogue describes, in the order a program's surface is
+/// presented in.
+///
+/// The order is the catalogue's, not a sort: it is what the system prompt's API list and the run's
+/// [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) both render, so re-ordering
+/// it here would change what a model reads.
+pub fn catalogue_objects(language: &'static dyn ProgramLanguage) -> &'static [ObjectDoc] {
+    language.catalogue().objects.as_slice()
 }
 
 #[cfg(test)]

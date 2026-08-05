@@ -8505,33 +8505,12 @@ fn api_surface(
     library: bool,
     program_language: GgProgramLanguage,
 ) -> Vec<GgAgentApi> {
-    const OBJECTS: &[(&str, &str)] = &[
-        ("fs", "read, write, and edit workspace files"),
-        ("system", "run shell commands in the workspace"),
-        (
-            "project",
-            "the epic/issue board — decompose work into dispatchable issues",
-        ),
-        ("tasks", "your task list"),
-        ("memory", "durable memories that survive context compaction"),
-        (
-            "view",
-            "show yourself a file, a value, or a function's documentation — the only way material \
-             enters your context",
-        ),
-        ("context", "manage your own context window"),
-        ("agents", "delegate work to child agents"),
-        ("skills", "read authored skills"),
-        (
-            "programs",
-            "fetch a program you already ran, and hand a patched copy back to be run",
-        ),
-        ("harness", "end your session"),
-        (
-            "review",
-            "return your verdict on the work you are reviewing",
-        ),
-    ];
+    // The objects and the sentences a model meets them by are the CATALOGUE's, in the catalogue's
+    // order — reflected from the doc comment on each object's declaration in the guest SDK, exactly
+    // as every function's description is. A table here would be a second copy of prose the model
+    // also reads through `object.list()` and through the reference, and nothing would keep the
+    // copies equal.
+    let objects = crate::sandbox::catalogue_objects(crate::sandbox::language(program_language));
     let enabled: BTreeSet<String> = scope_tools(registry).into_iter().collect();
     let ending = match role {
         EndingRole::Standard => "standard",
@@ -8561,9 +8540,10 @@ fn api_surface(
                 });
         }
     }
-    OBJECTS
+    objects
         .iter()
-        .filter_map(|(object, description)| {
+        .filter_map(|described| {
+            let object = described.object.as_str();
             bound.remove(object).map(|mut functions| {
                 // The catalogue above is reflected from the SDK's exported signatures, and `list`
                 // is not one of them: it is the [documentation carve-out](crate::docs)'s own meta
@@ -8577,8 +8557,8 @@ fn api_surface(
                     key: crate::docs::LIST_FUNCTION.to_string(),
                 });
                 GgAgentApi {
-                    object: (*object).to_string(),
-                    description: (*description).to_string(),
+                    object: object.to_string(),
+                    description: described.doc.clone(),
                     functions,
                 }
             })

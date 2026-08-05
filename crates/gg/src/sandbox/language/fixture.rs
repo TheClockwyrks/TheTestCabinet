@@ -277,10 +277,18 @@ pub(crate) fn fixture_languages() -> impl Iterator<Item = &'static dyn ProgramLa
 
 /// TypeScript's catalogue with every spelling converted to snake_case and `edit` applied, as JSON.
 ///
-/// Only two fields move: an entry's `name`, and the head of its `signature`, which by the
+/// Only two fields move: an entry's `name`, and the head of each of its `signatures`, which by the
 /// catalogue's own rule begins with that name. Identity — `key`, `tool`, `object`, `requires`,
 /// `ending` — is copied verbatim, because identity is precisely what the agreement gate says two
 /// languages may not differ on, and a fixture that differed on it would make the gate vacuous.
+///
+/// The *shape* of the call is copied verbatim too — parameter names, their descriptions, how many
+/// signatures an entry carries — even though every one of those is spelling the fixture would be
+/// free to change. Deriving means never rotting, and a fixture that also renamed arguments would
+/// have to re-derive the descriptions to keep them honest. The divergence a *real* second language
+/// brings is exercised by the [agreement gate's own tests](super::agreement::tests), which build a
+/// catalogue whose arguments are renamed and whose optional argument is an overload pair, and assert
+/// that it still agrees.
 ///
 /// The root `language` field is the one thing that cannot be re-spelled: it is the wire enum, and
 /// the fixture has no value in it. That is why catalogue provenance is asserted over *registered*
@@ -298,14 +306,19 @@ fn respelled_catalogue(edit: impl FnOnce(&mut Value)) -> String {
                 .expect("every entry names the function a program calls")
                 .to_string();
             let respelled = snake_case(&name);
-            let signature = entry["signature"]
-                .as_str()
-                .expect("every entry carries a signature")
-                .to_string();
-            entry["signature"] = json!(match signature.strip_prefix(name.as_str()) {
-                Some(rest) => format!("{respelled}{rest}"),
-                None => signature,
-            });
+            let signatures = entry["signatures"]
+                .as_array_mut()
+                .expect("every entry carries at least one signature");
+            for shape in signatures {
+                let signature = shape["signature"]
+                    .as_str()
+                    .expect("every signature is a string")
+                    .to_string();
+                shape["signature"] = json!(match signature.strip_prefix(name.as_str()) {
+                    Some(rest) => format!("{respelled}{rest}"),
+                    None => signature,
+                });
+            }
             entry["name"] = json!(respelled);
         }
     }

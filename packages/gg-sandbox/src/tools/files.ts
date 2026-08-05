@@ -40,6 +40,13 @@ export function asFileRead(read: FileReadRaw): FileRead {
  * it to YOU: the pixels reach neither your program nor your context window, so a file you only
  * `readFile` is a file you have not looked at. `view.openFile` is the one way to actually see a
  * picture.
+ *
+ * @param path The file to read. Relative to your workspace, or absolute for anything else in
+ * this container.
+ * @param options The window of lines to read; omit it to read the whole file.
+ * @param options.offset The 1-based line to start at. Honoured only under a capped read policy.
+ * @param options.limit How many lines to return from `offset`. Honoured only under a capped read
+ * policy.
  */
 export function readFile(
   path: string,
@@ -56,6 +63,10 @@ export function readFile(
  * file, and return the number of bytes written. Writing is the expensive direction of the sandbox —
  * rewriting more than a few dozen large files in one program exhausts its fuel budget, so split a
  * large rewrite across several turns.
+ *
+ * @param path Where to write. Relative to your workspace, or absolute. Parent directories are
+ * created for you.
+ * @param contents The UTF-8 text to write. It replaces the file entirely.
  */
 export function writeFile(path: string, contents: string): number {
   return Number(call(() => raw.writeFile(path, contents)));
@@ -65,6 +76,10 @@ export function writeFile(path: string, contents: string): number {
  * Replace the one exact occurrence of `oldString` in a file with `newString`. Throws
  * `not-found` when the text does not appear and `conflict` — with the number of matches — when it
  * appears more than once; widen the surrounding context until the match is unique.
+ *
+ * @param path The file to edit.
+ * @param oldString The exact text to find, including its whitespace. It must appear exactly once.
+ * @param newString The text to put in its place. An empty string deletes the match.
  */
 export function editFile(path: string, oldString: string, newString: string): void {
   call(() => raw.editFile(path, oldString, newString));
@@ -74,6 +89,8 @@ export function editFile(path: string, oldString: string, newString: string): vo
  * List a directory, sorted by name; defaults to your workspace. Each entry carries a
  * bare `name` — join it with the directory you listed — and its `kind`. An empty directory is an
  * empty array, not a failure.
+ *
+ * @param path The directory to list; omit it for your workspace root.
  */
 export function listDir(path?: string): DirEntry[] {
   return call(() => raw.listDir(path));
