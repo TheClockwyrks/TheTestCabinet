@@ -62,6 +62,14 @@ export type CatalogStatus = "loading" | "ready" | "error";
 export interface RunDetail {
   record: RunRecord;
   reviews: StoredReview[];
+  /**
+   * Whether the run has cleared the publish gate — it is public, in the snapshot
+   * and the gallery. The review surfaces branch on this so an already-published
+   * run is never offered a Publish action again (its reviewer can still revise
+   * their own review; that alone refreshes the public snapshot). The static site
+   * serves published runs only, so it is always true there.
+   */
+  published: boolean;
 }
 
 /** The scoring model for a run: the variant's weighted checklist items and its

@@ -160,7 +160,10 @@ export function useStaticGallery(): GalleryDataInput {
     async (runId: string): Promise<RunDetail | null> => {
       const runReviews = publishedReviews[runId] ?? [];
       const localRun = localById.get(runId);
-      if (localRun) return { record: localRun, reviews: runReviews };
+      // A dev-only local run is by definition not published; everything the
+      // static site serves as an emitted asset is.
+      if (localRun)
+        return { record: localRun, reviews: runReviews, published: false };
       const url = `${import.meta.env.BASE_URL}runs/${encodeURIComponent(
         runId,
       )}.json`;
@@ -168,7 +171,7 @@ export function useStaticGallery(): GalleryDataInput {
         const response = await fetch(url);
         if (!response.ok) return null;
         const record = (await response.json()) as RunRecord;
-        return { record, reviews: runReviews };
+        return { record, reviews: runReviews, published: true };
       } catch {
         return null;
       }
