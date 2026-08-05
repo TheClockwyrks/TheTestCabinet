@@ -12,7 +12,23 @@ import { COLS, foesOf, freshBoard, straightWorm, setWorm } from "../_helpers.mjs
 // literally `api.step(6)`, which under the seconds-based contract meant six seconds.
 // `advance(6)` would now mean six TICKS — a silent 120x cut that would let a dense
 // field "draw no dropper" simply because it was barely given time to.)
+//
+// Only the last second of it is FILMED. The dense half is the item's negative
+// control — six seconds of a full field with nothing happening — and filming all of
+// it spent three quarters of the clip budget before the dropper this item is about
+// had a chance to draw in, so the reviewer never saw one arrive. `skip` runs the
+// same six seconds of real simulation (the build's own sparse-field check runs
+// exactly as before, so the control is unchanged) but instantly and unfilmed, and
+// the second that IS filmed is enough to read a dense field standing undisturbed.
 const DENSE_DWELL_TICKS = 720;
+const DENSE_FILMED_TICKS = 120; // 1s of the dense field on screen
+
+// A beat of the emptied field before the sweep, so the clip shows the board go
+// sparse and THEN the dropper answer it, rather than opening mid-answer.
+const SPARSE_LEAD_TICKS = 60;
+// And a beat after, so a dropper that draws in at the end of the sweep is seen
+// falling rather than as a single frame at the cut.
+const SPARSE_TAIL_TICKS = 180;
 
 // The sparse scenario's sweep: the old loop ran 30 iterations of 0.15s, so 18 ticks
 // per poll over 540 ticks total. Both convert exactly.
@@ -52,7 +68,8 @@ export default function item() {
     },
 
     async act(api) {
-      await api.advance(DENSE_DWELL_TICKS);
+      await api.skip(DENSE_DWELL_TICKS - DENSE_FILMED_TICKS);
+      await api.advance(DENSE_FILMED_TICKS);
       dense = await api.snapshot();
 
       // Sparse lower field: a dropper should draw in. `clearField` empties the 12
@@ -65,11 +82,15 @@ export default function item() {
       await api.call("clearField");
       await setWorm(api, straightWorm(20, 5, 6, 1), 1, 1);
       await api.call("setCursor", 16, 704);
+      await api.advance(SPARSE_LEAD_TICKS); // the emptied field, before the answer
       const r = await api.until((s) => foesOf(s, "dropper").length > 0, {
         max: SPARSE_SWEEP_TICKS,
         poll: SPARSE_SWEEP_POLL,
       });
       sparse = r.snap;
+      // The snapshot is captured; the sim runs on only so the dropper that drew in
+      // is seen entering and falling rather than as one frame at the cut.
+      await api.advance(SPARSE_TAIL_TICKS); // 1.5s of the dropper coming down
     },
 
     async assert(api, check) {
