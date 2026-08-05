@@ -521,7 +521,7 @@ export interface GgErrorTally {
   // The same errors split by their SPECIFIC type — what a "top error types" ranking is
   // built from, keyed by the recorded `GgTurnErrorType` wire id.
   //
-  // Sparse, unlike `byKind`, and for the opposite reason: twenty-odd rows at zero is not a
+  // Sparse, unlike `byKind`, and for the opposite reason: twenty-one rows at zero is not a
   // readable side-by-side, and the ranking this feeds shows the top few rather than the
   // whole set. Sums to `errors` for any stream gg wrote; a stream recorded before gg
   // published types leaves it empty while `errors` is non-zero, which a reader must

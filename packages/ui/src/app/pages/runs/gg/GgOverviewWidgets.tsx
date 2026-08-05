@@ -483,7 +483,7 @@ function Stat({
 // --- The error record ----------------------------------------------------------
 
 // How many error types a ranking names before it stops. Three, because the point of a
-// ranking is the narrowing: gg's taxonomy has twenty-odd specific types, and a scope whose
+// ranking is the narrowing: gg's taxonomy has twenty-one specific types, and a scope whose
 // failures do not concentrate into a few of them is telling you that on its face.
 export const TOP_ERROR_TYPES_SHOWN = 3;
 
@@ -512,8 +512,8 @@ export function errorRatePhrase(errors: GgErrorTally): string {
  * A scope's errored turns ranked by specific type, most common first — or, where there is
  * no ranking to draw, which of the three nothings it is.
  *
- * The ranking is over the SPECIFIC types (`byType`), not the five base kinds: "top error
- * types" over five buckets is barely a narrowing, and the base each type rolls up into
+ * The ranking is over the SPECIFIC types (`byType`), not the six base kinds: "top error
+ * types" over six buckets is barely a narrowing, and the base each type rolls up into
  * rides along on every row as a badge, so nothing the per-kind split said is lost.
  *
  * The three nothings stay three nothings, and conflating them would each time claim
@@ -548,10 +548,13 @@ export function ErrorTypeRanking({ errors }: { errors: GgErrorTally }) {
 //
 // The base kind rides as a badge because a specific type does not always name its own
 // family — "syntax error" and "unknown name" say nothing about being a transpile failure
-// and a program fault respectively, and that grouping is what the five error ceilings are
-// written against. It is withheld where it would only repeat the label beside it (a base
-// with a single type shares its wording), since a badge that restates its row is noise, and
-// on a type from a newer gg than this console, which has no base to claim.
+// and a program fault respectively, and that grouping is what the six error ceilings are
+// written against. It is withheld where the base's label and the row's label are the same
+// string, since a badge that restates its row word for word is noise. (A base with a single
+// type under it does not automatically get that treatment: `toolchain` has exactly one type
+// and the two are worded differently — "toolchain" the family, "compiler could not run" the
+// failure — so both are shown.) It is withheld too on a type from a newer gg than this
+// console, which has no base to claim.
 function ErrorTypeRow({ row }: { row: GgRankedError }) {
   const base = row.kind == null ? null : TURN_ERROR_LABELS[row.kind];
   return (

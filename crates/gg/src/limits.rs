@@ -214,8 +214,8 @@ impl TurnOutcome {
 /// constructed at an error site.
 ///
 /// Carried for diagnosis and for the breach log line; the ceilings themselves count errors without
-/// distinguishing kinds, because a run that alternates between five ways of failing is not
-/// healthier than one that fails the same way five times.
+/// distinguishing kinds, because a run that alternates between six ways of failing is not
+/// healthier than one that fails the same way six times.
 ///
 /// Four of the six — [`Transpile`](Self::Transpile), [`ProgramFault`](Self::ProgramFault),
 /// [`SandboxLimit`](Self::SandboxLimit) and [`Toolchain`](Self::Toolchain) — are

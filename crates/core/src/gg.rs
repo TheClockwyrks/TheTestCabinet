@@ -6340,8 +6340,8 @@ pub enum GgTelemetryKind {
         outcome: GgTurnOutcome,
         /// Why the turn was an error, on an [`Error`](GgTurnOutcome::Error) outcome. Absent on every
         /// other outcome, so `error != null` and `outcome == "error"` are the same statement — the
-        /// kind is carried separately because a run that alternates between five ways of failing and
-        /// one that fails the same way five times are the same to a ceiling and very different to a
+        /// kind is carried separately because a run that alternates between six ways of failing and
+        /// one that fails the same way six times are the same to a ceiling and very different to a
         /// person reading the run.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<GgTurnErrorKind>,
