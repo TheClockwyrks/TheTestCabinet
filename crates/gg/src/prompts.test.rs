@@ -226,15 +226,26 @@ fn code_mode_names_objects_and_teaches_discovery() {
     ] {
         assert!(flat.contains(keyword), "missing `{keyword}`:\n{prompt}");
     }
-    // The signature dump is gone: no return types, no type declarations, and no declaration of
-    // `ToolError`. The *name* is allowed — the type-check section names it, because narrowing a
-    // caught error is the one thing a model has to spell to read a failure at all, and a prompt that
-    // withheld it would buy a strict-mode diagnostic every time a program caught something. What is
-    // banned is the block of declarations the prompt used to carry, which is what the on-demand
-    // documentation lookup replaced.
+    // The signature dump is gone: no return types and no type declarations of any kind. A type's
+    // *name* is allowed — the type-check section names `ToolError`, because narrowing a caught error
+    // is the one thing a model has to spell to read a failure at all, and a prompt that withheld it
+    // would buy a strict-mode diagnostic every time a program caught something. What is banned is
+    // the block of declarations the prompt used to carry, which is what the on-demand documentation
+    // lookup replaced.
+    //
+    // So the ban is on the declaration *shape* rather than on a list of spellings: any line that
+    // opens a declaration fails, whatever it goes on to declare. Naming three types would leave a
+    // reintroduced `interface ToolError { … }` — or a fourth type nobody thought of — passing.
     assert!(!prompt.contains("): FileRead"), "{prompt}");
-    assert!(!prompt.contains("interface DirEntry"), "{prompt}");
-    assert!(!prompt.contains("class ToolError"), "{prompt}");
+    for line in prompt.lines() {
+        let opener = line.trim_start();
+        assert!(
+            !["interface ", "declare ", "class ", "type "]
+                .iter()
+                .any(|keyword| opener.starts_with(keyword)),
+            "the prompt declares a type again:\n{line}\n\nin:\n{prompt}"
+        );
+    }
 }
 
 /// **The code prompt teaches views, not `console.log`.**
@@ -1813,9 +1824,18 @@ fn every_language_renders_a_complete_system_prompt() {
 ///
 /// The phrases are the terms the statement cannot be made without, on the same discipline
 /// [`REQUIRED_RULES`] keeps: the paragraph may be rewritten or re-emphasized around them.
+///
+/// Every assertion here is **identity**, never spelling — the compiler's name is taken from the
+/// language ([`ProgramLanguage::checker`]) rather than written down, because `tsc` is TypeScript's
+/// word for its own checker and a Rust or a Kotlin arm naming `rustc` or `kotlinc` is making the
+/// same statement, correctly. A gate that demanded the token `tsc` of every checked language would
+/// fail the next arm registered, and for exactly the wrong reason.
 #[test]
 fn a_prompt_for_a_checked_language_says_its_programs_are_checked() {
-    for language in all_languages().filter(|language| language.prepare_compiles()) {
+    for language in all_languages() {
+        let Some(checker) = language.checker() else {
+            continue;
+        };
         let name = language.display_name();
         let rendered = plain(&render_system_for(
             language,
@@ -1827,8 +1847,7 @@ fn a_prompt_for_a_checked_language_says_its_programs_are_checked() {
                 "that a program which fails the check does not run",
                 "not executed",
             ),
-            ("which compiler judges it", "tsc"),
-            ("that a caught error has to be narrowed", "unknown"),
+            ("which compiler judges it", checker),
         ] {
             assert!(
                 rendered.contains(phrase),
@@ -1836,6 +1855,27 @@ fn a_prompt_for_a_checked_language_says_its_programs_are_checked() {
             );
         }
     }
+}
+
+/// **TypeScript's checked prompt tells a model how to read the error a caught failure gives it.**
+///
+/// Split out of [`a_prompt_for_a_checked_language_says_its_programs_are_checked`] rather than folded
+/// into it, because `unknown` is a **TypeScript spelling**: it is what `catch` binds under this
+/// language's checker, and a program that treats it as anything else does not compile. Another
+/// language's checker raises the same problem in its own vocabulary or not at all, so holding every
+/// checked arm to this token would be holding them to TypeScript's grammar.
+#[test]
+fn typescripts_checked_prompt_says_a_caught_error_arrives_unnarrowed() {
+    let language = crate::sandbox::language(GgProgramLanguage::TypeScript);
+    let rendered = plain(&render_system_for(
+        language,
+        &every_code_section_on(language.id()),
+    ));
+    assert!(
+        rendered.contains("unknown"),
+        "the prompt no longer states that a caught error has to be narrowed (`unknown`):\n\
+         {rendered}"
+    );
 }
 
 /// **Every registered language's "nothing shown" notice renders, and is not the fallback.**

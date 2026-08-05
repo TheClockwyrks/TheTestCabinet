@@ -139,12 +139,16 @@ impl ProgramLanguage for TypeScript {
         Ok(prepared)
     }
 
-    /// Yes. [`prepare_program`](Self::prepare_program) spawns `tsc`, which takes ~91 ms against a
-    /// representative program and grows with the program — a real per-turn cost, on the failing path
-    /// as much as the succeeding one, and the number a study comparing a checked arm against an
-    /// unchecked one is comparing.
-    fn prepare_compiles(&self) -> bool {
-        true
+    /// `tsc`, and it is spelled the way a TypeScript programmer writes it rather than the way it is
+    /// invoked (`node` running a committed bundle), because the model reading the name is being told
+    /// which compiler's rules it is being held to.
+    ///
+    /// Naming one is also what has [`prepare_program`](Self::prepare_program)'s ~91 ms against a
+    /// representative program — growing with the program, and paid on the failing path as much as
+    /// the succeeding one — recorded rather than absorbed. It is the number a study comparing a
+    /// checked arm against an unchecked one is comparing.
+    fn checker(&self) -> Option<&'static str> {
+        Some("tsc")
     }
 
     /// Write the committed checker — ~6.7 MB of compiler and declarations — into the directory every

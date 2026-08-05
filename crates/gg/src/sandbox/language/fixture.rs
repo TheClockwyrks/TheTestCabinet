@@ -72,6 +72,13 @@ const TYPESCRIPT_SIGNATURES: &str = include_str!("../guests/typescript.signature
 /// TypeScript's, which is what the "no language serves another's artifacts" assertion compares.
 const COMPONENT: &[u8] = b"gg fixture language: not a component, never compiled";
 
+/// What the agreeing fixture calls the thing that judges its programs — deliberately not `tsc`.
+///
+/// A checker's *name* is a spelling like every other, and this is the second one, so "gg names the
+/// language's own compiler" is an observation over two answers rather than a restatement of
+/// TypeScript's.
+pub(crate) const FIXTURE_CHECKER: &str = "fxc";
+
 /// The word that makes this language's "checker" reject a program it parsed cleanly — the fixture's
 /// stand-in for a type error, which is the failure a checked language has and TypeScript does not.
 pub(crate) const MISTYPED: &str = "mistyped";
@@ -94,13 +101,17 @@ pub(crate) const NO_COMPILER: &str = "nocompiler";
 pub(crate) struct FixtureLanguage {
     /// This instance's catalogue, leaked so it can be handed out as `&'static`.
     catalogue: &'static SignatureCatalogue,
-    /// What this instance answers [`prepare_compiles`](ProgramLanguage::prepare_compiles) with.
+    /// What this instance answers [`checker`](ProgramLanguage::checker) with.
     ///
     /// Per instance because both answers now need a subject. Every *registered* language compiles —
-    /// TypeScript runs `tsc` over the model's program — so without a fixture that says `false`, the
-    /// seam's other branch would be a promise nothing exercises: that a language which compiles
+    /// TypeScript runs `tsc` over the model's program — so without a fixture that names no checker,
+    /// the seam's other branch would be a promise nothing exercises: that a language which compiles
     /// nothing reports **nothing** rather than a zero.
-    compiles: bool,
+    ///
+    /// The name is deliberately not `tsc`. A second language that checks its programs and calls its
+    /// checker something else is the only thing that can show gg is telling a model *its* compiler's
+    /// name rather than TypeScript's.
+    checker: Option<&'static str>,
 }
 
 impl ProgramLanguage for FixtureLanguage {
@@ -163,14 +174,14 @@ impl ProgramLanguage for FixtureLanguage {
 
     /// Whatever this instance was built to answer.
     ///
-    /// The agreeing fixture says `true` and stands in for the **compiled** shape of a second
+    /// The agreeing fixture names one and stands in for the **compiled** shape of a second
     /// language — it compiles nothing, of course, since nothing here evaluates anything, but that is
     /// what makes "a language that compiles has its programs timed, including the one its compiler
     /// rejected" an assertion rather than a promise.
-    /// [`a_language_that_does_not_compile`] says `false` and is the only subject the opposite claim
+    /// [`a_language_that_does_not_compile`] names none and is the only subject the opposite claim
     /// has left, now that every registered language compiles.
-    fn prepare_compiles(&self) -> bool {
-        self.compiles
+    fn checker(&self) -> Option<&'static str> {
+        self.checker
     }
 
     /// A module's namespace is whatever it `def`s, and its prepared source says so in a trailing
@@ -268,7 +279,7 @@ pub(crate) fn fixture_language() -> &'static FixtureLanguage {
     static FIXTURE: OnceLock<FixtureLanguage> = OnceLock::new();
     FIXTURE.get_or_init(|| FixtureLanguage {
         catalogue: leak(respelled_catalogue(|_| {})),
-        compiles: true,
+        checker: Some(FIXTURE_CHECKER),
     })
 }
 
@@ -283,7 +294,7 @@ pub(crate) fn a_language_that_does_not_compile() -> &'static FixtureLanguage {
     static FIXTURE: OnceLock<FixtureLanguage> = OnceLock::new();
     FIXTURE.get_or_init(|| FixtureLanguage {
         catalogue: leak(respelled_catalogue(|_| {})),
-        compiles: false,
+        checker: None,
     })
 }
 
@@ -298,7 +309,7 @@ pub(crate) fn a_language_whose_catalogue(
 ) -> &'static FixtureLanguage {
     Box::leak(Box::new(FixtureLanguage {
         catalogue: leak(respelled_catalogue(edit)),
-        compiles: true,
+        checker: Some(FIXTURE_CHECKER),
     }))
 }
 

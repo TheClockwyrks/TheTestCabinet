@@ -122,21 +122,38 @@ pub trait ProgramLanguage: Send + Sync + 'static {
     /// program to appease a broken image.
     fn prepare_program(&self, source: &str) -> Result<PreparedProgram, PrepareFailure>;
 
-    /// Whether this language's [prepare step](Self::prepare_program) invokes a **compiler** — a
-    /// separate process, or an in-process checker, whose cost belongs to the program that paid it.
+    /// What a program of this language is judged by, named the way this language's own users name
+    /// it — `tsc`, `rustc`, `mypy` — or `None` for a language whose [prepare
+    /// step](Self::prepare_program) invokes no **compiler** at all.
     ///
-    /// It decides one thing: whether the sandbox reports what preparing this program took, as
-    /// [`SandboxOutcome::compile`](super::SandboxOutcome::compile). A language that answers `true`
-    /// has every one of its programs timed, on the failing path as well as the succeeding one; a
-    /// language that answers `false` reports nothing, because a sub-millisecond zero on every turn
-    /// is noise rather than a measurement.
+    /// The name is a **spelling**, and belongs to the language for the same reason every call's
+    /// does: what two arms of a study share is that a program is checked before it runs, never what
+    /// the thing doing the checking is called. A language names its checker in its own
+    /// [system prompt](Self::prompt), because a model told its program is checked and not told by
+    /// what has been given half a sentence — and declaring the name here is what lets the prompt
+    /// gate hold *every* checked language to saying it, without holding them all to saying `tsc`.
+    ///
+    /// The answer decides one further thing: whether the sandbox reports what preparing this
+    /// program took, as [`SandboxOutcome::compile`](super::SandboxOutcome::compile). A language
+    /// that names a checker has every one of its programs timed, on the failing path as well as
+    /// the succeeding one; a language that names none reports nothing, because a sub-millisecond
+    /// zero on every turn is noise rather than a measurement. That is why the two are one method
+    /// and not two: an arm cannot name a compiler and go untimed, or be timed and have nothing to
+    /// tell its model.
     ///
     /// Required rather than defaulted, and answered by the language rather than inferred from a
     /// measurement, because the two arms of a cross-language study are compared on what compiling
     /// cost them: a language whose compile time went unrecorded because nobody remembered to
     /// declare it would be an arm that looks free and is not. A new language cannot be registered
     /// without answering.
-    fn prepare_compiles(&self) -> bool;
+    fn checker(&self) -> Option<&'static str>;
+
+    /// Whether this language's [prepare step](Self::prepare_program) invokes a compiler — which is
+    /// to say whether it [names one](Self::checker). Derived rather than declared, so the two can
+    /// never disagree.
+    fn prepare_compiles(&self) -> bool {
+        self.checker().is_some()
+    }
 
     /// Do whatever this language's [prepare step](Self::prepare_program) would otherwise do on its
     /// first call — unpack a toolchain, warm a cache — so the first code turn does not pay for it.
