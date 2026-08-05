@@ -4,8 +4,8 @@ import type { RunSummary } from "@test-cabinet/run-record/snapshot";
 import { GradeBadge, RatingBadge, canonicalModelId } from "@test-cabinet/ui";
 import type { InProgressRun } from "../../client/types";
 import {
+  asGrade,
   type GradeStatus,
-  isGrade,
   overallGradeOf,
   type Rating,
   RATINGS,
@@ -39,13 +39,6 @@ import styles from "./RunLog.module.scss";
  *   is the same model; it keeps the test and variant columns.
  */
 export type RunScope = "global" | "variant" | "model";
-
-// Narrow a summary card's overall-grade field (a `VerdictStatus`, which also
-// covers the binary pass/fail) to one of the five graded tiers, or null. A non-jam
-// run carries none.
-function asGrade(status: string | null | undefined): GradeStatus | null {
-  return status && isGrade(status) ? status : null;
-}
 
 /**
  * A finished run resolved for the table: the summary card plus the two values a

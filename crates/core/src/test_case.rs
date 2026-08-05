@@ -3102,7 +3102,7 @@ pub struct ReviewItem {
     /// [`crate::review::score`]).
     pub weight: u32,
     /// Whether this item is graded on the five-level scale
-    /// ([`crate::review::VerdictStatus::GRADES`], 0/1/3/5/10 points) rather than
+    /// ([`crate::review::VerdictStatus::GRADES`], 0/2/5/8/10 points) rather than
     /// pass/fail. True only for a [game jam](TestType::GameJam)'s review categories;
     /// false for every other test type. Set at resolution from the case's test
     /// type, not declared per item. Mirrored by the reviewer UI, which renders the
