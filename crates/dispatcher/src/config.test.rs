@@ -22,6 +22,11 @@ const ALL_VARS: &[&str] = &[
     "TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET",
     "TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR",
     "TCAB_DISPATCHER_DRIVER_AUTH_MODE",
+    "TCAB_DISPATCHER_DRIVER_CPU_REQUEST",
+    "TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST",
+    "TCAB_DISPATCHER_DRIVER_CPU_LIMIT",
+    "TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT",
+    "TCAB_K8S_NAMESPACE",
     "TCAB_PUBLISHER_IMAGE",
     "TCAB_DISPATCHER_PUBLISHER_SECRETS",
     "TCAB_GITHUB_ORG",
@@ -385,5 +390,89 @@ fn unparseable_numeric_is_an_error() {
                 ..
             }
         ));
+    });
+}
+
+#[test]
+fn driver_resource_requests_default_so_the_pod_is_never_best_effort() {
+    with_env(|| {
+        set_required();
+        let config = Config::from_env().expect("config should resolve");
+
+        assert_eq!(
+            config.driver_resources.cpu_request.as_deref(),
+            Some(DEFAULT_DRIVER_CPU_REQUEST)
+        );
+        assert_eq!(
+            config.driver_resources.memory_request.as_deref(),
+            Some(DEFAULT_DRIVER_MEMORY_REQUEST)
+        );
+        // Limits stay absent: a memory limit re-introduces the SIGKILL the requests
+        // exist to prevent.
+        assert!(config.driver_resources.cpu_limit.is_none());
+        assert!(config.driver_resources.memory_limit.is_none());
+        assert!(!config.driver_resources.is_empty());
+    });
+}
+
+#[test]
+fn driver_resources_are_overridable() {
+    with_env(|| {
+        set_required();
+        set("TCAB_DISPATCHER_DRIVER_CPU_REQUEST", "250m");
+        set("TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST", "1Gi");
+        set("TCAB_DISPATCHER_DRIVER_CPU_LIMIT", "2");
+        set("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT", "4Gi");
+        let config = Config::from_env().expect("config should resolve");
+
+        assert_eq!(config.driver_resources.cpu_request.as_deref(), Some("250m"));
+        assert_eq!(
+            config.driver_resources.memory_request.as_deref(),
+            Some("1Gi")
+        );
+        assert_eq!(config.driver_resources.cpu_limit.as_deref(), Some("2"));
+        assert_eq!(config.driver_resources.memory_limit.as_deref(), Some("4Gi"));
+    });
+}
+
+#[test]
+fn blanking_a_driver_request_omits_it_rather_than_defaulting() {
+    // Unset means "use the default"; explicitly blank means "omit". Collapsing the
+    // two would make the documented opt-out silently impossible.
+    with_env(|| {
+        set_required();
+        set("TCAB_DISPATCHER_DRIVER_CPU_REQUEST", "");
+        set("TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST", "   ");
+        let config = Config::from_env().expect("config should resolve");
+
+        assert!(config.driver_resources.cpu_request.is_none());
+        assert!(config.driver_resources.memory_request.is_none());
+        assert!(config.driver_resources.is_empty());
+    });
+}
+
+#[test]
+fn sandbox_namespace_defaults_to_the_dispatcher_namespace() {
+    with_env(|| {
+        set_required();
+        set("TCAB_DISPATCHER_NAMESPACE", "tcab-staging");
+        let config = Config::from_env().expect("config should resolve");
+
+        // The reaper must look where sandboxes actually land. With TCAB_K8S_NAMESPACE
+        // unset the driver defaults to its own pod namespace, which is this one.
+        assert_eq!(config.sandbox_namespace, "tcab-staging");
+    });
+}
+
+#[test]
+fn sandbox_namespace_follows_the_driver_override() {
+    with_env(|| {
+        set_required();
+        set("TCAB_DISPATCHER_NAMESPACE", "tcab-staging");
+        set("TCAB_K8S_NAMESPACE", "tcab-sandboxes");
+        let config = Config::from_env().expect("config should resolve");
+
+        assert_eq!(config.namespace, "tcab-staging");
+        assert_eq!(config.sandbox_namespace, "tcab-sandboxes");
     });
 }

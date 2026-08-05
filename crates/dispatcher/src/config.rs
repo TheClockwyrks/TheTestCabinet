@@ -16,6 +16,8 @@
 //! | `TCAB_DISPATCHER_MAX_INFLIGHT` | no | The maximum number of non-terminal driver `Job`s the dispatcher keeps in flight (queue admission). | `8` |
 //! | `TCAB_DISPATCHER_POLL_INTERVAL_SECONDS` | no | How long to back off after an empty claim or a full in-flight cap before polling again. | `2` |
 //! | `TCAB_DISPATCHER_JOB_TTL_SECONDS` | no | `ttlSecondsAfterFinished` on each driver `Job`, for automatic cleanup once it terminates. | `300` |
+//! | `TCAB_DISPATCHER_DRIVER_CPU_REQUEST` / `TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST` | no | CPU/memory **requests** on the driver container. These exist to keep the driver pod out of the `BestEffort` QoS class — see [`DEFAULT_DRIVER_CPU_REQUEST`]. Set to a blank value to omit them (not advised). | `100m` / `512Mi` |
+//! | `TCAB_DISPATCHER_DRIVER_CPU_LIMIT` / `TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT` | no | CPU/memory **limits** on the driver container. Deliberately unset by default: a memory limit re-introduces the very SIGKILL these requests exist to prevent, since the driver buffers a whole produced run tree in memory when it tars it for upload. | — |
 //! | `TCAB_DISPATCHER_DRIVER_SECRETS` | no | Comma-separated `Secret` names mounted into each driver `Job`'s env via `envFrom`. This is how the harness provider API key (e.g. `ANTHROPIC_API_KEY`) reaches the driver, which the run engine reads from its own environment exactly as the worker did. Unset injects no secret env. | — |
 //! | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_SECRET` | no | The name of an operator-provided `Secret` holding the harness **subscription** credential files (keyed by credential basename). When set, the dispatcher mounts it as a read-only volume into each driver `Job` at `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR` (with `optional: true`, so a missing Secret never wedges API-key-only driver pods) and forwards that dir to the driver. Unset leaves runs API-key-only — this is an additive parallel path to `TCAB_DISPATCHER_DRIVER_SECRETS`. | — |
 //! | `TCAB_DISPATCHER_DRIVER_SUBSCRIPTION_DIR` | no | The path the subscription Secret is mounted at inside each driver `Job`, forwarded to the driver as `TCAB_DRIVER_SUBSCRIPTION_DIR`. Only used when the subscription Secret is configured. | `/var/run/tcab/subscription` |
@@ -37,6 +39,7 @@
 //! | `TCAB_K8S_RUN_MEMORY_REQUEST` / `TCAB_K8S_RUN_MEMORY_LIMIT` | Memory request/limit per sandbox pod. |
 //! | `TCAB_K8S_POD_READY_TIMEOUT_SECONDS` | How long the driver waits, once a sandbox pod is **scheduled**, for it to reach `Running` before failing the run. |
 //! | `TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS` | How long the driver lets a sandbox pod sit unscheduled (queued for capacity) before giving up. Unset/`0` waits forever, so a busy cluster makes runs queue rather than fail. |
+//! | `TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS` | `activeDeadlineSeconds` on each sandbox pod — the last-resort backstop that stops a sandbox outliving every cleanup path. `0` disables it. |
 //! | `TCAB_K8S_RUN_POD_PREFIX` | Name prefix for sandbox pods. |
 //! | `TCAB_CONTAINER_REGISTRY` / `TCAB_CONTAINER_TAG` | The registry/namespace and tag the driver resolves the run-container image from (`core::harness::resolve_run_image`); unset uses the compiled defaults (`ghcr.io/theclockwyrks` / `latest`). Set `TCAB_CONTAINER_TAG` to a `:<git-sha>` to **pin** the run image, just as the overlays pin the service `image:` tags. |
 //! | `TCAB_CONTAINER_IMAGE_*` (one per run image — `_BASE_WASM`, `_SPRITE`, `_VOXEL`, …, `_BLENDER`, `_ADVERSARIAL`, `_PERFORMANCE`; the full set is `core::harness::RUN_IMAGE_OVERRIDE_ENVS`) | Full per-image ref overrides (registry+name+tag) that bypass the registry/tag composition for one run image; unset composes from the registry/tag above. |
@@ -49,6 +52,26 @@
 //! the dispatcher never knows or forwards it (see [`crate::job`]).
 
 use std::time::Duration;
+
+/// The default CPU request on the driver container.
+///
+/// The value matters far less than its *presence*. A container with neither
+/// requests nor limits puts its pod in the **`BestEffort`** QoS class, which the
+/// kubelet evicts first under node pressure and which the kernel OOM killer scores
+/// at the maximum `oom_score_adj` — so the driver, the one process that can clean
+/// up after a run, was reliably the first thing killed on a busy node. A driver
+/// killed by `SIGKILL` runs none of its teardown, orphaning the run's sandbox pod
+/// (the sandbox holds its own requests, which crowds the node further and kills the
+/// next driver — a feedback loop). Setting any request moves the pod to `Burstable`
+/// and scores it by request-vs-capacity instead. The driver really is a thin control
+/// process, so this stays small.
+pub const DEFAULT_DRIVER_CPU_REQUEST: &str = "100m";
+
+/// The default memory request on the driver container. See
+/// [`DEFAULT_DRIVER_CPU_REQUEST`] for why this is set at all. Sized for the driver's
+/// one genuinely memory-hungry moment — tarring the produced run tree in memory to
+/// upload it — rather than its steady state.
+pub const DEFAULT_DRIVER_MEMORY_REQUEST: &str = "512Mi";
 
 /// The variables the dispatcher passes through into each driver `Job`'s env
 /// verbatim — sandbox-pod settings (`TCAB_K8S_RUN_*` and siblings), the
@@ -65,6 +88,7 @@ pub const PASSTHROUGH_K8S_VARS: &[&str] = &[
     "TCAB_K8S_RUN_MEMORY_LIMIT",
     "TCAB_K8S_POD_READY_TIMEOUT_SECONDS",
     "TCAB_K8S_POD_SCHEDULE_TIMEOUT_SECONDS",
+    "TCAB_K8S_RUN_ACTIVE_DEADLINE_SECONDS",
     "TCAB_K8S_RUN_POD_PREFIX",
     // The run-container image the driver resolves for each sandbox pod
     // (`core::harness::resolve_run_image`, which reads these from the driver's own
@@ -144,6 +168,55 @@ pub enum ConfigError {
     },
 }
 
+/// The driver container's resource requests and limits.
+///
+/// Each field is `None` when the corresponding quantity should be omitted from the
+/// manifest entirely. The *requests* carry a default (see
+/// [`DEFAULT_DRIVER_CPU_REQUEST`]) because their whole purpose is to keep the driver
+/// pod out of `BestEffort`; the *limits* do not, because a memory limit would make
+/// the kernel `SIGKILL` the driver exactly as node pressure used to.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DriverResources {
+    /// `resources.requests.cpu` on the driver container.
+    pub cpu_request: Option<String>,
+    /// `resources.requests.memory` on the driver container.
+    pub memory_request: Option<String>,
+    /// `resources.limits.cpu` on the driver container.
+    pub cpu_limit: Option<String>,
+    /// `resources.limits.memory` on the driver container.
+    pub memory_limit: Option<String>,
+}
+
+impl DriverResources {
+    /// Resolve from the environment, defaulting the two requests. A variable set to
+    /// a blank value omits that quantity — the deliberate escape hatch for an
+    /// operator who manages driver QoS by some other means (a `LimitRange`, say).
+    fn from_env() -> Self {
+        Self {
+            cpu_request: env_or_default(
+                "TCAB_DISPATCHER_DRIVER_CPU_REQUEST",
+                DEFAULT_DRIVER_CPU_REQUEST,
+            ),
+            memory_request: env_or_default(
+                "TCAB_DISPATCHER_DRIVER_MEMORY_REQUEST",
+                DEFAULT_DRIVER_MEMORY_REQUEST,
+            ),
+            cpu_limit: non_empty("TCAB_DISPATCHER_DRIVER_CPU_LIMIT"),
+            memory_limit: non_empty("TCAB_DISPATCHER_DRIVER_MEMORY_LIMIT"),
+        }
+    }
+
+    /// Whether every quantity is absent — i.e. the driver container would carry no
+    /// `resources` at all, putting its pod back in `BestEffort`. Only reachable when
+    /// an operator explicitly blanks both request variables.
+    pub fn is_empty(&self) -> bool {
+        self.cpu_request.is_none()
+            && self.memory_request.is_none()
+            && self.cpu_limit.is_none()
+            && self.memory_limit.is_none()
+    }
+}
+
 /// The resolved dispatcher configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -157,6 +230,12 @@ pub struct Config {
     /// The namespace the dispatcher creates driver `Job`s in
     /// (`TCAB_DISPATCHER_NAMESPACE`).
     pub namespace: String,
+    /// The namespace the *driver* creates sandbox pods in (`TCAB_K8S_NAMESPACE`),
+    /// which the dispatcher needs in order to reap sandboxes orphaned by a driver
+    /// that died before its own teardown could run. The dispatcher does not
+    /// otherwise consume this variable — it forwards it — but it defaults the same
+    /// way the driver does (to the pod's own namespace) so the two agree.
+    pub sandbox_namespace: String,
     /// The ServiceAccount assigned to each driver pod (`TCAB_DISPATCHER_DRIVER_SA`).
     /// `None` uses the namespace default. The repurposed `tcab-worker` RBAC that
     /// can create/exec/delete sandbox pods.
@@ -169,6 +248,11 @@ pub struct Config {
     pub poll_interval: Duration,
     /// `ttlSecondsAfterFinished` on each driver `Job` (`TCAB_DISPATCHER_JOB_TTL_SECONDS`).
     pub job_ttl_seconds: i32,
+    /// The driver container's resource requests/limits
+    /// (`TCAB_DISPATCHER_DRIVER_{CPU,MEMORY}_{REQUEST,LIMIT}`). Requests default to
+    /// [`DEFAULT_DRIVER_CPU_REQUEST`] / [`DEFAULT_DRIVER_MEMORY_REQUEST`] so the
+    /// driver pod is never `BestEffort`; limits default to `None`.
+    pub driver_resources: DriverResources,
     /// `Secret` names mounted into each driver `Job`'s env via `envFrom`
     /// (`TCAB_DISPATCHER_DRIVER_SECRETS`, comma-separated). Carries the harness
     /// provider API key(s) the run engine reads from the driver's own environment,
@@ -247,10 +331,16 @@ impl Config {
             .or_else(in_cluster_namespace)
             .unwrap_or_else(|| "default".to_string());
         let driver_service_account = non_empty("TCAB_DISPATCHER_DRIVER_SA");
+        // Mirror the driver's own default (its pod namespace, which is the
+        // dispatcher's too) so an unset `TCAB_K8S_NAMESPACE` still resolves to the
+        // namespace sandboxes will actually appear in.
+        let sandbox_namespace =
+            non_empty("TCAB_K8S_NAMESPACE").unwrap_or_else(|| namespace.clone());
 
         let max_inflight = parse_or("TCAB_DISPATCHER_MAX_INFLIGHT", 8usize)?.max(1);
         let poll_seconds = parse_or("TCAB_DISPATCHER_POLL_INTERVAL_SECONDS", 2u64)?;
         let job_ttl_seconds = parse_or("TCAB_DISPATCHER_JOB_TTL_SECONDS", 300i32)?;
+        let driver_resources = DriverResources::from_env();
 
         let driver_secrets = non_empty("TCAB_DISPATCHER_DRIVER_SECRETS")
             .map(|value| {
@@ -299,10 +389,12 @@ impl Config {
             service_token,
             driver_image,
             namespace,
+            sandbox_namespace,
             driver_service_account,
             max_inflight,
             poll_interval: Duration::from_secs(poll_seconds),
             job_ttl_seconds,
+            driver_resources,
             driver_secrets,
             driver_subscription_secret,
             subscription_dir,
@@ -340,6 +432,23 @@ where
             value,
             detail: err.to_string(),
         }),
+    }
+}
+
+/// Read an environment variable that carries a default, distinguishing **unset**
+/// from **set-but-blank**: an absent variable takes `default`, while one explicitly
+/// set to a blank value resolves to `None` (omit the value entirely).
+///
+/// This differs from [`non_empty`] + `unwrap_or`, which cannot express "omit" — it
+/// collapses both cases onto the default. The driver's resource requests need the
+/// distinction so an operator can deliberately opt out of them.
+fn env_or_default(key: &str, default: &str) -> Option<String> {
+    match std::env::var(key) {
+        Err(_) => Some(default.to_string()),
+        Ok(value) => {
+            let value = value.trim();
+            (!value.is_empty()).then(|| value.to_string())
+        }
     }
 }
 

@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use k8s_openapi::api::core::v1::EnvVar;
 
+use crate::config::DriverResources;
 use test_cabinet_core::run_record::HarnessSlug;
 use test_cabinet_core::{ClaimedJob, LaunchBody, PublishClaim};
 
@@ -38,10 +39,17 @@ fn config() -> Config {
         service_token: "service-tok".to_string(),
         driver_image: "ghcr.io/example/tcab-driver:latest".to_string(),
         namespace: "tcab".to_string(),
+        sandbox_namespace: "tcab".to_string(),
         driver_service_account: Some("tcab-driver".to_string()),
         max_inflight: 8,
         poll_interval: Duration::from_secs(2),
         job_ttl_seconds: 300,
+        driver_resources: DriverResources {
+            cpu_request: Some("100m".to_string()),
+            memory_request: Some("512Mi".to_string()),
+            cpu_limit: None,
+            memory_limit: None,
+        },
         driver_secrets: vec!["tcab-driver-secrets".to_string()],
         driver_subscription_secret: None,
         subscription_dir: "/var/run/tcab/subscription".to_string(),
@@ -524,4 +532,70 @@ fn publish_job_is_named_and_namespaced() {
     let job = build_publish_job(&publish_claim(), &config());
     assert_eq!(job.metadata.name.as_deref(), Some("tcab-publisher-pub-456"));
     assert_eq!(job.metadata.namespace.as_deref(), Some("tcab"));
+}
+
+#[test]
+fn driver_container_carries_resource_requests() {
+    // The driver pod must never land in the `BestEffort` QoS class: it is the only
+    // process that can tear down a run's sandbox, and `BestEffort` makes it the
+    // first thing the kubelet evicts and the kernel OOM-kills. A driver killed by
+    // SIGKILL runs no teardown and orphans the sandbox forever.
+    let job = build_driver_job(&claim(), &config()).unwrap();
+    let resources = container(&job)
+        .resources
+        .as_ref()
+        .expect("the driver container carries resources");
+    let requests = resources
+        .requests
+        .as_ref()
+        .expect("requests are what set the QoS class");
+
+    assert_eq!(requests["cpu"].0, "100m");
+    assert_eq!(requests["memory"].0, "512Mi");
+    // Limits stay absent by default: a memory limit would re-introduce the same
+    // SIGKILL from the container's own cgroup, and the driver holds a whole
+    // produced run tree in memory while it tars it for upload.
+    assert!(resources.limits.is_none());
+}
+
+#[test]
+fn driver_container_limits_are_applied_when_configured() {
+    let mut config = config();
+    config.driver_resources.cpu_limit = Some("1".to_string());
+    config.driver_resources.memory_limit = Some("2Gi".to_string());
+
+    let job = build_driver_job(&claim(), &config).unwrap();
+    let limits = container(&job)
+        .resources
+        .as_ref()
+        .unwrap()
+        .limits
+        .as_ref()
+        .expect("configured limits are applied");
+
+    assert_eq!(limits["cpu"].0, "1");
+    assert_eq!(limits["memory"].0, "2Gi");
+}
+
+#[test]
+fn driver_container_omits_resources_when_all_are_blank() {
+    // The deliberate opt-out (both request variables blanked) must omit the field
+    // rather than serialize an empty `resources: {}`.
+    let mut config = config();
+    config.driver_resources = DriverResources::default();
+
+    let job = build_driver_job(&claim(), &config).unwrap();
+    assert!(container(&job).resources.is_none());
+}
+
+#[test]
+fn sandbox_managed_by_matches_the_value_the_driver_stamps() {
+    // The driver crate stamps this literal on every sandbox pod it creates
+    // (`driver::kubernetes::build_run_pod`), and the dispatcher's sandbox reaper
+    // selects on it. The two crates do not depend on each other, so this pins the
+    // shared value from the dispatcher's side; the driver has the mirror assertion.
+    assert_eq!(SANDBOX_MANAGED_BY, "tcab-driver");
+    // It must differ from the dispatcher's own value, or the reaper's selector
+    // would match driver Job pods as well as sandboxes.
+    assert_ne!(SANDBOX_MANAGED_BY, MANAGED_BY);
 }
