@@ -177,21 +177,13 @@ export function MessageRow({
               ))}
             </ul>
           )}
-          {/* The picture itself where the source pooled its bytes (a replay record), and
-              the descriptor alone where it did not (the telemetry stream, which records
-              media type and size and never the payload). A caption rides along either
-              way, so the two read as the same row with more or less of the image in it. */}
+          {/* The descriptor, never the picture: the telemetry stream records an attached
+              image's media type and decoded size and never its payload, so a row says
+              what the model was shown rather than showing it. */}
           {message.images.length > 0 && (
             <ul className={panels.reqImages}>
               {message.images.map((image, i) => (
                 <li key={i} className={panels.reqImage}>
-                  {image.dataBase64 != null && (
-                    <img
-                      className={panels.reqImageThumb}
-                      src={`data:${image.mediaType};base64,${image.dataBase64}`}
-                      alt={`Attached ${image.mediaType} image`}
-                    />
-                  )}
                   <span className={panels.reqImageMeta}>
                     {image.mediaType} · {shortBytes(image.bytes)}
                   </span>

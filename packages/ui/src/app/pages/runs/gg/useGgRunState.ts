@@ -346,19 +346,6 @@ export interface ContextAction {
   detail: string;
 }
 
-// One image attached to a pooled message.
-//
-// The telemetry stream carries the *descriptor* alone — `context_message` records each
-// image's media type and decoded size and deliberately never its bytes, because the
-// stream is recorded with every run and a base64 payload re-sent on every turn it
-// survives would dominate it. `dataBase64` is therefore absent for every source the
-// console reads today; it stays on the type because the descriptor and the bytes are
-// different facts and a renderer must be able to say which it has.
-export interface PooledImage extends GgLoggedImage {
-  // The image's bytes, base64-encoded (no `data:` prefix), when the source carries them.
-  dataBase64?: string;
-}
-
 // One pooled message from the message log (`context_message`) — the full body of a
 // single message in the window, recorded once and referenced by id from each turn's
 // prompt (see gg/context-visibility).
@@ -369,7 +356,12 @@ export interface PooledMessage {
   content?: string;
   toolCalls: GgLoggedToolCall[];
   toolCallId?: string;
-  images: PooledImage[];
+  // The descriptor alone — `context_message` records each image's media type and decoded
+  // size and deliberately never its bytes, because the stream is recorded with every run
+  // and a base64 payload re-sent on every turn it survives would dominate it. No source
+  // the console reads carries image bytes, so a row states what was attached rather than
+  // showing it.
+  images: GgLoggedImage[];
   // The message's estimated share of the window — the same per-item estimate the
   // context-breakdown bands are summed from.
   //
@@ -519,7 +511,7 @@ export interface GgErrorTally {
   // The same errors split by their SPECIFIC type — what a "top error types" ranking is
   // built from, keyed by the recorded `GgTurnErrorType` wire id.
   //
-  // Sparse, unlike `byKind`, and for the opposite reason: twenty-one rows at zero is not a
+  // Sparse, unlike `byKind`, and for the opposite reason: twenty rows at zero is not a
   // readable side-by-side, and the ranking this feeds shows the top few rather than the
   // whole set. Sums to `errors` for any stream gg wrote; a stream recorded before gg
   // published types leaves it empty while `errors` is non-zero, which a reader must

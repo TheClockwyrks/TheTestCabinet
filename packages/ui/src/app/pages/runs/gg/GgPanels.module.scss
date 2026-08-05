@@ -3135,20 +3135,6 @@ details[open] > summary .reqCaret {
   border-radius: t.$radius-sm;
 }
 
-// The picture itself, where the source carries its bytes (a replay record). Bounded so
-// a full-size reference mockup cannot push the message row off the screen; the reader
-// who wants it larger has the image itself to open.
-.reqImageThumb {
-  display: block;
-  max-width: 100%;
-  max-height: 14rem;
-  width: auto;
-  height: auto;
-  margin-top: t.$space-2xs;
-  border-radius: t.$radius-sm;
-  background: t.$color-surface-2;
-}
-
 .reqImageMeta {
   display: block;
 }
