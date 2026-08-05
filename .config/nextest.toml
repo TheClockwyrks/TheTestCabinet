@@ -18,3 +18,16 @@ slow-timeout = { period = "60s", terminate-after = 2 }
 [[profile.default.overrides]]
 filter = 'package(test-cabinet-gg) and test(=sandbox::tests::the_limits_stop_a_runaway_program)'
 threads-required = "num-test-threads"
+
+# gg's whole-loop sandbox tests drive real code turns end to end, and a code turn now
+# type-checks the model's program: each one spawns `node` against the committed `tsc`
+# for ~90 ms, and these tests run many turns each, several of them also compiling a
+# code skill or memory. Measured on an idle 18-core dev container they take 40-72 s
+# apiece under the package's own load, and one was observed at 119.5 s under heavier
+# load — against a default hard kill at 120 s, which would present as a mysterious
+# hang rather than as a checker that was too slow. The bound is kept (a wedged test
+# still dies) but set from what the work actually costs, with room for a CI runner
+# with a quarter of the cores and for the further checked language arms to come.
+[[profile.default.overrides]]
+filter = 'package(test-cabinet-gg) and test(agent::tests::sandbox_tests::)'
+slow-timeout = { period = "120s", terminate-after = 3 }
