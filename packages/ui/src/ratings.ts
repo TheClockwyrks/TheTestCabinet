@@ -135,20 +135,20 @@ export interface GradeMeta {
   emoji: string;
   /** Title-case label, e.g. "Neutral". */
   label: string;
-  /** The points the tier is worth (before the item's weight): 0/1/3/5/10. */
+  /** The points the tier is worth (before the item's weight): 0/2/5/8/10. */
   points: number;
 }
 
 /**
  * The five graded tiers keyed by status, worst to best. The point values
- * (0/1/3/5/10) mirror `VerdictStatus::grade_points` in the Rust core; keep the two
+ * (0/2/5/8/10) mirror `VerdictStatus::grade_points` in the Rust core; keep the two
  * in lockstep.
  */
 export const GRADE_META: Record<GradeStatus, GradeMeta> = {
   broken: { emoji: "💩", label: "Broken", points: 0 },
-  poor: { emoji: "🙁", label: "Not great", points: 1 },
-  neutral: { emoji: "😐", label: "Neutral", points: 3 },
-  great: { emoji: "😀", label: "Great", points: 5 },
+  poor: { emoji: "🙁", label: "Not great", points: 2 },
+  neutral: { emoji: "😐", label: "Neutral", points: 5 },
+  great: { emoji: "😀", label: "Great", points: 8 },
   incredible: { emoji: "💎", label: "Incredible", points: 10 },
 };
 
@@ -167,7 +167,7 @@ export function isGrade(value: string): value is GradeStatus {
 }
 
 /**
- * The points one of the five graded tiers is worth (0/1/3/5/10), or `undefined`
+ * The points one of the five graded tiers is worth (0/2/5/8/10), or `undefined`
  * for the binary `pass`/`fail`. Mirrors `VerdictStatus::grade_points` in the Rust
  * core.
  */

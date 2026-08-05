@@ -987,8 +987,11 @@ export function RunReviewEditor({
               its debug scripts ran (right-aligned) and expands to the per-script
               pass/fail breakdown — so a build where the checks never ran (e.g. a stale
               service image left the scripts ungraded) shows a plain "0 / N checks ran"
-              rather than looking silently unscored. */}
-          {liveScore && !jam && (
+              rather than looking silently unscored. A game jam scores the same way —
+              each graded category is worth `weight × 10` and earns its tier's points
+              — so it gets the same running total; it simply never declares automated
+              validation, so it always takes the plain branch. */}
+          {liveScore && (
             <div className={styles.notice}>
               {debugScripts.length > 0 ? (
                 <>
