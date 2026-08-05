@@ -48,6 +48,17 @@ use test_cabinet_core::gg_session_record::{
 };
 use test_cabinet_core::metrics::{Cost, TokenCounts};
 
+/// Rendered prose with every run of whitespace collapsed to one space.
+///
+/// The templates hard-wrap their prose — that is what makes them editable — so where a sentence
+/// happens to break is not something it *says*, and an assertion that spans a line break fires on
+/// a re-wrap that changed no word. A phrase check runs against this. (`crate::prompts`'s own tests
+/// keep a sibling helper of the same name for the same reason; each module has its own because a
+/// `#[path]` test file cannot see another's.)
+fn flat(rendered: &str) -> String {
+    rendered.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// The context window these tests run every scripted model against. gg has no fallback —
 /// a run whose window cannot be resolved does not start — so a test must supply the same
 /// thing a launch would: a window per bound model. The scripted models are not real, so
@@ -2089,7 +2100,7 @@ fn the_assigned_issue_section_is_rendered_for_a_dispatched_agent() {
         "the prompt names the issue this agent is working:\n{prompt}"
     );
     assert!(
-        prompt.contains("Implement it in the current\nworktree"),
+        flat(&prompt).contains("Implement it in the current worktree"),
         "and where the work is done:\n{prompt}"
     );
 
@@ -6684,7 +6695,7 @@ async fn an_issues_reviewers_gate_its_acceptance_and_its_merge() {
             .any(|(_, _, slot, _, brief)| slot == "reviewer"
                 && brief.as_deref().is_some_and(|b| b.contains("work-1.txt")
                     && b.contains("## What changed")
-                    && b.contains("The work is in your\ncurrent working directory.")
+                    && flat(b).contains("The work is in your current working directory.")
                     && !b.contains("```diff"))),
         "the reviewer is given the change summary and sent to the worktree, not handed the patch"
     );

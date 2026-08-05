@@ -1410,7 +1410,7 @@ fn the_compaction_prompts_render_for_every_requirement() {
         let summary = context(true, false, false, code_mode);
         let instruction = render_compaction_instruction(&summary);
         assert!(
-            instruction.starts_with("Your context window is full."),
+            flat(&instruction).starts_with("Your context window is full."),
             "{instruction}"
         );
         assert!(
@@ -1420,12 +1420,12 @@ fn the_compaction_prompts_render_for_every_requirement() {
         // A code agent's summary arrives as a call carrying it; a tool-calling agent's is its
         // reply's own text. Neither is ever asked to stop replying the way its protocol replies.
         assert_eq!(
-            instruction.contains("Call `compact(summary)`"),
+            flat(&instruction).contains("Call `compact(summary)`"),
             code_mode,
             "{instruction}"
         );
         assert_eq!(
-            instruction.contains("Reply with a plain text summary"),
+            flat(&instruction).contains("Reply with a plain text summary"),
             !code_mode,
             "{instruction}"
         );
@@ -1433,12 +1433,12 @@ fn the_compaction_prompts_render_for_every_requirement() {
         let compact = context(false, true, false, code_mode);
         let instruction = render_compaction_instruction(&compact);
         assert_eq!(
-            instruction.contains("Call `compact(summary, files)`"),
+            flat(&instruction).contains("Call `compact(summary, files)`"),
             code_mode,
             "{instruction}"
         );
         assert_eq!(
-            instruction.contains("Call `compact` and nothing else."),
+            flat(&instruction).contains("Call `compact` and nothing else."),
             !code_mode,
             "{instruction}"
         );
@@ -1453,7 +1453,10 @@ fn the_compaction_prompts_render_for_every_requirement() {
         // instruction again, prefaced by what went wrong.
         for pending in [summary, compact, memories] {
             let refusal = render_compaction_refusal(&pending);
-            assert!(refusal.starts_with("`shell` was NOT run:"), "{refusal}");
+            assert!(
+                flat(&refusal).starts_with("`shell` was NOT run:"),
+                "{refusal}"
+            );
             assert!(
                 flat(&refusal).contains("Everything is blocked until you"),
                 "{refusal}"
@@ -1461,7 +1464,7 @@ fn the_compaction_prompts_render_for_every_requirement() {
 
             let unsatisfied = render_compaction_unsatisfied(&pending);
             assert!(
-                unsatisfied.starts_with("Your reply did not compact your context,"),
+                flat(&unsatisfied).starts_with("Your reply did not compact your context,"),
                 "{unsatisfied}"
             );
             assert!(
@@ -1480,24 +1483,25 @@ fn the_out_of_band_compaction_prompts_render() {
     let compact = render_compaction_handoff_compact("compact");
     for prompt in [&summary, &compact] {
         assert!(
-            prompt.contains("You are responsible for compacting the session transcript"),
+            flat(prompt).contains("You are responsible for compacting the session transcript"),
             "{prompt}"
         );
     }
     // The two differ only in what the answer is, which is also how the offline mock tells them
     // apart — see `SUMMARIZATION_MARKER` / `COMPACT_CALL_MARKER`.
     assert!(
-        summary.contains("Reply with the summary of the session."),
+        flat(&summary).contains("Reply with the summary of the session."),
         "{summary}"
     );
     assert!(compact.contains("`compact` tool"), "{compact}");
 
     let preface = render_compaction_preface("You were building the grid.");
-    assert!(preface.starts_with("Session compaction completed."));
+    assert!(flat(&preface).starts_with("Session compaction completed."));
     assert!(preface.ends_with("You were building the grid."));
 
     assert!(
-        render_compaction_fallback().starts_with("(The earlier thread could not be summarized")
+        flat(&render_compaction_fallback())
+            .starts_with("(The earlier thread could not be summarized")
     );
     assert!(
         render_compaction_memory_summary().starts_with("Session compaction completed."),
@@ -1622,15 +1626,26 @@ const REQUIRED_SECTIONS: &[&str] = &[
     "## Your assigned issue",
 ];
 
-/// A context with **every** section a responses-as-code prompt can render turned on, in `language`.
+/// A context with every section a responses-as-code prompt renders turned on, in `language`.
 ///
-/// "Every" is meant literally, including the two capabilities that render a line rather than a
-/// heading — `read_file` and `shell`. A context that left them off would render a prompt with two
-/// calls missing from it and no gate here could tell that apart from a template that dropped them.
+/// That includes the two capabilities that render a line rather than a heading — `read_file` and
+/// `shell` — because a context that left them off would render a prompt with two calls missing from
+/// it and no gate here could tell that apart from a template that dropped them. It also includes
+/// [`custom_instructions`](SystemContext::custom_instructions), whose text is deliberately inert:
+/// operator prose frames the prompt but must not be able to satisfy an assertion about what gg's
+/// own template says.
+///
+/// Three [`SystemContext`] fields are **not** set, and the omission is not an oversight:
+/// `autoload_specs`, `persistence` and `fences_are_stripped` are read by no template in
+/// `crates/gg/templates/` — the prompt rewrites that folded the old sections into the intro left
+/// them behind. Turning them on here would render nothing, so no gate below can cover them; they
+/// are either sections the templates should regain or fields that should go, and that is a decision
+/// rather than a test fix.
 fn every_code_section_on(language: GgProgramLanguage) -> SystemContext {
     SystemContext {
         responses_as_code: true,
         language: Some(language),
+        custom_instructions: Some("Prefer the smaller change.".to_string()),
         apis: vec![ApiView {
             object: "harness".to_string(),
             description: "the run itself".to_string(),
@@ -1770,15 +1785,15 @@ fn each_language_renders_its_own_prompt_and_not_another_languages() {
     let rendered = render_system_for(fixture, &context);
 
     assert!(
-        typescript.contains("TypeScript program"),
+        flat(&typescript).contains("TypeScript program"),
         "TypeScript's prompt names the language it is written in:\n{typescript}"
     );
     assert!(
-        rendered.contains("program in the fixture language"),
+        flat(&rendered).contains("program in the fixture language"),
         "the fixture's prompt names its own language:\n{rendered}"
     );
     assert!(
-        !typescript.contains("fixture language"),
+        !flat(&typescript).contains("fixture language"),
         "one language's prompt leaked into the other's:\n{typescript}"
     );
 
@@ -2033,11 +2048,14 @@ fn a_prompt_names_the_call_for_every_capability_the_run_granted() {
         }
         // The documentation carve-out is not a `SurfaceCall` — it is seeded onto every object, so
         // it has no fixed pair — but it is the call an agent reads its own surface with, and the
-        // prompt is where its name is established.
-        let list = format!("{}()", crate::docs::LIST_FUNCTION);
+        // prompt is where its name is established. It is asserted in its *generic* form: the bare
+        // call appears in the worked example too (`fs.list()`), so a prompt that dropped the rule
+        // and kept the example would satisfy `list()` while teaching the model nothing about the
+        // other eleven objects. The placeholder receiver is the rule.
+        let list = format!("<object>.{}()", crate::docs::LIST_FUNCTION);
         assert!(
             rendered.contains(&list),
-            "{name}: the prompt no longer tells the model how to list an object's functions \
+            "{name}: the prompt no longer tells the model how to list any object's functions \
              (`{list}`):\n{rendered}"
         );
     }

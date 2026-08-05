@@ -15,6 +15,14 @@ use crate::context::{ContextModel, HeuristicTokenEstimator, Retention};
 use crate::memories::MemoryStrategy;
 use crate::model::{Message, ToolCall};
 
+/// A rendered prompt with every run of whitespace collapsed to one space.
+///
+/// The templates hard-wrap their prose, so a phrase check that spanned a line break would fire on
+/// a re-wrap that changed no word. What a prompt *says* is asserted against this.
+fn flat(rendered: &str) -> String {
+    rendered.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 /// A capability set whose Root agent enables compaction with `implementation` and `params`, with
 /// memories on or off — the two inputs strategy resolution reads.
 fn set_with(
@@ -509,11 +517,12 @@ fn the_handoff_prompts_disown_the_thread() {
         handoff_summary_system_prompt(),
         handoff_compact_system_prompt(),
     ] {
+        let flat = flat(prompt);
         assert!(
-            prompt.contains("compacting the session transcript attached below"),
+            flat.contains("compacting the session transcript attached below"),
             "{prompt}"
         );
-        assert!(prompt.contains("what was done previously"), "{prompt}");
+        assert!(flat.contains("what was done previously"), "{prompt}");
     }
     // Each carries the marker its offline mock path keys off — and only its own.
     assert!(handoff_summary_system_prompt().contains(SUMMARIZATION_MARKER));
