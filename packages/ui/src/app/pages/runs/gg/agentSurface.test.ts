@@ -15,6 +15,7 @@ import type {
 } from "@test-cabinet/run-record/gg";
 import type { HarnessEvent } from "../../../../client/types";
 import { reduceGgEvents, reduceGgEventsPerAgent } from "./useGgRunState";
+import { apiCallSpellings } from "./ggSurfaceCalls";
 
 const TS = "2026-08-03T00:00:00Z";
 
@@ -212,5 +213,46 @@ describe("agent surface reduction", () => {
     ]);
     expect(state.agents.get("root")?.surface).toBeUndefined();
     expect(state.agentForest[0]?.surface).toBeUndefined();
+  });
+});
+
+describe("apiCallSpellings", () => {
+  it("maps the recorded identity back to the spelling the model wrote", () => {
+    // The wire carries the snake_case, language-independent key and nothing else, so every
+    // read-out of what an agent CALLED has to come back through the surface to say it the
+    // way the program said it.
+    const spellings = apiCallSpellings([
+      {
+        object: "fs",
+        description: "the workspace",
+        functions: [
+          { name: "readFile", key: "read_file" },
+          { name: "list", key: "list" },
+        ],
+      },
+      {
+        object: "view",
+        description: "show yourself something",
+        functions: [{ name: "openFile", key: "open_file" }],
+      },
+    ]);
+    expect(spellings.get("fs.read_file")).toBe("fs.readFile");
+    expect(spellings.get("view.open_file")).toBe("view.openFile");
+    // Namespaced on both sides: every object binds a `list`, and a bare one would collide.
+    expect(spellings.get("fs.list")).toBe("fs.list");
+  });
+
+  it("skips a function with no recorded identity rather than guessing one", () => {
+    // A record written before gg counted a call per function. Reversing the snake_case
+    // convention is not a rule this console may assume, so the entry is simply absent and
+    // its caller falls back to the identity the call was actually recorded under.
+    const spellings = apiCallSpellings([
+      {
+        object: "fs",
+        description: "the workspace",
+        functions: [{ name: "readFile" }],
+      },
+    ]);
+    expect(spellings.size).toBe(0);
   });
 });

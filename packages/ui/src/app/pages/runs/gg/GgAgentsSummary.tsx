@@ -75,8 +75,10 @@ const numberFmt = new Intl.NumberFormat("en-US");
 // comparison line and the open detail's stat grid — rather than only where there is room.
 function callRateTitle(agent: GgAgentSummary): string {
   return (
-    "Tool and function calls per assistant response — " +
-    `${callRatePhrase(agent.tools.totalCalls, agent.turns)}, ` +
+    (agent.calls.surface === "api"
+      ? "API function calls per assistant response — "
+      : "Tool and function calls per assistant response — ") +
+    `${callRatePhrase(agent.calls.totalCalls, agent.turns)}, ` +
     "summed over every instance of this agent. " +
     "A proxy for efficiency: an agent that does more per round trip spends fewer responses, " +
     "less latency, and less context reaching the same place."
@@ -325,8 +327,8 @@ function AgentRow({
           <Figure
             label="calls/resp"
             value={
-              agent.toolCallsPerResponse != null
-                ? agent.toolCallsPerResponse.toFixed(1)
+              agent.callsPerResponse != null
+                ? agent.callsPerResponse.toFixed(1)
                 : "—"
             }
             title={callRateTitle(agent)}
@@ -479,7 +481,7 @@ function AgentDetail({ agent }: { agent: GgAgentSummary }) {
               twelve instances may be reading one store or twelve. */}
           <ModulesSection agent={agent} />
           <ContextBreakdown agent={agent} />
-          <ToolsSection agent={agent} />
+          <CallsSection agent={agent} />
         </>
       ) : (
         /* A configured arm the run never exercised — which is a result, not a gap. */
@@ -531,13 +533,11 @@ function SurfaceSection({ agent }: { agent: GgAgentSummary }) {
   // The profile's observed calls, keyed the way this section's entries are RECORDED: an API
   // surface joins on `object.function` — the function the model wrote — and a tool surface on
   // the gg tool name. Two layers over one core, and only the layer this section is showing.
-  const calls = useMemo(
-    () =>
-      asApis
-        ? agent.apiCalls
-        : new Map(agent.tools.tools.map((tool) => [tool.name, tool.calls])),
-    [asApis, agent.apiCalls, agent.tools],
-  );
+  // Both come off the raw per-layer records rather than off the profile's call breakdown,
+  // which reports only the layer that profile's read-out is taken on: the two questions can
+  // legitimately part company for a code profile that bound no API objects at all, which is
+  // read as APIs nowhere and shows the tools its calls were gated on here.
+  const calls = asApis ? agent.apiCalls : agent.toolCalls;
   if (!surface) return null;
 
   if (!asApis && surface.tools.length === 0) return null;
@@ -1192,16 +1192,16 @@ function AgentStats({ agent }: { agent: GgAgentSummary }) {
         }
       />
       {/* The profile's calls over the profile's responses, not the mean of its instances'
-          own rates — see `GgAgentSummary.toolCallsPerResponse` for why. The sub says both
+          own rates — see `GgAgentSummary.callsPerResponse` for why. The sub says both
           halves so the ratio can be checked against the numbers it came from. */}
       <Stat
         label="calls per response"
         value={
-          agent.toolCallsPerResponse != null
-            ? agent.toolCallsPerResponse.toFixed(1)
+          agent.callsPerResponse != null
+            ? agent.callsPerResponse.toFixed(1)
             : "—"
         }
-        sub={`${numberFmt.format(agent.tools.totalCalls)} calls · ${numberFmt.format(agent.turns)} responses`}
+        sub={`${numberFmt.format(agent.calls.totalCalls)} calls · ${numberFmt.format(agent.turns)} responses`}
         title={callRateTitle(agent)}
       />
     </div>
@@ -1367,35 +1367,42 @@ function AttributionList({
   );
 }
 
-// Every tool this agent's instances called, summed — the itemized version of the Dashboard
+// Everything this agent's instances called, summed — the itemized version of the Dashboard
 // row's chips, but per profile rather than per instance, so "the reviewer reads forty files
 // per review" is a thing you can see.
 //
-// Headed "Tool calls" rather than "Tools": the detail now also carries what the agent was
+// It reads on the surface those instances actually called on, and names it in the heading:
+// a profile whose instances answer as code called `fs.readFile`, and heading its observed
+// usage "Tool calls" would have put this section and the offered surface directly above it
+// — which already reads that profile as APIs — in disagreement about what the profile did,
+// on one panel, three lines apart.
+//
+// Headed "…calls" rather than "Tools"/"APIs": the detail also carries what the agent was
 // *offered* (see {@link SurfaceSection}), and the whole point of showing both is that they
 // are different sets — one heading for the two of them would have made the section this one
 // exists to be contrasted with look like a longer copy of it.
-function ToolsSection({ agent }: { agent: GgAgentSummary }) {
-  const { tools, totalCalls, outputTokensKnown, totalContextTokens } =
-    agent.tools;
-  if (tools.length === 0) return null;
+function CallsSection({ agent }: { agent: GgAgentSummary }) {
+  const { surface, calls, totalCalls, outputTokensKnown, totalContextTokens } =
+    agent.calls;
+  if (calls.length === 0) return null;
   return (
     <section className={styles.section}>
       <span className={dash.cardLabel}>
-        Tool calls · {numberFmt.format(totalCalls)}
+        {surface === "api" ? "API calls" : "Tool calls"} ·{" "}
+        {numberFmt.format(totalCalls)}
       </span>
       <ul className={styles.attrList}>
-        {tools.map((tool) => {
+        {calls.map((entry) => {
           const share =
             outputTokensKnown && totalContextTokens > 0
-              ? tool.outputTokens / totalContextTokens
+              ? entry.outputTokens / totalContextTokens
               : null;
           return (
-            <li key={tool.name} className={styles.attrRow}>
+            <li key={entry.name} className={styles.attrRow}>
               <span className={styles.attrIdentity}>
-                <span className={styles.attrName}>{tool.name}</span>
+                <span className={styles.attrName}>{entry.name}</span>
                 <span className={styles.attrMeta}>
-                  {(tool.calls / agent.instances.length).toFixed(1)} per
+                  {(entry.calls / agent.instances.length).toFixed(1)} per
                   instance
                 </span>
               </span>
@@ -1403,14 +1410,16 @@ function ToolsSection({ agent }: { agent: GgAgentSummary }) {
                 <span
                   className={styles.attrBarFill}
                   style={{
-                    width: `${totalCalls > 0 ? (tool.calls / totalCalls) * 100 : 0}%`,
+                    width: `${totalCalls > 0 ? (entry.calls / totalCalls) * 100 : 0}%`,
                   }}
                 />
               </span>
               <span className={styles.attrFigures}>
-                <span className={styles.attrValue}>{tool.calls}×</span>
+                <span className={styles.attrValue}>{entry.calls}×</span>
+                {/* The token column is a fact about tool results, which a code turn
+                    produces none of — an API row's dash is that absence, not a zero. */}
                 <span className={styles.attrShare}>
-                  {share != null ? shortTokens(tool.outputTokens) : "—"}
+                  {share != null ? shortTokens(entry.outputTokens) : "—"}
                 </span>
               </span>
             </li>

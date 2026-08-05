@@ -285,12 +285,29 @@ function sessionStartedAblating(
 // Its state is carried on data attributes rather than on a class, because the test
 // environment stubs CSS modules away — and "offered but never called" is a state, not a
 // look.
-// One model-facing call, as a responses-as-code program's turn streams it.
-function apiCall(object: string, fn: string): HarnessEvent {
-  return gg({
+// One model-facing call, as a responses-as-code program's turn streams it. The opening
+// half is emitted before the work, so anything the call runs — a bridged tool, a whole
+// delegated sub-run — arrives between it and its result.
+function apiCall(object: string, fn: string, agentId = "root"): HarnessEvent {
+  return ggFrom(agentId, undefined, {
     type: "api_call",
     object,
     function: fn,
+  } as GgTelemetryKind);
+}
+
+// …and the closing half, carrying the verdict.
+function apiResult(
+  object: string,
+  fn: string,
+  ok = true,
+  agentId = "root",
+): HarnessEvent {
+  return ggFrom(agentId, undefined, {
+    type: "api_result",
+    object,
+    function: fn,
+    ok,
   } as GgTelemetryKind);
 }
 
@@ -3133,6 +3150,326 @@ describe("GgRunMonitorPage", () => {
       name: /step through what each agent saw and did/i,
     });
     expect(link).toHaveAttribute("href", "/runs/gg/run-1/replay");
+  });
+
+  // --- What a responses-as-code agent is reported to have DONE --------------------
+  //
+  // Every surface that answers "what did this agent call" reads the record the agent
+  // actually called on. For a code agent that is the API layer: its program wrote
+  // `fs.readFile`, and the `read_file` underneath is an implementation detail of the
+  // harness, not something the model did. Reading a code agent on the tool layer put
+  // three surfaces into a vocabulary the model never used — and dropped, entirely, every
+  // call no tool backs.
+
+  it("folds a code agent's bridged call into one row, in the vocabulary its program wrote", () => {
+    renderMonitor([
+      sessionStarted(["filesystem"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface(
+        "root",
+        ["read_file"],
+        [
+          {
+            object: "fs",
+            description: "Read and write the workspace.",
+            functions: [
+              { name: "readFile", key: "read_file" },
+              { name: "list", key: "list" },
+            ],
+          },
+          {
+            object: "context",
+            description: "Manage the window.",
+            functions: [{ name: "list", key: "list" }],
+          },
+        ],
+      ),
+      gg({ type: "turn_started" }),
+      // A bridged call: the program wrote `fs.readFile`, and gg dispatched `read_file`
+      // inside the bracket to serve it. ONE action ⇒ one row.
+      apiCall("fs", "read_file"),
+      gg({
+        type: "tool_call",
+        name: "read_file",
+        args: { path: "level.json" },
+      }),
+      gg({
+        type: "tool_result",
+        name: "read_file",
+        ok: true,
+        summary: "412 B",
+      }),
+      apiResult("fs", "read_file"),
+      // A call no tool backs at all — invisible in the feed until the feed started
+      // reading the layer the model calls on.
+      apiCall("context", "list"),
+      apiResult("context", "list"),
+      // …and one that failed, which reads the way a failed tool result always has.
+      apiCall("fs", "list"),
+      apiResult("fs", "list", false),
+    ]);
+    openTab("Instances");
+    openFile("root activity");
+
+    // The model's own spelling, resolved off the surface it reported — never the
+    // snake_case identity the wire records the call under.
+    expect(screen.getByText("fs.readFile")).toBeInTheDocument();
+    // The bridged tool's args survive on the API row: `api_call` carries none, so
+    // absorbing them is the only way the path stays on the page at all.
+    expect(screen.getByText('{"path":"level.json"}')).toBeInTheDocument();
+    // …as does the result's summary.
+    expect(screen.getByText("fs.readFile: 412 B")).toBeInTheDocument();
+    // And the tool underneath appears NOWHERE: one action, one row.
+    expect(screen.queryByText("read_file")).toBeNull();
+    expect(screen.queryByText(/^read_file: /)).toBeNull();
+
+    // The tool-less call is in the feed, both halves.
+    expect(screen.getAllByText("context.list").length).toBeGreaterThan(0);
+    // A failed call reads as a failed result, in the same words a tool failure does.
+    expect(screen.getAllByText("RESULT ✗")).toHaveLength(1);
+    // The gutter says CALL, not TOOL: this agent called no tool.
+    expect(screen.getAllByText("CALL")).toHaveLength(3);
+    expect(screen.queryByText("TOOL")).toBeNull();
+  });
+
+  it("leaves a tool-calling agent's feed exactly as it was", () => {
+    // The proof that the fold is inert for the mode it does not describe: a tool-calling
+    // agent emits no `api_call`, so no bracket is ever open and every row falls through
+    // the fold untouched.
+    renderMonitor([
+      sessionStarted(["filesystem"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface("root", ["read_file"]),
+      gg({ type: "turn_started" }),
+      gg({ type: "tool_call", name: "read_file", args: { path: "a.ts" } }),
+      gg({ type: "tool_result", name: "read_file", ok: true, summary: "9 B" }),
+    ]);
+    openTab("Instances");
+    openFile("root activity");
+
+    expect(screen.getAllByText("TOOL")).toHaveLength(1);
+    expect(screen.getByText("read_file")).toBeInTheDocument();
+    expect(screen.getByText('{"path":"a.ts"}')).toBeInTheDocument();
+    expect(screen.getByText("read_file: 9 B")).toBeInTheDocument();
+    expect(screen.queryByText("CALL")).toBeNull();
+  });
+
+  it("does not let a delegating call swallow the child's own rows", () => {
+    // `begin_api_call` is emitted BEFORE the work, so a delegation's bracket spans the
+    // child's entire sub-run. The bracket is therefore keyed per emitting agent: the
+    // child's tool calls are the child's, and a run-wide flag would have suppressed every
+    // one of them for as long as the parent waited.
+    renderMonitor([
+      sessionStarted(["filesystem", "subagents"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface(
+        "root",
+        ["spawn_agent"],
+        [
+          {
+            object: "agents",
+            description: "Delegate work.",
+            functions: [{ name: "spawn", key: "spawn_agent" }],
+          },
+        ],
+      ),
+      ggFrom("agent-0", "root", {
+        type: "agent_spawned",
+        slot: "worker",
+        modelId: "mock/scripted-builder",
+        depth: 1,
+      } as GgTelemetryKind),
+      surface("agent-0", ["read_file"]),
+      apiCall("agents", "spawn"),
+      // The child's whole sub-run nests inside the parent's open bracket.
+      ggFrom("agent-0", "root", {
+        type: "tool_call",
+        name: "read_file",
+        args: { path: "b.ts" },
+      } as GgTelemetryKind),
+      ggFrom("agent-0", "root", {
+        type: "tool_result",
+        name: "read_file",
+        ok: true,
+        summary: "1 kB",
+      } as GgTelemetryKind),
+      apiResult("agents", "spawn"),
+    ]);
+    openTab("Instances");
+    openFolder("agent agent-0");
+    openFile("agent-0 activity");
+
+    // The child answers with tool calls and its feed says so, in full.
+    expect(screen.getByText("read_file")).toBeInTheDocument();
+    expect(screen.getByText('{"path":"b.ts"}')).toBeInTheDocument();
+    expect(screen.getByText("read_file: 1 kB")).toBeInTheDocument();
+  });
+
+  it("closes a bracket at the turn boundary rather than absorbing the next turn", () => {
+    // A run killed mid-call leaves an opening half with no result. A bracket cannot
+    // outlive the turn it was opened in — a program runs inside one turn — so the damage
+    // is bounded to that turn instead of one unclosed bracket eating the rest of the
+    // agent's feed. Note also that the surface here reports no `key` for `readFile`, so
+    // the row falls back to the identity the call was RECORDED under rather than guessing
+    // at a spelling.
+    renderMonitor([
+      sessionStarted(["filesystem"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface(
+        "root",
+        ["read_file"],
+        [
+          {
+            object: "fs",
+            description: "Read and write the workspace.",
+            functions: [{ name: "readFile" }],
+          },
+        ],
+      ),
+      gg({ type: "turn_started" }),
+      apiCall("fs", "read_file"),
+      gg({ type: "turn_started" }),
+      gg({ type: "tool_call", name: "read_file", args: { path: "c.ts" } }),
+    ]);
+    openTab("Instances");
+    openFile("root activity");
+
+    // The unresolvable spelling reads as the wire's, never as a blank and never as a guess.
+    expect(screen.getByText("fs.read_file")).toBeInTheDocument();
+    // The next turn's tool row is its own row, not swallowed into the stranded bracket.
+    expect(screen.getByText("read_file")).toBeInTheDocument();
+    expect(screen.getByText('{"path":"c.ts"}')).toBeInTheDocument();
+  });
+
+  it("heads each agent's Overview with the surface it actually called on", () => {
+    renderMonitor([
+      sessionStartedWith([
+        { name: "Root", capabilities: ["filesystem", "subagents"] },
+        { name: "worker", capabilities: ["filesystem"] },
+      ]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface(
+        "root",
+        ["read_file"],
+        [
+          {
+            object: "fs",
+            description: "Read and write the workspace.",
+            functions: [{ name: "readFile", key: "read_file" }],
+          },
+        ],
+      ),
+      gg({ type: "turn_started" }),
+      apiCall("fs", "read_file"),
+      gg({ type: "tool_call", name: "read_file", args: {} }),
+      apiResult("fs", "read_file"),
+      // A tool-calling sibling on the same run, to prove the choice is per instance.
+      ggFrom("agent-0", "root", {
+        type: "agent_spawned",
+        slot: "worker",
+        modelId: "mock/scripted-builder",
+        depth: 1,
+      } as GgTelemetryKind),
+      surface("agent-0", ["shell"]),
+      ggFrom("agent-0", "root", {
+        type: "tool_call",
+        name: "shell",
+        args: {},
+      } as GgTelemetryKind),
+    ]);
+    openTab("Instances");
+    openFile("root overview");
+    // The code agent's panel names, and itemizes, what its program wrote.
+    expect(screen.getByText("API calls")).toBeInTheDocument();
+    expect(screen.queryByText("Tool calls")).toBeNull();
+    expect(screen.getByText("fs.readFile")).toBeInTheDocument();
+    expect(screen.queryByText("read_file")).toBeNull();
+
+    openFolder("agent agent-0");
+    openFile("agent-0 overview");
+    expect(screen.getByText("Tool calls")).toBeInTheDocument();
+    expect(screen.queryByText("API calls")).toBeNull();
+    expect(screen.getByText("shell")).toBeInTheDocument();
+  });
+
+  it("chips a code agent's Dashboard row with the functions it wrote", () => {
+    renderMonitor([
+      sessionStarted(["filesystem"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface(
+        "root",
+        ["read_file"],
+        [
+          {
+            object: "fs",
+            description: "Read and write the workspace.",
+            functions: [{ name: "readFile", key: "read_file" }],
+          },
+        ],
+      ),
+      apiCall("fs", "read_file"),
+      gg({ type: "tool_call", name: "read_file", args: {} }),
+      apiResult("fs", "read_file"),
+    ]);
+    // The Dashboard is the default tab.
+    expect(screen.getByText("fs.readFile")).toBeInTheDocument();
+    expect(screen.queryByText("read_file")).toBeNull();
+  });
+
+  it("says a code agent called nothing in the vocabulary it would have used", () => {
+    // "no tools" said of an agent that answers as code accuses it of a poverty it does
+    // not have: it was never offered tools, and what it did not do was call a function.
+    renderMonitor([
+      sessionStarted(["filesystem"]),
+      gg({
+        type: "agent_spawned",
+        slot: "Root",
+        modelId: "mock/scripted-builder",
+        depth: 0,
+      }),
+      surface(
+        "root",
+        ["read_file"],
+        [
+          {
+            object: "fs",
+            description: "Read and write the workspace.",
+            functions: [{ name: "readFile", key: "read_file" }],
+          },
+        ],
+      ),
+    ]);
+    expect(screen.getByText("no API calls")).toBeInTheDocument();
   });
 
   it("shows empty states when no gg telemetry arrives", () => {

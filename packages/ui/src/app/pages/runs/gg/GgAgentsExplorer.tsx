@@ -17,18 +17,19 @@ import type {
   DerivedGgState,
   FeedRow,
   FsmVisit,
-  GgToolBreakdown,
+  GgCallBreakdown,
   ModuleSnapshot,
 } from "./useGgRunState";
 import {
   ROOT_ID,
   callRatePhrase,
-  ggToolBreakdown,
+  callRecordSurface,
+  callsPerResponse,
+  ggCallBreakdown,
   shortTokens,
-  toolCallsPerResponse,
 } from "./useGgRunState";
 import { cx } from "./ggFsTree";
-import { surfaceCallPhrase } from "./ggSurfaceCalls";
+import { apiCallSpellings, surfaceCallPhrase } from "./ggSurfaceCalls";
 import {
   FsExplorer,
   FsFileRow,
@@ -867,8 +868,8 @@ function ActivityFeed({ feed, live }: { feed: FeedRow[]; live: boolean }) {
 // Tokens, Cost and Errors widgets (the very components the Dashboard uses, fed this
 // agent's own partition of the stream) — so a subagent's spend and its failures are
 // legible in the same shape as the run's, not a different-looking summary — and its
-// tool-usage breakdown (the itemized version of
-// the Dashboard row's tool chips). The run's process structure is a whole-run fact,
+// call breakdown (the itemized version of
+// the Dashboard row's chips, on the surface this instance called on). The run's process structure is a whole-run fact,
 // so it hangs off the root agent only; a
 // session-scoped card (status, the agent overview, the configuration) has no place on
 // one agent, so none appears here — those read on the Dashboard, as does the whole
@@ -903,8 +904,19 @@ function OverviewFile({
   // How fast this one instance generated, across every call it made — the run-wide rate on
   // the Dashboard narrowed to the instance whose tokens these are.
   const throughput = useMemo(() => agentThroughput(state), [state]);
-  // The agent's tool usage — the breakdown behind the Dashboard overview's chips.
-  const tools = useMemo(() => ggToolBreakdown(state), [state]);
+  // What this instance CALLED — the breakdown behind the Dashboard overview's chips, taken
+  // on the record its own execution mode says it made calls on (see `callRecordSurface`).
+  // A code instance's calls are the functions its programs wrote; a tool-calling one's are
+  // its tools, which is every call it could possibly have made.
+  const calls = useMemo(
+    () =>
+      ggCallBreakdown(
+        state,
+        callRecordSurface(state.apiCalls, node.surface?.executionMode),
+        node.surface ? apiCallSpellings(node.surface.apis) : undefined,
+      ),
+    [state, node.surface],
+  );
   // The high-water context snapshot — the turn the window was fullest — for the peak
   // gauge beside the current one. The snapshot with the most tokens carries its own
   // window limit and fullness, so the ring reads it the same way as the latest.
@@ -957,8 +969,8 @@ function OverviewFile({
             bare
           />
         </div>
-        {tools.tools.length > 0 && (
-          <AgentToolsPanel breakdown={tools} responses={state.turnCount} />
+        {calls.calls.length > 0 && (
+          <AgentCallsPanel breakdown={calls} responses={state.turnCount} />
         )}
         {/* The run's delegation structure hangs off the main agent — it is a
             whole-run fact, not one subagent's, so it reads on the root. */}
@@ -970,40 +982,59 @@ function OverviewFile({
   );
 }
 
-// An agent's tool-usage breakdown, shown on its Overview: every tool it CALLED, most
-// used first, with how many times it called it and — where the message log recorded
-// it — how many tokens that tool's results added to the window, as a share of all the
-// tokens that entered the agent's context. It is captioned "Tool calls" rather than
-// "Tools" because the instance's own surface file answers what it was *offered*, and a
-// list of the tools it used named the same thing as the list of the tools it had would
-// quietly answer the wrong question. The Dashboard's agent overview shows the same
-// tools as bare chips; this is the itemized version behind them. Its caption line
-// also carries the instance's call rate — how many calls it got out of each response —
-// which is a fact about the agent rather than about any tool in the list, so it sits on
-// the header beside the caption instead of being wedged in as a first row.
-function AgentToolsPanel({
+// An agent's call breakdown, shown on its Overview: everything it CALLED, most used
+// first, with how many times it called it and — where the message log recorded it — how
+// many tokens that call's results added to the window, as a share of all the tokens that
+// entered the agent's context.
+//
+// It reads on the surface the instance actually made calls on, and says which in its
+// caption: "Tool calls" for a tool-calling instance, "API calls" for one that answers its
+// turns as code, whose programs called `fs.readFile` and never uttered the name of the
+// tool underneath it. The alternative — one caption over the tool layer for everybody —
+// headed a panel "Tool calls" for an agent that makes none, and itemized the run in a
+// vocabulary the model never used. It is the same choice `ErrorsWidget` makes one widget
+// over, resolved the same way so the console reads as one system.
+//
+// Captioned "…calls" rather than "Tools"/"APIs" because the instance's own surface file
+// answers what it was *offered*, and a list of what it used named the same thing as the
+// list of what it had would quietly answer the wrong question. The Dashboard's agent
+// overview shows the same entries as bare chips; this is the itemized version behind them.
+// Its caption line also carries the instance's call rate — how many calls it got out of
+// each response — which is a fact about the agent rather than about any entry in the list,
+// so it sits on the header beside the caption instead of being wedged in as a first row.
+//
+// The token-share columns are dropped on the API surface, and their absence is the honest
+// reading rather than a gap: a responses-as-code turn produces no tool-role messages at
+// all, so there is no per-function material in the window to attribute and the bar would
+// be pinned at zero on every row beside a `0 · 0%` (see `ggCallBreakdown`).
+function AgentCallsPanel({
   breakdown,
   responses,
 }: {
-  breakdown: GgToolBreakdown;
+  breakdown: GgCallBreakdown;
   /** This instance's assistant responses — one per turn — the rate's denominator. */
   responses: number;
 }) {
-  const { tools, totalContextTokens, outputTokensKnown, totalCalls } =
+  const { surface, calls, totalContextTokens, outputTokensKnown, totalCalls } =
     breakdown;
+  const asApis = surface === "api";
   // The instance's own calls over its own turns, both counted from its own partition of
   // the stream (never the whole-run `slot_usage` rollups, which the per-agent reduction
   // drops for exactly this reason). Null before it has taken a turn, so an agent whose
   // first call is streamed ahead of its first turn reads as calls with no rate yet.
-  const perResponse = toolCallsPerResponse(breakdown, responses);
+  const perResponse = callsPerResponse(breakdown, responses);
   return (
     <section className={panels.agentSection}>
       <div className={panels.toolsHead}>
-        <span className={panels.subPanelLabel}>Tool calls</span>
+        <span className={panels.subPanelLabel}>
+          {asApis ? "API calls" : "Tool calls"}
+        </span>
         <span
           className={panels.toolsRate}
           title={
-            "Tool and function calls per assistant response — " +
+            (asApis
+              ? "API function calls per assistant response — "
+              : "Tool and function calls per assistant response — ") +
             `${callRatePhrase(totalCalls, responses)}. A proxy for efficiency: ` +
             "an agent that does more per round trip spends fewer responses, less latency, " +
             "and less context reaching the same place."
@@ -1015,29 +1046,36 @@ function AgentToolsPanel({
         </span>
       </div>
       <ul className={panels.toolList}>
-        {tools.map((tool) => {
+        {calls.map((entry) => {
           const share =
             outputTokensKnown && totalContextTokens > 0
-              ? tool.outputTokens / totalContextTokens
+              ? entry.outputTokens / totalContextTokens
               : null;
           return (
-            <li key={tool.name} className={panels.toolRow}>
-              <span className={panels.toolName}>{tool.name}</span>
+            <li
+              key={entry.name}
+              className={cx(panels.toolRow, asApis && panels.callRowBare)}
+            >
+              <span className={panels.toolName}>{entry.name}</span>
               <span className={panels.toolCalls}>
-                {tool.calls}
+                {entry.calls}
                 {"×"}
               </span>
-              <span className={panels.toolBar} aria-hidden="true">
-                <span
-                  className={panels.toolBarFill}
-                  style={{ width: `${(share ?? 0) * 100}%` }}
-                />
-              </span>
-              <span className={panels.toolTokens}>
-                {share != null
-                  ? `${shortTokens(tool.outputTokens)} · ${formatPercent(share)}`
-                  : "—"}
-              </span>
+              {!asApis && (
+                <>
+                  <span className={panels.toolBar} aria-hidden="true">
+                    <span
+                      className={panels.toolBarFill}
+                      style={{ width: `${(share ?? 0) * 100}%` }}
+                    />
+                  </span>
+                  <span className={panels.toolTokens}>
+                    {share != null
+                      ? `${shortTokens(entry.outputTokens)} · ${formatPercent(share)}`
+                      : "—"}
+                  </span>
+                </>
+              )}
             </li>
           );
         })}
@@ -1072,15 +1110,12 @@ function SurfaceFile({
   node: AgentNode;
   state: DerivedGgState;
 }) {
-  // This instance's own tool calls — its partition of the stream, the same breakdown its
-  // Overview's Tool-calls panel itemizes, keyed by gg tool name. This is the EXECUTION
-  // record and it is what a tool-calling instance's surface is read against.
-  const calls = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const tool of ggToolBreakdown(state).tools)
-      counts.set(tool.name, tool.calls);
-    return counts;
-  }, [state]);
+  // This instance's own tool calls — its partition of the stream, keyed by gg tool name.
+  // This is the EXECUTION record and it is what a tool-calling instance's surface is read
+  // against, so it is asked for explicitly rather than through `callRecordSurface`: the
+  // question this file asks is "what became of each tool I was offered", and a code
+  // instance is read against its API objects a few lines below instead.
+  const toolCalls = useMemo(() => new Map(state.toolCalls), [state.toolCalls]);
   const surface = node.surface;
   if (!surface) {
     // Unreachable through the sidebar, which does not offer the file to an instance that
@@ -1106,7 +1141,7 @@ function SurfaceFile({
         // the model's own vocabulary.
         <ApiSurface apis={surface.apis} calls={state.apiCalls} />
       ) : (
-        <ToolSurface tools={surface.tools} calls={calls} />
+        <ToolSurface tools={surface.tools} calls={toolCalls} />
       )}
       {surface.withheld.length > 0 && (
         <WithheldTools tools={surface.withheld} />

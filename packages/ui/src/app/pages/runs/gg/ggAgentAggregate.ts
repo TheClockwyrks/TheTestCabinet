@@ -10,7 +10,7 @@
 // reading it at all.
 //
 // So this folds the run the other way: group the instances by the profile they ran under and
-// sum everything that sums — instances, turns, tokens, cost, tool calls, and the
+// sum everything that sums — instances, turns, tokens, cost, the calls they made, and the
 // [context accounting](./ggContextAttribution) that says which files and tools filled their
 // windows. A profile the configuration declares but the run never instantiated is included
 // with nothing in it, because "the reviewer never ran" is one of the more useful things an
@@ -45,19 +45,21 @@ import { agentModelMs, generatedTokens } from "./ggThroughput";
 // handed in by the caller that folded it.
 import type { GgAgentModuleSummary, GgModuleIndex } from "./ggModules";
 import { ROOT_AGENT } from "./ggCatalog";
+import { apiCallSpellings } from "./ggSurfaceCalls";
 import {
   ROOT_ID,
   addErrorTally,
   emptyErrorTally,
   ggPeakContext,
-  ggToolBreakdown,
-  toolCallsPerResponse,
+  callRecordSurface,
+  callsPerResponse,
+  ggCallBreakdown,
   type AgentTreeNode,
   type DerivedGgState,
   type GgAgentSurface,
   type GgErrorTally,
-  type GgToolBreakdown,
-  type GgToolUsage,
+  type GgCallBreakdown,
+  type GgCallUsage,
   type UsageTally,
 } from "./useGgRunState";
 
@@ -96,8 +98,8 @@ export interface GgAgentSurfaceEntry {
   name: string;
   /**
    * This entry's language-independent identity — the join key into the profile's call counts:
-   * {@link GgAgentSummary.tools} for a tool entry, {@link GgAgentSummary.apiCalls} for an API
-   * one. Equal to {@link name} for a tool; the catalogue key for a function.
+   * {@link GgAgentSummary.toolCalls} for a tool entry, {@link GgAgentSummary.apiCalls} for an
+   * API one. Equal to {@link name} for a tool; the catalogue key for a function.
    *
    * Empty only on a record written before gg counted a call per function, where a consumer
    * must say the record predates the accounting rather than report a zero.
@@ -232,18 +234,32 @@ export interface GgAgentSummary {
    * twelve small samples.
    */
   tokensPerSecond: number | null;
-  /** Every tool its instances called, most-used first. */
-  tools: GgToolBreakdown;
+  /**
+   * Everything its instances called, most-used first — on the surface those instances
+   * answered their turns on. A tool-calling profile's tools, a responses-as-code profile's
+   * API functions in the spelling its programs wrote them, decided per instance by
+   * `callRecordSurface` and merged (see {@link mergeCallBreakdowns}).
+   */
+  calls: GgCallBreakdown;
   /**
    * How many times each API function its instances called was called, keyed
    * `object.function` on the function's own identity — `view.open_file`, `context.list`.
    *
-   * The counterpart of {@link tools} for the other layer: that is what RAN, this is what the
-   * model WROTE. Empty for a tool-calling profile, which writes no programs.
+   * The raw model-facing record, kept whichever surface {@link calls} reports on, because
+   * the offered-surface section joins its entries on the wire identity rather than on the
+   * spelling a read-out shows.
    */
   apiCalls: ReadonlyMap<string, number>;
   /**
-   * How many tool calls the profile got out of each assistant response — every call its
+   * How many times each gg TOOL its instances dispatched was called, keyed by tool name —
+   * the execution layer of the pair {@link apiCalls} records above it.
+   *
+   * Kept beside it for the same reason: the offered-surface section joins a tool-calling
+   * profile's entries on this record, whichever surface {@link calls} is reported on.
+   */
+  toolCalls: ReadonlyMap<string, number>;
+  /**
+   * How many calls the profile got out of each assistant response — every call its
    * instances made over every turn they took. Null when no instance took a turn.
    *
    * Summed rather than averaged across instances, for the same reason
@@ -252,7 +268,7 @@ export interface GgAgentSummary {
    * short-lived instances would decide a figure their work barely contributed to. The
    * profile's calls over the profile's responses is the question being asked.
    */
-  toolCallsPerResponse: number | null;
+  callsPerResponse: number | null;
   /** What filled its instances' windows, and what that material cost. */
   context: GgContextAttribution;
   /**
@@ -320,38 +336,47 @@ function emptyTally(): UsageTally {
 }
 
 /**
- * Sum several instances' tool breakdowns into one: call counts and attributed result tokens
- * add up per tool, and the window total they are a share of adds up with them, so a
- * profile's per-tool share still reads against the material its instances actually carried.
+ * Sum several instances' call breakdowns into one: call counts and attributed result tokens
+ * add up per entry, and the window total they are a share of adds up with them, so a
+ * profile's per-entry share still reads against the material its instances actually carried.
+ *
+ * The merged surface is `"api"` if any part is, because a profile whose instances answered as
+ * code has API calls to report and a caption that named tools would be false of them. A
+ * profile whose instances disagree about that is pathological — a profile is one arm and its
+ * mode is configured per arm — but it is a stream this console can be handed, and the honest
+ * reading of it is that the calls the model WROTE are somewhere in the list.
  */
-export function mergeToolBreakdowns(
-  parts: readonly GgToolBreakdown[],
-): GgToolBreakdown {
-  const tools = new Map<string, GgToolUsage>();
+export function mergeCallBreakdowns(
+  parts: readonly GgCallBreakdown[],
+): GgCallBreakdown {
+  const entries = new Map<string, GgCallUsage>();
   let totalContextTokens = 0;
   let outputTokensKnown = false;
+  let surface: "tool" | "api" = "tool";
   for (const part of parts) {
     totalContextTokens += part.totalContextTokens;
     outputTokensKnown = outputTokensKnown || part.outputTokensKnown;
-    for (const tool of part.tools) {
-      const at = tools.get(tool.name);
+    if (part.surface === "api") surface = "api";
+    for (const entry of part.calls) {
+      const at = entries.get(entry.name);
       if (!at) {
-        tools.set(tool.name, { ...tool });
+        entries.set(entry.name, { ...entry });
         continue;
       }
-      at.calls += tool.calls;
-      at.outputTokens += tool.outputTokens;
+      at.calls += entry.calls;
+      at.outputTokens += entry.outputTokens;
     }
   }
-  const merged = [...tools.values()].sort(
+  const merged = [...entries.values()].sort(
     (a, b) =>
       b.calls - a.calls ||
       b.outputTokens - a.outputTokens ||
       a.name.localeCompare(b.name),
   );
   return {
-    tools: merged,
-    totalCalls: merged.reduce((sum, tool) => sum + tool.calls, 0),
+    surface,
+    calls: merged,
+    totalCalls: merged.reduce((sum, entry) => sum + entry.calls, 0),
     outputTokensKnown,
     totalContextTokens,
   };
@@ -504,10 +529,14 @@ export function deriveGgAgentSummaries(
 
     const usage = emptyTally();
     const pricedSlots: PricedSlot[] = [];
-    const toolParts: GgToolBreakdown[] = [];
-    // The profile's API-call counts, summed across its instances — the same fold the tool
-    // breakdown gets, over the other layer's records.
+    // Each instance's call breakdown, on that instance's own surface — the mode is a fact
+    // about the incarnation, and only the instance can answer which record its calls are on.
+    const callParts: GgCallBreakdown[] = [];
+    // The profile's API-call counts, summed across its instances — the raw model-facing
+    // record, kept whichever surface the breakdown above reports on — as is the execution
+    // record beside it, for the surface section that joins on tool names.
     const apiCalls = new Map<string, number>();
+    const toolCalls = new Map<string, number>();
     // Collected off the forest nodes rather than the per-agent slices, so an instance whose
     // slice never materialized still contributes what it was offered — the surface is a fact
     // about the instance opening, not about anything it went on to do.
@@ -561,9 +590,17 @@ export function deriveGgAgentSummaries(
       pricedSlots.push(
         ...agentPricedSlots(state.slotUsage, state.usage, node.modelId),
       );
-      toolParts.push(ggToolBreakdown(state));
+      callParts.push(
+        ggCallBreakdown(
+          state,
+          callRecordSurface(state.apiCalls, node.surface?.executionMode),
+          node.surface ? apiCallSpellings(node.surface.apis) : undefined,
+        ),
+      );
       for (const [call, count] of state.apiCalls)
         apiCalls.set(call, (apiCalls.get(call) ?? 0) + count);
+      for (const [tool, count] of state.toolCalls)
+        toolCalls.set(tool, (toolCalls.get(tool) ?? 0) + count);
       contextParts.push(attributeGgContext(state, node.modelId, priceOf));
       if (peak) {
         if (peak.tokens > peakTokens) peakTokens = peak.tokens;
@@ -589,9 +626,9 @@ export function deriveGgAgentSummaries(
     // The model the row reads by: what the configuration binds, else what the instances
     // actually ran on (a record with no captured configuration still names its model).
     const modelId = config?.modelId || modelIds[0] || null;
-    // Merged once and read twice: the profile's per-tool list, and the call rate taken
-    // against the turns those same instances took (see `toolCallsPerResponse`).
-    const tools = mergeToolBreakdowns(toolParts);
+    // Merged once and read twice: the profile's per-entry list, and the call rate taken
+    // against the turns those same instances took (see `callsPerResponse`).
+    const calls = mergeCallBreakdowns(callParts);
     return {
       name,
       declared: config != null,
@@ -614,9 +651,10 @@ export function deriveGgAgentSummaries(
       meanPeakFullness: fullnessCount > 0 ? fullnessSum / fullnessCount : null,
       compactions,
       tokensPerSecond: modelMs > 0 ? generated / (modelMs / 1000) : null,
-      tools,
+      calls,
       apiCalls,
-      toolCallsPerResponse: toolCallsPerResponse(tools, turns),
+      toolCalls,
+      callsPerResponse: callsPerResponse(calls, turns),
       context: mergeGgAttributions(contextParts),
       modules: modules?.byProfile.get(name) ?? [],
       surface: mergeAgentSurfaces(surfaceParts),

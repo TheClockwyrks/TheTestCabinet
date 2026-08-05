@@ -354,7 +354,9 @@ const SECTION_LABELS: ReadonlyArray<readonly [string, RegExp]> = [
   ["cost", /^Cost$/],
   ["modules", /^Modules · \d+$/],
   ["context", /^Context spend$/],
-  ["tools", /^Tool calls · [\d,]+$/],
+  // The observed-usage section, headed for the surface the profile called on — the same
+  // alternation the offered-surface row above it already carries.
+  ["calls", /^(Tool calls|API calls) · [\d,]+$/],
 ];
 
 /**
@@ -378,7 +380,7 @@ function sectionOrder(detail: HTMLElement): string[] {
 }
 
 describe("GgAgentsSummary detail", () => {
-  it("reads figures, tokens, cost, modules, context spend, then tool calls", () => {
+  it("reads figures, tokens, cost, modules, context spend, then the calls made", () => {
     const { detail } = openReviewer();
     expect(sectionOrder(detail)).toEqual([
       "figures",
@@ -386,7 +388,7 @@ describe("GgAgentsSummary detail", () => {
       "cost",
       "modules",
       "context",
-      "tools",
+      "calls",
     ]);
   });
 
@@ -572,7 +574,28 @@ describe("GgAgentsSummary offered surface", () => {
     ).toBeNull();
     expect(within(detail).queryByText(/offered/)).toBeNull();
     // The section that *is* about what it called is still there, under its own heading.
+    // With no surface reported there is no mode to read it on either, so it falls back to
+    // the record that has entries — which for these instances is the tool one.
     expect(within(detail).getByText(/^Tool calls · /)).toBeInTheDocument();
+  });
+
+  it("heads a code profile's observed usage API calls, in its own spelling", () => {
+    // Directly under the offered-surface section, which already reads this profile as
+    // APIs. Heading its observed usage "Tool calls" and itemizing it by `read_file` put
+    // two sections of one panel, three lines apart, in disagreement about what the
+    // profile did.
+    const { detail } = openReviewer(stubNav(), API_SURFACE_EVENTS);
+    expect(within(detail).getByText("API calls · 2")).toBeInTheDocument();
+    expect(within(detail).queryByText(/^Tool calls · /)).toBeNull();
+    // The function its programs wrote, not the tool that served it.
+    expect(within(detail).getByText("fs.readFile")).toBeInTheDocument();
+    expect(within(detail).queryByText("read_file")).toBeNull();
+  });
+
+  it("still heads a tool-calling profile's observed usage Tool calls", () => {
+    const { detail } = openReviewer(stubNav(), TOOL_SURFACE_EVENTS);
+    expect(within(detail).getByText("Tool calls · 2")).toBeInTheDocument();
+    expect(within(detail).queryByText(/^API calls · /)).toBeNull();
   });
 });
 

@@ -3403,6 +3403,15 @@ details[open] > summary .reqCaret {
   white-space: nowrap;
 }
 
+// A row on the API surface, which carries no token share: a responses-as-code turn produces
+// no tool-role messages, so there is nothing to attribute per function and the trailing bar
+// and figure are simply absent (see `AgentCallsPanel`). The name takes the width they leave
+// rather than the row trailing off into a gulf of nothing — and a namespaced `fs.readFile`
+// wants the room a bare `read_file` did not.
+.callRowBare .toolName {
+  flex: 1 1 auto;
+}
+
 .toolCalls {
   flex: 0 0 auto;
   min-width: 2.5rem;

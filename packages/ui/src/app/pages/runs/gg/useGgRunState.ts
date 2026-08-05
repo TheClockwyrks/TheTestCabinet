@@ -47,6 +47,7 @@ import {
   GG_TURN_ERROR_TYPE_LABELS,
 } from "@test-cabinet/run-record/gg";
 import { useRunsRuntime } from "../../../runtime/runsRuntime";
+import { apiCallSpellings } from "./ggSurfaceCalls";
 
 // --- Public shapes -----------------------------------------------------------
 
@@ -675,6 +676,33 @@ export function callFailureSurface(
     : "tool";
 }
 
+// The same choice, for the CALLS themselves rather than for the ones that failed: which of
+// the two records a scope's call read-out should be taken on.
+//
+// It is a sibling of `callFailureSurface` and not a second opinion — a console that ranked an
+// agent's failures by the class its program was thrown while captioning the calls above them
+// with the tools underneath would be reporting one turn in two vocabularies on one panel. The
+// argument for the choice is the one that function makes; what differs is only the evidence
+// available to fall back on.
+//
+// The fallback is the call record itself, for the reason the failure one uses the failure
+// tally: only a responses-as-code agent emits an `api_call` at all, so a scope that recorded
+// one wrote programs, and a scope with none has nothing to show on that surface whatever its
+// mode string says. Deliberately NOT `answersAsCode`/`readsAsApis` (ggAgentEntries.ts,
+// GgAgentsSummary.tsx): those answer which OFFERED surface to render — a page listing what an
+// agent was given — where an empty record is no evidence at all, because being offered
+// nothing and calling nothing are the two findings that page exists to keep apart. This asks
+// which RECORD holds the calls, and there the record with entries in it is the better witness
+// than a mode name this console has never met.
+export function callRecordSurface(
+  apiCalls: ReadonlyMap<string, number>,
+  executionMode?: string,
+): "tool" | "api" {
+  if (executionMode === "responses_as_code") return "api";
+  if (executionMode === "tool_calling") return "tool";
+  return apiCalls.size > 0 ? "api" : "tool";
+}
+
 // One recorded revision of one memory — a `memory_revision` event, which gg emits for
 // every successful mutation. `body` is the memory's text as of that revision; a
 // deletion carries none, because what the memory said is on the revision before it.
@@ -1044,6 +1072,12 @@ function contextActionLabel(action: GgContextAction): string {
 // Map one gg-native telemetry event to a feed row, or null to drop it. `usage` and
 // the Phase-1 state kinds (`context_breakdown`, `skills_state`, `memory_state`,
 // `tasks_state`) drive their own panels, not the feed, so they render no row.
+//
+// Every kind whose row is a function of that event ALONE is decided here. The call
+// bracket — `api_call`/`api_result` and the `tool_call`/`tool_result` a bridged call
+// nests inside it — is not: one row there is folded from several events, so it is
+// decided by `foldFeedRows` in the reducer, which has the state to do it. Those four
+// kinds never reach this function.
 function ggFeedRow(
   gg: GgTelemetryEvent,
   timestamp: string,
@@ -1165,14 +1199,6 @@ function ggFeedRow(
     // Per-turn phase timing drives the Metrics graph, not the feed — a row per turn
     // saying where its milliseconds went would drown the feed it sits in.
     case "turn_timing":
-    // What a responses-as-code program CALLED, in the model's own vocabulary. Its
-    // consumer is the APIs surface, which counts per function; the feed stays the
-    // EXECUTION record, so a bridged call keeps its one `read_file` row rather than
-    // gaining a second saying `view.openFile` about the same work. The calls no tool
-    // backs are the ones this drops entirely, and deliberately: `view.openText` is
-    // already in the feed as the context message it produced.
-    case "api_call":
-    case "api_result":
     case "skills_state":
     // The memory panel carries both the live set and the per-memory revision
     // history, so neither kind needs a feed row of its own.
@@ -1291,6 +1317,17 @@ export interface DerivedGgState {
   // Empty for a tool-calling agent, which emits no `api_call` at all, and for a record written
   // before gg counted per function.
   apiCalls: Map<string, number>;
+  // How many times each gg TOOL this partition dispatched was called, keyed by tool name —
+  // one per `tool_call`, the other layer of the pair `apiCalls` describes. This is what RAN:
+  // a tool-calling agent's every call, and the subset of a code agent's calls that reached a
+  // tool at all.
+  //
+  // Counted from the events rather than from the rows the feed happened to render. The feed
+  // is a presentation and it folds a bridged call into the API row above it, so deriving a
+  // count from it would make how a run READS decide what it MEASURES — and would have zeroed
+  // every call read-out in this console the moment the feed started speaking the model's
+  // vocabulary.
+  toolCalls: Map<string, number>;
   agents: Map<string, AgentNode>;
   agentForest: AgentTreeNode[];
   // The states an FSM agent walked, in order, and the successions between them.
@@ -1337,47 +1374,77 @@ export interface DerivedGgState {
   issueReviews: Map<string, IssueReviewState>;
 }
 
-// --- Per-agent tool usage (derived) ------------------------------------------
+// --- Per-agent call usage (derived) ------------------------------------------
 
-// One tool's usage within a single agent: how many times the agent called it, and
+// One entry's usage within a single agent: how many times the agent called it, and
 // how many tokens the results it returned contributed to the agent's window.
-export interface GgToolUsage {
+//
+// The entry is a gg tool on the `"tool"` surface and an API function on the `"api"`
+// one — see {@link GgCallBreakdown}, which says which of the two a breakdown is.
+export interface GgCallUsage {
   name: string;
-  // How many times this agent called the tool. Counted from its activity feed, so it
-  // is known whatever the context-visibility capability is set to.
+  // How many times this agent called it, counted from the events gg emits whatever the
+  // context-visibility capability is set to.
   calls: number;
-  // The tokens this tool's results added to the window, summed from the message log
+  // The tokens this entry's results added to the window, summed from the message log
   // (the tool-result messages answering this tool's calls). 0 when context visibility
   // is off — there is then no message log to attribute from — so read
   // `outputTokensKnown` on the breakdown to tell 0-because-absent from 0-because-cheap.
+  // Always 0 on the `"api"` surface, which reports `outputTokensKnown: false`.
   outputTokens: number;
 }
 
-// An agent's tool usage: every tool it called, most-used first, plus the totals a
-// per-tool share is taken against.
-export interface GgToolBreakdown {
-  tools: GgToolUsage[];
+// An agent's call usage: everything it called, most-used first, plus the totals a
+// per-entry share is taken against.
+export interface GgCallBreakdown {
+  // Which record this breakdown counted — what RAN (`"tool"`) or what the model WROTE
+  // (`"api"`). A read-out has to say which, because the two are different populations in
+  // different vocabularies and a caption naming the wrong one misreports the agent (see
+  // `callRecordSurface`).
+  surface: "tool" | "api";
+  calls: GgCallUsage[];
   totalCalls: number;
-  // Whether per-tool output tokens could be attributed (the message log was present).
+  // Whether per-entry output tokens could be attributed (the message log was present).
   outputTokensKnown: boolean;
   // The agent's total context material — the sum of every distinct message that
-  // entered its window — the denominator for a tool's share of the window. 0 when the
+  // entered its window — the denominator for an entry's share of the window. 0 when the
   // message log is absent.
   totalContextTokens: number;
 }
 
-// Derive one agent's tool usage from its reduced slice: call counts from the activity
-// feed (a `tool_call` is a `tool`-toned row whose detail is the tool name) and
-// per-tool result tokens from the de-duplicated message log (each tool-result message
-// answers a `toolCallId` a prior assistant message named). Kept here beside the
-// reduction it reads so the Dashboard's agent overview and an agent's own Overview
-// compute the breakdown the same way.
-export function ggToolBreakdown(state: DerivedGgState): GgToolBreakdown {
-  const calls = new Map<string, number>();
-  for (const row of state.feed) {
-    if (row.tone === "tool" && row.detail)
-      calls.set(row.detail, (calls.get(row.detail) ?? 0) + 1);
-  }
+// Derive one agent's call usage from its reduced slice, on the surface asked for.
+//
+// `"tool"` is the EXECUTION record: call counts from the `tool_call` fold, and per-tool
+// result tokens from the de-duplicated message log (each tool-result message answers a
+// `toolCallId` a prior assistant message named).
+//
+// `"api"` is what the MODEL wrote: the per-function counts from the `api_call` fold,
+// spelled the way the program spelled them where `spellings` can say (see
+// `apiCallSpellings`) and under the identity they were recorded by where it cannot. It
+// carries no token attribution at all, and says so with `outputTokensKnown: false`: a
+// responses-as-code turn produces no tool-role messages, so there is nothing in the
+// message log to attribute per function and the column would be a bar at zero on every
+// row. That is a fact about the shape of a code turn, not a gap to be filled in later.
+//
+// The surface is an argument rather than something read off the state because two callers
+// want opposite things from the same slice: a panel reporting what the agent did must
+// choose (`callRecordSurface`), while the offered-tools file is always read against what
+// ran, whatever mode the agent answered in. Kept here beside the reduction it reads so
+// every surface of this console computes the breakdown the same way.
+export function ggCallBreakdown(
+  state: DerivedGgState,
+  surface: "tool" | "api",
+  spellings?: ReadonlyMap<string, string>,
+): GgCallBreakdown {
+  const counts =
+    surface === "api"
+      ? new Map(
+          [...state.apiCalls].map(([key, count]) => [
+            spellings?.get(key) ?? key,
+            count,
+          ]),
+        )
+      : state.toolCalls;
 
   // Map each logged tool call's id to its tool name, then attribute each tool-result
   // message's tokens to the tool it answered. The pool is per agent and deduplicated,
@@ -1392,21 +1459,23 @@ export function ggToolBreakdown(state: DerivedGgState): GgToolBreakdown {
     for (const call of message.toolCalls) idToName.set(call.id, call.name);
   }
   const outputTokens = new Map<string, number>();
-  for (const message of state.messagePool.values()) {
-    if (message.toolCallId == null) continue;
-    const name = idToName.get(message.toolCallId);
-    if (name == null) continue;
-    outputTokens.set(
-      name,
-      (outputTokens.get(name) ?? 0) + (message.tokens ?? 0),
-    );
+  if (surface === "tool") {
+    for (const message of state.messagePool.values()) {
+      if (message.toolCallId == null) continue;
+      const name = idToName.get(message.toolCallId);
+      if (name == null) continue;
+      outputTokens.set(
+        name,
+        (outputTokens.get(name) ?? 0) + (message.tokens ?? 0),
+      );
+    }
   }
 
-  const names = new Set<string>([...calls.keys(), ...outputTokens.keys()]);
-  const tools: GgToolUsage[] = [...names]
+  const names = new Set<string>([...counts.keys(), ...outputTokens.keys()]);
+  const calls: GgCallUsage[] = [...names]
     .map((name) => ({
       name,
-      calls: calls.get(name) ?? 0,
+      calls: counts.get(name) ?? 0,
       outputTokens: outputTokens.get(name) ?? 0,
     }))
     .sort(
@@ -1417,14 +1486,15 @@ export function ggToolBreakdown(state: DerivedGgState): GgToolBreakdown {
     );
 
   return {
-    tools,
-    totalCalls: tools.reduce((sum, t) => sum + t.calls, 0),
-    outputTokensKnown: state.messagePool.size > 0,
+    surface,
+    calls,
+    totalCalls: calls.reduce((sum, entry) => sum + entry.calls, 0),
+    outputTokensKnown: surface === "tool" && state.messagePool.size > 0,
     totalContextTokens,
   };
 }
 
-// How much work an agent got out of each assistant response: its tool calls divided by
+// How much work an agent got out of each assistant response: the calls it made divided by
 // its responses. It reads as an efficiency proxy — a model that answers a request with
 // four calls is doing four things per round trip, where one that answers with a fifth of
 // a call is mostly talking — and both halves come from events gg emits whatever the run's
@@ -1443,9 +1513,15 @@ export function ggToolBreakdown(state: DerivedGgState): GgToolBreakdown {
 // the question actually being asked — across all this work, how many calls per response —
 // and it is the same reason a profile's generation rate sums its halves (see `ggThroughput`).
 //
+// It is taken against whichever surface the breakdown counted, so a code agent's rate is its
+// program's calls per response and a tool-calling agent's is its tool calls per response. The
+// two are the same question asked of the two agents, which is the point: mixing them — a code
+// agent's rate taken over the tools its programs happened to reach — would report an agent
+// that made forty calls a turn as one that made four.
+//
 // Null when there were no responses, so a read-out shows nothing rather than a NaN.
-export function toolCallsPerResponse(
-  breakdown: GgToolBreakdown,
+export function callsPerResponse(
+  breakdown: GgCallBreakdown,
   responses: number,
 ): number | null {
   return responses > 0 ? breakdown.totalCalls / responses : null;
@@ -1698,6 +1774,8 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
   const turnTimings: TurnTiming[] = [];
   // Per-function API call counts, keyed `object.function` (see `DerivedGgState.apiCalls`).
   const apiCalls = new Map<string, number>();
+  // Per-tool call counts, keyed by tool name (see `DerivedGgState.toolCalls`).
+  const toolCalls = new Map<string, number>();
   let sawSession = false;
   let sessionEndStatus: string | null = null;
   let skills: GgSkillState[] = [];
@@ -1786,10 +1864,119 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     node.suspendedMs += Math.max(to - from, 0);
   };
 
-  events.forEach((event, index) => {
+  // --- The activity feed's call bracket ----------------------------------------
+  //
+  // A responses-as-code agent calls `fs.readFile`, and gg brackets that call with an
+  // `api_call`/`api_result` pair. Inside the bracket — for the minority of functions a gg
+  // tool backs — sits the `tool_call`/`tool_result` pair for the `read_file` that ran.
+  //
+  // The feed reports what the AGENT DID, so it reads the outer pair: the model wrote
+  // `fs.readFile` and never uttered the word `read_file`, and a feed that answered "what did
+  // this agent do" in a vocabulary the agent never used is reporting someone else's work. The
+  // inner pair is not dropped, it is ABSORBED — the args a call was made with and the summary
+  // it came back with exist nowhere else (an `api_call` carries neither), so they land on the
+  // API row as the same second line a tool row has always carried. One action, one row, said
+  // the way it was written and detailed the way it ran.
+  //
+  // The rule this replaces read the inner pair instead and dropped the outer, on the argument
+  // that the feed was the EXECUTION record. It cost more than the vocabulary: every call no
+  // tool backs — `context.list`, `view.openText`, the ending calls, the program-library calls
+  // — appeared in the feed as nothing at all, so the operator watching a live run could not
+  // see the agent finish.
+  //
+  // The bracket is per EMITTING AGENT and never run-wide. `begin_api_call` is emitted before
+  // the work (crates/gg/src/agent.code.rs), so a delegating call's bracket spans the child's
+  // entire sub-run — and a run-wide flag would swallow every tool row that child emitted for
+  // as long as its parent waited on it. Keyed per agent, the child's events are its own and
+  // the parent's bracket only ever absorbs the parent's.
+  const openCalls = new Map<string, { row: FeedRow; summary?: string }>();
+  // Each agent's own SDK spellings, off the surface it reported when it was built — which
+  // always precedes its first call (see `apiCallSpellings`).
+  const feedSpellings = new Map<string, ReadonlyMap<string, string>>();
+  const apiCallName = (agentId: string, object: string, fn: string): string => {
+    const key = `${object}.${fn}`;
+    return feedSpellings.get(agentId)?.get(key) ?? key;
+  };
+  const foldFeedRows = (
+    event: HarnessEvent,
+    index: number,
+    emitter: string,
+  ) => {
+    if (event.type === "gg") {
+      const gg = event.event;
+      const base = {
+        key: `${index}`,
+        timestamp: event.timestamp,
+        agentId: gg.agentId,
+      };
+      const open = openCalls.get(emitter);
+      switch (gg.type) {
+        case "agent_surface":
+          feedSpellings.set(emitter, apiCallSpellings(gg.apis ?? []));
+          break;
+        case "api_call": {
+          // Opening the bracket also closes any bracket this agent left open: a program is
+          // never inside two calls at once, so a second opening half means the first one's
+          // result never arrived (a truncated stream, or a record from before gg emitted
+          // results). Overwriting is that close.
+          const name = apiCallName(emitter, gg.object, gg.function);
+          const row: FeedRow = {
+            ...base,
+            label: "call",
+            detail: name,
+            tone: "tool",
+          };
+          feed.push(row);
+          openCalls.set(emitter, { row });
+          return;
+        }
+        case "api_result": {
+          openCalls.delete(emitter);
+          // Mirrors the `tool_result` row exactly — same labels, same tones, same
+          // `name: summary` detail — so the two modes read identically apart from the
+          // vocabulary, and a failed call reads the way a failed tool result always has.
+          const name = apiCallName(emitter, gg.object, gg.function);
+          feed.push({
+            ...base,
+            label: gg.ok ? "result" : "result ✗",
+            detail: open?.summary ? `${name}: ${open.summary}` : name,
+            tone: gg.ok ? "ok" : "fail",
+          });
+          return;
+        }
+        case "tool_call":
+          // The bridged tool: absorbed into the call above it rather than repeating the
+          // same work in the layer below. Mutating a row already pushed is safe — `feed` is
+          // built fresh on every reduction and nothing reads it during the pass.
+          if (open) {
+            open.row.args = compactArgs(gg.args);
+            return;
+          }
+          break;
+        case "tool_result":
+          if (open) {
+            open.summary = gg.summary;
+            return;
+          }
+          break;
+        // A bracket cannot outlive the turn it was opened in: a program runs inside one
+        // turn. Closing it here bounds the damage from a run killed mid-call to that turn,
+        // rather than letting one unclosed bracket absorb the rest of the agent's feed.
+        case "turn_started":
+        case "code_execution":
+        case "turn_outcome":
+        case "session_ended":
+        case "agent_transition":
+          openCalls.delete(emitter);
+          break;
+      }
+    }
+    // Everything else is a row of its own — or none — decided by the event alone.
     const row = toFeedRow(event, index);
     if (row) feed.push(row);
+  };
 
+  events.forEach((event, index) => {
     // The stream's span, and the emitting agent's own. A non-gg row is the orchestrator's
     // setup/teardown, which belongs to the root — the same attribution the per-agent
     // partition uses.
@@ -1804,6 +1991,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     }
     const emitter =
       event.type === "gg" ? (event.event.agentId ?? ROOT_ID) : ROOT_ID;
+    foldFeedRows(event, index, emitter);
     const span = agentSpans.get(emitter);
     if (span) span.last = event.timestamp;
     else
@@ -2078,6 +2266,12 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
           errors.apiFailures[gg.failure] =
             (errors.apiFailures[gg.failure] ?? 0) + 1;
         }
+        break;
+      case "tool_call":
+        // One tool dispatch, counted under the tool that ran — the execution layer of the
+        // pair `api_call` records above it. Like `api_call` it is the OPENING half that
+        // counts: a tool that never returned is still a tool the agent reached for.
+        toolCalls.set(gg.name, (toolCalls.get(gg.name) ?? 0) + 1);
         break;
       case "tool_result":
         // What ran, as opposed to what the model wrote. Counted on its own surface for
@@ -2378,6 +2572,7 @@ export function reduceGgEvents(events: HarnessEvent[]): DerivedGgState {
     usage,
     slotUsage,
     apiCalls,
+    toolCalls,
     agents,
     agentForest: buildAgentForest(agents),
     fsmPath,

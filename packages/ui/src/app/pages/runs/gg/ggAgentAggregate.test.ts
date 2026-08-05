@@ -282,7 +282,7 @@ describe("deriveGgAgentSummaries", () => {
     expect(critic?.turns).toBe(0);
     expect(critic?.usage.anyTokens).toBe(false);
     // No responses, so no rate — null rather than a NaN reaching the read-out.
-    expect(critic?.toolCallsPerResponse).toBeNull();
+    expect(critic?.callsPerResponse).toBeNull();
   });
 
   it("rates a profile's tool calls against its responses, not against its instances", () => {
@@ -322,11 +322,11 @@ describe("deriveGgAgentSummaries", () => {
     const worker = summaries.find((s) => s.name === "worker");
     expect(worker!.instances).toHaveLength(4);
     expect(worker!.turns).toBe(5);
-    expect(worker!.tools.totalCalls).toBe(4);
-    expect(worker!.toolCallsPerResponse).toBeCloseTo(0.8, 12);
+    expect(worker!.calls.totalCalls).toBe(4);
+    expect(worker!.callsPerResponse).toBeCloseTo(0.8, 12);
 
     // The Root took no turn of its own and called nothing, so it has no rate at all.
-    expect(summaries.find((s) => s.name === "Root")!.toolCallsPerResponse).toBe(
+    expect(summaries.find((s) => s.name === "Root")!.callsPerResponse).toBe(
       null,
     );
   });
@@ -450,7 +450,7 @@ describe("deriveGgAgentSummaries", () => {
       ),
     );
     const worker = summaries.find((s) => s.name === "worker")!;
-    expect(worker.tools.tools.map((t) => [t.name, t.calls])).toEqual([
+    expect(worker.calls.calls.map((t) => [t.name, t.calls])).toEqual([
       ["read_file", 2],
       ["shell", 1],
     ]);
@@ -708,7 +708,7 @@ describe("deriveGgAgentSummaries", () => {
 
     // The whole point of carrying both: `approve` was offered to both reviewers and called
     // by neither, which the observed breakdown alone cannot say.
-    expect(reviewer.tools.tools.map((t) => t.name)).toEqual(["read_file"]);
+    expect(reviewer.calls.calls.map((t) => t.name)).toEqual(["read_file"]);
 
     // The root's own surface is its own — a profile's union never reaches across profiles.
     expect(

@@ -1241,6 +1241,16 @@ record, the [replay](/gg/replay/) capture and the console's activity feed:
 - that a later ending call replaced an earlier one, and the summary the session ended on;
 - that an ending was **revoked** because the program then failed.
 
+Beside them, every call a program made is bracketed on the stream as it happens — an
+`api_call` before the work and an `api_result` after it — and that pair is what the console's
+activity feed reads a code agent by. It reads it in **the model's own vocabulary**: the feed
+says `fs.readFile`, because that is what the program wrote, and the `read_file` gg dispatched
+to serve it is folded into the same row rather than repeating one action in the layer below.
+The calls **no gg tool backs at all** — `context.list`, a view call, an ending call, a
+[program-library](/gg/program-library/) call — appear there for the same reason: they are
+things the agent did, and a feed reading only the tool layer showed them as nothing at all,
+so an operator watching a live run could not see the agent finish.
+
 Losing the model's copy of these is not losing the record; for most of them the operator's
 stream is now the *only* copy, which makes it more load-bearing than it was rather than less.
 The trade is deliberate: a human reading a run wants to know what the program did, and a model

@@ -77,8 +77,11 @@ identically down to the order of the cards) reads a run through these surfaces:
   delegating run whose parents mostly wait would otherwise report a figure several times
   the work it actually did, growing with every level of the tree. The agent overview
   is more than a count: each agent reads as a row carrying its **own turn count**, the
-  **peak** its context window reached, its **share of the run's tokens**, and the
-  **tools it used** — and each row is a link into that agent's files in the Instances
+  **peak** its context window reached, its **share of the run's tokens**, and **what it
+  called** — chipped in that agent's own vocabulary, so a tool-calling agent's chips name
+  its tools and a [code-shaped](/gg/responses-as-code/) one's name the API functions its
+  programs wrote (`fs.readFile`, not the `read_file` gg dispatched to serve it). Each row
+  is a link into that agent's files in the Instances
   explorer, so the whole-run view and the per-agent one are one click apart. The
   **cost** read-out leads the row it shares with the token tally, and is the taller
   tile — it carries the run's whole account of its spend, with the configuration
@@ -107,7 +110,7 @@ identically down to the order of the cards) reads a run through these surfaces:
   is a short list to read down a column of. Clicking a row opens that agent's detail,
   and only that agent's: how many instances ran and how they ended, what a *typical* one
   cost, how full a typical window got against the worst one, how often they compacted,
-  the same Tokens and Cost widgets the Dashboard uses, the tools they called between
+  the same Tokens and Cost widgets the Dashboard uses, what they called between
   them, and the **context spend** described
   [below](#what-filled-the-window-and-what-it-cost). A profile the configuration
   declares but the run never instantiated still gets a row, because "the reviewer never
@@ -125,9 +128,15 @@ identically down to the order of the cards) reads a run through these surfaces:
   [machine](/gg/fsms/) gates what it may call — so an entry only some of them were
   offered carries the fraction that says so rather than being averaged away or dropped.
   An entry the profile never called reads a real `0×` and is muted rather than removed,
-  which is the whole contrast; the observed-usage section at the foot of the detail
-  (**Tool calls**) is the other half of it, and the two are deliberately separate
-  read-outs.
+  which is the whole contrast; the observed-usage section at the foot of the detail is the
+  other half of it, and the two are deliberately separate read-outs. That section is headed
+  by the surface its instances actually called on — **API calls** for a
+  [code-shaped](/gg/responses-as-code/) profile and **Tool calls** for a tool-calling one,
+  the same split the **Failed API calls** / **Failed tool calls** ranking makes
+  [below](#what-an-agent-is-offered) — and it itemizes the profile in that surface's own
+  vocabulary. Heading a code profile's usage *Tool calls*, three lines under an offered
+  section already reading it as APIs, put two halves of one panel in disagreement about
+  what the profile did.
   Under the offered set sits the one read-out on the panel that is **not** a sum: what this
   profile's instances *hold*. Module state does not fold — twelve instances may be reading
   one store or twelve, and which of those it is *is* the configuration under test — so
@@ -214,11 +223,17 @@ identically down to the order of the cards) reads a run through these surfaces:
   read off a record written **before** gg counted per function — a fact about the record,
   said as one on hover, since a zero there would accuse the model of ignoring everything
   it was given.
-  The **Overview** also carries the agent's own
-  **Tool calls** breakdown — the itemized version of the Dashboard row's tool chips:
-  every tool it *called*, how many times, and how much each tool's results added to its
-  window (what it was *offered* is the file above; the two are named apart because they
-  are the two halves of one question, not one read-out twice) — its own **Errors**
+  The **Overview** also carries the agent's own call
+  breakdown — the itemized version of the Dashboard row's chips: everything it *called*,
+  how many times, and how much each call's results added to its window (what it was
+  *offered* is the file above; the two are named apart because they are the two halves of
+  one question, not one read-out twice). Like every other read-out of what an agent did, it
+  is taken on the surface that agent called on and says which in its caption: **Tool
+  calls** for a tool-calling instance, **API calls** for a code-shaped one, whose programs
+  wrote `fs.readFile` and never uttered the name of the tool underneath it. The API view
+  carries no per-entry token column, and its absence is the honest reading rather than a
+  gap: a code turn produces no tool-role messages at all, so there is nothing in the window
+  to attribute per function. Beside it sits its own **Errors**
   widget (its errored turns against the turns it took, its worst *unbroken* streak of
   them, its ranked [error types](#the-taxonomy-has-two-levels), and — the one reading
   the Dashboard's error row does not carry — the **calls** it failed, ranked by class:

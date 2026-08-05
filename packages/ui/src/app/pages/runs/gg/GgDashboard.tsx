@@ -13,8 +13,9 @@ import {
   ROOT_ID,
   addErrorTally,
   emptyErrorTally,
+  callRecordSurface,
+  ggCallBreakdown,
   ggPeakContext,
-  ggToolBreakdown,
   shortTokens,
   type GgErrorTally,
 } from "./useGgRunState";
@@ -30,6 +31,7 @@ import {
   useGgThroughput,
   type GgThroughput,
 } from "./ggThroughput";
+import { apiCallSpellings } from "./ggSurfaceCalls";
 import { formatLimit, formatRuntime, type GgRuntime } from "./ggRuntime";
 import {
   CostWidget,
@@ -68,7 +70,7 @@ interface GgDashboardProps {
   slotUsage: SlotUsage[];
   /**
    * Each agent's own reduced slice, keyed by agent id (always including the root) —
-   * what the agent overview reads its per-agent context/token/tool figures from.
+   * what the agent overview reads its per-agent context/token/call figures from.
    */
   perAgent: Map<string, DerivedGgState>;
   /**
@@ -107,8 +109,8 @@ interface GgDashboardProps {
  * the agents that ran, the configuration it ran under, and the enforced FSM process when a
  * machine drives it.
  *
- * The agent overview is a row per agent (its peak context, its token share, and the
- * tools it used), each a link into that agent's files in the Instances explorer — so
+ * The agent overview is a row per agent (its peak context, its token share, and what
+ * it called), each a link into that agent's files in the Instances explorer — so
  * the whole-run view leads into the per-agent one.
  *
  * It is an overview of the entire session; an agent's Overview file in the Agents
@@ -260,13 +262,13 @@ export function GgDashboard({
   );
 }
 
-// How many tool chips a Dashboard agent row shows before collapsing the rest into a
-// "+N" — enough to read what an agent leaned on without letting a tool-heavy agent
-// wrap into a wall of chips.
-const OVERVIEW_TOOLS_SHOWN = 6;
+// How many call chips a Dashboard agent row shows before collapsing the rest into a
+// "+N" — enough to read what an agent leaned on without letting a busy agent wrap into a
+// wall of chips.
+const OVERVIEW_CALLS_SHOWN = 6;
 
 // One agent's row in the Dashboard's agent overview: its identity, the peak its
-// context window reached, its share of the run's tokens, and the tools it used.
+// context window reached, its share of the run's tokens, and what it called.
 interface AgentOverviewRowData {
   id: string;
   label: string;
@@ -278,12 +280,19 @@ interface AgentOverviewRowData {
   peakTokens: number;
   peakFullness: number | null;
   tokenShare: number;
-  tools: string[];
+  /**
+   * What this agent called, most-used first — its tools if it answered its turns with tool
+   * calls, the API functions its programs wrote if it answered them as code, in the
+   * spelling it wrote them (see `callRecordSurface`). Which of the two is `callSurface`,
+   * because the empty state has to say the right thing about an agent that called nothing.
+   */
+  calls: string[];
+  callSurface: "tool" | "api";
 }
 
 // Walk the delegation tree into an ordered, indented row list (root first, each
 // subagent under its spawner), pulling each agent's peak context, token share, and
-// tools from its own reduced slice. Token share is taken against the sum of every
+// calls from its own reduced slice. Token share is taken against the sum of every
 // agent's tokens, so the shares are a true partition of the run that always totals
 // 100% — rather than against the run-level tally, which is accounted per slot and a
 // slot can span more than one agent.
@@ -307,6 +316,16 @@ function buildAgentRows(
     const st = perAgent.get(node.id);
     const peak = st ? ggPeakContext(st) : null;
     const tokens = st?.usage.totalTokens ?? 0;
+    // Each agent's chips in its own vocabulary: a code agent that read forty files wrote
+    // `fs.readFile` forty times and never named the tool underneath, so chips naming the
+    // tool would report a run nobody ran.
+    const breakdown = st
+      ? ggCallBreakdown(
+          st,
+          callRecordSurface(st.apiCalls, node.surface?.executionMode),
+          node.surface ? apiCallSpellings(node.surface.apis) : undefined,
+        )
+      : null;
     return {
       id: node.id,
       // Only the main agent is "root". A board-dispatched issue agent is parentless
@@ -321,14 +340,16 @@ function buildAgentRows(
       peakTokens: peak?.tokens ?? 0,
       peakFullness: peak?.fullness ?? null,
       tokenShare: runTokens > 0 ? tokens / runTokens : 0,
-      tools: st ? ggToolBreakdown(st).tools.map((t) => t.name) : [],
+      calls: breakdown ? breakdown.calls.map((entry) => entry.name) : [],
+      callSurface: breakdown?.surface ?? "tool",
     };
   });
 }
 
 // The Agents card: an overview of every agent that ran, in place of a bare count.
 // Each row gives the agent's peak context usage, its share of the run's tokens, and
-// the tools it leaned on — and clicking it opens that agent's files in the Agents
+// what it leaned on — chipped in that agent's own vocabulary, tools or API functions,
+// whichever it actually called — and clicking it opens that agent's files in the Agents
 // explorer (when the panels provide the navigation channel; a Dashboard shown
 // outside them renders the rows as plain, un-clickable stats).
 function AgentsCard({
@@ -445,18 +466,24 @@ function AgentOverviewRow({
       </span>
 
       <span className={styles.agentTools}>
-        {row.tools.length === 0 ? (
-          <span className={styles.agentToolsNone}>no tools</span>
+        {/* The empty state names the surface the row was read on, because "no tools" said
+            of an agent that answers as code accuses it of a poverty it does not have: it
+            was never offered tools to begin with, and what it did not do is call an API
+            function. */}
+        {row.calls.length === 0 ? (
+          <span className={styles.agentToolsNone}>
+            {row.callSurface === "api" ? "no API calls" : "no tools"}
+          </span>
         ) : (
           <>
-            {row.tools.slice(0, OVERVIEW_TOOLS_SHOWN).map((tool) => (
-              <span key={tool} className={styles.capability}>
-                {tool}
+            {row.calls.slice(0, OVERVIEW_CALLS_SHOWN).map((call) => (
+              <span key={call} className={styles.capability}>
+                {call}
               </span>
             ))}
-            {row.tools.length > OVERVIEW_TOOLS_SHOWN && (
+            {row.calls.length > OVERVIEW_CALLS_SHOWN && (
               <span className={styles.agentToolsMore}>
-                +{row.tools.length - OVERVIEW_TOOLS_SHOWN}
+                +{row.calls.length - OVERVIEW_CALLS_SHOWN}
               </span>
             )}
           </>

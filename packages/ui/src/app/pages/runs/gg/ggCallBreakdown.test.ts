@@ -6,10 +6,10 @@ import type {
 import type { HarnessEvent } from "../../../../client/types";
 import {
   callRatePhrase,
+  callsPerResponse,
+  ggCallBreakdown,
   ggPeakContext,
-  ggToolBreakdown,
   reduceGgEvents,
-  toolCallsPerResponse,
 } from "./useGgRunState";
 
 const TS = "2026-07-26T00:00:00Z";
@@ -27,11 +27,13 @@ function gg(kind: GgTelemetryKind): HarnessEvent {
   };
 }
 
-describe("ggToolBreakdown", () => {
-  it("counts calls from the feed and attributes result tokens from the message log", () => {
+describe("ggCallBreakdown", () => {
+  it("counts tool calls from the events and attributes result tokens from the message log", () => {
     const state = reduceGgEvents([
       gg({ type: "session_started" } as GgTelemetryKind),
-      // Three tool calls in the feed: read_file twice, shell once.
+      // Three `tool_call` events: read_file twice, shell once. Counted from the events
+      // rather than from the rows the feed rendered — the feed folds a bridged call into
+      // the API row above it, so a count taken off it would depend on how a run READS.
       gg({ type: "tool_call", name: "read_file", args: {} } as GgTelemetryKind),
       gg({ type: "tool_call", name: "read_file", args: {} } as GgTelemetryKind),
       gg({ type: "tool_call", name: "shell", args: {} } as GgTelemetryKind),
@@ -90,12 +92,13 @@ describe("ggToolBreakdown", () => {
       } as GgTelemetryKind),
     ]);
 
-    const breakdown = ggToolBreakdown(state);
+    const breakdown = ggCallBreakdown(state, "tool");
+    expect(breakdown.surface).toBe("tool");
     expect(breakdown.outputTokensKnown).toBe(true);
     // Total distinct context material = every pooled message's tokens.
     expect(breakdown.totalContextTokens).toBe(5 + 100 + 50 + 5 + 30);
     // Most-called first: read_file (2 calls, 150 result tokens), then shell (1, 30).
-    expect(breakdown.tools).toEqual([
+    expect(breakdown.calls).toEqual([
       { name: "read_file", calls: 2, outputTokens: 150 },
       { name: "shell", calls: 1, outputTokens: 30 },
     ]);
@@ -116,17 +119,90 @@ describe("ggToolBreakdown", () => {
         args: {},
       } as GgTelemetryKind),
     ]);
-    const breakdown = ggToolBreakdown(state);
+    const breakdown = ggCallBreakdown(state, "tool");
     // No pool → per-tool result tokens can't be attributed, but calls still count.
     expect(breakdown.outputTokensKnown).toBe(false);
     expect(breakdown.totalContextTokens).toBe(0);
-    expect(breakdown.tools).toEqual([
+    expect(breakdown.calls).toEqual([
       { name: "write_file", calls: 2, outputTokens: 0 },
+    ]);
+  });
+
+  it("counts a code agent's calls under the functions its program wrote", () => {
+    // The bridged call is the case that matters: one `fs.readFile` dispatched one
+    // `read_file`, and the two records must each report their own layer rather than one
+    // of them borrowing the other's vocabulary.
+    const state = reduceGgEvents([
+      gg({ type: "session_started" } as GgTelemetryKind),
+      gg({
+        type: "api_call",
+        object: "fs",
+        function: "read_file",
+      } as GgTelemetryKind),
+      gg({ type: "tool_call", name: "read_file", args: {} } as GgTelemetryKind),
+      gg({
+        type: "api_result",
+        object: "fs",
+        function: "read_file",
+        ok: true,
+      } as GgTelemetryKind),
+      // …and a call no tool backs at all, which the tool record cannot see.
+      gg({
+        type: "api_call",
+        object: "context",
+        function: "list",
+      } as GgTelemetryKind),
+      gg({
+        type: "api_result",
+        object: "context",
+        function: "list",
+        ok: true,
+      } as GgTelemetryKind),
+    ]);
+
+    const api = ggCallBreakdown(
+      state,
+      "api",
+      new Map([
+        ["fs.read_file", "fs.readFile"],
+        ["context.list", "context.list"],
+      ]),
+    );
+    expect(api.surface).toBe("api");
+    expect(api.calls).toEqual([
+      { name: "context.list", calls: 1, outputTokens: 0 },
+      { name: "fs.readFile", calls: 1, outputTokens: 0 },
+    ]);
+    expect(api.totalCalls).toBe(2);
+    // A code turn produces no tool-role messages, so there is nothing to attribute per
+    // function and the breakdown says so rather than reporting a zero.
+    expect(api.outputTokensKnown).toBe(false);
+
+    // The execution record underneath is untouched: one tool ran, once.
+    expect(ggCallBreakdown(state, "tool").calls).toEqual([
+      { name: "read_file", calls: 1, outputTokens: 0 },
+    ]);
+  });
+
+  it("falls back to the wire spelling when the surface cannot name a call", () => {
+    // A truncated stream, a record from before `agent_surface`, or a function with no
+    // `key`: the identity the call was RECORDED under is the honest answer, and it is
+    // never a guessed camelCase.
+    const state = reduceGgEvents([
+      gg({ type: "session_started" } as GgTelemetryKind),
+      gg({
+        type: "api_call",
+        object: "fs",
+        function: "read_file",
+      } as GgTelemetryKind),
+    ]);
+    expect(ggCallBreakdown(state, "api").calls).toEqual([
+      { name: "fs.read_file", calls: 1, outputTokens: 0 },
     ]);
   });
 });
 
-describe("toolCallsPerResponse", () => {
+describe("callsPerResponse", () => {
   // Both halves come off the same partition of the stream: `tool_call` events for the
   // numerator, `turn_started` for the denominator.
   const rate = (turns: number, calls: number) => {
@@ -143,7 +219,7 @@ describe("toolCallsPerResponse", () => {
         } as GgTelemetryKind),
       ),
     ]);
-    return toolCallsPerResponse(ggToolBreakdown(state), state.turnCount);
+    return callsPerResponse(ggCallBreakdown(state, "tool"), state.turnCount);
   };
 
   it("divides an agent's calls by the responses it made them in", () => {
