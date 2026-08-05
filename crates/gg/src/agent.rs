@@ -8503,8 +8503,8 @@ struct PromptInputs<'a> {
 /// spelling one SDK gives it — because that key is what every call the program makes is
 /// [recorded](test_cabinet_core::gg::GgTelemetryKind::ApiCall) under. So a consumer joins a bound
 /// function to its own count, whether or not a tool backs it, and a function offered and never
-/// called reports a real zero. Every object ends with [`list`](crate::docs::LIST_FUNCTION), which is
-/// bound but not catalogued — see the note at the tail of the function.
+/// called reports a real zero. Every object ends with [`list`](crate::docs::LIST_FUNCTION), which
+/// hangs off no object because it hangs off all of them — see the note at the tail of the function.
 fn api_surface(
     registry: &ToolRegistry,
     role: EndingRole,
@@ -8542,22 +8542,29 @@ fn api_surface(
                 });
         }
     }
+    // `list` is catalogued like everything else, in the section for the functions that hang off no
+    // object — so its name is this language's own spelling of it rather than gg's key for it, which
+    // is the whole reason it is looked up rather than written here.
+    let list = crate::sandbox::meta_function(
+        crate::sandbox::language(program_language),
+        crate::docs::LIST_FUNCTION,
+    );
     objects
         .iter()
         .filter_map(|described| {
             let object = described.object.as_str();
             bound.remove(object).map(|mut functions| {
-                // The catalogue above is reflected from the SDK's exported signatures, and `list`
-                // is not one of them: it is the [documentation carve-out](crate::docs)'s own meta
-                // function, which the guest seeds onto every object it creates and no tool gates.
-                // So it has no catalogue entry to be found by, yet it is genuinely bound on
-                // everything reported here — and it goes last, where `DocsRuntime::list` puts it,
-                // so this readout and the directory the model itself gets from `object.list()`
-                // list the same functions in the same order.
-                functions.push(GgAgentApiFunction {
-                    name: crate::docs::LIST_FUNCTION.to_string(),
-                    key: crate::docs::LIST_FUNCTION.to_string(),
-                });
+                // `catalogue_functions` walks the sections whose entries name an object, and a meta
+                // function names none — the guest seeds it onto every object it creates, and no tool
+                // gates it. So it is appended here rather than found there, and it goes last, where
+                // `DocsRuntime::list` puts it, so this readout and the directory the model itself
+                // gets from `object.list()` list the same functions in the same order.
+                if let Some(list) = list {
+                    functions.push(GgAgentApiFunction {
+                        name: list.name.clone(),
+                        key: crate::docs::LIST_FUNCTION.to_string(),
+                    });
+                }
                 GgAgentApi {
                     object: object.to_string(),
                     description: described.doc.clone(),

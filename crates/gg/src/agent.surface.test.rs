@@ -441,12 +441,17 @@ async fn a_disabled_capability_contributes_nothing_to_the_surface() {
 /// The `list()` meta function is bound on **every** object the guest creates, so the surface reports
 /// it on every object — last, and gated by nothing.
 ///
-/// It has no signature-catalogue entry (it is the documentation carve-out's own, not the SDK's), so
-/// a surface built from the catalogue alone is one function short on every object, and a reader
-/// asking *"was this agent offered `list`?"* gets silence about a call it always has. Checked
-/// against [`DocsRuntime::list`] rather than against a hand-written list, because the thing that
-/// must hold is that the console's readout and the directory the model itself gets from
-/// `object.list()` name the same functions in the same order.
+/// It is catalogued in the section for the functions that hang off no object, so a surface built by
+/// walking the *object-bearing* sections alone is one function short on every object, and a reader
+/// asking *"was this agent offered `list`?"* gets silence about a call it always has.
+///
+/// Two things are asserted about how it is named, and they are different claims. Its **key** is gg's
+/// own [`LIST_FUNCTION`](crate::docs::LIST_FUNCTION), because that is what a call is recorded under;
+/// its **name** is whatever this language's SDK spells it, taken from the catalogue rather than from
+/// the key, because those two coincide in TypeScript and will not in every language. And the whole
+/// readout is checked against [`DocsRuntime::list`] rather than against a hand-written list, because
+/// the thing that must hold is that the console's readout and the directory the model itself gets
+/// from `object.list()` name the same functions in the same order.
 #[test]
 fn every_object_reports_the_list_meta_function_last_and_ungated() {
     let mut set = GgCapabilitySet::minimal("mock/echo");
@@ -469,22 +474,36 @@ fn every_object_reports_the_list_meta_function_last_and_ungated() {
         GgProgramLanguage::TypeScript,
     );
 
+    // The name the SDK gives it, read from the catalogue — never gg's key for it.
+    let spelling = crate::sandbox::meta_function(
+        crate::sandbox::language(GgProgramLanguage::TypeScript),
+        crate::docs::LIST_FUNCTION,
+    )
+    .expect("`list` is catalogued")
+    .name
+    .clone();
+    assert_eq!(
+        spelling, "list",
+        "TypeScript's SDK spells the directory `list`"
+    );
+
     assert!(!apis.is_empty(), "the fixture binds objects to check");
     for api in &apis {
         assert_eq!(
             api.functions.last(),
             Some(&GgAgentApiFunction {
-                name: "list".to_string(),
-                key: "list".to_string(),
+                name: spelling.clone(),
+                key: crate::docs::LIST_FUNCTION.to_string(),
             }),
-            "`{}` ends with a `list` keyed as itself: {:?}",
+            "`{}` ends with the SDK's own spelling of the directory, keyed by gg's name for it: \
+             {:?}",
             api.object,
             api.functions
         );
         assert_eq!(
             api.functions
                 .iter()
-                .filter(|function| function.name == "list")
+                .filter(|function| function.name == spelling)
                 .count(),
             1,
             "`{}` binds it once, not once per family it came from",

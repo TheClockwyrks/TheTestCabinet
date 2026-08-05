@@ -3794,6 +3794,402 @@
       "gate": "read_file",
       "library": false,
       "types": []
+    },
+    {
+      "object": "fs",
+      "name": "list",
+      "category": "gg-filesystem",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "signatures": [
+        {
+          "signature": "list(): FunctionSummary[]",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+      "library": false,
+      "types": [
+        {
+          "name": "FunctionSummary",
+          "declaration": "interface FunctionSummary { name: string; summary: string; }",
+          "doc": "One function in an API object's directory, as `list()` returns it. It is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `openDocsView`.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The function name on its object — `readFile` in `fs.readFile(...)`."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "One line saying what it does: the first sentence of its documentation."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "object": "system",
+      "name": "list",
+      "category": "gg-shell",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "signatures": [
+        {
+          "signature": "list(): FunctionSummary[]",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+      "library": false,
+      "types": [
+        {
+          "name": "FunctionSummary",
+          "declaration": "interface FunctionSummary { name: string; summary: string; }",
+          "doc": "One function in an API object's directory, as `list()` returns it. It is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `openDocsView`.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The function name on its object — `readFile` in `fs.readFile(...)`."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "One line saying what it does: the first sentence of its documentation."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "object": "project",
+      "name": "list",
+      "category": "gg-project",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "signatures": [
+        {
+          "signature": "list(): FunctionSummary[]",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+      "library": false,
+      "types": [
+        {
+          "name": "FunctionSummary",
+          "declaration": "interface FunctionSummary { name: string; summary: string; }",
+          "doc": "One function in an API object's directory, as `list()` returns it. It is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `openDocsView`.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The function name on its object — `readFile` in `fs.readFile(...)`."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "One line saying what it does: the first sentence of its documentation."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "object": "tasks",
+      "name": "list",
+      "category": "gg-tasks",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "signatures": [
+        {
+          "signature": "list(): FunctionSummary[]",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+      "library": false,
+      "types": [
+        {
+          "name": "FunctionSummary",
+          "declaration": "interface FunctionSummary { name: string; summary: string; }",
+          "doc": "One function in an API object's directory, as `list()` returns it. It is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `openDocsView`.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The function name on its object — `readFile` in `fs.readFile(...)`."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "One line saying what it does: the first sentence of its documentation."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "object": "memory",
+      "name": "list",
+      "category": "gg-memory",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "signatures": [
+        {
+          "signature": "list(): FunctionSummary[]",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+      "library": false,
+      "types": [
+        {
+          "name": "FunctionSummary",
+          "declaration": "interface FunctionSummary { name: string; summary: string; }",
+          "doc": "One function in an API object's directory, as `list()` returns it. It is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `openDocsView`.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The function name on its object — `readFile` in `fs.readFile(...)`."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "One line saying what it does: the first sentence of its documentation."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "object": "view",
+      "name": "list",
+      "category": "gg-views",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "signatures": [
+        {
+          "signature": "list(): FunctionSummary[]",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+      "library": false,
+      "types": [
+        {
+          "name": "FunctionSummary",
+          "declaration": "interface FunctionSummary { name: string; summary: string; }",
+          "doc": "One function in an API object's directory, as `list()` returns it. It is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `openDocsView`.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The function name on its object — `readFile` in `fs.readFile(...)`."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "One line saying what it does: the first sentence of its documentation."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "object": "context",
+      "name": "list",
+      "category": "gg-context",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "signatures": [
+        {
+          "signature": "list(): FunctionSummary[]",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+      "library": false,
+      "types": [
+        {
+          "name": "FunctionSummary",
+          "declaration": "interface FunctionSummary { name: string; summary: string; }",
+          "doc": "One function in an API object's directory, as `list()` returns it. It is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `openDocsView`.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The function name on its object — `readFile` in `fs.readFile(...)`."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "One line saying what it does: the first sentence of its documentation."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "object": "agents",
+      "name": "list",
+      "category": "gg-delegation",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "signatures": [
+        {
+          "signature": "list(): FunctionSummary[]",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+      "library": false,
+      "types": [
+        {
+          "name": "FunctionSummary",
+          "declaration": "interface FunctionSummary { name: string; summary: string; }",
+          "doc": "One function in an API object's directory, as `list()` returns it. It is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `openDocsView`.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The function name on its object — `readFile` in `fs.readFile(...)`."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "One line saying what it does: the first sentence of its documentation."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "object": "skills",
+      "name": "list",
+      "category": "gg-skills",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "signatures": [
+        {
+          "signature": "list(): FunctionSummary[]",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+      "library": false,
+      "types": [
+        {
+          "name": "FunctionSummary",
+          "declaration": "interface FunctionSummary { name: string; summary: string; }",
+          "doc": "One function in an API object's directory, as `list()` returns it. It is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `openDocsView`.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The function name on its object — `readFile` in `fs.readFile(...)`."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "One line saying what it does: the first sentence of its documentation."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "object": "programs",
+      "name": "list",
+      "category": "gg-programs",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "signatures": [
+        {
+          "signature": "list(): FunctionSummary[]",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+      "library": false,
+      "types": [
+        {
+          "name": "FunctionSummary",
+          "declaration": "interface FunctionSummary { name: string; summary: string; }",
+          "doc": "One function in an API object's directory, as `list()` returns it. It is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `openDocsView`.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The function name on its object — `readFile` in `fs.readFile(...)`."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "One line saying what it does: the first sentence of its documentation."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "object": "harness",
+      "name": "list",
+      "category": "gg-session",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "signatures": [
+        {
+          "signature": "list(): FunctionSummary[]",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+      "library": false,
+      "types": [
+        {
+          "name": "FunctionSummary",
+          "declaration": "interface FunctionSummary { name: string; summary: string; }",
+          "doc": "One function in an API object's directory, as `list()` returns it. It is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `openDocsView`.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The function name on its object — `readFile` in `fs.readFile(...)`."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "One line saying what it does: the first sentence of its documentation."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "object": "review",
+      "name": "list",
+      "category": "gg-session",
+      "summary": "List the functions available on this API object, each as `{ name, summary }`.",
+      "signatures": [
+        {
+          "signature": "list(): FunctionSummary[]",
+          "parameters": []
+        }
+      ],
+      "doc": "List the functions available on this API object, each as `{ name, summary }`. Only the functions this run actually bound are returned, so the directory never names a call your program cannot make. Open a view of one function's full signature, argument descriptions and types with `view.openDocsView`.",
+      "library": false,
+      "types": [
+        {
+          "name": "FunctionSummary",
+          "declaration": "interface FunctionSummary { name: string; summary: string; }",
+          "doc": "One function in an API object's directory, as `list()` returns it. It is the entry of the one function every API object carries whatever a run enables, so a program can always discover what it has. The summary is one line; the whole documentation of a function — every shape it may be called in, what to put in each argument, and the types it refers to — is a view, opened with `openDocsView`.",
+          "members": [
+            {
+              "name": "name",
+              "type": "string",
+              "doc": "The function name on its object — `readFile` in `fs.readFile(...)`."
+            },
+            {
+              "name": "summary",
+              "type": "string",
+              "doc": "One line saying what it does: the first sentence of its documentation."
+            }
+          ]
+        }
+      ]
     }
   ]
 }

@@ -170,6 +170,10 @@ fn the_gate_table_covers_exactly_the_tool_vocabulary() {
 
 /// Every function the committed signature catalogue documents reaches the reference, with its
 /// signature and documentation intact.
+///
+/// The count is the object-bearing sections' plus one `list` per object: the directory is bound onto
+/// every object the guest creates, so an object's entry on the page is one function short without
+/// it — the same completeness the run's own agent-surface readout has.
 #[test]
 fn every_catalogued_function_appears() {
     let reference = reference();
@@ -180,11 +184,22 @@ fn every_catalogued_function_appears() {
         .collect();
 
     let catalogued = crate::sandbox::catalogue_functions(projected_language());
+    let objects = crate::sandbox::catalogue_objects(projected_language());
     assert_eq!(
         emitted.len(),
-        catalogued.len(),
-        "the reference must carry one entry per catalogued function"
+        catalogued.len() + objects.len(),
+        "the reference must carry one entry per catalogued function, plus the directory every \
+         object binds"
     );
+    let list = crate::sandbox::meta_function(projected_language(), crate::docs::LIST_FUNCTION)
+        .expect("`list` is catalogued");
+    for described in objects {
+        assert!(
+            emitted.contains(&(described.object.clone(), list.name.clone())),
+            "`{}` is on the page without the directory it binds",
+            described.object
+        );
+    }
     for function in &catalogued {
         assert!(
             emitted.contains(&(function.object.to_string(), function.name.to_string())),

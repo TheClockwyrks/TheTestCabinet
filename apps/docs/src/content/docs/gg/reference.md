@@ -45,12 +45,12 @@ differently:
   `programs`, `harness`, `review`, `judge` — because that is how a program reaches them
   (`fs.readFile`, not "the filesystem family's read call") and it is what a model itself
   enumerates mid-run with `object.list()`. Each folder is captioned with its family's own
-  one-line description; the last family supplies three objects, one per agent role. That
-  `list` is the one function the tab does not carry: the sandbox binds it on every object
-  it creates rather than exporting it from the SDK, so the reflected catalogue this page
-  is built from has no signature to show for it. An instance's own
-  [surface](/gg/telemetry/#what-an-agent-is-offered) does report it, appended last on
-  every object.
+  one-line description; the last family supplies three objects, one per agent role. Every
+  folder ends with `list` — the directory the sandbox binds onto each object it creates. It
+  is declared and documented in the SDK like everything else, in the catalogue's
+  [`meta` section](/gg/program-languages/#the-catalogue), and appears once under each object
+  rather than in a folder of its own, because that is where a program can call it. An
+  instance's own [surface](/gg/telemetry/#what-an-agent-is-offered) reports it the same way.
 
 An API function shows **every signature** the SDK offers it in, each above its own argument
 list. There is usually exactly one — TypeScript spells an optional argument with `?` — but a

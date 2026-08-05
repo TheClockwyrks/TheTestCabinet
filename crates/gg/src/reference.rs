@@ -76,7 +76,7 @@ use crate::fsm::{FsmPosition, FsmSpec};
 use crate::memories::{MemoriesRuntime, MemoryCaps, MemoryStrategy};
 use crate::model::ToolDefinition;
 use crate::modules::{CapabilityModules, ModuleHandle};
-use crate::sandbox::{Parameter, ParameterKind};
+use crate::sandbox::{Parameter, ParameterKind, ProgramLanguage, SignatureEntry};
 use crate::skills::builtin::FAMILIES;
 use crate::skills::{SkillLibrary, SkillsRuntime, parse_skill};
 use crate::tasks::{TaskMode, TasksRuntime};
@@ -515,50 +515,87 @@ fn placeholder_position() -> FsmPosition {
 /// — so nothing is filtered here. What is added is the grouping (which family the object belongs
 /// to) and the type declarations, which the catalogue carries by name so that a run's prompt can
 /// declare only the types its own tools use.
+///
+/// The [meta](crate::docs::LIST_FUNCTION) section is folded in **once per object**, at the end, and
+/// that is not a duplication of one function: `list` is bound onto every object the guest creates,
+/// so an object's entry in this projection is incomplete without it. It is the same answer the two
+/// other readouts of the surface give — the directory a program gets from `object.list()` and the
+/// [agent surface](test_cabinet_core::gg::GgTelemetryKind::AgentSurface) event — and the reason it
+/// is appended rather than found in [`catalogue_functions`](crate::sandbox::catalogue_functions) is
+/// that a meta entry names no object of its own to be grouped under.
 fn functions() -> Vec<GgApiFunction> {
     let language = crate::sandbox::language(reference_language());
-    crate::sandbox::catalogue_functions(language)
+    let mut out: Vec<GgApiFunction> = crate::sandbox::catalogue_functions(language)
         .into_iter()
         .map(|function| GgApiFunction {
             object: function.object.to_string(),
             name: function.name.to_string(),
             category: category_of_object(function.object),
             summary: function.summary.to_string(),
-            signatures: function
-                .signatures
-                .iter()
-                .map(|entry| GgApiSignature {
-                    signature: entry.signature.clone(),
-                    parameters: entry.parameters.iter().map(argument).collect(),
-                })
-                .collect(),
+            signatures: signatures(function.signatures),
             doc: function.doc.to_string(),
             gate: function.gate.map(str::to_string),
             ending: function.ending.map(str::to_string),
             library: function.library,
-            // A name the catalogue's own `types` section does not declare is a corrupt committed
-            // artifact rather than a documented type gg happens not to know; it is dropped instead
-            // of rendered as an empty block, and a test asserts nothing is ever dropped.
-            types: function
-                .types
+            types: types(language, function.types),
+        })
+        .collect();
+    if let Some(list) = crate::sandbox::meta_function(language, crate::docs::LIST_FUNCTION) {
+        out.extend(
+            crate::sandbox::catalogue_objects(language)
                 .iter()
-                .filter_map(|name| {
-                    crate::sandbox::type_declaration(language, name).map(|declared| GgApiType {
-                        name: name.clone(),
-                        declaration: declared.declaration.clone(),
-                        doc: declared.doc.clone(),
-                        members: declared
-                            .members
-                            .iter()
-                            .map(|member| GgApiTypeMember {
-                                name: member.name.clone(),
-                                kind: member.r#type.clone(),
-                                doc: member.doc.clone(),
-                            })
-                            .collect(),
+                .map(|described| GgApiFunction {
+                    object: described.object.clone(),
+                    name: list.name.clone(),
+                    category: category_of_object(described.object.as_str()),
+                    summary: crate::sandbox::summary_of(&list.doc).to_string(),
+                    signatures: signatures(&list.signatures),
+                    doc: list.doc.clone(),
+                    // Nothing gates the directory: an object that exists carries it.
+                    gate: None,
+                    ending: None,
+                    library: false,
+                    types: types(language, &list.types),
+                }),
+        );
+    }
+    out
+}
+
+/// Every shape one catalogue entry may be called in, projected onto the wire.
+fn signatures(entries: &'static [SignatureEntry]) -> Vec<GgApiSignature> {
+    entries
+        .iter()
+        .map(|entry| GgApiSignature {
+            signature: entry.signature.clone(),
+            parameters: entry.parameters.iter().map(argument).collect(),
+        })
+        .collect()
+}
+
+/// The declarations of the types one entry's signatures refer to.
+///
+/// A name the catalogue's own `types` section does not declare is a corrupt committed artifact
+/// rather than a documented type gg happens not to know; it is dropped instead of rendered as an
+/// empty block, and a test asserts nothing is ever dropped.
+fn types(language: &'static dyn ProgramLanguage, names: &'static [String]) -> Vec<GgApiType> {
+    names
+        .iter()
+        .filter_map(|name| {
+            crate::sandbox::type_declaration(language, name).map(|declared| GgApiType {
+                name: name.clone(),
+                declaration: declared.declaration.clone(),
+                doc: declared.doc.clone(),
+                members: declared
+                    .members
+                    .iter()
+                    .map(|member| GgApiTypeMember {
+                        name: member.name.clone(),
+                        kind: member.r#type.clone(),
+                        doc: member.doc.clone(),
                     })
-                })
-                .collect(),
+                    .collect(),
+            })
         })
         .collect()
 }
