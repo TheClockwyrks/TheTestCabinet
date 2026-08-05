@@ -362,3 +362,18 @@ export interface ProgramSummary {
   /** The error it ended with, when it did not run to its end. */
   error?: string;
 }
+
+/**
+ * One function in an API object's directory, as `list()` returns it.
+ *
+ * It is the entry of the one function every API object carries whatever a run enables, so a program
+ * can always discover what it has. The summary is one line; the whole documentation of a function —
+ * every shape it may be called in, what to put in each argument, and the types it refers to — is a
+ * view, opened with `openDocsView`.
+ */
+export interface FunctionSummary {
+  /** The function name on its object — `readFile` in `fs.readFile(...)`. */
+  name: string;
+  /** One line saying what it does: the first sentence of its documentation. */
+  summary: string;
+}

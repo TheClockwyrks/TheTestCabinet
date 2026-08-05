@@ -22,7 +22,7 @@ for this package:
 
 | Artifact | What it is |
 | --- | --- |
-| [`crates/gg/src/sandbox/guests/typescript.component.wasm`](../../crates/gg/src/sandbox/guests/) | The baked component, `include_bytes!`d by the host. **13,941,785 bytes** (13.3 MiB) as committed. |
+| [`crates/gg/src/sandbox/guests/typescript.component.wasm`](../../crates/gg/src/sandbox/guests/) | The baked component, `include_bytes!`d by the host. **14,004,036 bytes** (13.4 MiB) as committed. |
 | [`crates/gg/src/sandbox/guests/typescript.signatures.json`](../../crates/gg/src/sandbox/guests/) | The signature catalogue, `include_str!`d and rendered into the system prompt. |
 
 ## Layout
@@ -32,7 +32,7 @@ for this package:
 | `src/membrane.d.ts` | The hand-maintained TypeScript mirror of `crates/gg/wit/gg-sandbox.wit`. Emits no code; `componentize-js` injects the real bindings. |
 | `src/types.ts` | The **model-facing** record and enum types — gg's vocabulary, not the WIT's. |
 | `src/errors.ts` | `ToolError`, and the argument validators every wrapper runs first. |
-| `src/catalogue.ts` | Pure data: gg tool name ↔ SDK function ↔ module, plus `SESSION_ENTRIES`, `VIEW_ENTRIES` and `PROGRAM_ENTRIES` — each carrying the `key` that identifies it across languages — and the `OBJECT_*` constants whose doc comments are the API objects' own model-facing descriptions. |
+| `src/catalogue.ts` | Pure data: gg tool name ↔ SDK function ↔ module, plus `SESSION_ENTRIES`, `VIEW_ENTRIES`, `PROGRAM_ENTRIES` and `META_ENTRIES` — each carrying the `key` that identifies it across languages — and the `OBJECT_*` constants whose doc comments are the API objects' own model-facing descriptions. |
 | `src/tools/*.ts` | The 37 typed wrappers — one per gg tool, grouped one module per capability family — plus the on-demand directory call (`listFunctions`, which is every object's `list()`) and the five `view` functions. |
 | `src/helpers.ts` | The one helper, `readTextFile`. |
 | `src/session.ts` | `finish(summary)` and the two verdict endings — model-facing functions that are not gg tools. |
@@ -63,6 +63,16 @@ top-level `views` array in `signatures.json`. Four of them are bound whatever a
 run enables, for the same reason `finish` is; `openFile` carries
 `requires: "read_file"`, because it is a read and a run with reading withheld must
 not get one through a side door.
+
+`src/tools/docs.ts` carries the third carve-out, and the odd one: `list`, the directory
+every API object holds. It is bound onto *every* object rather than declared on one — the
+shim seeds it from `listFunctions` with that object's name closed over — so its bound arity
+is zero and it belongs to no object at all. It is catalogued anyway, in a `meta` section
+whose entries carry no `object` field, because its signature and its description are read by
+a model and **nothing a model reads about this SDK is written anywhere but on the declaration
+it describes**. `export declare function list()` in `src/tools/docs.ts` is that declaration:
+it has no implementation because it is never imported, and it exists so the bound shape is
+reflected rather than described in a constant on gg's side that no gate could check.
 
 That makes **five** of the WIT's interfaces non-tool ones — `feedback` (the shim's
 private channel back to gg, never model-facing), `session`, `docs`, `views` and

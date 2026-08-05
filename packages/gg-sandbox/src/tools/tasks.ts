@@ -11,7 +11,7 @@
 import * as raw from "test-cabinet:gg/tasks";
 import type { TaskStatusRaw } from "test-cabinet:gg/tasks";
 import type { TextEdit } from "test-cabinet:gg/types";
-import { call, list } from "../errors.js";
+import { call, arrayArg } from "../errors.js";
 import type { TaskStatus, TaskUsage } from "../types.js";
 
 /** Lower the `undefined` / `null` / string sentinel onto the membrane's three-way text edit. */
@@ -50,7 +50,7 @@ export function addTask(task: {
       id: task.id,
       title: task.title,
       description: task.description,
-      blockedBy: list("addTask", "blockedBy", task.blockedBy),
+      blockedBy: arrayArg("addTask", "blockedBy", task.blockedBy),
     }),
   );
 }
@@ -87,7 +87,7 @@ export function updateTask(
  * them all.
  */
 export function setBlockedBy(id: string, blockedBy: string[]): void {
-  call(() => raw.setBlockedBy(id, list("setBlockedBy", "blockedBy", blockedBy)));
+  call(() => raw.setBlockedBy(id, arrayArg("setBlockedBy", "blockedBy", blockedBy)));
 }
 
 /**

@@ -257,8 +257,12 @@ export function positive(fn: string, name: string, value: unknown): number | und
  * The element type is a parameter because most lists are lists of ids but some — a reviewer's items
  * — is a list of records; the check itself is the same, and it is deliberately shallow, because the
  * bindings already reject a wrong element with a message that names the offending case.
+ *
+ * Named `arrayArg` rather than `list` because `list` is a **model-facing** name in this SDK — the
+ * directory function every API object carries — and an internal helper that took the same word would
+ * be one of gg's own vocabulary spent on something no model ever calls.
  */
-export function list<T = string>(fn: string, name: string, value: unknown): T[] {
+export function arrayArg<T = string>(fn: string, name: string, value: unknown): T[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) {
     throw new ToolError(

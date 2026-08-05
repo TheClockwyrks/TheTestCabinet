@@ -7,7 +7,7 @@
  */
 
 import * as raw from "test-cabinet:gg/context";
-import { ToolError, U32_MAX, call, list, typeName, uint } from "../errors.js";
+import { ToolError, U32_MAX, call, arrayArg, typeName, uint } from "../errors.js";
 import type { ArchiveSearch, ReclaimReport, TurnRange } from "../types.js";
 
 /**
@@ -32,7 +32,7 @@ export function evictFileView(path?: string): ReclaimReport {
  * @param ranges The inclusive spans of turn numbers to move out of your window.
  */
 export function archiveThread(ranges: TurnRange[]): ReclaimReport {
-  const spans = list<TurnRange>("archiveThread", "ranges", ranges).map((range) => {
+  const spans = arrayArg<TurnRange>("archiveThread", "ranges", ranges).map((range) => {
     if (typeof range !== "object" || range === null) {
       throw new ToolError(
         "archiveThread",

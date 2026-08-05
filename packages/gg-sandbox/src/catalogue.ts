@@ -364,6 +364,33 @@ export const PROGRAM_KEYS: Readonly<Record<string, string>> = {
   rerun: "rerun",
 };
 
+/** One model-facing **meta** function: what it is called, and the identity every guest shares. */
+export interface MetaEntry {
+  /** This function's language-independent identity, as every guest catalogues it. */
+  key: string;
+  /** The exported declaration whose signature and JSDoc describe the bound form. */
+  js: string;
+}
+
+/**
+ * Every model-facing function that belongs to **no API object** — because it belongs to all of them.
+ *
+ * `list` is the whole of it: {@link "./shim.js".buildScope} seeds it onto every object it creates,
+ * bound from {@link "./tools/docs.js".listFunctions} with that object's name closed over, so its
+ * bound arity is zero and there is no one object it hangs off. That is why it is a section of its
+ * own rather than an entry in {@link VIEW_ENTRIES} or {@link TOOL_CATALOGUE}: an entry there carries
+ * an `object`, and any object this one named would be a lie about the other eleven.
+ *
+ * It is catalogued all the same, and that is the point. Its signature and its documentation are what
+ * a model reads when it looks the function up, and everything a model reads about this SDK is
+ * reflected from the declaration it describes — a meta function documented in a `const` on the host
+ * side would be the one description in the surface that no gate could compare against the code.
+ */
+export const META_ENTRIES: readonly MetaEntry[] = [{ key: "list", js: "list" }];
+
+/** The module every {@link META_ENTRIES} declaration lives in. */
+export const META_MODULE = "docs";
+
 /**
  * The scope object a program reaches its loaded **code modules** through: the code of a skill or a
  * memory it has read, bound at `lib.<name>`.

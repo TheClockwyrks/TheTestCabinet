@@ -12,7 +12,25 @@
 
 import * as raw from "test-cabinet:gg/docs";
 
-export type { FunctionSummary } from "test-cabinet:gg/docs";
+import type { FunctionSummary } from "../types.js";
+
+export type { FunctionSummary };
+
+/**
+ * List the functions available on this API object, each as `{ name, summary }`. Only the functions
+ * this run actually bound are returned, so the directory never names a call your program cannot
+ * make. Open a view of one function's full signature, argument descriptions and types with
+ * `view.openDocsView`.
+ */
+export declare function list(): FunctionSummary[];
+
+// `list` is DECLARED rather than defined, and that is the honest shape of it. It has no
+// implementation here because it is never imported: {@link "../shim.ts".buildScope} seeds it onto
+// each API object it creates, bound from {@link listFunctions} with that object's own name closed
+// over — so the function a program actually calls takes no arguments. The declaration is what makes
+// the bound shape catalogued rather than described in prose somewhere gg cannot check, which is why
+// its signature and its documentation are written here, on it, like every other model-facing
+// function's.
 
 /**
  * List one API object's bound functions, each with a one-line summary. Only the functions this run
@@ -20,6 +38,6 @@ export type { FunctionSummary } from "test-cabinet:gg/docs";
  *
  * @param object The API object to list (`fs`, `view`, …).
  */
-export function listFunctions(object: string): raw.FunctionSummary[] {
+export function listFunctions(object: string): FunctionSummary[] {
   return raw.listFunctions(object);
 }

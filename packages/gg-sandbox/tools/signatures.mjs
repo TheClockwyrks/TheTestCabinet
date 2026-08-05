@@ -42,13 +42,19 @@
 //   * every API OBJECT must carry the sentence the prompt introduces it by, taken from the doc
 //     comment on its declaration in `src/catalogue.ts`.
 //
-// Beside its language tag and its provenance line the catalogue has seven parts — `objects`,
-// `session`, `views`, `programs`, `tools`, `helpers`, `types` — and after the objects the three
+// Beside its language tag and its provenance line the catalogue has eight parts — `objects`,
+// `meta`, `session`, `views`, `programs`, `tools`, `helpers`, `types` — and after the objects the
 // carve-outs come first because they are the parts that are not a projection of the run's enabled
-// set: an ending call is bound from the agent's *role*, three of the four view functions are bound
-// unconditionally, and the program library is bound from a capability.
+// set: `list` is on every object whatever a run enables, an ending call is bound from the agent's
+// *role*, three of the four view functions are bound unconditionally, and the program library is
+// bound from a capability.
 // So a run that offers no tools at all is still told how to end and how to put something in front of
 // itself.
+//
+// `meta` is the one section whose entries carry no `object`, because `list` is seeded onto EVERY
+// object rather than declared on one. It is catalogued anyway, and for the reason the rest of this
+// file exists: its signature and its description are read by a model, so they are reflected out of
+// the declaration that states them rather than written into a host-side constant no gate compares.
 //
 // # One entry, many signatures
 //
@@ -521,6 +527,8 @@ async function build() {
     PROGRAM_ENTRIES,
     PROGRAM_KEYS,
     PROGRAM_MODULE,
+    META_ENTRIES,
+    META_MODULE,
     OBJECT_FOR_MODULE,
     OBJECT_ORDER,
   } = await loadCatalogue();
@@ -539,6 +547,21 @@ async function build() {
 
   const order = (name) => declarations.types.get(name)?.order ?? Number.MAX_SAFE_INTEGER;
   const sorted = (names) => [...names].sort((a, b) => order(a) - order(b));
+
+  // The meta functions: reflected exactly as everything else is, minus the `object` field they have
+  // no value for. `list` is seeded onto every API object rather than declared on one, so naming an
+  // object here would be a claim about the eleven it is not on.
+  const meta = META_ENTRIES.map((entry) => {
+    const { signatures, doc, referenced } = reflect(entry.js, `${META_MODULE}.d.ts`, declarations);
+    for (const name of referenced) used.add(name);
+    return {
+      key: entry.key,
+      name: entry.js,
+      signatures,
+      doc,
+      types: sorted(referenced),
+    };
+  });
 
   // Reflected exactly as a tool is, minus the `tool` field they have no value for: none is a gg tool,
   // none has a name in `ALL_TOOL_NAMES`, and nothing dispatches them. `key` stands in for that
@@ -704,6 +727,7 @@ async function build() {
       language: LANGUAGE,
       generatedFrom: GENERATED_FROM,
       objects,
+      meta,
       session,
       views,
       programs,
@@ -750,11 +774,12 @@ async function main() {
   }
   await mkdir(path.dirname(out), { recursive: true });
   await writeFile(out, catalogue, "utf8");
-  const { objects, views, programs, tools, helpers, types } = JSON.parse(catalogue);
+  const { objects, meta, views, programs, tools, helpers, types } = JSON.parse(catalogue);
   process.stdout.write(
     `Wrote ${path.relative(process.cwd(), out)} (${objects.length} objects, ${tools.length} tools, ` +
       `${helpers.length} helpers, ${views.length} view functions, ` +
-      `${programs.length} program-library functions, ${types.length} types).\n`,
+      `${programs.length} program-library functions, ${meta.length} meta functions, ` +
+      `${types.length} types).\n`,
   );
 }
 

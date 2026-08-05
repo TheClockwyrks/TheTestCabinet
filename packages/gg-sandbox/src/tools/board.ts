@@ -14,7 +14,7 @@
 import * as raw from "test-cabinet:gg/board";
 import type { EpicAssignment, IssueStatusRaw } from "test-cabinet:gg/board";
 import type { TextEdit } from "test-cabinet:gg/types";
-import { call, list } from "../errors.js";
+import { call, arrayArg } from "../errors.js";
 import type {
   BoardUsage,
   EpicCreated,
@@ -110,10 +110,10 @@ export function createIssue(issue: {
       inScope: issue.inScope,
       outOfScope: issue.outOfScope,
       completionCriteria: issue.completionCriteria,
-      blockedBy: list("createIssue", "blockedBy", issue.blockedBy),
+      blockedBy: arrayArg("createIssue", "blockedBy", issue.blockedBy),
       epicId: issue.epicId,
       agent: issue.agent,
-      reviewers: list("createIssue", "reviewers", issue.reviewers),
+      reviewers: arrayArg("createIssue", "reviewers", issue.reviewers),
     }),
   );
 }
@@ -170,7 +170,7 @@ export function setIssueBlockedBy(id: string, blockedBy: string[]): void {
   call(() =>
     raw.setIssueBlockedBy(
       id,
-      list("setIssueBlockedBy", "blockedBy", blockedBy),
+      arrayArg("setIssueBlockedBy", "blockedBy", blockedBy),
     ),
   );
 }
