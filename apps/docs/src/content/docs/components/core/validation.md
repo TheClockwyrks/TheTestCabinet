@@ -95,15 +95,6 @@ synthesize that point's proof and decide its verdict. A verdict unit is a whole
 review item, or an individual sub-item of one, so each independently graded point
 gets its own script and its own evidence.
 
-Unlike a submitted proof, the debug API is a **gate**. A build that does not
-install the declared handle, is missing a required operation, or whose API is
-non-conformant when exercised is recorded as failing the debug-API contract, and
-that **fails the run** — the clearest possible negative signal short of a build
-that does not load, and one that needs no human to confirm. The contract is kept
-small and mechanical precisely so a complete build satisfies it almost
-incidentally. See
-[The debug API is load-bearing](/testing/end-to-end/instrumentation/#the-debug-api-is-load-bearing).
-
 ## Results
 
 Validation output is summarized into the [run record](/components/core/run-records/)
