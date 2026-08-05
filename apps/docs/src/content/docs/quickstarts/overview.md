@@ -98,6 +98,9 @@ API key.
 - [Roll Production Service Images](/quickstarts/devops/roll-prod-service-images/) —
   promote the latest CI-built service images to the prod cluster by re-pinning the
   overlay.
+- [Cut a Release](/quickstarts/devops/cut-a-release/) — ship `vX.Y.Z`: prepare the
+  release branch, rehearse on staging, publish the artifacts, then land the catalog
+  and services in prod.
 
 Each quickstart has a matching User Guide that covers the same task in full,
 including prerequisites and the reasoning behind each step.

@@ -5,7 +5,11 @@ title: Releasing
 This page covers cutting a release of the downloadable binaries and the desktop
 app, and the one-time configuration behind the project's three deployed
 **static** sites. It is the release-time half of shipping the project: the
-downloadable artifacts and the CI-built sites. Standing up the always-on
+downloadable artifacts and the CI-built sites. For the *whole* `vX.Y.Z` sequence
+these workflows sit inside — preparing the release on `nightly`, rehearsing on
+staging, and landing the catalog and the services in production afterwards — see
+[Cutting a Release](/guides/devops/cutting-a-release/) (and its
+[quickstart](/quickstarts/devops/cut-a-release/)). Standing up the always-on
 **services** — the
 [backend](/components/backend/overview/), the run-queue
 [dispatcher](/components/dispatcher/overview/), and the per-run

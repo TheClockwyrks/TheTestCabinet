@@ -110,6 +110,9 @@ guide when you are doing the task for the first time, or when you need to know
 - [Rolling Production Service Images](/guides/devops/rolling-prod-service-images/) —
   promote a CI-built service-image sha to the production cluster: re-pin the
   overlay, apply it through the private cluster, and commit.
+- [Cutting a Release](/guides/devops/cutting-a-release/) — the whole `vX.Y.Z`
+  sequence: prepare `nightly`, rehearse on staging, publish the artifacts from
+  GitHub, then land the catalog and the services in production.
 
 These guides describe how to *use* The Test Cabinet. To understand how it works
 internally, see the [Components](/components/architecture/) section.
