@@ -11,6 +11,17 @@ fn flat(rendered: &str) -> String {
     rendered.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// A [flattened](flat) prompt with Markdown emphasis stripped.
+///
+/// Where a sentence is worth asserting at all, which of its words the template happens to bold is
+/// not part of what it says: `**returns**` and `*returns*` and `returns` are one statement, and a
+/// test that can tell them apart is a test that fires on an editing pass. Only `*` is removed —
+/// `_` is a character gg's own spellings contain, and a language whose calls are `read_file` would
+/// have its identifiers dismantled by stripping it.
+fn plain(rendered: &str) -> String {
+    flat(rendered).replace('*', "")
+}
+
 /// A context with every capability **off**: the minimum a run can render.
 fn bare_system() -> SystemContext {
     SystemContext::default()
@@ -210,7 +221,7 @@ fn code_mode_names_objects_and_teaches_discovery() {
         "run shell commands in the workspace",
         "`harness`",
         "<object>.list()",
-        "view.openDocsView(fn)",
+        "view.openDocsView",
         "finish",
     ] {
         assert!(flat.contains(keyword), "missing `{keyword}`:\n{prompt}");
@@ -258,31 +269,16 @@ fn code_mode_teaches_views_rather_than_logging() {
         None,
     );
     let flat_reads = flat(&with_reads);
-    // The channel that carries: views are what the next turn is built from, and the call that opens
-    // one is spelled out where the model first meets it.
-    assert!(
-        flat_reads.contains(
-            "Any views that your code opens will be provided to you on the next \
-                             turn."
-        ),
-        "{with_reads}"
-    );
-    assert!(
-        with_reads.contains("`view.openText(slug: str, contents: str)`"),
-        "{with_reads}"
-    );
-    assert!(
-        with_reads.contains("`view.openFile(path: str)`"),
-        "{with_reads}"
-    );
-    // Logging is named once, as the thing that does NOT reach the model — never as an instruction.
-    assert!(
-        flat_reads.contains(
-            "Views are the only way that you can read data from your code. `console.log()` will \
-             not be visible."
-        ),
-        "{with_reads}"
-    );
+    // The channel that carries: views are what the next turn is built from, and both calls that
+    // open one are named where the model first meets them. The *argument shape* of each is
+    // [another test](code_mode_names_the_argument_shapes_a_program_starts_from)'s subject; what is
+    // asserted here is that the call is named at all, and named under the right gate.
+    assert!(flat_reads.contains("next turn"), "{with_reads}");
+    assert!(flat_reads.contains("view.openText"), "{with_reads}");
+    assert!(flat_reads.contains("view.openFile"), "{with_reads}");
+    // Logging is named, as the thing that does NOT reach the model — never as an instruction.
+    assert!(flat_reads.contains("the only way"), "{with_reads}");
+    assert!(flat_reads.contains("console.log"), "{with_reads}");
     assert!(
         !flat_reads.contains("Use `console.log()`"),
         "the prompt still instructs the model to log:\n{with_reads}"
@@ -306,10 +302,7 @@ fn code_mode_teaches_views_rather_than_logging() {
         },
         None,
     );
-    assert!(
-        no_reads.contains("`view.openText(slug: str, contents: str)`"),
-        "{no_reads}"
-    );
+    assert!(no_reads.contains("view.openText"), "{no_reads}");
     assert!(!no_reads.contains("view.openFile"), "{no_reads}");
     assert!(!no_reads.contains("\n\n\n"), "blank-line run:\n{no_reads}");
 }
@@ -430,31 +423,20 @@ fn code_mode_distinguishes_a_returned_directory_from_an_opened_view() {
         },
         None,
     );
-    let flat = flat(&prompt);
+    let flat = plain(&prompt);
     // `list()` hands its answer to the PROGRAM, and the prompt shows the one call that forwards it
     // to the model.
+    assert!(flat.contains("`<object>.list()` returns"), "{prompt}");
+    assert!(flat.contains("to your program"), "{prompt}");
     assert!(
-        flat.contains("`<object>.list()` **returns** an object's functions to your program"),
-        "{prompt}"
-    );
-    assert!(
-        flat.contains("it puts nothing in front of you on its own"),
-        "{prompt}"
-    );
-    assert!(
-        flat.contains("`view.openText(\"fs\", JSON.stringify(fs.list()))`"),
-        "{prompt}"
+        flat.contains("view.openText") && flat.contains("fs.list()"),
+        "the worked example that forwards a directory to a view is gone:\n{prompt}"
     );
     // `openDocsView` is the one that opens a view directly.
-    assert!(
-        flat.contains("`view.openDocsView(fn)` **opens a view** directly"),
-        "{prompt}"
-    );
+    assert!(flat.contains("view.openDocsView"), "{prompt}");
+    assert!(flat.contains("opens a view"), "{prompt}");
     // And whichever route was taken, the material lands on the next turn.
-    assert!(
-        flat.contains("arrives on your next turn and is not available during the turn you ask for"),
-        "{prompt}"
-    );
+    assert!(flat.contains("next turn"), "{prompt}");
     // The example is written inline: this prompt forbids Markdown formatting in a reply, so it can
     // hardly fence a line of program code as the model it wants copied.
     assert!(!prompt.contains("```"), "{prompt}");
@@ -605,12 +587,27 @@ fn each_role_is_told_only_its_own_ending() {
     }
 }
 
-/// A code run names its ending calls in the grouped form a program actually writes.
+/// A code run names its ending calls in the grouped form a program actually writes — **all** of its
+/// role's calls, and none of the other role's.
+///
+/// A reviewer holds two, not one: approving and requesting changes are the two halves of a verdict,
+/// and a prompt that named only the first would leave an agent that found a defect with no way to
+/// say so that does not read as approval. The negative half is
+/// [`each_role_is_told_only_its_own_ending`]'s argument, asserted again here because the grouped
+/// spellings are a different rendering and a template can lose the distinction in either one.
 #[test]
 fn code_mode_names_the_grouped_ending_calls() {
-    for (role, expected) in [
-        (EndingRole::Standard, "harness.finish"),
-        (EndingRole::Review, "review.approve"),
+    for (role, expected, absent) in [
+        (
+            EndingRole::Standard,
+            &["harness.finish"][..],
+            &["review.approve", "review.requestChanges"][..],
+        ),
+        (
+            EndingRole::Review,
+            &["review.approve", "review.requestChanges"][..],
+            &["harness.finish"][..],
+        ),
     ] {
         let prompt = render_system(
             &SystemContext {
@@ -625,7 +622,18 @@ fn code_mode_names_the_grouped_ending_calls() {
             },
             None,
         );
-        assert!(prompt.contains(expected), "{prompt}");
+        for call in expected {
+            assert!(
+                prompt.contains(call),
+                "role {role:?} lost `{call}`:\n{prompt}"
+            );
+        }
+        for call in absent {
+            assert!(
+                !prompt.contains(call),
+                "role {role:?} was offered `{call}`:\n{prompt}"
+            );
+        }
         assert!(!prompt.contains("\n\n\n"), "blank-line run:\n{prompt}");
     }
 }
@@ -1604,6 +1612,7 @@ const REQUIRED_SECTIONS: &[&str] = &[
     "## Responses as Code",
     "### Ending your session",
     "### Your APIs",
+    "### Reusing a program you already ran",
     "### Messages you receive",
     "## Skills",
     "## Memory",
@@ -1614,6 +1623,10 @@ const REQUIRED_SECTIONS: &[&str] = &[
 ];
 
 /// A context with **every** section a responses-as-code prompt can render turned on, in `language`.
+///
+/// "Every" is meant literally, including the two capabilities that render a line rather than a
+/// heading — `read_file` and `shell`. A context that left them off would render a prompt with two
+/// calls missing from it and no gate here could tell that apart from a template that dropped them.
 fn every_code_section_on(language: GgProgramLanguage) -> SystemContext {
     SystemContext {
         responses_as_code: true,
@@ -1622,6 +1635,18 @@ fn every_code_section_on(language: GgProgramLanguage) -> SystemContext {
             object: "harness".to_string(),
             description: "the run itself".to_string(),
         }],
+        read_file: ReadFileView {
+            offered: true,
+            capped: true,
+            line_cap: 250,
+            images: true,
+        },
+        shell: ShellView {
+            offered: true,
+            offloaded: false,
+            tail: String::new(),
+            directory: String::new(),
+        },
         code_headings: vec![CodeHeadingView {
             heading: "Task".to_string(),
             description: "the task you are working on".to_string(),
@@ -1887,6 +1912,186 @@ fn every_language_prompt_states_what_the_run_configured() {
     }
 }
 
+/// The rules a code turn runs under that a model cannot discover from a signature, each paired with
+/// the one word that carries it.
+///
+/// These are the statements a program's author has to have read *before* writing the program: a
+/// call blocks rather than returning a promise, a returned value goes nowhere, an ending is taken
+/// back if the program then throws, and anything a view holds is read on the turn after the one that
+/// asked for it. None of them is visible in a catalogue, none of them can be recovered by trying it
+/// once — trying it once is a wasted turn — and a template that lost one would render a prompt that
+/// still looks complete.
+///
+/// Unlike [`REQUIRED_PHRASES`], whose every entry is a value the context carried, each phrase here is
+/// a word of the prompt's **own prose**. That is unavoidable — a rule is prose — so the discipline
+/// instead is that the phrase must be the term the rule cannot be stated without. A paragraph may be
+/// rewritten, re-wrapped or re-emphasized around it and still pass; a language whose template
+/// translates the rule keeps the word because the word is the rule.
+const REQUIRED_RULES: &[(&str, &str)] = &[
+    // Every call blocks. The alternative reading — that a call returns something to be awaited — is
+    // the one a model brings with it, and a program written under it does its work in a callback
+    // that never runs.
+    ("that every call is synchronous", "synchronous"),
+    // A view is the only channel out of a program. Both of the other two things a model would
+    // reach for — printing, and returning — silently do nothing.
+    ("that a view is the only way to read data", "the only way"),
+    ("that a returned value goes nowhere", "discarded"),
+    // A view is read on the next turn. A program that opens one and then tries to use it within the
+    // same turn is a program that cannot work, however it is written.
+    (
+        "that what a view holds arrives on the next turn",
+        "next turn",
+    ),
+    // An ending is not a checkpoint: a program that ends its session and then throws has not ended
+    // it. Without this the model retries the *work*, having been told the run was over.
+    ("that a failed program's ending is taken back", "revoked"),
+];
+
+/// **Every registered language's prompt still states the rules a program is written under.**
+///
+/// Rendered under [`every_code_section_on`] for the same reason [`REQUIRED_PHRASES`] is: the rules
+/// live in the opening section, which every capability set renders, so a maximal context is the one
+/// that would hide a rule lost to a `{{#if}}` that should never have been wrapped around it.
+#[test]
+fn every_language_prompt_states_the_rules_a_program_runs_under() {
+    for language in all_languages() {
+        let name = language.display_name();
+        let rendered = plain(&render_system_for(
+            language,
+            &every_code_section_on(GgProgramLanguage::TypeScript),
+        ));
+        for (what, phrase) in REQUIRED_RULES {
+            assert!(
+                rendered.contains(phrase),
+                "{name}: the prompt no longer states {what} (`{phrase}`):\n{rendered}"
+            );
+        }
+    }
+}
+
+/// Every capability [`every_code_section_on`] grants, paired with the call a program reaches it
+/// through — the positive half of gg's capability model.
+///
+/// [`a_capability_the_run_withheld_is_absent_from_its_prompt`] asserts the negative half: a call the
+/// run withheld is never advertised. On its own that is satisfied by a prompt that advertises
+/// nothing at all. This is the half that says the section a run *did* turn on names the call it is
+/// about — a model handed "You have access to a task list" and no call spends its turns guessing at
+/// one, and it looks from the outside exactly like a model that cannot use tasks.
+///
+/// Named by [`SurfaceCall`](crate::sandbox::SurfaceCall) rather than by literal, so each is asserted
+/// in whichever way its own language spells it and a call renamed in a catalogue is a failure here
+/// rather than a sentence quietly naming something no scope holds.
+const REQUIRED_CALLS: &[(&str, (&str, &str))] = &[
+    // The opening section: the two ways to see anything, the way to read documentation, and the way
+    // out to the workspace.
+    ("show itself a value it computed", ("view", "open_text")),
+    ("read a file", ("view", "open_file")),
+    (
+        "read one function's documentation",
+        ("view", "open_docs_view"),
+    ),
+    ("run a command", ("system", "shell")),
+    // ### Reusing a program you already ran
+    ("fetch a program it already ran", ("programs", "get")),
+    ("list the programs gg still holds", ("programs", "history")),
+    ("hand a patched program back", ("programs", "rerun")),
+    // ## Skills
+    ("read a skill", ("skills", "read_skill")),
+    // ## Tasks
+    ("record work", ("tasks", "add_task")),
+    ("revise a task", ("tasks", "update_task")),
+    ("complete a task", ("tasks", "complete_task")),
+    ("drop a task", ("tasks", "remove_task")),
+    ("record a task dependency", ("tasks", "set_blocked_by")),
+    // ## Subagents
+    ("delegate", ("agents", "spawn_subagent")),
+    // ## Project management
+    ("group issues", ("project", "create_epic")),
+    ("file an issue", ("project", "create_issue")),
+    (
+        "suspend until an issue lands",
+        ("project", "wait_for_issue"),
+    ),
+];
+
+/// **A prompt names the call for every capability its run granted**, in every registered language.
+#[test]
+fn a_prompt_names_the_call_for_every_capability_the_run_granted() {
+    for language in all_languages() {
+        let name = language.display_name();
+        let rendered = render_system_for(
+            language,
+            &every_code_section_on(GgProgramLanguage::TypeScript),
+        );
+        for (what, call) in REQUIRED_CALLS {
+            let spelling = crate::sandbox::spell(language, surface_call(*call));
+            assert!(
+                rendered.contains(&spelling),
+                "{name}: the prompt no longer tells the model how to {what} \
+                 (`{spelling}`):\n{rendered}"
+            );
+        }
+        // The documentation carve-out is not a `SurfaceCall` — it is seeded onto every object, so
+        // it has no fixed pair — but it is the call an agent reads its own surface with, and the
+        // prompt is where its name is established.
+        let list = format!("{}()", crate::docs::LIST_FUNCTION);
+        assert!(
+            rendered.contains(&list),
+            "{name}: the prompt no longer tells the model how to list an object's functions \
+             (`{list}`):\n{rendered}"
+        );
+    }
+}
+
+/// **A read-only memory holder is told the calls its implementation leaves it**, spelled the way
+/// its own language writes them.
+///
+/// A holder that may write is told what its store *is* and left to find the calls on the `memory`
+/// object, which is what `list()` is for. A read-only holder cannot be left to that: it is being
+/// told about somebody else's memories, most of the object is withheld from it, and the one or two
+/// calls it does hold are named in the same sentence as the instruction to use them. That makes the
+/// naming load-bearing rather than convenient — drop it and the section describes an index the
+/// agent has no way to open an entry of.
+///
+/// The tool-calling rendering of the same property is
+/// [`the_memory_section_changes_shape_for_a_read_only_holder`]; this is the code-mode half, where
+/// the call is a method on an object and its spelling is the language's.
+#[test]
+fn a_read_only_memory_holder_is_told_the_calls_it_keeps() {
+    let implementations = [
+        (
+            "a markdown index",
+            (true, false),
+            &[("memory", "read_memory")][..],
+        ),
+        (
+            "keyword search",
+            (false, true),
+            &[("memory", "search_memories"), ("memory", "read_memory")][..],
+        ),
+    ];
+    for (what, (markdown, keyword_search), calls) in implementations {
+        for language in all_languages() {
+            let name = language.display_name();
+            let mut context = every_code_section_on(GgProgramLanguage::TypeScript);
+            let memories = context.memories.as_mut().expect("the memory section is on");
+            memories.scratchpad = false;
+            memories.markdown = markdown;
+            memories.keyword_search = keyword_search;
+            memories.read_only = true;
+            let rendered = render_system_for(language, &context);
+            for call in calls {
+                let spelling = crate::sandbox::spell(language, surface_call(*call));
+                assert!(
+                    rendered.contains(&spelling),
+                    "{name}: a read-only holder reading {what} is not told about \
+                     `{spelling}`:\n{rendered}"
+                );
+            }
+        }
+    }
+}
+
 /// **A run that requires reviewers says so, and one that does not says the opposite.**
 ///
 /// Deliberately *not* in [`REQUIRED_PHRASES`], and this is the reason the table stays exceptionless:
@@ -1943,6 +2148,10 @@ fn a_capability_the_run_withheld_is_absent_from_its_prompt() {
         ("skills", "read_skill"),
         ("memory", "read_memory"),
         ("programs", "rerun"),
+        // The two capabilities that render a line rather than a heading, and so are the two a
+        // heading check could never have covered.
+        ("view", "open_file"),
+        ("system", "shell"),
     ]
     .map(surface_call);
     for language in every_language() {

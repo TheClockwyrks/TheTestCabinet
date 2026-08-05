@@ -261,6 +261,23 @@ is a whole section, so that is [asserted](#the-agreement-gate) rather than trust
 registered language's prompt must render, under every context fixture, carrying every
 required section.
 
+A section can also survive as a heading and lose what was under it, so the same gate reads
+four things off a maximal context rather than one. Every **value the run configured** must
+reach the prompt — each roster name and description, each ceiling, the assigned issue's id.
+Every **capability the run granted** must be named by the call that reaches it, resolved
+through that language's own catalogue rather than quoted, so `agents.spawnSubagent` and
+`agents.spawn_subagent` each satisfy it in their own arm. Every **rule a program is written
+under** must still be stated — that calls are synchronous, that a view is the only way to
+read data out, that a returned value is discarded, that a view arrives on the next turn,
+that a failed program's ending is revoked. And a capability the run **withheld** must appear
+nowhere, which is the prompt half of gg's [capability model](#what-the-host-checks-and-what-a-language-must-not-be-trusted-with).
+
+What the gate deliberately does not assert is wording. It reads names, numbers,
+identifiers and the one term each rule cannot be stated without — never a sentence, never
+punctuation, never emphasis. A prompt is prose and revising it is ordinary work: rewrapping
+a paragraph, rewriting a sentence or changing `**bold**` to `*italic*` must not fail a test,
+or the gate stops being a safety net and becomes a reason not to improve the prompt.
+
 ### What the host checks, and what a language must not be trusted with
 
 A language's SDK is **not** part of gg's capability model, and this is the one place the
@@ -472,8 +489,9 @@ one.**
    `system-code.*.hbs` from the directory and mirrors every one.
 10. **Run the gates.** The agreement gate compares the new catalogue against TypeScript's
     identity-for-identity; the prompt gate renders the new templates under every context
-    fixture and checks every required section; the healing invariant re-earns delete-only over
-    the new dialect's own fixtures **and** over the shared round-1 corpus.
+    fixture and checks every required section, every configured value, every granted
+    capability's call and every rule a program runs under; the healing invariant re-earns
+    delete-only over the new dialect's own fixtures **and** over the shared round-1 corpus.
 
 Every step in that list is either a new file the language owns, or a one-line registration the
 compiler refuses to let anyone skip. Nothing edits another language's implementation, which is
