@@ -21,6 +21,9 @@
   --treemap-outline: #{t.$color-accent-2};
 }
 
+// The edges are pixel widths, not map units: the tiles carry `vector-effect:
+// non-scaling-stroke`, so every width below is drawn in screen space however far the
+// map was scaled to fill its panel.
 .treemapTile {
   stroke: color-mix(in srgb, t.$color-border 50%, transparent);
   stroke-width: 1;
@@ -62,9 +65,14 @@
 
 // Labels wear text ink, never the tile's fill — the rectangle already carries the
 // identity, and colored text on a colored fill is the pair that stops being legible.
+//
+// Their SIZE is deliberately not set here. The SVG scales to its container, so a size
+// declared in the map's coordinate space is multiplied by however wide the map is drawn;
+// the component measures that and writes the size as an attribute, in units that come
+// out at a fixed pixel size. A `font-size` rule in this file would outrank that attribute
+// and put the scaling back.
 .treemapLabel {
   fill: t.$color-text;
-  font-size: 10px;
   font-weight: 600;
 
   &[data-muted] {
@@ -74,7 +82,6 @@
 
 .treemapSubLabel {
   fill: t.$color-text-muted;
-  font-size: 9px;
   font-variant-numeric: tabular-nums;
 }
 

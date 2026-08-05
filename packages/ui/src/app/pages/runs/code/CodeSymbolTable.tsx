@@ -100,12 +100,17 @@ export function CodeSymbolTable({
   const [sort, setSort] = useState<SortKey>("cyclomatic");
   const [ascending, setAscending] = useState(false);
 
+  // The same card the table draws, reporting that there was nothing to put in it — a
+  // widget with no rows still reads as the widget rather than vanishing into the
+  // backdrop.
   if (symbols.length === 0) {
     return (
-      <p className={styles.empty}>
-        No functions were scored in {scope} — nothing here was in a language the
-        analyzer parses.
-      </p>
+      <div className={styles.symbols}>
+        <p className={styles.empty}>
+          No functions were scored in {scope} — nothing here was in a language
+          the analyzer parses.
+        </p>
+      </div>
     );
   }
 

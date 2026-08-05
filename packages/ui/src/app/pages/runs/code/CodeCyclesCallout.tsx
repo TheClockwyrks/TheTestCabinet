@@ -27,11 +27,16 @@ export function CodeCyclesCallout({
 }: {
   document: CodeAnalysisDocument;
 }) {
+  // A finding of none is still the finding, so it is the same card rather than a line of
+  // prose where the card would have been.
   if (analysis.cycles.length === 0) {
     return (
-      <p className={styles.empty}>
-        No import cycles: every module in the graph depends in one direction.
-      </p>
+      <div className={styles.callout} role="note">
+        <p className={styles.calloutTitle}>No import cycles</p>
+        <p className={styles.calloutNote}>
+          Every module in the graph depends in one direction.
+        </p>
+      </div>
     );
   }
   // Largest first — the biggest knot is the one to look at, and it is stable because the

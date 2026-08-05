@@ -52,8 +52,10 @@ export function CodeFigures({ summary }: { summary: CodeAnalysisSummary }) {
           </dl>
         </section>
       ))}
+      {/* The one line on this page that belongs to the whole band rather than to any one
+          card, so it stays on the backdrop and wears the halo instead of a surface. */}
       {anyApproximate && (
-        <p className={styles.caveat}>
+        <p className={`${styles.caveat} ${styles.bandCaveat}`}>
           {APPROXIMATE_MARK} {APPROXIMATE_NOTE}
         </p>
       )}

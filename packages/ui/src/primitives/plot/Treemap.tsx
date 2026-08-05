@@ -19,7 +19,7 @@
 // its worst aspect ratio keeps improving, so tiles come out close to square and
 // comparing two areas is a fair comparison rather than a comparison of slivers.
 
-import { useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import styles from "./Treemap.module.scss";
 
 /** One tile to place. `value` is what the area encodes; everything else is how it is
@@ -94,18 +94,60 @@ interface TreemapProps {
   outlineColor?: string;
 }
 
-// The map's coordinate space. Fixed rather than measured: the SVG scales uniformly to
-// its container, so a gap of 2 units here stays the ~2px surface gap the mark specs
-// ask for at the width these panels are actually rendered at.
+// The map's coordinate space. Fixed rather than measured: the layout is computed here
+// and the SVG scales uniformly to its container, which is what keeps area proportional
+// to value at every width.
 const MAP_W = 320;
 const MAP_H = 180;
-const GAP = 2;
+
+/** The surface gap between neighbouring fills, in rendered pixels. */
+const GAP_PX = 2;
+/** The tile corner radius, in rendered pixels. */
+const RADIUS_PX = 3;
 
 // The sequential ramp, as percentages of accent mixed into the panel surface. Capped
 // well short of full accent so the label ink keeps its contrast on the darkest tile —
 // a ramp that runs to 100% would win the gradient and lose the labels.
 const RAMP_MAX = 70;
 const RAMP_MIN = 28;
+
+// Everything about the labels — like the gap and the radius above — is in RENDERED
+// PIXELS, not in map units.
+//
+// The map's coordinate space is fixed and the SVG scales to its container, so a text
+// size written in user units is multiplied by whatever that container happens to be
+// wide: the same tile label comes out at 10px in a narrow column and at 36px across a
+// full-width panel. Area is the encoding and must scale; the labels, the gaps and the
+// corners are chrome and must not. So the rendered width is measured, and every one of
+// those dimensions is divided back out of the scale before it is drawn.
+const LABEL_PX = 11;
+const SUBLABEL_PX = 10;
+/** The label block's inset from the tile's leading edge. */
+const LABEL_INSET_PX = 7;
+const LABEL_BASELINE_PX = 14;
+const SUBLABEL_BASELINE_PX = 26;
+/** The smallest tile that can hold the label block without crowding it. */
+const MIN_LABEL_W_PX = 54;
+const MIN_LABEL_H_PX = 20;
+/** Below this, the tile is labelled but has no room for the second line. */
+const MIN_DETAIL_H_PX = 32;
+/** Mean glyph advance as a fraction of the font size, for the monospace-ish stack the
+ * themes ship. Only used to decide where a label stops fitting. */
+const GLYPH_RATIO = 0.62;
+
+/**
+ * The label as it fits in `widthPx`, ellipsized when it doesn't.
+ *
+ * A name that runs past its own tile lands on the neighbour's fill and reads as that
+ * tile's label, which is worse than a shortened one — and the full name is never lost:
+ * the tooltip and the hover readout carry it whatever the rectangle could draw.
+ */
+function fitLabel(label: string, widthPx: number, sizePx: number): string {
+  const room = Math.floor(widthPx / (sizePx * GLYPH_RATIO));
+  if (room >= label.length) return label;
+  if (room < 2) return "";
+  return `${label.slice(0, room - 1)}…`;
+}
 
 // The worst (largest) aspect ratio in a row of areas laid along a side of length
 // `side` — the quantity squarified minimizes. `areas` is never empty here.
@@ -246,14 +288,41 @@ export function Treemap({
   outlineColor,
 }: TreemapProps) {
   const [hovered, setHovered] = useState<string | null>(null);
+  // How wide the map is actually drawn, so the labels can be sized in pixels rather
+  // than in map units (see LABEL_PX). Measured in a layout effect so the first painted
+  // frame is already at the right size — an effect that ran after paint would show one
+  // frame of giant text on every mount.
+  const frameRef = useRef<HTMLElement>(null);
+  const [renderedWidth, setRenderedWidth] = useState(0);
   const placed = placeTreemapTiles(tiles);
-  if (placed.length === 0) return null;
+  // A map with nothing to place renders nothing at all, so there is no frame to observe
+  // until it has tiles — which is why the effect re-runs when that changes rather than
+  // only on mount.
+  const drawn = placed.length > 0;
+  useLayoutEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const measure = () => setRenderedWidth(frame.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [drawn]);
+
+  if (!drawn) return null;
+
+  // Rendered pixels per map unit, and its inverse — what a pixel measurement has to be
+  // written as to come out that size on screen. An unmeasured map (the first frame, a
+  // test environment that reports no layout) falls back to 1:1, which is the map's own
+  // coordinate space and so is never absurd in either direction.
+  const scale = renderedWidth > 0 ? renderedWidth / MAP_W : 1;
+  const units = (px: number) => px / scale;
 
   const active = placed.find((t) => t.key === hovered) ?? null;
   const keys = legend.filter((key) => occurs(key.kind, placed));
 
   return (
-    <figure className={styles.treemap}>
+    <figure className={styles.treemap} ref={frameRef}>
       <svg
         viewBox={`0 0 ${MAP_W} ${MAP_H}`}
         className={styles.treemapSvg}
@@ -269,11 +338,17 @@ export function Treemap({
           // The surface gap between fills, taken out of each tile's own box so
           // neighbours never touch. A tile too small to give up the gap keeps its
           // full box rather than inverting.
-          const w = Math.max(tile.w - GAP, Math.min(tile.w, 1));
-          const h = Math.max(tile.h - GAP, Math.min(tile.h, 1));
-          // Only label a tile the text actually fits in. A clipped label is worse than
-          // none: the readout and the tooltip carry every tile's name regardless.
-          const labelled = w > 52 && h > 26;
+          const gap = units(GAP_PX);
+          const w = Math.max(tile.w - gap, Math.min(tile.w, 1));
+          const h = Math.max(tile.h - gap, Math.min(tile.h, 1));
+          // Only label a tile the text actually fits in, judged at the size the text is
+          // really drawn — the readout and the tooltip carry every tile's name whether or
+          // not the rectangle could hold it. The second line is a separate question: a
+          // tile can have room for a name and none for a figure under it.
+          const labelled =
+            w * scale > MIN_LABEL_W_PX && h * scale > MIN_LABEL_H_PX;
+          const detailed = labelled && h * scale > MIN_DETAIL_H_PX;
+          const textRoomPx = w * scale - LABEL_INSET_PX * 2;
           const activate = onActivate ? () => onActivate(tile) : undefined;
           return (
             <g
@@ -308,8 +383,12 @@ export function Treemap({
                 y={tile.y}
                 width={w}
                 height={h}
-                rx={3}
+                rx={units(RADIUS_PX)}
                 fill={fillFor(tile, i, placed.length)}
+                // The edge is drawn in screen space, so a stroke width the stylesheet
+                // states in pixels arrives as that many pixels however far the map was
+                // scaled up to fill its panel.
+                vectorEffect="non-scaling-stroke"
                 className={styles.treemapTile}
                 data-muted={tile.muted ? "" : undefined}
                 data-outlined={tile.outlined ? "" : undefined}
@@ -320,20 +399,22 @@ export function Treemap({
               {labelled && (
                 <>
                   <text
-                    x={tile.x + 7}
-                    y={tile.y + 15}
+                    x={tile.x + units(LABEL_INSET_PX)}
+                    y={tile.y + units(LABEL_BASELINE_PX)}
+                    fontSize={units(LABEL_PX)}
                     className={styles.treemapLabel}
                     data-muted={tile.muted ? "" : undefined}
                   >
-                    {tile.label}
+                    {fitLabel(tile.label, textRoomPx, LABEL_PX)}
                   </text>
-                  {tile.detail && (
+                  {detailed && tile.detail && (
                     <text
-                      x={tile.x + 7}
-                      y={tile.y + 27}
+                      x={tile.x + units(LABEL_INSET_PX)}
+                      y={tile.y + units(SUBLABEL_BASELINE_PX)}
+                      fontSize={units(SUBLABEL_PX)}
                       className={styles.treemapSubLabel}
                     >
-                      {tile.detail}
+                      {fitLabel(tile.detail, textRoomPx, SUBLABEL_PX)}
                     </text>
                   )}
                 </>

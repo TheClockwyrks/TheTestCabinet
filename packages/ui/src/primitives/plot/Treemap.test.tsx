@@ -70,6 +70,50 @@ describe("Treemap", () => {
     expect(described).toEqual(["dominant", "sliver"]);
   });
 
+  // The map's coordinate space is fixed and the SVG scales to its container, so a label
+  // sized in user units is multiplied by however wide the map happens to be drawn — which
+  // is how a 10px label came out at 36px across a full-width panel. The size is therefore
+  // written as an attribute, in units divided back out of the measured scale. A stylesheet
+  // rule would outrank that attribute and put the scaling back, so the attribute being
+  // there at all is the contract.
+  it("sizes its labels itself rather than letting the map's scale do it", () => {
+    const { container } = render(
+      <Treemap
+        tiles={[tile("dominant", 100, { detail: "100" })]}
+        ariaLabel="Sizes"
+        hint="area = things"
+      />,
+    );
+    const label = [...container.querySelectorAll("text")].find(
+      (node) => node.textContent === "dominant",
+    );
+    expect(label?.getAttribute("font-size")).toBeTruthy();
+  });
+
+  // A name that runs past its own tile lands on the neighbour's fill and reads as that
+  // tile's label. Shortening it is the lesser loss, because nothing is actually lost:
+  // the tooltip carries the whole name.
+  it("ellipsizes a label too long for its tile, and keeps the full name in the tooltip", () => {
+    const long = "a-very-long-file-name-indeed.ts";
+    const { container } = render(
+      <Treemap
+        tiles={[tile(long, 10), tile("b", 10), tile("c", 10)]}
+        ariaLabel="Sizes"
+        hint="area = things"
+      />,
+    );
+    const drawn = [...container.querySelectorAll("text")].map(
+      (node) => node.textContent ?? "",
+    );
+    const shortened = drawn.find((text) => text.endsWith("…"));
+    expect(shortened).toBeDefined();
+    expect(long.startsWith(shortened!.slice(0, -1))).toBe(true);
+    const described = [...container.querySelectorAll("title")].map(
+      (node) => node.textContent,
+    );
+    expect(described).toContain(long);
+  });
+
   // A legend key for a state nothing is in is worse than no key: it invites the reader
   // to hunt for a tile that is not there.
   it("draws a legend key only for a state that occurs", () => {

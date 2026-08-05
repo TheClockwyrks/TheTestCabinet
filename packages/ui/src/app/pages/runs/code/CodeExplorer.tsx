@@ -138,171 +138,178 @@ export function CodeExplorer({
 
   return (
     <section className={styles.explorer} aria-label="Code explorer">
-      <nav className={styles.breadcrumb} aria-label="Path">
-        {trail.map((step, index) => (
-          <span key={step.path || "/"} className={styles.crumb}>
-            {index > 0 && <span className={styles.crumbSep}>/</span>}
-            {index === trail.length - 1 ? (
-              <span className={styles.crumbCurrent}>
-                {step.path === "" ? "Produced tree" : step.name}
-              </span>
-            ) : (
-              <button
-                type="button"
-                className={styles.crumbLink}
-                onClick={() => setPath(step.path)}
-              >
-                {step.path === "" ? "Produced tree" : step.name}
-              </button>
+      {/* One card: where you are, the map, and what is directly inside the node it
+          shows. The symbol table below is the same selection asked a different
+          question, so it is its own card rather than more rows in this one. */}
+      <div className={styles.explorerMap}>
+        <nav className={styles.breadcrumb} aria-label="Path">
+          {trail.map((step, index) => (
+            <span key={step.path || "/"} className={styles.crumb}>
+              {index > 0 && <span className={styles.crumbSep}>/</span>}
+              {index === trail.length - 1 ? (
+                <span className={styles.crumbCurrent}>
+                  {step.path === "" ? "Produced tree" : step.name}
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.crumbLink}
+                  onClick={() => setPath(step.path)}
+                >
+                  {step.path === "" ? "Produced tree" : step.name}
+                </button>
+              )}
+            </span>
+          ))}
+        </nav>
+
+        {node.children.length > 0 ? (
+          <Treemap
+            tiles={tiles}
+            ariaLabel={`Contents of ${node.path === "" ? "the produced tree" : node.path}, by ${area.hint.replace("area = ", "")}`}
+            hint={area.hint}
+            legend={[
+              { kind: "ramp", label: "Parsed" },
+              { kind: "muted", label: "Counted, not parsed" },
+              { kind: "outlined", label: "Directory" },
+            ]}
+            onActivate={(tile) => {
+              // Resolve the tile against the children rather than trusting its key to be
+              // a path: the fold tile names no node, and so opens nothing.
+              const target = node.children.find(
+                (child) => child.path === tile.key,
+              );
+              if (target) setPath(target.path);
+            }}
+            readout={(tile) => (
+              <>
+                <strong>{tile.label}</strong> · {area.format(tile.value)} ·{" "}
+                {Math.round(tile.share * 100)}% of this directory
+              </>
             )}
-          </span>
-        ))}
-      </nav>
+          />
+        ) : (
+          file && <FileFacts file={file} />
+        )}
 
-      {node.children.length > 0 ? (
-        <Treemap
-          tiles={tiles}
-          ariaLabel={`Contents of ${node.path === "" ? "the produced tree" : node.path}, by ${area.hint.replace("area = ", "")}`}
-          hint={area.hint}
-          legend={[
-            { kind: "ramp", label: "Parsed" },
-            { kind: "muted", label: "Counted, not parsed" },
-            { kind: "outlined", label: "Directory" },
-          ]}
-          onActivate={(tile) => {
-            // Resolve the tile against the children rather than trusting its key to be
-            // a path: the fold tile names no node, and so opens nothing.
-            const target = node.children.find(
-              (child) => child.path === tile.key,
-            );
-            if (target) setPath(target.path);
-          }}
-          readout={(tile) => (
-            <>
-              <strong>{tile.label}</strong> · {area.format(tile.value)} ·{" "}
-              {Math.round(tile.share * 100)}% of this directory
-            </>
-          )}
-        />
-      ) : (
-        file && <FileFacts file={file} />
-      )}
-
-      <table className={styles.table}>
-        <caption className={styles.tableCaption}>
-          {node.path === ""
-            ? "Everything in the produced tree"
-            : node.kind === "file"
-              ? node.path
-              : `Inside ${node.path}`}
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">Name</th>
-            <th scope="col" className={styles.numeric}>
-              Files
-            </th>
-            <th scope="col" className={styles.numeric}>
-              Code lines
-            </th>
-            <th scope="col" className={styles.numeric}>
-              Share
-            </th>
-            <th scope="col" className={styles.numeric}>
-              Functions
-            </th>
-            <th scope="col" className={styles.numeric}>
-              Mean cyclo
-            </th>
-            <th scope="col" className={styles.numeric}>
-              Imports
-            </th>
-            <th scope="col" className={styles.numeric}>
-              Imported by
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {node.children.length === 0 && file && (
+        <table className={styles.table}>
+          <caption className={styles.tableCaption}>
+            {node.path === ""
+              ? "Everything in the produced tree"
+              : node.kind === "file"
+                ? node.path
+                : `Inside ${node.path}`}
+          </caption>
+          <thead>
             <tr>
-              <th scope="row">{node.name}</th>
-              <td className={styles.numeric}>1</td>
-              <td className={styles.numeric}>
-                {formatCodeNumber(file.codeLines)}
-              </td>
-              <td className={styles.numeric}>100%</td>
-              <td className={styles.numeric}>
-                {formatCodeNumber(file.functions)}
-              </td>
-              <td className={styles.numeric}>
-                {file.functions > 0
-                  ? (file.cyclomatic / file.functions).toFixed(1)
-                  : "—"}
-              </td>
-              <td className={styles.numeric}>
-                {formatCodeNumber(file.fanOut)}
-              </td>
-              <td className={styles.numeric}>{formatCodeNumber(file.fanIn)}</td>
+              <th scope="col">Name</th>
+              <th scope="col" className={styles.numeric}>
+                Files
+              </th>
+              <th scope="col" className={styles.numeric}>
+                Code lines
+              </th>
+              <th scope="col" className={styles.numeric}>
+                Share
+              </th>
+              <th scope="col" className={styles.numeric}>
+                Functions
+              </th>
+              <th scope="col" className={styles.numeric}>
+                Mean cyclo
+              </th>
+              <th scope="col" className={styles.numeric}>
+                Imports
+              </th>
+              <th scope="col" className={styles.numeric}>
+                Imported by
+              </th>
             </tr>
-          )}
-          {ranked.map((child) => {
-            const entry =
-              child.kind === "file" && child.fileIndex !== undefined
-                ? analysis.files[child.fileIndex]
-                : undefined;
-            const mean = meanCyclomatic(child);
-            const share =
-              node.codeLines > 0 ? child.codeLines / node.codeLines : 0;
-            return (
-              <tr key={child.path}>
-                <th scope="row">
-                  <button
-                    type="button"
-                    className={styles.rowLink}
-                    onClick={() => setPath(child.path)}
-                    data-kind={child.kind}
-                  >
-                    {child.name}
-                    {child.kind === "dir" ? "/" : ""}
-                  </button>
-                  {entry && !entry.language && (
-                    <span
-                      className={styles.tag}
-                      title={
-                        entry.sizeOnlyReason
-                          ? `Counted for size only: ${entry.sizeOnlyReason}`
-                          : "Counted for size only — no front end parses this language"
-                      }
-                    >
-                      size only
-                    </span>
-                  )}
-                  {entry?.isTest && <span className={styles.tag}>test</span>}
-                </th>
+          </thead>
+          <tbody>
+            {node.children.length === 0 && file && (
+              <tr>
+                <th scope="row">{node.name}</th>
+                <td className={styles.numeric}>1</td>
                 <td className={styles.numeric}>
-                  {formatCodeNumber(child.files)}
+                  {formatCodeNumber(file.codeLines)}
+                </td>
+                <td className={styles.numeric}>100%</td>
+                <td className={styles.numeric}>
+                  {formatCodeNumber(file.functions)}
                 </td>
                 <td className={styles.numeric}>
-                  {formatCodeNumber(child.codeLines)}
-                </td>
-                <td className={styles.numeric}>{Math.round(share * 100)}%</td>
-                <td className={styles.numeric}>
-                  {formatCodeNumber(child.functions)}
+                  {file.functions > 0
+                    ? (file.cyclomatic / file.functions).toFixed(1)
+                    : "—"}
                 </td>
                 <td className={styles.numeric}>
-                  {mean === null ? "—" : mean.toFixed(1)}
+                  {formatCodeNumber(file.fanOut)}
                 </td>
                 <td className={styles.numeric}>
-                  {entry ? formatCodeNumber(entry.fanOut) : "—"}
-                </td>
-                <td className={styles.numeric}>
-                  {entry ? formatCodeNumber(entry.fanIn) : "—"}
+                  {formatCodeNumber(file.fanIn)}
                 </td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            )}
+            {ranked.map((child) => {
+              const entry =
+                child.kind === "file" && child.fileIndex !== undefined
+                  ? analysis.files[child.fileIndex]
+                  : undefined;
+              const mean = meanCyclomatic(child);
+              const share =
+                node.codeLines > 0 ? child.codeLines / node.codeLines : 0;
+              return (
+                <tr key={child.path}>
+                  <th scope="row">
+                    <button
+                      type="button"
+                      className={styles.rowLink}
+                      onClick={() => setPath(child.path)}
+                      data-kind={child.kind}
+                    >
+                      {child.name}
+                      {child.kind === "dir" ? "/" : ""}
+                    </button>
+                    {entry && !entry.language && (
+                      <span
+                        className={styles.tag}
+                        title={
+                          entry.sizeOnlyReason
+                            ? `Counted for size only: ${entry.sizeOnlyReason}`
+                            : "Counted for size only — no front end parses this language"
+                        }
+                      >
+                        size only
+                      </span>
+                    )}
+                    {entry?.isTest && <span className={styles.tag}>test</span>}
+                  </th>
+                  <td className={styles.numeric}>
+                    {formatCodeNumber(child.files)}
+                  </td>
+                  <td className={styles.numeric}>
+                    {formatCodeNumber(child.codeLines)}
+                  </td>
+                  <td className={styles.numeric}>{Math.round(share * 100)}%</td>
+                  <td className={styles.numeric}>
+                    {formatCodeNumber(child.functions)}
+                  </td>
+                  <td className={styles.numeric}>
+                    {mean === null ? "—" : mean.toFixed(1)}
+                  </td>
+                  <td className={styles.numeric}>
+                    {entry ? formatCodeNumber(entry.fanOut) : "—"}
+                  </td>
+                  <td className={styles.numeric}>
+                    {entry ? formatCodeNumber(entry.fanIn) : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
       <CodeSymbolTable
         symbols={symbols}

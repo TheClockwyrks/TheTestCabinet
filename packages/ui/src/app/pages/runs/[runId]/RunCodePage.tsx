@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { MetricTile, Spinner } from "@test-cabinet/ui";
+import { MetricTile, Panel, Spinner } from "@test-cabinet/ui";
 import type { RunRecord } from "@test-cabinet/run-record";
 import type { CodeAnalysisDocument } from "@test-cabinet/run-record/code-analysis";
 import { RunDetailLayout } from "../../../layouts/runs/RunDetailLayout";
@@ -86,10 +86,12 @@ function RunCodeBody({ run }: { run: RunRecord }) {
   if (!summary) {
     return (
       <section className={styles.page}>
-        <p className={styles.empty}>
-          This run carries no code analysis. The corpus is not backfilled, so a
-          run recorded before the analyzer shipped has none.
-        </p>
+        <Panel>
+          <p className={styles.empty}>
+            This run carries no code analysis. The corpus is not backfilled, so
+            a run recorded before the analyzer shipped has none.
+          </p>
+        </Panel>
       </section>
     );
   }
@@ -130,29 +132,42 @@ function RunCodeBody({ run }: { run: RunRecord }) {
         />
       </div>
 
-      <h3 className={styles.sectionHeading}>Where the code went</h3>
-      <DetailTier load={load}>
-        {(document) => <CodeExplorer document={document} />}
-      </DetailTier>
+      {/* Each band is its heading and the widgets under it, held together — the heading
+          is the only thing on this page that sits out on the backdrop, and it wears the
+          halo for it. */}
+      <div className={styles.band}>
+        <h3 className={styles.sectionHeading}>Where the code went</h3>
+        <DetailTier load={load}>
+          {(document) => <CodeExplorer document={document} />}
+        </DetailTier>
+      </div>
 
-      <h3 className={styles.sectionHeading}>Outliers</h3>
-      <DetailTier load={load}>
-        {(document) => (
-          <>
-            <CodeOutliers document={document} />
-            <CodeCyclesCallout document={document} />
-          </>
-        )}
-      </DetailTier>
+      <div className={styles.band}>
+        <h3 className={styles.sectionHeading}>Outliers</h3>
+        <DetailTier load={load}>
+          {(document) => (
+            <>
+              <CodeOutliers document={document} />
+              <CodeCyclesCallout document={document} />
+            </>
+          )}
+        </DetailTier>
+      </div>
 
-      <h3 className={styles.sectionHeading}>Every figure</h3>
-      <CodeFigures summary={summary} />
+      <div className={styles.band}>
+        <h3 className={styles.sectionHeading}>Every figure</h3>
+        <CodeFigures summary={summary} />
+      </div>
     </section>
   );
 }
 
 // The second tier's states, in one place so the explorer and the outliers cannot disagree
 // about whether the document arrived.
+//
+// Every one of them is a `<Panel>`, because a band that is waiting, unsupported or broken
+// should read as the same card the loaded band does rather than as a sentence adrift on
+// the backdrop where a widget was.
 function DetailTier({
   load,
   children,
@@ -165,29 +180,37 @@ function DetailTier({
       // A div rather than a paragraph: the spinner is itself a block, and a block
       // inside a `<p>` is invalid HTML the browser silently reparents.
       return (
-        <div className={styles.empty}>
-          <Spinner /> Loading the full analysis…
-        </div>
+        <Panel>
+          <div className={styles.empty}>
+            <Spinner /> Loading the full analysis…
+          </div>
+        </Panel>
       );
     case "unsupported":
       return (
-        <p className={styles.empty}>
-          The per-file detail isn&rsquo;t available here. The figures below are
-          the whole of what this run&rsquo;s record carries.
-        </p>
+        <Panel>
+          <p className={styles.empty}>
+            The per-file detail isn&rsquo;t available here. The figures below
+            are the whole of what this run&rsquo;s record carries.
+          </p>
+        </Panel>
       );
     case "empty":
       return (
-        <p className={styles.empty}>
-          This run&rsquo;s full analysis document wasn&rsquo;t stored, so only
-          its summary figures are available.
-        </p>
+        <Panel>
+          <p className={styles.empty}>
+            This run&rsquo;s full analysis document wasn&rsquo;t stored, so only
+            its summary figures are available.
+          </p>
+        </Panel>
       );
     case "error":
       return (
-        <p className={`${styles.empty} ${styles.error}`}>
-          Couldn&rsquo;t load the full analysis: {load.message}
-        </p>
+        <Panel>
+          <p className={`${styles.empty} ${styles.error}`}>
+            Couldn&rsquo;t load the full analysis: {load.message}
+          </p>
+        </Panel>
       );
     case "ready":
       return <>{children(load.document)}</>;

@@ -1,25 +1,43 @@
 @use "../../../../styles/tokens" as t;
 @use "../../../../styles/surfaces" as s;
+@use "../../../../styles/halo" as h;
 
 // The run-detail Code tab. Everything reads the shared `--tcab-*` token contract, so the
 // page is theme-aware: the consoles ship a dark theme today and the static site may ship
 // a light one, and nothing here hardcodes either.
+//
+// Two rules govern the whole tab, because it sits on the animated backdrop like every
+// other run tab. Content goes in a WIDGET — a surface card, drawn either by the `Panel`
+// primitive or by `surfaces.panel` where the element has to keep its own tag for its
+// semantics. Text that deliberately stays out on the backdrop — the section headings —
+// wears the HALO, so it lifts off the neon grid without a box around it. Nothing on this
+// page is loose, unhaloed text.
 
 .page {
   display: flex;
   flex-direction: column;
   gap: t.$space-lg;
-  padding-block: t.$space-md;
   min-width: 0;
 }
 
+// One labelled band of the page: its heading, then its widgets, held together by a gap
+// tighter than the one between bands so a heading reads as belonging to what follows it.
+.band {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-sm;
+  min-width: 0;
+}
+
+// Matches the section labels on the sibling run tabs (`RunDetailPages.sectionLabel`), so
+// the Code tab's bands read as the same furniture the Metadata tab's do.
 .sectionHeading {
   margin: 0;
-  font-size: t.$font-md;
+  font-size: t.$font-lg;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: t.$color-text;
-  border-bottom: t.$border-hairline solid
-    color-mix(in srgb, t.$color-border 60%, transparent);
-  padding-bottom: t.$space-xs;
+  @include h.halo;
 }
 
 // --- Provenance --------------------------------------------------------------
@@ -41,14 +59,11 @@
 }
 
 .provenanceFact {
+  @include s.panel(t.$space-md);
   display: flex;
   flex-direction: column;
   gap: t.$space-2xs;
-  padding: t.$space-sm;
-  background: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
   border-left-width: 3px;
-  border-radius: t.$radius-md;
   min-width: 0;
 
   &[data-tone="ok"] {
@@ -83,9 +98,14 @@
   line-height: 1.4;
 }
 
+// The caveats, as a card of their own. A degradation that changes what every figure below
+// means cannot be a line of prose floating on the backdrop — it has to read as one of the
+// page's statements, which on this page means a widget.
 .provenanceNotices {
+  @include s.panel(t.$space-md);
   margin: 0;
-  padding-left: t.$space-md;
+  // The card's own padding, plus the room a bullet hangs in.
+  padding-left: t.$space-xl;
   display: flex;
   flex-direction: column;
   gap: t.$space-2xs;
@@ -104,7 +124,21 @@
 
 // --- The explorer ------------------------------------------------------------
 
+// The explorer is two widgets, not one: the map and its child table narrow together as
+// the reader drills, and the symbol table under them is the same selection asked a
+// different question. So this element carries no surface of its own — it only stacks the
+// two cards.
 .explorer {
+  display: flex;
+  flex-direction: column;
+  gap: t.$space-md;
+  min-width: 0;
+}
+
+// The map card: the breadcrumb that says where you are, the treemap, and the table of
+// what is directly inside the current node.
+.explorerMap {
+  @include s.panel(t.$space-md);
   display: flex;
   flex-direction: column;
   gap: t.$space-md;
@@ -196,7 +230,9 @@
     font-weight: 500;
     position: sticky;
     top: 0;
-    background: s.$panel-bg;
+    // Opaque, not the card's translucent surface: this header is pinned over the rows
+    // that scroll beneath it, and a translucent one would let them read through it.
+    background: t.$color-surface;
   }
 
   tbody th {
@@ -277,6 +313,7 @@
 }
 
 .symbols {
+  @include s.panel(t.$space-md);
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
@@ -305,7 +342,12 @@
   gap: t.$space-md;
 }
 
+// A ranking card. It stays a `<figure>` with a `<figcaption>` — the caption is the
+// chart's name, not a heading over unrelated content — so it takes the surface from the
+// mixin rather than from the `Panel` component, and reads as the same card the chart
+// widgets elsewhere in the console draw.
 .outlier {
+  @include s.panel(t.$space-md);
   margin: 0;
   min-width: 0;
 }
@@ -313,11 +355,15 @@
 .outlierTitle {
   display: flex;
   align-items: baseline;
+  flex-wrap: wrap;
   gap: t.$space-sm;
-  color: t.$color-text;
-  font-size: t.$font-sm;
-  font-weight: 600;
-  padding-bottom: t.$space-xs;
+  color: t.$color-accent;
+  font-size: t.$font-md;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-shadow: var(--tcab-glow);
+  padding-bottom: t.$space-md;
 }
 
 .outlierNote {
@@ -326,16 +372,14 @@
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  text-shadow: none;
 }
 
 // --- The cycles callout ------------------------------------------------------
 
 .callout {
-  padding: t.$space-sm t.$space-md;
-  background: s.$panel-bg;
-  border: t.$border-hairline solid t.$color-border;
+  @include s.panel(t.$space-md);
   border-left: 3px solid t.$color-accent;
-  border-radius: t.$radius-md;
   display: flex;
   flex-direction: column;
   gap: t.$space-xs;
@@ -346,6 +390,14 @@
   margin: 0;
   color: t.$color-text;
   font-weight: 600;
+}
+
+// The sentence under a callout's title — used by the "no cycles" state, which is the same
+// card reporting a finding of none rather than a line of prose where a card would be.
+.calloutNote {
+  margin: 0;
+  color: t.$color-text-muted;
+  font-size: t.$font-sm;
 }
 
 .cycleList {
@@ -385,12 +437,15 @@
   gap: t.$space-md;
 }
 
+// One family of figures per card. A `<section>` with its own heading, so it keeps the tag
+// and takes the surface from the mixin.
 .figureFamily {
+  @include s.panel(t.$space-md);
   min-width: 0;
 }
 
 .figureHeading {
-  margin: 0 0 t.$space-xs;
+  margin: 0 0 t.$space-sm;
   color: t.$color-text-muted;
   font-size: 0.72rem;
   font-weight: 600;
@@ -433,6 +488,8 @@
 
 // --- Shared states -----------------------------------------------------------
 
+// Always inside a card — either one the tier state wraps itself in, or the surrounding
+// widget's own — so it needs no halo of its own.
 .empty {
   margin: 0;
   color: t.$color-text-muted;
@@ -450,4 +507,10 @@
   margin: 0;
   color: t.$color-text-muted;
   font-size: 0.75rem;
+}
+
+// The one caveat that ends a band rather than sitting inside a card: the approximate
+// note under the figure families. It stays on the backdrop, so it wears the halo.
+.bandCaveat {
+  @include h.halo;
 }
