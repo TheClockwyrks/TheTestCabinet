@@ -1442,9 +1442,11 @@ fn absorb_on_use_script(outcome: &mut SandboxOutcome, script: SandboxOutcome) ->
 /// Run every on-use script this turn queued, one sandbox run each, and record what they did.
 ///
 /// Called once, after the turn's last program has ended and before its outcome is assembled. Each
-/// script is an ordinary [`run_program`] against the **same api** — so its views land in this
-/// agent's window and its tool calls appear in this turn's roster, which is right: they happened on
-/// this turn, and an operator reading the run must be able to see them. Two things differ from a
+/// script is an ordinary [`run_program_charged`] against the **same api** — so its views land in
+/// this agent's window, its tool calls appear in this turn's roster, and its cost is the turn's
+/// (see [`absorb_on_use_script`] for the whole of what it contributes), which is right: they
+/// happened on this turn, and an operator reading the run must be able to see them. Two things
+/// differ from a
 /// turn's own program, and both are the same rule stated twice:
 ///
 /// * [`RunEnding::None`] — an on-use script is not the agent's turn, so it has no `finish` to call.
