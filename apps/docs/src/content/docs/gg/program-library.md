@@ -34,6 +34,15 @@ on. An agent without it has no `programs` object at all — a withheld family is
 undefined identifier, not a call that travels to the host to be refused, exactly as a
 withheld tool is.
 
+That is the guest's half. gg holds the same flag on the **host** and checks it on all
+three calls, because scope injection is a capability model only for a language whose SDK
+can leave a name out of a scope — see
+[capability gating](/gg/responses-as-code/#capability-gating). An agent with no library
+that reaches one of these anyway is refused `unavailable`. It is also why `history()`
+answers with a result rather than a bare list: an agent that keeps no library and an agent
+whose library is empty on its first turn are different facts, and one empty list could
+only have told the model one of them.
+
 | Call | What it does |
 | --- | --- |
 | `programs.history()` | Every program still held, oldest first: its turn, how many lines and characters it was, whether it ran to its end, and the error it ended with if it did not. |

@@ -12,12 +12,12 @@ use std::time::{Duration, Instant};
 use super::super::ErrorCode;
 use super::super::test_cabinet::gg::files::Host as FilesHost;
 use super::*;
-use crate::completion::{APPROVE_TOOL, REQUEST_CHANGES_TOOL};
+use crate::completion::{APPROVE_TOOL, FINISH_TOOL, REQUEST_CHANGES_TOOL};
 use crate::ending::EndingRole;
-use crate::sandbox::FINISH_FUNCTION;
 use crate::sandbox::fake::{
-    CallLog, all_tools, canned_outcome, membrane, membrane_as, membrane_with,
+    CallLog, all_tools, canned_outcome, membrane, membrane_as, membrane_ending, membrane_with,
 };
+use crate::sandbox::{FINISH_FUNCTION, RunEnding};
 
 /// The summary a [`Finished`](Ending::Finished) ending carries, or a panic naming what it was
 /// instead — every assertion below is about a specific ending, so a wrong variant is a test failure
@@ -335,5 +335,142 @@ fn a_rejection_with_no_changes_is_refused() {
         parts.completion.is_none(),
         "the reviewer is still working: {:?}",
         parts.completion
+    );
+}
+
+/// **An ending outside this agent's role is refused by the HOST, not merely absent from its scope.**
+///
+/// This is the check the whole file's subject rests on. A verdict is the one declaration nothing
+/// downstream re-examines — [the loop](crate::agent) reads it straight off the ending and never
+/// re-asks whose it was — so an agent doing work that could reach `approve` could hand back an
+/// approval of its own work. Withholding the name from the guest's scope is what stops that today,
+/// and it stops nothing at all for a guest that links its SDK as an ordinary library rather than
+/// building a scope. So the membrane holds the role and checks it.
+#[test]
+fn an_ending_outside_this_agents_role_is_refused_by_the_host() {
+    let log = CallLog::default();
+    let mut state = membrane_as(&log, EndingRole::Standard);
+
+    for refused in [
+        state
+            .approve()
+            .expect_err("an agent doing work has no verdict to give"),
+        state
+            .request_changes(vec!["rewrite it".to_string()])
+            .expect_err("nor a rejection"),
+    ] {
+        assert_eq!(refused.code, ErrorCode::Unavailable);
+        assert!(
+            refused.message.contains(FINISH_TOOL),
+            "it is told which ending it does have: {}",
+            refused.message
+        );
+    }
+    assert!(
+        state.into_parts().completion.is_none(),
+        "a refused ending declared nothing"
+    );
+
+    let log = CallLog::default();
+    let mut state = membrane_as(&log, EndingRole::Review);
+
+    let refused = state
+        .finish("the work is done".to_string())
+        .expect_err("a reviewer is not the one who says the work is complete");
+
+    assert_eq!(refused.code, ErrorCode::Unavailable);
+    assert_eq!(refused.tool, FINISH_FUNCTION);
+    assert!(
+        refused.message.contains(APPROVE_TOOL) && refused.message.contains(REQUEST_CHANGES_TOOL),
+        "it is told which endings it does have: {}",
+        refused.message
+    );
+    assert!(state.into_parts().completion.is_none());
+}
+
+/// The role is checked **before** the declaration's shape, and the order is what makes the refusal
+/// useful: an agent that may not approve is told so, rather than told to write a better argument for
+/// a call it was never going to be allowed to make.
+#[test]
+fn the_role_is_checked_before_the_declaration_is_read() {
+    let log = CallLog::default();
+    let mut state = membrane_as(&log, EndingRole::Standard);
+
+    // An empty change list is `invalid-argument` for a reviewer. For an agent doing work it is not
+    // the problem, and saying it was would send the model off to write changes it may not request.
+    let refused = state
+        .request_changes(Vec::new())
+        .expect_err("not this agent's ending");
+
+    assert_eq!(refused.code, ErrorCode::Unavailable);
+
+    // The mirror: an empty summary is `invalid-argument` for an agent doing work, and beside the
+    // point for a reviewer.
+    let log = CallLog::default();
+    let mut state = membrane_as(&log, EndingRole::Review);
+
+    let refused = state
+        .finish(String::new())
+        .expect_err("not this agent's ending");
+
+    assert_eq!(refused.code, ErrorCode::Unavailable);
+}
+
+/// An **on-use script** — the code a skill or a memory runs when the agent first reads it — may
+/// declare no ending at all.
+///
+/// It is not the agent's turn: the model did not write it, does not see it, and is not answering for
+/// it. A skill that could end the session would end it on nobody's authority.
+#[test]
+fn an_on_use_script_may_declare_no_ending_at_all() {
+    let log = CallLog::default();
+    let mut state = membrane_ending(&log, RunEnding::None);
+
+    let refusals = [
+        state.finish("done".to_string()).err(),
+        state.approve().err(),
+        state.request_changes(vec!["rewrite it".to_string()]).err(),
+    ];
+
+    for (call, refused) in [FINISH_TOOL, APPROVE_TOOL, REQUEST_CHANGES_TOOL]
+        .into_iter()
+        .zip(refusals)
+    {
+        let refused = refused.unwrap_or_else(|| panic!("`{call}` ends no session from a script"));
+        assert_eq!(refused.code, ErrorCode::Unavailable, "`{call}`");
+        assert!(
+            refused.message.contains("skill or a memory"),
+            "`{call}`: {}",
+            refused.message
+        );
+    }
+    assert!(state.into_parts().completion.is_none());
+}
+
+/// A withheld ending goes on the **refusal roster**, under its whole `object.key` identity.
+///
+/// It is the same fact a withheld tool is — the model reached for something this run does not offer
+/// it — and it is the fact a toolset ablation is run to count. There is no tool name to file it
+/// under, so it is filed under the name the model actually wrote.
+#[test]
+fn a_withheld_ending_is_recorded_on_the_refusal_roster() {
+    let log = CallLog::default();
+    let mut state = membrane_as(&log, EndingRole::Standard);
+
+    state.approve().expect_err("not this agent's ending");
+
+    let parts = state.into_parts();
+    assert_eq!(
+        parts
+            .refusals
+            .iter()
+            .map(|refusal| refusal.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["review.approve"]
+    );
+    assert!(
+        log.calls().is_empty(),
+        "nothing was dispatched: {:?}",
+        log.names()
     );
 }

@@ -21,14 +21,17 @@
 //! call cannot fail that way, because the shape is refused here before it is ever a verdict.
 //!
 //! The guest binds exactly one group, chosen by the [role](crate::ending::EndingRole) the host passed
-//! to `run`, so the calls in this file that a given program can reach are the ones it was given.
+//! to `run` — and the host checks the same value again on every call, because a guest that links its
+//! SDK as an ordinary library has no scope to withhold a name from. A verdict is the one declaration
+//! nothing downstream re-examines, so an agent that may not give one must be stopped from giving one
+//! here.
 //!
 //! Nothing here touches the [api](super::ToolApi) for the *work* — ending performs none: it sets a
 //! flag in the agent's own [context](MembraneState), which is why it goes to
 //! [`MembraneState::declare`] rather than through the dispatch path's guards. Every rule these obey
-//! — last call wins, a malformed declaration is refused, a spent wall-clock budget never withholds
-//! the exit, a program that fails afterwards loses the ending — lives there, next to the field it
-//! writes.
+//! — the role gate first, last call wins, a malformed declaration is refused, a spent wall-clock
+//! budget never withholds the exit, a program that fails afterwards loses the ending — lives there,
+//! next to the field it writes.
 //!
 //! They are still **recorded** like every other model-facing call, through the same
 //! [bracket](super::recording): "no tool dispatches it" was never a reason for `harness.finish` to
@@ -37,23 +40,23 @@
 use super::test_cabinet::gg::session::Host as SessionHost;
 use super::test_cabinet::gg::types::ToolError;
 use super::{MembraneState, ToolApi};
-use crate::completion::{APPROVE_TOOL, FINISH_TOOL, REQUEST_CHANGES_TOOL};
 use crate::ending::Ending;
 use crate::sandbox::language::{HARNESS_FINISH, REVIEW_APPROVE, REVIEW_REQUEST_CHANGES};
 
 impl<A: ToolApi> SessionHost for MembraneState<A> {
     /// Declare the work complete. See [`MembraneState::declare`] for what setting the flag does and
-    /// does not do.
+    /// does not do, and for the role check every one of these three passes through first.
     fn finish(&mut self, summary: String) -> Result<(), ToolError> {
         self.recorded(HARNESS_FINISH, |state, rec| {
-            state.declare(rec, Ending::finished(summary), FINISH_TOOL)
+            state.declare(rec, Ending::finished(summary), HARNESS_FINISH)
         })
     }
 
-    /// Declare the work under review acceptable. Takes nothing, so there is nothing to refuse.
+    /// Declare the work under review acceptable. Takes nothing, so the only thing that can refuse it
+    /// is the role check: an agent that was not dispatched to review has no verdict to give.
     fn approve(&mut self) -> Result<(), ToolError> {
         self.recorded(REVIEW_APPROVE, |state, rec| {
-            state.declare(rec, Ok(Ending::Approved), APPROVE_TOOL)
+            state.declare(rec, Ok(Ending::Approved), REVIEW_APPROVE)
         })
     }
 
@@ -62,7 +65,11 @@ impl<A: ToolApi> SessionHost for MembraneState<A> {
     /// that has to fix the work, and an empty one would give it nothing to do.
     fn request_changes(&mut self, items: Vec<String>) -> Result<(), ToolError> {
         self.recorded(REVIEW_REQUEST_CHANGES, |state, rec| {
-            state.declare(rec, Ending::changes_requested(items), REQUEST_CHANGES_TOOL)
+            state.declare(
+                rec,
+                Ending::changes_requested(items),
+                REVIEW_REQUEST_CHANGES,
+            )
         })
     }
 }

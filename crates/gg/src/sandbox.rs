@@ -74,7 +74,9 @@
 //! membrane function like every tool, but it dispatches nothing and is bound whatever the run
 //! enables. What it does is **set a flag in the agent's host-side context**
 //! ([`MembraneState`](membrane)) and return. The program runs on; the loop reads the flag once the
-//! program has ended.
+//! program has ended. Which ending an agent may declare is its [role](membrane::RunEnding)'s, and
+//! the membrane refuses one outside it — a verdict is the one declaration nothing downstream
+//! re-examines.
 //!
 //! Two consequences follow, and both are the point. A completion cannot be lost to a `try`/`catch`,
 //! because there is no exception to catch — gg holds the flag, not the guest. And a completion *is*
@@ -158,8 +160,15 @@ use membrane::{MembraneParts, MembraneState, Sandbox};
 /// Everything a program's scope is built from, as one value.
 ///
 /// The four travel together because they *are* one thing — the set of names the evaluated function
-/// receives as parameters — and because that is the whole capability model: a withheld tool is an
+/// receives as parameters — and because that is most of the capability model: a withheld tool is an
 /// undefined identifier rather than a call that reaches the host and is refused.
+///
+/// It is most of it and not all of it, because scope construction is a capability model only for a
+/// guest that constructs a scope. So this same value is also what the
+/// [membrane](membrane::MembraneState) is built from, and every part of it is checked there too — a
+/// withheld tool, an ending outside this agent's role, a program-library call from an agent that
+/// keeps no library. For a guest that links its SDK as an ordinary library, that check is the gate
+/// rather than a backstop behind one.
 #[derive(Clone, Copy)]
 pub struct ProgramScope<'a> {
     /// The run's scope-bound gg tool names ([`scope_tools`]). Only these are bound.
@@ -225,7 +234,7 @@ pub fn run_program<A: ToolApi>(
         Ok(linker) => linker,
         Err(error) => return (SandboxOutcome::before_start(error), api),
     };
-    let mut store = bounded_store(MembraneState::new(api, enabled, limits, deadline), limits);
+    let mut store = bounded_store(MembraneState::new(api, scope, limits, deadline), limits);
 
     let bound = match Sandbox::instantiate(&mut store, component, &linker) {
         Ok(bound) => bound,
@@ -430,9 +439,15 @@ pub(crate) fn component_bound_tools(
     let linker = linker::<fake::FakeToolApi>(language)?;
     let limits = SandboxLimits::default();
     let log = fake::CallLog::default();
-    // No tools are bound: the guest reports what it *can* bind, which does not depend on what this
-    // particular store enables.
-    let state = MembraneState::new(fake::FakeToolApi::new(&log), &[], limits, None);
+    // Nothing at all is offered: the guest reports what it *can* bind, which does not depend on
+    // what this particular store enables.
+    let scope = ProgramScope {
+        enabled: &[],
+        modules: &[],
+        ending: RunEnding::None,
+        library: false,
+    };
+    let state = MembraneState::new(fake::FakeToolApi::new(&log), scope, limits, None);
     let mut store = bounded_store(state, limits);
 
     let bound = Sandbox::instantiate(&mut store, component, &linker)

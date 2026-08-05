@@ -6,13 +6,19 @@
 //! [`ALL_TOOL_NAMES`](crate::tools::ALL_TOOL_NAMES) is undisturbed. Unlike them it is gated by a
 //! [capability](test_cabinet_core::gg::CAPABILITY_PROGRAM_LIBRARY) rather than being bound
 //! unconditionally or by a role, which the host says with the `library` flag it passes to the
-//! guest's `run` — so an agent without the capability has no `programs` object at all rather than
-//! one whose every call is refused.
+//! guest's `run` — so an agent without the capability has no `programs` object at all.
+//!
+//! The **host keeps that flag too**, and every one of the three calls below checks it first. A guest
+//! that builds a scope makes the check unreachable; a guest that links its SDK as an ordinary
+//! library cannot withhold a name at all, and there this check is the whole of the gate. Without it
+//! an agent with no library could hand gg a replacement program for a turn it was never given the
+//! capability to replace.
 //!
 //! The two **reads** go straight to the [api](super::ToolApi), because both of
 //! [`dispatch`](super::MembraneState)'s guards are wrong for a call that is not a tool: there is no
 //! enabled-set entry to check, and a spent wall-clock budget must not withhold a lookup that reads
-//! gg's own memory and touches nothing.
+//! gg's own memory and touches nothing. The capability check is not one of those two, and it is not
+//! a budget: it is a fact about what this agent *is*, so it applies whatever the clock says.
 //!
 //! The one **write** — `rerun` — touches no api at all. It sets a field in this agent's host-side
 //! state, exactly as [`finish`](super::session) does, and for the same reason: what it declares is a
@@ -25,18 +31,17 @@ use super::test_cabinet::gg::types::{ErrorCode, ToolError};
 use super::{MembraneState, ToolApi};
 use crate::sandbox::language::{PROGRAMS_GET, PROGRAMS_HISTORY, PROGRAMS_RERUN};
 
-/// The name the membrane reports a `programs.rerun` refusal under.
-///
-/// It is not a gg tool, so it names *itself* — the same choice [`FINISH_FUNCTION`](super::super)
-/// makes: putting a tool name in the error would name something the model did not call.
-const RERUN_FUNCTION: &str = "rerun";
-
 impl<A: ToolApi> ProgramsHost for MembraneState<A> {
-    /// The programs this agent has run, oldest first. Cannot fail: an empty library is an empty
-    /// list, which is the honest answer on the first turn of every session.
-    fn history(&mut self) -> Vec<ProgramSummary> {
-        self.recorded_ok(PROGRAMS_HISTORY, |state, rec| {
-            state
+    /// The programs this agent has run, oldest first — or `unavailable` when it keeps no library.
+    ///
+    /// A library it *does* keep and has run nothing into is an empty list rather than an error,
+    /// which is the honest answer on the first turn of every session. That is exactly why this is a
+    /// `result` and not a bare list: the empty answer and the refusal are different facts, and one
+    /// list could only tell the model one of them.
+    fn history(&mut self) -> Result<Vec<ProgramSummary>, ToolError> {
+        self.recorded(PROGRAMS_HISTORY, |state, rec| {
+            state.library_bound(PROGRAMS_HISTORY)?;
+            Ok(state
                 .api(rec)
                 .program_history()
                 .into_iter()
@@ -51,19 +56,20 @@ impl<A: ToolApi> ProgramsHost for MembraneState<A> {
                     ok: summary.ok,
                     error: summary.error,
                 })
-                .collect()
+                .collect())
         })
     }
 
     /// The source of one program as it was run, or `not-found` naming the turns that are held.
     fn get(&mut self, turn: Option<u32>) -> Result<String, ToolError> {
         self.recorded(PROGRAMS_GET, |state, rec| {
+            state.library_bound(PROGRAMS_GET)?;
             state
                 .api(rec)
                 .program_source(turn.map(u64::from))
                 .map_err(|refusal| ToolError {
                     code: super::error_code(Some(refusal.failure)),
-                    tool: "get".to_string(),
+                    tool: PROGRAMS_GET.key.to_string(),
                     message: refusal.message,
                 })
         })
@@ -82,6 +88,9 @@ impl<A: ToolApi> ProgramsHost for MembraneState<A> {
         // that the model made the call, which is a fact about the model rather than about what gg
         // did with it.
         self.recorded(PROGRAMS_RERUN, |state, _rec| {
+            // The capability first: an agent with no library is told it has none, rather than told
+            // its (perfectly good) replacement program was blank or came second.
+            state.library_bound(PROGRAMS_RERUN)?;
             if source.trim().is_empty() {
                 return Err(refused(
                     ErrorCode::InvalidArgument,
@@ -100,16 +109,20 @@ impl<A: ToolApi> ProgramsHost for MembraneState<A> {
     }
 }
 
-/// A `rerun` refusal, named after the call itself.
+/// A `rerun` refusal over the **argument** it was given, named after the call itself.
 ///
-/// It does **not** go through [`refuse`](MembraneState::refuse): that records the call on the
-/// refused-tool roster, and this is not a tool — a line there would put a name in the operator's
-/// stream that no gg tool answers to. The throw the program sees is the whole report, which is
-/// exactly what it is for: the model reads it, drops the second hand-over, and carries on.
+/// It does **not** go on the [refusal roster](MembraneState::record_refusal), and that is the line
+/// between the two kinds of refusal this file produces. The roster answers "what did the model reach
+/// for that this run does not offer it" — which is what
+/// [`library_bound`](MembraneState::library_bound) records, and what an ablation counts. A blank
+/// source, or a second hand-over in one turn, is neither: the call was offered and was made, and
+/// what it says about the model is nothing an ablation is measuring. The throw the program sees is
+/// the whole report, which is what it is for — the model reads it, drops the second hand-over, and
+/// carries on.
 fn refused(code: ErrorCode, message: &str) -> ToolError {
     ToolError {
         code,
-        tool: RERUN_FUNCTION.to_string(),
+        tool: PROGRAMS_RERUN.key.to_string(),
         message: message.to_string(),
     }
 }

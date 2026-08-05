@@ -325,11 +325,13 @@ fn a_program_error_is_recorded_once_with_its_kind() {
 
     state.report_error(feedback::ProgramError {
         kind: ErrorKind::UnknownName,
+        code: None,
         message: "enterPlanMode is not defined".to_string(),
         location: Some("line 3, column 1".to_string()),
     });
     state.report_error(feedback::ProgramError {
         kind: ErrorKind::Other,
+        code: None,
         message: "a later error".to_string(),
         location: None,
     });
@@ -360,4 +362,74 @@ fn the_record_keeps_the_summary_but_never_the_arguments() {
     let parts = state.into_parts();
     assert_eq!(parts.calls[0].summary.as_deref(), Some("wrote"));
     assert!(parts.calls[0].error.is_none());
+}
+
+/// **The host classifies a refused call, not the guest.**
+///
+/// `unavailable` means the model reached for something this run does not offer it, and that is the
+/// same fact — and the same recovery — as a name that was never in scope. Which of the two a guest
+/// raises depends only on whether its SDK can withhold a name: one raises a `ReferenceError` and
+/// reports `unknown-name`, the other is refused at the membrane and would report `tool-failure`.
+/// Deciding it from the *code* is what stops one event becoming two turn-error metrics, one per
+/// language arm.
+#[test]
+fn a_refused_call_is_classified_by_its_code_rather_than_by_the_guests_reading() {
+    let log = CallLog::default();
+    let mut state = membrane(&log);
+
+    state.report_error(feedback::ProgramError {
+        kind: ErrorKind::ToolFailure,
+        code: Some(ErrorCode::Unavailable),
+        message: "`approve` failed (unavailable): not your ending".to_string(),
+        location: None,
+    });
+
+    assert_eq!(
+        state
+            .into_parts()
+            .program_error
+            .expect("the throw was recorded")
+            .kind,
+        ProgramErrorKind::UnknownName,
+    );
+}
+
+/// Every other failure class stays what the call said it was, and a throw with no code at all is the
+/// program's own — there the guest's reading is the only reading there is.
+#[test]
+fn a_throw_that_is_not_a_refusal_keeps_the_class_it_arrived_with() {
+    for (code, kind, want) in [
+        (
+            Some(ErrorCode::NotFound),
+            ErrorKind::ToolFailure,
+            ProgramErrorKind::ToolFailure,
+        ),
+        (
+            Some(ErrorCode::LimitExceeded),
+            ErrorKind::ToolFailure,
+            ProgramErrorKind::ToolFailure,
+        ),
+        (None, ErrorKind::UnknownName, ProgramErrorKind::UnknownName),
+        (None, ErrorKind::Other, ProgramErrorKind::Other),
+    ] {
+        let log = CallLog::default();
+        let mut state = membrane(&log);
+
+        state.report_error(feedback::ProgramError {
+            kind,
+            code,
+            message: "something went wrong".to_string(),
+            location: None,
+        });
+
+        assert_eq!(
+            state
+                .into_parts()
+                .program_error
+                .expect("the throw was recorded")
+                .kind,
+            want,
+            "{code:?} / {kind:?}"
+        );
+    }
 }

@@ -130,13 +130,17 @@ impl<A: ToolApi> MembraneState<A> {
         result
     }
 
-    /// As [`recorded`](Self::recorded), for the three calls that cannot fail.
+    /// As [`recorded`](Self::recorded), for the two calls that cannot fail.
     ///
-    /// `view.current`, `programs.history` and `object.list()` each answer with a list — an agent
-    /// with nothing open, nothing run and nothing bound gets an empty one, which is an answer rather
-    /// than an error — so there is no verdict to take and the record is always `ok`. Spelling that
-    /// out here is what keeps their host functions from having to invent a `Result` they would then
-    /// unwrap.
+    /// `view.current` and `object.list()` each answer with a list — an agent with nothing open and
+    /// nothing bound gets an empty one, which is an answer rather than an error — so there is no
+    /// verdict to take and the record is always `ok`. Spelling that out here is what keeps their
+    /// host functions from having to invent a `Result` they would then unwrap.
+    ///
+    /// `programs.history` used to be the third, and stopped being one when the host started checking
+    /// the [program-library](super::programs) capability: an agent with no library and an agent that
+    /// has run nothing are different facts, and one empty list could only have told the model one of
+    /// them.
     pub(super) fn recorded_ok<R>(
         &mut self,
         call: SurfaceCall,

@@ -19,8 +19,8 @@ use test_cabinet_core::gg::{GgProgramLanguage, GgToolFailure};
 
 use super::invoker::{SandboxViewOpened, ViewOpenOutcome, ViewRefusal};
 use super::language::ProgramLanguage;
-use super::membrane::MembraneState;
-use super::{FunctionSummary, SandboxLimits, ToolApi};
+use super::membrane::{MembraneState, RunEnding};
+use super::{FunctionSummary, ProgramScope, SandboxLimits, ToolApi};
 use crate::board::IssueStatus;
 use crate::context::{FileRegion, OpenViewInfo, ViewKind};
 use crate::ending::EndingRole;
@@ -882,14 +882,24 @@ pub(crate) fn membrane(log: &CallLog) -> MembraneState<FakeToolApi> {
 /// A membrane state as [`membrane`], in `role`'s [ending group](EndingRole) — what a reviewer's
 /// program is answered by.
 ///
-/// The role no longer crosses into the host: the *guest* binds only its own group's names, so which
-/// ending calls a program can make is settled before one reaches here. The parameter is kept
-/// because the tests read as statements about a role, and dropping it would make them read as
-/// statements about nothing.
-pub(crate) fn membrane_as(log: &CallLog, _role: EndingRole) -> MembraneState<FakeToolApi> {
+/// The role crosses into the host: the membrane refuses an ending call outside the group, because a
+/// guest that links its SDK as a library has no scope to withhold one from. So this parameter is the
+/// subject of the tests that pass it, not decoration on them.
+pub(crate) fn membrane_as(log: &CallLog, role: EndingRole) -> MembraneState<FakeToolApi> {
     MembraneState::new(
         FakeToolApi::new(log),
-        &all_tools(),
+        scope_of(&all_tools(), RunEnding::Role(role), true),
+        SandboxLimits::default(),
+        None,
+    )
+}
+
+/// A membrane state as [`membrane`], run under `ending` — the [`None`](RunEnding::None) arm being
+/// the one an on-use script gets, which may declare no ending at all.
+pub(crate) fn membrane_ending(log: &CallLog, ending: RunEnding) -> MembraneState<FakeToolApi> {
+    MembraneState::new(
+        FakeToolApi::new(log),
+        scope_of(&all_tools(), ending, true),
         SandboxLimits::default(),
         None,
     )
@@ -904,7 +914,7 @@ pub(crate) fn membrane_with(
 ) -> MembraneState<FakeToolApi> {
     MembraneState::new(
         FakeToolApi::with(log, responder),
-        enabled,
+        scope_of(enabled, RunEnding::Role(EndingRole::Standard), true),
         SandboxLimits::default(),
         deadline,
     )
@@ -913,7 +923,29 @@ pub(crate) fn membrane_with(
 /// A membrane state over an already-prepared `api` — the one the program-library tests need, since
 /// what they vary is the api's own state (which programs it holds) rather than how it answers a call.
 pub(crate) fn membrane_from(api: FakeToolApi) -> MembraneState<FakeToolApi> {
-    MembraneState::new(api, &all_tools(), SandboxLimits::default(), None)
+    membrane_from_scope(api, true)
+}
+
+/// [`membrane_from`], with the [program library](crate::programs) bound or withheld — the one scope
+/// variation the library's own tests turn on.
+pub(crate) fn membrane_from_scope(api: FakeToolApi, library: bool) -> MembraneState<FakeToolApi> {
+    MembraneState::new(
+        api,
+        scope_of(&all_tools(), RunEnding::Role(EndingRole::Standard), library),
+        SandboxLimits::default(),
+        None,
+    )
+}
+
+/// The scope a test's membrane is built from. Modules are always empty: what a program has loaded is
+/// the guest's business, and no host function reads it.
+fn scope_of(enabled: &[String], ending: RunEnding, library: bool) -> ProgramScope<'_> {
+    ProgramScope {
+        enabled,
+        modules: &[],
+        ending,
+        library,
+    }
 }
 
 /// The board budget the fake reports on every board mutation.

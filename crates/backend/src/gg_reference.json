@@ -1283,7 +1283,7 @@
       "category": "gg-programs",
       "summary": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end.",
       "signature": "history(): ProgramSummary[]",
-      "doc": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end. It lists shapes, not sources: fetch the one you want with `programs.get(turn)`. The list survives a compaction, so it is also how you find a program whose text has left your context window.",
+      "doc": "The programs you have already run this session, oldest first — each with the turn it ran on, how big it was, and whether it ran to its end. It lists shapes, not sources: fetch the one you want with `programs.get(turn)`. The list survives a compaction, so it is also how you find a program whose text has left your context window. An agent with no program library throws `unavailable`. It is empty — never an error — for one that has a library and has run nothing yet.",
       "library": true,
       "types": [
         {

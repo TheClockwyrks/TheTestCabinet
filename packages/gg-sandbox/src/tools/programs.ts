@@ -31,15 +31,20 @@ import type { ProgramSummary } from "../types.js";
  *
  * It lists shapes, not sources: fetch the one you want with `programs.get(turn)`. The list survives
  * a compaction, so it is also how you find a program whose text has left your context window.
+ *
+ * An agent with no program library throws `unavailable`. It is empty — never an error — for one
+ * that has a library and has run nothing yet.
  */
 export function history(): ProgramSummary[] {
-  return raw.history().map((entry) => ({
-    turn: entry.turn,
-    lines: entry.lines,
-    chars: entry.chars,
-    ok: entry.ok,
-    ...(entry.error === undefined ? {} : { error: entry.error }),
-  }));
+  return call(() =>
+    raw.history().map((entry) => ({
+      turn: entry.turn,
+      lines: entry.lines,
+      chars: entry.chars,
+      ok: entry.ok,
+      ...(entry.error === undefined ? {} : { error: entry.error }),
+    })),
+  );
 }
 
 /**

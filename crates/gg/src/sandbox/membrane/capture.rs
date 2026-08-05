@@ -24,7 +24,7 @@
 
 use super::feedback;
 use super::{
-    MembraneState, ProgramError, ProgramErrorKind, SandboxRefusal, SandboxToolCall,
+    ErrorCode, MembraneState, ProgramError, ProgramErrorKind, SandboxRefusal, SandboxToolCall,
     SandboxViewOpened, ToolApi,
 };
 use crate::tools::{ToolData, ToolOutcome};
@@ -292,14 +292,36 @@ impl<A: ToolApi> feedback::Host for MembraneState<A> {
     fn report_error(&mut self, error: feedback::ProgramError) {
         self.revoke_completion();
         self.program_error.get_or_insert(ProgramError {
-            kind: match error.kind {
-                feedback::ErrorKind::ToolFailure => ProgramErrorKind::ToolFailure,
-                feedback::ErrorKind::UnknownName => ProgramErrorKind::UnknownName,
-                feedback::ErrorKind::Other => ProgramErrorKind::Other,
-            },
+            kind: classify(error.kind, error.code),
             message: error.message,
             location: error.location,
         });
+    }
+}
+
+/// What class an uncaught throw is recorded as — **the host's reading, not the guest's**.
+///
+/// A throw carrying an [`ErrorCode`] was a failed model-facing call, and there is one distinction in
+/// it that no guest can be trusted with. [`Unavailable`](ErrorCode::Unavailable) means the model
+/// reached for something this run does not offer it, which is the same fact — and the same recovery
+/// — as a name that was never in scope at all. A guest that can withhold a name raises a
+/// `ReferenceError` and calls that [`UnknownName`](ProgramErrorKind::UnknownName); a guest that
+/// links its SDK as a library has the name, is refused at the membrane, and would call the identical
+/// event a [`ToolFailure`](ProgramErrorKind::ToolFailure). One event, two turn-error metrics, split
+/// by nothing but which language arm the run was in — which is precisely the confound a cross-arm
+/// study cannot have. Deciding it here decides it once, for every guest.
+///
+/// A throw with no code is the program's own — a `TypeError`, a thrown string, a name the program
+/// invented — and the guest's reading is the only reading there is.
+fn classify(kind: feedback::ErrorKind, code: Option<ErrorCode>) -> ProgramErrorKind {
+    match code {
+        Some(ErrorCode::Unavailable) => ProgramErrorKind::UnknownName,
+        Some(_) => ProgramErrorKind::ToolFailure,
+        None => match kind {
+            feedback::ErrorKind::ToolFailure => ProgramErrorKind::ToolFailure,
+            feedback::ErrorKind::UnknownName => ProgramErrorKind::UnknownName,
+            feedback::ErrorKind::Other => ProgramErrorKind::Other,
+        },
     }
 }
 

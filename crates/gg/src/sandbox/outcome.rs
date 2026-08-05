@@ -231,7 +231,10 @@ pub struct ProgramError {
 pub enum ProgramErrorKind {
     /// A tool call failed and the throw was not caught.
     ToolFailure,
-    /// The program referenced a name that is not in scope — most often a tool this run withheld.
+    /// The program reached for something this run does not offer it: a name that is not in scope,
+    /// or — where the language's SDK has no way to withhold a name — a call the membrane refused as
+    /// `unavailable`. The two are the same fact and the same recovery, so they are one class; the
+    /// membrane's `capture::classify` says why the host decides that rather than the guest.
     UnknownName,
     /// Anything else the program threw.
     Other,

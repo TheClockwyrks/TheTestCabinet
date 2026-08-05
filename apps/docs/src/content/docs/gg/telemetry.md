@@ -572,7 +572,7 @@ favour of "the program faulted". Nineteen types, one per distinction gg already 
 | --- | --- |
 | `model_api` | `model_auth` (the credential was refused), `model_rejected` (another non-retryable `4xx`), `model_retry_exhausted` (the provider never served the request), `model_response_loop` (it served it and [loop detection](/gg/loop-detection/) discarded every answer), `model_vision_unsupported`, `model_parse`, `model_playback` (a [reconstruction](/gg/replay/) diverged) |
 | `transpile` | `transpile_syntax`, `transpile_semantic`, `transpile_lowering`, `transpile_unsupported` |
-| `program_fault` | `program_tool_error` (an **uncaught failed call** — the model is fighting the API rather than mis-writing it), `program_unknown_name`, `program_throw` |
+| `program_fault` | `program_tool_error` (an **uncaught failed call** — the model is fighting the API rather than mis-writing it), `program_unknown_name` (it reached for something this run does not offer it: a name that is not in scope, or a call the host refused as `unavailable` — [the same fact](/gg/responses-as-code/#capability-gating), told two ways by two kinds of guest), `program_throw` |
 | `sandbox_limit` | `sandbox_timeout`, `sandbox_out_of_memory`, `sandbox_trap` |
 | `missing_completion` | `missing_completion_no_call`, `missing_completion_compaction` (a prose reply where a compaction was pending — a different failure, answered differently) |
 

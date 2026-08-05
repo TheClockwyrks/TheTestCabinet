@@ -725,9 +725,24 @@ than one that says it late. `view.openFile` **is** refused, because it reads.
 A withheld tool is **not in scope**. The guest builds the program's scope from the run's
 enabled tool names and evaluates the program as the body of a function whose *parameters*
 are exactly those names, so a tool this run does not offer is an undefined identifier —
-not a call that travels to the host and is refused there. Scope injection is the
-capability model, and the host's enabled-set check behind it is a defensive backstop that
-a program cannot normally reach.
+not a call that travels to the host and is refused there.
+
+**The host checks the same facts.** Scope injection is a capability model only for a guest
+that builds a scope, and that is a property of the language's SDK rather than of gg: a
+language whose SDK is linked as an ordinary library has every name, and there is no scope
+to leave anything out of. So the membrane holds the whole of what a run offers — the
+enabled tool names, the [ending group](/gg/ending-a-session/) this agent's role declares,
+and whether it keeps a [program library](/gg/program-library/) — and refuses anything
+outside it as `unavailable`, which is the same failure class, and the same recovery, a
+missing name produces. For today's TypeScript arm that check is unreachable; for the next
+arm it is the whole of the gate.
+
+`unavailable` is therefore recorded as the same turn error a missing name is
+(`program_unknown_name`), and the host decides that from the failure **code** rather than
+from what the guest made of the throw. Otherwise one event — the model reaching for
+something it was not given — would be counted one way in a language that can withhold a
+name and another way in a language that cannot, which is precisely the confound a
+cross-language comparison cannot carry.
 
 The same set drives the prompt, so a withheld capability contributes **no prompt text**:
 a run without the [tasks](/gg/tasks/) capability is not shown the task functions and is
@@ -751,14 +766,20 @@ The [filesystem capabilities](/gg/filesystem/) compose the same way: a run with
 capped read mode windows a program's reads exactly as it windows a tool call's.
 
 :::note
-**`harness.finish` and the `view` object are the bound names no capability gates.** A run
-that enables no tools at all must still be able to end, and must still be able to show its
-model something, so both are bound whatever the capability set says — and because neither
-is a tool, neither the membrane's enabled-set backstop nor the loop's dispatch gates apply
-to them. A program can therefore end the run even while the loop is
-waiting for a compaction — which is deliberate, since a run that cannot end is worse
-than one that ends early. (`view.openFile` is the one exception inside the exception: it
-is a read, so it is bound only when `read_file` is.)
+**The `view` object is the one family no capability gates at all.** A run that enables no
+tools must still be able to show its model something, so `view.openText`,
+`view.openDocsView`, `view.close` and `view.current` are bound whatever the capability set
+says, and nothing on the host refuses them. (`view.openFile` is the exception inside the
+exception: it is a read, so it is bound only when `read_file` is, and it is refused like
+any other read.)
+
+**An ending call is bound to every run too, but which one depends on the role.** A run that
+enables no tools must still be able to *end*, so the group its role declares is bound
+whatever the capability set says, and no toolset gate and no spent budget withholds it — a
+program can end the run even while the loop is waiting for a compaction, which is
+deliberate, since a run that cannot end is worse than one that ends early. What the host
+does check is the role: an agent doing work calling `review.approve` is refused
+`unavailable`, because a verdict is the one declaration nothing downstream re-examines.
 :::
 
 ### Every tool is bound

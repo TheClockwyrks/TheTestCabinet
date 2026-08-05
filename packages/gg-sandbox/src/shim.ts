@@ -574,6 +574,7 @@ export function run(
     if (isThenable(value)) {
       feedback.reportError({
         kind: "other",
+        code: undefined,
         message: "your program returned a Promise; this sandbox is synchronous",
         location: undefined,
       });
@@ -592,6 +593,10 @@ export function run(
  * The message is rendered as `${name}: ${message}` rather than from `err.stack`, because this
  * engine's stack does **not** begin with the name and message — reporting the stack alone would lose
  * the one line that says what went wrong.
+ *
+ * The `kind` this returns is what *this* guest makes of the throw; the `code` is what the membrane
+ * said. gg classifies the turn's error from the code where there is one, so a call the host refused
+ * is recorded the same way in every language arm — see `program-error` in the WIT.
  */
 function describe(
   thrown: unknown,
@@ -608,6 +613,7 @@ function describe(
   if (err instanceof ToolError) {
     return {
       kind: "tool-failure",
+      code: err.code,
       message: `\`${err.tool}\` failed (${err.code}): ${err.message}`,
       location,
     };
@@ -624,15 +630,16 @@ function describe(
       // it have? Each object's `list()` then names that object's functions.
       return {
         kind: "unknown-name",
+        code: undefined,
         message:
           `${message}; API objects this run: ${names.join(", ")}` +
           (lib ? `, plus \`${LIB_OBJECT}\` for loaded skill and memory code` : ""),
         location,
       };
     }
-    return { kind: "other", message: `${name}: ${message}`, location };
+    return { kind: "other", code: undefined, message: `${name}: ${message}`, location };
   }
-  return { kind: "other", message: describeThrown(err), location };
+  return { kind: "other", code: undefined, message: describeThrown(err), location };
 }
 
 /** Whether a value is a Promise (or anything else with a `then`), which a program must not return. */

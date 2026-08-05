@@ -174,6 +174,42 @@ is a whole section, so that is [asserted](#the-agreement-gate) rather than trust
 registered language's prompt must render, under every context fixture, carrying every
 required section.
 
+### What the host checks, and what a language must not be trusted with
+
+A language's SDK is **not** part of gg's capability model, and this is the one place the
+seam had to move for a second language to be safe.
+
+TypeScript's guest builds a program's scope out of the run's enabled tool names, its
+agent's [ending group](/gg/ending-a-session/) and its
+[program-library](/gg/program-library/) flag, and evaluates the program as the body of a
+function whose parameters are exactly those names — so a withheld call is an undefined
+identifier rather than a call that reaches the host. That is an excellent enforcement
+mechanism and it is entirely the *guest's*. A language whose SDK is linked as an ordinary
+library — an import, a package, a namespace the compiler resolves — has no scope to leave
+anything out of, and every name is there whatever the run offers.
+
+So the membrane holds all three facts itself and refuses anything outside them
+`unavailable`: a tool outside the enabled set, an ending outside this agent's role, a
+library call from an agent that keeps none. Nine of those checks were already there for the
+tools; the six that were not — the three ending calls and the three library calls — were
+reachable only through scope construction, which is to say reachable only for as long as
+gg had exactly one language. A standard agent that could call `approve` would hand back a
+verdict on its own work, and gg reads a reviewer's answer straight off the ending it
+declared without ever re-asking whose it was.
+
+Two consequences for a language being added:
+
+- **A new SDK is free to expose the whole surface**, and should: a function it cannot
+  reach is a function a doc view cannot show, and hiding one per run is a per-run artifact
+  where the point is that every arm sees the same surface. Prompts never advertise a
+  disabled capability, `object.list()` filters them, and calling one is an error — from the
+  host.
+- **The refusal is not the model's own failure.** `unavailable` is recorded as the same
+  turn error a missing name is, and gg decides that from the failure *code* rather than
+  from what the guest made of the throw — otherwise the identical event would be counted
+  one way in a language that can withhold a name and another way in a language that
+  cannot.
+
 ### The linker requirement
 
 This is the part that is easy to miss, and the empirical finding that shaped the seam: **a

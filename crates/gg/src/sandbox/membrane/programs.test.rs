@@ -9,7 +9,7 @@
 
 use super::super::test_cabinet::gg::types::ErrorCode;
 use super::*;
-use crate::sandbox::fake::{CallLog, FakeToolApi, membrane_from};
+use crate::sandbox::fake::{CallLog, FakeToolApi, membrane_from, membrane_from_scope};
 
 /// A membrane state whose library already holds `programs` (turn, source).
 fn membrane_holding(log: &CallLog, programs: &[(u64, &str)]) -> MembraneState<FakeToolApi> {
@@ -20,12 +20,17 @@ fn membrane_holding(log: &CallLog, programs: &[(u64, &str)]) -> MembraneState<Fa
     membrane_from(api)
 }
 
+/// A membrane state for an agent that keeps **no** library — the capability withheld.
+fn membrane_without_a_library(log: &CallLog) -> MembraneState<FakeToolApi> {
+    membrane_from_scope(FakeToolApi::new(log), false)
+}
+
 #[test]
 fn history_lists_the_shape_of_every_kept_program() {
     let log = CallLog::default();
     let mut state = membrane_holding(&log, &[(1, "one"), (2, "two\nlines")]);
 
-    let history = state.history();
+    let history = state.history().expect("this agent keeps a library");
 
     assert_eq!(history.len(), 2);
     assert_eq!(history[0].turn, 1);
@@ -39,7 +44,76 @@ fn history_is_empty_rather_than_a_failure_before_the_first_program() {
     let log = CallLog::default();
     let mut state = membrane_holding(&log, &[]);
 
-    assert!(state.history().is_empty());
+    assert!(
+        state
+            .history()
+            .expect("a library with nothing in it is still a library")
+            .is_empty()
+    );
+}
+
+/// **The capability is a host-side check, on all three calls.**
+///
+/// Scope construction withholds the whole `programs` object from a guest that builds one — but that
+/// is the guest's half, and a guest that links its SDK as an ordinary library has no name to
+/// withhold. So the membrane checks the flag itself, and an agent that keeps no library is refused
+/// `unavailable` rather than answered with an empty list, a program it never ran, or a hand-over it
+/// was never given the capability to make.
+#[test]
+fn every_library_call_is_refused_without_the_capability() {
+    let log = CallLog::default();
+    let mut state = membrane_without_a_library(&log);
+
+    let refusals = [
+        state.history().err(),
+        state.get(None).err(),
+        state.rerun("fs.writeFile('a.ts', 'x');".to_string()).err(),
+    ];
+
+    for (call, refused) in ["history", "get", "rerun"].into_iter().zip(refusals) {
+        let refused = refused.unwrap_or_else(|| panic!("`{call}` is not available to this agent"));
+        assert_eq!(refused.code, ErrorCode::Unavailable, "`{call}`");
+        assert_eq!(refused.tool, call);
+        assert!(
+            refused.message.contains("no library"),
+            "`{call}`: {}",
+            refused.message
+        );
+    }
+
+    let parts = state.into_parts();
+    assert!(
+        parts.rerun.is_none(),
+        "a refused hand-over registered nothing"
+    );
+    assert_eq!(
+        parts
+            .refusals
+            .iter()
+            .map(|refusal| refusal.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["programs.history", "programs.get", "programs.rerun"],
+        "a withheld capability is exactly what the refusal roster counts"
+    );
+}
+
+/// The capability check comes **first**, ahead of every argument check `rerun` makes.
+///
+/// An agent with no library that hands over a blank program has one problem, not two, and being told
+/// about the wrong one costs it a turn writing a better program it still may not run.
+#[test]
+fn the_capability_is_checked_before_the_arguments() {
+    let log = CallLog::default();
+    let mut state = membrane_without_a_library(&log);
+
+    let refused = state.rerun(String::new()).unwrap_err();
+
+    assert_eq!(refused.code, ErrorCode::Unavailable);
+    assert!(
+        refused.message.contains("no library"),
+        "{}",
+        refused.message
+    );
 }
 
 #[test]
@@ -128,8 +202,13 @@ fn a_hand_over_is_revoked_when_the_program_then_fails() {
     );
 }
 
+/// A bad **argument** to a call the agent does have is not what the refusal roster counts.
+///
+/// The roster answers "what did the model reach for that this run does not offer it" — the question
+/// an ablation is run to ask — and a blank hand-over from an agent that may hand over is not an
+/// answer to it. The withheld-capability refusal above is, and it is on the roster.
 #[test]
-fn a_refused_hand_over_is_not_recorded_on_the_tool_refusal_roster() {
+fn a_hand_over_refused_over_its_argument_is_not_on_the_refusal_roster() {
     let log = CallLog::default();
     let mut state = membrane_holding(&log, &[]);
 
@@ -137,6 +216,6 @@ fn a_refused_hand_over_is_not_recorded_on_the_tool_refusal_roster() {
 
     assert!(
         state.into_parts().refusals.is_empty(),
-        "`rerun` is not a gg tool, so a line naming it there would name a tool that does not exist"
+        "the capability was offered and the call was made; only the argument was wrong"
     );
 }

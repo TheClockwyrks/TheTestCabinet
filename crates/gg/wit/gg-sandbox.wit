@@ -43,9 +43,14 @@ interface types {
         /// a hook that blocked it. Each is a rule about this agent's *state*; a ceiling the call
         /// ran into is `limit-exceeded`, including the delegation depth cap.
         refused,
-        /// The tool exists but this run's capability set does not offer it. A program cannot
-        /// normally reach this — a withheld tool is not bound into its scope at all — so it is the
-        /// host's defensive backstop.
+        /// The call exists but this run does not offer it to you: a tool outside this run's
+        /// capability set, an ending your role does not declare, a program library this agent does
+        /// not keep, or a family whose runtime this run has none of.
+        ///
+        /// A guest whose SDK withholds a name from a program's scope makes most of these
+        /// unreachable — the name is simply not there — but the host checks them all regardless,
+        /// because a guest that links its SDK as a library cannot withhold anything. The recovery
+        /// is the same one a name that was never in scope gets: stop asking for it.
         unavailable,
         /// A gg-side ceiling was hit: a shell timeout, a memory/task/board cap, the delegation
         /// depth cap, one of the view caps a program spends, or the run's wall-clock budget
@@ -610,6 +615,12 @@ interface session {
 
     /// Which group of ending functions a program is given, decided by the role the agent was
     /// dispatched in. Exactly one group is bound; the others are not names in the program's scope.
+    ///
+    /// The host keeps this value too, and refuses any ending call outside the group `unavailable`.
+    /// The two halves answer different guests: a guest that can withhold a name makes the check
+    /// unreachable, and a guest that links its SDK as a library has every name and nothing but the
+    /// check. Without it a standard agent could call `approve` and hand back a verdict nobody asked
+    /// it for — which the loop reads straight off the declaration, never re-asking whose it was.
     enum ending-kind {
         /// `harness.finish(summary)` — an agent doing work.
         standard,
@@ -619,9 +630,8 @@ interface session {
         ///
         /// An on-use script is the code a skill or a memory runs when the agent first reads it. It
         /// is not the agent's turn: the model did not write it, does not see it, and is not
-        /// answering for it. So it must not be able to say the session is over, and the way to make
-        /// that true is the way every other withheld call is made true — the name is simply not in
-        /// its scope.
+        /// answering for it. So it must not be able to say the session is over: the name is not in
+        /// its scope, and the host refuses the call even where it is.
         none,
     }
 
@@ -639,16 +649,19 @@ interface session {
     /// so the session continues and the model is told its ending was cancelled.
     ///
     /// It is never refused for the run's wall-clock budget being spent, unlike every tool call:
-    /// ending performs no work and ends the session, which is exactly what a spent budget wants. The
-    /// one failure it has is an empty `summary`, which is `invalid-argument`.
+    /// ending performs no work and ends the session, which is exactly what a spent budget wants. Its
+    /// failures are `unavailable` when this agent's role does not end this way, and
+    /// `invalid-argument` for an empty `summary` — in that order, so a reviewer is told it is not
+    /// the one to say the work is finished rather than told to write a better summary.
     ///
-    /// Bound only under `ending-kind.standard`.
+    /// Bound only under `ending-kind.standard`, and refused by the host under any other.
     finish: func(summary: string) -> result<_, tool-error>;
 
     /// Declare the work under review acceptable. Takes nothing: an approval carries no further
     /// obligation, and a shape that demanded prose would be a shape the host had to read back.
     ///
-    /// Ends the session under the same flag rules as `finish`. Bound only under `ending-kind.review`.
+    /// Ends the session under the same flag rules as `finish`. Bound only under
+    /// `ending-kind.review`, and refused `unavailable` by the host under any other.
     approve: func() -> result<_, tool-error>;
 
     /// Declare the work under review unacceptable, listing every change that must be made before it
@@ -658,7 +671,8 @@ interface session {
     /// That is the whole reason this is a typed call: a rejection with nothing to act on gives the
     /// agent that has to fix the work no work to do, so the membrane refuses to represent one.
     ///
-    /// Ends the session under the same flag rules as `finish`. Bound only under `ending-kind.review`.
+    /// Ends the session under the same flag rules as `finish`. Bound only under
+    /// `ending-kind.review`, and refused `unavailable` by the host under any other.
     request-changes: func(items: list<string>) -> result<_, tool-error>;
 
 }
@@ -802,9 +816,12 @@ interface views {
 /// this turn's program. Running it inside the call would mean a program executing inside itself,
 /// with two sets of tool calls, two throw sites and one turn to report them in.
 ///
-/// The whole interface is bound only when the run enables the program library — see the `programs`
-/// parameter of `run` in the world below. A run without it has no `programs` object at all, on the
-/// same rule a withheld tool is an undefined identifier rather than a call that is refused.
+/// The whole interface is bound only when the run enables the program library — see the `library`
+/// parameter of `run` in the world below. A guest that can withhold a name gives a run without it
+/// no `programs` object at all, on the same rule a withheld tool is an undefined identifier rather
+/// than a call that is refused. The host checks the flag as well, on every one of the three, because
+/// a guest that links its SDK as a library has no name to withhold: there, `unavailable` is the
+/// gate rather than a backstop behind one.
 interface programs {
     use types.{tool-error};
 
@@ -827,8 +844,12 @@ interface programs {
     }
 
     /// The programs this agent has run, oldest first. Empty before its first program has been
-    /// recorded, and never an error.
-    history: func() -> list<program-summary>;
+    /// recorded.
+    ///
+    /// It is a `result` for one reason, and it is not that a lookup can fail: an agent that keeps
+    /// no library is refused `unavailable`, and an empty list would be indistinguishable from the
+    /// honest empty answer on the first turn of a session that does keep one.
+    history: func() -> result<list<program-summary>, tool-error>;
 
     /// The exact source of one program, as it was RUN. `none` is the most recent one.
     ///
@@ -964,6 +985,8 @@ interface delegation {
 /// by the shim, reported through `report-error`), and by deferring work into a microtask (detected
 /// by the shim, reported through `report-deferred`).
 interface feedback {
+    use types.{error-code};
+
     /// What kind of failure a program hit, so gg can choose the right feedback and the right
     /// telemetry rather than matching on prose.
     enum error-kind {
@@ -977,8 +1000,19 @@ interface feedback {
 
     /// A program that did not run to its end.
     record program-error {
-        /// The failure class.
+        /// The failure class, as the guest reads it.
         kind: error-kind,
+        /// The failure class the CALL carried, when the throw was a failed model-facing call.
+        /// `none` for anything the program threw on its own account.
+        ///
+        /// The host classifies the turn's error from this rather than from `kind`, because the one
+        /// distinction that matters across language arms is not one a guest can be trusted with:
+        /// `unavailable` means the model reached for something this run does not offer it, which
+        /// is the same fact — and the same recovery — as a name that was never in scope. A guest
+        /// that can withhold the name raises `ReferenceError` and reports `unknown-name`; a guest
+        /// that cannot raises a failed call and would report `tool-failure`. Same event, two
+        /// metrics, one per arm. The code is the fact both guests agree on.
+        code: option<error-code>,
         /// The rendered message, already naming the tool for a tool failure and the available
         /// identifiers for an unknown name.
         message: string,

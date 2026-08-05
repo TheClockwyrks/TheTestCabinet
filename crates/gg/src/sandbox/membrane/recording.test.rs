@@ -153,6 +153,10 @@ fn call_everything(state: &mut MembraneState<FakeToolApi>) {
     let _ = state.get(None);
     let _ = state.rerun("harness.finish('again');".to_string());
 
+    // All three ending calls, on one standard-role membrane: two of them are refused, and that is
+    // the point being made here — a call the membrane withholds is still a call the model made, so
+    // it opens and closes the same bracket a serviced one does. The identity set below is therefore
+    // the whole model-facing surface whatever role this membrane holds.
     let _ = state.finish("done".to_string());
     let _ = state.approve();
     let _ = state.request_changes(vec!["fix the lexer".to_string()]);
@@ -295,7 +299,12 @@ fn a_refused_call_is_recorded_as_a_failed_api_call() {
     let recorded = api.api_log();
     let mut state = MembraneState::new(
         api,
-        &["shell".to_string()],
+        crate::sandbox::ProgramScope {
+            enabled: &["shell".to_string()],
+            modules: &[],
+            ending: crate::sandbox::RunEnding::Role(crate::ending::EndingRole::Standard),
+            library: true,
+        },
         crate::sandbox::SandboxLimits::default(),
         None,
     );

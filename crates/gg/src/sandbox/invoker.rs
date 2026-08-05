@@ -61,8 +61,15 @@ pub struct SandboxToolCall {
     pub error: Option<String>,
 }
 
-/// A call the membrane refused before it reached the loop: a turn-level transition, or a tool this
-/// run does not offer.
+/// A call the membrane refused because this run does not offer it: a turn-level transition, a tool
+/// outside the enabled set, an ending this agent's role does not declare, or a program-library call
+/// from an agent that keeps no library.
+///
+/// One roster for all of them, because they are one fact — **the model reached for something it was
+/// not given** — and that fact is what a toolset ablation exists to count. What is *not* here is a
+/// call the model was offered and got wrong: a blank argument, a second hand-over in one turn. Those
+/// throw and say why, and putting them here would make the roster a count of mistakes rather than a
+/// count of withheld capabilities.
 ///
 /// Refusals are kept apart from [serviced calls](SandboxToolCall) because they produce no telemetry
 /// and no replay entry — nothing was dispatched — so counting them together would make the
@@ -74,7 +81,9 @@ pub struct SandboxToolCall {
 /// failure), while the tool layer records nothing because nothing ran.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SandboxRefusal {
-    /// The gg tool name that was refused.
+    /// What was refused: a gg tool's name for a tool, and the whole `object.key` identity for a
+    /// model-facing call that is not one — `review.approve`, `programs.rerun` — because there is no
+    /// tool name those could honestly be filed under.
     pub name: String,
     /// Why — the same text the program's `ToolError` carried.
     pub message: String,

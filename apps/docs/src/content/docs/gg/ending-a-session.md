@@ -35,9 +35,24 @@ different calls, and each call's signature carries exactly what that result is m
 
 Only the role's own group is offered. A reviewer has **no `finish`** — "the work is
 complete" is not a verdict it was asked for — and an implementer has no `approve`. In
-responses-as-code that is enforced by scope: the calls a role does not have are not
-identifiers in its programs at all, exactly as a withheld tool is not. In tool calling,
-only the role's tools are in the offered set.
+responses-as-code that is enforced twice, and it needs to be. The guest builds the
+program's scope from the role, so the calls a role does not have are not identifiers in
+its programs at all, exactly as a withheld tool is not — but that is a property of the
+language's SDK rather than of gg, and a language whose SDK is linked as an ordinary
+library has every name in scope. So **the membrane holds the role too**, and an ending
+call outside the group is refused `unavailable` there. A verdict is the one declaration
+nothing downstream re-examines: gg reads the reviewer's answer straight off the ending it
+declared, and never re-asks whose it was. In tool calling, only the role's tools are in the
+offered set.
+
+The role is checked **before** the declaration's shape, so an agent doing work that calls
+`requestChanges([])` is told it is not the one to give verdicts, rather than told to write
+a better list of changes it may not request.
+
+An **on-use script** — the code a [skill](/gg/skills/) or a [memory](/gg/memories/) runs
+when the agent first reads it — has no ending group at all. It is not the agent's turn: the
+model did not write it, does not see it, and is not answering for it, so a skill that could
+end the session would end it on nobody's authority.
 
 The calls are named the same in both modes, so ending a session is one vocabulary a model
 learns once: `harness.finish(…)` in a program and `finish` as a tool are the same call.

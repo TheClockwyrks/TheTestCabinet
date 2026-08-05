@@ -67,8 +67,10 @@ use std::time::{Duration, Instant};
 use test_cabinet_core::gg::GgToolFailure;
 
 use super::invoker::{SandboxRefusal, SandboxToolCall, SandboxViewOpened, ToolApi};
+use super::language::SurfaceCall;
 use super::limits::{MemoryLimiter, SandboxLimits};
-use super::{ProgramCompletion, ProgramError, ProgramErrorKind};
+use super::{ProgramCompletion, ProgramError, ProgramErrorKind, ProgramScope};
+use crate::completion::{APPROVE_TOOL, FINISH_TOOL, REQUEST_CHANGES_TOOL};
 use crate::ending::{Ending, EndingRole};
 use crate::tools::{ToolData, ToolFailure, ToolOutcome};
 
@@ -94,19 +96,54 @@ use test_cabinet::gg::types::{self, ErrorCode, ToolError};
 ///
 /// Almost always an agent's own [role](EndingRole): the guest is handed the same value the host
 /// holds, so the ending calls bound into a program's scope and the ones this membrane will accept
-/// are decided once, from one value.
+/// are decided once, from one value — and the membrane checks it, rather than trusting the guest to
+/// have withheld what it was told to withhold. See [`MembraneState::declare`] for why that check is
+/// the gate rather than a backstop.
 ///
 /// [`None`](Self::None) is the exception, and it exists for exactly one caller: an **on-use script**,
 /// the code a [skill](crate::skills) or a [memory](crate::memories) runs when the agent first reads
 /// it. That script is not the agent's turn — the model did not write it and is not answering for it
-/// — so it must not be able to declare the session over. It is withheld the way every withheld call
-/// is: the name is simply not in its scope.
+/// — so it must not be able to declare the session over.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunEnding {
     /// The agent's own role. A turn.
     Role(EndingRole),
     /// No ending group at all. An on-use script.
     None,
+}
+
+impl RunEnding {
+    /// Whether `call` — an ending call's own name, `finish` / `approve` / `request_changes` — is one
+    /// this program may make.
+    fn permits(self, call: &str) -> bool {
+        match self {
+            Self::Role(role) => role.owns(call),
+            Self::None => false,
+        }
+    }
+
+    /// Why `call` is withheld, said in terms of what this program *was* dispatched to do.
+    ///
+    /// It names the endings the program does have rather than only the one it does not: an agent
+    /// that reached for the wrong ending has a right one, and being told which is the difference
+    /// between a turn it recovers from and a turn it spends guessing.
+    fn withheld(self, call: &str) -> String {
+        match self {
+            Self::Role(EndingRole::Standard) => format!(
+                "`{call}` is not available to you: you were dispatched to do work, not to review \
+                 it. Report what you did with `{FINISH_TOOL}` instead."
+            ),
+            Self::Role(EndingRole::Review) => format!(
+                "`{call}` is not available to you: you were dispatched to review work, so your \
+                 session ends with a verdict — `{APPROVE_TOOL}`, or `{REQUEST_CHANGES_TOOL}` \
+                 naming every change the work needs."
+            ),
+            Self::None => format!(
+                "`{call}` is not available here: this code is a skill or a memory being loaded \
+                 rather than your own turn, so it cannot end your session."
+            ),
+        }
+    }
 }
 
 impl From<RunEnding> for EndingKind {
@@ -136,9 +173,20 @@ pub(crate) struct MembraneState<A: ToolApi> {
     /// How many model-facing API calls this program has made — every host function, dispatching or
     /// not, refused or serviced. See [`recording`].
     api_calls: u64,
-    /// The gg tools this run offers. The guest binds only these into a program's scope, so this is
-    /// a defensive backstop rather than the primary gate.
+    /// The gg tools this run offers. A guest that builds a scope binds only these into it, which
+    /// makes the check below a backstop; a guest that links its SDK as an ordinary library binds
+    /// every name it has, and there the check is the gate.
     enabled: BTreeSet<String>,
+    /// Which [ending calls](RunEnding) this program may declare — the agent's own role, or none at
+    /// all for an on-use script. Checked by [`declare`](Self::declare).
+    ending: RunEnding,
+    /// Whether this agent keeps a [program library](crate::programs), so the three
+    /// [library calls](programs) are available to it. Checked by
+    /// [`library_bound`](Self::library_bound).
+    ///
+    /// Held here and not only handed to the guest for the same reason [`ending`](Self::ending) is:
+    /// scope construction is a capability model only for a guest that has a scope to construct.
+    library: bool,
     /// The linear-memory ceiling, and its record of having denied a growth.
     limiter: MemoryLimiter,
     /// The run's wall-clock budget, consulted before every bridged call. `None` for a run with no
@@ -280,22 +328,25 @@ pub(crate) struct MembraneParts {
 }
 
 impl<A: ToolApi> MembraneState<A> {
-    /// The state for one program: bridged through `api`, offering `enabled`'s tools, bounded by
-    /// `limits`, and stopping at `deadline`.
+    /// The state for one program: bridged through `api`, offering exactly what `scope` says this
+    /// program was given, bounded by `limits`, and stopping at `deadline`.
     ///
-    /// Which ending calls the program may make is not a host-side check: the
-    /// [ending group](RunEnding) is handed to the *guest*, which binds only that group's names, so
-    /// an ending call outside it is not in scope to be made. The host therefore keeps no copy.
+    /// It takes the whole [`ProgramScope`] rather than the tool names alone because everything in it
+    /// is one decision — what this program may reach — and every part of that decision is checked
+    /// **here** as well as bound into the guest's scope. Splitting it was how the ending group and
+    /// the program-library flag came to be handed to the guest and to nobody else.
     pub(crate) fn new(
         api: A,
-        enabled: &[String],
+        scope: ProgramScope<'_>,
         limits: SandboxLimits,
         deadline: Option<Instant>,
     ) -> Self {
         Self {
             api: GuardedApi::new(api),
             api_calls: 0,
-            enabled: enabled.iter().cloned().collect(),
+            enabled: scope.enabled.iter().cloned().collect(),
+            ending: scope.ending,
+            library: scope.library,
             limiter: MemoryLimiter::new(limits.max_memory_bytes),
             deadline,
             program_started: Instant::now(),
@@ -476,6 +527,21 @@ impl<A: ToolApi> MembraneState<A> {
     /// deadline guard would withhold the exit at exactly the moment a run most needs it. Ending
     /// performs no work, so there is nothing for a spent budget to protect.
     ///
+    /// # The one guard it does have, and why it is first
+    ///
+    /// **Which endings this program may declare is checked here**, against the
+    /// [ending group](RunEnding) this agent was dispatched with. Scope construction is the
+    /// capability model — a guest binds one group's names and no others — but it is a model only
+    /// for a guest that builds a scope. A guest that links its SDK as an ordinary library has every
+    /// name, and without this check a standard agent could call `approve` and hand back a verdict:
+    /// the [loop](crate::agent) reads the declaration straight off the ending and never re-asks
+    /// whose it was.
+    ///
+    /// The check runs **before** the declaration is inspected for shape, so a reviewer that called
+    /// `finish` is told it is not the one to say the work is complete rather than told to write a
+    /// better summary — and so a perfectly well-formed `approve` from an agent that may not approve
+    /// is `unavailable` rather than accepted on its way past an `invalid-argument` that never fires.
+    ///
     /// **It is a flag, and setting it is all this does.** The call returns, the program runs on, and
     /// the [loop](crate::agent) reads the flag once the program has ended. That is the whole of the
     /// mechanism: no unwind, no exception a program could catch or fail to catch, and therefore no
@@ -495,11 +561,15 @@ impl<A: ToolApi> MembraneState<A> {
         &mut self,
         _recording: Recording,
         ending: Result<Ending, String>,
-        call: &'static str,
+        call: SurfaceCall,
     ) -> Result<(), ToolError> {
+        if !self.ending.permits(call.key) {
+            let message = self.ending.withheld(call.key);
+            return Err(self.withhold(call, message));
+        }
         let ending = ending.map_err(|message| ToolError {
             code: ErrorCode::InvalidArgument,
-            tool: call.to_string(),
+            tool: call.key.to_string(),
             message,
         })?;
         let superseded = match self.completion.take() {
@@ -561,6 +631,43 @@ impl<A: ToolApi> MembraneState<A> {
         let completed = completed(&outcome);
         self.record(tool, &outcome, completed);
         Ok(outcome)
+    }
+
+    /// Refuse a [program-library](programs) call from an agent that keeps no library.
+    ///
+    /// One helper rather than three copies, called as the **first** statement inside each library
+    /// call's [bracket](recording) — so the API call is still opened and still counted as a
+    /// failure. That count is the point: "the model reached for something this run does not offer
+    /// it" is precisely what a toolset ablation is run to measure, and a refusal that closed no
+    /// bracket would be invisible to it.
+    fn library_bound(&mut self, call: SurfaceCall) -> Result<(), ToolError> {
+        if self.library {
+            return Ok(());
+        }
+        let message = format!(
+            "`{}` is not available to you: this agent keeps no library of the programs it has run.",
+            call.key
+        );
+        Err(self.withhold(call, message))
+    }
+
+    /// Refuse a model-facing call this agent was never offered, record it, and render it as the
+    /// error the program will see thrown.
+    ///
+    /// Separate from [`refuse`](Self::refuse) because the thing refused is not a gg tool: the error
+    /// names the *call* the model wrote, and the roster entry carries its whole `object.key`
+    /// identity rather than a tool name that would answer to nothing. It is [`Unavailable`] in every
+    /// case, which is the same class — and the same recovery — a guest that could withhold the name
+    /// would have produced by leaving it out of scope.
+    ///
+    /// [`Unavailable`]: ErrorCode::Unavailable
+    fn withhold(&mut self, call: SurfaceCall, message: String) -> ToolError {
+        self.record_refusal(&format!("{}.{}", call.object, call.key), &message);
+        ToolError {
+            code: ErrorCode::Unavailable,
+            tool: call.key.to_string(),
+            message,
+        }
     }
 
     /// Record a refusal and render it as the error the program will see thrown.

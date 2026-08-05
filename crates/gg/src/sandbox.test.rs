@@ -735,6 +735,63 @@ fn a_role_gets_only_its_own_ending_calls() {
         program_error(&outcome).message
     );
     assert!(outcome.completion.is_none());
+
+    // This guest's half of the gate is scope construction, which is why every case above is an
+    // unknown *name*. The host holds the same role and refuses the same calls — see
+    // `membrane/session.test.rs` — because a guest that links its SDK as an ordinary library has no
+    // scope to withhold a name from, and there is nothing else between a standard agent and a
+    // verdict it was never asked for.
+}
+
+/// **A call refused as `unavailable` is the same turn error as a name that was never in scope.**
+///
+/// The two are one fact — the model reached for something this run does not offer it — and which of
+/// them a program hits depends on nothing but whether its language's SDK could withhold the name.
+/// This guest can, so it raises a `ReferenceError`; a guest that links its SDK as a library cannot,
+/// and is refused at the membrane instead. If the guest's own reading decided the class, the same
+/// event would be counted as `program_unknown_name` in one arm and `program_tool_error` in the next,
+/// which is exactly the confound a cross-language study cannot carry. The host reads the failure
+/// **code** instead, and this proves it end to end through the real component.
+#[test]
+fn a_refused_call_is_the_same_turn_error_as_an_unbound_name() {
+    let (outcome, _) = run_with(
+        "fs.listDir();",
+        &all_tools(),
+        SandboxLimits::default(),
+        |_, _| {
+            ToolOutcome::failed(
+                ToolFailure::Unavailable,
+                "`list_dir` is not available: this run has no workspace.",
+            )
+        },
+    );
+
+    let error = program_error(&outcome);
+    assert_eq!(
+        error.kind,
+        ProgramErrorKind::UnknownName,
+        "the guest called this a tool failure; the code says it was a withheld call: {error:?}"
+    );
+    assert!(
+        error.message.contains("unavailable"),
+        "the model still reads the call's own reason: {}",
+        error.message
+    );
+
+    // Every other failure class is what the call said it was. A `not-found` is a genuine tool
+    // failure: the call was offered, was made, and the thing it asked for is not there.
+    let (outcome, _) = run_with(
+        "fs.listDir();",
+        &all_tools(),
+        SandboxLimits::default(),
+        |_, _| ToolOutcome::failed(ToolFailure::NotFound, "no such directory"),
+    );
+    assert_eq!(
+        program_error(&outcome).kind,
+        ProgramErrorKind::ToolFailure,
+        "{:?}",
+        program_error(&outcome)
+    );
 }
 
 /// **The `view` object is bound to every program, and only `openFile` is gated.**

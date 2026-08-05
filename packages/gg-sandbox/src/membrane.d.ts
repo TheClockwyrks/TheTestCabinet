@@ -560,7 +560,7 @@ declare module "test-cabinet:gg/programs" {
     error: string | undefined;
   }
 
-  /** The programs this agent has run, oldest first. Cannot fail. */
+  /** The programs this agent has run, oldest first; throws `unavailable` without a library. */
   export function history(): ProgramSummaryRaw[];
   /** The source of one program as it was run; `undefined` is the most recent. */
   export function get(turn: number | undefined): string;
@@ -632,13 +632,22 @@ declare module "test-cabinet:gg/delegation" {
  * indirectly — through `console.*`, by throwing, or by deferring work into a microtask.
  */
 declare module "test-cabinet:gg/feedback" {
+  import type { ErrorCode } from "test-cabinet:gg/types";
+
   /** What kind of failure a program hit, so gg can pick the right feedback and telemetry. */
   export type ErrorKind = "tool-failure" | "unknown-name" | "other";
 
   /** A program that did not run to its end. */
   export interface ProgramError {
-    /** The failure class. */
+    /** The failure class, as this guest reads it. */
     kind: ErrorKind;
+    /**
+     * The failure class the *call* carried, when the throw was a failed membrane call, and
+     * `undefined` for anything the program threw on its own account. The host classifies the
+     * turn's error from this, so that "the model reached for something it was not offered" means
+     * one thing in every language arm rather than one thing per guest.
+     */
+    code: ErrorCode | undefined;
     /** The rendered message, already naming the tool or the available identifiers. */
     message: string;
     /** Where in the *program* it happened (`line 5, column 12`), or `undefined`. */
