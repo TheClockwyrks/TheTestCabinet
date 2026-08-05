@@ -414,14 +414,29 @@ addition, and the answers were good:
 All four are cheap facts. The fourth was once the open question; gg's linker now defines
 that whole surface for every guest.
 
-### WASI: settled
+### WASI
 
 gg's linker provides the **whole** WASI p2 surface to every guest, so a `componentize-py`
-guest instantiates with nothing added to the host and nothing stubbed out of the guest. This
-was once an open question with three candidate answers — bake the imports away, pin every
-capability, or hand over the ambient host — and it is now settled on the third. See
-[what the host links](#what-the-host-links-and-why-it-is-the-same-for-every-language) for
-the reasoning and for the one thing that is still withheld.
+guest instantiates with nothing added to the host and nothing stubbed out of the guest. See
+[what the host links](#what-the-host-links-and-why-it-is-the-same-for-every-language) for the
+reasoning and for the one thing that is still withheld.
+
+:::caution[A prerequisite for the first guest that can block]
+The [execution timeout](/gg/execution-limits/) is delivered by epoch interruption, which can
+only fire where the guest is running wasm. A guest parked inside a **synchronous WASI call** —
+`wasi:io/poll` on a clock pollable, which is what `time.sleep` and `Thread.sleep` compile to,
+or a blocking socket read — is running none, so the timeout cannot trap it, and the membrane's
+deadline guard does not help because it only refuses at the next bridged call. The turn hangs
+until the run-level idle watchdog (30 minutes) declares the run hung. Nothing stalls: the
+program runs on a blocking thread, so sibling agents are unaffected.
+
+No guest gg ships today can reach this — TypeScript's shadows the timers and exposes no
+filesystem or socket API — but every compiled language being added can, and `time.sleep(60)`
+is an ordinary thing for a model to write. Closing it is a design decision, not a comment:
+async WASI with `call_async` so a park becomes a cancellable yield, or a wall-clock watchdog
+that can cancel a store from outside. **Settle it with the first such language, not after
+one.**
+:::
 
 ### The steps
 

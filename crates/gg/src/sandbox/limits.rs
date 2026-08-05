@@ -24,12 +24,39 @@
 //!
 //! The timeout removes that failure mode by construction. It is **non-deterministic** — it measures
 //! elapsed guest-CPU time rather than counting instructions — and it is set far longer than any
-//! honest program's execution (milliseconds, occasionally a second or two) needs, so it is only ever
-//! reached by a program that does not terminate. It bounds only the guest's *own* execution: time a
-//! program spends parked in a bridged tool call (a long `shell` build) is excluded, exactly as fuel
-//! excluded it, so a program waiting minutes on a build is never mistaken for a runaway. That
-//! exclusion is enforced by [`MembraneState`](super::membrane)'s epoch-deadline callback, which
-//! extends the deadline by whatever time was spent in host calls.
+//! honest program's execution (milliseconds, occasionally a second or two) needs, so a program that
+//! reaches it is almost always one that does not terminate. It bounds only the guest's *own*
+//! execution: time a program spends parked in a bridged tool call (a long `shell` build) is
+//! excluded, exactly as fuel excluded it, so a program waiting minutes on a build is never mistaken
+//! for a runaway. That exclusion is enforced by [`MembraneState`](super::membrane)'s epoch-deadline
+//! callback, which extends the deadline by whatever time was spent in host calls.
+//!
+//! # What the timeout cannot stop, and who has to care
+//!
+//! The timeout is enforced by **epoch interruption**, which by construction can only fire where the
+//! guest is executing wasm: at a loop back-edge or a function entry. A guest parked inside a
+//! *synchronous WASI host call* is executing none, so the deadline cannot reach it. `wasi:io/poll`
+//! on a monotonic-clock pollable — which is what `time.sleep`, `Thread.sleep` and every idiomatic
+//! "wait a second" compiles to — is exactly that shape, and so is a blocking socket read or a
+//! blocking read of a large file. The membrane's own deadline guard is not a backstop either: it
+//! refuses at the *next* bridged call, and a sleeping program makes none.
+//!
+//! This was unreachable before the linker went ambient, because the only way for a program to block
+//! at all was a bridged tool call, which the epoch callback accounts for explicitly. It is
+//! unreachable from **today's** TypeScript guest too: the timers are shadowed and the JS engine
+//! exposes no filesystem or socket API. It is squarely reachable from any of the compiled languages
+//! being added, where `time.sleep(60)` is an ordinary thing for a model to write.
+//!
+//! The consequence is bounded but real. [`run_program`](super::run_program) is driven on a blocking
+//! thread, so a parked guest does not stall the shared runtime or any sibling agent — but the turn
+//! itself hangs with no ceiling of its own until the run-level idle watchdog
+//! (`test_cabinet_core::exec_stream::HARNESS_IDLE_TIMEOUT`, 30 minutes) declares the run hung.
+//!
+//! Closing it is a design decision rather than a comment: it needs either async WASI with
+//! `call_async`, so a park becomes a yield the host can cancel, or a wall-clock watchdog able to
+//! cancel a store from outside the guest. **It is a named prerequisite for the first language whose
+//! guest can block in WASI**, and is recorded as one in
+//! `apps/docs/src/content/docs/gg/program-languages.md`.
 
 use std::time::Duration;
 

@@ -84,7 +84,9 @@ fn engine() -> &'static Engine {
         // a wall-clock timeout rather than an instruction count. The [`ticker`] below advances the
         // engine's epoch on a fixed cadence, each [`Store`] arms a deadline against it, and the
         // guest traps when its own execution time (parked-in-host time excluded) outruns the
-        // ceiling. See [`limits`](super::limits) for why a timeout replaced fuel.
+        // ceiling. The deadline is only ever delivered where the guest is running wasm, so it does
+        // not reach one parked in a synchronous WASI call. See [`limits`](super::limits) for why a
+        // timeout replaced fuel, and for what that exclusion costs a language that can block.
         config.epoch_interruption(true);
         config.cranelift_opt_level(OptLevel::None);
         // A fixed, known-valid configuration: nothing here depends on the host, the run, or any

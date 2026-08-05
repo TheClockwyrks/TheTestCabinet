@@ -356,6 +356,11 @@ fn linker<A: ToolApi>() -> Result<Linker<MembraneState<A>>, SandboxError> {
 /// deadline for the remainder. Only a program burning the *guest's* clock — a runaway loop —
 /// eventually reaches the deadline with its guest time genuinely spent, and only then does the
 /// callback mark the state timed-out and trap. It never fails, so the store is returned directly.
+///
+/// An epoch deadline can only be *delivered* where the guest is executing wasm, so this bounds a
+/// runaway loop and not a guest parked inside a synchronous WASI call — a `wasi:io/poll` sleep, a
+/// blocking socket read. No guest gg ships today can reach that; the ones being added can. See
+/// [`limits`](limits#what-the-timeout-cannot-stop-and-who-has-to-care) for what closing it takes.
 fn bounded_store<A: ToolApi>(
     state: MembraneState<A>,
     limits: SandboxLimits,
