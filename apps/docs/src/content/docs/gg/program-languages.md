@@ -262,15 +262,19 @@ registered language's prompt must render, under every context fixture, carrying 
 required section.
 
 A section can also survive as a heading and lose what was under it, so the same gate reads
-four things off a maximal context rather than one. Every **value the run configured** must
-reach the prompt — each roster name and description, each ceiling, the assigned issue's id.
+three things off a maximal context rather than one, and a fourth off a minimal one. Every
+**value the run configured** must reach the prompt — each roster name and description,
+each ceiling, the assigned issue's id.
 Every **capability the run granted** must be named by the call that reaches it, resolved
 through that language's own catalogue rather than quoted, so `agents.spawnSubagent` and
 `agents.spawn_subagent` each satisfy it in their own arm. Every **rule a program is written
 under** must still be stated — that calls are synchronous, that a view is the only way to
 read data out, that a returned value is discarded, that a view arrives on the next turn,
-that a failed program's ending is revoked. And a capability the run **withheld** must appear
-nowhere, which is the prompt half of gg's [capability model](#what-the-host-checks-and-what-a-language-must-not-be-trusted-with).
+that a failed program's ending is revoked. The fourth is read the other way round, off a
+context with every capability **off**: a capability the run withheld must appear nowhere,
+which is the prompt half of gg's [capability model](#what-the-host-checks-and-what-a-language-must-not-be-trusted-with).
+A language author writing template fixtures needs both — the maximal one alone cannot show
+that a withheld capability stays out.
 
 What the gate deliberately does not assert is wording. It reads names, numbers,
 identifiers and the one term each rule cannot be stated without — never a sentence, never

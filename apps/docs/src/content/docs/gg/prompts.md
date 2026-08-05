@@ -128,7 +128,9 @@ what a second language is free to change, so a merged file would need a branch a
 everywhere and adding a language would mean editing the file every language shares. Each
 language's template is registered under `system-code.<language id>` by walking the language
 registry, so a new one arrives without a list anywhere being edited, and a test renders every
-registered language's prompt and asserts each required section survived the copy.
+registered language's prompt and asserts each required section survived the copy — along with
+the values, calls and rules under those headings, which
+[the language seam](/gg/program-languages/#what-a-language-supplies) enumerates.
 
 The code arm teaches five things the tool-calling arm has no need of:
 
